@@ -79,7 +79,7 @@ defmodule Domain.Clients.Client.Changeset do
             clients,
             clients.verified_by
           ),
-        verified_by_actor_id:
+        verified_by_subject:
           fragment(
             """
             CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
@@ -98,28 +98,7 @@ defmodule Domain.Clients.Client.Changeset do
             clients,
             clients,
             clients,
-            clients.verified_by_actor_id
-          ),
-        verified_by_identity_id:
-          fragment(
-            """
-            CASE WHEN (EXCLUDED.device_serial = ?.device_serial OR ?.device_serial IS NULL)
-                  AND (EXCLUDED.device_uuid = ?.device_uuid OR ?.device_uuid IS NULL)
-                  AND (EXCLUDED.identifier_for_vendor = ?.identifier_for_vendor OR ?.identifier_for_vendor IS NULL)
-                  AND (EXCLUDED.firebase_installation_id = ?.firebase_installation_id OR ?.firebase_installation_id IS NULL)
-                 THEN ?
-                 ELSE NULL
-            END
-            """,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients,
-            clients.verified_by_identity_id
+            clients.verified_by_subject
           )
       ]
     )
@@ -181,8 +160,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> change()
     |> put_change(:verified_at, nil)
     |> put_change(:verified_by, nil)
-    |> put_change(:verified_by_actor_id, nil)
-    |> put_change(:verified_by_identity_id, nil)
     |> put_change(:verified_by_subject, nil)
   end
 

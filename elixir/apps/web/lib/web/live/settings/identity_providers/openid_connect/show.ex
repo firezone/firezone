@@ -4,10 +4,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
   alias Domain.{Auth, Actors}
 
   def mount(%{"provider_id" => provider_id}, _session, socket) do
-    with {:ok, provider} <-
-           Auth.fetch_provider_by_id(provider_id, socket.assigns.subject,
-             preload: [created_by_identity: [:actor]]
-           ) do
+    with {:ok, provider} <- Auth.fetch_provider_by_id(provider_id, socket.assigns.subject) do
       safe_to_delete_actors_count = Actors.count_synced_actors_for_provider(provider)
 
       socket =
@@ -227,11 +224,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
   def handle_event("enable", _params, socket) do
     attrs = %{disabled_at: nil}
     {:ok, provider} = Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject)
-
-    {:ok, provider} =
-      Auth.fetch_provider_by_id(provider.id, socket.assigns.subject,
-        preload: [created_by_identity: [:actor]]
-      )
+    {:ok, provider} = Auth.fetch_provider_by_id(provider.id, socket.assigns.subject)
 
     {:noreply, assign(socket, provider: provider)}
   end
@@ -239,11 +232,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Show do
   def handle_event("disable", _params, socket) do
     attrs = %{disabled_at: DateTime.utc_now()}
     {:ok, provider} = Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject)
-
-    {:ok, provider} =
-      Auth.fetch_provider_by_id(provider.id, socket.assigns.subject,
-        preload: [created_by_identity: [:actor]]
-      )
+    {:ok, provider} = Auth.fetch_provider_by_id(provider.id, socket.assigns.subject)
 
     {:noreply, assign(socket, provider: provider)}
   end

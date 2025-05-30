@@ -780,7 +780,6 @@ defmodule Domain.AuthTest do
 
       assert provider.created_by == :system
       assert provider.created_by_subject == %{"email" => nil, "name" => "System"}
-      assert is_nil(provider.created_by_identity_id)
 
       assert is_nil(provider.disabled_at)
       assert is_nil(provider.deleted_at)
@@ -842,7 +841,6 @@ defmodule Domain.AuthTest do
       assert {:ok, provider} = create_provider(account, attrs, subject)
 
       assert provider.created_by == :identity
-      assert provider.created_by_identity_id == subject.identity.id
 
       assert provider.created_by_subject == %{
                "email" => subject.identity.email,
@@ -4094,7 +4092,6 @@ defmodule Domain.AuthTest do
       refute token.identity_id
       assert token.actor_id == actor.id
       assert token.created_by == :identity
-      assert token.created_by_identity_id == subject.identity.id
       assert token.created_by_user_agent == context.user_agent
       assert token.created_by_remote_ip.address == context.remote_ip
 
@@ -4208,7 +4205,6 @@ defmodule Domain.AuthTest do
       refute token.identity_id
       assert token.actor_id == actor.id
       assert token.created_by == :identity
-      assert token.created_by_identity_id == subject.identity.id
       assert token.created_by_user_agent == context.user_agent
       assert token.created_by_remote_ip.address == context.remote_ip
 

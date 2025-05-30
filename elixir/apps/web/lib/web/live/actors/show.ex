@@ -76,7 +76,7 @@ defmodule Web.Actors.Show do
   end
 
   def handle_identities_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:provider, created_by_identity: [:actor]])
+    list_opts = Keyword.put(list_opts, :preload, [:provider])
 
     with {:ok, identities, metadata} <-
            Auth.list_identities_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
@@ -105,7 +105,6 @@ defmodule Web.Actors.Show do
     list_opts =
       Keyword.put(list_opts, :preload,
         identity: [:provider],
-        created_by_identity: [:actor],
         clients: []
       )
 

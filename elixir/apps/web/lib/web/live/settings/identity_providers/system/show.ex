@@ -4,10 +4,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
   alias Domain.Auth
 
   def mount(%{"provider_id" => provider_id}, _session, socket) do
-    with {:ok, provider} <-
-           Auth.fetch_provider_by_id(provider_id, socket.assigns.subject,
-             preload: [created_by_identity: [:actor]]
-           ) do
+    with {:ok, provider} <- Auth.fetch_provider_by_id(provider_id, socket.assigns.subject) do
       socket =
         assign(socket, provider: provider, page_title: "Identity Provider #{provider.name}")
 
@@ -122,11 +119,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
   def handle_event("enable", _params, socket) do
     attrs = %{disabled_at: nil}
     {:ok, provider} = Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject)
-
-    {:ok, provider} =
-      Auth.fetch_provider_by_id(provider.id, socket.assigns.subject,
-        preload: [created_by_identity: [:actor]]
-      )
+    {:ok, provider} = Auth.fetch_provider_by_id(provider.id, socket.assigns.subject)
 
     {:noreply, assign(socket, provider: provider)}
   end
@@ -134,11 +127,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
   def handle_event("disable", _params, socket) do
     attrs = %{disabled_at: DateTime.utc_now()}
     {:ok, provider} = Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject)
-
-    {:ok, provider} =
-      Auth.fetch_provider_by_id(provider.id, socket.assigns.subject,
-        preload: [created_by_identity: [:actor]]
-      )
+    {:ok, provider} = Auth.fetch_provider_by_id(provider.id, socket.assigns.subject)
 
     {:noreply, assign(socket, provider: provider)}
   end

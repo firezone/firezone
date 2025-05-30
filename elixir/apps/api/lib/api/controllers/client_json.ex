@@ -42,8 +42,7 @@ defmodule API.ClientJSON do
       firebase_installation_id: client.firebase_installation_id,
       verified_at: client.verified_at,
       verified_by: client.verified_by,
-      verified_by_actor_id: client.verified_by_actor_id,
-      verified_by_identity_id: client.verified_by_identity_id,
+      verified_by_subject: client.verified_by_subject,
       created_at: client.inserted_at,
       updated_at: client.updated_at
     }

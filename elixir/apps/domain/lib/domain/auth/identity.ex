@@ -22,8 +22,6 @@ defmodule Domain.Auth.Identity do
 
     field :created_by, Ecto.Enum, values: ~w[system provider identity]a
     field :created_by_subject, :map
-    belongs_to :created_by_identity, Domain.Auth.Identity
-    belongs_to :created_by_actor, Domain.Actors.Actor
 
     has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
 

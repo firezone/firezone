@@ -1115,13 +1115,19 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders creation timestamp and entity.
+  Renders creation timestamp from created_by_subject
   """
   attr :schema, :any, required: true
 
   def created_by(%{schema: %{created_by: :system}} = assigns) do
     ~H"""
     <.relative_datetime datetime={@schema.inserted_at} /> by System
+    """
+  end
+
+  def created_by(%{schema: %{created_by: :provider}} = assigns) do
+    ~H"""
+    <.relative_datetime datetime={@schema.inserted_at} /> by Directory Sync
     """
   end
 
@@ -1137,14 +1143,8 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def created_by(%{schema: %{created_by: :provider}} = assigns) do
-    ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by Directory Sync
-    """
-  end
-
   @doc """
-  Renders verification timestamp and entity.
+  Renders verification timestamp and entity from verified_by_subject.
   """
   attr :schema, :any, required: true
 

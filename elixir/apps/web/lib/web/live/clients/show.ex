@@ -10,8 +10,6 @@ defmodule Web.Clients.Show do
              preload: [
                :online?,
                :actor,
-               :verified_by_identity,
-               :verified_by_actor,
                last_used_token: [identity: [:provider]]
              ]
            ) do
@@ -425,8 +423,6 @@ defmodule Web.Clients.Show do
             Clients.fetch_client_by_id(client.id, socket.assigns.subject,
               preload: [
                 :actor,
-                :verified_by_identity,
-                :verified_by_actor,
                 last_used_token: [identity: [:provider]]
               ]
             )

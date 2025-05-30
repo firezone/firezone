@@ -173,7 +173,6 @@ defmodule Domain.RelaysTest do
       assert group.name == attrs.name
 
       assert group.created_by == :identity
-      assert group.created_by_identity_id == subject.identity.id
 
       assert group.created_by_subject == %{
                "name" => subject.actor.name,
@@ -225,7 +224,6 @@ defmodule Domain.RelaysTest do
       assert group.name == attrs.name
 
       assert group.created_by == :system
-      assert is_nil(group.created_by_identity_id)
       assert group.created_by_subject == %{"name" => "System", "email" => nil}
     end
   end
@@ -436,7 +434,12 @@ defmodule Domain.RelaysTest do
       assert token.account_id == account.id
       assert token.relay_group_id == group.id
       assert token.created_by == :identity
-      assert token.created_by_identity_id == subject.identity.id
+
+      assert token.created_by_subject == %{
+               "email" => subject.identity.email,
+               "name" => subject.actor.name
+             }
+
       assert token.created_by_user_agent == subject.context.user_agent
       assert token.created_by_remote_ip.address == subject.context.remote_ip
       refute token.expires_at
@@ -453,7 +456,7 @@ defmodule Domain.RelaysTest do
       refute token.account_id
       assert token.relay_group_id == group.id
       assert token.created_by == :system
-      refute token.created_by_identity_id
+      assert token.created_by_subject == %{"email" => nil, "name" => "System"}
       refute token.created_by_user_agent
       refute token.created_by_remote_ip
       refute token.expires_at
@@ -503,7 +506,12 @@ defmodule Domain.RelaysTest do
       assert token.account_id == account.id
       assert token.relay_group_id == group.id
       assert token.created_by == :identity
-      assert token.created_by_identity_id == subject.identity.id
+
+      assert token.created_by_subject == %{
+               "email" => subject.identity.email,
+               "name" => subject.actor.name
+             }
+
       assert token.created_by_user_agent == context.user_agent
       assert token.created_by_remote_ip.address == context.remote_ip
       refute token.expires_at
