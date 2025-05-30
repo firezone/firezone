@@ -123,14 +123,14 @@ defmodule API.Schemas.Resource do
             "name" => "Prod DB",
             "address" => "10.0.0.10",
             "address_description" => "Production Database",
-            "type" => "ip",
+            "type" => "ip"
           },
           %{
             "id" => "3b9451c9-5616-48f8-827f-009ace22d015",
             "name" => "Admin Dashboard",
             "address" => "10.0.0.20",
             "address_description" => "Production Admin Dashboard",
-            "type" => "ip",
+            "type" => "ip"
           }
         ],
         "metadata" => %{

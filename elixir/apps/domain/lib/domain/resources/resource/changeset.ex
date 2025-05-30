@@ -260,6 +260,7 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:address_description, min: 1, max: 512)
+    |> sanitize_ip_stack()
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
@@ -270,5 +271,16 @@ defmodule Domain.Resources.Resource.Changeset do
     filter
     |> cast(attrs, [:protocol, :ports])
     |> validate_required([:protocol])
+  end
+
+  defp sanitize_ip_stack(changeset) do
+    case fetch_field(changeset, :type) do
+      {_, :dns} ->
+        changeset
+
+      _ ->
+        changeset
+        |> put_change(:ip_stack, nil)
+    end
   end
 end
