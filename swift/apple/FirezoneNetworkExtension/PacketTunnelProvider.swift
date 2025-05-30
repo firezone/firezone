@@ -245,7 +245,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 
-      // Ensure completionHandler is called on the same queue as handleAppMessage
+      // Ensure completionHandler is called on the same actor as handleAppMessage
       await MainActor.run { completionHandler?(data) }
     }
   }
