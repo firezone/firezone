@@ -23,6 +23,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     case idle
   }
 
+  private var getLogFolderSizeTask: Task<Void, Never>?
+
   private var logExportState: LogExportState = .idle
   private var tunnelConfiguration: TunnelConfiguration?
   private let defaults = UserDefaults.standard
@@ -35,6 +37,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     migrateFirezoneId()
     self.tunnelConfiguration = TunnelConfiguration.tryLoad()
+  }
+
+  deinit {
+    getLogFolderSizeTask?.cancel()
   }
 
   override func startTunnel(
@@ -172,11 +178,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .signOut:
         do {
           try Token.delete()
-          Task {
-            await stopTunnel(with: .userInitiated)
-
-            await MainActor.run { completionHandler?(nil) }
-          }
+          stopTunnel(with: .userInitiated) { completionHandler?(nil) }
         } catch {
           Log.error(error)
           completionHandler?(nil)
@@ -241,11 +243,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    Task {
+    getLogFolderSizeTask = Task {
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 
-      // Ensure completionHandler is called on the same actor as handleAppMessage
+      // Ensure completionHandler is called on the same actor as handleAppMessage and isn't cancelled by deinit
+      if getLogFolderSizeTask?.isCancelled ?? true { return }
       await MainActor.run { completionHandler?(data) }
     }
   }
