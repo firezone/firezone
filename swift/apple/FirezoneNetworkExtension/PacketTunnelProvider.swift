@@ -156,6 +156,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
+  @MainActor
   override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
     do {
       let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
@@ -173,7 +174,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           try Token.delete()
           Task {
             await stopTunnel(with: .userInitiated)
-            completionHandler?(nil)
+
+            await MainActor.run { completionHandler?(nil) }
           }
         } catch {
           Log.error(error)
@@ -243,7 +245,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 
-      completionHandler?(data)
+      // Ensure completionHandler is called on the same queue as handleAppMessage
+      await MainActor.run { completionHandler?(data) }
     }
   }
 
