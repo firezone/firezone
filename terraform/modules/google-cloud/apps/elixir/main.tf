@@ -89,7 +89,7 @@ resource "google_compute_reservation" "reservation" {
   specific_reservation_required = true
 
   specific_reservation {
-    count = var.reservation_size
+    count = var.scaling_horizontal_replicas * 2
 
     instance_properties {
       machine_type = var.compute_instance_type
@@ -329,11 +329,13 @@ resource "google_compute_region_instance_group_manager" "application" {
     type           = "PROACTIVE"
     minimal_action = "REPLACE"
 
-    # With reservations we need to take one instance down before provisioning a new one,
-    # otherwise we will get an error that there are no available instances for the targeted
-    # reservation.
-    max_unavailable_fixed = 1
-    max_surge_fixed       = max(max(1, var.scaling_horizontal_replicas - 1), length(var.compute_instance_availability_zones))
+    # The number of instances that can be unavailable (from the target size) during the update. We set
+    # this to 0 because we want all new instances to come online before we start taking down the old ones.
+    max_unavailable_fixed = 0
+
+    # The number of additional instances that can be created during the update. Since we are reserving 2 * the
+    # number of instances in the group, we set this to the target number of instances.
+    max_surge_fixed = var.scaling_horizontal_replicas
   }
 
   timeouts {
