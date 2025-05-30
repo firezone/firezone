@@ -117,7 +117,7 @@ export default function SettingsPage({
           />
         </div>
 
-        <div className="inline-flex w-full justify-between mt-4">
+        <div className="flex justify-end gap-4 mt-4">
           <Button
             type="reset"
             onClick={resetSettings}
