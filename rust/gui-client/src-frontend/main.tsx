@@ -1,6 +1,5 @@
 import React, { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
-import { initThemeMode } from "flowbite-react";
 import App from "./components/App";
 import { BrowserRouter } from "react-router";
 
@@ -11,5 +10,3 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
     </BrowserRouter>
   </StrictMode>
 );
-
-initThemeMode({ mode: "light" });
