@@ -10,8 +10,8 @@ defmodule Domain.Repo.Migrations.SetIpStackOnResources do
           WHEN type IN ('internet', 'dns') THEN 'dual'
           WHEN type IN ('cidr', 'ip') THEN
             CASE
-              WHEN family(address::inet) = 4 THEN 'ipv4-only'
-              WHEN family(address::inet) = 6 THEN 'ipv6-only'
+              WHEN family(address::inet) = 4 THEN 'ipv4_only'
+              WHEN family(address::inet) = 6 THEN 'ipv6_only'
               ELSE 'dual'
             END
           ELSE 'dual'
