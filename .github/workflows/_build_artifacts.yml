@@ -205,7 +205,9 @@ jobs:
             shortname: aarch64
             platform: linux/arm64
             install_dependencies: |
-              wget -q -O- https://musl.cc/aarch64-linux-musl-cross.tgz | tar -xz -C /tmp
+              # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
+              # Find some other way to keep these updated.
+              wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/aarch64-linux-musl-cross.tgz | tar -xz -C /tmp
 
               CC=/tmp/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc
 
@@ -215,7 +217,9 @@ jobs:
             platform: linux/arm/v7
             shortname: armv7
             install_dependencies: |
-              wget -q -O- https://musl.cc/arm-linux-musleabihf-cross.tgz | tar -xz -C /tmp
+              # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
+              # Find some other way to keep these updated.
+              wget -q -O- https://storage.cloud.google.com/firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz | tar -xz -C /tmp
 
               CC=/tmp/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc
 
@@ -254,6 +258,11 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.sha }}
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        with:
+          workload_identity_provider: "projects/85623168602/locations/global/workloadIdentityPools/github/providers/firezone-provider"
+          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
