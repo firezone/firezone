@@ -337,7 +337,12 @@ pub async fn count_logs() -> Result<FileCount> {
 }
 
 async fn count_one_dir(path: &Path) -> Result<FileCount> {
-    let mut dir = tokio::fs::read_dir(path).await?;
+    let mut dir = match tokio::fs::read_dir(path).await {
+        Ok(dir) => dir,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(FileCount::default()),
+        Err(e) => return Err(anyhow::Error::new(e)),
+    };
+
     let mut file_count = FileCount::default();
 
     while let Some(entry) = dir.next_entry().await? {
@@ -381,5 +386,17 @@ mod tests {
             std::fs::read_to_string(dir.path().join("not_a_logfile.tmp")).unwrap(),
             "something important"
         );
+    }
+
+    #[tokio::test]
+    async fn non_existing_path_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_owned();
+        drop(dir);
+
+        let file_count = count_one_dir(path.as_path()).await.unwrap();
+
+        assert_eq!(file_count.bytes, 0);
+        assert_eq!(file_count.files, 0);
     }
 }
