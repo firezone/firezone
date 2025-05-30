@@ -126,37 +126,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   ) {
     Log.log("stopTunnel: Reason: \(reason)")
 
-    do {
-      // There's no good way to send data like this from the
-      // Network Extension to the GUI, so save it to a file for the GUI to read upon
-      // either status change or the next launch.
-      try String(reason.rawValue).write(
-        to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
-    } catch {
-      Log.error(
-        SharedAccess.Error.unableToWriteToFile(
-          SharedAccess.providerStopReasonURL,
-          error
-        )
-      )
-    }
-
-    if case .authenticationCanceled = reason {
-      // This was triggered from onDisconnect, so try to clear our token
-      do { try Token.delete() } catch { Log.error(error) }
-
-#if os(iOS)
-      // iOS notifications should be shown from the tunnel process
-      SessionNotification.showSignedOutNotificationiOS()
-#endif
-    }
-
     // handles both connlib-initiated and user-initiated stops
     adapter?.stop()
 
-    cancelTunnelWithError(nil)
     super.stopTunnel(with: reason, completionHandler: completionHandler)
-    completionHandler()
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
@@ -176,13 +149,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler?(nil)
 
       case .signOut:
-        do {
-          try Token.delete()
-          stopTunnel(with: .userInitiated) { completionHandler?(nil) }
-        } catch {
-          Log.error(error)
-          completionHandler?(nil)
-        }
+        do { try Token.delete() } catch { Log.error(error) }
       case .getResourceList(let hash):
         guard let adapter = adapter
         else {
