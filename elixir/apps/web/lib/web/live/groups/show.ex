@@ -5,13 +5,7 @@ defmodule Web.Groups.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
-           Actors.fetch_group_by_id(id, socket.assigns.subject,
-             preload: [
-               provider: [],
-               created_by_identity: [:actor],
-               created_by_actor: []
-             ]
-           ) do
+           Actors.fetch_group_by_id(id, socket.assigns.subject, preload: :provider) do
       socket =
         assign(socket,
           page_title: "Group #{group.name}",

@@ -163,7 +163,6 @@ defmodule Domain.Repo.Changeset do
     changeset
     |> put_default_value(field, :actor)
     |> put_default_value(:"#{field}_subject", %{"name" => subject.actor.name, "email" => nil})
-    |> put_default_value(:"#{field}_actor_id", subject.actor.id)
   end
 
   def put_subject_trail(changeset, field, %Domain.Auth.Subject{} = subject) do
@@ -173,15 +172,11 @@ defmodule Domain.Repo.Changeset do
       "name" => subject.actor.name,
       "email" => subject.identity.email
     })
-    |> put_default_value(:"#{field}_actor_id", subject.actor.id)
-    |> put_default_value(:"#{field}_identity_id", subject.identity.id)
   end
 
   def reset_created_by(changeset) do
     changeset
     |> put_change(:created_by, nil)
-    |> put_change(:created_by_identity_id, nil)
-    |> put_change(:created_by_actor_id, nil)
     |> put_change(:created_by_subject, nil)
   end
 

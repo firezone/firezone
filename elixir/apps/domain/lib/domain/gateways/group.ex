@@ -17,8 +17,6 @@ defmodule Domain.Gateways.Group do
 
     field :created_by, Ecto.Enum, values: ~w[actor identity system]a
     field :created_by_subject, :map
-    belongs_to :created_by_identity, Domain.Auth.Identity
-    belongs_to :created_by_actor, Domain.Actors.Actor
 
     field :deleted_at, :utc_datetime_usec
     timestamps()

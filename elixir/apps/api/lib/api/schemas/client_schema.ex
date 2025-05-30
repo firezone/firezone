@@ -85,13 +85,9 @@ defmodule API.Schemas.Client do
           description: "Client verification method",
           enum: [:system, :actor, :identity]
         },
-        verified_by_actor_id: %Schema{
-          type: :string,
-          description: "Actor ID who verified the client"
-        },
-        verified_by_identity_id: %Schema{
-          type: :string,
-          description: "Identity ID who verified the client"
+        verified_by_subject: %Schema{
+          type: :object,
+          description: "Actor Name and/or Identity email who verified the client"
         },
         created_at: %Schema{
           type: :string,
@@ -220,8 +216,7 @@ defmodule API.Schemas.Client do
           "firebase_installation_id" => nil,
           "verified_at" => "2025-01-01T00:00:00Z",
           "verified_by" => "identity",
-          "verified_by_actor_id" => nil,
-          "verified_by_identity_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
+          "verified_by_subject" => %{"name" => "Foo", "email" => "foo@bar.com"},
           "created_at" => "2025-01-01T00:00:00Z",
           "updated_at" => "2025-01-01T00:00:00Z"
         }
@@ -266,8 +261,7 @@ defmodule API.Schemas.Client do
             "firebase_installation_id" => nil,
             "verified_at" => "2025-01-01T00:00:00Z",
             "verified_by" => "identity",
-            "verified_by_actor_id" => nil,
-            "verified_by_identity_id" => "6ecc106b-75c1-48a5-846c-14782180c1ff",
+            "verified_by_subject" => %{"name" => "Foo", "email" => "foo@bar.com"},
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"
           },
@@ -293,8 +287,7 @@ defmodule API.Schemas.Client do
             "firebase_installation_id" => nil,
             "verified_at" => nil,
             "verified_by" => nil,
-            "verified_by_actor_id" => nil,
-            "verified_by_identity_id" => nil,
+            "verified_by_subject" => %{"name" => "Foo", "email" => "foo@bar.com"},
             "created_at" => "2025-01-01T00:00:00Z",
             "updated_at" => "2025-01-01T00:00:00Z"
           }

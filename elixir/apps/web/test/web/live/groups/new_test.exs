@@ -135,7 +135,6 @@ defmodule Web.Live.Groups.NewTest do
     refute group.provider_identifier
 
     assert group.created_by == :identity
-    assert group.created_by_identity_id == identity.id
     assert group.created_by_subject == %{"email" => identity.email, "name" => actor.name}
 
     assert group.account_id == account.id

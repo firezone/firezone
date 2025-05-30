@@ -345,14 +345,18 @@ defmodule Web.Live.Resources.ShowTest do
     assert Repo.get(Domain.Resources.Resource, resource.id).deleted_at
   end
 
-  test "renders created_by link when created by Identity", %{
+  test "renders created_by info when created by Identity", %{
     account: account,
+    actor: actor,
     identity: identity,
     conn: conn
   } do
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor)
+
     resource =
       Fixtures.Resources.create_resource(
         account: account,
+        subject: subject,
         address_description: "http://example.com"
       )
 
@@ -361,13 +365,10 @@ defmodule Web.Live.Resources.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
 
-    assert Floki.find(
-             html,
-             "a[href='#{~p"/#{account}/actors/#{resource.created_by_actor_id}"}']"
-           )
+    assert html =~ "by #{actor.name}"
   end
 
-  test "renders created_by link when created by API client", %{
+  test "renders created_by info when created by API client", %{
     account: account,
     identity: identity,
     conn: conn
@@ -387,9 +388,6 @@ defmodule Web.Live.Resources.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
 
-    assert Floki.find(
-             html,
-             "a[href='#{~p"/#{account}/settings/api_clients/#{resource.created_by_actor_id}"}']"
-           )
+    assert html =~ "by #{subject.actor.name}"
   end
 end

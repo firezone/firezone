@@ -201,14 +201,6 @@ defmodule Domain.Clients do
         with: &Client.Changeset.verify(&1, subject),
         preload: [:online?]
       )
-      |> case do
-        {:ok, client} ->
-          client = Repo.preload(client, [:verified_by_actor, :verified_by_identity])
-          {:ok, client}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
     end
   end
 

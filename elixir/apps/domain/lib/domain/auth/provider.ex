@@ -19,8 +19,6 @@ defmodule Domain.Auth.Provider do
 
     field :created_by, Ecto.Enum, values: ~w[system identity actor]a
     field :created_by_subject, :map
-    belongs_to :created_by_identity, Domain.Auth.Identity
-    belongs_to :created_by_actor, Domain.Actors.Actor
 
     field :last_syncs_failed, :integer
     field :last_sync_error, :string

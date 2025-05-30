@@ -9,8 +9,6 @@ defmodule Web.Policies.Show do
              preload: [
                actor_group: [:provider],
                resource: [],
-               created_by_identity: :actor,
-               created_by_actor: [],
                replaced_by_policy: [:actor_group, :resource],
                replaces_policy: [:actor_group, :resource]
              ]
@@ -318,7 +316,6 @@ defmodule Web.Policies.Show do
         preload: [
           actor_group: [:provider],
           resource: [],
-          created_by_identity: :actor,
           replaced_by_policy: [:actor_group, :resource],
           replaces_policy: [:actor_group, :resource]
         ]
@@ -337,7 +334,6 @@ defmodule Web.Policies.Show do
       policy
       | actor_group: socket.assigns.policy.actor_group,
         resource: socket.assigns.policy.resource,
-        created_by_identity: socket.assigns.policy.created_by_identity,
         replaced_by_policy: socket.assigns.policy.replaced_by_policy,
         replaces_policy: socket.assigns.policy.replaces_policy
     }
@@ -352,7 +348,6 @@ defmodule Web.Policies.Show do
       policy
       | actor_group: socket.assigns.policy.actor_group,
         resource: socket.assigns.policy.resource,
-        created_by_identity: socket.assigns.policy.created_by_identity,
         replaced_by_policy: socket.assigns.policy.replaced_by_policy,
         replaces_policy: socket.assigns.policy.replaces_policy
     }

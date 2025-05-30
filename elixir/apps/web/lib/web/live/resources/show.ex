@@ -401,7 +401,6 @@ defmodule Web.Resources.Show do
         preload: [
           :gateway_groups,
           :policies,
-          created_by_identity: [:actor],
           replaced_by_resource: [],
           replaces_resource: []
         ]
@@ -439,8 +438,6 @@ defmodule Web.Resources.Show do
     Resources.fetch_internet_resource(subject,
       preload: [
         :gateway_groups,
-        :created_by_actor,
-        created_by_identity: [:actor],
         replaced_by_resource: [],
         replaces_resource: []
       ]
@@ -451,8 +448,6 @@ defmodule Web.Resources.Show do
     Resources.fetch_resource_by_id_or_persistent_id(id, subject,
       preload: [
         :gateway_groups,
-        :created_by_actor,
-        created_by_identity: [:actor],
         replaced_by_resource: [],
         replaces_resource: []
       ]

@@ -5,9 +5,7 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
 
   def mount(%{"provider_id" => provider_id}, _session, socket) do
     with {:ok, provider} <-
-           Auth.fetch_provider_by_id(provider_id, socket.assigns.subject,
-             preload: [created_by_identity: [:actor]]
-           ),
+           Auth.fetch_provider_by_id(provider_id, socket.assigns.subject),
          {:ok, identities_count_by_provider_id} <-
            Auth.fetch_identities_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups_count_by_provider_id} <-
@@ -258,11 +256,7 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
   def handle_event("enable", _params, socket) do
     attrs = %{disabled_at: nil}
     {:ok, provider} = Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject)
-
-    {:ok, provider} =
-      Auth.fetch_provider_by_id(provider.id, socket.assigns.subject,
-        preload: [created_by_identity: [:actor]]
-      )
+    {:ok, provider} = Auth.fetch_provider_by_id(provider.id, socket.assigns.subject)
 
     {:noreply, assign(socket, provider: provider)}
   end
@@ -270,11 +264,7 @@ defmodule Web.Settings.IdentityProviders.Mock.Show do
   def handle_event("disable", _params, socket) do
     attrs = %{disabled_at: DateTime.utc_now()}
     {:ok, provider} = Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject)
-
-    {:ok, provider} =
-      Auth.fetch_provider_by_id(provider.id, socket.assigns.subject,
-        preload: [created_by_identity: [:actor]]
-      )
+    {:ok, provider} = Auth.fetch_provider_by_id(provider.id, socket.assigns.subject)
 
     {:noreply, assign(socket, provider: provider)}
   end

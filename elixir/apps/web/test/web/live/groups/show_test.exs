@@ -124,7 +124,7 @@ defmodule Web.Live.Groups.ShowTest do
     group
     |> Ecto.Changeset.change(
       created_by: :identity,
-      created_by_identity_id: identity.id
+      created_by_subject: %{"email" => identity.email, "name" => actor.name}
     )
     |> Repo.update!()
 

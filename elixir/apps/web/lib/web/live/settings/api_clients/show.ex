@@ -30,9 +30,6 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_tokens_update!(socket, list_opts) do
-    list_opts =
-      Keyword.put(list_opts, :preload, created_by_identity: [:actor])
-
     with {:ok, tokens, metadata} <-
            Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
       {:ok,
@@ -170,12 +167,7 @@ defmodule Web.Settings.ApiClients.Show do
             {Cldr.DateTime.Formatter.date(token.expires_at, 1, "en", Web.CLDR, [])}
           </:col>
           <:col :let={token} label="created by">
-            <.link
-              class={[link_style()]}
-              navigate={~p"/#{@account}/actors/#{token.created_by_actor_id}"}
-            >
-              {get_identity_email(token.created_by_identity)}
-            </.link>
+            {token.created_by_subject["name"]}
           </:col>
           <:col :let={token} label="last used">
             <.relative_datetime datetime={token.last_seen_at} />
