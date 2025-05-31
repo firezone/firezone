@@ -955,7 +955,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.mdm_settings
             .auth_url
             .as_ref()
-            .unwrap_or(&self.advanced_settings.auth_base_url)
+            .unwrap_or(&self.advanced_settings.auth_url)
     }
 
     fn api_url(&self) -> &Url {

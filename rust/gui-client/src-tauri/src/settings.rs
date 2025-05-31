@@ -53,7 +53,7 @@ pub struct AdvancedSettingsLegacy {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AdvancedSettings {
-    pub auth_base_url: Url,
+    pub auth_url: Url,
     pub api_url: Url,
     pub log_filter: String,
 }
@@ -83,9 +83,7 @@ impl AdvancedSettingsViewModel {
             api_url_is_managed: mdm_settings.api_url.is_some(),
             log_filter_is_managed: mdm_settings.log_filter.is_some(),
 
-            auth_url: mdm_settings
-                .auth_url
-                .unwrap_or(advanced_settings.auth_base_url),
+            auth_url: mdm_settings.auth_url.unwrap_or(advanced_settings.auth_url),
             api_url: mdm_settings.api_url.unwrap_or(advanced_settings.api_url),
             log_filter: mdm_settings
                 .log_filter
@@ -129,7 +127,7 @@ impl GeneralSettings {
 impl Default for AdvancedSettings {
     fn default() -> Self {
         Self {
-            auth_base_url: Url::parse(defaults::AUTH_BASE_URL).expect("static URL is a valid URL"),
+            auth_url: Url::parse(defaults::AUTH_BASE_URL).expect("static URL is a valid URL"),
             api_url: Url::parse(defaults::API_URL).expect("static URL is a valid URL"),
             log_filter: defaults::LOG_FILTER.to_string(),
         }
@@ -154,7 +152,7 @@ pub async fn migrate_legacy_settings(
     let general_settings = load_general_settings();
 
     let advanced = AdvancedSettings {
-        auth_base_url: legacy.auth_base_url,
+        auth_url: legacy.auth_base_url,
         api_url: legacy.api_url,
         log_filter: legacy.log_filter,
     };
@@ -249,7 +247,7 @@ mod tests {
 
         let actual = serde_json::from_str::<AdvancedSettings>(s).unwrap();
         // Apparently the trailing slash here matters
-        assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
+        assert_eq!(actual.auth_url.to_string(), "https://example.com/");
         assert_eq!(actual.api_url.to_string(), "wss://example.com/");
         assert_eq!(actual.log_filter, "info");
     }
