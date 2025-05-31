@@ -183,6 +183,156 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
                   },
                   "fingerprint" => "fK6yUz9ED6s=",
                   "lastStartTimestamp" => "2023-06-02T13:38:06.900-07:00"
+                },
+                %{
+                  "kind" => "compute#instance",
+                  "id" => "101389045528522181",
+                  "creationTimestamp" => "2023-06-02T13:38:02.907-07:00",
+                  "name" => "domain-q3j6",
+                  "tags" => %{
+                    "items" => [
+                      "app-domain"
+                    ],
+                    "fingerprint" => "utkJlpAke8c="
+                  },
+                  "machineType" =>
+                    "#{project_endpoint}/zones/us-east1-d/machineTypes/n1-standard-1",
+                  "status" => "RUNNING",
+                  "zone" => "#{project_endpoint}/zones/us-east1-d",
+                  "networkInterfaces" => [
+                    %{
+                      "kind" => "compute#networkInterface",
+                      "network" => "#{project_endpoint}/global/networks/firezone-staging",
+                      "subnetwork" => "#{project_endpoint}/regions/us-east1/subnetworks/app",
+                      "networkIP" => "10.128.0.43",
+                      "name" => "nic0",
+                      "fingerprint" => "_4XbqLiVdkI=",
+                      "stackType" => "IPV4_ONLY"
+                    }
+                  ],
+                  "disks" => [],
+                  "metadata" => %{
+                    "kind" => "compute#metadata",
+                    "fingerprint" => "3mI-QpsQdDk=",
+                    "items" => []
+                  },
+                  "serviceAccounts" => [
+                    %{
+                      "email" => "app-domain@firezone-staging.iam.gserviceaccount.com",
+                      "scopes" => [
+                        "https://www.googleapis.com/auth/compute.readonly",
+                        "https://www.googleapis.com/auth/logging.write",
+                        "https://www.googleapis.com/auth/monitoring",
+                        "https://www.googleapis.com/auth/servicecontrol",
+                        "https://www.googleapis.com/auth/service.management.readonly",
+                        "https://www.googleapis.com/auth/devstorage.read_only",
+                        "https://www.googleapis.com/auth/trace.append"
+                      ]
+                    }
+                  ],
+                  "selfLink" => "#{project_endpoint}/zones/us-east1-d/instances/domain-q3j6",
+                  "scheduling" => %{
+                    "onHostMaintenance" => "MIGRATE",
+                    "automaticRestart" => true,
+                    "preemptible" => false,
+                    "provisioningModel" => "STANDARD"
+                  },
+                  "cpuPlatform" => "Intel Haswell",
+                  "labels" => %{
+                    "application" => "domain",
+                    "cluster_name" => "firezone",
+                    "container-vm" => "cos-105-17412-101-13",
+                    "managed_by" => "terraform",
+                    "version" => "0-0-1"
+                  },
+                  "labelFingerprint" => "ISmB9O6lTvg=",
+                  "startRestricted" => false,
+                  "deletionProtection" => false,
+                  "shieldedInstanceConfig" => %{
+                    "enableSecureBoot" => false,
+                    "enableVtpm" => true,
+                    "enableIntegrityMonitoring" => true
+                  },
+                  "shieldedInstanceIntegrityPolicy" => %{
+                    "updateAutoLearnPolicy" => true
+                  },
+                  "fingerprint" => "fK6yUz9ED6s=",
+                  "lastStartTimestamp" => "2023-06-02T13:38:06.900-07:00"
+                },
+                %{
+                  "kind" => "compute#instance",
+                  "id" => "101389045528522181",
+                  "creationTimestamp" => "2023-06-02T13:38:02.907-07:00",
+                  "name" => "web-q3j6",
+                  "tags" => %{
+                    "items" => [
+                      "app-web"
+                    ],
+                    "fingerprint" => "utkJlpAke8c="
+                  },
+                  "machineType" =>
+                    "#{project_endpoint}/zones/us-east1-d/machineTypes/n1-standard-1",
+                  "status" => "RUNNING",
+                  "zone" => "#{project_endpoint}/zones/us-east1-d",
+                  "networkInterfaces" => [
+                    %{
+                      "kind" => "compute#networkInterface",
+                      "network" => "#{project_endpoint}/global/networks/firezone-staging",
+                      "subnetwork" => "#{project_endpoint}/regions/us-east1/subnetworks/app",
+                      "networkIP" => "10.128.0.43",
+                      "name" => "nic0",
+                      "fingerprint" => "_4XbqLiVdkI=",
+                      "stackType" => "IPV4_ONLY"
+                    }
+                  ],
+                  "disks" => [],
+                  "metadata" => %{
+                    "kind" => "compute#metadata",
+                    "fingerprint" => "3mI-QpsQdDk=",
+                    "items" => []
+                  },
+                  "serviceAccounts" => [
+                    %{
+                      "email" => "app-web@firezone-staging.iam.gserviceaccount.com",
+                      "scopes" => [
+                        "https://www.googleapis.com/auth/compute.readonly",
+                        "https://www.googleapis.com/auth/logging.write",
+                        "https://www.googleapis.com/auth/monitoring",
+                        "https://www.googleapis.com/auth/servicecontrol",
+                        "https://www.googleapis.com/auth/service.management.readonly",
+                        "https://www.googleapis.com/auth/devstorage.read_only",
+                        "https://www.googleapis.com/auth/trace.append"
+                      ]
+                    }
+                  ],
+                  "selfLink" => "#{project_endpoint}/zones/us-east1-d/instances/web-q3j6",
+                  "scheduling" => %{
+                    "onHostMaintenance" => "MIGRATE",
+                    "automaticRestart" => true,
+                    "preemptible" => false,
+                    "provisioningModel" => "STANDARD"
+                  },
+                  "cpuPlatform" => "Intel Haswell",
+                  "labels" => %{
+                    "application" => "web",
+                    "cluster_name" => "firezone",
+                    "container-vm" => "cos-105-17412-101-13",
+                    "managed_by" => "terraform",
+                    "version" => "0-0-1"
+                  },
+                  "labelFingerprint" => "ISmB9O6lTvg=",
+                  "startRestricted" => false,
+                  "deletionProtection" => false,
+                  "shieldedInstanceConfig" => %{
+                    "enableSecureBoot" => false,
+                    "enableVtpm" => true,
+                    "enableIntegrityMonitoring" => true
+                  },
+                  "shieldedInstanceIntegrityPolicy" => %{
+                    "updateAutoLearnPolicy" => true
+                  },
+                  "fingerprint" => "fK6yUz9ED6s=",
+                  "lastStartTimestamp" => "2023-06-02T13:38:06.900-07:00"
                 }
               ]
             },

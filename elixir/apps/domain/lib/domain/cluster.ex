@@ -29,4 +29,16 @@ defmodule Domain.Cluster do
 
     Supervisor.init(children, strategy: :rest_for_one)
   end
+
+  def healthy? do
+    config = Domain.Config.fetch_env!(:domain, __MODULE__)
+    adapter = Keyword.fetch!(config, :adapter)
+    adapter_config = Keyword.fetch!(config, :adapter_config)
+
+    if adapter && adapter_config[:health_check_supported] do
+      GenServer.call(adapter, :healthy?)
+    else
+      true
+    end
+  end
 end

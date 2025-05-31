@@ -57,7 +57,7 @@ defmodule Domain.GoogleCloudPlatformTest do
                  }
                )
 
-      assert length(nodes) == 1
+      assert length(nodes) == 3
 
       assert [
                %{
@@ -66,6 +66,30 @@ defmodule Domain.GoogleCloudPlatformTest do
                    "https://www.googleapis.com/compute/v1/projects/firezone-staging/zones/us-east1-d",
                  "labels" => %{
                    "application" => "api",
+                   "cluster_name" => "firezone",
+                   "container-vm" => "cos-105-17412-101-13",
+                   "managed_by" => "terraform",
+                   "version" => "0-0-1"
+                 }
+               },
+               %{
+                 "name" => "domain-q3j6",
+                 "zone" =>
+                   "https://www.googleapis.com/compute/v1/projects/firezone-staging/zones/us-east1-d",
+                 "labels" => %{
+                   "application" => "domain",
+                   "cluster_name" => "firezone",
+                   "container-vm" => "cos-105-17412-101-13",
+                   "managed_by" => "terraform",
+                   "version" => "0-0-1"
+                 }
+               },
+               %{
+                 "name" => "web-q3j6",
+                 "zone" =>
+                   "https://www.googleapis.com/compute/v1/projects/firezone-staging/zones/us-east1-d",
+                 "labels" => %{
+                   "application" => "web",
                    "cluster_name" => "firezone",
                    "container-vm" => "cos-105-17412-101-13",
                    "managed_by" => "terraform",

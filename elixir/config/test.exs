@@ -34,6 +34,9 @@ config :domain, platform_adapter: Domain.GoogleCloudPlatform
 
 config :domain, Domain.GoogleCloudPlatform, service_account_email: "foo@iam.example.com"
 
+config :domain, Domain.Cluster.GoogleComputeLabelsStrategy,
+  libcluster_strategy_module: Domain.Mocks.Cluster.Strategy
+
 config :domain, Domain.ComponentVersions,
   fetch_from_url: false,
   versions: [
