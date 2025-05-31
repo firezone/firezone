@@ -21,12 +21,14 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
   @default_polling_interval :timer.seconds(10)
 
-  def start_link(args), do: GenServer.start_link(__MODULE__, args)
+  def start_link(args), do: GenServer.start_link(__MODULE__, args, name: __MODULE__)
 
   @impl true
   def init([state]) do
     unless Domain.GoogleCloudPlatform.enabled?(),
       do: "Google Cloud Platform clustering strategy requires GoogleCloudPlatform to be enabled"
+
+    state = Map.put(state, :healthy?, false)
 
     {:ok, state, {:continue, :start}}
   end
@@ -49,20 +51,32 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     {:noreply, state}
   end
 
-  defp load(state) do
-    Process.send_after(self(), :load, polling_interval(state))
+  @impl true
+  def handle_call(:healthy?, _from, state) do
+    {:reply, state.healthy?, state}
+  end
 
+  def load(state) do
     with {:ok, nodes, state} <- fetch_nodes(state),
          :ok <-
-           Cluster.Strategy.connect_nodes(state.topology, state.connect, state.list_nodes, nodes) do
-      state
+           libcluster_stategy_module().connect_nodes(
+             state.topology,
+             state.connect,
+             state.list_nodes,
+             nodes
+           ) do
+      Process.send_after(self(), :load, polling_interval(state))
+
+      Map.put(state, :healthy?, all_nodes_connected?(nodes, state))
     else
       {:error, reason} ->
         Logger.error("Error fetching nodes or connecting to them",
           reason: inspect(reason)
         )
 
-        state
+        Process.send_after(self(), :load, polling_interval(state))
+
+        Map.put(state, :healthy?, false)
     end
   end
 
@@ -144,5 +158,34 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
   defp polling_interval(state) do
     Keyword.get(state.config, :polling_interval, @default_polling_interval)
+  end
+
+  defp all_nodes_connected?(connected_nodes, state) do
+    api_node_count = Keyword.fetch!(state.config, :api_node_count)
+    domain_node_count = Keyword.fetch!(state.config, :domain_node_count)
+    web_node_count = Keyword.fetch!(state.config, :web_node_count)
+
+    api_nodes_connected? = api_node_count == node_count(connected_nodes, "api")
+    domain_nodes_connected? = domain_node_count == node_count(connected_nodes, "domain")
+    web_nodes_connected? = web_node_count == node_count(connected_nodes, "web")
+
+    api_nodes_connected? and domain_nodes_connected? and web_nodes_connected?
+  end
+
+  defp node_count(nodes, target_app) do
+    Enum.count(nodes, fn node_name ->
+      app =
+        node_name
+        |> Atom.to_string()
+        |> String.split("@")
+        |> List.first()
+
+      target_app == app
+    end)
+  end
+
+  defp libcluster_stategy_module do
+    Domain.Config.fetch_env!(:domain, __MODULE__)
+    |> Keyword.fetch!(:libcluster_strategy_module)
   end
 end

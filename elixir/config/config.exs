@@ -126,6 +126,9 @@ config :domain, Domain.Cluster,
   adapter: nil,
   adapter_config: []
 
+config :domain, Domain.Cluster.GoogleComputeLabelsStrategy,
+  libcluster_strategy_module: Cluster.Strategy
+
 config :domain, Domain.Instrumentation,
   client_logs_enabled: true,
   client_logs_bucket: "logs"
