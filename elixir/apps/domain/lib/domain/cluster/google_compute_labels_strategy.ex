@@ -17,27 +17,18 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   """
   use GenServer
   use Cluster.Strategy
-  alias Cluster.Strategy.State
   require Logger
-
-  defmodule Meta do
-    @type t :: %{
-            nodes: MapSet.t()
-          }
-
-    defstruct nodes: MapSet.new()
-  end
 
   @default_polling_interval :timer.seconds(10)
 
   def start_link(args), do: GenServer.start_link(__MODULE__, args)
 
   @impl true
-  def init([%State{} = state]) do
+  def init([state]) do
     unless Domain.GoogleCloudPlatform.enabled?(),
       do: "Google Cloud Platform clustering strategy requires GoogleCloudPlatform to be enabled"
 
-    {:ok, %{state | meta: %Meta{}}, {:continue, :start}}
+    {:ok, state, {:continue, :start}}
   end
 
   @impl true
@@ -50,7 +41,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     handle_info(:load, state)
   end
 
-  def handle_info(:load, %State{} = state) do
+  def handle_info(:load, state) do
     {:noreply, load(state)}
   end
 
@@ -58,53 +49,17 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     {:noreply, state}
   end
 
-  defp load(%State{topology: topology, meta: %Meta{} = meta} = state) do
-    with {:ok, nodes, state} <- fetch_nodes(state) do
-      new_nodes = MapSet.new(nodes)
-      added_nodes = MapSet.difference(new_nodes, meta.nodes)
-      removed_nodes = MapSet.difference(state.meta.nodes, new_nodes)
+  defp load(state) do
+    Process.send_after(self(), :load, polling_interval(state))
 
-      new_nodes =
-        case Cluster.Strategy.disconnect_nodes(
-               topology,
-               state.disconnect,
-               state.list_nodes,
-               MapSet.to_list(removed_nodes)
-             ) do
-          :ok ->
-            new_nodes
-
-          {:error, bad_nodes} ->
-            # Add back the nodes which should have been removed_nodes, but which couldn't be for some reason
-            Enum.reduce(bad_nodes, new_nodes, fn {n, _}, acc ->
-              MapSet.put(acc, n)
-            end)
-        end
-
-      new_nodes =
-        case Cluster.Strategy.connect_nodes(
-               topology,
-               state.connect,
-               state.list_nodes,
-               MapSet.to_list(added_nodes)
-             ) do
-          :ok ->
-            new_nodes
-
-          {:error, bad_nodes} ->
-            # Remove the nodes which should have been added_nodes, but couldn't be for some reason
-            Enum.reduce(bad_nodes, new_nodes, fn {n, _}, acc ->
-              MapSet.delete(acc, n)
-            end)
-        end
-
-      Process.send_after(self(), :load, polling_interval(state))
-
-      %State{state | meta: %{state.meta | nodes: new_nodes}}
+    with {:ok, nodes, state} <- fetch_nodes(state),
+         :ok <-
+           Cluster.Strategy.connect_nodes(state.topology, state.connect, state.list_nodes, nodes) do
+      state
     else
       {:error, reason} ->
-        Logger.error("Can't fetch list of nodes: #{inspect(reason)}",
-          module: __MODULE__
+        Logger.error("Error fetching nodes or connecting to them",
+          reason: inspect(reason)
         )
 
         state
@@ -120,8 +75,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
       {:ok, nodes, state}
     else
       {:error, %{"error" => %{"code" => 401}} = reason} ->
-        Logger.error("Invalid access token was used: #{inspect(reason)}",
-          module: __MODULE__
+        Logger.error("Invalid access token was used",
+          reason: inspect(reason)
         )
 
         if remaining_retry_count == 0 do
@@ -133,15 +88,13 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
       {:error, reason} ->
         if remaining_retry_count == 0 do
           Logger.error("Can't fetch list of nodes or access token",
-            reason: inspect(reason),
-            module: __MODULE__
+            reason: inspect(reason)
           )
 
           {:error, reason}
         else
           Logger.info("Can't fetch list of nodes or access token",
-            reason: inspect(reason),
-            module: __MODULE__
+            reason: inspect(reason)
           )
 
           backoff_interval = Keyword.get(state.config, :backoff_interval, 1_000)
@@ -189,7 +142,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     end
   end
 
-  defp polling_interval(%State{config: config}) do
-    Keyword.get(config, :polling_interval, @default_polling_interval)
+  defp polling_interval(state) do
+    Keyword.get(state.config, :polling_interval, @default_polling_interval)
   end
 end
