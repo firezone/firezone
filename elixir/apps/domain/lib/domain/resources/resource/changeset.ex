@@ -3,9 +3,9 @@ defmodule Domain.Resources.Resource.Changeset do
   alias Domain.{Auth, Accounts, Network}
   alias Domain.Resources.{Resource, Connection}
 
-  @fields ~w[address address_description name type]a
-  @update_fields ~w[address address_description name type]a
-  @replace_fields ~w[type address filters]a
+  @fields ~w[address address_description name type ip_stack]a
+  @update_fields ~w[address address_description name type ip_stack]a
+  @replace_fields ~w[type address filters ip_stack]a
   @required_fields ~w[name type]a
 
   # Reference list of common TLDs from IANA
