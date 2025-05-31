@@ -64,33 +64,13 @@
     },
     "windows": [
       {
-        "label": "about",
-        "title": "About Firezone",
-        "url": "src/about.html",
+        "label": "main",
+        "title": "Firezone",
+        "url": "src-frontend/index.html",
         "fullscreen": false,
         "resizable": false,
-        "width": 400,
-        "height": 300,
-        "visible": false
-      },
-      {
-        "label": "settings",
-        "title": "Settings",
-        "url": "src/settings.html",
-        "fullscreen": false,
-        "resizable": true,
-        "width": 640,
-        "height": 480,
-        "visible": false
-      },
-      {
-        "label": "welcome",
-        "title": "Welcome",
-        "url": "src/welcome.html",
-        "fullscreen": false,
-        "resizable": false,
-        "width": 800,
-        "height": 450,
+        "width": 900,
+        "height": 500,
         "visible": false
       }
     ]

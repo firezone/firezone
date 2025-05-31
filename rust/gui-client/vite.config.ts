@@ -1,27 +1,23 @@
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { resolve } from "path";
-import tailwindcss from '@tailwindcss/vite'
+import flowbiteReact from "flowbite-react/plugin/vite";
 import typescript from 'vite-plugin-typescript';
+import { execSync } from "child_process";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+const gitVersion = process.env.GITHUB_SHA ?? execSync('git rev-parse --short HEAD')
+    .toString();
 
-// https://vitejs.dev/config/
-export default defineConfig(async () => ({
-  build: {
-    rollupOptions: {
-      input: {
-        about: resolve(__dirname, "src/about.html"),
-        settings: resolve(__dirname, "src/settings.html"),
-        welcome: resolve(__dirname, "src/welcome.html"),
-      },
-    },
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react(), flowbiteReact(), tailwindcss(), typescript()],
+
+  define: {
+    // mark:next-gui-version
+    '__APP_VERSION__': JSON.stringify("1.5.0"),
+    '__GIT_VERSION__': JSON.stringify(gitVersion),
   },
-
-  plugins: [
-    tailwindcss(),
-    typescript(),
-  ],
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
@@ -44,4 +40,4 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
-}));
+});

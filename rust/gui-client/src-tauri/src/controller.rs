@@ -2,7 +2,8 @@ use crate::{
     auth, deep_link,
     gui::{self, system_tray},
     ipc::{self, SocketId},
-    logging, service,
+    logging::{self, FileCount},
+    service,
     settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
 };
@@ -63,12 +64,6 @@ pub struct Controller<I: GuiIntegration> {
 }
 
 pub trait GuiIntegration {
-    fn set_welcome_window_visible(
-        &self,
-        visible: bool,
-        current_session: Option<&auth::Session>,
-    ) -> Result<()>;
-
     fn notify_signed_in(&self, session: &auth::Session) -> Result<()>;
     fn notify_signed_out(&self) -> Result<()>;
     fn notify_settings_changed(
@@ -76,6 +71,7 @@ pub trait GuiIntegration {
         mdm_settings: MdmSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
+    fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -85,12 +81,14 @@ pub trait GuiIntegration {
     fn show_notification(&self, title: &str, body: &str) -> Result<()>;
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
-    fn show_settings_window(
+    fn set_window_visible(&self, visible: bool) -> Result<()>;
+    fn show_overview_page(&self, current_session: Option<&auth::Session>) -> Result<()>;
+    fn show_settings_page(
         &self,
         mdm_settings: MdmSettings,
-        advanced_settings: AdvancedSettings,
+        settings: AdvancedSettings,
     ) -> Result<()>;
-    fn show_about_window(&self) -> Result<()>;
+    fn show_about_page(&self) -> Result<()>;
 }
 
 pub enum ControllerRequest {
@@ -106,6 +104,7 @@ pub enum ControllerRequest {
     Fail(Failure),
     SignIn,
     SignOut,
+    UpdateState,
     SystemTrayMenu(system_tray::Event),
     UpdateNotificationClicked(Url),
 }
@@ -288,8 +287,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.refresh_system_tray_menu();
 
         if !ran_before::get().await? {
-            self.integration
-                .set_welcome_window_visible(true, self.auth.session())?;
+            self.integration.show_overview_page(self.auth.session())?;
         }
 
         while let Some(tick) = self.tick().await {
@@ -506,6 +504,8 @@ impl<I: GuiIntegration> Controller<I> {
 
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu();
+
+                self.integration.show_notification("Settings saved", "")?
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -541,8 +541,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration
                     .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
-                self.integration
-                    .set_welcome_window_visible(false, self.auth.session())?;
+                self.integration.set_window_visible(false)?;
             }
             SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.general_settings.favorite_resources.insert(resource_id);
@@ -593,8 +592,8 @@ impl<I: GuiIntegration> Controller<I> {
             }
             SystemTrayMenu(system_tray::Event::ShowWindow(window)) => {
                 match window {
-                    system_tray::Window::About => self.integration.show_about_window()?,
-                    system_tray::Window::Settings => self.integration.show_settings_window(
+                    system_tray::Window::About => self.integration.show_about_page()?,
+                    system_tray::Window::Settings => self.integration.show_settings_page(
                         self.mdm_settings.clone(),
                         self.advanced_settings.clone(),
                     )?,
@@ -630,6 +629,19 @@ impl<I: GuiIntegration> Controller<I> {
                     .open_url(&download_url)
                     .context("Couldn't open update page")?;
             }
+            UpdateState => {
+                self.integration.notify_settings_changed(
+                    self.mdm_settings.clone(),
+                    self.advanced_settings.clone(),
+                )?;
+                match self.auth.session() {
+                    Some(session) => self.integration.notify_signed_in(session)?,
+                    None => self.integration.notify_signed_out()?,
+                };
+
+                let file_count = logging::count_logs().await?;
+                self.integration.notify_logs_recounted(&file_count)?;
+            }
         }
         Ok(())
     }
@@ -644,6 +656,9 @@ impl<I: GuiIntegration> Controller<I> {
                 };
                 tx.send(result)
                     .map_err(|_| anyhow!("Couldn't send `ClearLogs` result to Tauri task"))?;
+
+                let file_count = logging::count_logs().await?;
+                self.integration.notify_logs_recounted(&file_count)?;
             }
             service::ServerMsg::ConnectResult(result) => {
                 self.handle_connect_result(result).await?;
@@ -738,8 +753,7 @@ impl<I: GuiIntegration> Controller<I> {
                 }
             },
             gui::ClientMsg::NewInstance => {
-                self.integration
-                    .set_welcome_window_visible(true, self.auth.session())?;
+                self.integration.show_overview_page(self.auth.session())?;
             }
         }
 
@@ -943,7 +957,7 @@ impl<I: GuiIntegration> Controller<I> {
         self.mdm_settings
             .auth_url
             .as_ref()
-            .unwrap_or(&self.advanced_settings.auth_base_url)
+            .unwrap_or(&self.advanced_settings.auth_url)
     }
 
     fn api_url(&self) -> &Url {

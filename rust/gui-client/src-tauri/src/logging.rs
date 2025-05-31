@@ -1,88 +1,16 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
-use crate::gui::Managed;
 use anyhow::{Context as _, Result, bail};
 use firezone_bin_shared::known_dirs;
-use firezone_logging::{FilterReloadHandle, err_with_src};
+use firezone_logging::FilterReloadHandle;
 use serde::Serialize;
 use std::{
     fs,
     io::{self, ErrorKind::NotFound},
     path::{Path, PathBuf},
 };
-use tauri_plugin_dialog::DialogExt as _;
 use tokio::task::spawn_blocking;
 use tracing_subscriber::{EnvFilter, Layer, Registry, layer::SubscriberExt};
-
-use super::controller::{ControllerRequest, CtlrTx};
-
-#[tauri::command]
-pub(crate) async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<(), String> {
-    let (tx, rx) = tokio::sync::oneshot::channel();
-    if let Err(error) = managed.ctlr_tx.send(ControllerRequest::ClearLogs(tx)).await {
-        // Tauri will only log errors to the JS console for us, so log this ourselves.
-        tracing::error!(
-            "Error while asking `Controller` to clear logs: {}",
-            err_with_src(&error)
-        );
-        return Err(error.to_string());
-    }
-    if let Err(error) = rx.await {
-        tracing::error!(
-            "Error while awaiting log-clearing operation: {}",
-            err_with_src(&error)
-        );
-        return Err(error.to_string());
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn export_logs(
-    app: tauri::AppHandle,
-    managed: tauri::State<'_, Managed>,
-) -> Result<(), String> {
-    show_export_dialog(&app, managed.ctlr_tx.clone()).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub(crate) async fn count_logs() -> Result<FileCount, String> {
-    count_logs_imp().await.map_err(|e| e.to_string())
-}
-
-/// Pops up the "Save File" dialog
-fn show_export_dialog(app: &tauri::AppHandle, ctlr_tx: CtlrTx) -> Result<()> {
-    let now = chrono::Local::now();
-    let datetime_string = now.format("%Y_%m_%d-%H-%M");
-    let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
-    let filename = stem.with_extension("zip");
-    let Some(filename) = filename.to_str() else {
-        bail!("zip filename isn't valid Unicode");
-    };
-
-    tauri_plugin_dialog::FileDialogBuilder::new(app.dialog().clone())
-        .add_filter("Zip", &["zip"])
-        .set_file_name(filename)
-        .save_file(move |file_path| {
-            let Some(file_path) = file_path else {
-                return;
-            };
-
-            let path = match file_path.clone().into_path() {
-                Ok(path) => path,
-                Err(e) => {
-                    tracing::warn!(%file_path, "Invalid file path: {}", err_with_src(&e));
-                    return;
-                }
-            };
-
-            // blocking_send here because we're in a sync callback within Tauri somewhere
-            if let Err(e) = ctlr_tx.blocking_send(ControllerRequest::ExportLogs { path, stem }) {
-                tracing::warn!("Failed to send `ExportLogs` command: {e}");
-            }
-        });
-    Ok(())
-}
 
 /// If you don't store `Handles` in a variable, the file logger handle will drop immediately,
 /// resulting in empty log files.
@@ -282,15 +210,51 @@ pub struct FileCount {
     files: u64,
 }
 
-/// Delete all files in the logs directory.
-///
-/// This includes the current log file, so we won't write any more logs to disk
-/// until the file rolls over or the app restarts.
-///
-/// If we get an error while removing a file, we still try to remove all other
-/// files, then we return the most recent error.
 pub async fn clear_gui_logs() -> Result<()> {
-    crate::clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?).await
+    clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?).await
+}
+
+pub async fn clear_service_logs() -> Result<()> {
+    clear_logs(&known_dirs::tunnel_service_logs().context("Can't compute service logs dir")?).await
+}
+
+/// Deletes all `.log` files in `path`.
+async fn clear_logs(path: &Path) -> Result<()> {
+    let mut dir = match tokio::fs::read_dir(path).await {
+        Ok(x) => x,
+        Err(error) => {
+            if matches!(error.kind(), NotFound) {
+                // In smoke tests, the Tunnel service runs in debug mode, so it won't write any logs to disk. If the Tunnel service's log dir doesn't exist, we shouldn't crash, it's correct to simply not delete the non-existent files
+                return Ok(());
+            }
+            // But any other error like permissions errors, should bubble.
+            return Err(error.into());
+        }
+    };
+
+    let mut result = Ok(());
+
+    // If we can't delete some files due to permission errors, just keep going
+    // and delete as much as we can, then return the most recent error
+    while let Some(entry) = dir
+        .next_entry()
+        .await
+        .context("Failed to read next dir entry")?
+    {
+        if entry
+            .file_name()
+            .to_str()
+            .is_none_or(|name| !name.ends_with("log") && name != "latest")
+        {
+            continue;
+        }
+
+        if let Err(e) = tokio::fs::remove_file(entry.path()).await {
+            result = Err(e);
+        }
+    }
+
+    result.context("Failed to delete at least one file")
 }
 
 /// Exports logs to a zip file
@@ -361,7 +325,7 @@ fn add_dir_to_zip(
 }
 
 /// Count log files and their sizes
-async fn count_logs_imp() -> Result<FileCount> {
+pub async fn count_logs() -> Result<FileCount> {
     // I spent about 5 minutes on this and couldn't get it to work with `Stream`
     let mut total_count = FileCount::default();
     for log_path in log_paths()? {
@@ -373,7 +337,12 @@ async fn count_logs_imp() -> Result<FileCount> {
 }
 
 async fn count_one_dir(path: &Path) -> Result<FileCount> {
-    let mut dir = tokio::fs::read_dir(path).await?;
+    let mut dir = match tokio::fs::read_dir(path).await {
+        Ok(dir) => dir,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(FileCount::default()),
+        Err(e) => return Err(anyhow::Error::new(e)),
+    };
+
     let mut file_count = FileCount::default();
 
     while let Some(entry) = dir.next_entry().await? {
@@ -397,4 +366,37 @@ fn log_paths() -> Result<Vec<LogPath>> {
             dst: PathBuf::from("app"),
         },
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn only_deletes_log_files() {
+        let dir = tempfile::tempdir().unwrap();
+
+        std::fs::write(dir.path().join("first.log"), "log file 1").unwrap();
+        std::fs::write(dir.path().join("second.log"), "log file 1").unwrap();
+        std::fs::write(dir.path().join("not_a_logfile.tmp"), "something important").unwrap();
+
+        clear_logs(dir.path()).await.unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("not_a_logfile.tmp")).unwrap(),
+            "something important"
+        );
+    }
+
+    #[tokio::test]
+    async fn non_existing_path_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_owned();
+        drop(dir);
+
+        let file_count = count_one_dir(path.as_path()).await.unwrap();
+
+        assert_eq!(file_count.bytes, 0);
+        assert_eq!(file_count.files, 0);
+    }
 }
