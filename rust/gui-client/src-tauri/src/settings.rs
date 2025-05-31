@@ -245,9 +245,9 @@ mod tests {
             "log_filter": "info"
         }"#;
 
-        let actual = serde_json::from_str::<AdvancedSettings>(s).unwrap();
+        let actual = serde_json::from_str::<AdvancedSettingsLegacy>(s).unwrap();
         // Apparently the trailing slash here matters
-        assert_eq!(actual.auth_url.to_string(), "https://example.com/");
+        assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
         assert_eq!(actual.api_url.to_string(), "wss://example.com/");
         assert_eq!(actual.log_filter, "info");
     }
