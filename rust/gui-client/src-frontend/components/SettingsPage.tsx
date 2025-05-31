@@ -59,7 +59,10 @@ export default function SettingsPage({
       </p>
 
       <form
-        onSubmit={() => saveSettings(localSettings)}
+        onSubmit={(e) => {
+          e.preventDefault();
+          saveSettings(localSettings);
+        }}
         className="max-w mx-auto flex flex-col gap-2"
       >
         <div>
