@@ -16,7 +16,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
-use firezone_telemetry::Telemetry;
+use firezone_telemetry::{Dsn, Telemetry};
 use futures::SinkExt as _;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
@@ -117,6 +117,28 @@ impl GuiIntegration for TauriIntegration {
         self.app
             .emit("logs_recounted", file_count)
             .context("Failed to send `logs_recounted` event")?;
+
+        Ok(())
+    }
+
+    fn start_telemetry(&self, dns: Dsn, release: String, api_url: String) -> Result<()> {
+        #[derive(Debug, Clone, serde::Serialize)]
+        struct TelemetryContext {
+            dns: Dsn,
+            release: String,
+            api_url: String,
+        }
+
+        self.app
+            .emit(
+                "start_telemetry",
+                TelemetryContext {
+                    dns,
+                    release,
+                    api_url,
+                },
+            )
+            .context("Failed to send `start_telemetry` event")?;
 
         Ok(())
     }
