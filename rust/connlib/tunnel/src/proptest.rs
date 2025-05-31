@@ -1,4 +1,4 @@
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, Site, SiteId};
+use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},
@@ -32,15 +32,17 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
         resource_name(),
         domain_name(2..4),
         address_description(),
+        ip_stack(),
         sites,
     )
         .prop_map(
-            move |(id, name, address, address_description, sites)| DnsResource {
+            move |(id, name, address, address_description, ip_stack, sites)| DnsResource {
                 id,
                 address,
                 name,
                 sites,
                 address_description,
+                ip_stack,
             },
         )
 }
@@ -88,6 +90,14 @@ pub fn address_description() -> impl Strategy<Value = Option<String>> {
 
 pub fn site() -> impl Strategy<Value = Site> + Clone {
     (site_name(), site_id()).prop_map(|(name, id)| Site { name, id })
+}
+
+pub fn ip_stack() -> impl Strategy<Value = IpStack> + Clone {
+    prop_oneof![
+        Just(IpStack::Dual),
+        Just(IpStack::Ipv4Only),
+        Just(IpStack::Ipv6Only)
+    ]
 }
 
 pub fn resource_id() -> impl Strategy<Value = ResourceId> + Clone {
