@@ -4,11 +4,11 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    about, auth,
+    auth,
     controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
-    logging,
+    logging::FileCount,
     settings::{
         self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, MdmSettings,
     },
@@ -55,17 +55,19 @@ struct TauriIntegration {
 }
 
 impl TauriIntegration {
-    fn show_window(&self, label: &str) -> Result<()> {
-        let win = self
-            .app
-            .get_webview_window(label)
-            .with_context(|| format!("Couldn't get handle to `{label}` window"))?;
+    fn main_window(&self) -> Result<tauri::WebviewWindow> {
+        self.app
+            .get_webview_window("main")
+            .context("Couldn't get handle to window")
+    }
 
-        // Needed to bring shown windows to the front
-        // `request_user_attention` and `set_focus` don't work, at least on Linux
-        win.hide()?;
-        // Needed to show windows that are completely hidden
-        win.show()?;
+    fn navigate(&self, path: &str) -> Result<()> {
+        let window = self.main_window()?;
+
+        let mut url = window.url()?;
+        url.set_path(path);
+
+        window.navigate(url)?;
 
         Ok(())
     }
@@ -80,32 +82,6 @@ impl Drop for TauriIntegration {
 }
 
 impl GuiIntegration for TauriIntegration {
-    fn set_welcome_window_visible(
-        &self,
-        visible: bool,
-        current_session: Option<&auth::Session>,
-    ) -> Result<()> {
-        let win = self
-            .app
-            .get_webview_window("welcome")
-            .context("Couldn't get handle to Welcome window")?;
-
-        if visible {
-            win.show().context("Couldn't show Welcome window")?;
-            win.set_focus().context("Failed to focus window")?;
-        } else {
-            win.hide().context("Couldn't hide Welcome window")?;
-        }
-
-        // Ensure state in frontend is up-to-date.
-        match current_session {
-            Some(session) => self.notify_signed_in(session)?,
-            None => self.notify_signed_out()?,
-        };
-
-        Ok(())
-    }
-
     fn notify_signed_in(&self, session: &auth::Session) -> Result<()> {
         self.app
             .emit("signed_in", session)
@@ -137,6 +113,14 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
+    fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
+        self.app
+            .emit("logs_recounted", file_count)
+            .context("Failed to send `logs_recounted` event")?;
+
+        Ok(())
+    }
+
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
         tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
 
@@ -159,19 +143,51 @@ impl GuiIntegration for TauriIntegration {
         os::show_update_notification(&self.app, ctlr_tx, title, url)
     }
 
-    fn show_settings_window(
-        &self,
-        mdm_settings: MdmSettings,
-        advanced_settings: AdvancedSettings,
-    ) -> Result<()> {
-        self.show_window("settings")?;
-        self.notify_settings_changed(mdm_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
+    fn set_window_visible(&self, visible: bool) -> Result<()> {
+        let win = self.main_window()?;
+
+        if visible {
+            // Needed to bring shown windows to the front
+            // `request_user_attention` and `set_focus` don't work, at least on Linux
+            win.hide()?;
+            // Needed to show windows that are completely hidden
+            win.show()?;
+        } else {
+            win.hide().context("Couldn't hide window")?;
+        }
 
         Ok(())
     }
 
-    fn show_about_window(&self) -> Result<()> {
-        self.show_window("about")
+    fn show_overview_page(&self, current_session: Option<&auth::Session>) -> Result<()> {
+        // Ensure state in frontend is up-to-date.
+        match current_session {
+            Some(session) => self.notify_signed_in(session)?,
+            None => self.notify_signed_out()?,
+        };
+        self.navigate("overview")?;
+        self.set_window_visible(true)?;
+
+        Ok(())
+    }
+
+    fn show_settings_page(
+        &self,
+        mdm_settings: MdmSettings,
+        advanced_settings: AdvancedSettings,
+    ) -> Result<()> {
+        self.notify_settings_changed(mdm_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
+        self.navigate("settings")?;
+        self.set_window_visible(true)?;
+
+        Ok(())
+    }
+
+    fn show_about_page(&self) -> Result<()> {
+        self.navigate("about")?;
+        self.set_window_visible(true)?;
+
+        Ok(())
     }
 }
 
@@ -265,17 +281,7 @@ pub fn run(
                 api.prevent_close();
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            about::get_cargo_version,
-            about::get_git_version,
-            logging::clear_logs,
-            logging::count_logs,
-            logging::export_logs,
-            settings::apply_advanced_settings,
-            settings::reset_advanced_settings,
-            crate::welcome::sign_in,
-            crate::welcome::sign_out,
-        ])
+        .invoke_handler(crate::view::generate_handler())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())

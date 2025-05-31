@@ -1,12 +1,11 @@
 @import "tailwindcss";
 
-/*
- * This file serves as the main entry point for your Tailwind CSS installation.
- * Generate the CSS from this with `pnpm tailwindcss -i src/input.css -o src/output.css`
- * This has been added to the build script in package.json for convenience.
- */
-
+@plugin "flowbite-react/plugin/tailwindcss";
 @plugin 'flowbite/plugin';
+
+@source "../.flowbite-react/class-list.json";
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --color-primary-50: #fff9f5;
@@ -43,6 +42,8 @@
   --color-neutral-700: #766a60;
   --color-neutral-800: #4c3e33;
   --color-neutral-900: #1b140e;
+
+  --default-font-family: "Source Sans 3";
 }
 
 /*

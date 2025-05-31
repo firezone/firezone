@@ -1,10 +1,8 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-mod about;
-mod clear_logs;
 mod updates;
 mod uptime;
-mod welcome;
+mod view;
 
 // TODO: See how many of these we can make private.
 pub mod auth;
@@ -16,8 +14,6 @@ pub mod ipc;
 pub mod logging;
 pub mod service;
 pub mod settings;
-
-pub use clear_logs::clear_logs;
 
 /// The Sentry "release" we are part of.
 ///

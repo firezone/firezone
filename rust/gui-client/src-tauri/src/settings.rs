@@ -1,17 +1,13 @@
 //! Everything related to the Settings window, including
 //! advanced settings and code for manipulating diagnostic logs.
 
-use crate::gui::Managed;
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use firezone_bin_shared::known_dirs;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
 use std::{collections::HashSet, path::PathBuf};
 use url::Url;
-
-use super::controller::ControllerRequest;
 
 #[cfg(target_os = "linux")]
 #[path = "settings/linux.rs"]
@@ -26,33 +22,6 @@ pub(crate) mod mdm;
 pub(crate) mod mdm;
 
 pub use mdm::load_mdm_settings;
-
-#[tauri::command]
-pub(crate) async fn apply_advanced_settings(
-    managed: tauri::State<'_, Managed>,
-    settings: AdvancedSettings,
-) -> Result<(), String> {
-    if managed.inner().inject_faults {
-        tokio::time::sleep(Duration::from_secs(2)).await;
-    }
-
-    managed
-        .ctlr_tx
-        .send(ControllerRequest::ApplySettings(Box::new(settings)))
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub(crate) async fn reset_advanced_settings(
-    managed: tauri::State<'_, Managed>,
-) -> Result<(), String> {
-    apply_advanced_settings(managed, AdvancedSettings::default()).await?;
-
-    Ok(())
-}
 
 /// Defines all configuration options settable via MDM policies.
 ///
@@ -84,7 +53,7 @@ pub struct AdvancedSettingsLegacy {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AdvancedSettings {
-    pub auth_base_url: Url,
+    pub auth_url: Url,
     pub api_url: Url,
     pub log_filter: String,
 }
@@ -114,9 +83,7 @@ impl AdvancedSettingsViewModel {
             api_url_is_managed: mdm_settings.api_url.is_some(),
             log_filter_is_managed: mdm_settings.log_filter.is_some(),
 
-            auth_url: mdm_settings
-                .auth_url
-                .unwrap_or(advanced_settings.auth_base_url),
+            auth_url: mdm_settings.auth_url.unwrap_or(advanced_settings.auth_url),
             api_url: mdm_settings.api_url.unwrap_or(advanced_settings.api_url),
             log_filter: mdm_settings
                 .log_filter
@@ -160,7 +127,7 @@ impl GeneralSettings {
 impl Default for AdvancedSettings {
     fn default() -> Self {
         Self {
-            auth_base_url: Url::parse(defaults::AUTH_BASE_URL).expect("static URL is a valid URL"),
+            auth_url: Url::parse(defaults::AUTH_BASE_URL).expect("static URL is a valid URL"),
             api_url: Url::parse(defaults::API_URL).expect("static URL is a valid URL"),
             log_filter: defaults::LOG_FILTER.to_string(),
         }
@@ -185,7 +152,7 @@ pub async fn migrate_legacy_settings(
     let general_settings = load_general_settings();
 
     let advanced = AdvancedSettings {
-        auth_base_url: legacy.auth_base_url,
+        auth_url: legacy.auth_base_url,
         api_url: legacy.api_url,
         log_filter: legacy.log_filter,
     };
@@ -278,7 +245,7 @@ mod tests {
             "log_filter": "info"
         }"#;
 
-        let actual = serde_json::from_str::<AdvancedSettings>(s).unwrap();
+        let actual = serde_json::from_str::<AdvancedSettingsLegacy>(s).unwrap();
         // Apparently the trailing slash here matters
         assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
         assert_eq!(actual.api_url.to_string(), "wss://example.com/");
