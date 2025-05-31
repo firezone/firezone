@@ -1,8 +1,6 @@
 defmodule Domain.Cluster.GoogleComputeLabelsStrategyTest do
   use ExUnit.Case, async: true
   import Domain.Cluster.GoogleComputeLabelsStrategy
-  alias Domain.Cluster.GoogleComputeLabelsStrategy.Meta
-  alias Cluster.Strategy.State
   alias Domain.Mocks.GoogleCloudPlatform
 
   describe "fetch_nodes/1" do
@@ -11,8 +9,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategyTest do
       GoogleCloudPlatform.mock_instance_metadata_token_endpoint(bypass)
       GoogleCloudPlatform.mock_instances_list_endpoint(bypass)
 
-      state = %State{
-        meta: %Meta{},
+      state = %{
         config: [
           project_id: "firezone-staging",
           cluster_name: "firezone",
