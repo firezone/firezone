@@ -105,6 +105,8 @@ lru = "0.12.5"
 mio = "1.0.4"
 moka = "0.12.11"
 native-dialog = "0.7.0"
+netlink-packet-core = "0.7"
+netlink-packet-route = "0.24"
 network-types = "0.0.8"
 nix = "0.29.0"
 nu-ansi-term = "0.50"
@@ -132,7 +134,7 @@ reqwest = { version = "0.12.9", default-features = false }
 resolv-conf = "0.7.3"
 ringbuffer = "0.15.0"
 roxmltree = "0.20"
-rtnetlink = { version = "0.14.1", default-features = false, features = ["tokio_socket"] }
+rtnetlink = { version = "0.17.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.21", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
