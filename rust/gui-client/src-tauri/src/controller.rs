@@ -504,6 +504,8 @@ impl<I: GuiIntegration> Controller<I> {
 
                 // Refresh the menu in case the favorites were reset.
                 self.refresh_system_tray_menu();
+
+                self.integration.show_notification("Settings saved", "")?
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
