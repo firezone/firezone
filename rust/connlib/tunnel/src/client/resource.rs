@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use connlib_model::{
-    CidrResourceView, DnsResourceView, InternetResourceView, ResourceId, ResourceStatus,
+    CidrResourceView, DnsResourceView, InternetResourceView, IpStack, ResourceId, ResourceStatus,
     ResourceView, Site,
 };
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -35,6 +35,8 @@ pub struct DnsResource {
 
     pub address_description: Option<String>,
     pub sites: Vec<Site>,
+
+    pub ip_stack: IpStack,
 }
 
 /// Description of a resource that maps to a CIDR.
@@ -249,6 +251,7 @@ impl DnsResource {
             name: resource.name,
             address_description: resource.address_description,
             sites: resource.sites,
+            ip_stack: resource.ip_stack.unwrap_or(IpStack::Dual),
         }
     }
 
@@ -261,5 +264,85 @@ impl DnsResource {
             sites: self.sites,
             status,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_deserialize_dns_resource_with_ipv4_only_ip_stack() {
+        let resource = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
+            "address": "example.com",
+            "id": "03000143-e25e-45c7-aafb-144990e57dce",
+            "name": "example.com",
+            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "type": "dns",
+            "ip_stack": "ipv4_only"
+        })))
+        .unwrap();
+
+        let Resource::Dns(dns) = resource else {
+            panic!("Unexpected resource")
+        };
+
+        assert_eq!(dns.ip_stack, IpStack::Ipv4Only)
+    }
+
+    #[test]
+    fn can_deserialize_dns_resource_with_ipv6_only_ip_stack() {
+        let resource = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
+            "address": "example.com",
+            "id": "03000143-e25e-45c7-aafb-144990e57dce",
+            "name": "example.com",
+            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "type": "dns",
+            "ip_stack": "ipv6_only"
+        })))
+        .unwrap();
+
+        let Resource::Dns(dns) = resource else {
+            panic!("Unexpected resource")
+        };
+
+        assert_eq!(dns.ip_stack, IpStack::Ipv6Only)
+    }
+
+    #[test]
+    fn can_deserialize_dns_resource_with_dual_ip_stack() {
+        let resource = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
+            "address": "example.com",
+            "id": "03000143-e25e-45c7-aafb-144990e57dce",
+            "name": "example.com",
+            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "type": "dns",
+            "ip_stack": "dual"
+        })))
+        .unwrap();
+
+        let Resource::Dns(dns) = resource else {
+            panic!("Unexpected resource")
+        };
+
+        assert_eq!(dns.ip_stack, IpStack::Dual)
+    }
+
+    #[test]
+    fn can_deserialize_dns_resource_with_no_stack() {
+        let resource = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
+            "address": "example.com",
+            "id": "03000143-e25e-45c7-aafb-144990e57dce",
+            "name": "example.com",
+            "gateway_groups": [{"name": "test", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "type": "dns"
+        })))
+        .unwrap();
+
+        let Resource::Dns(dns) = resource else {
+            panic!("Unexpected resource")
+        };
+
+        assert_eq!(dns.ip_stack, IpStack::Dual)
     }
 }
