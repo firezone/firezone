@@ -825,8 +825,8 @@ impl RefClient {
     fn resource_by_dst(&self, destination: &Destination) -> Option<ResourceId> {
         match destination {
             Destination::DomainName { name, .. } => {
-                if let Some(id) = self.dns_resource_by_domain(name) {
-                    return Some(id);
+                if let Some(r) = self.dns_resource_by_domain(name) {
+                    return Some(r.id);
                 }
             }
             Destination::IpAddr(addr) => {
@@ -839,7 +839,7 @@ impl RefClient {
         self.active_internet_resource()
     }
 
-    pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<ResourceId> {
+    pub(crate) fn dns_resource_by_domain(&self, domain: &DomainName) -> Option<DnsResource> {
         self.resources
             .iter()
             .cloned()
@@ -847,8 +847,7 @@ impl RefClient {
             .filter(|r| is_subdomain(&domain.to_string(), &r.address))
             .sorted_by_key(|r| r.address.len())
             .rev()
-            .map(|r| r.id)
-            .find(|id| !self.disabled_resources.contains(id))
+            .find(|r| !self.disabled_resources.contains(&r.id))
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<RecordType>)> + '_ {
@@ -900,6 +899,10 @@ impl RefClient {
                     .any(|r| matches!(r, &RecordType::A))
                     .then_some(domain)
             })
+            .filter(|d| {
+                self.dns_resource_by_domain(d)
+                    .is_some_and(|r| r.ip_stack.supports_ipv4())
+            })
             .collect()
     }
 
@@ -910,6 +913,10 @@ impl RefClient {
                     .iter()
                     .any(|r| matches!(r, &RecordType::AAAA))
                     .then_some(domain)
+            })
+            .filter(|d| {
+                self.dns_resource_by_domain(d)
+                    .is_some_and(|r| r.ip_stack.supports_ipv6())
             })
             .collect()
     }
@@ -1032,7 +1039,7 @@ impl RefClient {
             return None;
         }
 
-        self.dns_resource_by_domain(&query.domain)
+        Some(self.dns_resource_by_domain(&query.domain)?.id)
     }
 
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {

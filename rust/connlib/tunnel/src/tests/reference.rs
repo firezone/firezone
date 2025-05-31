@@ -696,7 +696,7 @@ impl ReferenceState {
         let Some(resource) = self.client.inner().dns_resource_by_domain(name) else {
             return false;
         };
-        let Some(gateway) = self.portal.gateway_for_resource(resource) else {
+        let Some(gateway) = self.portal.gateway_for_resource(resource.id) else {
             return false;
         };
 

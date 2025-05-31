@@ -184,3 +184,28 @@ impl fmt::Debug for SiteId {
         fmt::Display::fmt(&self, f)
     }
 }
+
+/// The IP stack of a DNS resource.
+#[derive(Debug, Deserialize, Serialize, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[serde(rename_all = "snake_case")]
+pub enum IpStack {
+    Dual,
+    Ipv4Only,
+    Ipv6Only,
+}
+
+impl IpStack {
+    pub fn supports_ipv4(&self) -> bool {
+        match self {
+            IpStack::Ipv4Only | IpStack::Dual => true,
+            IpStack::Ipv6Only => false,
+        }
+    }
+
+    pub fn supports_ipv6(&self) -> bool {
+        match self {
+            IpStack::Ipv4Only => false,
+            IpStack::Ipv6Only | IpStack::Dual => true,
+        }
+    }
+}

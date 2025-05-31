@@ -1567,7 +1567,10 @@ impl ClientState {
         }
 
         let activated = match &new_resource {
-            Resource::Dns(dns) => self.stub_resolver.add_resource(dns.id, dns.address.clone()),
+            Resource::Dns(dns) => {
+                self.stub_resolver
+                    .add_resource(dns.id, dns.address.clone(), dns.ip_stack)
+            }
             Resource::Cidr(cidr) => {
                 let existing = self.active_cidr_resources.exact_match(cidr.address);
 

@@ -29,7 +29,10 @@ pub mod dns_resource_nat {
         domain: DomainName,
         proxy_ips: Vec<IpAddr>,
     ) -> Result<IpPacket> {
-        anyhow::ensure!(proxy_ips.len() == 8, "Expected 8 proxy IPs");
+        anyhow::ensure!(
+            proxy_ips.len() == 4 || proxy_ips.len() == 8,
+            "Expected 4 or 8 proxy IPs"
+        );
 
         let payload = serde_json::to_vec(&AssignedIps {
             resource,
