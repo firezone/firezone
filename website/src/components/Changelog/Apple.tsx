@@ -26,8 +26,12 @@ export default function Apple() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="9308">
-          Fixes a minor crash in the network extension that could occur when
-          viewing the Diagnostic Logs tab in app settings.
+          Fixes an issue where the network extension could crash when viewing
+          the diagnostic logs pane in app settings.
+        </ChangeItem>
+        <ChangeItem pull="9308">
+          Fixes a minor issue where the network extension process could crash
+          when signing out.
         </ChangeItem>
         <ChangeItem pull="9242">
           Fixes a rare bug that could prevent certain IPv6 DNS upstream
