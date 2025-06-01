@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.1" date={new Date("2025-06-01")}>
         <ChangeItem pull="9308">
           Fixes an issue where the network extension could crash when viewing
           the diagnostic logs pane in app settings.
@@ -38,7 +39,7 @@ export default function Apple() {
           resolvers from being used if they contained an interface scope
           specifier.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.0" date={new Date("2025-05-26")}>
         <ChangeItem pull="9230">
           Finalizes the managed configuration support for the macOS client. For
