@@ -24,8 +24,8 @@ export default function Gateway() {
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
         <ChangeItem pull="9147">
-          Fixes an issue where connections failed to establish on machines
-          with multiple valid egress IPs.
+          Fixes an issue where connections failed to establish on machines with
+          multiple valid egress IPs.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.9" date={new Date("2025-05-14")}>
@@ -34,8 +34,8 @@ export default function Gateway() {
           not be sent.
         </ChangeItem>
         <ChangeItem pull="9060">
-          Fixes an issue where service discovery for DNS resources would fail
-          in case the Gateway's started up with no network connectivity.
+          Fixes an issue where service discovery for DNS resources would fail in
+          case the Gateway's started up with no network connectivity.
         </ChangeItem>
         <ChangeItem pull="9088">
           Fixes an issue where large batches of packets to the same Client got
@@ -64,8 +64,9 @@ export default function Gateway() {
           across GSO batches.
         </ChangeItem>
         <ChangeItem pull="8937">
-          Fixes an issue where connections to DNS resources which utilise round-robin
-          DNS may be interrupted whenever the Client re-queried the DNS name.
+          Fixes an issue where connections to DNS resources which utilise
+          round-robin DNS may be interrupted whenever the Client re-queried the
+          DNS name.
         </ChangeItem>
       </Entry>
       <Entry version="1.4.6" date={new Date("2025-04-15")}>
@@ -110,9 +111,10 @@ export default function Gateway() {
           translated by the NAT64 module.
         </ChangeItem>
         <ChangeItem pull="7565">
-          Fails early in case the binary is not started as <code>root</code> or with the
-          `CAP_NET_ADMIN` capability. The check can be skipped with
-          `--no-check`.
+          Fails early in case the binary is not started as <code>root</code> or
+          with the
+          <code>CAP_NET_ADMIN</code> capability. The check can be skipped with
+          <code>--no-check</code>.
         </ChangeItem>
       </Entry>
       <Entry version="1.4.2" date={new Date("2024-12-13")}>
@@ -127,7 +129,7 @@ export default function Gateway() {
         <ChangeItem pull="7449">
           Uses multiple threads to read & write to the TUN device, greatly
           improving performance. The number of threads can be controlled with
-          `FIREZONE_NUM_TUN_THREADS` and defaults to 2.
+          <code>FIREZONE_NUM_TUN_THREADS</code> and defaults to 2.
         </ChangeItem>
         <ChangeItem pull="7479">
           Fixes an issue where SSH connections involving NAT64 failed to
@@ -163,7 +165,7 @@ export default function Gateway() {
         </ChangeItem>
         <ChangeItem pull="7103">
           Adds on-by-default error reporting using sentry.io. Disable by setting
-          `FIREZONE_NO_TELEMETRY=true`.
+          <code>FIREZONE_NO_TELEMETRY=true</code>.
         </ChangeItem>
         <ChangeItem pull="7164">
           Fixes an issue where the Gateway would fail to accept connections and
@@ -206,7 +208,7 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-08-08")}>
         <li className="pl-2">
-          Removes `FIREZONE_ENABLE_MASQUERADE` env variable. Masquerading is now
+          Removes <code>FIREZONE_ENABLE_MASQUERADE</code> env variable. Masquerading is now
           always enabled unconditionally.
         </li>
       </Entry>
