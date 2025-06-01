@@ -28,6 +28,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     unless Domain.GoogleCloudPlatform.enabled?(),
       do: "Google Cloud Platform clustering strategy requires GoogleCloudPlatform to be enabled"
 
+    state = Map.put(state, :connected_nodes, [])
+
     {:ok, state, {:continue, :start}}
   end
 
@@ -50,17 +52,30 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp load(state) do
-    Process.send_after(self(), :load, polling_interval(state))
-
     with {:ok, nodes, state} <- fetch_nodes(state),
          :ok <-
            Cluster.Strategy.connect_nodes(state.topology, state.connect, state.list_nodes, nodes) do
+      Process.send_after(self(), :load, polling_interval(state))
+
+      state = Map.put(state, :connected_nodes, nodes)
+
       state
     else
       {:error, reason} ->
-        Logger.error("Error fetching nodes or connecting to them",
+        Process.send_after(self(), :load, polling_interval(state))
+
+        # Expected during deploy as the list of nodes received does not factor in the health check
+        Logger.info("Error fetching nodes or connecting to them",
           reason: inspect(reason)
         )
+
+        # Only log error if the number of connected nodes falls below the expected threshold
+        unless enough_nodes_connected?(state) do
+          Logger.error("Connected nodes count is below threshold",
+            connected_nodes: inspect(state.connected_nodes),
+            config: inspect(state.config)
+          )
+        end
 
         state
     end
@@ -144,5 +159,33 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
 
   defp polling_interval(state) do
     Keyword.get(state.config, :polling_interval, @default_polling_interval)
+  end
+
+  defp enough_nodes_connected?(state) do
+    connected_nodes = state.connected_nodes
+    expected_api_node_count = Keyword.fetch!(state.config, :api_node_count)
+    expected_domain_node_count = Keyword.fetch!(state.config, :domain_node_count)
+    expected_web_node_count = Keyword.fetch!(state.config, :web_node_count)
+    connected_api_node_count = connected_node_count(connected_nodes, "api")
+    connected_domain_node_count = connected_node_count(connected_nodes, "domain")
+    connected_web_node_count = connected_node_count(connected_nodes, "web")
+
+    api_nodes_connected? = connected_api_node_count >= expected_api_node_count
+    domain_nodes_connected? = connected_domain_node_count >= expected_domain_node_count
+    web_nodes_connected? = connected_web_node_count >= expected_web_node_count
+
+    api_nodes_connected? and domain_nodes_connected? and web_nodes_connected?
+  end
+
+  defp connected_node_count(nodes, target_app) do
+    Enum.count(nodes, fn node_name ->
+      app =
+        node_name
+        |> Atom.to_string()
+        |> String.split("@")
+        |> List.first()
+
+      target_app == app
+    end)
   end
 end
