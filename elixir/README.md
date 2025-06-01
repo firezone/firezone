@@ -192,7 +192,7 @@ executing this example:
 
 ```elixir
 [gateway | _rest_gateways] = Domain.Repo.all(Domain.Gateways.Gateway)
-:ok = Domain.Gateways.connect_gateway(gateway)
+:ok = Events.Hooks.Gateways.connect(gateway)
 
 [relay | _rest_relays] = Domain.Repo.all(Domain.Relays.Relay)
 relay_secret = Domain.Crypto.random_token()

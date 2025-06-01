@@ -1,5 +1,6 @@
 defmodule Web.Live.Gateways.ShowTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -102,7 +103,7 @@ defmodule Web.Live.Gateways.ShowTest do
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Gateways.connect_gateway(gateway)
+    :ok = Events.Hooks.Gateways.connect(gateway)
 
     {:ok, lv, _html} =
       conn
@@ -149,8 +150,8 @@ defmodule Web.Live.Gateways.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
-    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_group(gateway.group_id)
-    :ok = Domain.Gateways.connect_gateway(gateway)
+    :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(gateway.group.id)
+    :ok = Events.Hooks.Gateways.connect(gateway)
     assert_receive %{topic: "presences:group_gateways:" <> _}
 
     table =
