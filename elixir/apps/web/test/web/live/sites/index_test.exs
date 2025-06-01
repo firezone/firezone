@@ -1,5 +1,6 @@
 defmodule Web.Live.Sites.IndexTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -97,8 +98,8 @@ defmodule Web.Live.Sites.IndexTest do
       |> live(~p"/#{account}/sites")
 
     Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_account(account)
-    :ok = Domain.Gateways.connect_gateway(gateway)
+    :ok = Events.Hooks.Accounts.subscribe_to_gateways_presence(account.id)
+    :ok = Events.Hooks.Gateways.connect(gateway)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
     assert_receive {:live_table_reloaded, "groups"}, 250
 
@@ -142,7 +143,7 @@ defmodule Web.Live.Sites.IndexTest do
     group = Fixtures.Gateways.create_internet_group(account: account)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
     Domain.Config.put_env_override(:test_pid, self())
-    :ok = Domain.Gateways.subscribe_to_gateways_presence_in_account(account)
+    :ok = Events.Hooks.Accounts.subscribe_to_gateways_presence(account.id)
 
     {:ok, lv, _html} =
       conn
@@ -155,7 +156,7 @@ defmodule Web.Live.Sites.IndexTest do
 
     assert has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/sites/#{group.id}']")
 
-    :ok = Domain.Gateways.connect_gateway(gateway)
+    :ok = Events.Hooks.Gateways.connect(gateway)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
     assert_receive {:live_table_reloaded, "groups"}, 250
     assert lv |> element("#internet-site-banner") |> render() =~ "Online"

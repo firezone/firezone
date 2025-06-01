@@ -1,7 +1,7 @@
 defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
-  alias Domain.{Gateways, Tokens, Resources}
+  alias Domain.{Events, Gateways, Tokens, Resources}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -297,19 +297,6 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, group} = update_group(group, attrs, subject)
       assert group.name == "foo"
-    end
-
-    test "broadcasts an update event", %{account: account, subject: subject} do
-      group = Fixtures.Gateways.create_group(account: account)
-      :ok = subscribe_to_group_updates(group)
-
-      attrs = %{
-        name: "foo"
-      }
-
-      assert {:ok, _group} = update_group(group, attrs, subject)
-
-      assert_receive :updated
     end
 
     test "returns error when subject has no permission to manage groups", %{
@@ -635,7 +622,7 @@ defmodule Domain.GatewaysTest do
     } do
       offline_gateway = Fixtures.Gateways.create_gateway(account: account)
       online_gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = connect_gateway(online_gateway)
+      :ok = Events.Hooks.Gateways.connect(online_gateway)
       Fixtures.Gateways.create_gateway()
 
       assert {:ok, gateways, _metadata} = list_gateways(subject, preload: :online?)
@@ -702,7 +689,7 @@ defmodule Domain.GatewaysTest do
           connections: [%{gateway_group_id: gateway.group_id}]
         )
 
-      assert connect_gateway(gateway) == :ok
+      assert Events.Hooks.Gateways.connect(gateway) == :ok
 
       assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource(resource, subject)
       assert connected_gateway.id == gateway.id
@@ -715,7 +702,7 @@ defmodule Domain.GatewaysTest do
       resource = Fixtures.Resources.create_resource(account: account)
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert connect_gateway(gateway) == :ok
+      assert Events.Hooks.Gateways.connect(gateway) == :ok
 
       assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
@@ -724,7 +711,7 @@ defmodule Domain.GatewaysTest do
   describe "gateway_can_connect_to_resource?/2" do
     test "returns true when gateway can connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = connect_gateway(gateway)
+      :ok = Events.Hooks.Gateways.connect(gateway)
 
       resource =
         Fixtures.Resources.create_resource(
@@ -737,7 +724,7 @@ defmodule Domain.GatewaysTest do
 
     test "returns false when gateway cannot connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = connect_gateway(gateway)
+      :ok = Events.Hooks.Gateways.connect(gateway)
 
       resource = Fixtures.Resources.create_resource(account: account)
 
@@ -1219,55 +1206,18 @@ defmodule Domain.GatewaysTest do
     test "does not allow duplicate presence", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert connect_gateway(gateway) == :ok
-      assert {:error, {:already_tracked, _pid, _topic, _key}} = connect_gateway(gateway)
+      assert Events.Hooks.Gateways.connect(gateway) == :ok
+
+      assert {:error, {:already_tracked, _pid, _topic, _key}} =
+               Events.Hooks.Gateways.connect(gateway)
     end
 
     test "tracks gateway presence for account", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert connect_gateway(gateway) == :ok
+      assert Events.Hooks.Gateways.connect(gateway) == :ok
 
       gateway = fetch_gateway_by_id!(gateway.id, preload: [:online?])
       assert gateway.online? == true
-    end
-
-    test "tracks gateway presence for actor", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert connect_gateway(gateway) == :ok
-
-      assert broadcast_to_gateway(gateway, "test") == :ok
-
-      assert_receive "test"
-    end
-
-    test "subscribes to gateway events", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert connect_gateway(gateway) == :ok
-
-      assert disconnect_gateway(gateway) == :ok
-
-      assert_receive "disconnect"
-    end
-
-    test "subscribes to gateway group events", %{account: account} do
-      group = Fixtures.Gateways.create_group(account: account)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
-
-      assert connect_gateway(gateway) == :ok
-
-      assert disconnect_gateways_in_group(group) == :ok
-
-      assert_receive "disconnect"
-    end
-
-    test "subscribes to account events", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      assert connect_gateway(gateway) == :ok
-
-      assert disconnect_gateways_in_account(account) == :ok
-
-      assert_receive "disconnect"
     end
   end
 end

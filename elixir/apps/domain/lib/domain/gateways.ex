@@ -1,7 +1,7 @@
 defmodule Domain.Gateways do
   use Supervisor
   alias Domain.Accounts.Account
-  alias Domain.{Repo, Auth, Geo, PubSub}
+  alias Domain.{Repo, Auth, Events, Geo}
   alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
@@ -118,15 +118,6 @@ defmodule Domain.Gateways do
           |> Group.Changeset.update(attrs, subject)
         end
       )
-      |> case do
-        {:ok, group} ->
-          # TODO: WAL
-          :ok = broadcast_to_group(group, :updated)
-          {:ok, group}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
     end
   end
 
@@ -137,6 +128,7 @@ defmodule Domain.Gateways do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Group.Query,
         with: fn group ->
+          # Token deletion will disconnect gateways
           {:ok, _tokens} = Tokens.delete_tokens_for(group, subject)
           {:ok, _count} = Resources.delete_connections_for(group, subject)
 
@@ -146,8 +138,7 @@ defmodule Domain.Gateways do
             |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
 
           Group.Changeset.delete(group)
-        end,
-        after_commit: &disconnect_gateways_in_group/1
+        end
       )
     end
   end
@@ -230,7 +221,7 @@ defmodule Domain.Gateways do
   @doc false
   def preload_gateways_presence([gateway]) do
     gateway.account_id
-    |> account_gateways_presence_topic()
+    |> Events.Hooks.Accounts.gateways_presence_topic()
     |> Presence.get_by_key(gateway.id)
     |> case do
       [] -> %{gateway | online?: false}
@@ -247,7 +238,9 @@ defmodule Domain.Gateways do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Enum.reduce(%{}, fn account_id, acc ->
-        connected_gateways = account_id |> account_gateways_presence_topic() |> Presence.list()
+        connected_gateways =
+          account_id |> Events.Hooks.Accounts.gateways_presence_topic() |> Presence.list()
+
         Map.merge(acc, connected_gateways)
       end)
 
@@ -258,7 +251,7 @@ defmodule Domain.Gateways do
 
   def all_online_gateway_ids_by_group_id!(group_id) do
     group_id
-    |> group_gateways_presence_topic()
+    |> Events.Hooks.GatewayGroups.presence_topic()
     |> Presence.list()
     |> Map.keys()
   end
@@ -273,7 +266,7 @@ defmodule Domain.Gateways do
 
       connected_gateway_ids =
         resource.account_id
-        |> account_gateways_presence_topic()
+        |> Events.Hooks.Accounts.gateways_presence_topic()
         |> Presence.list()
         |> Map.keys()
 
@@ -296,7 +289,7 @@ defmodule Domain.Gateways do
   def gateway_can_connect_to_resource?(%Gateway{} = gateway, %Resources.Resource{} = resource) do
     connected_gateway_ids =
       resource.account_id
-      |> account_gateways_presence_topic()
+      |> Events.Hooks.Accounts.gateways_presence_topic()
       |> Presence.list()
       |> Map.keys()
 
@@ -367,7 +360,6 @@ defmodule Domain.Gateways do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Gateway.Query,
         with: &Gateway.Changeset.delete/1,
-        after_commit: &disconnect_gateway/1,
         preload: [:online?]
       )
     end
@@ -419,30 +411,6 @@ defmodule Domain.Gateways do
     end
   end
 
-  def connect_gateway(%Gateway{} = gateway) do
-    with {:ok, _} <-
-           Presence.track(
-             self(),
-             group_gateways_presence_topic(gateway.group_id),
-             gateway.id,
-             %{}
-           ),
-         {:ok, _} <-
-           Presence.track(
-             self(),
-             account_gateways_presence_topic(gateway.account_id),
-             gateway.id,
-             %{
-               online_at: System.system_time(:second)
-             }
-           ) do
-      :ok = PubSub.subscribe(gateway_topic(gateway))
-      :ok = PubSub.subscribe(group_gateways_topic(gateway.group_id))
-      :ok = PubSub.subscribe(account_gateways_topic(gateway.account_id))
-      :ok
-    end
-  end
-
   def gateway_outdated?(gateway) do
     latest_release = Domain.ComponentVersions.gateway_version()
 
@@ -450,103 +418,5 @@ defmodule Domain.Gateways do
       :lt -> true
       _ -> false
     end
-  end
-
-  ### Presence
-
-  def account_gateways_presence_topic(account_or_id),
-    do: "presences:#{account_gateways_topic(account_or_id)}"
-
-  defp group_gateways_presence_topic(group_or_id),
-    do: "presences:#{group_gateways_topic(group_or_id)}"
-
-  ### PubSub
-
-  defp gateway_topic(%Gateway{} = gateway), do: gateway_topic(gateway.id)
-  defp gateway_topic(gateway_id), do: "gateways:#{gateway_id}"
-
-  defp account_gateways_topic(%Accounts.Account{} = account),
-    do: account_gateways_topic(account.id)
-
-  defp account_gateways_topic(account_id),
-    do: "account_gateways:#{account_id}"
-
-  defp group_gateways_topic(%Group{} = group), do: group_gateways_topic(group.id)
-  defp group_gateways_topic(group_id), do: "group_gateways:#{group_id}"
-
-  defp group_topic(%Group{} = group), do: group_topic(group.id)
-  defp group_topic(group_id), do: "group:#{group_id}"
-
-  def subscribe_to_group_updates(group_or_id) do
-    group_or_id
-    |> group_topic()
-    |> PubSub.subscribe()
-  end
-
-  def unsubscribe_from_group_updates(group_or_id) do
-    group_or_id
-    |> group_topic()
-    |> PubSub.unsubscribe()
-  end
-
-  def subscribe_to_gateways_presence_in_account(%Accounts.Account{} = account) do
-    account
-    |> account_gateways_presence_topic()
-    |> PubSub.subscribe()
-  end
-
-  def unsubscribe_from_gateways_presence_in_account(%Accounts.Account{} = account) do
-    account
-    |> account_gateways_presence_topic()
-    |> PubSub.unsubscribe()
-  end
-
-  def subscribe_to_gateways_presence_in_group(group_or_id) do
-    group_or_id
-    |> group_gateways_presence_topic()
-    |> PubSub.subscribe()
-  end
-
-  def unsubscribe_from_gateways_presence_in_group(group_or_id) do
-    group_or_id
-    |> group_gateways_presence_topic()
-    |> PubSub.unsubscribe()
-  end
-
-  # TODO: WAL
-  def broadcast_to_group(group_or_id, payload) do
-    group_or_id
-    |> group_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  def broadcast_to_gateway(gateway_or_id, payload) do
-    gateway_or_id
-    |> gateway_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  defp broadcast_to_gateways_in_group(group_or_id, payload) do
-    group_or_id
-    |> group_gateways_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  defp broadcast_to_gateways_in_account(account_or_id, payload) do
-    account_or_id
-    |> account_gateways_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  def disconnect_gateway(gateway_or_id) do
-    broadcast_to_gateway(gateway_or_id, "disconnect")
-  end
-
-  def disconnect_gateways_in_group(group_or_id) do
-    broadcast_to_gateways_in_group(group_or_id, "disconnect")
-  end
-
-  def disconnect_gateways_in_account(account_or_id) do
-    broadcast_to_gateways_in_account(account_or_id, "disconnect")
   end
 end
