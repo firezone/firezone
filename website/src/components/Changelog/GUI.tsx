@@ -11,6 +11,11 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9300">
+          Uses the new IP stack setting for DNS resources, which allows DNS
+          resources to optionally return only A or AAAA records if configured by
+          the administrator.
+        </ChangeItem>
         <ChangeItem pull="9211">
           Fixes an issue where changing the Advanced settings would reset the
           favourited resources.
@@ -31,8 +36,8 @@ export default function GUI({ os }: { os: OS }) {
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>
         <ChangeItem pull="9147">
-          Fixes an issue where connections failed to establish on machines
-          with multiple valid egress IPs.
+          Fixes an issue where connections failed to establish on machines with
+          multiple valid egress IPs.
         </ChangeItem>
         <ChangeItem pull="9136">
           Launching Firezone while it is already running while now re-activate
@@ -40,14 +45,14 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="9154">
-            Renames the background service from `FirezoneClientIpcService`
-            to `FirezoneClientTunnelService`.
+            Renames the background service from `FirezoneClientIpcService` to
+            `FirezoneClientTunnelService`.
           </ChangeItem>
         )}
         {os === OS.Linux && (
           <ChangeItem pull="9154">
-            Renames the systemd service from `firezone-client-ipc.service`
-            to `firezone-client-tunnel.service`.
+            Renames the systemd service from `firezone-client-ipc.service` to
+            `firezone-client-tunnel.service`.
           </ChangeItem>
         )}
         {os === OS.Linux && (
