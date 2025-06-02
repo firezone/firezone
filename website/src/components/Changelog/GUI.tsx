@@ -11,6 +11,11 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9300">
+          Uses the new IP stack setting for DNS resources, which allows DNS
+          resources to optionally return only A or AAAA records if configured by
+          the administrator.
+        </ChangeItem>
         <ChangeItem pull="9211">
           Fixes an issue where changing the Advanced settings would reset the
           favourited resources.
