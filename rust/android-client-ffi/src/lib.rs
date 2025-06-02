@@ -8,7 +8,7 @@
 use crate::tun::Tun;
 use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
-use client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
+use client_shared::{DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
 use dns_types::DomainName;
 use firezone_logging::{err_with_src, sentry_layer};
@@ -165,7 +165,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     Ok(())
 }
 
-impl Callbacks for CallbackHandler {
+impl CallbackHandler {
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
@@ -382,13 +382,38 @@ fn connect(
         },
         tcp_socket_factory,
     )?;
-    let session = Session::connect(
+    let (session, mut event_stream) = Session::connect(
         Arc::new(protected_tcp_socket_factory(callbacks.clone())),
         Arc::new(protected_udp_socket_factory(callbacks.clone())),
-        callbacks,
         portal,
         runtime.handle().clone(),
     );
+
+    runtime.spawn(async move {
+        while let Some(event) = event_stream.next().await {
+            match event {
+                client_shared::Event::TunInterfaceUpdated {
+                    ipv4,
+                    ipv6,
+                    dns,
+                    search_domain,
+                    ipv4_routes,
+                    ipv6_routes,
+                } => callbacks.on_set_interface_config(
+                    ipv4,
+                    ipv6,
+                    dns,
+                    search_domain,
+                    ipv4_routes,
+                    ipv6_routes,
+                ),
+                client_shared::Event::ResourcesUpdated(resource_views) => {
+                    callbacks.on_update_resources(resource_views)
+                }
+                client_shared::Event::Disconnected(error) => callbacks.on_disconnect(error),
+            }
+        }
+    });
 
     Ok(SessionWrapper {
         inner: session,
