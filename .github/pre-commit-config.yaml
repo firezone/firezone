@@ -50,7 +50,7 @@ repos:
           - -i
           - "4"
   - repo: https://github.com/DevinR528/cargo-sort
-    rev: v2.1.0
+    rev: v2.0.1
     hooks:
       - id: cargo-sort
         args: ["--check", "--workspace", "rust/"]
