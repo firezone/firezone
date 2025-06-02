@@ -283,7 +283,7 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.arch.shortname }}-musl-cross
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
-      - uses: taiki-e/install-action@84c20235bedc3797c7e1ddf685c574a4a6c666da # v2.52.2
+      - uses: taiki-e/install-action@735e5933943122c5ac182670a935f54a949265c1 # v2.52.4
         with:
           tool: bpf-linker
         env:
