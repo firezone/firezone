@@ -11,6 +11,9 @@ importers:
       '@heroicons/react':
         specifier: ^2.2.0
         version: 2.2.0(react@19.1.0)
+      '@sentry/core':
+        specifier: ^9.24.0
+        version: 9.24.0
       '@sentry/react':
         specifier: ^9.24.0
         version: 9.24.0(react@19.1.0)

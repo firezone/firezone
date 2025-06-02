@@ -72,12 +72,6 @@ pub trait GuiIntegration {
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
-    fn start_telemetry(
-        &self,
-        dns: firezone_telemetry::Dsn,
-        release: String,
-        environment: String,
-    ) -> Result<()>;
 
     /// Also opens non-URLs
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()>;
@@ -458,11 +452,6 @@ impl<I: GuiIntegration> Controller<I> {
             account_slug,
         })
         .await?;
-        self.integration.start_telemetry(
-            firezone_telemetry::GUI_DSN,
-            crate::RELEASE.to_string(),
-            environment,
-        )?;
 
         Ok(())
     }

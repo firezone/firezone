@@ -8,7 +8,6 @@ use sentry::protocol::SessionStatus;
 pub mod feature_flags;
 pub mod otel;
 
-#[derive(serde::Serialize, Debug, Clone)]
 pub struct Dsn(&'static str);
 
 // TODO: Dynamic DSN

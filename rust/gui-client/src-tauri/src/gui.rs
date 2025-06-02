@@ -121,28 +121,6 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn start_telemetry(&self, dns: Dsn, release: String, api_url: String) -> Result<()> {
-        #[derive(Debug, Clone, serde::Serialize)]
-        struct TelemetryContext {
-            dns: Dsn,
-            release: String,
-            api_url: String,
-        }
-
-        self.app
-            .emit(
-                "start_telemetry",
-                TelemetryContext {
-                    dns,
-                    release,
-                    api_url,
-                },
-            )
-            .context("Failed to send `start_telemetry` event")?;
-
-        Ok(())
-    }
-
     fn open_url<P: AsRef<str>>(&self, url: P) -> Result<()> {
         tauri_plugin_opener::open_url(url, Option::<&str>::None)?;
 

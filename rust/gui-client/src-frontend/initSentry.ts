@@ -1,31 +1,37 @@
 import * as Sentry from "@sentry/react";
-import { listen } from "@tauri-apps/api/event";
-import { Url } from "url";
+import type { Client } from '@sentry/core';
 
-interface TelemetryContext {
-  dsn: string;
-  release: string;
-  api_url: Url;
-}
+type Environment = "production" | "staging" | "on-prem" | "unknown";
 
-type Environment = "production" | "staging" | "on-prem";
+let client: Client | undefined;
 
-listen<TelemetryContext>("start_telemetry", (e) => {
-  let ctx = e.payload;
-  let env = environment(ctx.api_url);
+export default function initSentry(apiUrl: string) {
+  let env = environment(URL.parse(apiUrl));
 
-  if (env == "on-prem") {
+  if (env == "on-prem" || env == "unknown") {
+    if (client) {
+      client.close();
+    }
+
     return;
   }
 
-  Sentry.init({
-    dsn: ctx.dsn,
+  let options = {
+    dsn: "https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312",
     environment: env,
-    release: ctx.release,
-  });
-});
+    release: `gui-client@${__APP_VERSION__}`,
+  };
 
-function environment(url: Url): Environment {
+  console.log("Initialising Sentry", { options })
+
+  client = Sentry.init(options);
+}
+
+function environment(url: URL | null): Environment {
+  if (!url) {
+    return "unknown"
+  }
+
   switch (url.host) {
     case "api.firezone.dev": {
       return "production";
