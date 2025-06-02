@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from "react";
-import { Button, TextInput, Label, TextInputProps, Tooltip } from "flowbite-react";
+import {
+  Button,
+  TextInput,
+  Label,
+  TextInputProps,
+  Tooltip,
+} from "flowbite-react";
 import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
 
 interface SettingsPageProps {
@@ -45,9 +51,9 @@ export default function SettingsPage({
       </div>
 
       <p className="text-neutral-900 mb-6">
-        <strong>WARNING</strong>: These settings are intended for internal
-        debug purposes <strong>only</strong>. Changing these is not supported
-        and will disrupt access to your resources.
+        <strong>WARNING</strong>: These settings are intended for internal debug
+        purposes <strong>only</strong>. Changing these is not supported and will
+        disrupt access to your resources.
       </p>
 
       <form
@@ -58,7 +64,9 @@ export default function SettingsPage({
         className="max-w mx-auto flex flex-col gap-2"
       >
         <div>
-          <Label className="text-neutral-600" htmlFor="auth-base-url-input">Auth Base URL</Label>
+          <Label className="text-neutral-600" htmlFor="auth-base-url-input">
+            Auth Base URL
+          </Label>
           <ManagedTextInput
             name="auth_base_url"
             id="auth-base-url-input"
@@ -75,7 +83,9 @@ export default function SettingsPage({
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor="api-url-input">API URL</Label>
+          <Label className="text-neutral-600" htmlFor="api-url-input">
+            API URL
+          </Label>
           <ManagedTextInput
             name="api_url"
             id="api-url-input"
@@ -92,7 +102,9 @@ export default function SettingsPage({
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor="log-filter-input">Log Filter</Label>
+          <Label className="text-neutral-600" htmlFor="log-filter-input">
+            Log Filter
+          </Label>
           <ManagedTextInput
             name="log_filter"
             id="log-filter-input"
@@ -109,11 +121,7 @@ export default function SettingsPage({
         </div>
 
         <div className="flex justify-end gap-4 mt-4">
-          <Button
-            type="reset"
-            onClick={resetSettings}
-            color="alternative"
-          >
+          <Button type="reset" onClick={resetSettings} color="alternative">
             Reset to Defaults
           </Button>
           <Button type="submit">Apply</Button>
@@ -127,10 +135,15 @@ function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
   let { managed, ...inputProps } = props;
 
   if (managed) {
-    return <Tooltip content="This setting is managed by your organisation." clearTheme={{target: true}}>
-      <TextInput {...inputProps} disabled={true} />
-    </Tooltip>
+    return (
+      <Tooltip
+        content="This setting is managed by your organisation."
+        clearTheme={{ target: true }}
+      >
+        <TextInput {...inputProps} disabled={true} />
+      </Tooltip>
+    );
   } else {
-    return <TextInput {...inputProps} />
+    return <TextInput {...inputProps} />;
   }
 }

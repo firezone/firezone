@@ -208,8 +208,8 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.1.4" date={new Date("2024-08-08")}>
         <li className="pl-2">
-          Removes <code>FIREZONE_ENABLE_MASQUERADE</code> env variable. Masquerading is now
-          always enabled unconditionally.
+          Removes <code>FIREZONE_ENABLE_MASQUERADE</code> env variable.
+          Masquerading is now always enabled unconditionally.
         </li>
       </Entry>
       <Entry version="1.1.3" date={new Date("2024-08-02")}>
