@@ -20,13 +20,6 @@ defmodule API.ResourceJSON do
   end
 
   defp data(%Resource{} = resource) do
-    ip_stack =
-      if is_nil(resource.ip_stack) do
-        %{}
-      else
-        %{ip_stack: resource.ip_stack}
-      end
-
     %{
       id: resource.id,
       name: resource.name,
@@ -34,6 +27,18 @@ defmodule API.ResourceJSON do
       address_description: resource.address_description,
       type: resource.type
     }
-    |> Map.merge(ip_stack)
+    |> maybe_put_ip_stack(resource)
+  end
+
+  defp maybe_put_ip_stack(attrs, %{type: :dns} = resource) do
+    if resource.ip_stack do
+      Map.put(attrs, :ip_stack, resource.ip_stack)
+    else
+      attrs
+    end
+  end
+
+  defp maybe_put_ip_stack(attrs, _resource) do
+    attrs
   end
 end
