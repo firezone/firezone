@@ -28,14 +28,9 @@ tracing = { workspace = true }
 tun = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
-[dev-dependencies]
-bufferpool = { workspace = true }
-bytes = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-
 [target.'cfg(target_os = "linux")'.dependencies]
-dirs = { workspace = true }
 atomicwrites = { workspace = true }
+dirs = { workspace = true }
 flume = { workspace = true }
 libc = { workspace = true }
 netlink-packet-core = { workspace = true }
@@ -46,43 +41,49 @@ rtnetlink = { workspace = true }
 zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
 
 [target.'cfg(windows)'.dependencies]
+ipconfig = "0.3.2"
+itertools = { workspace = true }
 known-folders = { workspace = true }
 ring = "0.17"
+tokio-util = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 windows-core = { workspace = true }
 windows-implement = { workspace = true }
-wintun = "0.5.1"
 winreg = { workspace = true }
-tokio-util = { workspace = true }
-ipconfig = "0.3.2"
-itertools = { workspace = true }
+wintun = "0.5.1"
 
 [target.'cfg(windows)'.dependencies.windows]
 workspace = true
 features = [
-  # For implementing COM interfaces
-  "Win32_Foundation",
-  # For listening for network change events
-  "Win32_Networking_NetworkListManager",
-  "Win32_NetworkManagement_IpHelper",
-  "Win32_NetworkManagement_Ndis",
-  "Win32_Networking_WinSock",
-  "Win32_Security",
-  "Win32_System_Com",
-  # Needed to listen for system DNS changes
-  "Win32_System_Registry",
-  "Win32_System_Threading",
-  "Win32_System_SystemInformation", # For uptime
-  "Win32_System_GroupPolicy", # For NRPT when GPO is used
+    # For implementing COM interfaces
+    "Win32_Foundation",
+    # For listening for network change events
+    "Win32_Networking_NetworkListManager",
+    "Win32_NetworkManagement_IpHelper",
+    "Win32_NetworkManagement_Ndis",
+    "Win32_Networking_WinSock",
+    "Win32_Security",
+    "Win32_System_Com",
+    # Needed to listen for system DNS changes
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_SystemInformation",
+    # For uptime
+    "Win32_System_GroupPolicy", # For NRPT when GPO is used
 ]
 
-[target.'cfg(windows)'.dev-dependencies]
-ip-packet = { workspace = true }
-tokio = { workspace = true, features = ["net", "time"] }
+[dev-dependencies]
+bufferpool = { workspace = true }
+bytes = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing
 tempfile = { workspace = true }
+
+[target.'cfg(windows)'.dev-dependencies]
+ip-packet = { workspace = true }
+tokio = { workspace = true, features = ["net", "time"] }
 
 [lints]
 workspace = true

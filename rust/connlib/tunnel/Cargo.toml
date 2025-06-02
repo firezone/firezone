@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
 
+[features]
+proptest = ["dep:proptest"]
+divan = ["dep:divan"]
+
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true, features = ["std"] }
@@ -64,10 +68,6 @@ tracing-subscriber = { workspace = true, features = ["env-filter"] }
 name = "divan"
 harness = false
 required-features = ["divan"]
-
-[features]
-proptest = ["dep:proptest"]
-divan = ["dep:divan"]
 
 [lints]
 workspace = true
