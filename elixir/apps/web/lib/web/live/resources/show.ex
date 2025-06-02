@@ -170,6 +170,16 @@ defmodule Web.Resources.Show do
               </span>
             </:value>
           </.vertical_table_row>
+          <.vertical_table_row :if={@resource.ip_stack}>
+            <:label>
+              IP Stack
+            </:label>
+            <:value>
+              <span>
+                {format_ip_stack(@resource.ip_stack)}
+              </span>
+            </:value>
+          </.vertical_table_row>
           <.vertical_table_row>
             <:label>
               Connected Sites
@@ -453,4 +463,8 @@ defmodule Web.Resources.Show do
       ]
     )
   end
+
+  defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"
+  defp format_ip_stack(:ipv4_only), do: "IPv4 only"
+  defp format_ip_stack(:ipv6_only), do: "IPv6 only"
 end
