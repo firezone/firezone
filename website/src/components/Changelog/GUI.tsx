@@ -31,8 +31,8 @@ export default function GUI({ os }: { os: OS }) {
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>
         <ChangeItem pull="9147">
-          Fixes an issue where connections failed to establish on machines
-          with multiple valid egress IPs.
+          Fixes an issue where connections failed to establish on machines with
+          multiple valid egress IPs.
         </ChangeItem>
         <ChangeItem pull="9136">
           Launching Firezone while it is already running while now re-activate
@@ -40,14 +40,16 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="9154">
-            Renames the background service from `FirezoneClientIpcService`
-            to `FirezoneClientTunnelService`.
+            Renames the background service from{" "}
+            <code>FirezoneClientIpcService</code>
+            to <code>FirezoneClientTunnelService</code>.
           </ChangeItem>
         )}
         {os === OS.Linux && (
           <ChangeItem pull="9154">
-            Renames the systemd service from `firezone-client-ipc.service`
-            to `firezone-client-tunnel.service`.
+            Renames the systemd service from{" "}
+            <code>firezone-client-ipc.service</code> to
+            <code>firezone-client-tunnel.service</code>.
           </ChangeItem>
         )}
         {os === OS.Linux && (
@@ -58,7 +60,7 @@ export default function GUI({ os }: { os: OS }) {
         {os === OS.Windows && (
           <ChangeItem pull="9213">
             Adds the Client to the winget repository. You can install it via
-            `winget install Firezone.Client.GUI`.
+            <code>winget install Firezone.Client.GUI</code>.
           </ChangeItem>
         )}
       </Entry>
@@ -207,7 +209,7 @@ export default function GUI({ os }: { os: OS }) {
       <Entry version="1.4.3" date={new Date("2025-02-05")}>
         {os === OS.Windows && (
           <ChangeItem pull="8003">
-            Removes dependency on `netsh`, making sign-in faster.
+            Removes dependency on <code>netsh</code>, making sign-in faster.
           </ChangeItem>
         )}
         {os === OS.Windows && (
@@ -235,8 +237,8 @@ export default function GUI({ os }: { os: OS }) {
         )}
         {os === OS.Linux && (
           <ChangeItem pull="7822">
-            Makes the runtime dependency on `update-desktop-database` optional,
-            thus improving compatibility on non-Ubuntu systems.
+            Makes the runtime dependency on <code>update-desktop-database</code>{" "}
+            optional, thus improving compatibility on non-Ubuntu systems.
           </ChangeItem>
         )}
       </Entry>
@@ -283,7 +285,7 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem>Handles DNS queries over TCP correctly.</ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="7009">
-            The IPC service `firezone-client-ipc.exe` is now signed.
+            The IPC service <code>firezone-client-ipc.exe</code> is now signed.
           </ChangeItem>
         )}
         <ChangeItem pull="7123">
@@ -311,9 +313,9 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="6874">Fixes the GUI shutting down slowly.</ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6931">
-            Mitigates an issue where `ipconfig` and WSL weren't aware of
-            Firezone DNS resolvers. Users may need to restart WSL after signing
-            in to Firezone.
+            Mitigates an issue where <code>ipconfig</code> and WSL weren't aware
+            of Firezone DNS resolvers. Users may need to restart WSL after
+            signing in to Firezone.
           </ChangeItem>
         )}
       </Entry>
@@ -341,7 +343,8 @@ export default function GUI({ os }: { os: OS }) {
       <Entry version="1.3.6" date={new Date("2024-09-25")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over
-          wildcard ones (e.g. `app.example.com` vs `*.example.com`).
+          wildcard ones (e.g. <code>app.example.com</code> vs{" "}
+          <code>*.example.com</code>).
         </ChangeItem>
       </Entry>
       <Entry version="1.3.5" date={new Date("2024-09-25")}>
@@ -479,8 +482,8 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         {os === OS.Linux && (
           <ChangeItem pull="6163">
-            Supports using `etc-resolv-conf` DNS control method, or disabling
-            DNS control
+            Supports using <code>etc-resolv-conf</code> DNS control method, or
+            disabling DNS control
           </ChangeItem>
         )}
         <ChangeItem pull="6181">
