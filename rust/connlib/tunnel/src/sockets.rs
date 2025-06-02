@@ -178,11 +178,7 @@ impl ThreadedUdpSocket {
 
                 runtime.block_on(async move {
                     let mut socket = match sf(&addr) {
-                        Ok(s) => {
-                            let _ = error_tx.send(Ok(()));
-
-                            s
-                        }
+                        Ok(s) => s,
                         Err(e) => {
                             let _ = error_tx.send(Err(e));
                             return;
@@ -263,6 +259,8 @@ impl ThreadedUdpSocket {
                             }
                         }
                     });
+
+                    let _ = error_tx.send(Ok(()));
 
                     futures::future::select(send, receive).await;
                 })
