@@ -447,7 +447,7 @@ impl<I: GuiIntegration> Controller<I> {
         }
 
         self.send_ipc(&service::ClientMsg::StartTelemetry {
-            environment,
+            environment: environment.clone(),
             release: crate::RELEASE.to_string(),
             account_slug,
         })
