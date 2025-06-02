@@ -11,6 +11,7 @@ defaults:
 env:
   RUSTFLAGS: "-Dwarnings"
   RUSTDOCFLAGS: "-D warnings"
+  TSLINK_BUILD: true
 
 jobs:
   update-release-draft:

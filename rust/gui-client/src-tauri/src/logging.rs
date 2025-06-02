@@ -204,6 +204,7 @@ fn system_layer() -> Result<tracing_subscriber::layer::Identity> {
     Ok(tracing_subscriber::layer::Identity::new())
 }
 
+#[tslink::tslink(target = "./gui-client/src-frontend/generated/FileCount.ts")]
 #[derive(Clone, Default, Serialize)]
 pub struct FileCount {
     bytes: u64,

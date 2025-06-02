@@ -66,11 +66,12 @@ pub struct GeneralSettings {
     pub internet_resource_enabled: Option<bool>,
 }
 
+#[tslink::tslink(target = "./gui-client/src-frontend/generated/AdvancedSettingsViewModel.ts")]
 #[derive(Clone, Serialize)]
 pub struct AdvancedSettingsViewModel {
-    pub auth_url: Url,
+    pub auth_url: String,
     pub auth_url_is_managed: bool,
-    pub api_url: Url,
+    pub api_url: String,
     pub api_url_is_managed: bool,
     pub log_filter: String,
     pub log_filter_is_managed: bool,
@@ -83,8 +84,14 @@ impl AdvancedSettingsViewModel {
             api_url_is_managed: mdm_settings.api_url.is_some(),
             log_filter_is_managed: mdm_settings.log_filter.is_some(),
 
-            auth_url: mdm_settings.auth_url.unwrap_or(advanced_settings.auth_url),
-            api_url: mdm_settings.api_url.unwrap_or(advanced_settings.api_url),
+            auth_url: mdm_settings
+                .auth_url
+                .unwrap_or(advanced_settings.auth_url)
+                .to_string(),
+            api_url: mdm_settings
+                .api_url
+                .unwrap_or(advanced_settings.api_url)
+                .to_string(),
             log_filter: mdm_settings
                 .log_filter
                 .unwrap_or(advanced_settings.log_filter),

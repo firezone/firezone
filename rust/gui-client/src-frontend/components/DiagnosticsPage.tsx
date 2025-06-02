@@ -1,16 +1,12 @@
 import React from "react";
 import { ShareIcon, TrashIcon } from "@heroicons/react/16/solid";
 import { Button } from "flowbite-react";
+import { FileCount } from "../generated/FileCount";
 
 interface DiagnosticsPageProps {
   logCount: FileCount | null;
   exportLogs: () => void;
   clearLogs: () => void;
-}
-
-export interface FileCount {
-  files: number;
-  bytes: number;
 }
 
 export default function Diagnostics({
