@@ -1,4 +1,4 @@
 export interface Session {
-    account_slug: string;
-    actor_name: string;
+  account_slug: string;
+  actor_name: string;
 }

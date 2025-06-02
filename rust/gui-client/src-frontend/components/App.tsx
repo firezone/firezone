@@ -94,7 +94,11 @@ export default function App() {
             </NavLink>
             <NavLink to="/diagnostics">
               {({ isActive }) => (
-                <SidebarItem active={isActive} icon={DocumentMagnifyingGlassIcon} as="div">
+                <SidebarItem
+                  active={isActive}
+                  icon={DocumentMagnifyingGlassIcon}
+                  as="div"
+                >
                   Diagnostics
                 </SidebarItem>
               )}
