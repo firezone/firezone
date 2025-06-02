@@ -187,6 +187,8 @@ defmodule Web.Resources.New do
               required
             />
 
+            <.ip_stack_form :if={"#{@form[:type].value}" == "dns"} form={@form} />
+
             <.filters_form account={@account} form={@form[:filters]} />
 
             <.connections_form

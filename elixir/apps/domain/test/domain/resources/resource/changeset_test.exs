@@ -315,6 +315,18 @@ defmodule Domain.Resources.Resource.ChangesetTest do
       refute Map.has_key?(changeset.changes, :ip_stack)
     end
 
+    test "nilifies ip_stack if present when changing type from dns to another type", %{
+      subject: subject
+    } do
+      resource =
+        Fixtures.Resources.create_resource(type: :dns, ip_stack: :dual, account: subject.account)
+
+      assert resource.ip_stack == :dual
+
+      {changeset, _} = update(resource, %{type: :cidr}, subject)
+      assert changeset.changes.ip_stack == nil
+    end
+
     test "allows setting ip_stack if resource_type is dns", %{
       resource: resource,
       subject: subject
