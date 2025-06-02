@@ -187,7 +187,9 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp connected_node_count(nodes, target_app) do
-    Enum.count(nodes, fn node_name ->
+    nodes
+    |> Enum.uniq()
+    |> Enum.count(fn node_name ->
       app =
         node_name
         |> Atom.to_string()
