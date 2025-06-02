@@ -28,6 +28,10 @@ export default function GUI({ os }: { os: OS }) {
             .
           </ChangeItem>
         )}
+        <ChangeItem pull="9366">
+          Fixes an issue where Firezone could not start if the operating system
+          refused our request to increase the UDP socket buffer sizes.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>
         <ChangeItem pull="9147">
