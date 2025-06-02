@@ -15,7 +15,6 @@ permissions:
 env:
   RUSTFLAGS: "-Dwarnings --cfg tokio_unstable"
   RUSTDOCFLAGS: "-D warnings"
-  TSLINK_BUILD: true
 
 jobs:
   static-analysis:
