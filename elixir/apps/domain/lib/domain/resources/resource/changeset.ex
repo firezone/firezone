@@ -260,7 +260,12 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:address_description, min: 1, max: 512)
-    |> sanitize_ip_stack()
+    |> maybe_put_default_ip_stack()
+    |> check_constraint(:ip_stack,
+      name: :resources_ip_stack_not_null,
+      message:
+        "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+    )
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
@@ -273,14 +278,19 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_required([:protocol])
   end
 
-  defp sanitize_ip_stack(changeset) do
-    case fetch_field(changeset, :type) do
-      {_, :dns} ->
-        changeset
+  defp maybe_put_default_ip_stack(changeset) do
+    current_type = get_field(changeset, :type)
+    original_type = Map.get(changeset.data, :type, nil)
 
-      _ ->
+    cond do
+      current_type == :dns ->
+        put_default_value(changeset, :ip_stack, :dual)
+
+      original_type == :dns and current_type != :dns ->
+        put_change(changeset, :ip_stack, nil)
+
+      true ->
         changeset
-        |> put_change(:ip_stack, nil)
     end
   end
 end

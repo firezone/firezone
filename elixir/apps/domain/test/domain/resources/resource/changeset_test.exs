@@ -299,47 +299,6 @@ defmodule Domain.Resources.Resource.ChangesetTest do
         refute changeset.valid?
       end)
     end
-
-    test "nilifies ip_stack if resource_type is ip", %{resource: resource, subject: subject} do
-      {changeset, _} = update(resource, %{type: :ip, ip_stack: :dual}, subject)
-      refute Map.has_key?(changeset.changes, :ip_stack)
-    end
-
-    test "nilifies ip_stack if resource_type is cidr", %{resource: resource, subject: subject} do
-      {changeset, _} = update(resource, %{type: :cidr, ip_stack: :dual}, subject)
-      refute Map.has_key?(changeset.changes, :ip_stack)
-    end
-
-    test "nilifies ip_stack if resource_type is internet", %{resource: resource, subject: subject} do
-      {changeset, _} = update(resource, %{type: :internet, ip_stack: :dual}, subject)
-      refute Map.has_key?(changeset.changes, :ip_stack)
-    end
-
-    test "nilifies ip_stack if present when changing type from dns to another type", %{
-      subject: subject
-    } do
-      resource =
-        Fixtures.Resources.create_resource(type: :dns, ip_stack: :dual, account: subject.account)
-
-      assert resource.ip_stack == :dual
-
-      {changeset, _} = update(resource, %{type: :cidr}, subject)
-      assert changeset.changes.ip_stack == nil
-    end
-
-    test "allows setting ip_stack if resource_type is dns", %{
-      resource: resource,
-      subject: subject
-    } do
-      {changeset, _} = update(resource, %{type: :dns, ip_stack: :dual}, subject)
-      assert changeset.changes.ip_stack == :dual
-
-      {changeset, _} = update(resource, %{type: :dns, ip_stack: :ipv4_only}, subject)
-      assert changeset.changes.ip_stack == :ipv4_only
-
-      {changeset, _} = update(resource, %{type: :dns, ip_stack: :ipv6_only}, subject)
-      assert changeset.changes.ip_stack == :ipv6_only
-    end
   end
 
   def create(attrs) do

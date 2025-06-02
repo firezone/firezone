@@ -1010,7 +1010,10 @@ defmodule Domain.ResourcesTest do
       Map.put(context, :gateway_group, gateway_group)
     end
 
-    test "clears ip_stack for ipv4 resource", %{subject: subject, gateway_group: gateway_group} do
+    test "prevents setting ip_stack for ipv4 resource", %{
+      subject: subject,
+      gateway_group: gateway_group
+    } do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :ip,
@@ -1019,11 +1022,19 @@ defmodule Domain.ResourcesTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      assert {:ok, resource} = create_resource(attrs, subject)
-      assert is_nil(resource.ip_stack)
+      assert {:error, changeset} = create_resource(attrs, subject)
+
+      assert %{
+               ip_stack: [
+                 "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+               ]
+             } = errors_on(changeset)
     end
 
-    test "clears ip_stack for cidr4 resource", %{subject: subject, gateway_group: gateway_group} do
+    test "prevents setting ip_stack for cidr4 resource", %{
+      subject: subject,
+      gateway_group: gateway_group
+    } do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :cidr,
@@ -1032,11 +1043,19 @@ defmodule Domain.ResourcesTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      assert {:ok, resource} = create_resource(attrs, subject)
-      assert is_nil(resource.ip_stack)
+      assert {:error, changeset} = create_resource(attrs, subject)
+
+      assert %{
+               ip_stack: [
+                 "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+               ]
+             } = errors_on(changeset)
     end
 
-    test "clears ip_stack for ipv6 resource", %{subject: subject, gateway_group: gateway_group} do
+    test "prevents setting ip_stack for ipv6 resource", %{
+      subject: subject,
+      gateway_group: gateway_group
+    } do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :ip,
@@ -1045,11 +1064,19 @@ defmodule Domain.ResourcesTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      assert {:ok, resource} = create_resource(attrs, subject)
-      assert is_nil(resource.ip_stack)
+      assert {:error, changeset} = create_resource(attrs, subject)
+
+      assert %{
+               ip_stack: [
+                 "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+               ]
+             } = errors_on(changeset)
     end
 
-    test "clears ip_stack for cidr6 resource", %{subject: subject, gateway_group: gateway_group} do
+    test "prevents setting ip_stack for cidr6 resource", %{
+      subject: subject,
+      gateway_group: gateway_group
+    } do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :cidr,
@@ -1058,11 +1085,16 @@ defmodule Domain.ResourcesTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      assert {:ok, resource} = create_resource(attrs, subject)
-      assert is_nil(resource.ip_stack)
+      assert {:error, changeset} = create_resource(attrs, subject)
+
+      assert %{
+               ip_stack: [
+                 "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+               ]
+             } = errors_on(changeset)
     end
 
-    test "clears ip_stack for internet resource", %{account: account, subject: subject} do
+    test "prevents setting ip_stack for internet resource", %{account: account, subject: subject} do
       {:ok, gateway_group} = Domain.Gateways.create_internet_group(account)
 
       attrs =
@@ -1072,8 +1104,13 @@ defmodule Domain.ResourcesTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      assert {:ok, resource} = create_resource(attrs, subject)
-      assert is_nil(resource.ip_stack)
+      assert {:error, changeset} = create_resource(attrs, subject)
+
+      assert %{
+               ip_stack: [
+                 "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+               ]
+             } = errors_on(changeset)
     end
 
     test "allows setting ip_stack for dns resources", %{
@@ -1090,9 +1127,31 @@ defmodule Domain.ResourcesTest do
 
       assert {:ok, resource} = create_resource(attrs, subject)
       assert resource.ip_stack == :dual
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          type: :dns,
+          address: "example.com",
+          ip_stack: :ipv4_only,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+      assert resource.ip_stack == :ipv4_only
+
+      attrs =
+        Fixtures.Resources.resource_attrs(
+          type: :dns,
+          address: "example.com",
+          ip_stack: :ipv6_only,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      assert {:ok, resource} = create_resource(attrs, subject)
+      assert resource.ip_stack == :ipv6_only
     end
 
-    test "allows creating dns resource with empty ip_stack", %{
+    test "populates ip_stack for dns resources with 'dual' by default", %{
       subject: subject,
       gateway_group: gateway_group
     } do
@@ -1105,7 +1164,7 @@ defmodule Domain.ResourcesTest do
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
-      assert is_nil(resource.ip_stack)
+      assert resource.ip_stack == :dual
     end
 
     test "prevents adding other resources to the internet site", %{

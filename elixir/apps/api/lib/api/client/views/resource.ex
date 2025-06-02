@@ -11,7 +11,8 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :internet,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
-      can_be_disabled: true
+      can_be_disabled: true,
+      ip_stack: resource.ip_stack
     }
   end
 
@@ -27,7 +28,8 @@ defmodule API.Client.Views.Resource do
       address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
-      filters: Enum.flat_map(resource.filters, &render_filter/1)
+      filters: Enum.flat_map(resource.filters, &render_filter/1),
+      ip_stack: resource.ip_stack
     }
   end
 
@@ -39,9 +41,9 @@ defmodule API.Client.Views.Resource do
       address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
-      filters: Enum.flat_map(resource.filters, &render_filter/1)
+      filters: Enum.flat_map(resource.filters, &render_filter/1),
+      ip_stack: resource.ip_stack
     }
-    |> maybe_put_ip_stack(resource)
   end
 
   def render_filter(%Resources.Resource.Filter{ports: ports} = filter) when length(ports) > 0 do
@@ -79,17 +81,5 @@ defmodule API.Client.Views.Resource do
 
   defp port_to_number(port) do
     port |> String.trim() |> String.to_integer()
-  end
-
-  defp maybe_put_ip_stack(attrs, %{type: :dns} = resource) do
-    if resource.ip_stack do
-      Map.put(attrs, :ip_stack, resource.ip_stack)
-    else
-      attrs
-    end
-  end
-
-  defp maybe_put_ip_stack(attrs, _resource) do
-    attrs
   end
 end

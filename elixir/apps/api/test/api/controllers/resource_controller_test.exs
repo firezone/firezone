@@ -265,7 +265,8 @@ defmodule API.ResourceControllerTest do
                  "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
-                 "type" => Atom.to_string(resource.type)
+                 "type" => Atom.to_string(resource.type),
+                 "ip_stack" => Atom.to_string(resource.ip_stack)
                }
              }
 

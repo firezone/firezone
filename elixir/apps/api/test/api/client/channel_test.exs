@@ -309,6 +309,7 @@ defmodule API.Client.ChannelTest do
       assert %{
                id: cidr_resource.id,
                type: :cidr,
+               ip_stack: nil,
                name: cidr_resource.name,
                address: cidr_resource.address,
                address_description: cidr_resource.address_description,
@@ -329,6 +330,7 @@ defmodule API.Client.ChannelTest do
       assert %{
                id: ip_resource.id,
                type: :cidr,
+               ip_stack: nil,
                name: ip_resource.name,
                address: "#{ip_resource.address}/32",
                address_description: ip_resource.address_description,
@@ -349,6 +351,7 @@ defmodule API.Client.ChannelTest do
       assert %{
                id: internet_resource.id,
                type: :internet,
+               ip_stack: nil,
                gateway_groups: [
                  %{
                    id: internet_gateway_group.id,

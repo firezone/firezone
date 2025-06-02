@@ -25,20 +25,8 @@ defmodule API.ResourceJSON do
       name: resource.name,
       address: resource.address,
       address_description: resource.address_description,
-      type: resource.type
+      type: resource.type,
+      ip_stack: resource.ip_stack
     }
-    |> maybe_put_ip_stack(resource)
-  end
-
-  defp maybe_put_ip_stack(attrs, %{type: :dns} = resource) do
-    if resource.ip_stack do
-      Map.put(attrs, :ip_stack, resource.ip_stack)
-    else
-      attrs
-    end
-  end
-
-  defp maybe_put_ip_stack(attrs, _resource) do
-    attrs
   end
 end
