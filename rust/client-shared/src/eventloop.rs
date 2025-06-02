@@ -1,13 +1,16 @@
-use crate::{PHOENIX_TOPIC, callbacks::Callbacks};
+use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, Result};
-use connlib_model::{PublicKey, ResourceId};
+use connlib_model::{PublicKey, ResourceId, ResourceView};
+use dns_types::DomainName;
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
 use firezone_tunnel::{ClientTunnel, IpConfig};
+use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Instant;
 use std::{
     collections::BTreeSet,
@@ -15,14 +18,15 @@ use std::{
     net::IpAddr,
     task::{Context, Poll},
 };
+use tokio::sync::mpsc::error::TrySendError;
 use tun::Tun;
 
-pub struct Eventloop<C: Callbacks> {
+pub struct Eventloop {
     tunnel: ClientTunnel,
-    callbacks: C,
 
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
+    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
+    event_tx: tokio::sync::mpsc::Sender<Event>,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -33,31 +37,62 @@ pub enum Command {
     SetDisabledResources(BTreeSet<ResourceId>),
 }
 
-impl<C: Callbacks> Eventloop<C> {
+pub enum Event {
+    TunInterfaceUpdated {
+        ipv4: Ipv4Addr,
+        ipv6: Ipv6Addr,
+        dns: Vec<IpAddr>,
+        search_domain: Option<DomainName>,
+        ipv4_routes: Vec<Ipv4Network>,
+        ipv6_routes: Vec<Ipv6Network>,
+    },
+    ResourcesUpdated(Vec<ResourceView>),
+    Disconnected(DisconnectError),
+}
+
+/// Unified error type to use across connlib.
+#[derive(thiserror::Error, Debug)]
+#[error("{0:#}")]
+pub struct DisconnectError(anyhow::Error);
+
+impl From<anyhow::Error> for DisconnectError {
+    fn from(e: anyhow::Error) -> Self {
+        Self(e)
+    }
+}
+
+impl DisconnectError {
+    pub fn is_authentication_error(&self) -> bool {
+        let Some(e) = self.0.downcast_ref::<phoenix_channel::Error>() else {
+            return false;
+        };
+
+        e.is_authentication_error()
+    }
+}
+
+impl Eventloop {
     pub(crate) fn new(
         tunnel: ClientTunnel,
-        callbacks: C,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-        rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
+        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
+        event_tx: tokio::sync::mpsc::Sender<Event>,
     ) -> Self {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
         Self {
             tunnel,
             portal,
-            rx,
-            callbacks,
+            cmd_rx,
+            event_tx,
         }
     }
 }
 
-impl<C> Eventloop<C>
-where
-    C: Callbacks + 'static,
-{
+impl Eventloop {
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         loop {
-            match self.rx.poll_recv(cx) {
+            match self.cmd_rx.poll_recv(cx) {
                 Poll::Ready(None) => return Poll::Ready(Ok(())),
                 Poll::Ready(Some(Command::SetDns(dns))) => {
                     self.tunnel.state_mut().update_system_resolvers(dns);
@@ -84,7 +119,22 @@ where
 
             match self.tunnel.poll_next_event(cx) {
                 Poll::Ready(Ok(event)) => {
-                    self.handle_tunnel_event(event);
+                    let Some(e) = self.handle_tunnel_event(event) else {
+                        continue;
+                    };
+
+                    match self.event_tx.try_send(e) {
+                        Ok(()) => {}
+                        Err(TrySendError::Closed(_)) => {
+                            tracing::debug!("Event receiver dropped, exiting event loop");
+
+                            return Poll::Ready(Ok(()));
+                        }
+                        Err(TrySendError::Full(_)) => {
+                            tracing::warn!("App cannot keep up with connlib events, dropping");
+                        }
+                    };
+
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
@@ -123,7 +173,7 @@ where
         }
     }
 
-    fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) {
+    fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) -> Option<Event> {
         match event {
             firezone_tunnel::ClientEvent::AddedIceCandidates {
                 conn_id: gateway,
@@ -138,6 +188,8 @@ where
                         candidates,
                     }),
                 );
+
+                None
             }
             firezone_tunnel::ClientEvent::RemovedIceCandidates {
                 conn_id: gateway,
@@ -152,6 +204,8 @@ where
                         candidates,
                     }),
                 );
+
+                None
             }
             firezone_tunnel::ClientEvent::ConnectionIntent {
                 connected_gateway_ids,
@@ -164,21 +218,21 @@ where
                         connected_gateway_ids,
                     },
                 );
+
+                None
             }
             firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
-                self.callbacks.on_update_resources(resources)
+                Some(Event::ResourcesUpdated(resources))
             }
             firezone_tunnel::ClientEvent::TunInterfaceUpdated(config) => {
-                let dns_servers = config.dns_by_sentinel.left_values().copied().collect();
-
-                self.callbacks.on_set_interface_config(
-                    config.ip.v4,
-                    config.ip.v6,
-                    dns_servers,
-                    config.search_domain,
-                    Vec::from_iter(config.ipv4_routes),
-                    Vec::from_iter(config.ipv6_routes),
-                );
+                Some(Event::TunInterfaceUpdated {
+                    ipv4: config.ip.v4,
+                    ipv6: config.ip.v6,
+                    dns: config.dns_by_sentinel.left_values().copied().collect(),
+                    search_domain: config.search_domain,
+                    ipv4_routes: Vec::from_iter(config.ipv4_routes),
+                    ipv6_routes: Vec::from_iter(config.ipv6_routes),
+                })
             }
         }
     }
