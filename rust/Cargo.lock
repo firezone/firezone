@@ -5397,8 +5397,7 @@ dependencies = [
 [[package]]
 name = "quinn-udp"
 version = "0.5.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ee4e529991f949c5e25755532370b8af5d114acae52326361d68d47af64aa842"
+source = "git+https://github.com/quinn-rs/quinn?branch=main#06995454f44171d4164753b95e0bce900089a9a7"
 dependencies = [
  "cfg_aliases",
  "libc",
