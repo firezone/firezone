@@ -266,7 +266,7 @@ defmodule Web.Resources.Components do
             <.code class="text-xs">A</.code>
             records only
             <span :if={ip_stack_recommendation(@form) == "ipv4_only"}>
-              <.badge type="info">Recommended for this Resource.</.badge>
+              <.badge type="info">Recommended for this Resource</.badge>
             </span>
           </label>
         </.input>
@@ -284,7 +284,7 @@ defmodule Web.Resources.Components do
             <.code class="text-xs">AAAA</.code>
             records only
             <span :if={ip_stack_recommendation(@form) == "ipv6_only"}>
-              <.badge type="info">Recommended for this Resource.</.badge>
+              <.badge type="info">Recommended for this Resource</.badge>
             </span>
           </label>
         </.input>
