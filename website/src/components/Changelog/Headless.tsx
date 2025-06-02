@@ -19,6 +19,10 @@ export default function Headless({ os }: { os: OS }) {
           Fixes an issue where connections failed to establish on machines with
           multiple valid egress IPs.
         </ChangeItem>
+        <ChangeItem pull="9366">
+          Fixes an issue where Firezone could not start if the operating system
+          refused our request to increase the UDP socket buffer sizes.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">

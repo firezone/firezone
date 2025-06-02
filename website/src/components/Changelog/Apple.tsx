@@ -30,6 +30,10 @@ export default function Apple() {
           resources to optionally return only A or AAAA records if configured by
           the administrator.
         </ChangeItem>
+        <ChangeItem pull="9366">
+          Fixes an issue where Firezone could not start if the operating system
+          refused our request to increase the UDP socket buffer sizes.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.1" date={new Date("2025-06-01")}>
         <ChangeItem pull="9308">
