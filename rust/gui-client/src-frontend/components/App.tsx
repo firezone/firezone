@@ -17,14 +17,12 @@ import React, { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
 import About from "./AboutPage";
 import ColorPalette from "./ColorPalettePage";
-import Diagnostics, { FileCount } from "./DiagnosticsPage";
+import Diagnostics from "./DiagnosticsPage";
 import Overview from "./OverviewPage";
-import SettingsPage, { Settings } from "./SettingsPage";
-
-export interface Session {
-  account_slug: string;
-  actor_name: string;
-}
+import SettingsPage from "./SettingsPage";
+import { FileCount } from "../generated/FileCount";
+import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
+import { Session } from "../generated/Session";
 
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
