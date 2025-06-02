@@ -11,6 +11,7 @@ use std::{
     sync::Arc,
     task::{Context, Poll, Waker},
 };
+use tokio::sync::oneshot;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
 const UNSPECIFIED_V6_SOCKET: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0);
@@ -157,7 +158,7 @@ impl ThreadedUdpSocket {
     fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, addr: SocketAddr) -> io::Result<Self> {
         let (outbound_tx, outbound_rx) = flume::bounded(10);
         let (inbound_tx, inbound_rx) = flume::bounded(10);
-        let (error_tx, error_rx) = flume::bounded(0);
+        let (error_tx, error_rx) = oneshot::channel();
 
         std::thread::Builder::new()
             .name(match addr {
@@ -266,7 +267,7 @@ impl ThreadedUdpSocket {
                 })
             })?;
 
-        error_rx.recv().map_err(io::Error::other)??;
+        error_rx.blocking_recv().map_err(io::Error::other)??;
 
         Ok(Self {
             outbound_tx: outbound_tx.into_sink(),
