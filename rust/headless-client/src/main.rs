@@ -5,7 +5,6 @@
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use client_shared::{ChannelCallbackHandler, ConnlibMsg, Session};
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
@@ -15,7 +14,6 @@ use firezone_bin_shared::{
 use firezone_logging::telemetry_span;
 use firezone_telemetry::Telemetry;
 use firezone_telemetry::otel;
-use futures::StreamExt as _;
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
@@ -26,7 +24,6 @@ use std::{
     sync::Arc,
 };
 use tokio::time::Instant;
-use tokio_stream::wrappers::ReceiverStream;
 
 #[cfg(target_os = "linux")]
 #[path = "linux.rs"]
@@ -221,8 +218,6 @@ fn main() -> Result<()> {
         return Ok(());
     }
 
-    let (callbacks, cb_rx) = ChannelCallbackHandler::new();
-
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
 
@@ -261,10 +256,9 @@ fn main() -> Result<()> {
             },
             Arc::new(tcp_socket_factory),
         )?;
-        let session = Session::connect(
+        let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(udp_socket_factory),
-            callbacks,
             portal,
             rt.handle().clone(),
         );
@@ -273,7 +267,6 @@ fn main() -> Result<()> {
         let mut hangup = signals::Hangup::new()?;
 
         let mut tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, 1)?;
-        let mut cb_rx = ReceiverStream::new(cb_rx).fuse();
 
         let tokio_handle = tokio::runtime::Handle::current();
 
@@ -294,7 +287,7 @@ fn main() -> Result<()> {
         drop(connect_span);
 
         let result = loop {
-            let cb = tokio::select! {
+            let event = tokio::select! {
                 () = terminate.recv() => {
                     tracing::info!("Caught SIGINT / SIGTERM / Ctrl+C");
                     break Ok(());
@@ -318,20 +311,17 @@ fn main() -> Result<()> {
                     session.reset();
                     continue;
                 },
-                cb = cb_rx.next() => cb.context("cb_rx unexpectedly ran empty")?,
+                event = event_stream.next() => event.context("event stream unexpectedly ran empty")?,
             };
 
-            match cb {
+            match event {
                 // TODO: Headless Client shouldn't be using messages labelled `Ipc`
-                ConnlibMsg::OnDisconnect {
-                    error_msg,
-                    is_authentication_error: _,
-                } => break Err(anyhow!(error_msg).context("Firezone disconnected")),
-                ConnlibMsg::OnUpdateResources(_) => {
+                client_shared::Event::Disconnected(error) => break Err(anyhow!(error).context("Firezone disconnected")),
+                client_shared::Event::ResourcesUpdated(_) => {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
-                ConnlibMsg::OnSetInterfaceConfig {
+                client_shared::Event::TunInterfaceUpdated {
                     ipv4,
                     ipv6,
                     dns,

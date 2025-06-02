@@ -8,7 +8,7 @@ mod tun;
 use anyhow::Context;
 use anyhow::Result;
 use backoff::ExponentialBackoffBuilder;
-use client_shared::{Callbacks, DisconnectError, Session, V4RouteList, V6RouteList};
+use client_shared::{DisconnectError, Event, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
 use dns_types::DomainName;
 use firezone_logging::err_with_src;
@@ -127,15 +127,14 @@ pub struct WrappedSession {
 unsafe impl Send for ffi::CallbackHandler {}
 unsafe impl Sync for ffi::CallbackHandler {}
 
-#[derive(Clone)]
 pub struct CallbackHandler {
     // Generated Swift opaque type wrappers have a `Drop` impl that decrements the
     // refcount, but there's no way to generate a `Clone` impl that increments the
     // recount. Instead, we just wrap it in an `Arc`.
-    inner: Arc<ffi::CallbackHandler>,
+    inner: ffi::CallbackHandler,
 }
 
-impl Callbacks for CallbackHandler {
+impl CallbackHandler {
     fn on_set_interface_config(
         &self,
         tunnel_address_v4: Ipv4Addr,
@@ -293,16 +292,47 @@ impl WrappedSession {
             },
             Arc::new(socket_factory::tcp),
         )?;
-        let session = Session::connect(
+        let (session, mut event_stream) = Session::connect(
             Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
-            CallbackHandler {
-                inner: Arc::new(callback_handler),
-            },
             portal,
             runtime.handle().clone(),
         );
         session.set_tun(Box::new(Tun::new()?));
+
+        runtime.spawn(async move {
+            let callback_handler = CallbackHandler {
+                inner: callback_handler,
+            };
+
+            while let Some(event) = event_stream.next().await {
+                match event {
+                    Event::TunInterfaceUpdated {
+                        ipv4,
+                        ipv6,
+                        dns,
+                        search_domain,
+                        ipv4_routes,
+                        ipv6_routes,
+                    } => {
+                        callback_handler.on_set_interface_config(
+                            ipv4,
+                            ipv6,
+                            dns,
+                            search_domain,
+                            ipv4_routes,
+                            ipv6_routes,
+                        );
+                    }
+                    Event::ResourcesUpdated(resource_views) => {
+                        callback_handler.on_update_resources(resource_views);
+                    }
+                    Event::Disconnected(error) => {
+                        callback_handler.on_disconnect(error);
+                    }
+                }
+            }
+        });
 
         Ok(Self {
             inner: session,

@@ -5,7 +5,6 @@ use crate::{
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
-use client_shared::ConnlibMsg;
 use connlib_model::{ResourceId, ResourceView};
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
@@ -31,7 +30,7 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use tokio::{sync::mpsc, time::Instant};
+use tokio::time::Instant;
 use url::Url;
 
 #[cfg(target_os = "linux")]
@@ -179,12 +178,12 @@ struct Handler<'a> {
 }
 
 struct Session {
-    cb_rx: mpsc::Receiver<ConnlibMsg>,
+    event_stream: client_shared::EventStream,
     connlib: client_shared::Session,
 }
 
 enum Event {
-    Callback(ConnlibMsg),
+    Connlib(client_shared::Event),
     CallbackChannelClosed,
     Ipc(ClientMsg),
     IpcDisconnected,
@@ -247,8 +246,8 @@ impl<'a> Handler<'a> {
     async fn run(&mut self, signals: &mut signals::Terminate) -> HandlerOk {
         let ret = loop {
             match poll_fn(|cx| self.next_event(cx, signals)).await {
-                Event::Callback(x) => {
-                    if let Err(error) = self.handle_connlib_cb(x).await {
+                Event::Connlib(x) => {
+                    if let Err(error) = self.handle_connlib_event(x).await {
                         tracing::error!("Error while handling connlib callback: {error:#}");
                         continue;
                     }
@@ -309,10 +308,9 @@ impl<'a> Handler<'a> {
             });
         }
         if let Some(session) = self.session.as_mut() {
-            // `tokio::sync::mpsc::Receiver::recv` is cancel-safe.
-            if let Poll::Ready(option) = session.cb_rx.poll_recv(cx) {
+            if let Poll::Ready(option) = session.event_stream.poll_next(cx) {
                 return Poll::Ready(match option {
-                    Some(x) => Event::Callback(x),
+                    Some(x) => Event::Connlib(x),
                     None => Event::CallbackChannelClosed,
                 });
             }
@@ -320,21 +318,18 @@ impl<'a> Handler<'a> {
         Poll::Pending
     }
 
-    async fn handle_connlib_cb(&mut self, msg: ConnlibMsg) -> Result<()> {
+    async fn handle_connlib_event(&mut self, msg: client_shared::Event) -> Result<()> {
         match msg {
-            ConnlibMsg::OnDisconnect {
-                error_msg,
-                is_authentication_error,
-            } => {
+            client_shared::Event::Disconnected(error) => {
                 let _ = self.session.take();
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
-                    error_msg,
-                    is_authentication_error,
+                    error_msg: error.to_string(),
+                    is_authentication_error: error.is_authentication_error(),
                 })
                 .await?
             }
-            ConnlibMsg::OnSetInterfaceConfig {
+            client_shared::Event::TunInterfaceUpdated {
                 ipv4,
                 ipv6,
                 dns,
@@ -352,7 +347,7 @@ impl<'a> Handler<'a> {
 
                 self.send_ipc(ServerMsg::TunnelReady).await?;
             }
-            ConnlibMsg::OnUpdateResources(resources) => {
+            client_shared::Event::ResourcesUpdated(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                 self.dns_controller.flush()?;
                 self.send_ipc(ServerMsg::OnUpdateResources(resources))
@@ -472,7 +467,6 @@ impl<'a> Handler<'a> {
         .context("Failed to create `LoginUrl`")?;
 
         self.last_connlib_start_instant = Some(Instant::now());
-        let (callbacks, cb_rx) = client_shared::ChannelCallbackHandler::new();
 
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
@@ -490,10 +484,9 @@ impl<'a> Handler<'a> {
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
-        let connlib = client_shared::Session::connect(
+        let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(udp_socket_factory),
-            callbacks,
             portal,
             tokio::runtime::Handle::current(),
         );
@@ -510,7 +503,10 @@ impl<'a> Handler<'a> {
         };
         connlib.set_tun(tun);
 
-        let session = Session { cb_rx, connlib };
+        let session = Session {
+            event_stream,
+            connlib,
+        };
         self.session = Some(session);
 
         Ok(())

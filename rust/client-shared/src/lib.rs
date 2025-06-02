@@ -1,25 +1,23 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
-use callbacks::BackgroundCallbacks;
-pub use callbacks::{Callbacks, ChannelCallbackHandler, ConnlibMsg, DisconnectError};
 pub use connlib_model::StaticSecret;
-pub use eventloop::Eventloop;
+pub use eventloop::{DisconnectError, Event};
 pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
 
-use anyhow::{Context, Result};
+use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
-use eventloop::Command;
+use eventloop::{Command, Eventloop};
 use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::BTreeSet;
 use std::net::IpAddr;
 use std::sync::Arc;
-use tokio::sync::mpsc::UnboundedReceiver;
+use std::task::{Context, Poll};
+use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tun::Tun;
 
-mod callbacks;
 mod eventloop;
 mod serde_routelist;
 
@@ -31,34 +29,36 @@ const PHOENIX_TOPIC: &str = "client";
 /// To stop the session, simply drop this struct.
 #[derive(Clone)]
 pub struct Session {
-    channel: tokio::sync::mpsc::UnboundedSender<Command>,
+    channel: UnboundedSender<Command>,
+}
+
+pub struct EventStream {
+    channel: Receiver<Event>,
 }
 
 impl Session {
     /// Creates a new [`Session`].
     ///
     /// This connects to the portal using the given [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
-    pub fn connect<CB: Callbacks + 'static>(
+    pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        callbacks: CB,
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
-    ) -> Self {
-        let callbacks = BackgroundCallbacks::new(callbacks); // Run all callbacks on a background thread to avoid blocking the main connlib task.
-
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    ) -> (Self, EventStream) {
+        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1000);
 
         let connect_handle = handle.spawn(connect(
             tcp_socket_factory,
             udp_socket_factory,
-            callbacks.clone(),
             portal,
-            rx,
+            cmd_rx,
+            event_tx.clone(),
         ));
-        handle.spawn(connect_supervisor(connect_handle, callbacks));
+        handle.spawn(connect_supervisor(connect_handle, event_tx));
 
-        Self { channel: tx }
+        (Self { channel: cmd_tx }, EventStream { channel: event_rx })
     }
 
     /// Reset a [`Session`].
@@ -107,6 +107,16 @@ impl Session {
     }
 }
 
+impl EventStream {
+    pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
+        self.channel.poll_recv(cx)
+    }
+
+    pub async fn next(&mut self) -> Option<Event> {
+        self.channel.recv().await
+    }
+}
+
 impl Drop for Session {
     fn drop(&mut self) {
         tracing::debug!("`Session` dropped")
@@ -116,18 +126,15 @@ impl Drop for Session {
 /// Connects to the portal and starts a tunnel.
 ///
 /// When this function exits, the tunnel failed unrecoverably and you need to call it again.
-async fn connect<CB>(
+async fn connect(
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    callbacks: CB,
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    rx: UnboundedReceiver<Command>,
-) -> Result<()>
-where
-    CB: Callbacks + 'static,
-{
+    cmd_rx: UnboundedReceiver<Command>,
+    event_tx: Sender<Event>,
+) -> Result<()> {
     let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
-    let mut eventloop = Eventloop::new(tunnel, callbacks, portal, rx);
+    let mut eventloop = Eventloop::new(tunnel, portal, cmd_rx, event_tx);
 
     std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
 
@@ -135,18 +142,27 @@ where
 }
 
 /// A supervisor task that handles, when [`connect`] exits.
-async fn connect_supervisor<CB>(connect_handle: JoinHandle<Result<()>>, callbacks: CB)
-where
-    CB: Callbacks,
-{
+async fn connect_supervisor(
+    connect_handle: JoinHandle<Result<()>>,
+    event_tx: tokio::sync::mpsc::Sender<Event>,
+) {
     let task = async {
         connect_handle.await.context("connlib crashed")??;
 
         Ok(())
     };
 
-    match task.await {
-        Ok(()) => tracing::info!("connlib exited gracefully"),
-        Err(e) => callbacks.on_disconnect(e),
+    let error = match task.await {
+        Ok(()) => {
+            tracing::info!("connlib exited gracefully");
+
+            return;
+        }
+        Err(e) => e,
+    };
+
+    match event_tx.send(Event::Disconnected(error)).await {
+        Ok(()) => (),
+        Err(_) => tracing::debug!("Event stream closed before we could send disconnected event"),
     }
 }
