@@ -10,10 +10,10 @@ anyhow = { workspace = true }
 ip-packet = { workspace = true }
 
 [target.'cfg(target_family = "unix")'.dependencies]
+flume = { workspace = true }
+futures = { workspace = true }
 libc = { workspace = true }
 tokio = { workspace = true }
-futures = { workspace = true }
-flume = { workspace = true }
 tracing = { workspace = true }
 
 [lints]

@@ -55,15 +55,15 @@ aya = { workspace = true, features = ["tokio"] }
 aya-log = { workspace = true }
 jemallocator = { workspace = true }
 
+[target.'cfg(target_os = "linux")'.build-dependencies]
+anyhow = "1"
+aya-build = { workspace = true }
+
 [dev-dependencies]
 difference = { workspace = true }
 opentelemetry_sdk = { workspace = true, features = ["testing", "metrics"] }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process", "macros", "net"] }
-
-[target.'cfg(target_os = "linux")'.build-dependencies]
-anyhow = "1"
-aya-build = { workspace = true }
 
 [[test]]
 name = "regression"

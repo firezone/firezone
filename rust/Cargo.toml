@@ -1,33 +1,33 @@
 [workspace]
 members = [
-  "android-client-ffi",
-  "apple-client-ffi",
-  "bin-shared",
-  "client-shared",
-  "connlib/bufferpool",
-  "connlib/dns-over-tcp",
-  "connlib/dns-types",
-  "connlib/etherparse-ext",
-  "connlib/ip-packet",
-  "connlib/l4-tcp-dns-server",
-  "connlib/l4-udp-dns-server",
-  "connlib/model",
-  "connlib/phoenix-channel",
-  "connlib/snownet",
-  "connlib/socket-factory",
-  "connlib/tun",
-  "connlib/tunnel",
-  "gateway",
-  "gui-client/src-admx-macro",
-  "gui-client/src-tauri",
-  "headless-client",
-  "logging",
-  "relay/ebpf-shared",
-  "relay/ebpf-turn-router",
-  "relay/server",
-  "telemetry",
-  "tests/gui-smoke-test",
-  "tests/http-test-server",
+    "android-client-ffi",
+    "apple-client-ffi",
+    "bin-shared",
+    "client-shared",
+    "connlib/bufferpool",
+    "connlib/dns-over-tcp",
+    "connlib/dns-types",
+    "connlib/etherparse-ext",
+    "connlib/ip-packet",
+    "connlib/l4-tcp-dns-server",
+    "connlib/l4-udp-dns-server",
+    "connlib/model",
+    "connlib/phoenix-channel",
+    "connlib/snownet",
+    "connlib/socket-factory",
+    "connlib/tun",
+    "connlib/tunnel",
+    "gateway",
+    "gui-client/src-admx-macro",
+    "gui-client/src-tauri",
+    "headless-client",
+    "logging",
+    "relay/ebpf-shared",
+    "relay/ebpf-turn-router",
+    "relay/server",
+    "telemetry",
+    "tests/gui-smoke-test",
+    "tests/http-test-server",
 ]
 
 resolver = "2"
@@ -237,15 +237,15 @@ lto = "fat"
 # at the expense of compilation time
 codegen-units = 1
 
-# Override build settings just for the GUI client, so we get a pdb/dwp
-# Cargo ignores profile settings if they're not in the workspace's Cargo.toml
-[profile.dev.package.firezone-gui-client]
-debug = "full"
-split-debuginfo = "packed"
-
 [profile.release.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
 
 [profile.release.package.ebpf-turn-router]
 debug = 2
+
+# Override build settings just for the GUI client, so we get a pdb/dwp
+# Cargo ignores profile settings if they're not in the workspace's Cargo.toml
+[profile.dev.package.firezone-gui-client]
+debug = "full"
+split-debuginfo = "packed"

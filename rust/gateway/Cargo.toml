@@ -47,9 +47,9 @@ uuid = { workspace = true, features = ["v4"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 caps = { workspace = true }
+dns-lookup = { workspace = true }
 jemallocator = { workspace = true }
 nix = { workspace = true, features = ["user"] }
-dns-lookup = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dns-lookup = { workspace = true }
