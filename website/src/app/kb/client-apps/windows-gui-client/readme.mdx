@@ -205,8 +205,9 @@ Get-DnsClientNrptRule | where Comment -eq firezone-fd0020211111 | foreach { Remo
 The Firezone Client is split into 2 main processes: A Tunnel service which runs
 the tunnel, and a GUI which allows the user to control Firezone.
 
-- Tunnel service logs are stored at `%PROGRAMDATA%\dev.firezone.client\data\logs\`,
-  where `%PROGRAMDATA%` is almost always `C:\ProgramData`
+- Tunnel service logs are stored at
+  `%PROGRAMDATA%\dev.firezone.client\data\logs\`, where `%PROGRAMDATA%` is
+  almost always `C:\ProgramData`
 - GUI logs are stored at `%LOCALAPPDATA%\dev.firezone.client\data\logs`, where
   `%LOCALAPPDATA%` is, e.g. `C:\Users\username\AppData\Local`
 

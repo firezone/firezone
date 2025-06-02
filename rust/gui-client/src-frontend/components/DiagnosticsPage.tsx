@@ -32,18 +32,12 @@ export default function Diagnostics({
         </div>
 
         <div className="mt-8 flex justify-center gap-4">
-          <Button
-            onClick={exportLogs}
-            color="alternative"
-          >
+          <Button onClick={exportLogs} color="alternative">
             <ShareIcon className="mr-2 h-5 w-5" />
             Export Logs
           </Button>
 
-          <Button
-            onClick={clearLogs}
-            color="alternative"
-          >
+          <Button onClick={clearLogs} color="alternative">
             <TrashIcon className="mr-2 h-5 w-5" />
             Clear Logs
           </Button>

@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/react";
-import type { Client } from '@sentry/core';
+import type { Client } from "@sentry/core";
 
 type Environment = "production" | "staging" | "on-prem" | "unknown";
 
@@ -22,14 +22,14 @@ export default function initSentry(apiUrl: string) {
     release: `gui-client@${__APP_VERSION__}`,
   };
 
-  console.log("Initialising Sentry", { options })
+  console.log("Initialising Sentry", { options });
 
   client = Sentry.init(options);
 }
 
 function environment(url: URL | null): Environment {
   if (!url) {
-    return "unknown"
+    return "unknown";
   }
 
   switch (url.host) {
