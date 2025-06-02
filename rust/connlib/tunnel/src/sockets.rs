@@ -191,15 +191,11 @@ impl ThreadedUdpSocket {
                         .with_unit("{error}")
                         .build();
 
-                    match socket.set_buffer_sizes(
+                    if let Err(e) = socket.set_buffer_sizes(
                         socket_factory::SEND_BUFFER_SIZE,
                         socket_factory::RECV_BUFFER_SIZE,
                     ) {
-                        Ok(()) => {}
-                        Err(e) => {
-                            let _ = error_tx.send(Err(e));
-                            return;
-                        }
+                        tracing::warn!("Failed to set socket buffer sizes: {e}");
                     }
 
                     let send = pin!(async {
