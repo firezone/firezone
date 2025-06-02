@@ -1003,83 +1003,105 @@ defmodule Domain.ResourcesTest do
   end
 
   describe "create_resource/2" do
-    test "clears ip_stack for ipv4 resource", %{subject: subject} do
+    setup context do
+      gateway_group =
+        Fixtures.Gateways.create_group(account: context.account, subject: context.subject)
+
+      Map.put(context, :gateway_group, gateway_group)
+    end
+
+    test "clears ip_stack for ipv4 resource", %{subject: subject, gateway_group: gateway_group} do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :ip,
           address: "1.1.1.1",
-          ip_stack: :dual
+          ip_stack: :dual,
+          connections: [%{gateway_group_id: gateway_group.id}]
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
       assert is_nil(resource.ip_stack)
     end
 
-    test "clears ip_stack for cidr4 resource", %{subject: subject} do
+    test "clears ip_stack for cidr4 resource", %{subject: subject, gateway_group: gateway_group} do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :cidr,
           address: "10.0.0.0/24",
-          ip_stack: :dual
+          ip_stack: :dual,
+          connections: [%{gateway_group_id: gateway_group.id}]
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
       assert is_nil(resource.ip_stack)
     end
 
-    test "clears ip_stack for ipv6 resource", %{subject: subject} do
+    test "clears ip_stack for ipv6 resource", %{subject: subject, gateway_group: gateway_group} do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :ip,
           address: "2001:db8::1",
-          ip_stack: :dual
+          ip_stack: :dual,
+          connections: [%{gateway_group_id: gateway_group.id}]
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
       assert is_nil(resource.ip_stack)
     end
 
-    test "clears ip_stack for cidr6 resource", %{subject: subject} do
+    test "clears ip_stack for cidr6 resource", %{subject: subject, gateway_group: gateway_group} do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :cidr,
           address: "2001:db8::/32",
-          ip_stack: :dual
+          ip_stack: :dual,
+          connections: [%{gateway_group_id: gateway_group.id}]
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
       assert is_nil(resource.ip_stack)
     end
 
-    test "clears ip_stack for internet resource", %{subject: subject} do
+    test "clears ip_stack for internet resource", %{account: account, subject: subject} do
+      {:ok, gateway_group} = Domain.Gateways.create_internet_group(account)
+
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :internet,
-          ip_stack: :dual
+          ip_stack: :dual,
+          connections: [%{gateway_group_id: gateway_group.id}]
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
       assert is_nil(resource.ip_stack)
     end
 
-    test "allows setting ip_stack for dns resources", %{subject: subject} do
+    test "allows setting ip_stack for dns resources", %{
+      subject: subject,
+      gateway_group: gateway_group
+    } do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :dns,
           address: "example.com",
-          ip_stack: :dual
+          ip_stack: :dual,
+          connections: [%{gateway_group_id: gateway_group.id}]
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
       assert resource.ip_stack == :dual
     end
 
-    test "allows creating dns resource with empty ip_stack", %{subject: subject} do
+    test "allows creating dns resource with empty ip_stack", %{
+      subject: subject,
+      gateway_group: gateway_group
+    } do
       attrs =
         Fixtures.Resources.resource_attrs(
           type: :dns,
           address: "example.com",
-          ip_stack: nil
+          ip_stack: nil,
+          connections: [%{gateway_group_id: gateway_group.id}]
         )
 
       assert {:ok, resource} = create_resource(attrs, subject)
