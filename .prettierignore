@@ -2,8 +2,9 @@ elixir/_build
 elixir/deps
 elixir/apps/web/assets
 rust/target
-kotlin/android/build
+kotlin/android/app/build
 website/node_modules
+website/.next
 **/*.sh
 **/*.ex
 **/*.rs
