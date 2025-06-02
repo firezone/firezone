@@ -7,9 +7,9 @@ repos:
         entry: codespell
         language: system
         pass_filenames: false
-      - id: prettier-git-files
-        name: Prettier (only git-tracked files)
-        entry: bash -c 'git grep --cached -z -l '' | xargs -0 prettier --check --ignore-unknown'
+      - id: prettier
+        name: Prettier
+        entry: prettier --check --ignore-unknown .
         language: system
         pass_filenames: false
 
@@ -50,7 +50,7 @@ repos:
           - -i
           - "4"
   - repo: https://github.com/DevinR528/cargo-sort
-    rev: v1.0.9
+    rev: v2.0.1
     hooks:
       - id: cargo-sort
         args: ["--check", "--workspace", "rust/"]

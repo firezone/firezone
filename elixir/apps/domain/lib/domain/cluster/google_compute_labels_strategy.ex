@@ -28,8 +28,6 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     unless Domain.GoogleCloudPlatform.enabled?(),
       do: "Google Cloud Platform clustering strategy requires GoogleCloudPlatform to be enabled"
 
-    state = Map.put(state, :connected_nodes, [])
-
     {:ok, state, {:continue, :start}}
   end
 
@@ -52,30 +50,41 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp load(state) do
-    with {:ok, nodes, state} <- fetch_nodes(state),
-         :ok <-
-           Cluster.Strategy.connect_nodes(state.topology, state.connect, state.list_nodes, nodes) do
+    with {:ok, nodes, state} <- fetch_nodes(state) do
       Process.send_after(self(), :load, polling_interval(state))
 
-      state = Map.put(state, :connected_nodes, nodes)
+      case Cluster.Strategy.connect_nodes(state.topology, state.connect, state.list_nodes, nodes) do
+        :ok ->
+          Map.put(state, :connected_nodes, nodes)
 
-      state
+        {:error, problem_nodes} ->
+          state = Map.put(state, :connected_nodes, nodes -- problem_nodes)
+
+          # Expected during deploy as the list of nodes received does not factor in the health check
+          Logger.info("Error connecting to nodes",
+            connected_nodes: inspect(state.connected_nodes),
+            problem_nodes: inspect(problem_nodes)
+          )
+
+          # Only log error if the number of connected nodes falls below the expected threshold
+          unless enough_nodes_connected?(state) do
+            Logger.error("Connected nodes count is below threshold",
+              connected_nodes: inspect(state.connected_nodes),
+              problem_nodes: inspect(problem_nodes),
+              config: inspect(state.config)
+            )
+          end
+
+          state
+      end
     else
-      {:error, reason} ->
+      {:error, fetch_failed_reason} ->
         Process.send_after(self(), :load, polling_interval(state))
 
         # Expected during deploy as the list of nodes received does not factor in the health check
-        Logger.info("Error fetching nodes or connecting to them",
-          reason: inspect(reason)
+        Logger.info("Error fetching nodes",
+          reason: inspect(fetch_failed_reason)
         )
-
-        # Only log error if the number of connected nodes falls below the expected threshold
-        unless enough_nodes_connected?(state) do
-          Logger.error("Connected nodes count is below threshold",
-            connected_nodes: inspect(state.connected_nodes),
-            config: inspect(state.config)
-          )
-        end
 
         state
     end
@@ -162,7 +171,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp enough_nodes_connected?(state) do
-    connected_nodes = state.connected_nodes
+    connected_nodes = state.connected_nodes ++ [Node.self()]
     expected_api_node_count = Keyword.fetch!(state.config, :api_node_count)
     expected_domain_node_count = Keyword.fetch!(state.config, :domain_node_count)
     expected_web_node_count = Keyword.fetch!(state.config, :web_node_count)
@@ -178,7 +187,9 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp connected_node_count(nodes, target_app) do
-    Enum.count(nodes, fn node_name ->
+    nodes
+    |> Enum.uniq()
+    |> Enum.count(fn node_name ->
       app =
         node_name
         |> Atom.to_string()

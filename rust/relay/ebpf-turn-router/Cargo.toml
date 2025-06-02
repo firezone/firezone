@@ -4,19 +4,19 @@ version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
 
+[[bin]]
+name = "ebpf-turn-router-main" # This needs to be different from the package name otherwise the build-script fails to differentiate between the directory it is built in and the actual binary.
+path = "src/main.rs"
+
 [dependencies]
 aya-ebpf = { workspace = true }
 aya-log-ebpf = { workspace = true }
 ebpf-shared = { workspace = true }
 network-types = { workspace = true }
 
-[dev-dependencies]
-hex-literal = { workspace = true }
-ip-packet = { workspace = true }
-
 [build-dependencies]
 which = { workspace = true }
 
-[[bin]]
-name = "ebpf-turn-router-main" # This needs to be different from the package name otherwise the build-script fails to differentiate between the directory it is built in and the actual binary.
-path = "src/main.rs"
+[dev-dependencies]
+hex-literal = { workspace = true }
+ip-packet = { workspace = true }

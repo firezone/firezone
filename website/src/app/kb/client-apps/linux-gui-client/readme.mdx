@@ -48,22 +48,23 @@ To auto-start the Client when you log in, run
 
 ### Step 1: Install repositories
 
-These are required for both GNOME extensions and the WebKit and other dependencies
-of the Firezone Client.
+These are required for both GNOME extensions and the WebKit and other
+dependencies of the Firezone Client.
 
 1. `sudo dnf config-manager --set-enabled crb`
 1. `sudo dnf install epel-release`
 
 ### Step 2: Install system tray
 
-GNOME Shell in CentOS does not have a system tray by default. Use these
-steps to install it. For other desktops like xfce4 or KDE, the system tray may
-already work properly.
+GNOME Shell in CentOS does not have a system tray by default. Use these steps to
+install it. For other desktops like xfce4 or KDE, the system tray may already
+work properly.
 
 1. `sudo dnf install gnome-shell-extension-appindicator`
 1. Log out and back in to restart GNOME
 1. `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`
-1. Optionally: To manage GNOME extensions via a GUI, install `gnome-extensions-app`
+1. Optionally: To manage GNOME extensions via a GUI, install
+   `gnome-extensions-app`
 
 ### Step 3: Install Firezone
 
@@ -155,9 +156,9 @@ To export or clear your logs:
 1. Click `Diagnostic Logs`.
 1. Click `Export Logs` or `Clear Log Directory`.
 
-The Tunnel service (`firezone-client-tunnel.service`) also logs to stdout which is
-captured by systemd and sent to journald. To view the logs of the Tunnel service,
-use:
+The Tunnel service (`firezone-client-tunnel.service`) also logs to stdout which
+is captured by systemd and sent to journald. To view the logs of the Tunnel
+service, use:
 
 ```bash
 journalctl --pager-end --follow --unit firezone-client-tunnel.service

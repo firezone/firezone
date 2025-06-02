@@ -15,16 +15,15 @@ import {
 } from "flowbite-react";
 import React, { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
+import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
+import { FileCount } from "../generated/FileCount";
+import { Session } from "../generated/Session";
+import initSentry from "../initSentry";
 import About from "./AboutPage";
 import ColorPalette from "./ColorPalettePage";
-import Diagnostics, { FileCount } from "./DiagnosticsPage";
+import Diagnostics from "./DiagnosticsPage";
 import Overview from "./OverviewPage";
-import SettingsPage, { Settings } from "./SettingsPage";
-
-export interface Session {
-  account_slug: string;
-  actor_name: string;
-}
+import SettingsPage from "./SettingsPage";
 
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
@@ -49,6 +48,7 @@ export default function App() {
 
         console.log("settings_changed", { settings });
         setSettings(settings);
+        initSentry(settings.api_url);
       }
     );
     const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
@@ -94,7 +94,11 @@ export default function App() {
             </NavLink>
             <NavLink to="/diagnostics">
               {({ isActive }) => (
-                <SidebarItem active={isActive} icon={DocumentMagnifyingGlassIcon} as="div">
+                <SidebarItem
+                  active={isActive}
+                  icon={DocumentMagnifyingGlassIcon}
+                  as="div"
+                >
                   Diagnostics
                 </SidebarItem>
               )}

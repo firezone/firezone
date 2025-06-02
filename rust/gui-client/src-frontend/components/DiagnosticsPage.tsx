@@ -1,16 +1,12 @@
 import React from "react";
 import { ShareIcon, TrashIcon } from "@heroicons/react/16/solid";
 import { Button } from "flowbite-react";
+import { FileCount } from "../generated/FileCount";
 
 interface DiagnosticsPageProps {
   logCount: FileCount | null;
   exportLogs: () => void;
   clearLogs: () => void;
-}
-
-export interface FileCount {
-  files: number;
-  bytes: number;
 }
 
 export default function Diagnostics({
@@ -36,18 +32,12 @@ export default function Diagnostics({
         </div>
 
         <div className="mt-8 flex justify-center gap-4">
-          <Button
-            onClick={exportLogs}
-            color="alternative"
-          >
+          <Button onClick={exportLogs} color="alternative">
             <ShareIcon className="mr-2 h-5 w-5" />
             Export Logs
           </Button>
 
-          <Button
-            onClick={clearLogs}
-            color="alternative"
-          >
+          <Button onClick={clearLogs} color="alternative">
             <TrashIcon className="mr-2 h-5 w-5" />
             Clear Logs
           </Button>

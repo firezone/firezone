@@ -8,9 +8,12 @@ default-run = "firezone-gui-client"
 authors = ["Firezone, Inc."]
 license = { workspace = true }
 
-[build-dependencies]
-anyhow = { workspace = true }
-tauri-build = { workspace = true, features = [] }
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+# DO NOT REMOVE!!
+# TODO: We can probably remove this, per <https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.0.0-beta.8>
+# I don't know how to verify this change, so I won't do it right now.
+custom-protocol = ["tauri/custom-protocol"]
 
 [dependencies]
 anyhow = { workspace = true }
@@ -59,6 +62,7 @@ tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tslink = "0.3.0"
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zip = { workspace = true, features = ["deflate", "time"] }
@@ -66,34 +70,31 @@ zip = { workspace = true, features = ["deflate", "time"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 dirs = { workspace = true }
 nix = { workspace = true, features = ["user"] }
-tracing-journald = { workspace = true }
 sd-notify = { workspace = true }
+tracing-journald = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 
 [target.'cfg(target_os = "windows")'.dependencies]
-tauri-winrt-notification = "0.7.2"
-winreg = { workspace = true }
-windows-service = { workspace = true }
 admx-macro = { workspace = true }
+tauri-winrt-notification = "0.7.2"
+windows-service = { workspace = true }
+winreg = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies.windows]
 workspace = true
 features = [
-  "Win32_Foundation",
-  "Win32_System_Threading",
-  "Win32_System_Pipes", # For IPC system
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Pipes", # For IPC system
 ]
+
+[build-dependencies]
+anyhow = { workspace = true }
+tauri-build = { workspace = true, features = [] }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-
-[features]
-# this feature is used for production builds or when `devPath` points to the filesystem
-# DO NOT REMOVE!!
-# TODO: We can probably remove this, per <https://github.com/tauri-apps/tauri/releases/tag/tauri-v2.0.0-beta.8>
-# I don't know how to verify this change, so I won't do it right now.
-custom-protocol = ["tauri/custom-protocol"]
 
 [lints]
 workspace = true

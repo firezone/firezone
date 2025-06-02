@@ -95,7 +95,7 @@ jobs:
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build and push control plane images
         id: build
-        uses: docker/build-push-action@1dc73863535b631f98b2378be8619f83b136f4a0 # v6.17.0
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           build-args: ${{ matrix.build-args }}
           target: ${{ matrix.target }}
@@ -283,7 +283,7 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.arch.shortname }}-musl-cross
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
-      - uses: taiki-e/install-action@84c20235bedc3797c7e1ddf685c574a4a6c666da # v2.52.2
+      - uses: taiki-e/install-action@735e5933943122c5ac182670a935f54a949265c1 # v2.52.4
         with:
           tool: bpf-linker
         env:
@@ -383,7 +383,7 @@ jobs:
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
       - name: Build Docker images
         id: build
-        uses: docker/build-push-action@1dc73863535b631f98b2378be8619f83b136f4a0 # v6.17.0
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           platforms: ${{ matrix.arch.platform }}
           build-args: |
