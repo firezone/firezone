@@ -321,7 +321,8 @@ export default function Apple() {
       <Entry version="1.3.5" date={new Date("2024-09-26")}>
         <ChangeItem pull="6809">
           Fixes a bug where non-wildcard DNS resources were not prioritised over
-          wildcard ones (e.g. `app.example.com` vs `*.example.com`).
+          wildcard ones (e.g. <code>app.example.com</code> vs{" "}
+          <code>*.example.com</code>).
         </ChangeItem>
       </Entry>
       <Entry version="1.3.4" date={new Date("2024-09-25")}>

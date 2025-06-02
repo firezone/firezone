@@ -11,8 +11,8 @@ export default function Headless({ os }: { os: OS }) {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="9147">
-          Fixes an issue where connections failed to establish on machines
-          with multiple valid egress IPs.
+          Fixes an issue where connections failed to establish on machines with
+          multiple valid egress IPs.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.8" date={new Date("2025-05-14")}>
@@ -32,7 +32,7 @@ export default function Headless({ os }: { os: OS }) {
         {os === OS.Windows && (
           <ChangeItem pull="9213">
             Adds the Client to the winget repository. You can install it via
-            `winget install Firezone.Client.Headless`.
+            <code>winget install Firezone.Client.Headless</code>.
           </ChangeItem>
         )}
       </Entry>
@@ -139,13 +139,14 @@ export default function Headless({ os }: { os: OS }) {
             </ChangeItem>
             <ChangeItem pull="7770">
               BREAKING: Removes the positional token argument on the CLI. Use
-              `FIREZONE_TOKEN` or `FIREZONE_TOKEN_PATH` env variables instead.
+              <code>FIREZONE_TOKEN</code> or <code>FIREZONE_TOKEN_PATH</code>{" "}
+              env variables instead.
             </ChangeItem>
           </Entry>
           <Entry version="1.4.0" date={new Date("2024-12-13")}>
             <ChangeItem pull="7350">
               Allows disabling telemetry by setting
-              `FIREZONE_NO_TELEMETRY=true`.
+              <code>FIREZONE_NO_TELEMETRY=true</code>.
             </ChangeItem>
             <ChangeItem pull="7210">
               Adds support for GSO (Generic Segmentation Offload), delivering
@@ -213,7 +214,8 @@ export default function Headless({ os }: { os: OS }) {
           <Entry version="1.3.3" date={new Date("2024-09-25")}>
             <ChangeItem pull="6809">
               Fixes a bug where non-wildcard DNS resources were not prioritised
-              over wildcard ones (e.g. `app.example.com` vs `*.example.com`).
+              over wildcard ones (e.g. <code>app.example.com</code> vs{" "}
+              <code>*.example.com</code>).
             </ChangeItem>
           </Entry>
           <Entry version="1.3.2" date={new Date("2024-09-25")}>
@@ -271,7 +273,7 @@ export default function Headless({ os }: { os: OS }) {
           </Entry>
           <Entry version="1.1.5" date={new Date("2024-08-08")}>
             <ChangeItem pull="6163">
-              Uses `systemd-resolved` DNS control by default on Linux
+              Uses <code>systemd-resolved</code> DNS control by default on Linux
             </ChangeItem>
             <ChangeItem pull="6184">
               Mitigates a bug where the Client can panic if an internal channel
