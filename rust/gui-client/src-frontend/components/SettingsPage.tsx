@@ -1,14 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Button, TextInput, Label, TextInputProps, Tooltip } from "flowbite-react";
-
-export interface Settings {
-  auth_url: string;
-  auth_url_is_managed: boolean;
-  api_url: string;
-  api_url_is_managed: boolean;
-  log_filter: string;
-  log_filter_is_managed: boolean;
-}
+import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
 
 interface SettingsPageProps {
   settings: Settings | null;
