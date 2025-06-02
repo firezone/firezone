@@ -171,7 +171,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
   end
 
   defp enough_nodes_connected?(state) do
-    connected_nodes = state.connected_nodes
+    connected_nodes = state.connected_nodes ++ [Node.self()]
     expected_api_node_count = Keyword.fetch!(state.config, :api_node_count)
     expected_domain_node_count = Keyword.fetch!(state.config, :domain_node_count)
     expected_web_node_count = Keyword.fetch!(state.config, :web_node_count)
