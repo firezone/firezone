@@ -15,14 +15,15 @@ import {
 } from "flowbite-react";
 import React, { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
+import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
+import { FileCount } from "../generated/FileCount";
+import { Session } from "../generated/Session";
+import initSentry from "../initSentry";
 import About from "./AboutPage";
 import ColorPalette from "./ColorPalettePage";
 import Diagnostics from "./DiagnosticsPage";
 import Overview from "./OverviewPage";
 import SettingsPage from "./SettingsPage";
-import { FileCount } from "../generated/FileCount";
-import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
-import { Session } from "../generated/Session";
 
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
@@ -47,6 +48,7 @@ export default function App() {
 
         console.log("settings_changed", { settings });
         setSettings(settings);
+        initSentry(settings.api_url);
       }
     );
     const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
