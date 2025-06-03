@@ -40,6 +40,7 @@ defmodule API.Client.ChannelTest do
     dns_resource =
       Fixtures.Resources.create_resource(
         account: account,
+        ip_stack: :ipv4_only,
         connections: [%{gateway_group_id: gateway_group.id}]
       )
 
@@ -287,6 +288,7 @@ defmodule API.Client.ChannelTest do
       assert %{
                id: dns_resource.id,
                type: :dns,
+               ip_stack: :ipv4_only,
                name: dns_resource.name,
                address: dns_resource.address,
                address_description: dns_resource.address_description,
@@ -830,6 +832,7 @@ defmodule API.Client.ChannelTest do
       assert payload == %{
                id: resource.id,
                type: :dns,
+               ip_stack: :ipv4_only,
                name: resource.name,
                address: resource.address,
                address_description: resource.address_description,
@@ -867,6 +870,7 @@ defmodule API.Client.ChannelTest do
       assert payload == %{
                id: resource.id,
                type: :dns,
+               ip_stack: :ipv4_only,
                name: resource.name,
                address: resource.address,
                address_description: resource.address_description,
@@ -959,6 +963,7 @@ defmodule API.Client.ChannelTest do
       assert payload == %{
                id: resource.id,
                type: :dns,
+               ip_stack: :ipv4_only,
                name: resource.name,
                address: resource.address,
                address_description: resource.address_description,
@@ -1031,6 +1036,7 @@ defmodule API.Client.ChannelTest do
       assert payload == %{
                id: resource.id,
                type: :dns,
+               ip_stack: :ipv4_only,
                name: resource.name,
                address: resource.address,
                address_description: resource.address_description,

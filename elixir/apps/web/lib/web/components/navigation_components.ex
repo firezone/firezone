@@ -330,9 +330,9 @@ defmodule Web.NavigationComponents do
 
   ## Examples
 
-    <.website_link href="/pricing>Pricing</.website_link>
-    <.website_link href="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.website_link>
-    <.website_link href={~p"/contact/sales"}>Contact Sales</.website_link>
+    <.website_link path="/pricing>Pricing</.website_link>
+    <.website_link path="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.website_link>
+    <.website_link path="/contact/sales">Contact Sales</.website_link>
   """
   attr :path, :string, required: true
   attr :fragment, :string, required: false, default: ""
@@ -357,9 +357,7 @@ defmodule Web.NavigationComponents do
 
   ## Examples
 
-    <.website_link href="/pricing>Pricing</.website_link>
-    <.website_link href="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.website_link>
-    <.website_link href={~p"/contact/sales"}>Contact Sales</.website_link>
+    <.docs_action path="/kb/deploy/gateways" class="text-neutral-900">Deploy Gateway(s)</.docs_action>
   """
   attr :path, :string, required: true
   attr :fragment, :string, required: false, default: ""

@@ -169,6 +169,13 @@ impl Resource {
         }
     }
 
+    pub fn has_different_ip_stack(&self, other: &Resource) -> bool {
+        match (self, other) {
+            (Resource::Dns(dns_a), Resource::Dns(dns_b)) => dns_a.ip_stack != dns_b.ip_stack,
+            _ => false,
+        }
+    }
+
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
             Resource::Dns(_) => vec![],

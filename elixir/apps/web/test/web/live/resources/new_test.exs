@@ -490,6 +490,61 @@ defmodule Web.Live.Resources.NewTest do
     assert html =~ "UPGRADE TO UNLOCK"
   end
 
+  test "sets ip_stack when resource type is dns", %{
+    account: account,
+    identity: identity,
+    group: group,
+    conn: conn
+  } do
+    attrs = %{
+      name: "foobar.com",
+      address: "foobar.com",
+      ip_stack: "ipv4_only"
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    lv
+    |> form("form")
+    |> render_change(resource: %{type: :dns})
+
+    lv
+    |> form("form", resource: attrs)
+    |> render_submit()
+
+    resource = Repo.get_by(Domain.Resources.Resource, %{name: attrs.name, address: attrs.address})
+    assert resource.ip_stack == :ipv4_only
+  end
+
+  test "renders ip stack recommendation", %{
+    account: account,
+    identity: identity,
+    group: group,
+    conn: conn
+  } do
+    attrs = %{
+      name: "Mongo DB",
+      address: "**.mongodb.net",
+      ip_stack: :ipv6_only,
+      type: :dns
+    }
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/resources/new?site_id=#{group}")
+
+    html =
+      lv
+      |> form("form")
+      |> render_change(resource: attrs)
+
+    assert html =~ "Recommended for this Resource"
+  end
+
   test "creates a resource on valid attrs when traffic filter form disabled", %{
     account: account,
     group: group,

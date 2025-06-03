@@ -59,7 +59,7 @@ bytecodec = "0.5.0"
 bytes = { version = "1.9.0", default-features = false }
 caps = "0.5.5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
-clap = "4.5.37"
+clap = "4.5.39"
 client-shared = { path = "client-shared" }
 connlib-model = { path = "connlib/model" }
 derive_more = "1.0.0"
@@ -110,7 +110,7 @@ netlink-packet-route = "0.24"
 network-types = "0.0.8"
 nix = "0.29.0"
 nu-ansi-term = "0.50"
-num_cpus = "1.16.0"
+num_cpus = "1.17.0"
 once_cell = "1.21.3"
 opentelemetry = "0.29.0"
 opentelemetry-otlp = "0.29.0"
@@ -118,7 +118,7 @@ opentelemetry-stdout = "0.29.0"
 opentelemetry_sdk = "0.29.0"
 os_info = { version = "3", default-features = false }
 output_vt100 = "0.1"
-parking_lot = "0.12.3"
+parking_lot = "0.12.4"
 phoenix-channel = { path = "connlib/phoenix-channel" }
 png = "0.17.16"
 proc-macro2 = "1.0"
@@ -223,6 +223,7 @@ tracing-stackdriver = { git = "https://github.com/thomaseizinger/tracing-stackdr
 softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting for release.
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
+quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

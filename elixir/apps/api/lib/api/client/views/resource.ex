@@ -41,6 +41,7 @@ defmodule API.Client.Views.Resource do
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
       filters: Enum.flat_map(resource.filters, &render_filter/1)
     }
+    |> maybe_put_ip_stack(resource)
   end
 
   def render_filter(%Resources.Resource.Filter{ports: ports} = filter) when length(ports) > 0 do
@@ -78,5 +79,13 @@ defmodule API.Client.Views.Resource do
 
   defp port_to_number(port) do
     port |> String.trim() |> String.to_integer()
+  end
+
+  defp maybe_put_ip_stack(attrs, %{ip_stack: nil}) do
+    attrs
+  end
+
+  defp maybe_put_ip_stack(attrs, resource) do
+    Map.put(attrs, :ip_stack, resource.ip_stack)
   end
 end

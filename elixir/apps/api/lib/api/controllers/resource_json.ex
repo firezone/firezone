@@ -27,5 +27,14 @@ defmodule API.ResourceJSON do
       address_description: resource.address_description,
       type: resource.type
     }
+    |> maybe_put_ip_stack(resource)
+  end
+
+  defp maybe_put_ip_stack(attrs, %{ip_stack: nil}) do
+    attrs
+  end
+
+  defp maybe_put_ip_stack(attrs, resource) do
+    Map.put(attrs, :ip_stack, resource.ip_stack)
   end
 end

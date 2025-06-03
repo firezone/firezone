@@ -20,7 +20,13 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.0" date={new Date("2025-06-02")}>
+        <ChangeItem pull="9300">
+          Uses the new IP stack setting for DNS resources, which allows DNS
+          resources to optionally return only A or AAAA records if configured by
+          the administrator.
+        </ChangeItem>
         <ChangeItem pull="9227">
           Adds full support for managed configurations to configure the client
           using your organization's MDM solution. See the{" "}
@@ -48,7 +54,11 @@ export default function Android() {
           Fixes an issue where connections failed to establish on machines with
           multiple valid egress IPs.
         </ChangeItem>
-      </Unreleased>
+        <ChangeItem pull="9366">
+          Fixes an issue where Firezone could not start if the operating system
+          refused our request to increase the UDP socket buffer sizes.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.4.8" date={new Date("2025-04-30")}>
         <ChangeItem pull="8920">
           Improves connection reliability by maintaining the order of IP packets

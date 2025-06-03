@@ -196,6 +196,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
   # stop.
   #
   # For members, this happens quite often and we want to return an empty list.
+  # For organization units, this is expected if the Google account has no org units.
   defp list(uri, api_token, key) do
     request = Finch.build(:get, uri, [{"Authorization", "Bearer #{api_token}"}])
     response = Finch.request(request, @pool_name)
@@ -249,6 +250,10 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
 
       # This is expected if the group has no members or we're on the last page
       :error when key == "members" ->
+        {:ok, [], nil}
+
+      # organizationUnits will be missing if the Google account has no org units
+      :error when key == "organizationUnits" ->
         {:ok, [], nil}
 
       :error ->

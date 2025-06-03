@@ -9,6 +9,7 @@ defmodule Domain.Resources.Resource do
     field :name, :string
 
     field :type, Ecto.Enum, values: [:cidr, :ip, :dns, :internet]
+    field :ip_stack, Ecto.Enum, values: [:ipv4_only, :ipv6_only, :dual]
 
     embeds_many :filters, Filter, on_replace: :delete, primary_key: false do
       field :protocol, Ecto.Enum, values: [tcp: 6, udp: 17, icmp: 1]
