@@ -146,6 +146,20 @@ defmodule Domain.Resources.Resource.Changeset do
         "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)"
     )
     |> validate_change(:address, fn field, dns_address ->
+      cond do
+        # Disallow "**" unless it's at the start, or immediately preceded and followed by a dot.
+        String.contains?(dns_address, "**") and
+            not (String.starts_with?(dns_address, "**.") or String.contains?(dns_address, ".**.")) ->
+          [
+            {field,
+             "Double wildcard (**) must be at the start (e.g., **.example.com) or surrounded by dots (e.g., sub.**.example.com)."}
+          ]
+
+        true ->
+          []
+      end
+    end)
+    |> validate_change(:address, fn field, dns_address ->
       parts = String.split(dns_address, ".")
 
       {tld, domain_parts} =
