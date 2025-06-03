@@ -141,7 +141,7 @@ defmodule Domain.Resources.Resource.Changeset do
     end)
     |> validate_format(
       :address,
-      ~r/^[a-zA-Z0-9\p{L}\-*?]+(?:\.[a-zA-Z0-9\p{L}\-*?]+)*$/u,
+      ~r/^(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?)(?:\.(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?))*$/u,
       message:
         "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)"
     )
@@ -169,6 +169,9 @@ defmodule Domain.Resources.Resource.Changeset do
         end
 
       cond do
+        Enum.any?(parts, &(String.length(&1) > 63)) ->
+          [{field, "each label must not exceed 63 characters"}]
+
         String.contains?(tld, ["*", "?"]) ->
           [{field, "TLD cannot contain wildcards"}]
 
