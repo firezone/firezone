@@ -27,8 +27,7 @@ defmodule API.Schemas.Resource do
         "name" => "Prod DB",
         "address" => "10.0.0.10",
         "address_description" => "Production Database",
-        "type" => "ip",
-        "ip_stack" => nil
+        "type" => "ip"
       }
     })
   end
@@ -96,8 +95,7 @@ defmodule API.Schemas.Resource do
           "name" => "Prod DB",
           "address" => "10.0.0.10",
           "address_description" => "Production Database",
-          "type" => "ip",
-          "ip_stack" => nil
+          "type" => "ip"
         }
       }
     })
@@ -123,16 +121,14 @@ defmodule API.Schemas.Resource do
             "name" => "Prod DB",
             "address" => "10.0.0.10",
             "address_description" => "Production Database",
-            "type" => "ip",
-            "ip_stack" => nil
+            "type" => "ip"
           },
           %{
             "id" => "3b9451c9-5616-48f8-827f-009ace22d015",
             "name" => "Admin Dashboard",
             "address" => "10.0.0.20",
             "address_description" => "Production Admin Dashboard",
-            "type" => "ip",
-            "ip_stack" => nil
+            "type" => "ip"
           }
         ],
         "metadata" => %{
