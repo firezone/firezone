@@ -1029,7 +1029,10 @@ defmodule Domain.ActorsTest do
       provider_identifiers = Enum.map(attrs_list, & &1["provider_identifier"])
 
       assert {:ok, sync_data} = sync_provider_groups(provider, attrs_list)
-      assert Enum.map(sync_data.groups, & &1.name) == [deleted_group.name, group2.name]
+
+      assert Enum.sort(Enum.map(sync_data.groups, & &1.name)) ==
+               Enum.sort([deleted_group.name, group2.name])
+
       assert sync_data.deleted == []
       assert sync_data.plan == {provider_identifiers, []}
     end
