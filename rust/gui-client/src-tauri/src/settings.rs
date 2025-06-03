@@ -78,6 +78,36 @@ fn start_minimzed_default() -> bool {
     true
 }
 
+#[tslink::tslink(target = "./gui-client/src-frontend/generated/GeneralSettingsViewModel.ts")]
+#[derive(Clone, Serialize)]
+pub struct GeneralSettingsViewModel {
+    pub start_minimized: bool,
+    pub start_on_login: bool,
+    pub connect_on_start: bool,
+    pub connect_on_start_is_managed: bool,
+    pub account_slug: String,
+    pub account_slug_is_managed: bool,
+}
+
+impl GeneralSettingsViewModel {
+    pub fn new(mdm_settings: MdmSettings, general_settings: GeneralSettings) -> Self {
+        Self {
+            connect_on_start_is_managed: mdm_settings.connect_on_start.is_some(),
+            account_slug_is_managed: mdm_settings.account_slug.is_some(),
+            start_minimized: general_settings.start_minimized,
+            start_on_login: general_settings.start_on_login.is_some_and(|v| v),
+            connect_on_start: mdm_settings
+                .connect_on_start
+                .or(general_settings.connect_on_start)
+                .is_some_and(|v| v),
+            account_slug: mdm_settings
+                .account_slug
+                .or(general_settings.account_slug)
+                .unwrap_or_default(),
+        }
+    }
+}
+
 #[tslink::tslink(target = "./gui-client/src-frontend/generated/AdvancedSettingsViewModel.ts")]
 #[derive(Clone, Serialize)]
 pub struct AdvancedSettingsViewModel {

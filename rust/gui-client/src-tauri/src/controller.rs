@@ -6,6 +6,7 @@ use crate::{
     service,
     settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
+    view::GeneralSettingsForm,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use connlib_model::ResourceView;
@@ -69,6 +70,7 @@ pub trait GuiIntegration {
     fn notify_settings_changed(
         &self,
         mdm_settings: MdmSettings,
+        general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
@@ -86,14 +88,15 @@ pub trait GuiIntegration {
     fn show_settings_page(
         &self,
         mdm_settings: MdmSettings,
+        general_settings: GeneralSettings,
         settings: AdvancedSettings,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
 }
 
 pub enum ControllerRequest {
-    /// The GUI wants us to use these settings in-memory, they've already been saved to disk
-    ApplySettings(Box<AdvancedSettings>),
+    ApplyAdvancedSettings(Box<AdvancedSettings>),
+    ApplyGeneralSettings(Box<GeneralSettingsForm>),
     /// Clear the GUI's logs and await the Tunnel service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -478,7 +481,7 @@ impl<I: GuiIntegration> Controller<I> {
         use ControllerRequest::*;
 
         match req {
-            ApplySettings(settings) => {
+            ApplyAdvancedSettings(settings) => {
                 self.log_filter_reloader
                     .reload(&settings.log_filter)
                     .context("Couldn't reload log filter")?;
@@ -497,6 +500,7 @@ impl<I: GuiIntegration> Controller<I> {
                 // Notify GUI that settings have changed
                 self.integration.notify_settings_changed(
                     self.mdm_settings.clone(),
+                    self.general_settings.clone(),
                     self.advanced_settings.clone(),
                 )?;
 
@@ -506,6 +510,29 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_system_tray_menu();
 
                 self.integration.show_notification("Settings saved", "")?
+            }
+            ApplyGeneralSettings(settings) => {
+                let account_slug = settings.account_slug.trim();
+
+                self.general_settings = GeneralSettings {
+                    start_minimized: settings.start_minimized,
+                    start_on_login: Some(settings.start_on_login),
+                    connect_on_start: Some(settings.connect_on_start),
+                    account_slug: (!account_slug.is_empty()).then_some(account_slug.to_owned()),
+                    ..self.general_settings.clone()
+                };
+
+                settings::save_general(&self.general_settings).await?;
+
+                gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
+
+                self.integration.notify_settings_changed(
+                    self.mdm_settings.clone(),
+                    self.general_settings.clone(),
+                    self.advanced_settings.clone(),
+                )?;
+
+                self.integration.show_notification("Settings saved", "")?;
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -597,6 +624,7 @@ impl<I: GuiIntegration> Controller<I> {
                     system_tray::Window::About => self.integration.show_about_page()?,
                     system_tray::Window::Settings => self.integration.show_settings_page(
                         self.mdm_settings.clone(),
+                        self.general_settings.clone(),
                         self.advanced_settings.clone(),
                     )?,
                 };
@@ -634,6 +662,7 @@ impl<I: GuiIntegration> Controller<I> {
             UpdateState => {
                 self.integration.notify_settings_changed(
                     self.mdm_settings.clone(),
+                    self.general_settings.clone(),
                     self.advanced_settings.clone(),
                 )?;
                 match self.auth.session() {

@@ -25,6 +25,15 @@ const customTheme = createTheme({
       },
     },
   },
+  toggleSwitch: {
+    toggle: {
+      checked: {
+        color: {
+          default: "bg-accent-500"
+        }
+      }
+    }
+  },
 });
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {

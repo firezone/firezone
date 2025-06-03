@@ -12,12 +12,21 @@ use crate::{
     settings::AdvancedSettings,
 };
 
+#[derive(Clone, serde::Deserialize)]
+pub struct GeneralSettingsForm {
+    pub start_minimized: bool,
+    pub start_on_login: bool,
+    pub connect_on_start: bool,
+    pub account_slug: String,
+}
+
 pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         clear_logs,
         export_logs,
         apply_advanced_settings,
         reset_advanced_settings,
+        apply_general_settings,
         sign_in,
         sign_out,
         update_state,
@@ -49,6 +58,24 @@ async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) 
 }
 
 #[tauri::command]
+async fn apply_general_settings(
+    managed: tauri::State<'_, Managed>,
+    settings: GeneralSettingsForm,
+) -> Result<(), String> {
+    if managed.inner().inject_faults {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+
+    managed
+        .ctlr_tx
+        .send(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
@@ -59,7 +86,7 @@ async fn apply_advanced_settings(
 
     managed
         .ctlr_tx
-        .send(ControllerRequest::ApplySettings(Box::new(settings)))
+        .send(ControllerRequest::ApplyAdvancedSettings(Box::new(settings)))
         .await
         .context("Failed to send `ApplySettings` command")?;
 

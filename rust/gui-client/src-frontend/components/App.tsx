@@ -1,34 +1,39 @@
 import {
+  Bars3Icon,
   CogIcon,
   DocumentMagnifyingGlassIcon,
   HomeIcon,
   InformationCircleIcon,
   SwatchIcon,
+  WrenchScrewdriverIcon,
 } from "@heroicons/react/24/solid";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   Sidebar,
+  SidebarCollapse,
   SidebarItem,
   SidebarItemGroup,
   SidebarItems,
 } from "flowbite-react";
 import React, { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
-import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
+import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
 import { FileCount } from "../generated/FileCount";
 import { Session } from "../generated/Session";
-import initSentry from "../initSentry";
 import About from "./AboutPage";
+import AdvancedSettingsPage from "./AdvancedSettingsPage";
 import ColorPalette from "./ColorPalettePage";
 import Diagnostics from "./DiagnosticsPage";
+import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
-import SettingsPage from "./SettingsPage";
+import { GeneralSettingsViewModel } from "../generated/GeneralSettingsViewModel";
 
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
   let [logCount, setLogCount] = useState<FileCount | null>(null);
-  let [settings, setSettings] = useState<Settings | null>(null);
+  let [generalSettings, setGeneralSettings] = useState<GeneralSettingsViewModel | null>(null);
+  let [advancedSettings, setAdvancedSettings] = useState<AdvancedSettingsViewModel | null>(null);
 
   useEffect(() => {
     const signedInUnlisten = listen<Session>("signed_in", (e) => {
@@ -41,14 +46,22 @@ export default function App() {
       console.log("signed_out");
       setSession(null);
     });
-    const settingsChangedUnlisten = listen<Settings>(
-      "settings_changed",
+    const generalSettingsChangedUnlisten = listen<GeneralSettingsViewModel>(
+      "general_settings_changed",
       (e) => {
-        let settings = e.payload;
+        let generalSettings = e.payload;
 
-        console.log("settings_changed", { settings });
-        setSettings(settings);
-        initSentry(settings.api_url);
+        console.log("general_settings_changed", { settings: generalSettings });
+        setGeneralSettings(generalSettings);
+      }
+    );
+    const advancedSettingsChangedUnlisten = listen<AdvancedSettingsViewModel>(
+      "advanced_settings_changed",
+      (e) => {
+        let advancedSettings = e.payload;
+
+        console.log("advanced_settings_changed", { settings: advancedSettings });
+        setAdvancedSettings(advancedSettings);
       }
     );
     const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
@@ -63,7 +76,8 @@ export default function App() {
     return () => {
       signedInUnlisten.then((unlistenFn) => unlistenFn());
       signedOutUnlisten.then((unlistenFn) => unlistenFn());
-      settingsChangedUnlisten.then((unlistenFn) => unlistenFn());
+      generalSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
+      advancedSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
       logsRecountedUnlisten.then((unlistenFn) => unlistenFn());
     };
   }, []);
@@ -85,13 +99,26 @@ export default function App() {
                 </SidebarItem>
               )}
             </NavLink>
-            <NavLink to="/settings">
-              {({ isActive }) => (
-                <SidebarItem active={isActive} icon={CogIcon} as="div">
-                  Settings
-                </SidebarItem>
-              )}
-            </NavLink>
+            <SidebarCollapse label="Settings" open={true} icon={Bars3Icon}>
+              <NavLink to="/general-settings">
+                {({ isActive }) => (
+                  <SidebarItem active={isActive} icon={CogIcon} as="div">
+                    General
+                  </SidebarItem>
+                )}
+              </NavLink>
+              <NavLink to="/advanced-settings">
+                {({ isActive }) => (
+                  <SidebarItem
+                    active={isActive}
+                    icon={WrenchScrewdriverIcon}
+                    as="div"
+                  >
+                    Advanced
+                  </SidebarItem>
+                )}
+              </NavLink>
+            </SidebarCollapse>
             <NavLink to="/diagnostics">
               {({ isActive }) => (
                 <SidebarItem
@@ -141,10 +168,21 @@ export default function App() {
             }
           />
           <Route
-            path="/settings"
+            path="/general-settings"
             element={
-              <SettingsPage
-                settings={settings}
+              <GeneralSettingsPage
+                settings={generalSettings}
+                saveSettings={(settings) =>
+                  invoke("apply_general_settings", { settings })
+                }
+              />
+            }
+          />
+          <Route
+            path="/advanced-settings"
+            element={
+              <AdvancedSettingsPage
+                settings={advancedSettings}
                 saveSettings={(settings) =>
                   invoke("apply_advanced_settings", { settings })
                 }
