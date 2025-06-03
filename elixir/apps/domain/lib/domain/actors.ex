@@ -1,7 +1,7 @@
 defmodule Domain.Actors do
   alias Domain.Actors.Membership
   alias Web.Clients
-  alias Domain.{Repo, PubSub}
+  alias Domain.Repo
   alias Domain.{Accounts, Auth, Tokens, Clients, Policies, Billing}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
@@ -171,32 +171,14 @@ defmodule Domain.Actors do
   end
 
   def create_managed_group(%Accounts.Account{} = account, attrs) do
-    changeset = Group.Changeset.create(account, attrs)
-
-    case Repo.insert(changeset) do
-      {:ok, group} ->
-        # TODO: WAL
-        :ok = broadcast_group_memberships_events(group, changeset)
-        {:ok, group}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
+    Group.Changeset.create(account, attrs)
+    |> Repo.insert()
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
-      changeset = Group.Changeset.create(subject.account, attrs, subject)
-
-      case Repo.insert(changeset) do
-        {:ok, group} ->
-          # TODO: WAL
-          :ok = broadcast_group_memberships_events(group, changeset)
-          {:ok, group}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+      Group.Changeset.create(subject.account, attrs, subject)
+      |> Repo.insert()
     end
   end
 
@@ -228,9 +210,7 @@ defmodule Domain.Actors do
           group
           |> Repo.preload(:memberships)
           |> Group.Changeset.update(attrs)
-        end,
-        # TODO: WAL
-        after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
+        end
       )
     end
   end
@@ -239,6 +219,7 @@ defmodule Domain.Actors do
     {:error, :synced_group}
   end
 
+  # TODO: Refactor this function not to lock
   def update_dynamic_group_memberships(account_id) do
     Repo.transaction(fn ->
       Group.Query.not_deleted()
@@ -255,9 +236,6 @@ defmodule Domain.Actors do
 
         {:ok, group} = Repo.update(changeset)
 
-        # TODO: WAL
-        :ok = broadcast_memberships_events(changeset)
-
         group
       end)
     end)
@@ -272,14 +250,12 @@ defmodule Domain.Actors do
       {:ok, [group]} ->
         {:ok, _policies} = Policies.delete_policies_for(group, subject)
 
-        {_count, memberships} =
+        # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
+        # ensure consistency
+        {_count, _memberships} =
           Membership.Query.all()
           |> Membership.Query.by_group_id(group.id)
-          |> Membership.Query.returning_all()
           |> Repo.delete_all()
-
-        # TODO: WAL
-        :ok = broadcast_membership_removal_events(memberships)
 
         {:ok, group}
 
@@ -301,13 +277,11 @@ defmodule Domain.Actors do
       |> Group.Query.by_provider_id(provider.id)
       |> Group.Query.by_account_id(provider.account_id)
 
-    {_count, memberships} =
+    # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
+    # ensure consistency
+    {_count, _memberships} =
       Membership.Query.by_group_provider_id(provider.id)
-      |> Membership.Query.returning_all()
       |> Repo.delete_all()
-
-    # TODO: WAL
-    :ok = broadcast_membership_removal_events(memberships)
 
     with {:ok, groups} <- delete_groups(queryable, subject) do
       {:ok, _policies} = Policies.delete_policies_for(provider, subject)
@@ -340,13 +314,11 @@ defmodule Domain.Actors do
         {:ok, _policies} = Domain.Policies.delete_policies_for(group)
       end)
 
-    {_count, memberships} =
+    # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
+    # ensure consistency
+    {_count, _memberships} =
       Membership.Query.by_group_id({:in, Enum.map(groups, & &1.id)})
-      |> Membership.Query.returning_all()
       |> Repo.delete_all()
-
-    # TODO: WAL
-    :ok = broadcast_membership_removal_events(memberships)
 
     {:ok, groups}
   end
@@ -528,9 +500,7 @@ defmodule Domain.Actors do
             is_nil(Map.get(changeset.changes, :type)) -> changeset
             true -> :cant_remove_admin_type
           end
-        end,
-        # TODO: WAL
-        after_commit: fn _actor, changeset -> broadcast_memberships_events(changeset) end
+        end
       )
     end
   end
@@ -608,14 +578,13 @@ defmodule Domain.Actors do
             :ok = Auth.delete_identities_for(actor, subject)
             :ok = Clients.delete_clients_for(actor, subject)
 
-            {_count, memberships} =
+            # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
+            # ensure consistency
+            {_count, _memberships} =
               Membership.Query.by_actor_id(actor.id)
-              |> Membership.Query.returning_all()
               |> Repo.delete_all()
 
             {:ok, _groups} = update_dynamic_group_memberships(actor.account_id)
-            # TODO: WAL
-            :ok = broadcast_membership_removal_events(memberships)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
             Actor.Changeset.delete_actor(actor)
@@ -670,95 +639,5 @@ defmodule Domain.Actors do
 
   defp other_enabled_admins_exist?(%Actor{}) do
     false
-  end
-
-  ### PubSub
-
-  defp actor_memberships_topic(%Actor{} = actor), do: actor_memberships_topic(actor.id)
-  defp actor_memberships_topic(actor_id), do: "actor_memberships:#{actor_id}"
-
-  def subscribe_to_membership_updates_for_actor(actor_or_id) do
-    actor_or_id |> actor_memberships_topic() |> PubSub.subscribe()
-  end
-
-  def unsubscribe_from_membership_updates_for_actor(actor_or_id) do
-    actor_or_id |> actor_memberships_topic() |> PubSub.unsubscribe()
-  end
-
-  # TODO: WAL
-  defp broadcast_memberships_events(changeset) do
-    if changeset.valid? and Ecto.Changeset.changed?(changeset, :memberships) do
-      case Ecto.Changeset.apply_action(changeset, :update) do
-        {:ok, %Actor{} = actor} ->
-          broadcast_actor_memberships_events(actor, changeset)
-
-        {:ok, %Group{} = group} ->
-          broadcast_group_memberships_events(group, changeset)
-
-        {:error, _reason} ->
-          :ok
-      end
-    else
-      :ok
-    end
-  end
-
-  defp broadcast_actor_memberships_events(actor, changeset) do
-    previous_group_ids =
-      Map.get(changeset.data, :memberships, [])
-      |> Enum.map(& &1.group_id)
-      |> Enum.uniq()
-
-    current_group_ids =
-      Map.get(actor, :memberships, [])
-      |> Enum.map(& &1.group_id)
-      |> Enum.uniq()
-
-    :ok =
-      Enum.each(current_group_ids -- previous_group_ids, fn group_id ->
-        broadcast_membership_event(:create, actor.id, group_id)
-      end)
-
-    :ok =
-      Enum.each(previous_group_ids -- current_group_ids, fn group_id ->
-        broadcast_membership_event(:delete, actor.id, group_id)
-      end)
-  end
-
-  defp broadcast_group_memberships_events(group, changeset) do
-    previous_actor_ids =
-      Map.get(changeset.data, :memberships, [])
-      |> Enum.map(& &1.actor_id)
-      |> Enum.uniq()
-
-    current_actor_ids =
-      Map.get(group, :memberships, [])
-      |> Enum.map(& &1.actor_id)
-      |> Enum.uniq()
-
-    :ok =
-      Enum.each(current_actor_ids -- previous_actor_ids, fn actor_id ->
-        broadcast_membership_event(:create, actor_id, group.id)
-      end)
-
-    :ok =
-      Enum.each(previous_actor_ids -- current_actor_ids, fn actor_id ->
-        broadcast_membership_event(:delete, actor_id, group.id)
-      end)
-  end
-
-  defp broadcast_membership_removal_events(memberships) do
-    Enum.each(memberships, fn membership ->
-      broadcast_membership_event(:delete, membership.actor_id, membership.group_id)
-    end)
-  end
-
-  def broadcast_membership_event(action, actor_id, group_id) do
-    # TODO: WAL - this is an n+1 problem
-    :ok = Policies.broadcast_access_events_for(action, actor_id, group_id)
-
-    actor_id
-    |> actor_memberships_topic()
-    |> PubSub.broadcast({:"#{action}_membership", actor_id, group_id})
   end
 end
