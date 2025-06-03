@@ -123,7 +123,14 @@ defmodule Domain.Resources.Resource.Changeset do
   defp validate_dns_address(changeset) do
     changeset
     |> validate_length(:address, min: 1, max: 253)
-    # Reject IPs (IPv4 and IPv6)
+    |> validate_not_an_ip_address()
+    |> validate_contains_only_valid_dns_characters()
+    |> validate_position_of_double_wildcard()
+    |> validate_dns_parts()
+  end
+
+  defp validate_not_an_ip_address(changeset) do
+    changeset
     |> validate_change(:address, fn field, address ->
       cond do
         String.match?(address, ~r/^(\d+\.){3}\d+(\/\d+)?$/) ->
@@ -139,26 +146,35 @@ defmodule Domain.Resources.Resource.Changeset do
           []
       end
     end)
+  end
+
+  defp validate_contains_only_valid_dns_characters(changeset) do
+    changeset
     |> validate_format(
       :address,
       ~r/^(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?)(?:\.(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?))*$/u,
       message:
         "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)"
     )
-    |> validate_change(:address, fn field, dns_address ->
-      cond do
-        # Disallow "**" unless it's at the start, or immediately preceded and followed by a dot.
-        String.contains?(dns_address, "**") and
-            not (String.starts_with?(dns_address, "**.") or String.contains?(dns_address, ".**.")) ->
-          [
-            {field,
-             "Double wildcard (**) can only replace entire subdomains (e.g. **.example.com, sub.**.example.com)"}
-          ]
+  end
 
-        true ->
-          []
+  defp validate_position_of_double_wildcard(changeset) do
+    changeset
+    |> validate_change(:address, fn field, dns_address ->
+      if String.contains?(dns_address, "**") and
+           not (String.starts_with?(dns_address, "**.") or String.contains?(dns_address, ".**.")) do
+        [
+          {field,
+           "Double wildcard (**) can only replace entire subdomains (e.g. **.example.com, sub.**.example.com)"}
+        ]
+      else
+        []
       end
     end)
+  end
+
+  defp validate_dns_parts(changeset) do
+    changeset
     |> validate_change(:address, fn field, dns_address ->
       parts = String.split(dns_address, ".")
 
