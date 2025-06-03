@@ -112,7 +112,9 @@ defmodule Domain.Resources.Resource.ChangesetTest do
           })
 
         assert changeset.changes[:address] == cidr
-        assert changeset.valid?
+
+        assert changeset.valid?,
+               "Expected '#{string}' to be valid, got: #{inspect(changeset.errors)}"
       end
 
       [
@@ -130,7 +132,8 @@ defmodule Domain.Resources.Resource.ChangesetTest do
         "2607:f8b0:4012:0::200e/128:80"
       ]
       |> Enum.each(fn string ->
-        refute create(%{type: :cidr, address: string}).valid?
+        refute create(%{type: :cidr, address: string}).valid?,
+               "Expected '#{string}' to be invalid"
       end)
     end
 
@@ -150,7 +153,9 @@ defmodule Domain.Resources.Resource.ChangesetTest do
           })
 
         assert changeset.changes[:address] == ip
-        assert changeset.valid?
+
+        assert changeset.valid?,
+               "Expected '#{string}' to be valid, got: #{inspect(changeset.errors)}"
       end
 
       [
@@ -165,7 +170,8 @@ defmodule Domain.Resources.Resource.ChangesetTest do
         "[2607:f8b0:4012:0::200e]:80"
       ]
       |> Enum.each(fn string ->
-        refute create(%{type: :ip, address: string}).valid?
+        refute create(%{type: :ip, address: string}).valid?,
+               "Expected '#{string}' to be invalid"
       end)
     end
 
@@ -179,7 +185,8 @@ defmodule Domain.Resources.Resource.ChangesetTest do
             address_description: valid_address
           })
 
-        assert changeset.valid?
+        assert changeset.valid?,
+               "Expected '#{valid_address}' to be valid, got: #{inspect(changeset.errors)}"
       end
 
       for invalid_address <- @invalid_dns_addresses do
@@ -211,7 +218,9 @@ defmodule Domain.Resources.Resource.ChangesetTest do
           )
 
         assert changeset.changes.address == cidr
-        assert changeset.valid?
+
+        assert changeset.valid?,
+               "Expected '#{string}' to be valid, got: #{inspect(changeset.errors)}"
       end
 
       [
@@ -230,7 +239,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
       ]
       |> Enum.each(fn invalid_cidr ->
         {changeset, _} = update(resource, %{type: :cidr, address: invalid_cidr}, subject)
-        refute changeset.valid?
+        refute changeset.valid?, "Expected '#{invalid_cidr}' to be invalid"
       end)
     end
 
@@ -254,7 +263,9 @@ defmodule Domain.Resources.Resource.ChangesetTest do
           )
 
         assert changeset.changes.address == ip
-        assert changeset.valid?
+
+        assert changeset.valid?,
+               "Expected '#{string}' to be valid, got: #{inspect(changeset.errors)}"
       end
 
       [
@@ -270,7 +281,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
       ]
       |> Enum.each(fn invalid_ip ->
         {changeset, _} = update(resource, %{type: :ip, address: invalid_ip}, subject)
-        refute changeset.valid?
+        refute changeset.valid?, "Expected '#{invalid_ip}' to be invalid"
       end)
     end
 
@@ -288,7 +299,8 @@ defmodule Domain.Resources.Resource.ChangesetTest do
             subject
           )
 
-        assert changeset.valid?
+        assert changeset.valid?,
+               "Expected '#{valid_address}' to be valid, got: #{inspect(changeset.errors)}"
       end
 
       for invalid_address <- @invalid_dns_addresses do
