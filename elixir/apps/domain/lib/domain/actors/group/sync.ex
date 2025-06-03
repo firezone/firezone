@@ -47,12 +47,19 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp plan_groups_update(groups, provider_identifiers) do
+    identifiers_set = MapSet.new(provider_identifiers)
+
     {upsert, delete} =
       Enum.reduce(groups, {provider_identifiers, []}, fn group, {upsert, delete} ->
-        if group.provider_identifier in provider_identifiers do
-          {upsert, delete}
-        else
-          {upsert -- [group.provider_identifier], [group.provider_identifier] ++ delete}
+        cond do
+          MapSet.member?(identifiers_set, group.provider_identifier) ->
+            {upsert, delete}
+
+          !is_nil(group.deleted_at) ->
+            {upsert, delete}
+
+          true ->
+            {upsert -- [group.provider_identifier], [group.provider_identifier] ++ delete}
         end
       end)
 

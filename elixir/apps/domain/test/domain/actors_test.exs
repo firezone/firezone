@@ -991,6 +991,48 @@ defmodule Domain.ActorsTest do
                   group_ids_by_provider_identifier: %{}
                 }}
     end
+
+    test "ignores synced groups that are soft deleted", %{
+      account: account,
+      provider: provider
+    } do
+      deleted_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID1",
+          name: "ALREADY_DELETED"
+        )
+
+      Domain.Actors.Group.Query.not_deleted()
+      |> Domain.Actors.Group.Query.by_account_id(account.id)
+      |> Domain.Actors.Group.Query.by_provider_id(provider.id)
+      |> Domain.Actors.Group.Query.by_provider_identifier(
+        {:in, [deleted_group.provider_identifier]}
+      )
+      |> Domain.Actors.delete_groups()
+
+      group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "G:GROUP_ID2",
+          name: "TO_BE_UPDATED"
+        )
+
+      attrs_list = [
+        %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID2"},
+        %{"name" => "Group:Security", "provider_identifier" => "G:GROUP_ID3"},
+        %{"name" => "Group:Finance", "provider_identifier" => "G:GROUP_ID4"}
+      ]
+
+      provider_identifiers = Enum.map(attrs_list, & &1["provider_identifier"])
+
+      assert {:ok, sync_data} = sync_provider_groups(provider, attrs_list)
+      assert Enum.map(sync_data.groups, & &1.name) == [deleted_group.name, group2.name]
+      assert sync_data.deleted == []
+      assert sync_data.plan == {provider_identifiers, []}
+    end
   end
 
   describe "sync_provider_memberships/2" do
