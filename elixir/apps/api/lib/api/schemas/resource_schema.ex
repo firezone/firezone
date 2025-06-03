@@ -27,8 +27,7 @@ defmodule API.Schemas.Resource do
         "name" => "Prod DB",
         "address" => "10.0.0.10",
         "address_description" => "Production Database",
-        "type" => "ip",
-        "ip_stack" => "ipv4_only"
+        "type" => "ip"
       }
     })
   end
@@ -96,8 +95,7 @@ defmodule API.Schemas.Resource do
           "name" => "Prod DB",
           "address" => "10.0.0.10",
           "address_description" => "Production Database",
-          "type" => "ip",
-          "ip_stack" => "ipv4_only"
+          "type" => "ip"
         }
       }
     })
