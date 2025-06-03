@@ -182,7 +182,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       assert list_organization_units(api_token) == {:error, :retry_later}
     end
 
-    test "returns invalid_response when api responds without expected JSON keys" do
+    test "returns empty list when api responds without expected JSON keys" do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
 
@@ -192,7 +192,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
         Jason.encode!(%{})
       )
 
-      assert list_organization_units(api_token) == {:error, :invalid_response}
+      assert {:ok, organization_units} = list_organization_units(api_token)
+      assert organization_units == []
     end
 
     test "returns invalid_response when api responds with unexpected data format" do
@@ -202,7 +203,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organization_units" => "invalid data"})
+        Jason.encode!(%{"organizationUnits" => "invalid data"})
       )
 
       assert list_organization_units(api_token) == {:error, :invalid_response}
