@@ -152,7 +152,7 @@ defmodule Domain.Resources.Resource.Changeset do
             not (String.starts_with?(dns_address, "**.") or String.contains?(dns_address, ".**.")) ->
           [
             {field,
-             "Double wildcard (**) must be at the start (e.g., **.example.com) or surrounded by dots (e.g., sub.**.example.com)."}
+             "Double wildcard (**) can only replace entire subdomains (e.g. **.example.com, sub.**.example.com)"}
           ]
 
         true ->
