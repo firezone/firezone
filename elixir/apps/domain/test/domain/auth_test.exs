@@ -1905,11 +1905,13 @@ defmodule Domain.AuthTest do
       assert {:ok,
               %{
                 identities: [_id1, _id2, _id3, _id4, _id5],
-                plan: {[], ["USER_ID5", "USER_ID4", "USER_ID3"], delete},
+                plan: {[], upsert, delete},
                 deleted: [deleted_identity1, deleted_identity2],
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
+
+      assert Enum.sort(upsert) == ["USER_ID3", "USER_ID4", "USER_ID5"]
 
       assert Enum.take(provider_identifiers, 2)
              |> Enum.all?(&(&1 in delete))
