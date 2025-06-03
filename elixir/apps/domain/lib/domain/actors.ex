@@ -250,8 +250,8 @@ defmodule Domain.Actors do
       {:ok, [group]} ->
         {:ok, _policies} = Policies.delete_policies_for(group, subject)
 
-        # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
-        # ensure consistency
+        # TODO: WAL
+        # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
         {_count, _memberships} =
           Membership.Query.all()
           |> Membership.Query.by_group_id(group.id)
@@ -277,8 +277,8 @@ defmodule Domain.Actors do
       |> Group.Query.by_provider_id(provider.id)
       |> Group.Query.by_account_id(provider.account_id)
 
-    # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
-    # ensure consistency
+    # TODO: WAL
+    # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
     {_count, _memberships} =
       Membership.Query.by_group_provider_id(provider.id)
       |> Repo.delete_all()
@@ -314,8 +314,8 @@ defmodule Domain.Actors do
         {:ok, _policies} = Domain.Policies.delete_policies_for(group)
       end)
 
-    # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
-    # ensure consistency
+    # TODO: WAL
+    # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
     {_count, _memberships} =
       Membership.Query.by_group_id({:in, Enum.map(groups, & &1.id)})
       |> Repo.delete_all()
@@ -578,8 +578,8 @@ defmodule Domain.Actors do
             :ok = Auth.delete_identities_for(actor, subject)
             :ok = Clients.delete_clients_for(actor, subject)
 
-            # TODO: Consider using a trigger or transaction to handle the side effects of soft-deletions to
-            # ensure consistency
+            # TODO: WAL
+            # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
             {_count, _memberships} =
               Membership.Query.by_actor_id(actor.id)
               |> Repo.delete_all()

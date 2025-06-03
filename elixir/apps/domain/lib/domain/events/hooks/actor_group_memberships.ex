@@ -5,9 +5,7 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
     broadcast(:create, actor_id, group_id)
   end
 
-  def on_update(_old_data, _data) do
-    :ok
-  end
+  def on_update(_old_data, _data), do: :ok
 
   def on_delete(%{"actor_id" => actor_id, "group_id" => group_id} = _old_data) do
     broadcast(:delete, actor_id, group_id)
@@ -19,7 +17,8 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
 
     :ok = PubSub.broadcast(topic, payload)
 
-    # TODO: This is an n+1 query; refactor with a cached lookup table on the client channel
+    # TODO: WAL
+    # This is an n+1 query; refactor with a cached lookup table on the client channel
     :ok = Policies.broadcast_access_events_for(action, actor_id, group_id)
   end
 end
