@@ -5019,6 +5019,7 @@ dependencies = [
  "backoff",
  "base64 0.22.1",
  "firezone-logging",
+ "firezone-telemetry",
  "futures",
  "hex",
  "hostname",
