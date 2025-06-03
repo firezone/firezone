@@ -64,7 +64,7 @@ pub struct GeneralSettings {
     pub favorite_resources: HashSet<ResourceId>,
     #[serde(default)]
     pub internet_resource_enabled: Option<bool>,
-    #[serde(default = "start_minimzed_default")]
+    #[serde(default = "start_minimized_default")]
     pub start_minimized: bool,
     #[serde(default)]
     pub start_on_login: Option<bool>,
@@ -74,7 +74,7 @@ pub struct GeneralSettings {
     pub account_slug: Option<String>,
 }
 
-fn start_minimzed_default() -> bool {
+fn start_minimized_default() -> bool {
     true
 }
 
