@@ -125,7 +125,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_length(:address, min: 1, max: 253)
     |> validate_not_an_ip_address()
     |> validate_contains_only_valid_dns_characters()
-    |> validate_position_of_double_wildcard()
     |> validate_dns_parts()
   end
 
@@ -158,21 +157,6 @@ defmodule Domain.Resources.Resource.Changeset do
     )
   end
 
-  defp validate_position_of_double_wildcard(changeset) do
-    changeset
-    |> validate_change(:address, fn field, dns_address ->
-      if String.contains?(dns_address, "**") and
-           not (String.starts_with?(dns_address, "**.") or String.contains?(dns_address, ".**.")) do
-        [
-          {field,
-           "Double wildcard (**) can only replace entire subdomains (e.g. **.example.com, sub.**.example.com)"}
-        ]
-      else
-        []
-      end
-    end)
-  end
-
   defp validate_dns_parts(changeset) do
     changeset
     |> validate_change(:address, fn field, dns_address ->
@@ -196,6 +180,9 @@ defmodule Domain.Resources.Resource.Changeset do
             {field,
              "#{tld} cannot be used as a TLD. Try adding a DNS alias to /etc/hosts on the Gateway(s) instead"}
           ]
+
+        Enum.any?(domain_parts, fn part -> String.contains?(part, "**") and part != "**" end) ->
+          [{field, "wildcard pattern must not contain ** in the middle of a label"}]
 
         Enum.all?(parts, &(&1 == "*")) ->
           [{field, "wildcard pattern must include a valid domain"}]
