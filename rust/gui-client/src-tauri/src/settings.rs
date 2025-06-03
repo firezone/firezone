@@ -64,6 +64,18 @@ pub struct GeneralSettings {
     pub favorite_resources: HashSet<ResourceId>,
     #[serde(default)]
     pub internet_resource_enabled: Option<bool>,
+    #[serde(default = "start_minimzed_default")]
+    pub start_minimized: bool,
+    #[serde(default)]
+    pub start_on_login: Option<bool>,
+    #[serde(default)]
+    pub connect_on_start: Option<bool>,
+    #[serde(default)]
+    pub account_slug: Option<String>,
+}
+
+fn start_minimzed_default() -> bool {
+    true
 }
 
 #[tslink::tslink(target = "./gui-client/src-frontend/generated/AdvancedSettingsViewModel.ts")]
@@ -171,6 +183,10 @@ pub async fn migrate_legacy_settings(
     let general = GeneralSettings {
         favorite_resources: legacy.favorite_resources,
         internet_resource_enabled: legacy.internet_resource_enabled,
+        start_minimized: true,
+        start_on_login: None,
+        connect_on_start: None,
+        account_slug: None,
     };
 
     if let Err(e) = save_general(&general).await {

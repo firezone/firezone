@@ -277,7 +277,7 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to load token from disk during app start")?
         {
             // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
-            if self.mdm_settings.connect_on_start.is_none_or(|c| c) {
+            if self.connect_on_start().is_none_or(|c| c) {
                 self.start_session(token).await?;
             }
         } else {
@@ -286,7 +286,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.refresh_system_tray_menu();
 
-        if !ran_before::get().await? {
+        if !ran_before::get().await? || !self.general_settings.start_minimized {
             self.integration.show_overview_page(self.auth.session())?;
         }
 
@@ -531,12 +531,14 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
                 let auth_url = self.auth_url().clone();
+                let account_slug = self.account_slug().map(|a| a.to_owned());
+
                 let req = self
                     .auth
                     .start_sign_in()
                     .context("Couldn't start sign-in flow")?;
 
-                let url = req.to_url(&auth_url, self.mdm_settings.account_slug.as_deref());
+                let url = req.to_url(&auth_url, account_slug.as_deref());
                 self.refresh_system_tray_menu();
                 self.integration
                     .open_url(url.expose_secret())
@@ -965,6 +967,19 @@ impl<I: GuiIntegration> Controller<I> {
             .api_url
             .as_ref()
             .unwrap_or(&self.advanced_settings.api_url)
+    }
+
+    fn account_slug(&self) -> Option<&str> {
+        self.mdm_settings
+            .account_slug
+            .as_deref()
+            .or(self.general_settings.account_slug.as_deref())
+    }
+
+    fn connect_on_start(&self) -> Option<bool> {
+        self.mdm_settings
+            .connect_on_start
+            .or(self.general_settings.connect_on_start)
     }
 }
 
