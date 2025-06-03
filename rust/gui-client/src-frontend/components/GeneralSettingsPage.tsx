@@ -52,6 +52,24 @@ export default function GeneralSettingsPage({
         }}
         className="max-w flex flex-col gap-2"
       >
+        <div>
+          <Label className="text-neutral-600" htmlFor="account-slug-input">
+            Account slug
+          </Label>
+          <ManagedTextInput
+            name="account_slug"
+            id="account-slug-input"
+            managed={localSettings.account_slug_is_managed}
+            value={localSettings.account_slug}
+            onChange={(e) =>
+              setLocalSettings({
+                ...localSettings,
+                account_slug: e.target.value,
+              })
+            }
+          />
+        </div>
+
         <div className="flex flex-row gap-2 items-center">
           <ToggleSwitch
             name="start_minimized"
@@ -102,24 +120,6 @@ export default function GeneralSettingsPage({
           <Label className="text-neutral-600" htmlFor="connect-on-start-input">
             Connect on start
           </Label>
-        </div>
-
-        <div>
-          <Label className="text-neutral-600" htmlFor="account-slug-input">
-            Account slug
-          </Label>
-          <ManagedTextInput
-            name="account_slug"
-            id="account-slug-input"
-            managed={localSettings.account_slug_is_managed}
-            value={localSettings.account_slug}
-            onChange={(e) =>
-              setLocalSettings({
-                ...localSettings,
-                account_slug: e.target.value,
-              })
-            }
-          />
         </div>
 
         <div className="flex justify-end gap-4 mt-4">
