@@ -68,8 +68,8 @@ jobs:
             macos-13,
             macos-14,
             macos-15,
-            windows-2019,
             windows-2022,
+            windows-2025
           ]
     runs-on: ${{ matrix.runs-on }}
     steps:
@@ -127,7 +127,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2019, windows-2022]
+        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2022, windows-2025]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -162,8 +162,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { runs-on: windows-2019, test: token-path-windows.ps1 }
           - { runs-on: windows-2022, test: token-path-windows.ps1 }
+          - { runs-on: windows-2025, test: token-path-windows.ps1 }
           - { runs-on: ubuntu-22.04, test: linux-group.sh }
           - { runs-on: ubuntu-24.04, test: linux-group.sh }
           - { runs-on: ubuntu-22.04, test: token-path-linux.sh }
