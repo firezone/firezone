@@ -34,7 +34,7 @@ pub fn identify(distinct_id: String, api_url: String, release: String) {
         )
         .await
         {
-            tracing::debug!("Failed to log `new_session` event: {e:#}");
+            tracing::debug!("Failed to log `$identify` event: {e:#}");
         }
     });
 }
