@@ -11,3 +11,4 @@ website/.next
 **/*.wxs
 **/pnpm-lock.yaml
 swift/apple/**/Contents.json
+rust/gui-client/src-frontend/generated
