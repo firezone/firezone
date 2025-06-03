@@ -436,6 +436,10 @@ impl<I: GuiIntegration> Controller<I> {
         let session = self.auth.session().context("Missing session")?;
         self.integration.notify_signed_in(session)?;
 
+        self.general_settings.account_slug = Some(session.account_slug.clone());
+        settings::save_general(&self.general_settings).await?;
+        self.notify_settings_changed()?;
+
         self.refresh_system_tray_menu();
 
         Ok(())
@@ -498,11 +502,7 @@ impl<I: GuiIntegration> Controller<I> {
                 .await?;
 
                 // Notify GUI that settings have changed
-                self.integration.notify_settings_changed(
-                    self.mdm_settings.clone(),
-                    self.general_settings.clone(),
-                    self.advanced_settings.clone(),
-                )?;
+                self.notify_settings_changed()?;
 
                 tracing::debug!("Applied new settings. Log level will take effect immediately.");
 
@@ -526,11 +526,7 @@ impl<I: GuiIntegration> Controller<I> {
 
                 gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
 
-                self.integration.notify_settings_changed(
-                    self.mdm_settings.clone(),
-                    self.general_settings.clone(),
-                    self.advanced_settings.clone(),
-                )?;
+                self.notify_settings_changed()?;
 
                 self.integration.show_notification("Settings saved", "")?;
             }
@@ -660,11 +656,7 @@ impl<I: GuiIntegration> Controller<I> {
                     .context("Couldn't open update page")?;
             }
             UpdateState => {
-                self.integration.notify_settings_changed(
-                    self.mdm_settings.clone(),
-                    self.general_settings.clone(),
-                    self.advanced_settings.clone(),
-                )?;
+                self.notify_settings_changed()?;
                 match self.auth.session() {
                     Some(session) => self.integration.notify_signed_in(session)?,
                     None => self.integration.notify_signed_out()?,
@@ -982,6 +974,16 @@ impl<I: GuiIntegration> Controller<I> {
             .send(msg)
             .await
             .context("Failed to send IPC message")
+    }
+
+    fn notify_settings_changed(&mut self) -> Result<()> {
+        self.integration.notify_settings_changed(
+            self.mdm_settings.clone(),
+            self.general_settings.clone(),
+            self.advanced_settings.clone(),
+        )?;
+
+        Ok(())
     }
 
     fn auth_url(&self) -> &Url {
