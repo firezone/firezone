@@ -110,6 +110,7 @@ defmodule Web.Live.Resources.EditTest do
            "resource[filters][udp][enabled]",
            "resource[filters][udp][ports]",
            "resource[filters][udp][protocol]",
+           "resource[ip_stack]",
            "resource[name]",
            "resource[type]"
          ])
@@ -143,6 +144,7 @@ defmodule Web.Live.Resources.EditTest do
              "resource[filters][udp][enabled]",
              "resource[filters][udp][ports]",
              "resource[filters][udp][protocol]",
+             "resource[ip_stack]",
              "resource[name]",
              "resource[type]"
            ]
@@ -256,6 +258,62 @@ defmodule Web.Live.Resources.EditTest do
     assert updated_filters.udp == attrs.filters.udp
   end
 
+  test "updates ip_stack when resource type is dns", %{
+    account: account,
+    identity: identity,
+    resource: resource,
+    conn: conn
+  } do
+    conn = authorize_conn(conn, identity)
+
+    attrs = %{
+      name: "foobar.com",
+      type: "dns",
+      address: "foobar.com",
+      ip_stack: "ipv4_only"
+    }
+
+    {:ok, lv, html} =
+      conn
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    refute html =~ "Recommended for this Resource"
+
+    {:ok, _lv, html} =
+      lv
+      |> form("form", resource: attrs)
+      |> render_submit()
+      |> follow_redirect(conn, ~p"/#{account}/resources")
+
+    assert updated_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
+    assert updated_resource.name == attrs.name
+    assert updated_resource.type == :dns
+    assert updated_resource.address == attrs.address
+    assert updated_resource.ip_stack == :ipv4_only
+    assert html =~ "Resource #{updated_resource.name} updated successfully"
+  end
+
+  test "renders ip stack recommendation", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    conn = authorize_conn(conn, identity)
+
+    resource =
+      Fixtures.Resources.create_resource(
+        account: account,
+        type: :dns,
+        address: "**.mongodb.net"
+      )
+
+    {:ok, _lv, html} =
+      conn
+      |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    assert html =~ "Recommended for this Resource"
+  end
+
   test "redirects to a site when site_id query param is set", %{
     account: account,
     identity: identity,
@@ -314,6 +372,7 @@ defmodule Web.Live.Resources.EditTest do
              "resource[filters][udp][enabled]",
              "resource[filters][udp][ports]",
              "resource[filters][udp][protocol]",
+             "resource[ip_stack]",
              "resource[name]",
              "resource[type]"
            ]

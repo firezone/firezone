@@ -3,9 +3,9 @@ defmodule Domain.Resources.Resource.Changeset do
   alias Domain.{Auth, Accounts, Network}
   alias Domain.Resources.{Resource, Connection}
 
-  @fields ~w[address address_description name type]a
-  @update_fields ~w[address address_description name type]a
-  @replace_fields ~w[type address filters]a
+  @fields ~w[address address_description name type ip_stack]a
+  @update_fields ~w[address address_description name type ip_stack]a
+  @replace_fields ~w[type address filters ip_stack]a
   @required_fields ~w[name type]a
 
   # Reference list of common TLDs from IANA
@@ -260,6 +260,12 @@ defmodule Domain.Resources.Resource.Changeset do
     changeset
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:address_description, min: 1, max: 512)
+    |> maybe_put_default_ip_stack()
+    |> check_constraint(:ip_stack,
+      name: :resources_ip_stack_not_null,
+      message:
+        "IP stack must be one of 'dual', 'ipv4_only', 'ipv6_only' for DNS resources or NULL for others"
+    )
     |> cast_embed(:filters, with: &cast_filter/2)
     |> unique_constraint(:ipv4, name: :resources_account_id_ipv4_index)
     |> unique_constraint(:ipv6, name: :resources_account_id_ipv6_index)
@@ -270,5 +276,21 @@ defmodule Domain.Resources.Resource.Changeset do
     filter
     |> cast(attrs, [:protocol, :ports])
     |> validate_required([:protocol])
+  end
+
+  defp maybe_put_default_ip_stack(changeset) do
+    current_type = get_field(changeset, :type)
+    original_type = Map.get(changeset.data, :type, nil)
+
+    cond do
+      current_type == :dns ->
+        put_default_value(changeset, :ip_stack, :dual)
+
+      original_type == :dns and current_type != :dns ->
+        put_change(changeset, :ip_stack, nil)
+
+      true ->
+        changeset
+    end
   end
 end

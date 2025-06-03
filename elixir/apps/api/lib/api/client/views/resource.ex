@@ -11,7 +11,8 @@ defmodule API.Client.Views.Resource do
       id: resource.id,
       type: :internet,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
-      can_be_disabled: true
+      can_be_disabled: true,
+      ip_stack: resource.ip_stack
     }
   end
 
@@ -27,7 +28,8 @@ defmodule API.Client.Views.Resource do
       address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
-      filters: Enum.flat_map(resource.filters, &render_filter/1)
+      filters: Enum.flat_map(resource.filters, &render_filter/1),
+      ip_stack: resource.ip_stack
     }
   end
 
@@ -39,7 +41,8 @@ defmodule API.Client.Views.Resource do
       address_description: resource.address_description,
       name: resource.name,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
-      filters: Enum.flat_map(resource.filters, &render_filter/1)
+      filters: Enum.flat_map(resource.filters, &render_filter/1),
+      ip_stack: resource.ip_stack
     }
   end
 

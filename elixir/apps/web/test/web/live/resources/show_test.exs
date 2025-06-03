@@ -15,6 +15,7 @@ defmodule Web.Live.Resources.ShowTest do
       Fixtures.Resources.create_resource(
         account: account,
         subject: subject,
+        ip_stack: :ipv4_only,
         connections: [%{gateway_group_id: group.id}]
       )
 
@@ -140,6 +141,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert table["address"] =~ resource.address
     assert table["created"] =~ actor.name
     assert table["address description"] =~ resource.address_description
+    assert table["ip stack"] =~ "IPv4 only"
 
     for filter <- resource.filters do
       assert String.downcase(table["traffic restriction"]) =~ Atom.to_string(filter.protocol)

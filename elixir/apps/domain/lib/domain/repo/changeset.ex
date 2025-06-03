@@ -56,7 +56,7 @@ defmodule Domain.Repo.Changeset do
   end
 
   @doc """
-  Takes value from `value_field` and puts it's hash of a given type to `hash_field`.
+  Takes value from `value_field` and puts its hash of a given type to `hash_field`.
   """
   def put_hash(%Ecto.Changeset{} = changeset, value_field, type, opts) do
     hash_field = Keyword.fetch!(opts, :to)
@@ -106,7 +106,7 @@ defmodule Domain.Repo.Changeset do
   defp field_variations(field) when is_atom(field), do: [field, Atom.to_string(field)]
 
   @doc """
-  Puts the change if field is not changed or it's value is set to `nil`.
+  Puts the change if field is not changed or its value is set to `nil`.
   """
   def put_default_value(%Ecto.Changeset{} = changeset, _field, nil) do
     changeset

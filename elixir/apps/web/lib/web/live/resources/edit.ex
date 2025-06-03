@@ -203,6 +203,8 @@ defmodule Web.Resources.Edit do
               required
             />
 
+            <.ip_stack_form :if={"#{@form[:type].value}" == "dns"} form={@form} />
+
             <.filters_form
               :if={@resource.type != :internet}
               account={@account}
