@@ -32,8 +32,10 @@ import { GeneralSettingsViewModel } from "../generated/GeneralSettingsViewModel"
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
   let [logCount, setLogCount] = useState<FileCount | null>(null);
-  let [generalSettings, setGeneralSettings] = useState<GeneralSettingsViewModel | null>(null);
-  let [advancedSettings, setAdvancedSettings] = useState<AdvancedSettingsViewModel | null>(null);
+  let [generalSettings, setGeneralSettings] =
+    useState<GeneralSettingsViewModel | null>(null);
+  let [advancedSettings, setAdvancedSettings] =
+    useState<AdvancedSettingsViewModel | null>(null);
 
   useEffect(() => {
     const signedInUnlisten = listen<Session>("signed_in", (e) => {
@@ -60,7 +62,9 @@ export default function App() {
       (e) => {
         let advancedSettings = e.payload;
 
-        console.log("advanced_settings_changed", { settings: advancedSettings });
+        console.log("advanced_settings_changed", {
+          settings: advancedSettings,
+        });
         setAdvancedSettings(advancedSettings);
       }
     );
@@ -175,6 +179,7 @@ export default function App() {
                 saveSettings={(settings) =>
                   invoke("apply_general_settings", { settings })
                 }
+                resetSettings={() => invoke("reset_general_settings")}
               />
             }
           />

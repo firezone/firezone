@@ -29,10 +29,10 @@ const customTheme = createTheme({
     toggle: {
       checked: {
         color: {
-          default: "bg-accent-500"
-        }
-      }
-    }
+          default: "bg-accent-500",
+        },
+      },
+    },
   },
 });
 

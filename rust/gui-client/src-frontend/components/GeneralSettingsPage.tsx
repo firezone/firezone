@@ -6,11 +6,13 @@ import { ManagedToggleSwitch, ManagedTextInput } from "./ManagedInput";
 interface Props {
   settings: GeneralSettingsViewModel | null;
   saveSettings: (settings: GeneralSettingsViewModel) => void;
+  resetSettings: () => void;
 }
 
 export default function GeneralSettingsPage({
   settings,
   saveSettings,
+  resetSettings,
 }: Props) {
   // Local settings can be edited without affecting the global state.
   const [localSettings, setLocalSettings] = useState<GeneralSettingsViewModel>(
@@ -121,6 +123,9 @@ export default function GeneralSettingsPage({
         </div>
 
         <div className="flex justify-end gap-4 mt-4">
+          <Button type="reset" onClick={resetSettings} color="alternative">
+            Reset to Defaults
+          </Button>
           <Button type="submit">Apply</Button>
         </div>
       </form>

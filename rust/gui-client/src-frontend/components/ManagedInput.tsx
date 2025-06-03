@@ -21,7 +21,9 @@ export function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
   }
 }
 
-export function ManagedToggleSwitch(props: ToggleSwitchProps & { managed: boolean }) {
+export function ManagedToggleSwitch(
+  props: ToggleSwitchProps & { managed: boolean }
+) {
   let { managed, ...toggleSwitchProps } = props;
 
   if (managed) {

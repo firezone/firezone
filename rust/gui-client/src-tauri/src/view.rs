@@ -27,6 +27,7 @@ pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'stati
         apply_advanced_settings,
         reset_advanced_settings,
         apply_general_settings,
+        reset_general_settings,
         sign_in,
         sign_out,
         update_state,
@@ -96,6 +97,17 @@ async fn apply_advanced_settings(
 #[tauri::command]
 async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
     apply_advanced_settings(managed, AdvancedSettings::default()).await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<(), String> {
+    managed
+        .ctlr_tx
+        .send(ControllerRequest::ResetGeneralSettings)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(())
 }

@@ -97,6 +97,7 @@ pub trait GuiIntegration {
 pub enum ControllerRequest {
     ApplyAdvancedSettings(Box<AdvancedSettings>),
     ApplyGeneralSettings(Box<GeneralSettingsForm>),
+    ResetGeneralSettings,
     /// Clear the GUI's logs and await the Tunnel service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -514,21 +515,24 @@ impl<I: GuiIntegration> Controller<I> {
             ApplyGeneralSettings(settings) => {
                 let account_slug = settings.account_slug.trim();
 
-                self.general_settings = GeneralSettings {
+                self.apply_general_settings(GeneralSettings {
                     start_minimized: settings.start_minimized,
                     start_on_login: Some(settings.start_on_login),
                     connect_on_start: Some(settings.connect_on_start),
                     account_slug: (!account_slug.is_empty()).then_some(account_slug.to_owned()),
                     ..self.general_settings.clone()
-                };
-
-                settings::save_general(&self.general_settings).await?;
-
-                gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
-
-                self.notify_settings_changed()?;
-
-                self.integration.show_notification("Settings saved", "")?;
+                })
+                .await?;
+            }
+            ResetGeneralSettings => {
+                self.apply_general_settings(GeneralSettings {
+                    start_minimized: true,
+                    start_on_login: None,
+                    connect_on_start: None,
+                    account_slug: None,
+                    ..self.general_settings.clone()
+                })
+                .await?;
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -666,6 +670,19 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration.notify_logs_recounted(&file_count)?;
             }
         }
+        Ok(())
+    }
+
+    async fn apply_general_settings(&mut self, settings: GeneralSettings) -> Result<()> {
+        self.general_settings = settings;
+
+        settings::save_general(&self.general_settings).await?;
+
+        gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
+
+        self.notify_settings_changed()?;
+        self.integration.show_notification("Settings saved", "")?;
+
         Ok(())
     }
 
