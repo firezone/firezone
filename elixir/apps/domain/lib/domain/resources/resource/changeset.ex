@@ -123,7 +123,13 @@ defmodule Domain.Resources.Resource.Changeset do
   defp validate_dns_address(changeset) do
     changeset
     |> validate_length(:address, min: 1, max: 253)
-    # Reject IPs (IPv4 and IPv6)
+    |> validate_not_an_ip_address()
+    |> validate_contains_only_valid_dns_characters()
+    |> validate_dns_parts()
+  end
+
+  defp validate_not_an_ip_address(changeset) do
+    changeset
     |> validate_change(:address, fn field, address ->
       cond do
         String.match?(address, ~r/^(\d+\.){3}\d+(\/\d+)?$/) ->
@@ -139,12 +145,20 @@ defmodule Domain.Resources.Resource.Changeset do
           []
       end
     end)
+  end
+
+  defp validate_contains_only_valid_dns_characters(changeset) do
+    changeset
     |> validate_format(
       :address,
-      ~r/^[a-zA-Z0-9\p{L}\-*?]+(?:\.[a-zA-Z0-9\p{L}\-*?]+)*$/u,
+      ~r/^(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?)(?:\.(?:[a-zA-Z0-9\p{L}*?](?:[a-zA-Z0-9\p{L}\-*?]*[a-zA-Z0-9\p{L}*?])?))*$/u,
       message:
         "must be a valid hostname (letters, digits, hyphens, dots; wildcards *, ?, ** allowed)"
     )
+  end
+
+  defp validate_dns_parts(changeset) do
+    changeset
     |> validate_change(:address, fn field, dns_address ->
       parts = String.split(dns_address, ".")
 
@@ -155,6 +169,9 @@ defmodule Domain.Resources.Resource.Changeset do
         end
 
       cond do
+        Enum.any?(parts, &(String.length(&1) > 63)) ->
+          [{field, "each label must not exceed 63 characters"}]
+
         String.contains?(tld, ["*", "?"]) ->
           [{field, "TLD cannot contain wildcards"}]
 
@@ -163,6 +180,9 @@ defmodule Domain.Resources.Resource.Changeset do
             {field,
              "#{tld} cannot be used as a TLD. Try adding a DNS alias to /etc/hosts on the Gateway(s) instead"}
           ]
+
+        Enum.any?(domain_parts, fn part -> String.contains?(part, "**") and part != "**" end) ->
+          [{field, "wildcard pattern must not contain ** in the middle of a label"}]
 
         Enum.all?(parts, &(&1 == "*")) ->
           [{field, "wildcard pattern must include a valid domain"}]
