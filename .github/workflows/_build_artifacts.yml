@@ -113,7 +113,7 @@ jobs:
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
     if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
-    runs-on: windows-2019
+    runs-on: windows-2022
     defaults:
       run:
         working-directory: rust
@@ -154,8 +154,7 @@ jobs:
           mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe $ARTIFACT_PATH
       - name: Install AzureSignTool
         shell: bash
-        # AzureSignTool >= 5 needs .NET 8. windows-2019 runner only has .NET 7.
-        run: dotnet tool install --global AzureSignTool --version 4.0.1
+        run: dotnet tool install --global AzureSignTool
       - name: Sign the binary
         shell: bash
         env:
