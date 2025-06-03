@@ -1553,7 +1553,10 @@ impl ClientState {
         };
 
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
-            if resource.has_different_address(&new_resource) {
+            let resource_addressability_changed = resource.has_different_address(&new_resource)
+                || resource.has_different_ip_stack(&new_resource);
+
+            if resource_addressability_changed {
                 self.remove_resource(resource.id());
             }
         }
