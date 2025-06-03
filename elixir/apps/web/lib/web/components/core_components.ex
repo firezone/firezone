@@ -54,6 +54,34 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Renders an inline code tag with formatting.
+
+  ## Examples
+
+  <.code>def foo: do :bar</.code>
+  """
+  attr :id, :string, default: nil
+  attr :class, :string, default: ""
+  slot :inner_block, required: true
+  attr :rest, :global
+
+  def code(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :class,
+        "#{assigns.class} font-semibold p-[0.15rem] bg-neutral-100 rounded"
+      )
+
+    # Important: leave the </code> on the same line as the render_slot call, otherwise there will be
+    # an undesired trailing space in the output.
+    ~H"""
+    <code id={@id} class={@class} {@rest} phx-no-format>
+      {render_slot(@inner_block)}</code>
+    """
+  end
+
+  @doc """
   Render a monospace code block suitable for copying and pasting content.
 
   ## Examples

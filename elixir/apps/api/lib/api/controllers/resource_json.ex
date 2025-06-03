@@ -25,7 +25,8 @@ defmodule API.ResourceJSON do
       name: resource.name,
       address: resource.address,
       address_description: resource.address_description,
-      type: resource.type
+      type: resource.type,
+      ip_stack: resource.ip_stack
     }
   end
 end

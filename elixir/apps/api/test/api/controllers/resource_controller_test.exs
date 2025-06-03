@@ -91,7 +91,7 @@ defmodule API.ResourceControllerTest do
     end
 
     test "returns a single resource", %{conn: conn, account: account, actor: actor} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
+      resource = Fixtures.Resources.create_resource(%{account: account, ip_stack: :ipv4_only})
 
       conn =
         conn
@@ -105,7 +105,8 @@ defmodule API.ResourceControllerTest do
                  "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
-                 "type" => Atom.to_string(resource.type)
+                 "type" => Atom.to_string(resource.type),
+                 "ip_stack" => "ipv4_only"
                }
              }
     end
@@ -159,6 +160,7 @@ defmodule API.ResourceControllerTest do
         "address" => "google.com",
         "name" => "Google",
         "type" => "dns",
+        "ip_stack" => "ipv6_only",
         "connections" => [
           %{"gateway_group_id" => gateway_group.id}
         ]
@@ -176,6 +178,7 @@ defmodule API.ResourceControllerTest do
       assert resp["data"]["address_description"] == nil
       assert resp["data"]["name"] == attrs["name"]
       assert resp["data"]["type"] == attrs["type"]
+      assert resp["data"]["ip_stack"] == attrs["ip_stack"]
     end
   end
 
@@ -223,7 +226,7 @@ defmodule API.ResourceControllerTest do
     test "updates a resource", %{conn: conn, account: account, actor: actor} do
       resource = Fixtures.Resources.create_resource(%{account: account})
 
-      attrs = %{"name" => "Google"}
+      attrs = %{"name" => "Google", "ip_stack" => "ipv6_only"}
 
       conn =
         conn
@@ -236,6 +239,7 @@ defmodule API.ResourceControllerTest do
       assert resp["data"]["address"] == resource.address
       assert resp["data"]["address_description"] == resource.address_description
       assert resp["data"]["name"] == attrs["name"]
+      assert resp["data"]["ip_stack"] == attrs["ip_stack"]
     end
   end
 
@@ -261,7 +265,8 @@ defmodule API.ResourceControllerTest do
                  "address_description" => resource.address_description,
                  "id" => resource.id,
                  "name" => resource.name,
-                 "type" => Atom.to_string(resource.type)
+                 "type" => Atom.to_string(resource.type),
+                 "ip_stack" => Atom.to_string(resource.ip_stack)
                }
              }
 
