@@ -70,8 +70,8 @@ export default function GeneralSettingsPage({
           />
         </div>
 
-        <div className="max-w-1/2">
-          <div className="mt-4 flex justify-between items-center">
+        <div className="flex flex-col max-w-1/2 gap-4 mt-4">
+          <div className="flex justify-between items-center">
             <Label className="text-neutral-600" htmlFor="start-minimized-input">
               Start minimized
             </Label>
@@ -88,7 +88,7 @@ export default function GeneralSettingsPage({
             />
           </div>
 
-          <div className="mt-4 flex justify-between items-center">
+          <div className="flex justify-between items-center">
             <Label className="text-neutral-600" htmlFor="start-on-login-input">
               Start on login
             </Label>
@@ -105,7 +105,7 @@ export default function GeneralSettingsPage({
             />
           </div>
 
-          <div className="mt-4 flex justify-between items-center">
+          <div className="flex justify-between items-center">
             <Label
               className="text-neutral-600"
               htmlFor="connect-on-start-input"

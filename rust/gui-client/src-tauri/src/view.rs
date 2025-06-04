@@ -71,7 +71,7 @@ async fn apply_general_settings(
         .ctlr_tx
         .send(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
         .await
-        .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+        .context("Failed to send `ApplyGeneralSettings` command")?;
 
     Ok(())
 }
@@ -107,7 +107,7 @@ async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()
         .ctlr_tx
         .send(ControllerRequest::ResetGeneralSettings)
         .await
-        .map_err(|e| anyhow::Error::msg(e.to_string()))?;
+        .context("Failed to send `ResetGeneralSettings` command")?;
 
     Ok(())
 }
@@ -196,11 +196,5 @@ impl Serialize for Error {
 impl From<anyhow::Error> for Error {
     fn from(value: anyhow::Error) -> Self {
         Self(value)
-    }
-}
-
-impl From<String> for Error {
-    fn from(value: String) -> Self {
-        Self(anyhow::Error::msg(value))
     }
 }
