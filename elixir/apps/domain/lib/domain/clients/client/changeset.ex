@@ -19,7 +19,6 @@ defmodule Domain.Clients.Client.Changeset do
     Clients.Client.Query.all()
     |> update([clients: clients],
       set: [
-        name: fragment("EXCLUDED.name"),
         public_key: fragment("EXCLUDED.public_key"),
         last_used_token_id: fragment("EXCLUDED.last_used_token_id"),
         last_seen_user_agent: fragment("EXCLUDED.last_seen_user_agent"),
