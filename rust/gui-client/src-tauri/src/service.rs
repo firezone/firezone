@@ -14,7 +14,7 @@ use firezone_bin_shared::{
     signals,
 };
 use firezone_logging::{FilterReloadHandle, err_with_src, telemetry_span};
-use firezone_telemetry::Telemetry;
+use firezone_telemetry::{Telemetry, analytics};
 use futures::{
     Future as _, SinkExt as _, Stream as _,
     future::poll_fn,
@@ -456,7 +456,7 @@ impl<'a> Handler<'a> {
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,
             &token,
-            device_id.id,
+            device_id.id.clone(),
             None,
             DeviceInfo {
                 device_serial: device_info::serial(),
@@ -490,6 +490,9 @@ impl<'a> Handler<'a> {
             portal,
             tokio::runtime::Handle::current(),
         );
+
+        analytics::new_session(device_id.id, api_url.to_string());
+
         // Call `set_dns` before `set_tun` so that the tunnel starts up with a valid list of resolvers.
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);

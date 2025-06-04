@@ -3,13 +3,13 @@ use std::{sync::LazyLock, time::Duration};
 use anyhow::{Context as _, Result, bail};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use tokio::runtime::Runtime;
 
-const POSTHOG_API_KEY_PROD: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
-const POSTHOG_API_KEY_STAGING: &str = "phc_tHOVtq183RpfKmzadJb4bxNpLM5jzeeb1Gu8YSH3nsK";
-const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
+use crate::{
+    Env,
+    posthog::{POSTHOG_API_KEY_PROD, POSTHOG_API_KEY_STAGING, RUNTIME},
+};
 
-static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
+pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
 // Process-wide storage of enabled feature flags.
 //
@@ -25,10 +25,10 @@ pub fn drop_llmnr_nxdomain_responses() -> bool {
 }
 
 pub(crate) fn reevaluate(user_id: String, env: &str) {
-    let api_key = match env {
-        crate::env::PRODUCTION => POSTHOG_API_KEY_PROD,
-        crate::env::STAGING => POSTHOG_API_KEY_STAGING,
-        _ => return,
+    let api_key = match env.parse() {
+        Ok(Env::Production) => POSTHOG_API_KEY_PROD,
+        Ok(Env::Staging) => POSTHOG_API_KEY_STAGING,
+        Ok(Env::OnPrem) | Err(_) => return,
     };
 
     RUNTIME.spawn(async move {
@@ -47,39 +47,26 @@ pub(crate) fn reevaluate(user_id: String, env: &str) {
     });
 }
 
-/// Initialize the runtime to use for evaluating feature flags.
-fn init_runtime() -> Runtime {
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1) // We only need 1 worker thread.
-        .thread_name("feature-flag-worker")
-        .enable_io()
-        .enable_time()
-        .build()
-        .expect("to be able to build runtime");
+pub(crate) async fn reeval_timer() {
+    loop {
+        tokio::time::sleep(RE_EVAL_DURATION).await;
 
-    runtime.spawn(async move {
-        loop {
-            tokio::time::sleep(RE_EVAL_DURATION).await;
+        let Some(client) = sentry::Hub::main().client() else {
+            continue;
+        };
 
-            let Some(client) = sentry::Hub::main().client() else {
-                continue;
-            };
+        let Some(env) = client.options().environment.as_ref() else {
+            continue; // Nothing to do if we don't have an environment set.
+        };
 
-            let Some(env) = client.options().environment.as_ref() else {
-                continue; // Nothing to do if we don't have an environment set.
-            };
+        let Some(user_id) =
+            sentry::Hub::main().configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
+        else {
+            continue; // Nothing to do if we don't have a user-id set.
+        };
 
-            let Some(user_id) = sentry::Hub::main()
-                .configure_scope(|scope| scope.user().and_then(|u| u.id.clone()))
-            else {
-                continue; // Nothing to do if we don't have a user-id set.
-            };
-
-            reevaluate(user_id, env);
-        }
-    });
-
-    runtime
+        reevaluate(user_id, env);
+    }
 }
 
 async fn decide(distinct_id: String, api_key: String) -> Result<FeatureFlags> {

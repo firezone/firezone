@@ -16,7 +16,7 @@ use crate::{
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
-use firezone_telemetry::Telemetry;
+use firezone_telemetry::{Telemetry, analytics};
 use futures::SinkExt as _;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
@@ -226,12 +226,13 @@ pub fn run(
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
 
+    let api_url = mdm_settings
+        .api_url
+        .as_ref()
+        .unwrap_or(&advanced_settings.api_url);
+
     telemetry.start(
-        mdm_settings
-            .api_url
-            .as_ref()
-            .unwrap_or(&advanced_settings.api_url)
-            .as_str(),
+        api_url.as_str(),
         crate::RELEASE,
         firezone_telemetry::GUI_DSN,
     );
@@ -239,7 +240,9 @@ pub fn run(
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
     if let Ok(id) = firezone_bin_shared::device_id::get() {
-        Telemetry::set_firezone_id(id.id);
+        Telemetry::set_firezone_id(id.id.clone());
+
+        analytics::identify(id.id, api_url.to_string(), crate::RELEASE.to_owned());
     }
 
     // Needed for the deep link server
