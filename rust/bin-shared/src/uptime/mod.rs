@@ -48,7 +48,7 @@ pub fn get() -> Option<Duration> {
 #[cfg(target_os = "macos")]
 pub fn get() -> Option<Duration> {
     // TODO: This is stubbed on macOS for now so that mac developers can help out on the Tauri UI.
-    Some(Duration::from_secs(60))
+    None
 }
 
 #[cfg(test)]
