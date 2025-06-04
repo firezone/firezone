@@ -90,7 +90,7 @@ export default function GeneralSettingsPage({
 
           <div className="mt-4 flex justify-between items-center">
             <Label className="text-neutral-600" htmlFor="start-on-login-input">
-              Start on Login
+              Start on login
             </Label>
             <ToggleSwitch
               name="start_on_login"
