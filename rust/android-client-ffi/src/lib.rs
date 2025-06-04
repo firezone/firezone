@@ -493,6 +493,12 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
     catch_and_throw(&mut env, |_| {
         session.runtime.block_on(session.telemetry.stop());
     });
+
+    // Drop session in new thread to ensure we are not dropping a runtime in a runtime.
+    // The Android app may call this from a callback which is executed within the runtime.
+    std::thread::spawn(move || {
+        drop(session);
+    });
 }
 
 /// # Safety
