@@ -10,7 +10,8 @@ use crate::{
     ipc::{self, ClientRead, ClientWrite, SocketId},
     logging::FileCount,
     settings::{
-        self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, MdmSettings,
+        self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, GeneralSettings,
+        GeneralSettingsViewModel, MdmSettings,
     },
     updates,
 };
@@ -101,14 +102,21 @@ impl GuiIntegration for TauriIntegration {
     fn notify_settings_changed(
         &self,
         mdm_settings: MdmSettings,
+        general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()> {
         self.app
             .emit(
-                "settings_changed",
+                "general_settings_changed",
+                GeneralSettingsViewModel::new(mdm_settings.clone(), general_settings),
+            )
+            .context("Failed to send `general_settings_changed` event")?;
+        self.app
+            .emit(
+                "advanced_settings_changed",
                 AdvancedSettingsViewModel::new(mdm_settings, advanced_settings),
             )
-            .context("Failed to send `settings_changed` event")?;
+            .context("Failed to send `advanced_settings_changed` event")?;
 
         Ok(())
     }
@@ -174,10 +182,11 @@ impl GuiIntegration for TauriIntegration {
     fn show_settings_page(
         &self,
         mdm_settings: MdmSettings,
+        general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()> {
-        self.notify_settings_changed(mdm_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
-        self.navigate("settings")?;
+        self.notify_settings_changed(mdm_settings, general_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
+        self.navigate("general-settings")?;
         self.set_window_visible(true)?;
 
         Ok(())

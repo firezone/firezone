@@ -37,6 +37,10 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where Firezone could not start if the operating system
           refused our request to increase the UDP socket buffer sizes.
         </ChangeItem>
+        <ChangeItem pull="9381">
+          Introduces "General" settings, allowing the user to manage autostart
+          behaviour as well as the to-be-used account slug.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>
         <ChangeItem pull="9147">
