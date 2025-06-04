@@ -15,6 +15,7 @@ use firezone_logging::err_with_src;
 use firezone_logging::sentry_layer;
 use firezone_telemetry::APPLE_DSN;
 use firezone_telemetry::Telemetry;
+use firezone_telemetry::analytics;
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::LoginUrl;
 use phoenix_channel::PhoenixChannel;
@@ -258,6 +259,8 @@ impl WrappedSession {
         Telemetry::set_firezone_id(device_id.clone());
         Telemetry::set_account_slug(account_slug);
 
+        analytics::identify(device_id.clone(), api_url.to_string(), RELEASE.to_owned());
+
         init_logging(log_dir.into(), log_filter)?;
         install_rustls_crypto_provider();
 
@@ -268,7 +271,7 @@ impl WrappedSession {
         let url = LoginUrl::client(
             api_url.as_str(),
             &secret,
-            device_id,
+            device_id.clone(),
             device_name_override,
             device_info,
         )?;
@@ -299,6 +302,8 @@ impl WrappedSession {
             runtime.handle().clone(),
         );
         session.set_tun(Box::new(Tun::new()?));
+
+        analytics::new_session(device_id, api_url.to_string());
 
         runtime.spawn(async move {
             let callback_handler = CallbackHandler {

@@ -1,12 +1,15 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{borrow::Cow, sync::Arc, time::Duration};
+use std::{borrow::Cow, fmt, str::FromStr, sync::Arc, time::Duration};
 
-use env::ON_PREM;
+use anyhow::bail;
 use sentry::protocol::SessionStatus;
 
+pub mod analytics;
 pub mod feature_flags;
 pub mod otel;
+
+mod posthog;
 
 pub struct Dsn(&'static str);
 
@@ -37,10 +40,48 @@ pub const TESTING: Dsn = Dsn(
     "https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224",
 );
 
-mod env {
-    pub const PRODUCTION: &str = "production";
-    pub const STAGING: &str = "staging";
-    pub const ON_PREM: &str = "on-prem";
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub(crate) enum Env {
+    Production,
+    Staging,
+    OnPrem,
+}
+
+impl Env {
+    pub(crate) fn from_api_url(api_url: &str) -> Self {
+        match api_url {
+            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => Self::Production,
+            "wss://api.firez.one" | "wss://api.firez.one/" => Self::Staging,
+            _ => Self::OnPrem,
+        }
+    }
+
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Env::Production => "production",
+            Env::Staging => "staging",
+            Env::OnPrem => "on-prem",
+        }
+    }
+}
+
+impl FromStr for Env {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "production" => Ok(Self::Production),
+            "staging" => Ok(Self::Staging),
+            "on-prem" => Ok(Self::OnPrem),
+            other => bail!("Unknown env `{other}`"),
+        }
+    }
+}
+
+impl fmt::Display for Env {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.as_str().fmt(f)
+    }
 }
 
 #[derive(Default)]
@@ -63,17 +104,13 @@ impl Telemetry {
     pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
-        let environment = match api_url {
-            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => env::PRODUCTION,
-            "wss://api.firez.one" | "wss://api.firez.one/" => env::STAGING,
-            _ => env::ON_PREM,
-        };
+        let environment = Env::from_api_url(api_url);
 
         if self
             .inner
             .as_ref()
             .and_then(|i| i.options().environment.as_ref())
-            .is_some_and(|env| env == environment)
+            .is_some_and(|env| env == environment.as_str())
         {
             tracing::debug!(%environment, "Telemetry already initialised");
 
@@ -90,7 +127,7 @@ impl Telemetry {
             set_current_user(None);
         }
 
-        if environment == ON_PREM {
+        if environment == Env::OnPrem {
             tracing::debug!(%api_url, "Telemetry won't start in unofficial environment");
             return;
         }
@@ -100,7 +137,7 @@ impl Telemetry {
         let inner = sentry::init((
             dsn.0,
             sentry::ClientOptions {
-                environment: Some(Cow::Borrowed(environment)),
+                environment: Some(Cow::Borrowed(environment.as_str())),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.to_owned().into()),
                 traces_sampler: Some(Arc::new(|tx| {
