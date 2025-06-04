@@ -16,6 +16,7 @@
     "postinstall": "flowbite-react patch"
   },
   "dependencies": {
+    "@fontsource-variable/source-sans-3": "^5.2.8",
     "@heroicons/react": "^2.2.0",
     "@sentry/core": "^9.24.0",
     "@sentry/react": "^9.24.0",
