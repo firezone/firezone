@@ -70,56 +70,61 @@ export default function GeneralSettingsPage({
           />
         </div>
 
-        <div className="flex flex-row gap-2 items-center">
-          <ToggleSwitch
-            name="start_minimized"
-            id="start-minimized-input"
-            checked={localSettings.start_minimized}
-            onChange={(e) =>
-              setLocalSettings({
-                ...localSettings,
-                start_minimized: e,
-              })
-            }
-          />
-          <Label className="text-neutral-600" htmlFor="start-minimized-input">
-            Start minimized
-          </Label>
-        </div>
+        <div className="max-w-1/2">
+          <div className="mt-4 flex justify-between items-center">
+            <Label className="text-neutral-600" htmlFor="start-minimized-input">
+              Start minimized
+            </Label>
+            <ToggleSwitch
+              name="start_minimized"
+              id="start-minimized-input"
+              checked={localSettings.start_minimized}
+              onChange={(e) =>
+                setLocalSettings({
+                  ...localSettings,
+                  start_minimized: e,
+                })
+              }
+            />
+          </div>
 
-        <div className="flex flex-row gap-2 items-center">
-          <ToggleSwitch
-            name="start_on_login"
-            id="start-on-login-input"
-            checked={localSettings.start_on_login}
-            onChange={(e) =>
-              setLocalSettings({
-                ...localSettings,
-                start_on_login: e,
-              })
-            }
-          />
-          <Label className="text-neutral-600" htmlFor="start-on-login-input">
-            Start on Login
-          </Label>
-        </div>
+          <div className="mt-4 flex justify-between items-center">
+            <Label className="text-neutral-600" htmlFor="start-on-login-input">
+              Start on Login
+            </Label>
+            <ToggleSwitch
+              name="start_on_login"
+              id="start-on-login-input"
+              checked={localSettings.start_on_login}
+              onChange={(e) =>
+                setLocalSettings({
+                  ...localSettings,
+                  start_on_login: e,
+                })
+              }
+            />
+          </div>
 
-        <div className="flex flex-row gap-2 items-center">
-          <ManagedToggleSwitch
-            name="connect-on-start"
-            id="connect-on-start-input"
-            managed={localSettings.connect_on_start_is_managed}
-            checked={localSettings.connect_on_start}
-            onChange={(e) =>
-              setLocalSettings({
-                ...localSettings,
-                connect_on_start: e,
-              })
-            }
-          />
-          <Label className="text-neutral-600" htmlFor="connect-on-start-input">
-            Connect on start
-          </Label>
+          <div className="mt-4 flex justify-between items-center">
+            <Label
+              className="text-neutral-600"
+              htmlFor="connect-on-start-input"
+            >
+              Connect on start
+            </Label>
+            <ManagedToggleSwitch
+              name="connect-on-start"
+              id="connect-on-start-input"
+              managed={localSettings.connect_on_start_is_managed}
+              checked={localSettings.connect_on_start}
+              onChange={(e) =>
+                setLocalSettings({
+                  ...localSettings,
+                  connect_on_start: e,
+                })
+              }
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-4 mt-4">
