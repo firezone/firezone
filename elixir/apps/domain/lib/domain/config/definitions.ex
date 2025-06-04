@@ -69,7 +69,9 @@ defmodule Domain.Config.Definitions do
          :database_pool_size,
          :database_ssl_enabled,
          :database_ssl_opts,
-         :database_parameters
+         :database_parameters,
+         :database_replication_slot_name,
+         :database_publication_name
        ]},
       {"Cloud Platform",
        [
@@ -291,16 +293,6 @@ defmodule Domain.Config.Definitions do
   defconfig(:database_password, :string, default: nil, sensitive: true)
 
   @doc """
-  Replication user that will be used to connect to replication slots.
-  """
-  defconfig(:database_replication_user, :string, default: nil, sensitive: true)
-
-  @doc """
-  Replication password for the replication user.
-  """
-  defconfig(:database_replication_password, :string, default: nil, sensitive: true)
-
-  @doc """
   Size of the connection pool to the PostgreSQL database.
   """
   defconfig(:database_pool_size, :integer,
@@ -314,6 +306,16 @@ defmodule Domain.Config.Definitions do
   with at least `cacertfile` option present.
   """
   defconfig(:database_ssl_enabled, :boolean, default: false)
+
+  @doc """
+  Name of the replication slot used by Firezone.
+  """
+  defconfig(:database_replication_slot_name, :string, default: "events_slot")
+
+  @doc """
+  Name of the publication used by Firezone.
+  """
+  defconfig(:database_publication_name, :string, default: "events")
 
   @doc """
   SSL options for connecting to the PostgreSQL database.

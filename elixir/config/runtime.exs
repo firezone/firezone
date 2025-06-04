@@ -29,6 +29,8 @@ if config_env() == :prod do
 
   config :domain, Domain.Events.ReplicationConnection,
     enabled: compile_config!(:background_jobs_enabled),
+    replication_slot_name: compile_config!(:database_replication_slot_name),
+    publication_name: compile_config!(:database_publication_name),
     connection_opts: [
       hostname: compile_config!(:database_host),
       port: compile_config!(:database_port),
