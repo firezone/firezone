@@ -62,7 +62,7 @@ async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) 
 async fn apply_general_settings(
     managed: tauri::State<'_, Managed>,
     settings: GeneralSettingsForm,
-) -> Result<(), String> {
+) -> Result<()> {
     if managed.inner().inject_faults {
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
@@ -71,7 +71,7 @@ async fn apply_general_settings(
         .ctlr_tx
         .send(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
     Ok(())
 }
@@ -102,12 +102,12 @@ async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<(
 }
 
 #[tauri::command]
-async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<(), String> {
+async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed
         .ctlr_tx
         .send(ControllerRequest::ResetGeneralSettings)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| anyhow::Error::msg(e.to_string()))?;
 
     Ok(())
 }
@@ -196,5 +196,11 @@ impl Serialize for Error {
 impl From<anyhow::Error> for Error {
     fn from(value: anyhow::Error) -> Self {
         Self(value)
+    }
+}
+
+impl From<String> for Error {
+    fn from(value: String) -> Self {
+        Self(anyhow::Error::msg(value))
     }
 }
