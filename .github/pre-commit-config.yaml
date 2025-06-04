@@ -10,7 +10,6 @@ repos:
       - id: prettier
         name: Prettier
         entry: prettier --check --ignore-unknown .
-        exclude: (^rust/gui-client/src-frontend/generated/)
         language: system
         pass_filenames: false
 
