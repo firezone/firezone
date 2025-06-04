@@ -365,7 +365,7 @@ defmodule Domain.Resources do
   defp resource_topic(resource_id), do: "resource:#{resource_id}"
 
   defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "account_policies:#{account_id}"
+  defp account_topic(account_id), do: "account_resources:#{account_id}"
 
   def subscribe_to_events_for_resource(resource_or_id) do
     resource_or_id |> resource_topic() |> PubSub.subscribe()
