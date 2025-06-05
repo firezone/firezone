@@ -10,7 +10,12 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9418">
+          Fixes an issue where advanced settings were not saved and loaded
+          properly across restarts of the Client.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.0" date={new Date("2025-06-05")}>
         <ChangeItem pull="9300">
           Uses the new IP stack setting for DNS resources, which allows DNS
