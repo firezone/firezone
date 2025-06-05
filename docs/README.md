@@ -94,13 +94,6 @@ product documentation, organized as follows:
 - [swift/](../swift/apple): macOS / iOS clients.
 - [kotlin/](../kotlin/android): Android / ChromeOS clients.
 - [website/](../website): Marketing website and product documentation.
-- [terraform/](../terraform): Terraform files for various example deployments.
-  - [terraform/examples/google-cloud/nat-gateway](../terraform/examples/google-cloud/nat-gateway):
-    Example Terraform configuration for deploying a cluster of Firezone Gateways
-    behind a NAT gateway on GCP with a single egress IP.
-  - [terraform/modules/google-cloud/apps/gateway-region-instance-group](../terraform/modules/google-cloud/apps/gateway-region-instance-group):
-    Production-ready Terraform module for deploying regional Firezone Gateways
-    to Google Cloud Compute using Regional Instance Groups.
 
 ## Quickstart
 

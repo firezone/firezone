@@ -18,8 +18,3 @@ docs
 .gitignore
 .gitmodules
 .github
-
-# Terraform
-.terraform
-*.tfstate.backup
-terraform.tfstate.d
