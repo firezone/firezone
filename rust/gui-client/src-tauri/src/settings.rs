@@ -42,6 +42,7 @@ pub struct MdmSettings {
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct AdvancedSettingsLegacy {
+    #[serde(alias = "auth_url")]
     pub auth_base_url: Url,
     pub api_url: Url,
     #[serde(default)]
@@ -303,5 +304,14 @@ mod tests {
         assert_eq!(actual.auth_base_url.to_string(), "https://example.com/");
         assert_eq!(actual.api_url.to_string(), "wss://example.com/");
         assert_eq!(actual.log_filter, "info");
+    }
+
+    #[test]
+    fn legacy_settings_can_parse_new_config() {
+        let advanced_settings = AdvancedSettings::default();
+
+        let new_format = serde_json::to_string(&advanced_settings).unwrap();
+
+        serde_json::from_str::<AdvancedSettingsLegacy>(&new_format).unwrap();
     }
 }
