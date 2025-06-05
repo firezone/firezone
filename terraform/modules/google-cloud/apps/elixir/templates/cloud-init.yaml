@@ -5,43 +5,7 @@ write_files:
     permissions: "0644"
     owner: root
     content: |
-      receivers:
-        otlp:
-          protocols:
-            http:
-              endpoint: localhost:4318
-      exporters:
-        googlecloud:
-          log:
-            default_log_name: opentelemetry.io/collector-exported-log
-      processors:
-        memory_limiter:
-          check_interval: 1s
-          limit_percentage: 65
-          spike_limit_percentage: 20
-        batch:
-        resourcedetection:
-          detectors: [gcp]
-          timeout: 10s
-        filter/drophttp:
-          error_mode: ignore
-          traces:
-            span:
-              - 'attributes["http.target"] == "/healthz"'
-      service:
-        pipelines:
-          traces:
-            receivers: [otlp]
-            processors: [memory_limiter, filter/drophttp, batch]
-            exporters: [googlecloud]
-          metrics:
-            receivers: [otlp]
-            processors: [memory_limiter, filter/drophttp, batch]
-            exporters: [googlecloud]
-          logs:
-            receivers: [otlp]
-            processors: [memory_limiter, filter/drophttp, batch]
-            exporters: [googlecloud]
+      ${otel_config_content}
 
   - path: /etc/systemd/system/otel-collector.service
     permissions: "0644"
@@ -53,8 +17,8 @@ write_files:
       [Service]
       TimeoutStartSec=0
       Restart=always
-      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.119.0
-      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.119.0
+      ExecStartPre=/usr/bin/docker pull otel/opentelemetry-collector-contrib:0.127.0
+      ExecStart=/usr/bin/docker run --rm -u 2000 --name=otel-collector --network host --volume /etc/otelcol-contrib/:/etc/otelcol-contrib/ otel/opentelemetry-collector-contrib:0.127.0
       ExecStop=/usr/bin/docker stop otel-collector
       ExecStopPost=/usr/bin/docker rm otel-collector
 
