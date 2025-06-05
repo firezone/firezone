@@ -32,9 +32,6 @@ jobs:
     secrets: inherit
   static-analysis:
     uses: ./.github/workflows/_static-analysis.yml
-  terraform:
-    uses: ./.github/workflows/_terraform.yml
-    secrets: inherit
   codeql:
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit

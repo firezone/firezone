@@ -35,7 +35,6 @@
         zenity
         desktop-file-utils
         android-tools
-        terraform
         llvmPackages.bintools-unwrapped
         bpftools
 
