@@ -9,7 +9,8 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.0" date={new Date("2025-06-05")}>
         <ChangeItem pull="9300">
           Uses the new IP stack setting for DNS resources, which allows DNS
           resources to optionally return only A or AAAA records if configured by
@@ -23,7 +24,7 @@ export default function Headless({ os }: { os: OS }) {
           Fixes an issue where Firezone could not start if the operating system
           refused our request to increase the UDP socket buffer sizes.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.8" date={new Date("2025-05-14")}>
         <ChangeItem pull="9014">
           Fixes an issue where idle connections would be slow (~60s) in
