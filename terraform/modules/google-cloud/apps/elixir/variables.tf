@@ -152,6 +152,10 @@ variable "observability_log_level" {
   description = "Sets LOG_LEVEL environment variable which applications should use to configure Elixir Logger. Default: 'info'."
 }
 
+variable "otel_config" {
+  type        = string
+  description = "otel-collector YAML config content"
+}
 
 ################################################################################
 ## Erlang
