@@ -258,6 +258,12 @@ tasks.register("generateUniffiBindings") {
     // This task should run after cargo build completes
     dependsOn("cargoBuild")
 
+    // Directory for generated sources
+    val genDir = layout.buildDirectory.dir("generated/source/uniffi").get().asFile
+
+    // Register generated sources as a source directory for the main source set
+    android.sourceSets.main.kotlin.srcDirs += genDir
+
     doLast {
         // Determine the correct path to libconnlib.so based on build flavor
         val profile = if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
@@ -265,6 +271,9 @@ tasks.register("generateUniffiBindings") {
         } else {
             "debug"
         }
+
+        // Ensure the output directory exists
+        genDir.mkdirs()
 
         // Execute uniffi-bindgen command from the rust directory
         project.exec {
@@ -283,7 +292,7 @@ tasks.register("generateUniffiBindings") {
                 "kotlin",
                 "target/${profile}/libconnlib.so",
                 "--out-dir",
-                "${project.projectDir}/src/main/java/dev/firezone/android"
+                genDir.absolutePath
             )
         }
     }
