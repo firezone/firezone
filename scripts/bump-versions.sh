@@ -105,8 +105,8 @@ function apple() {
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_version="1.5.0"
-    next_android_version="1.5.1"
+    current_android_version="1.5.1"
+    next_android_version="1.5.2"
 
     update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_version}"'/g;}' {} \;
