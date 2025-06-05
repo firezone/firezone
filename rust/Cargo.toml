@@ -1,7 +1,7 @@
 [workspace]
 members = [
-    "android-client-ffi",
     "apple-client-ffi",
+    "client-ffi",
     "bin-shared",
     "client-shared",
     "connlib/bufferpool",
@@ -103,6 +103,7 @@ lockfree-object-pool = "0.1.6"
 log = "0.4"
 lru = "0.12.5"
 mio = "1.0.4"
+uniffi = "0.29.2"
 moka = "0.12.11"
 native-dialog = "0.7.0"
 netlink-packet-core = "0.7"
