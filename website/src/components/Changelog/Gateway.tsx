@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.10" date={new Date("2025-06-05")}>
         <ChangeItem pull="9147">
           Fixes an issue where connections failed to establish on machines with
           multiple valid egress IPs.
@@ -31,7 +32,7 @@ export default function Gateway() {
           Fixes an issue where Firezone could not start if the operating system
           refused our request to increase the UDP socket buffer sizes.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.9" date={new Date("2025-05-14")}>
         <ChangeItem pull="9059">
           Fixes an issue where ICMP unreachable errors for large packets would
