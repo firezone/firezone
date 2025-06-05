@@ -259,10 +259,10 @@ tasks.register("generateUniffiBindings") {
     dependsOn("cargoBuild")
 
     // Directory for generated sources
-    val genDir = layout.buildDirectory.dir("generated/source/uniffi").get().asFile
+    val genDir = layout.buildDirectory.dir("generated/source").get().asFile
 
     // Register generated sources as a source directory for the main source set
-    android.sourceSets.main.kotlin.srcDirs += genDir
+    android.sourceSets.main.kotlin.srcDirs += genDir.absolutePath
 
     doLast {
         // Determine the correct path to libconnlib.so based on build flavor
