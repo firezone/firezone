@@ -1,0 +1,13 @@
+# Ignore Terraform state and temporary files
+**/.terraform
+**/*.tfstate.backup
+**/terraform.tfstate.d
+**/terraform.tfvars
+out.plan
+*.tfstate
+
+# Don't ever commit these files to git
+*.p12
+*id_rsa*
+*.key
+*.csr
