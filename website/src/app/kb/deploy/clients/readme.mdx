@@ -31,157 +31,13 @@ below. If you find an exception, please
 [open a GitHub issue](https://www.github.com/firezone/firezone/issues/new/choose)
 so we can prioritize appropriately.
 
-| Platform           | Distribution Method                                                                                                                                                                              |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Android / ChromeOS | The Android / ChromeOS client is available exclusively from the [Google Play Store](https://play.google.com/store/apps/details?id=dev.firezone.android).                                         |
-| Linux              | The headless and GUI Linux clients are available from our [changelog page](/changelog).                                                                                                          |
-| iOS                | The iOS client is available exclusively from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826).                                                                         |
-| macOS              | The macOS client is available either from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826) or as a [standalone distributable](/changelog) in both DMG and PKG formats. |
-| Windows            | The Windows client is available as a standalone MSI installer from our [changelog page](/changelog).                                                                                             |
-
-### Available managed configuration keys
-
-Use managed configurations in order to customize or enforce certain Client
-settings across your workforce. In general, most settings are available for all
-platforms, but some are platform-specific. The table below lists the available
-managed configuration available and to which platforms they apply.
-
-<Alert color="warning">
-  Once a key has been set, the user **will not** be able to change that
-  particular setting in the Client UI. To allow the user to change the setting,
-  you **must unset** the key from the managed configuration.
-</Alert>
-
-| Key                       | Type      | Default Value                      | Description                                                                                                                                                                                                                                                                                        | Available on        | Available since |
-| ------------------------- | --------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | --------------- |
-| `authURL`                 | `String`  | `https://app.firezone.dev`         | The base auth URL of the Firezone application to sign in to. The `accountSlug` will be appended to this to form the complete sign-in URL.                                                                                                                                                          | macOS, iOS, Windows | 1.5.0           |
-| `apiURL`                  | `String`  | `wss://api.firezone.dev`           | The WebSocket URL of the Firezone control plane.                                                                                                                                                                                                                                                   | macOS, iOS, Windows | 1.5.0           |
-| `logFilter`               | `String`  | `info`                             | The [`RUST_LOG`-formatted](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html) log filter to apply to the connectivity library logger. Increasing the log level here can help troubleshoot connectivity issues at the cost of increased log file sizes. | macOS, iOS, Windows | 1.5.0           |
-| `accountSlug`             | `String`  | `<empty>`                          | The account slug or ID of your Firezone account.                                                                                                                                                                                                                                                   | macOS, iOS, Windows | 1.5.0           |
-| `startOnLogin`            | `Boolean` | `false`                            | Whether the client should start automatically on login.                                                                                                                                                                                                                                            | macOS, iOS, Windows | 1.5.0           |
-| `connectOnStart`          | `Boolean` | `false`                            | Whether the client should connect automatically on start.                                                                                                                                                                                                                                          | macOS, iOS, Windows | 1.5.0           |
-| `disableUpdateCheck`      | `Boolean` | `false`                            | Whether to disable the periodic update checker. The update checker is enabled by default for Windows, Linux, and standalone macOS Clients.                                                                                                                                                         | macOS, iOS, Windows | 1.5.0           |
-| `hideAdminPortalMenuItem` | `Boolean` | `false`                            | Whether to show or hide the admin portal link in the main menu.                                                                                                                                                                                                                                    | macOS, iOS, Windows | 1.5.0           |
-| `supportURL`              | `String`  | `https://www.firezone.dev/support` | The destination URL used for the support link in the main menu.                                                                                                                                                                                                                                    | macOS, iOS, Windows | 1.5.0           |
-
-### Applying managed configuration
-
-Applying managed configuration is generally platform-specific and performed
-through your organization's MDM provider. For template files and other
-platform-specific notes, use the following details:
-
-<TabsGroup>
-<TabsItem title="macOS" icon={FaApple}>
-
-##### Generate a .mobileconfig file
-
-macOS configurations are applied as `.mobileconfig` provisiong profiles, which
-can be created by any popular profile creator tool, such as
-[Apple Configurator](https://support.apple.com/guide/apple-configurator/welcome/mac)
-or [iMazing Profile Editor](https://imazing.com/profile-editor).
-
-An iMazing-compatible profile manifest can be
-[downloaded from here](/policy-templates/macos/profile-manifests/dev.firezone.firezone.plist).
-
-##### Example .mobileconfig file
-
-A sample .mobileconfig file is shown below
-([download this file](/policy-templates/macos/examples/all-keys.mobileconfig)):
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-      <key>PayloadContent</key>
-      <array>
-              <dict>
-                      <!-------------------------------------------------------------------------------------------------------------->
-                      <!-- Profile metadata. Typically you'll need to set only a random UUID for PayloadIdentifier and PayloadUUID. -->
-                      <!-------------------------------------------------------------------------------------------------------------->
-
-                      <!-- The name displayed in System Settings when this profile is installed. -->
-                      <key>PayloadDisplayName</key>
-                      <string>Firezone</string>
-
-                      <!-- The bundle ID of the Firezone Client followed by a random, unique UUID for this profile. -->
-                      <key>PayloadIdentifier</key>
-                      <string>dev.firezone.firezone.99F6A301-65E3-4AB7-B226-6978530050CE</string>
-
-                      <!-- The type of payload, which is a Firezone-specific payload type. -->
-                      <key>PayloadType</key>
-                      <string>dev.firezone.firezone</string>
-
-                      <!-- A unique identifier for this payload, which can be any UUID. Should match what's in PayloadIdentifier. -->
-                      <key>PayloadUUID</key>
-                      <string>99F6A301-65E3-4AB7-B226-6978530050CE</string>
-
-                      <!-- The version of the payload. -->
-                      <key>PayloadVersion</key>
-                      <integer>1</integer>
-
-                      <!----------------------------------------->
-                      <!-- Firezone configuration begins here. -->
-                      <!----------------------------------------->
-
-                      <!-- The account slug or ID of your Firezone account. -->
-                      <key>accountSlug</key>
-                      <string>acme_corp</string>
-
-                      <!-- The WebSocket URL of the Firezone control plane. -->
-                      <key>apiURL</key>
-                      <string>wss://api.firezone.dev</string>
-
-                      <!-- The base auth URL of the Firezone application to sign in to. -->
-                      <key>authURL</key>
-                      <string>https://app.firezone.dev</string>
-
-                      <!-- Whether the client should start automatically on login. -->
-                      <key>connectOnStart</key>
-                      <true/>
-
-                      <!-- Whether the client should connect automatically on start. -->
-                      <key>disableUpdateCheck</key>
-                      <true/>
-
-                      <!-- Whether to disable the periodic update checker. -->
-                      <key>hideAdminPortalMenuItem</key>
-                      <true/>
-
-                      <!-- Whether to show or hide the admin portal link in the main menu. -->
-                      <key>logFilter</key>
-                      <string>info</string>
-
-                      <!-- The RUST_LOG-formatted log filter to apply to the connectivity library logger. -->
-                      <key>startOnLogin</key>
-                      <true/>
-
-                      <!-- Whether the client should start automatically on login. -->
-                      <key>supportURL</key>
-                      <string>https://www.firezone.dev/support</string>
-              </dict>
-      </array>
-
-       <!-- Don't change these keys. -->
-      <key>PayloadDisplayName</key>
-      <string>Untitled</string>
-      <key>PayloadIdentifier</key>
-      <string>Airbook-Mac.0DD8420F-14E4-4B15-AECD-6386B9324EEC</string>
-      <key>PayloadType</key>
-      <string>Configuration</string>
-      <key>PayloadUUID</key>
-      <string>0DD8420F-14E4-4B15-AECD-6386B9324EEC</string>
-      <key>PayloadVersion</key>
-      <integer>1</integer>
-</dict>
-</plist>
-
-```
-
-</TabsItem>
-<TabsItem title="Windows" icon={FaWindows}></TabsItem>
-<TabsItem title="iOS" icon={FaApple}></TabsItem>
-</TabsGroup>
+| Platform           | Distribution Method                                                                                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android / ChromeOS | The Android / ChromeOS client is available from the [Google Play Store](https://play.google.com/store/apps/details?id=dev.firezone.android) and as a standalone APK from our [changelog page](/changelog). |
+| Linux              | The headless and GUI Linux clients are available from our [changelog page](/changelog).                                                                                                                    |
+| iOS                | The iOS client is available exclusively from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826).                                                                                   |
+| macOS              | The macOS client is available either from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826) or as a [standalone distributable](/changelog) in both DMG and PKG formats.           |
+| Windows            | The Windows client is available as a standalone MSI installer from our [changelog page](/changelog).                                                                                                       |
 
 ### Allowlisting the macOS System Extension
 
@@ -200,15 +56,75 @@ Identifier:
 - [Hexnode](https://www.hexnode.com/mobile-device-management/help/how-to-configure-system-extensions-on-macos-devices/)
 - [InTune](https://learn.microsoft.com/en-us/mem/intune/configuration/kernel-extensions-overview-macos)
 
+### Configuring the Client
 
-## Configure Windows GUI client with MDM
+Use managed configurations in order to customize or enforce certain Client
+settings across your workforce. In general, most settings are available for all
+platforms, but some are platform-specific. The table below lists the available
+managed configuration available and to which platforms they apply.
+
+<Alert color="warning">
+  Once a key has been set, the user **will not** be able to change that
+  particular setting in the Client UI. To allow the user to change the setting,
+  you **must unset** the key from the managed configuration.
+</Alert>
+
+| Key                       | Type      | Default Value                      | Description                                                                                                                                                                                                                                                                                        | Available on                 | Available since |
+| ------------------------- | --------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------- |
+| `authURL`                 | `String`  | `https://app.firezone.dev`         | The base auth URL of the Firezone application to sign in to. The `accountSlug` will be appended to this to form the complete sign-in URL.                                                                                                                                                          | macOS, Windows, iOS, Android | 1.5.0           |
+| `apiURL`                  | `String`  | `wss://api.firezone.dev`           | The WebSocket URL of the Firezone control plane.                                                                                                                                                                                                                                                   | macOS, Windows, iOS, Android | 1.5.0           |
+| `logFilter`               | `String`  | `info`                             | The [`RUST_LOG`-formatted](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html) log filter to apply to the connectivity library logger. Increasing the log level here can help troubleshoot connectivity issues at the cost of increased log file sizes. | macOS, Windows, iOS, Android | 1.5.0           |
+| `accountSlug`             | `String`  | `<empty>`                          | The account slug or ID of your Firezone account.                                                                                                                                                                                                                                                   | macOS, Windows, iOS, Android | 1.5.0           |
+| `startOnLogin`            | `Boolean` | `false`                            | Whether the client should start automatically on login.                                                                                                                                                                                                                                            | macOS, Android               | 1.5.0           |
+| `connectOnStart`          | `Boolean` | `false`                            | Whether the client should connect automatically on start.                                                                                                                                                                                                                                          | macOS, Windows, iOS, Android | 1.5.0           |
+| `disableUpdateCheck`      | `Boolean` | `false`                            | Whether to disable the periodic update checker. The update checker is enabled by default for standalone macOS Clients.                                                                                                                                                                             | macOS, iOS, Android          | 1.5.0           |
+| `checkForUpdates`         | `Boolean` | `false`                            | Enable or disable the periodic update checker. The update checker is enabled by default for Windows Clients.                                                                                                                                                                                       | Windows                      | 1.5.0           |
+| `hideAdminPortalMenuItem` | `Boolean` | `false`                            | Whether to show or hide the admin portal link in the main menu.                                                                                                                                                                                                                                    | macOS, Windows               | 1.5.0           |
+| `supportURL`              | `String`  | `https://www.firezone.dev/support` | The destination URL used for the support link in the main menu.                                                                                                                                                                                                                                    | macOS, iOS, Windows          | 1.5.0           |
+
+### Applying managed configuration
+
+Applying managed configuration is generally platform-specific and performed
+through your organization's MDM provider. For template files and other
+platform-specific notes, use the following details:
+
+<TabsGroup>
+<TabsItem title="macOS" icon={FaApple}>
+
+##### Step 1: Generate a .mobileconfig file
+
+macOS configurations are applied as `.mobileconfig` provisiong profiles, which
+can be created by any popular profile creator tool, such as
+[Apple Configurator](https://support.apple.com/guide/apple-configurator/welcome/mac)
+or [iMazing Profile Editor](https://imazing.com/profile-editor). We recommend
+using iMazing Profile Editor as it has built-in support for generating Firezone
+profiles.
+
+If you'd prefer to create the file manually, you can
+[download an example profile here](/policy-templates/macos/examples/all-keys.mobileconfig).
+
+##### Step 2: Apply the .mobileconfig file
+
+Consult your MDM provider's documentation for how to apply a provisioning
+profile to your macOS fleet. Links for some popular MDM providers are below:
+
+- [Jamf Pro](https://learn.jamf.com/en-US/bundle/jamf-pro-documentation-current/page/Mobile_Device_Configuration_Profiles.html)
+- [Kandji](https://support.kandji.io/kb/custom-profiles-overview)
+- [JumpCloud](https://jumpcloud.com/support/create-mac-or-ios-mdm-custom-configuration-profile-policy)
+- [Hexnode](https://www.hexnode.com/mobile-device-management/help/how-to-deploy-custom-configuration-profiles-to-macos-devices/)
+- [InTune](https://learn.microsoft.com/en-us/intune/intune-service/configuration/custom-settings-macos)
+
+</TabsItem>
+<TabsItem title="Windows" icon={FaWindows}>
 
 On Windows, Firezone supports a variety of MDM-based configuration values. These
-are all read from the registry key:
-`HKEY_CURRENT_USER\Software\Policies\Firezone` when the Client starts.
+are all read from the `HKEY_CURRENT_USER\Software\Policies\Firezone` registry
+key when the Client starts.
 
-In order for changes to the configuration to be picked up, users need to restart
-the Client.
+<Alert color="warning">
+  In order for changes to the configuration to be picked up, users need to
+  restart the Windows Client.
+</Alert>
 
 ### Microsoft Intune
 
@@ -236,6 +152,12 @@ To set a policy via Microsoft Intune, follow these steps:
    template name.
 1. Go through the wizard, you can select from all available configuration
    settings for Firezone on the 2nd step.
+
+</TabsItem>
+
+{/* TODO <TabsItem title="iOS" icon={FaApple}></TabsItem> */}
+
+</TabsGroup>
 
 ## Headless mode operation
 
