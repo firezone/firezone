@@ -1,7 +1,6 @@
-# .github/ @AndrewDryga @jamilbk
-# elixir/ @AndrewDryga @bmanifold
-# terraform/ @AndrewDryga @bmanifold
-# website/ @jamilbk @AndrewDryga
-# rust/ @thomaseizinger @conectado @ReactorScram
-# swift/ @jamilbk @ReactorScram
-# kotlin/ @jamilbk @conectado
+# .github/ @jamilbk @bmanifold @thomaseizinger
+# elixir/ @jamilbk @bmanifold
+# website/ @jamilbk @bmanifold @thomaseizinger
+# rust/ @jamilbk @thomaseizinger
+# swift/ @jamilbk @@thomaseizinger
+# kotlin/ @jamilbk @thomaseizinger
