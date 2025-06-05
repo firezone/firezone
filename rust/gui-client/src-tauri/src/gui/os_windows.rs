@@ -2,10 +2,44 @@ use super::{ControllerRequest, CtlrTx};
 use anyhow::{Context, Result};
 use firezone_bin_shared::BUNDLE_ID;
 use firezone_logging::err_with_src;
+use std::env;
 use tauri::AppHandle;
+use winreg::RegKey;
+use winreg::enums::*;
 
-pub async fn set_autostart(_enabled: bool) -> Result<()> {
-    todo!()
+pub async fn set_autostart(enabled: bool) -> Result<()> {
+    // Get path to the current executable
+    let exec_path = env::current_exe().context("Failed to get current executable path")?;
+    let exec_path_str = format!("\"{}\"", exec_path.to_string_lossy());
+
+    // Open the registry key for autostart configuration
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let run_key = hkcu
+        .open_subkey_with_flags(
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+            KEY_READ | KEY_WRITE,
+        )
+        .context("Failed to open registry key for autostart")?;
+
+    if enabled {
+        // Add the application to autostart
+        run_key
+            .set_value("Firezone", &exec_path_str)
+            .context("Failed to add application to autostart registry")?;
+
+        tracing::debug!("Added application to autostart: {}", exec_path_str);
+    } else {
+        // Remove the application from autostart
+        match run_key.delete_value("Firezone") {
+            Ok(_) => tracing::debug!("Removed application from autostart"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => {
+                return Err(e).context("Failed to remove application from autostart registry");
+            }
+        }
+    }
+
+    Ok(())
 }
 
 /// Since clickable notifications don't work on Linux yet, the update text

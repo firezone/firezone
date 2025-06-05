@@ -21,6 +21,12 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased></Unreleased>
+      <Entry version="1.5.1" date={new Date("2025-06-04")}>
+        <ChangeItem pull="9394">
+          Fixes a minor issue that would cause background service panic when
+          signing out.
+        </ChangeItem>
+      </Entry>
       <Entry version="1.5.0" date={new Date("2025-06-02")}>
         <ChangeItem pull="9300">
           Uses the new IP stack setting for DNS resources, which allows DNS

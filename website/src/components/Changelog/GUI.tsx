@@ -11,6 +11,10 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9381">
+          Introduces a new General Settings section allowing the user to manage
+          autostart behaviour as well as the to-be-used account slug.
+        </ChangeItem>
         <ChangeItem pull="9300">
           Uses the new IP stack setting for DNS resources, which allows DNS
           resources to optionally return only A or AAAA records if configured by
@@ -36,6 +40,10 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="9366">
           Fixes an issue where Firezone could not start if the operating system
           refused our request to increase the UDP socket buffer sizes.
+        </ChangeItem>
+        <ChangeItem pull="9381">
+          Introduces "General" settings, allowing the user to manage autostart
+          behaviour as well as the to-be-used account slug.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-05-21")}>

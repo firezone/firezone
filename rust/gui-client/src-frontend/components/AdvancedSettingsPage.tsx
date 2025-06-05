@@ -1,26 +1,21 @@
 import React, { useEffect, useState } from "react";
-import {
-  Button,
-  TextInput,
-  Label,
-  TextInputProps,
-  Tooltip,
-} from "flowbite-react";
-import { AdvancedSettingsViewModel as Settings } from "../generated/AdvancedSettingsViewModel";
+import { Button, Label } from "flowbite-react";
+import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
+import { ManagedTextInput } from "./ManagedInput";
 
-interface SettingsPageProps {
-  settings: Settings | null;
-  saveSettings: (settings: Settings) => void;
+interface Props {
+  settings: AdvancedSettingsViewModel | null;
+  saveSettings: (settings: AdvancedSettingsViewModel) => void;
   resetSettings: () => void;
 }
 
-export default function SettingsPage({
+export default function AdvancedSettingsPage({
   settings,
   saveSettings,
   resetSettings,
-}: SettingsPageProps) {
+}: Props) {
   // Local settings can be edited without affecting the global state.
-  const [localSettings, setLocalSettings] = useState<Settings>(
+  const [localSettings, setLocalSettings] = useState<AdvancedSettingsViewModel>(
     settings ?? {
       api_url: "",
       api_url_is_managed: false,
@@ -45,9 +40,9 @@ export default function SettingsPage({
   }, [settings]);
 
   return (
-    <div className="container mx-auto p-4">
+    <div className="container p-4">
       <div className="pb-2">
-        <h2 className="text-xl font-semibold mb-4">Advanced Settings</h2>
+        <h2 className="text-xl font-semibold">Advanced Settings</h2>
       </div>
 
       <p className="text-neutral-900 mb-6">
@@ -61,7 +56,7 @@ export default function SettingsPage({
           e.preventDefault();
           saveSettings(localSettings);
         }}
-        className="max-w mx-auto flex flex-col gap-2"
+        className="max-w flex flex-col gap-2"
       >
         <div>
           <Label className="text-neutral-600" htmlFor="auth-base-url-input">
@@ -129,21 +124,4 @@ export default function SettingsPage({
       </form>
     </div>
   );
-}
-
-function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
-  let { managed, ...inputProps } = props;
-
-  if (managed) {
-    return (
-      <Tooltip
-        content="This setting is managed by your organisation."
-        clearTheme={{ target: true }}
-      >
-        <TextInput {...inputProps} disabled={true} />
-      </Tooltip>
-    );
-  } else {
-    return <TextInput {...inputProps} />;
-  }
 }

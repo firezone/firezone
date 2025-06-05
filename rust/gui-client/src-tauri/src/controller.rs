@@ -6,6 +6,7 @@ use crate::{
     service,
     settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
+    view::GeneralSettingsForm,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use connlib_model::ResourceView;
@@ -69,6 +70,7 @@ pub trait GuiIntegration {
     fn notify_settings_changed(
         &self,
         mdm_settings: MdmSettings,
+        general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()>;
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()>;
@@ -86,14 +88,16 @@ pub trait GuiIntegration {
     fn show_settings_page(
         &self,
         mdm_settings: MdmSettings,
+        general_settings: GeneralSettings,
         settings: AdvancedSettings,
     ) -> Result<()>;
     fn show_about_page(&self) -> Result<()>;
 }
 
 pub enum ControllerRequest {
-    /// The GUI wants us to use these settings in-memory, they've already been saved to disk
-    ApplySettings(Box<AdvancedSettings>),
+    ApplyAdvancedSettings(Box<AdvancedSettings>),
+    ApplyGeneralSettings(Box<GeneralSettingsForm>),
+    ResetGeneralSettings,
     /// Clear the GUI's logs and await the Tunnel service to clear its logs
     ClearLogs(oneshot::Sender<Result<(), String>>),
     /// The same as the arguments to `client::logging::export_logs_to`
@@ -277,7 +281,7 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to load token from disk during app start")?
         {
             // For backwards-compatibility prior to MDM-config, also call `start_session` if not configured.
-            if self.mdm_settings.connect_on_start.is_none_or(|c| c) {
+            if self.connect_on_start().is_none_or(|c| c) {
                 self.start_session(token).await?;
             }
         } else {
@@ -286,7 +290,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.refresh_system_tray_menu();
 
-        if !ran_before::get().await? {
+        if !ran_before::get().await? || !self.general_settings.start_minimized {
             self.integration.show_overview_page(self.auth.session())?;
         }
 
@@ -433,6 +437,10 @@ impl<I: GuiIntegration> Controller<I> {
         let session = self.auth.session().context("Missing session")?;
         self.integration.notify_signed_in(session)?;
 
+        self.general_settings.account_slug = Some(session.account_slug.clone());
+        settings::save_general(&self.general_settings).await?;
+        self.notify_settings_changed()?;
+
         self.refresh_system_tray_menu();
 
         Ok(())
@@ -478,7 +486,7 @@ impl<I: GuiIntegration> Controller<I> {
         use ControllerRequest::*;
 
         match req {
-            ApplySettings(settings) => {
+            ApplyAdvancedSettings(settings) => {
                 self.log_filter_reloader
                     .reload(&settings.log_filter)
                     .context("Couldn't reload log filter")?;
@@ -495,10 +503,7 @@ impl<I: GuiIntegration> Controller<I> {
                 .await?;
 
                 // Notify GUI that settings have changed
-                self.integration.notify_settings_changed(
-                    self.mdm_settings.clone(),
-                    self.advanced_settings.clone(),
-                )?;
+                self.notify_settings_changed()?;
 
                 tracing::debug!("Applied new settings. Log level will take effect immediately.");
 
@@ -506,6 +511,28 @@ impl<I: GuiIntegration> Controller<I> {
                 self.refresh_system_tray_menu();
 
                 self.integration.show_notification("Settings saved", "")?
+            }
+            ApplyGeneralSettings(settings) => {
+                let account_slug = settings.account_slug.trim();
+
+                self.apply_general_settings(GeneralSettings {
+                    start_minimized: settings.start_minimized,
+                    start_on_login: Some(settings.start_on_login),
+                    connect_on_start: Some(settings.connect_on_start),
+                    account_slug: (!account_slug.is_empty()).then_some(account_slug.to_owned()),
+                    ..self.general_settings.clone()
+                })
+                .await?;
+            }
+            ResetGeneralSettings => {
+                self.apply_general_settings(GeneralSettings {
+                    start_minimized: true,
+                    start_on_login: None,
+                    connect_on_start: None,
+                    account_slug: None,
+                    ..self.general_settings.clone()
+                })
+                .await?;
             }
             ClearLogs(completion_tx) => {
                 if self.clear_logs_callback.is_some() {
@@ -531,12 +558,14 @@ impl<I: GuiIntegration> Controller<I> {
             Fail(Failure::Panic) => panic!("Test panic"),
             SignIn | SystemTrayMenu(system_tray::Event::SignIn) => {
                 let auth_url = self.auth_url().clone();
+                let account_slug = self.account_slug().map(|a| a.to_owned());
+
                 let req = self
                     .auth
                     .start_sign_in()
                     .context("Couldn't start sign-in flow")?;
 
-                let url = req.to_url(&auth_url, self.mdm_settings.account_slug.as_deref());
+                let url = req.to_url(&auth_url, account_slug.as_deref());
                 self.refresh_system_tray_menu();
                 self.integration
                     .open_url(url.expose_secret())
@@ -595,6 +624,7 @@ impl<I: GuiIntegration> Controller<I> {
                     system_tray::Window::About => self.integration.show_about_page()?,
                     system_tray::Window::Settings => self.integration.show_settings_page(
                         self.mdm_settings.clone(),
+                        self.general_settings.clone(),
                         self.advanced_settings.clone(),
                     )?,
                 };
@@ -630,10 +660,7 @@ impl<I: GuiIntegration> Controller<I> {
                     .context("Couldn't open update page")?;
             }
             UpdateState => {
-                self.integration.notify_settings_changed(
-                    self.mdm_settings.clone(),
-                    self.advanced_settings.clone(),
-                )?;
+                self.notify_settings_changed()?;
                 match self.auth.session() {
                     Some(session) => self.integration.notify_signed_in(session)?,
                     None => self.integration.notify_signed_out()?,
@@ -643,6 +670,19 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration.notify_logs_recounted(&file_count)?;
             }
         }
+        Ok(())
+    }
+
+    async fn apply_general_settings(&mut self, settings: GeneralSettings) -> Result<()> {
+        self.general_settings = settings;
+
+        settings::save_general(&self.general_settings).await?;
+
+        gui::set_autostart(self.general_settings.start_on_login.is_some_and(|v| v)).await?;
+
+        self.notify_settings_changed()?;
+        self.integration.show_notification("Settings saved", "")?;
+
         Ok(())
     }
 
@@ -953,6 +993,16 @@ impl<I: GuiIntegration> Controller<I> {
             .context("Failed to send IPC message")
     }
 
+    fn notify_settings_changed(&mut self) -> Result<()> {
+        self.integration.notify_settings_changed(
+            self.mdm_settings.clone(),
+            self.general_settings.clone(),
+            self.advanced_settings.clone(),
+        )?;
+
+        Ok(())
+    }
+
     fn auth_url(&self) -> &Url {
         self.mdm_settings
             .auth_url
@@ -965,6 +1015,19 @@ impl<I: GuiIntegration> Controller<I> {
             .api_url
             .as_ref()
             .unwrap_or(&self.advanced_settings.api_url)
+    }
+
+    fn account_slug(&self) -> Option<&str> {
+        self.mdm_settings
+            .account_slug
+            .as_deref()
+            .or(self.general_settings.account_slug.as_deref())
+    }
+
+    fn connect_on_start(&self) -> Option<bool> {
+        self.mdm_settings
+            .connect_on_start
+            .or(self.general_settings.connect_on_start)
     }
 }
 

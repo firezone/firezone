@@ -12,8 +12,7 @@ use firezone_bin_shared::{
     signals,
 };
 use firezone_logging::telemetry_span;
-use firezone_telemetry::Telemetry;
-use firezone_telemetry::otel;
+use firezone_telemetry::{Telemetry, analytics, otel};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
@@ -129,6 +128,7 @@ enum Cmd {
 }
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+const RELEASE: &str = concat!("headless-client@", env!("CARGO_PKG_VERSION"));
 
 fn main() -> Result<()> {
     rustls::crypto::ring::default_provider()
@@ -174,7 +174,7 @@ fn main() -> Result<()> {
     if cli.is_telemetry_allowed() {
         telemetry.start(
             cli.api_url.as_ref(),
-            &format!("headless-client@{VERSION}"),
+            RELEASE,
             firezone_telemetry::HEADLESS_DSN,
         );
     }
@@ -201,8 +201,14 @@ fn main() -> Result<()> {
     };
     Telemetry::set_firezone_id(firezone_id.clone());
 
+    analytics::identify(
+        firezone_id.clone(),
+        cli.api_url.to_string(),
+        RELEASE.to_owned(),
+    );
+
     let url = LoginUrl::client(
-        cli.api_url,
+        cli.api_url.clone(),
         &token,
         firezone_id.clone(),
         cli.firezone_name,
@@ -230,7 +236,7 @@ fn main() -> Result<()> {
                 .with_resource(otel::default_resource_with([
                     otel::attr::service_name!(),
                     otel::attr::service_version!(),
-                    otel::attr::service_instance_id(firezone_id),
+                    otel::attr::service_instance_id(firezone_id.clone()),
                 ]))
                 .build();
 
@@ -262,6 +268,8 @@ fn main() -> Result<()> {
             portal,
             rt.handle().clone(),
         );
+
+        analytics::new_session(firezone_id.clone(), cli.api_url.to_string());
 
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;

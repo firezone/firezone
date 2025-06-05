@@ -12,7 +12,7 @@ use client_shared::{DisconnectError, Session, V4RouteList, V6RouteList};
 use connlib_model::ResourceView;
 use dns_types::DomainName;
 use firezone_logging::{err_with_src, sentry_layer};
-use firezone_telemetry::{ANDROID_DSN, Telemetry};
+use firezone_telemetry::{ANDROID_DSN, Telemetry, analytics};
 use ip_network::{Ipv4Network, Ipv6Network};
 use jni::{
     JNIEnv, JavaVM,
@@ -345,6 +345,8 @@ fn connect(
     telemetry.start(&api_url, RELEASE, ANDROID_DSN);
     Telemetry::set_firezone_id(device_id.clone());
 
+    analytics::identify(device_id.clone(), api_url.to_string(), RELEASE.to_owned());
+
     init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();
 
@@ -356,7 +358,7 @@ fn connect(
     let url = LoginUrl::client(
         api_url.as_str(),
         &secret,
-        device_id,
+        device_id.clone(),
         Some(device_name),
         device_info,
     )?;
@@ -388,6 +390,8 @@ fn connect(
         portal,
         runtime.handle().clone(),
     );
+
+    analytics::new_session(device_id, api_url.to_string());
 
     runtime.spawn(async move {
         while let Some(event) = event_stream.next().await {
@@ -492,6 +496,12 @@ pub unsafe extern "system" fn Java_dev_firezone_android_tunnel_ConnlibSession_di
 
     catch_and_throw(&mut env, |_| {
         session.runtime.block_on(session.telemetry.stop());
+    });
+
+    // Drop session in new thread to ensure we are not dropping a runtime in a runtime.
+    // The Android app may call this from a callback which is executed within the runtime.
+    std::thread::spawn(move || {
+        drop(session);
     });
 }
 
