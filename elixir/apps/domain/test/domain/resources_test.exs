@@ -3,6 +3,7 @@ defmodule Domain.ResourcesTest do
   import Domain.Resources
   alias Domain.Resources
   alias Domain.Actors
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -1615,6 +1616,10 @@ defmodule Domain.ResourcesTest do
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway2.group_id]
 
+      # TODO: WAL
+      # Remove this when directly broadcasting flow removals
+      Events.Hooks.ResourceConnections.on_delete(%{"resource_id" => resource.id})
+      Process.sleep(100)
       flow = Repo.reload(flow)
       assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end

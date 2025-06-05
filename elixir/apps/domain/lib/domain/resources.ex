@@ -277,11 +277,7 @@ defmodule Domain.Resources do
           |> Repo.preload(:connections)
           |> Resource.Changeset.update(attrs, subject)
         end,
-        after_update_commit: fn resource, changeset ->
-          if Map.has_key?(changeset.changes, :connections) do
-            {:ok, _flows} = Flows.expire_flows_for(resource, subject)
-          end
-
+        after_update_commit: fn resource, _changeset ->
           # TODO: WAL
           broadcast_resource_events(:update, resource)
         end,
