@@ -123,7 +123,7 @@ pub fn setup_tunnel(
     let (file_filter, file_reloader) = firezone_logging::try_filter(&directives)?;
     let (stdout_filter, stdout_reloader) = firezone_logging::try_filter(&directives)?;
 
-    let (file_layer, file_handle) = firezone_logging::file::layer(&log_path, "ipc-service");
+    let (file_layer, file_handle) = firezone_logging::file::layer(&log_path, "tunnel-service");
 
     let stdout_layer = tracing_subscriber::fmt::layer()
         .with_ansi(firezone_logging::stdout_supports_ansi())
