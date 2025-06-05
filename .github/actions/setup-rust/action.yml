@@ -18,8 +18,8 @@ outputs:
     description: Compilable packages for the current OS
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
-      (runner.os == 'macOS' && '--workspace --exclude ebpf-turn-router --exclude gui-smoke-test --exclude android-client-ffi') ||
-      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude apple-client-ffi --exclude android-client-ffi') }}
+      (runner.os == 'macOS' && '--workspace --exclude ebpf-turn-router --exclude gui-smoke-test --exclude client-ffi') ||
+      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude apple-client-ffi --exclude client-ffi') }}
   test-packages:
     description: Testable packages for the current OS
     value: ${{

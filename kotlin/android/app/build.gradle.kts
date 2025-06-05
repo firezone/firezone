@@ -237,7 +237,7 @@ cargo {
     // Needed for Ubuntu 22.04
     pythonCommand = "python3"
     prebuiltToolchains = true
-    module = "../../../rust/android-client-ffi"
+    module = "../../../rust/client-ffi"
     libname = "connlib"
     verbose = true
     targets =
@@ -250,9 +250,53 @@ cargo {
     targetDirectory = "../../../rust/target"
 }
 
+// Custom task to run uniffi-bindgen
+tasks.register("generateUniffiBindings") {
+    description = "Generate Kotlin bindings using uniffi-bindgen"
+    group = "build"
+
+    // This task should run after cargo build completes
+    dependsOn("cargoBuild")
+
+    doLast {
+        // Determine the correct path to libconnlib.so based on build flavor
+        val profile = if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
+            "release"
+        } else {
+            "debug"
+        }
+
+        // Execute uniffi-bindgen command from the rust directory
+        project.exec {
+            // Set working directory to the rust directory which is outside the gradle project
+            workingDir("../../../rust")
+
+            // Build the command
+            commandLine(
+                "cargo",
+                "run",
+                "--bin",
+                "uniffi-bindgen",
+                "generate",
+                "--library",
+                "--language",
+                "kotlin",
+                "target/${profile}/libconnlib.so",
+                "--out-dir",
+                "${project.projectDir}/src/main/java/dev/firezone/android"
+            )
+        }
+    }
+}
+
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
     inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
     dependsOn("cargoBuild")
+}
+
+// Make sure the uniffi bindings are generated before compilation
+tasks.matching { it.name == "preBuild" }.configureEach {
+    dependsOn("generateUniffiBindings")
 }
 
 tasks.matching { it.name == "appDistributionUploadRelease" }.configureEach {

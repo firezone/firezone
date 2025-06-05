@@ -36,7 +36,7 @@ tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 tun = { workspace = true }
 url = { workspace = true }
-uniffi = { workspace = true, features = ["cli"] }
+uniffi = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3.2"

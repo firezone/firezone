@@ -28,6 +28,7 @@ members = [
     "telemetry",
     "tests/gui-smoke-test",
     "tests/http-test-server",
+    "tools/uniffi-bindgen",
 ]
 
 resolver = "2"
