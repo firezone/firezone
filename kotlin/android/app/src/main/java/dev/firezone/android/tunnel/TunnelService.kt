@@ -29,7 +29,6 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
-import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.isInternetResource
@@ -40,6 +39,10 @@ import java.nio.file.Paths
 import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
+import uniffi.connlib.Session
+import uniffi.connlib.Callbacks
+import uniffi.connlib.ProtectSocket
+import uniffi.connlib.DisconnectError
 
 data class DeviceInfo(
     var firebaseInstallationId: String? = null,
@@ -78,7 +81,7 @@ class TunnelService : VpnService() {
     val lock = ReentrantLock()
 
     var startedByUser: Boolean = false
-    var connlibSessionPtr: Long? = null
+    var connlibSession: Session? = null
 
     var tunnelResources: List<Resource>
         get() = _tunnelResources
@@ -106,8 +109,8 @@ class TunnelService : VpnService() {
 
     override fun onBind(intent: Intent): IBinder = binder
 
-    private val callback: ConnlibCallback =
-        object : ConnlibCallback {
+    private val callback: Callbacks =
+        object : Callbacks {
             override fun onUpdateResources(resourceListJSON: String) {
                 moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let {
                     tunnelResources = it
@@ -140,7 +143,7 @@ class TunnelService : VpnService() {
 
             // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
             // service.
-            override fun onDisconnect(error: String): Boolean {
+            override fun onDisconnect(error: DisconnectError): Boolean {
                 stopNetworkMonitoring()
                 stopDisconnectMonitoring()
 
@@ -149,9 +152,8 @@ class TunnelService : VpnService() {
                 repo.clearActorName()
 
                 // Free the connlib session
-                connlibSessionPtr?.let {
-                    ConnlibSession.disconnect(it)
-                }
+                connlibSession?.disconnect()
+                connlibSession?.close() // TODO: Spawn a new task for this?
 
                 shutdown()
                 if (startedByUser) {
@@ -159,8 +161,11 @@ class TunnelService : VpnService() {
                 }
                 return true
             }
+        }
 
-            override fun protectFileDescriptor(fileDescriptor: Int) {
+    private val protectSocket: ProtectSocket =
+        object : ProtectSocket {
+            override fun protectSocket(fileDescriptor: Int) {
                 protect(fileDescriptor)
             }
         }
@@ -221,9 +226,7 @@ class TunnelService : VpnService() {
             }.establish()
             ?.detachFd()
             ?.also { fd ->
-                connlibSessionPtr?.let {
-                    ConnlibSession.setTun(it, fd)
-                }
+                connlibSession?.setTun(fd)
             }
     }
 
@@ -292,9 +295,7 @@ class TunnelService : VpnService() {
                 emptySet()
             }
 
-        connlibSessionPtr?.let {
-            ConnlibSession.setDisabledResources(it, Gson().toJson(currentlyDisabled))
-        }
+        connlibSession?.setDisabledResources(Gson().toJson(currentlyDisabled))
     }
 
     fun internetResourceToggled(state: ResourceState) {
@@ -312,9 +313,8 @@ class TunnelService : VpnService() {
 
         stopNetworkMonitoring()
 
-        connlibSessionPtr?.let {
-            ConnlibSession.disconnect(it)
-        }
+        connlibSession?.disconnect()
+        connlibSession?.close()
 
         shutdown()
 
@@ -323,7 +323,8 @@ class TunnelService : VpnService() {
     }
 
     private fun shutdown() {
-        connlibSessionPtr = null
+        connlibSession?.close()
+        connlibSession = null
         stopSelf()
         tunnelState = State.DOWN
     }
