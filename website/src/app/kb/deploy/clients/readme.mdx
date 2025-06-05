@@ -1,6 +1,9 @@
+import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
 import NextStep from "@/components/NextStep";
 import PlanBadge from "@/components/PlanBadge";
+import { TabsGroup, TabsItem } from "@/components/Tabs";
+import { FaApple, FaWindows } from "react-icons/fa";
 
 <PlanBadge plans={["starter", "team", "enterprise"]}>
 
@@ -16,7 +19,7 @@ protected Resources.
 
 See our [client app guides](/kb/client-apps) for basic installation and usage
 instructions for the Firezone Client that are appropriate for all Firezone
-users. Or continue reading below for [MDM](#deploy-with-mdm) deployment and
+users. Or continue reading below for [MDM](#provision-with-mdm) deployment and
 [headless mode](#headless-mode-operation) instructions suited for Firezone
 admins wishing to deploy the clients at scale across their organization.
 
@@ -28,13 +31,13 @@ below. If you find an exception, please
 [open a GitHub issue](https://www.github.com/firezone/firezone/issues/new/choose)
 so we can prioritize appropriately.
 
-| Platform           | Distribution Method                                                                                                                                                  |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android / ChromeOS | The Android / ChromeOS client is available exclusively from the [Google Play Store](https://play.google.com/store/apps/details?id=dev.firezone.android).             |
-| Linux              | The headless and GUI Linux clients are available from our [changelog page](/changelog).                                                                              |
-| iOS                | The iOS client is available exclusively from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826).                                             |
-| macOS              | The macOS client is available either from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826) or as a [standalone distributable](/changelog). |
-| Windows            | The Windows client is available as a standalone MSI installer from our [changelog page](/changelog).                                                                 |
+| Platform           | Distribution Method                                                                                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android / ChromeOS | The Android / ChromeOS client is available from the [Google Play Store](https://play.google.com/store/apps/details?id=dev.firezone.android) and as a standalone APK from our [changelog page](/changelog). |
+| Linux              | The headless and GUI Linux clients are available from our [changelog page](/changelog).                                                                                                                    |
+| iOS                | The iOS client is available exclusively from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826).                                                                                   |
+| macOS              | The macOS client is available either from the [Apple App Store](https://apps.apple.com/us/app/firezone/id6443661826) or as a [standalone distributable](/changelog) in both DMG and PKG formats.           |
+| Windows            | The Windows client is available as a standalone MSI installer from our [changelog page](/changelog).                                                                                                       |
 
 ### Allowlisting the macOS System Extension
 
@@ -43,7 +46,9 @@ be enabled in order to function. For MDM-managed devices, the System Extension
 can be allowlisted to eliminate the need for the user to perform this step
 manually.
 
-Follow one of the guides below for your MDM provider:
+Follow one of the guides below for your MDM provider, using `47R2M6779T` as the
+Team Identifier and `dev.firezone.firezone.network-extension` as the Bundle
+Identifier:
 
 - [Jamf Pro](https://developer.jamf.com/jamf-pro/docs/kernel-and-system-extensions#system-extensions)
 - [Kandji](https://support.kandji.io/kb/system-extensions-overview-and-guide)
@@ -51,15 +56,116 @@ Follow one of the guides below for your MDM provider:
 - [Hexnode](https://www.hexnode.com/mobile-device-management/help/how-to-configure-system-extensions-on-macos-devices/)
 - [InTune](https://learn.microsoft.com/en-us/mem/intune/configuration/kernel-extensions-overview-macos)
 
-Use `47R2M6779T` for the team identifier and
-`dev.firezone.firezone.network-extension` for the extension bundle identifier.
+### Configuring the Client
+
+Use managed configurations to customize or enforce certain Client settings
+across your workforce. In general, most settings are available for all
+platforms, but some are platform-specific. The table below lists the available
+managed configuration available and to which platforms they apply.
+
+<Alert color="warning">
+  Once a key has been set, the user **will not** be able to change that
+  particular setting in the Client UI. To allow the user to change the setting,
+  you must **unset** the key from the managed configuration. `` Seems like the
+  better emphasis to me.
+</Alert>
+
+| Key                       | Type      | Default Value                      | Description                                                                                                                                                                                                                                                                                                                                                          | Available on                 | Available since |
+| ------------------------- | --------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- | --------------- |
+| `authURL`                 | `String`  | `https://app.firezone.dev`         | The base auth URL of the Firezone application to sign in to. The `accountSlug` will be appended to this to form the complete sign-in URL.                                                                                                                                                                                                                            | macOS, Windows, iOS, Android | 1.5.0           |
+| `apiURL`                  | `String`  | `wss://api.firezone.dev`           | The WebSocket URL of the Firezone control plane.                                                                                                                                                                                                                                                                                                                     | macOS, Windows, iOS, Android | 1.5.0           |
+| `logFilter`               | `String`  | `info`                             | The [`RUST_LOG`-formatted](https://rust-lang-nursery.github.io/rust-cookbook/development_tools/debugging/config_log.html) log filter to apply to the connectivity library logger. Increasing the log level here can help troubleshoot connectivity issues at the cost of increased log file sizes and performance if very verbose logging (i.e. TRACE) is specified. | macOS, Windows, iOS, Android | 1.5.0           |
+| `accountSlug`             | `String`  | `<empty>`                          | The account slug or ID of your Firezone account.                                                                                                                                                                                                                                                                                                                     | macOS, Windows, iOS, Android | 1.5.0           |
+| `startOnLogin`            | `Boolean` | `false`                            | Whether the client should start automatically on login.                                                                                                                                                                                                                                                                                                              | macOS, Android               | 1.5.0           |
+| `connectOnStart`          | `Boolean` | `false`                            | Whether the client should connect automatically on start.                                                                                                                                                                                                                                                                                                            | macOS, Windows, iOS, Android | 1.5.0           |
+| `disableUpdateCheck`      | `Boolean` | `false`                            | Whether to disable the periodic update checker. The update checker is enabled by default for standalone macOS Clients.                                                                                                                                                                                                                                               | macOS, iOS, Android          | 1.5.0           |
+| `checkForUpdates`         | `Boolean` | `false`                            | Enable or disable the periodic update checker. The update checker is enabled by default for Windows Clients.                                                                                                                                                                                                                                                         | Windows                      | 1.5.0           |
+| `hideAdminPortalMenuItem` | `Boolean` | `false`                            | Whether to show or hide the admin portal link in the main menu.                                                                                                                                                                                                                                                                                                      | macOS, Windows               | 1.5.0           |
+| `supportURL`              | `String`  | `https://www.firezone.dev/support` | The destination URL used for the support link in the main menu.                                                                                                                                                                                                                                                                                                      | macOS, iOS, Windows          | 1.5.0           |
+
+### Applying managed configuration
+
+Applying managed configuration is generally platform-specific and performed
+through your organization's MDM provider. For template files and other
+platform-specific notes, use the following details:
+
+<TabsGroup>
+<TabsItem title="macOS" icon={FaApple}>
+
+##### Step 1: Generate a .mobileconfig file
+
+macOS configurations are applied as `.mobileconfig` provisioning profiles, which
+can be created by popular profile creator tools, such as
+[Apple Configurator](https://support.apple.com/guide/apple-configurator/welcome/mac)
+or [iMazing Profile Editor](https://imazing.com/profile-editor). We recommend
+using iMazing Profile Editor as it has built-in support for generating Firezone
+profiles.
+
+If you'd prefer to create the file manually, you can
+[download an example profile here](/policy-templates/macos/examples/all-keys.mobileconfig).
+
+##### Step 2: Apply the .mobileconfig file
+
+Consult your MDM provider's documentation for how to apply a provisioning
+profile to your macOS fleet. Links for some popular MDM providers are below:
+
+- [Jamf Pro](https://learn.jamf.com/en-US/bundle/jamf-pro-documentation-current/page/Mobile_Device_Configuration_Profiles.html)
+- [Kandji](https://support.kandji.io/kb/custom-profiles-overview)
+- [JumpCloud](https://jumpcloud.com/support/create-mac-or-ios-mdm-custom-configuration-profile-policy)
+- [Hexnode](https://www.hexnode.com/mobile-device-management/help/how-to-deploy-custom-configuration-profiles-to-macos-devices/)
+- [InTune](https://learn.microsoft.com/en-us/intune/intune-service/configuration/custom-settings-macos)
+
+</TabsItem>
+<TabsItem title="Windows" icon={FaWindows}>
+
+On Windows, Firezone supports a variety of MDM-based configuration values. These
+are all read from the `HKEY_CURRENT_USER\Software\Policies\Firezone` registry
+key when the Client starts.
+
+<Alert color="warning">
+  In order for changes to the configuration to be picked up, users need to
+  restart the Windows Client.
+</Alert>
+
+### Microsoft Intune
+
+To set a policy via Microsoft Intune, follow these steps:
+
+1. Download the Firezone policy template:
+
+- [Download admx](/policy-templates/windows/firezone.admx)
+- [Download adml (en_US)](/policy-templates/windows/firezone_en-US.adml)
+
+1. Go to the
+   [device configuration](https://intune.microsoft.com/#view/Microsoft_Intune_DeviceSettings/DevicesMenu/~/configuration)
+   in the Intune admin center.
+1. Select "Import ADMX" and import the downloaded template files.
+1. If you have previously imported the Firezone template, you'll need to remove
+   the current one first before uploading an updated one. This is a Microsoft
+   Intune limitation and might be resolved in the future. See
+   [this link](https://learn.microsoft.com/en-us/intune/intune-service/configuration/administrative-templates-import-custom#replace-existing-admx-files)
+   for details.
+1. Once successful, select the "Policies" tab and click on "Create" -> "New
+   policy"
+1. For "Platform" select "Windows 10 or later" and for "Profile type" select
+   "Templates".
+1. From the list, select "Imported Administrative templates (Preview)" as the
+   template name.
+1. Go through the wizard, you can select from all available configuration
+   settings for Firezone on the 2nd step.
+
+</TabsItem>
+
+{/* TODO <TabsItem title="iOS" icon={FaApple}></TabsItem> */}
+
+</TabsGroup>
 
 ## Headless mode operation
 
-The Firezone Client can run in headless mode on Linux, Android, and ChromeOS
-platforms using a [Service Account](/kb/authenticate/service-accounts) token.
-This mode is useful for deploying the Client on servers, IoT devices, and other
-headless devices where a user may not be present to keep the Client
+The Firezone Client can run in headless mode on Windows, Linux, Android, and
+ChromeOS platforms using a [Service Account](/kb/authenticate/service-accounts)
+token. This mode is useful for deploying the Client on servers, IoT devices, and
+other headless devices where a user may not be present to keep the Client
 authenticated.
 
 See the table below for achieving headless mode operation on each platform:
