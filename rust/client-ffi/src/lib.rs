@@ -16,6 +16,7 @@ use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::{DSN, MAX_PARTITION_TIME, MakeWriter, RELEASE, VERSION};
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use tokio::sync::Mutex;
 use tracing_subscriber::layer::SubscriberExt as _;
 
 uniffi::setup_scaffolding!();
@@ -23,6 +24,7 @@ uniffi::setup_scaffolding!();
 #[derive(uniffi::Object)]
 pub struct Session {
     inner: client_shared::Session,
+    events: Mutex<client_shared::EventStream>,
     telemetry: Telemetry,
     runtime: tokio::runtime::Runtime,
 }
@@ -37,6 +39,20 @@ pub enum CallbackError {}
 #[derive(uniffi::Object, Debug)]
 pub struct DisconnectError(client_shared::DisconnectError);
 
+#[derive(uniffi::Enum)]
+pub enum Event {
+    TunInterfaceUpdated {
+        ipv4: String,
+        ipv6: String,
+        dns: String,
+        search_domain: Option<String>,
+        ipv4_routes: String,
+        ipv6_routes: String,
+    },
+    ResourcesUpdated(String),
+    Disconnected(Arc<DisconnectError>),
+}
+
 #[uniffi::export]
 impl DisconnectError {
     #[expect(
@@ -50,23 +66,6 @@ impl DisconnectError {
     pub fn is_authentication_error(&self) -> bool {
         self.0.is_authentication_error()
     }
-}
-
-#[uniffi::export(with_foreign)]
-pub trait Callbacks: Send + Sync + fmt::Debug {
-    fn on_set_interface_config(
-        &self,
-        tunnel_address_ipv4: String,
-        tunnel_address_ipv6: String,
-        search_domain: Option<String>,
-        dns_addresses: String,
-        route_listv4: String,
-        route_listv6: String,
-    ) -> Result<(), CallbackError>;
-
-    fn on_update_resources(&self, resource_list: String) -> Result<(), CallbackError>;
-
-    fn on_disconnect(&self, error: Arc<DisconnectError>) -> Result<(), CallbackError>;
 }
 
 #[uniffi::export(with_foreign)]
@@ -91,7 +90,6 @@ impl Session {
         log_dir: String,
         log_filter: String,
         device_info: String,
-        callbacks: Arc<dyn Callbacks>,
         protect_socket: Arc<dyn ProtectSocket>,
     ) -> Result<Self, Error> {
         let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
@@ -107,7 +105,6 @@ impl Session {
             log_dir,
             log_filter,
             device_info,
-            callbacks,
             tcp_socket_factory,
             udp_socket_factory,
         )
@@ -136,18 +133,44 @@ impl Session {
     pub fn set_tun(&self, fd: RawFd) -> Result<(), Error> {
         todo!()
     }
-}
 
-macro_rules! try_serialize {
-    ($res: expr) => {
-        match $res {
-            Ok(v) => v,
-            Err(e) => {
-                tracing::error!("Failed to serialize: {e}");
-                continue;
+    pub async fn next_event(&self) -> Result<Option<Event>, Error> {
+        match self.events.lock().await.next().await {
+            Some(client_shared::Event::TunInterfaceUpdated {
+                ipv4,
+                ipv6,
+                dns,
+                search_domain,
+                ipv4_routes,
+                ipv6_routes,
+            }) => {
+                let dns = serde_json::to_string(&dns).context("Failed to serialize DNS servers")?;
+                let ipv4_routes = serde_json::to_string(&V4RouteList::new(ipv4_routes))
+                    .context("Failed to serialize IPv4 routes")?;
+                let ipv6_routes = serde_json::to_string(&V6RouteList::new(ipv6_routes))
+                    .context("Failed to serialize IPv6 routes")?;
+
+                Ok(Some(Event::TunInterfaceUpdated {
+                    ipv4: ipv4.to_string(),
+                    ipv6: ipv6.to_string(),
+                    dns,
+                    search_domain: search_domain.map(|d| d.to_string()),
+                    ipv4_routes,
+                    ipv6_routes,
+                }))
             }
+            Some(client_shared::Event::ResourcesUpdated(resources)) => {
+                let resources = serde_json::to_string(&resources)
+                    .context("Failed to serialize resource list")?;
+
+                Ok(Some(Event::ResourcesUpdated(resources)))
+            }
+            Some(client_shared::Event::Disconnected(error)) => {
+                Ok(Some(Event::Disconnected(Arc::new(DisconnectError(error)))))
+            }
+            None => Ok(None),
         }
-    };
+    }
 }
 
 fn connect(
@@ -160,7 +183,6 @@ fn connect(
     log_dir: String,
     log_filter: String,
     device_info: String,
-    callbacks: Arc<dyn Callbacks>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) -> Result<Session, Error> {
@@ -207,7 +229,7 @@ fn connect(
         tcp_socket_factory.clone(),
     )
     .context("Failed to create `PhoenixChannel`")?;
-    let (session, mut event_stream) = client_shared::Session::connect(
+    let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
@@ -216,50 +238,9 @@ fn connect(
 
     analytics::new_session(device_id, api_url.to_string());
 
-    runtime.spawn(async move {
-        while let Some(event) = event_stream.next().await {
-            let result = match event {
-                client_shared::Event::TunInterfaceUpdated {
-                    ipv4,
-                    ipv6,
-                    dns,
-                    search_domain,
-                    ipv4_routes,
-                    ipv6_routes,
-                } => {
-                    let dns = try_serialize!(serde_json::to_string(&dns));
-                    let ipv4_routes =
-                        try_serialize!(serde_json::to_string(&V4RouteList::new(ipv4_routes)));
-                    let ipv6_routes =
-                        try_serialize!(serde_json::to_string(&V6RouteList::new(ipv6_routes)));
-
-                    callbacks.on_set_interface_config(
-                        ipv4.to_string(),
-                        ipv6.to_string(),
-                        search_domain.map(|d| d.to_string()),
-                        dns,
-                        ipv4_routes,
-                        ipv6_routes,
-                    )
-                }
-                client_shared::Event::ResourcesUpdated(resource_views) => {
-                    let resource_views = try_serialize!(serde_json::to_string(&resource_views));
-
-                    callbacks.on_update_resources(resource_views)
-                }
-                client_shared::Event::Disconnected(error) => {
-                    callbacks.on_disconnect(Arc::new(DisconnectError(error)))
-                }
-            };
-
-            if let Err(e) = result {
-                tracing::error!("Callback failed: {e}")
-            }
-        }
-    });
-
     Ok(Session {
         inner: session,
+        events: Mutex::new(events),
         telemetry,
         runtime,
     })
