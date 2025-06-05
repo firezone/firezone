@@ -34,3 +34,19 @@ jobs:
     with:
       profile: "release"
       stage: "release"
+
+  notify:
+    needs: ci
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Send 'checks-passed' event
+        env:
+          GH_TOKEN: ${{ secrets.INFRA_REPOSITORY_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            --header "Accept: application/vnd.github+json" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            /repos/firezone/firezone/dispatches \
+            --raw-field "event_type=checks-passed" \
+            --field "client_payload[sha]=${{ github.sha }}"
