@@ -194,7 +194,7 @@ resource "google_compute_instance_template" "application" {
     })
 
     user-data = templatefile("${path.module}/templates/cloud-init.yaml", {
-      swap_size_gb = var.compute_swap_size_gb,
+      swap_size_gb        = var.compute_swap_size_gb,
       otel_config_content = indent(6, var.otel_config)
     })
 
