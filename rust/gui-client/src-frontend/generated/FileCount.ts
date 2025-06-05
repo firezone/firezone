@@ -1,4 +1,4 @@
 export interface FileCount {
-  bytes: number;
-  files: number;
+    bytes: number;
+    files: number;
 }
