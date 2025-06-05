@@ -1,7 +1,6 @@
 [package]
-name = "android-client-ffi"
-# mark:next-android-version
-version = "1.5.2"
+name = "client-ffi"
+version = "0.1.0"
 edition = { workspace = true }
 license = { workspace = true }
 
@@ -37,6 +36,7 @@ tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
 tun = { workspace = true }
 url = { workspace = true }
+uniffi = { workspace = true, features = ["cli"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3.2"
