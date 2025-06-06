@@ -235,6 +235,12 @@ pub fn run(
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
 
+    if let Some(directives) = mdm_settings.log_filter.as_ref() {
+        if let Err(e) = reloader.reload(directives) {
+            tracing::info!(%directives, "Failed to apply MDM logging directives: {e:#}");
+        }
+    }
+
     let api_url = mdm_settings
         .api_url
         .as_ref()
