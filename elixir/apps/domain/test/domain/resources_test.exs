@@ -1480,7 +1480,7 @@ defmodule Domain.ResourcesTest do
           ]
         )
 
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_resources(account.id)
 
       assert {:ok, resource} = create_resource(attrs, subject)
 
@@ -1539,7 +1539,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_resources(account.id)
 
       attrs = %{"name" => "foo"}
       assert {:updated, resource} = update_resource(resource, attrs, subject)
@@ -1552,7 +1552,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_to_events_for_resource(resource)
+      :ok = Events.Hooks.Resources.subscribe(resource.id)
 
       attrs = %{"name" => "foo"}
       assert {:updated, resource} = update_resource(resource, attrs, subject)
@@ -1649,7 +1649,7 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_resources(account.id)
 
       attrs = %{"address" => "foo"}
 
@@ -1764,7 +1764,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_resources(account.id)
 
       assert {:ok, resource} = delete_resource(resource, subject)
 
@@ -1776,7 +1776,7 @@ defmodule Domain.ResourcesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_to_events_for_resource(resource)
+      :ok = Events.Hooks.Resources.subscribe(resource.id)
 
       assert {:ok, resource} = delete_resource(resource, subject)
 

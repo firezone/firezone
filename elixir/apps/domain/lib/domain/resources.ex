@@ -1,5 +1,5 @@
 defmodule Domain.Resources do
-  alias Domain.{Repo, Auth, PubSub}
+  alias Domain.{Repo, Auth}
   alias Domain.{Accounts, Gateways, Policies, Flows}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
@@ -357,42 +357,12 @@ defmodule Domain.Resources do
 
   ### PubSub
 
-  defp resource_topic(%Resource{} = resource), do: resource_topic(resource.id)
-  defp resource_topic(resource_id), do: "resource:#{resource_id}"
-
-  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "account_resources:#{account_id}"
-
-  def subscribe_to_events_for_resource(resource_or_id) do
-    resource_or_id |> resource_topic() |> PubSub.subscribe()
-  end
-
-  def unsubscribe_from_events_for_resource(resource_or_id) do
-    resource_or_id |> resource_topic() |> PubSub.unsubscribe()
-  end
-
-  def subscribe_to_events_for_account(account_or_id) do
-    account_or_id |> account_topic() |> PubSub.subscribe()
-  end
-
   # TODO: WAL
   defp broadcast_resource_events(action, %Resource{} = resource) do
     payload = {:"#{action}_resource", resource.id}
-    :ok = broadcast_to_resource(resource, payload)
-    :ok = broadcast_to_account(resource.account_id, payload)
+    :ok = Domain.Events.Hooks.Resources.broadcast(resource.id, payload)
+    :ok = Domain.Events.Hooks.Accounts.broadcast_to_resources(resource.account_id, payload)
     :ok
-  end
-
-  defp broadcast_to_resource(resource_or_id, payload) do
-    resource_or_id
-    |> resource_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  defp broadcast_to_account(account_or_id, payload) do
-    account_or_id
-    |> account_topic()
-    |> PubSub.broadcast(payload)
   end
 
   @doc false

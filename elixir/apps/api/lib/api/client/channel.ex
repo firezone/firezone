@@ -79,8 +79,8 @@ defmodule API.Client.Channel do
       # where resource might be renamed which should be propagated to the UI.
       :ok =
         Enum.each(resources, fn resource ->
-          :ok = Resources.unsubscribe_from_events_for_resource(resource)
-          :ok = Resources.subscribe_to_events_for_resource(resource)
+          :ok = Events.Hooks.Resources.unsubscribe(resource.id)
+          :ok = Events.Hooks.Resources.subscribe(resource.id)
         end)
 
       # Subscribe for known gateway group names so that if they are updated - we can render change in the UI
@@ -316,8 +316,8 @@ defmodule API.Client.Channel do
         actor_group_id: actor_group_id,
         resource_id: resource_id
       } do
-      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-      :ok = Resources.subscribe_to_events_for_resource(resource_id)
+      :ok = Events.Hooks.Resources.unsubscribe(resource_id)
+      :ok = Events.Hooks.Resources.subscribe(resource_id)
 
       case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
              preload: [:gateway_groups]
@@ -358,7 +358,7 @@ defmodule API.Client.Channel do
         actor_group_id: actor_group_id,
         resource_id: resource_id
       } do
-      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+      :ok = Events.Hooks.Resources.unsubscribe(resource_id)
 
       # We potentially can re-create the flow but this will require keep tracking of client connections to gateways,
       # which is not worth it as this case should be pretty rare. Instead we just tell client to remove it
