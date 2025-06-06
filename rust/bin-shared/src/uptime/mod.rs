@@ -47,8 +47,7 @@ pub fn get() -> Option<Duration> {
 
 #[cfg(target_os = "macos")]
 pub fn get() -> Option<Duration> {
-    debug_assert!(false, "Not implemented on macOS");
-
+    // TODO: This is stubbed on macOS for now so that mac developers can help out on the Tauri UI.
     None
 }
 
