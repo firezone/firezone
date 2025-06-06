@@ -66,7 +66,7 @@
       {
         "label": "main",
         "title": "Firezone",
-        "url": "src-frontend/index.html",
+        "url": "index.html",
         "fullscreen": false,
         "resizable": false,
         "width": 900,
