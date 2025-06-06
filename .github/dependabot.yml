@@ -14,12 +14,17 @@ updates:
     schedule:
       interval: monthly
   - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: monthly
-  # Dependabot won't look in here by default
-  - package-ecosystem: github-actions
-    directory: /.github/actions
+    directories:
+      - "/"
+      # Dependabot doesn't look in these by default
+      - "/.github/actions/create-sentry-release"
+      - "/.github/actions/gcp-docker-login"
+      - "/.github/actions/setup-android"
+      - "/.github/actions/setup-elixir"
+      - "/.github/actions/setup-node"
+      - "/.github/actions/setup-postgres"
+      - "/.github/actions/setup-rust"
+      - "/.github/actions/setup-tauri-v2"
     schedule:
       interval: monthly
   - package-ecosystem: cargo
