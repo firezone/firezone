@@ -24,7 +24,7 @@
     "@tailwindcss/vite": "^4.1.7",
     "@tauri-apps/api": "^2.5.0",
     "@tauri-apps/cli": "^2.5.0",
-    "@types/node": "^22.15.29",
+    "@types/node": "^22.15.30",
     "@types/react": "^19.1.5",
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^4.5.0",
