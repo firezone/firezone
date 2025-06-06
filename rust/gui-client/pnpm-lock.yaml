@@ -15,8 +15,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0(react@19.1.0)
       '@sentry/core':
-        specifier: ^9.24.0
-        version: 9.24.0
+        specifier: ^9.27.0
+        version: 9.27.0
       '@sentry/react':
         specifier: ^9.24.0
         version: 9.24.0(react@19.1.0)
@@ -623,6 +623,10 @@ packages:
 
   '@sentry/core@9.24.0':
     resolution: {integrity: sha512-uRWrB4Y49ZOWcDLCXqdjd2Fs6Onill0GQI+JgXMw7wa+i03+QRiQvUAUyde8O62jR4dvP3GDo9PDWnDNhi3z5A==}
+    engines: {node: '>=18'}
+
+  '@sentry/core@9.27.0':
+    resolution: {integrity: sha512-Zb2SSAdWXQjTem+sVWrrAq9L6YYfxyoTwtapaE6C6qZBR5C8Uak0wcYww8StaCFH7dDA/PSW+VxOwjNXocrQHQ==}
     engines: {node: '>=18'}
 
   '@sentry/react@9.24.0':
@@ -1848,6 +1852,8 @@ snapshots:
       '@sentry/core': 9.24.0
 
   '@sentry/core@9.24.0': {}
+
+  '@sentry/core@9.27.0': {}
 
   '@sentry/react@9.24.0(react@19.1.0)':
     dependencies:
