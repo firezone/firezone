@@ -201,7 +201,7 @@ enum EventloopTick {
     DnsChanged(Result<()>),
     IpcMsg(Option<Result<service::ServerMsg>>),
     ControllerRequest(Option<ControllerRequest>),
-    UpdateNotification(Option<Option<updates::Notification>>),
+    UpdateNotification(Option<updates::Notification>),
     NewInstanceLaunched(
         Option<
             Result<(
@@ -294,8 +294,8 @@ impl<I: GuiIntegration> Controller<I> {
             self.integration.show_overview_page(self.auth.session())?;
         }
 
-        while let Some(tick) = self.tick().await {
-            match tick {
+        loop {
+            match self.tick().await {
                 EventloopTick::NetworkChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
@@ -337,11 +337,8 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::warn!("Controller channel closed, breaking main loop");
                     break;
                 }
-                EventloopTick::UpdateNotification(Some(notification)) => {
+                EventloopTick::UpdateNotification(notification) => {
                     self.handle_update_notification(notification)?
-                }
-                EventloopTick::UpdateNotification(None) => {
-                    // Update task may be disabled by MDM, ignore if it stops / is not running.
                 }
                 EventloopTick::NewInstanceLaunched(None) => {
                     return Err(anyhow!("GUI IPC socket closed"));
@@ -374,30 +371,30 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn tick(&mut self) -> Option<EventloopTick> {
+    async fn tick(&mut self) -> EventloopTick {
         std::future::poll_fn(|cx| {
             if let Poll::Ready(Some(res)) = self.dns_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::DnsChanged(res)));
+                return Poll::Ready(EventloopTick::DnsChanged(res));
             }
 
             if let Poll::Ready(Some(res)) = self.network_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::NetworkChanged(res)));
+                return Poll::Ready(EventloopTick::NetworkChanged(res));
             }
 
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::IpcMsg(maybe_ipc)));
+                return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
             if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::ControllerRequest(maybe_req)));
-            }
-
-            if let Poll::Ready(notification) = self.updates_rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::UpdateNotification(notification)));
+                return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
             }
 
             if let Poll::Ready(new_instance) = self.gui_ipc_clients.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::NewInstanceLaunched(new_instance)));
+                return Poll::Ready(EventloopTick::NewInstanceLaunched(new_instance));
+            }
+
+            if let Poll::Ready(Some(notification)) = self.updates_rx.poll_next_unpin(cx) {
+                return Poll::Ready(EventloopTick::UpdateNotification(notification));
             }
 
             Poll::Pending
