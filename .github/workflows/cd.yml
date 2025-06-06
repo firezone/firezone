@@ -47,6 +47,6 @@ jobs:
             --method POST \
             --header "Accept: application/vnd.github+json" \
             --header "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/firezone/firezone/dispatches \
+            /repos/firezone/infra/dispatches \
             --raw-field "event_type=checks-passed" \
             --field "client_payload[sha]=${{ github.sha }}"
