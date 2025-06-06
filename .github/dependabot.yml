@@ -140,6 +140,20 @@ updates:
         patterns:
           - tailwindcss
           - "@tailwindcss/*"
+      sentry:
+        patterns:
+          - "@sentry/*"
+      flowbite:
+        patterns:
+          - "flowbite"
+          - "flowbite-react"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "react-router"
+          - "@types/react"
+          - "@types/react-dom"
   - package-ecosystem: npm
     directory: elixir/apps/web/assets/
     schedule:
