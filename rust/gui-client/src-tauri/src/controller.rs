@@ -389,12 +389,12 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
             }
 
-            if let Poll::Ready(Some(notification)) = self.updates_rx.poll_next_unpin(cx) {
-                return Poll::Ready(EventloopTick::UpdateNotification(notification));
-            }
-
             if let Poll::Ready(new_instance) = self.gui_ipc_clients.poll_next_unpin(cx) {
                 return Poll::Ready(EventloopTick::NewInstanceLaunched(new_instance));
+            }
+
+            if let Poll::Ready(Some(notification)) = self.updates_rx.poll_next_unpin(cx) {
+                return Poll::Ready(EventloopTick::UpdateNotification(notification));
             }
 
             Poll::Pending
