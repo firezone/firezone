@@ -10,7 +10,12 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9443">
+          Fixes an issue where log directives applied via MDM would not be
+          applied on startup.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.1" date={new Date("2025-06-05")}>
         <ChangeItem pull="9418">
           Fixes an issue where advanced settings were not saved and loaded
