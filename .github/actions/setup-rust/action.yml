@@ -35,6 +35,7 @@ runs:
   steps:
     - id: auth
       uses: google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f # v2.1.7
+      if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
       with:
         workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
