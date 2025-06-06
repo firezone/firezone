@@ -204,7 +204,7 @@ where
 
     sentry_tracing::layer()
         .event_filter(move |md| match *md.level() {
-            Level::ERROR | Level::WARN => EventFilter::Exception,
+            Level::ERROR | Level::WARN => EventFilter::Event,
             Level::INFO | Level::DEBUG => EventFilter::Breadcrumb,
             Level::TRACE if md.target() == TELEMETRY_TARGET => EventFilter::Event,
             _ => EventFilter::Ignore,
