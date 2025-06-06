@@ -106,7 +106,7 @@ jobs:
             type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
           cache-to: |
             type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
-          push: true
+          push: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
