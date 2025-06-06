@@ -26,6 +26,15 @@ config :domain, Domain.Events.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
+config :domain, Domain.Billing.Stripe.APIClient,
+  endpoint: "https://api.stripe.com",
+  finch_transport_opts: [],
+  retry_config: [
+    max_retries: 3,
+    base_delay_ms: 100,
+    max_delay_ms: 1000
+  ]
+
 config :domain, Domain.Telemetry, enabled: false
 
 config :domain, Domain.ConnectivityChecks, enabled: false
