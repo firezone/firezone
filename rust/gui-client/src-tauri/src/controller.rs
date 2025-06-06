@@ -294,8 +294,8 @@ impl<I: GuiIntegration> Controller<I> {
             self.integration.show_overview_page(self.auth.session())?;
         }
 
-        while let Some(tick) = self.tick().await {
-            match tick {
+        loop {
+            match self.tick().await {
                 EventloopTick::NetworkChanged(Ok(())) => {
                     if self.status.needs_network_changes() {
                         tracing::debug!("Internet up/down changed, calling `Session::reset`");
@@ -371,30 +371,30 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn tick(&mut self) -> Option<EventloopTick> {
+    async fn tick(&mut self) -> EventloopTick {
         std::future::poll_fn(|cx| {
             if let Poll::Ready(Some(res)) = self.dns_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::DnsChanged(res)));
+                return Poll::Ready(EventloopTick::DnsChanged(res));
             }
 
             if let Poll::Ready(Some(res)) = self.network_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::NetworkChanged(res)));
+                return Poll::Ready(EventloopTick::NetworkChanged(res));
             }
 
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::IpcMsg(maybe_ipc)));
+                return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
 
             if let Poll::Ready(maybe_req) = self.rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::ControllerRequest(maybe_req)));
+                return Poll::Ready(EventloopTick::ControllerRequest(maybe_req));
             }
 
             if let Poll::Ready(Some(notification)) = self.updates_rx.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::UpdateNotification(notification)));
+                return Poll::Ready(EventloopTick::UpdateNotification(notification));
             }
 
             if let Poll::Ready(new_instance) = self.gui_ipc_clients.poll_next_unpin(cx) {
-                return Poll::Ready(Some(EventloopTick::NewInstanceLaunched(new_instance)));
+                return Poll::Ready(EventloopTick::NewInstanceLaunched(new_instance));
             }
 
             Poll::Pending
