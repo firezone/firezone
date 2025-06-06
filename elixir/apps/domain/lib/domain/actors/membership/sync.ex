@@ -1,7 +1,6 @@
 defmodule Domain.Actors.Membership.Sync do
   alias Domain.Repo
   alias Domain.Auth
-  alias Domain.Actors
   alias Domain.Actors.Membership
 
   def sync_provider_memberships(
@@ -26,18 +25,6 @@ defmodule Domain.Actors.Membership.Sync do
          {:ok, {insert, delete}} <- plan_memberships_update(tuples, memberships),
          deleted_stats = delete_memberships(delete),
          {:ok, inserted} <- insert_memberships(provider, insert) do
-      :ok =
-        Enum.each(insert, fn {group_id, actor_id} ->
-          # TODO: WAL
-          Actors.broadcast_membership_event(:create, actor_id, group_id)
-        end)
-
-      :ok =
-        Enum.each(delete, fn {group_id, actor_id} ->
-          # TODO: WAL
-          Actors.broadcast_membership_event(:delete, actor_id, group_id)
-        end)
-
       {:ok,
        %{
          plan: {insert, delete},

@@ -130,7 +130,7 @@ defmodule API.Client.Channel do
       :ok = Events.Hooks.Accounts.subscribe(socket.assigns.client.account_id)
 
       # We subscribe for membership updates for all actor groups the client is a member of,
-      :ok = Actors.subscribe_to_membership_updates_for_actor(socket.assigns.subject.actor)
+      :ok = Events.Hooks.Actors.subscribe_to_memberships(socket.assigns.subject.actor.id)
 
       # We subscribe for policy access events for the actor and the groups the client is a member of,
       actor_group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)

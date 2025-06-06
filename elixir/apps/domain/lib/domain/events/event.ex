@@ -18,7 +18,8 @@ defmodule Domain.Events.Event do
 
     process(op, table, old_data, data)
 
-    # TODO: This is only for load testing. Remove this.
+    # TODO: WAL
+    # This is only for load testing. Remove this.
     Domain.PubSub.broadcast("events", {op, table, old_data, data})
   end
 

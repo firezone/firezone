@@ -23,6 +23,16 @@ defmodule Domain.Events.Hooks.Actors do
     "presences:#{clients_topic(actor_id)}"
   end
 
+  def subscribe_to_memberships(actor_id) do
+    actor_id
+    |> memberships_topic()
+    |> PubSub.subscribe()
+  end
+
+  def memberships_topic(actor_id) do
+    "actor_memberships:#{actor_id}"
+  end
+
   defp clients_topic(actor_id) do
     "actor_clients:#{actor_id}"
   end

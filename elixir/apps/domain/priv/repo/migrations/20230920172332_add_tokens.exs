@@ -12,7 +12,6 @@ defmodule Domain.Repo.Migrations.AddTokens do
       add(
         :identity_id,
         references(:auth_identities, type: :binary_id, on_delete: :delete_all)
-        # TODO? null: false?
       )
 
       add(:created_by, :string, null: false)
