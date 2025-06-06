@@ -77,7 +77,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
       - uses: ./.github/actions/gcp-docker-login
-        if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
         id: login
         with:
           project: firezone-staging
@@ -349,7 +348,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
       - uses: ./.github/actions/gcp-docker-login
-        if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
         id: login
         with:
           project: firezone-staging
@@ -445,7 +443,6 @@ jobs:
         with:
           ref: ${{ inputs.sha }}
       - uses: ./.github/actions/gcp-docker-login
-        if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
         id: login
         with:
           project: firezone-staging
