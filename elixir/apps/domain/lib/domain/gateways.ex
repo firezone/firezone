@@ -272,10 +272,6 @@ defmodule Domain.Gateways do
 
       gateways =
         Gateway.Query.not_deleted()
-        # TODO: This will create a pretty large query to send to Postgres,
-        # we probably want to load connected resources once when gateway connects,
-        # and persist them in the memory not to query DB every time with a
-        # `WHERE ... IN (...)`.
         |> Gateway.Query.by_ids(connected_gateway_ids)
         |> Gateway.Query.by_account_id(resource.account_id)
         |> Gateway.Query.by_resource_id(resource.id)

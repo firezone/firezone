@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
   use Domain.DataCase, async: true
-  alias Domain.{Auth, Actors}
+  alias Domain.{Auth, Actors, Events}
   alias Domain.Mocks.OktaDirectory
   import Domain.Auth.Adapters.Okta.Jobs.SyncDirectory
 
@@ -708,9 +708,9 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
 
-      :ok = Domain.Actors.subscribe_to_membership_updates_for_actor(actor)
-      :ok = Domain.Actors.subscribe_to_membership_updates_for_actor(other_actor)
-      :ok = Domain.Actors.subscribe_to_membership_updates_for_actor(deleted_membership.actor_id)
+      :ok = Events.Hooks.Actors.subscribe_to_memberships(actor.id)
+      :ok = Events.Hooks.Actors.subscribe_to_memberships(other_actor.id)
+      :ok = Events.Hooks.Actors.subscribe_to_memberships(deleted_membership.actor_id)
       :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor(other_actor)
       :ok = Domain.Policies.subscribe_to_events_for_actor_group(deleted_group)
@@ -761,30 +761,31 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       assert deleted_group.id not in membership_group_ids
 
       # Deletes membership for a deleted group
-      actor_id = actor.id
-      group_id = deleted_group.id
-      assert_receive {:delete_membership, ^actor_id, ^group_id}
+      refute Repo.get_by(Domain.Actors.Membership, group_id: deleted_group.id)
 
-      # Created membership for a new group
-      actor_id = actor.id
-      group_id = created_group.id
-      assert_receive {:create_membership, ^actor_id, ^group_id}
+      # Creates membership for a new group
+      assert Repo.get_by(Domain.Actors.Membership, actor_id: actor.id, group_id: created_group.id)
 
-      # Created membership for a member of existing group
-      other_actor_id = other_actor.id
-      group_id = group.id
-      assert_receive {:create_membership, ^other_actor_id, ^group_id}
+      # Creates membership for a member of existing group
+      assert Repo.get_by(Domain.Actors.Membership, actor_id: other_actor.id, group_id: group.id)
 
       # Broadcasts allow_access for it
       policy_id = policy.id
       group_id = group.id
       resource_id = policy.resource_id
+
+      Events.Hooks.ActorGroupMemberships.on_insert(%{
+        "actor_id" => other_actor.id,
+        "group_id" => group.id
+      })
+
       assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
 
       # Deletes membership that is not found on IdP end
-      actor_id = deleted_membership.actor_id
-      group_id = deleted_membership.group_id
-      assert_receive {:delete_membership, ^actor_id, ^group_id}
+      refute Repo.get_by(Domain.Actors.Membership,
+               actor_id: deleted_membership.actor_id,
+               group_id: deleted_membership.group_id
+             )
 
       # Signs out users which identity has been deleted
       deleted_identity_token = Repo.reload(deleted_identity_token)
@@ -794,6 +795,12 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       policy_id = deleted_policy.id
       group_id = deleted_group.id
       resource_id = deleted_policy.resource_id
+
+      Events.Hooks.ActorGroupMemberships.on_delete(%{
+        "actor_id" => actor.id,
+        "group_id" => deleted_group.id
+      })
+
       assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
 
       # Deleted policies expire all flows authorized by them
@@ -805,8 +812,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       assert DateTime.compare(deleted_identity_flow.expires_at, DateTime.utc_now()) == :lt
 
       # Should not do anything else
-      refute_receive {:create_membership, _actor_id, _group_id}
-      refute_received {:remove_membership, _actor_id, _group_id}
       refute_received {:allow_access, _policy_id, _group_id, _resource_id}
       refute_received {:reject_access, _policy_id, _group_id, _resource_id}
     end
@@ -957,8 +962,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       assert resurrected_group.id == id
       assert resurrected_group.deleted_at == nil
       assert Domain.Actors.Group.Query.not_deleted() |> Repo.all() == [resurrected_group]
-
-      # TODO:: Test that associated policies are also resurrected as part of https://github.com/firezone/firezone/issues/8187
     end
 
     test "persists the sync error on the provider", %{provider: provider, bypass: bypass} do

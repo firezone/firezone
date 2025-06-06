@@ -182,7 +182,8 @@ defmodule Domain.Events.Decoder do
     }
   end
 
-  # TODO: Verify this is correct with real data from Postgres
+  # TODO: WAL
+  # Verify this is correct with real data from Postgres
   defp decode_message_impl(<<"O", lsn::binary-8, name::binary>>) do
     %Origin{
       origin_commit_lsn: decode_lsn(lsn),
@@ -196,7 +197,8 @@ defmodule Domain.Events.Decoder do
       | [name | [<<replica_identity::binary-1, _number_of_columns::integer-16, columns::binary>>]]
     ] = String.split(rest, <<0>>, parts: 3)
 
-    # TODO: Handle case where pg_catalog is blank, we should still return the schema as pg_catalog
+    # TODO: WAL
+    # Handle case where pg_catalog is blank, we should still return the schema as pg_catalog
     friendly_replica_identity =
       case replica_identity do
         "d" -> :default
