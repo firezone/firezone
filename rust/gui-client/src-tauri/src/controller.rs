@@ -201,7 +201,7 @@ enum EventloopTick {
     DnsChanged(Result<()>),
     IpcMsg(Option<Result<service::ServerMsg>>),
     ControllerRequest(Option<ControllerRequest>),
-    UpdateNotification(Option<Option<updates::Notification>>),
+    UpdateNotification(Option<updates::Notification>),
     NewInstanceLaunched(
         Option<
             Result<(
@@ -337,11 +337,8 @@ impl<I: GuiIntegration> Controller<I> {
                     tracing::warn!("Controller channel closed, breaking main loop");
                     break;
                 }
-                EventloopTick::UpdateNotification(Some(notification)) => {
+                EventloopTick::UpdateNotification(notification) => {
                     self.handle_update_notification(notification)?
-                }
-                EventloopTick::UpdateNotification(None) => {
-                    // Update task may be disabled by MDM, ignore if it stops / is not running.
                 }
                 EventloopTick::NewInstanceLaunched(None) => {
                     return Err(anyhow!("GUI IPC socket closed"));
@@ -392,7 +389,7 @@ impl<I: GuiIntegration> Controller<I> {
                 return Poll::Ready(Some(EventloopTick::ControllerRequest(maybe_req)));
             }
 
-            if let Poll::Ready(notification) = self.updates_rx.poll_next_unpin(cx) {
+            if let Poll::Ready(Some(notification)) = self.updates_rx.poll_next_unpin(cx) {
                 return Poll::Ready(Some(EventloopTick::UpdateNotification(notification)));
             }
 
