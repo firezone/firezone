@@ -12,6 +12,7 @@ runs:
   using: "composite"
   steps:
     - id: auth
+      if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
       uses: google-github-actions/auth@6fc4af4b145ae7821d527454aa9bd537d1f2dc5f # v2.1.7
       with:
         token_format: access_token
@@ -19,9 +20,11 @@ runs:
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
         export_environment_variables: false
     - name: Change current gcloud account
+      if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
       shell: bash
       run: gcloud --quiet config set project ${{ inputs.project }}
     - name: Login to Google Artifact Registry
+      if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
       uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
       with:
         registry: "us-east1-docker.pkg.dev"
@@ -31,6 +34,7 @@ runs:
     # DockerHub has stupid rate limits (see https://www.docker.com/increase-rate-limits/)
     # Use Google's public mirror instead: https://cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images
     - name: Setup registry mirror
+      if: ${{ github.event.pull_request.head.repo.full_name == 'firezone/firezone' }}
       shell: bash
       run: |
         echo "$(jq '. += { "registry-mirrors": ["https://mirror.gcr.io"] }' /etc/docker/daemon.json)" > new_daemon.json
