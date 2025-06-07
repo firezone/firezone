@@ -17,6 +17,8 @@ runs:
     - name: Tool Versions
       id: versions
       uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+      with:
+        path: scripts/asdf
     - uses: erlef/setup-beam@5304e04ea2b355f03681464e683d92e3b2f18451 # v1.18.2
       id: setup-beam
       with:
