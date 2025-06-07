@@ -116,4 +116,32 @@ mod tests {
             vec!["This is a message".to_owned()]
         );
     }
+
+    #[test]
+    fn multiple_filters() {
+        let capture = CapturingWriter::default();
+
+        let _guard = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(capture.clone())
+                    .with_level(false)
+                    .without_time()
+                    .with_target(false)
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["foo"]).not())
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["bar"]).not())
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["baz"]).not()),
+            )
+            .set_default();
+
+        tracing::debug!("foo");
+        tracing::debug!("This is a message baz");
+        tracing::debug!("bar");
+        tracing::warn!("This is a message");
+
+        assert_eq!(
+            *capture.lines().lines().collect::<Vec<_>>(),
+            vec!["This is a message".to_owned()]
+        );
+    }
 }
