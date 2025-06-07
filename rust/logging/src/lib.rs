@@ -66,7 +66,7 @@ pub fn setup_bootstrap() -> Result<DefaultGuard> {
         .with_filter(filter);
     let subscriber = Registry::default().with(layer);
 
-    Ok(subscriber.set_default())
+    Ok(tracing::dispatcher::set_default(&subscriber.into()))
 }
 
 #[expect(
