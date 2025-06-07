@@ -1,6 +1,7 @@
 name: Elixir
 on:
   workflow_call:
+  workflow_dispatch:
 
 jobs:
   unit-test:

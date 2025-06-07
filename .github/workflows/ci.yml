@@ -56,12 +56,6 @@ jobs:
             exit 0;
           fi
 
-          # Run all jobs on branches that start with "bust"
-          if [[ "${{ github.ref_name }}" =~ ^bust ]]; then
-            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
-            exit 0;
-          fi
-
           jobs="static-analysis" # Always run static-analysis
 
           if grep -q '^rust/' changed_files.txt; then
