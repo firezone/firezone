@@ -45,7 +45,7 @@ pub use os::set_autostart;
 /// Note that this never gets Dropped because of
 /// <https://github.com/tauri-apps/tauri/issues/8631>
 pub(crate) struct Managed {
-    pub ctlr_tx: CtlrTx,
+    pub req_tx: mpsc::Sender<ControllerRequest>,
     pub inject_faults: bool,
 }
 
@@ -245,120 +245,117 @@ pub fn run(
         rt.block_on(settings::migrate_legacy_settings(advanced_settings));
 
     let (ctlr_tx, ctlr_rx) = mpsc::channel(5);
+    let req_tx = ctlr_tx.clone();
     let (ready_tx, mut ready_rx) = mpsc::channel::<tauri::AppHandle>(1);
 
     // Spawn the setup task.
     // Everything we need to do once Tauri is fully initialised goes in here.
-    let setup_task = rt.spawn({
-        let ctlr_tx = ctlr_tx.clone();
+    let setup_task = rt.spawn(async move {
+        // Block until Tauri is ready.
+        let app_handle = ready_rx
+            .recv()
+            .await
+            .context("Never received ready event from Tauri")?;
 
-        async move {
-            // Block until Tauri is ready.
-            let app_handle = ready_rx
-                .recv()
-                .await
-                .context("Never received ready event from Tauri")?;
+        let (updates_tx, updates_rx) = mpsc::channel(1);
 
-            let (updates_tx, updates_rx) = mpsc::channel(1);
-
-            if mdm_settings.check_for_updates.is_none_or(|check| check) {
-                // Check for updates
-                tokio::spawn(async move {
-                    if let Err(error) =
-                        updates::checker_task(updates_tx, config.debug_update_check).await
-                    {
-                        tracing::error!("Error in updates::checker_task: {error:#}");
-                    }
-                });
-            } else {
-                tracing::info!("Update checker disabled via MDM");
-            }
-
-            if config.smoke_test {
-                let ctlr_tx = ctlr_tx.clone();
-                tokio::spawn(async move {
-                    if let Err(error) = smoke_test(ctlr_tx).await {
-                        tracing::error!(
-                            "Error during smoke test, crashing on purpose so a dev can see our stacktraces: {error:#}"
-                        );
-                        unsafe { sadness_generator::raise_segfault() }
-                    }
-                });
-            }
-
-            tracing::debug!(config.no_deep_links);
-            if !config.no_deep_links {
-                // The single-instance check is done, so register our exe
-                // to handle deep links
-                let exe =
-                    tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
-                deep_link::register(exe).context("Failed to register deep link handler")?;
-            }
-
-            if let Some(failure) = config.fail_with {
-                let ctlr_tx = ctlr_tx.clone();
-                tokio::spawn(async move {
-                    let delay = 5;
-                    tracing::warn!(
-                        "Will crash / error / panic on purpose in {delay} seconds to test error handling."
-                    );
-                    tokio::time::sleep(Duration::from_secs(delay)).await;
-                    tracing::warn!("Crashing / erroring / panicking on purpose");
-                    ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
-                    Ok::<_, anyhow::Error>(())
-                });
-            }
-
-            if let Some(delay) = config.quit_after {
-                let ctlr_tx = ctlr_tx.clone();
-                tokio::spawn(async move {
-                    tracing::warn!("Will quit gracefully in {delay} seconds.");
-                    tokio::time::sleep(Duration::from_secs(delay)).await;
-                    tracing::warn!("Quitting gracefully due to `--quit-after`");
-                    ctlr_tx
-                        .send(ControllerRequest::SystemTrayMenu(system_tray::Event::Quit))
-                        .await?;
-                    Ok::<_, anyhow::Error>(())
-                });
-            }
-
-            assert_eq!(
-                firezone_bin_shared::BUNDLE_ID,
-                app_handle.config().identifier,
-                "BUNDLE_ID should match bundle ID in tauri.conf.json"
-            );
-
-            let tray = system_tray::Tray::new(app_handle.clone(), |app, event| {
-                match handle_system_tray_event(app, event) {
-                    Ok(_) => {}
-                    Err(e) => tracing::error!("{e}"),
+        if mdm_settings.check_for_updates.is_none_or(|check| check) {
+            // Check for updates
+            tokio::spawn(async move {
+                if let Err(error) =
+                    updates::checker_task(updates_tx, config.debug_update_check).await
+                {
+                    tracing::error!("Error in updates::checker_task: {error:#}");
                 }
-            })?;
-            let integration = TauriIntegration {
-                app: app_handle,
-                tray,
-            };
-
-            // Spawn the controller
-            let ctrl_task = tokio::spawn(Controller::start(
-                ctlr_tx,
-                integration,
-                ctlr_rx,
-                general_settings,
-                mdm_settings,
-                advanced_settings,
-                reloader,
-                updates_rx,
-                gui_ipc,
-            ));
-
-            anyhow::Ok(ctrl_task)
+            });
+        } else {
+            tracing::info!("Update checker disabled via MDM");
         }
+
+        if config.smoke_test {
+            let ctlr_tx = ctlr_tx.clone();
+            tokio::spawn(async move {
+                if let Err(error) = smoke_test(ctlr_tx).await {
+                    tracing::error!(
+                        "Error during smoke test, crashing on purpose so a dev can see our stacktraces: {error:#}"
+                    );
+                    unsafe { sadness_generator::raise_segfault() }
+                }
+            });
+        }
+
+        tracing::debug!(config.no_deep_links);
+        if !config.no_deep_links {
+            // The single-instance check is done, so register our exe
+            // to handle deep links
+            let exe =
+                tauri_utils::platform::current_exe().context("Can't find our own exe path")?;
+            deep_link::register(exe).context("Failed to register deep link handler")?;
+        }
+
+        if let Some(failure) = config.fail_with {
+            let ctlr_tx = ctlr_tx.clone();
+            tokio::spawn(async move {
+                let delay = 5;
+                tracing::warn!(
+                    "Will crash / error / panic on purpose in {delay} seconds to test error handling."
+                );
+                tokio::time::sleep(Duration::from_secs(delay)).await;
+                tracing::warn!("Crashing / erroring / panicking on purpose");
+                ctlr_tx.send(ControllerRequest::Fail(failure)).await?;
+                Ok::<_, anyhow::Error>(())
+            });
+        }
+
+        if let Some(delay) = config.quit_after {
+            let ctlr_tx = ctlr_tx.clone();
+            tokio::spawn(async move {
+                tracing::warn!("Will quit gracefully in {delay} seconds.");
+                tokio::time::sleep(Duration::from_secs(delay)).await;
+                tracing::warn!("Quitting gracefully due to `--quit-after`");
+                ctlr_tx
+                    .send(ControllerRequest::SystemTrayMenu(system_tray::Event::Quit))
+                    .await?;
+                Ok::<_, anyhow::Error>(())
+            });
+        }
+
+        assert_eq!(
+            firezone_bin_shared::BUNDLE_ID,
+            app_handle.config().identifier,
+            "BUNDLE_ID should match bundle ID in tauri.conf.json"
+        );
+
+        let tray = system_tray::Tray::new(app_handle.clone(), |app, event| {
+            match handle_system_tray_event(app, event) {
+                Ok(_) => {}
+                Err(e) => tracing::error!("{e}"),
+            }
+        })?;
+        let integration = TauriIntegration {
+            app: app_handle,
+            tray,
+        };
+
+        // Spawn the controller
+        let ctrl_task = tokio::spawn(Controller::start(
+            ctlr_tx,
+            integration,
+            ctlr_rx,
+            general_settings,
+            mdm_settings,
+            advanced_settings,
+            reloader,
+            updates_rx,
+            gui_ipc,
+        ));
+
+        anyhow::Ok(ctrl_task)
     });
 
     tauri::Builder::default()
         .manage(Managed {
-            ctlr_tx,
+            req_tx,
             inject_faults: config.inject_faults,
         })
         .on_window_event(|window, event| {
@@ -496,7 +493,7 @@ async fn smoke_test(ctlr_tx: CtlrTx) -> Result<()> {
 fn handle_system_tray_event(app: &tauri::AppHandle, event: system_tray::Event) -> Result<()> {
     app.try_state::<Managed>()
         .context("can't get Managed struct from Tauri")?
-        .ctlr_tx
+        .req_tx
         .blocking_send(ControllerRequest::SystemTrayMenu(event))?;
     Ok(())
 }
