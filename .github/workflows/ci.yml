@@ -44,6 +44,24 @@ jobs:
           echo "Changed files:"
           cat changed_files.txt
 
+          # Run all jobs if CI configuration changes
+          if grep -q '^\.github/' changed_files.txt; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            exit 0;
+          fi
+
+          # Run all jobs if tool versions change
+          if grep -q '^\.tool-versions' changed_files.txt; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            exit 0;
+          fi
+
+          # Run all jobs on branches that start with "bust"
+          if [[ "${{ github.ref_name }}" =~ ^bust ]]; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            exit 0;
+          fi
+
           jobs="static-analysis" # Always run static-analysis
 
           if grep -q '^rust/' changed_files.txt; then
