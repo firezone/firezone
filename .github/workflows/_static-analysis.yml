@@ -79,7 +79,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y shfmt
+          sudo apt-get install -y shfmt shellcheck
           npm install -g prettier
       - name: Run pre-commit
         run: |
