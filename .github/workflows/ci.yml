@@ -90,21 +90,40 @@ jobs:
 
   required-check:
     name: required-check
-    needs:
-      - planner
-      - kotlin
-      - swift
-      - elixir
-      - rust
-      - codeql
-      - static-analysis
-      - compatibility-tests
-      - integration-tests
-      - perf-tests
-      - codeql
+    needs: [planner, static-analysis]
     runs-on: ubuntu-latest
     steps:
-      - run: echo "All required jobs finished."
+      - name: Wait for required jobs to succeed
+        env:
+          JOBS_TO_RUN: ${{ needs.planner.outputs.jobs_to_run }}
+        run: |
+          jobs=$(echo "$JOBS_TO_RUN" | tr ',' '\n' | grep -v '^$')
+          echo "Waiting for jobs:"
+          echo "$jobs"
+
+          while true; do
+            sleep 10
+            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs')
+
+            for job in $jobs; do
+              read status conclusion <<<$(echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase == ($job|ascii_downcase)) | "\(.status) \(.conclusion)"' | head -n1)
+              if [ -z "$status" ]; then
+                echo "Job $job not found yet, waiting..."
+                continue 2
+              fi
+              if [ "$status" != "completed" ]; then
+                echo "Job $job is still running..."
+                continue 2
+              fi
+              if [ "$conclusion" != "success" ]; then
+                echo "Job $job failed or did not succeed! Status: $conclusion"
+                exit 1
+              fi
+            done
+
+            echo "All required jobs succeeded!"
+            break
+          done
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
