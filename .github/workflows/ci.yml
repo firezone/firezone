@@ -111,7 +111,7 @@ jobs:
             jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs')
 
             for job in $jobs; do
-              read status conclusion <<<$(echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase == ($job|ascii_downcase)) | "\(.status) \(.conclusion)"' | head -n1)
+              read status conclusion <<<$(echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | "\(.status) \(.conclusion)"' | head -n1)
               if [ -z "$status" ]; then
                 echo "Job $job not found yet, waiting..."
                 continue 2
