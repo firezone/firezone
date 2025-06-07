@@ -17,8 +17,13 @@ use sentry_tracing::EventFilter;
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
-    EnvFilter, Layer, Registry, filter::ParseError, fmt, layer::SubscriberExt as _,
-    registry::LookupSpan, reload, util::SubscriberInitExt,
+    EnvFilter, Layer, Registry,
+    filter::{FilterExt, ParseError},
+    fmt,
+    layer::SubscriberExt as _,
+    registry::LookupSpan,
+    reload,
+    util::SubscriberInitExt,
 };
 
 pub use ansi::stdout_supports_ansi;
@@ -224,29 +229,28 @@ where
                 r#"RemoveInstance "SWD\WINTUN\{E9245BC1-B8C1-44CA-AB1D-C6AAD4F13B9C}""#,
                 "(Code 0x00000003)",
             ],
-        ))
+        ).not())
         .with_filter(EventMessageContains::all(
             Level::ERROR,
             &[
                 r#"WinTun: Error executing worker process: "SWD\WINTUN\{E9245BC1-B8C1-44CA-AB1D-C6AAD4F13B9C}""#,
                 "(Code 0x00000003)",
             ],
-        ))
+        ).not())
         .with_filter(EventMessageContains::all(
             Level::ERROR,
             &[
                 "WinTun: Failed to remove adapter when closing",
                 "(Code 0x00000003)",
             ],
-        ))
+        ).not())
         .with_filter(EventMessageContains::all(
             Level::ERROR,
             &[
                 r#"WinTun: Failed to remove orphaned adapter "Firezone""#,
                 "(Code 0x00000003)",
             ],
-        ))
-    // Filter out noisy crates but pass all events otherwise.
+        ).not())
 }
 
 #[doc(hidden)]
