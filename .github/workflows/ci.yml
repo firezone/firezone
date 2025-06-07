@@ -25,7 +25,7 @@ jobs:
       jobs_to_run: ${{ steps.set-jobs.outputs.jobs_to_run }}
     steps:
       - uses: actions/checkout@v4
-      - id: diff
+      - name: Determine jobs to run
         run: |
           # Fetch base ref for PRs and merge_group events
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
@@ -35,10 +35,10 @@ jobs:
             # For workflow_dispatch or other events, compare with previous commit
             git diff --name-only HEAD^ HEAD > changed_files.txt
           fi
+
           cat changed_files.txt
-      - id: set-jobs
-        run: |
-          jobs=""
+
+          jobs="static-analysis" # Always run static-analysis
 
           if grep -q '^rust/' changed_files.txt; then
             jobs="${jobs},rust,kotlin,swift,build-artifacts,build-perf-artifacts"
@@ -56,7 +56,6 @@ jobs:
             jobs="${jobs},website,codeql"
           fi
 
-          jobs="${jobs#,}"
           echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
           echo "Final jobs_to_run: $jobs"
 
@@ -81,6 +80,7 @@ jobs:
     secrets: inherit
   static-analysis:
     needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
     uses: ./.github/workflows/_static-analysis.yml
   codeql:
     needs: planner
@@ -90,12 +90,13 @@ jobs:
 
   required-check:
     name: required-check
-    needs: [planner, static-analysis]
+    needs: planner
     runs-on: ubuntu-latest
     steps:
       - name: Wait for required jobs to succeed
         env:
           JOBS_TO_RUN: ${{ needs.planner.outputs.jobs_to_run }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           jobs=$(echo "$JOBS_TO_RUN" | tr ',' '\n' | grep -v '^$')
           echo "Waiting for jobs:"
