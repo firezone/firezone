@@ -1,7 +1,7 @@
 use tracing::Level;
 use tracing_subscriber::layer::Filter;
 
-/// Filters out all events whose message contains all of the given snippets.
+/// Filters all events whose message does not contain all of the given snippets.
 pub struct EventMessageContains {
     level: Level,
     snippets: Vec<&'static str>,
@@ -25,11 +25,7 @@ where
         metadata: &tracing::Metadata<'_>,
         _: &tracing_subscriber::layer::Context<'_, S>,
     ) -> bool {
-        if metadata.level() != &self.level {
-            return false;
-        }
-
-        true
+        metadata.level() == &self.level
     }
 
     fn event_enabled(
@@ -41,18 +37,12 @@ where
         event.record(&mut visitor);
 
         let Some(message) = visitor.message else {
-            return true;
+            return false;
         };
 
-        if self
-            .snippets
+        self.snippets
             .iter()
             .all(|snippet| message.contains(snippet))
-        {
-            return false;
-        }
-
-        true
     }
 }
 
@@ -78,7 +68,9 @@ impl tracing::field::Visit for MessageVisitor {
 mod tests {
     use super::*;
     use crate::capturing_writer::CapturingWriter;
-    use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
+    use tracing_subscriber::{
+        Layer, filter::FilterExt, layer::SubscriberExt, util::SubscriberInitExt,
+    };
 
     #[test]
     fn matches_on_all_strings() {
@@ -88,10 +80,10 @@ mod tests {
             .with(
                 tracing_subscriber::fmt::layer()
                     .with_writer(capture.clone())
-                    .with_filter(EventMessageContains::all(
-                        Level::DEBUG,
-                        &["foo", r#"bar ("xyz")"#, "baz"],
-                    )),
+                    .with_filter(
+                        EventMessageContains::all(Level::DEBUG, &["foo", r#"bar ("xyz")"#, "baz"])
+                            .not(),
+                    ),
             )
             .set_default();
 
@@ -113,11 +105,39 @@ mod tests {
                     .with_level(false)
                     .without_time()
                     .with_target(false)
-                    .with_filter(EventMessageContains::all(Level::DEBUG, &["foo"])),
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["foo"]).not()),
             )
             .set_default();
 
-        tracing::debug!("This is a message");
+        tracing::warn!("This is a message");
+
+        assert_eq!(
+            *capture.lines().lines().collect::<Vec<_>>(),
+            vec!["This is a message".to_owned()]
+        );
+    }
+
+    #[test]
+    fn multiple_filters() {
+        let capture = CapturingWriter::default();
+
+        let _guard = tracing_subscriber::registry()
+            .with(
+                tracing_subscriber::fmt::layer()
+                    .with_writer(capture.clone())
+                    .with_level(false)
+                    .without_time()
+                    .with_target(false)
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["foo"]).not())
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["bar"]).not())
+                    .with_filter(EventMessageContains::all(Level::DEBUG, &["baz"]).not()),
+            )
+            .set_default();
+
+        tracing::debug!("foo");
+        tracing::debug!("This is a message baz");
+        tracing::debug!("bar");
+        tracing::warn!("This is a message");
 
         assert_eq!(
             *capture.lines().lines().collect::<Vec<_>>(),

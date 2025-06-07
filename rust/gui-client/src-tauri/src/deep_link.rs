@@ -44,6 +44,8 @@ pub async fn open(url: url::Url) -> Result<()> {
         .await
         .context("Failed to send deep-link")?;
 
+    tracing::debug!("Sent deep-link, waiting for response");
+
     let response = read
         .next()
         .await
@@ -51,6 +53,8 @@ pub async fn open(url: url::Url) -> Result<()> {
         .context("Failed to receive response")?;
 
     anyhow::ensure!(response == ServerMsg::Ack);
+
+    tracing::info!("Primary instance acknowledged deep-link, goodbye!");
 
     Ok(())
 }
