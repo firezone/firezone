@@ -19,22 +19,89 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:
+  planner:
+    runs-on: ubuntu-latest
+    outputs:
+      jobs_to_run: ${{ steps.set-jobs.outputs.jobs_to_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: diff
+        run: |
+          # Fetch base ref for PRs and merge_group events
+          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
+            git fetch origin ${{ github.base_ref }} --depth=1
+            git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
+          else
+            # For workflow_dispatch or other events, compare with previous commit
+            git diff --name-only HEAD^ HEAD > changed_files.txt
+          fi
+          cat changed_files.txt
+      - id: set-jobs
+        run: |
+          jobs=""
+          if grep -q '^rust/' changed_files.txt; then
+            jobs="${jobs},rust"
+
+            # Rebuild apps if Rust code changes
+            jobs="${jobs},kotlin"
+            jobs="${jobs},swift"
+          fi
+          if grep -q '^elixir/' changed_files.txt; then
+            jobs="${jobs},elixir"
+          fi
+          if grep -q '^kotlin/' changed_files.txt; then
+            jobs="${jobs},kotlin"
+          fi
+          if grep -q '^swift/' changed_files.txt; then
+            jobs="${jobs},swift"
+          fi
+          if grep -q '^website/' changed_files.txt; then
+            jobs="${jobs},website"
+          fi
+          # Always remove leading comma
+          jobs="${jobs#,}"
+          echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+
   kotlin:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
   swift:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'swift')
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
   elixir:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
   rust:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'rust')
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
   static-analysis:
+    needs: planner
     uses: ./.github/workflows/_static-analysis.yml
   codeql:
+    needs: planner
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
+
+  required-check:
+    name: required-check
+    needs:
+      - planner
+      - kotlin
+      - swift
+      - elixir
+      - rust
+      - static-analysis
+      - codeql
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All required jobs finished."
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
