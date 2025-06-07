@@ -135,7 +135,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-artifacts:
-    needs: update-release-draft
+    needs: [update-release-draft, planner]
     if: contains(needs.planner.outputs.jobs_to_run, 'build-artifacts')
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
@@ -146,7 +146,7 @@ jobs:
       stage: ${{ inputs.stage || 'debug' }}
 
   build-perf-artifacts:
-    needs: update-release-draft
+    needs: [update-release-draft, planner]
     if: contains(needs.planner.outputs.jobs_to_run, 'build-perf-artifacts')
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
