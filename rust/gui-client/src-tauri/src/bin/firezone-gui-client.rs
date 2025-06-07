@@ -4,7 +4,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{process::ExitCode, time::Duration};
+use std::process::ExitCode;
 
 use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
@@ -109,12 +109,10 @@ fn try_main(
             return Ok(());
         }
         Some(Cmd::OpenDeepLink(deep_link)) => {
-            rt.block_on(tokio::time::timeout(
-                Duration::from_secs(10),
-                deep_link::open(deep_link.url),
-            ))
-            .context("Timed out while opening deep-link")?
-            .context("Failed to open deep-link")?;
+            tracing::info!("Opening deep-link");
+
+            rt.block_on(deep_link::open(deep_link.url))
+                .context("Failed to open deep-link")?;
 
             return Ok(());
         }
