@@ -28,7 +28,7 @@ jobs:
       - name: Plan jobs to run
         id: plan
         run: |
-          jobs="static-analysis,rust,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
+          jobs="static-analysis,elixir,rust,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
 
           # Fetch base ref for PRs and merge_group events
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
