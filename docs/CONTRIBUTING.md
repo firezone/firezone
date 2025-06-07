@@ -139,9 +139,8 @@ setup properly.
 
 ### asdf-vm Setup
 
-We use [asdf-vm](https://asdf-vm.com) to manage language versions for Firezone.
-Install the language runtimes defined in the [.tool-versions](../.tool-versions)
-file by running `asdf install` from the project root.
+If you have `asdf` installed, you can install the required language runtimes by
+running `asdf install` from the [`scripts/asdf`](scripts/asdf) directory.
 
 - Note: For a fresh install of `asdf` you will need to install some
   [asdf-plugins](https://asdf-vm.com/manage/plugins.html). e.g. `asdf plugin add nodejs && asdf install nodejs` to set up the NodeJS plugin and package.
