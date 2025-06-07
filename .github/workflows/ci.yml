@@ -41,23 +41,18 @@ jobs:
           jobs=""
 
           if grep -q '^rust/' changed_files.txt; then
-            echo "rust/: running rust, kotlin, swift, integration-tests, compatibility-tests"
-            jobs="${jobs},rust,kotlin,swift,integration-tests,compatibility-tests"
+            jobs="${jobs},rust,kotlin,swift,build-artifacts,build-perf-artifacts"
           fi
           if grep -q '^elixir/' changed_files.txt; then
-            echo "elixir/: running elixir, integration-tests, compatibility-tests"
-            jobs="${jobs},elixir,integration-tests,compatibility-tests"
+            jobs="${jobs},elixir,build-artifacts"
           fi
           if grep -q '^kotlin/' changed_files.txt; then
-            echo "kotlin/: running kotlin"
             jobs="${jobs},kotlin"
           fi
           if grep -q '^swift/' changed_files.txt; then
-            echo "swift/: running swift"
             jobs="${jobs},swift"
           fi
           if grep -q '^website/' changed_files.txt; then
-            echo "website/: running website"
             jobs="${jobs},website"
           fi
 
@@ -139,6 +134,7 @@ jobs:
 
   build-artifacts:
     needs: update-release-draft
+    if: contains(needs.planner.outputs.jobs_to_run, 'build-artifacts')
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
@@ -149,6 +145,7 @@ jobs:
 
   build-perf-artifacts:
     needs: update-release-draft
+    if: contains(needs.planner.outputs.jobs_to_run, 'build-perf-artifacts')
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
