@@ -22,10 +22,11 @@ jobs:
   planner:
     runs-on: ubuntu-latest
     outputs:
-      jobs_to_run: ${{ steps.set-jobs.outputs.jobs_to_run }}
+      jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
       - uses: actions/checkout@v4
-      - name: Determine jobs to run
+      - name: Plan jobs to run
+        id: plan
         run: |
           # Fetch base ref for PRs and merge_group events
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
@@ -36,6 +37,7 @@ jobs:
             git diff --name-only HEAD^ HEAD > changed_files.txt
           fi
 
+          echo "Changed files:"
           cat changed_files.txt
 
           jobs="static-analysis" # Always run static-analysis
@@ -99,8 +101,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           jobs=$(echo "$JOBS_TO_RUN" | tr ',' '\n' | grep -v '^$')
-          echo "Waiting for jobs:"
-          echo "$jobs"
 
           while true; do
             sleep 10
