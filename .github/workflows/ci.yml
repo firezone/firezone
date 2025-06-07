@@ -39,31 +39,31 @@ jobs:
       - id: set-jobs
         run: |
           jobs=""
+
           if grep -q '^rust/' changed_files.txt; then
-            jobs="${jobs},rust"
-
-            # Rebuild apps if Rust code changes
-            jobs="${jobs},kotlin"
-            jobs="${jobs},swift"
-
-            jobs="${jobs},integration-tests,compatibility-tests"
+            echo "rust/: running rust, kotlin, swift, integration-tests, compatibility-tests"
+            jobs="${jobs},rust,kotlin,swift,integration-tests,compatibility-tests"
           fi
           if grep -q '^elixir/' changed_files.txt; then
-            jobs="${jobs},elixir"
-            jobs="${jobs},integration-tests,compatibility-tests"
+            echo "elixir/: running elixir, integration-tests, compatibility-tests"
+            jobs="${jobs},elixir,integration-tests,compatibility-tests"
           fi
           if grep -q '^kotlin/' changed_files.txt; then
+            echo "kotlin/: running kotlin"
             jobs="${jobs},kotlin"
           fi
           if grep -q '^swift/' changed_files.txt; then
+            echo "swift/: running swift"
             jobs="${jobs},swift"
           fi
           if grep -q '^website/' changed_files.txt; then
+            echo "website/: running website"
             jobs="${jobs},website"
           fi
-          # Always remove leading comma
+
           jobs="${jobs#,}"
           echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+          echo "Final jobs_to_run: $jobs"
 
   kotlin:
     needs: planner
