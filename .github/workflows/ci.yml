@@ -28,7 +28,7 @@ jobs:
       - name: Plan jobs to run
         id: plan
         run: |
-          jobs="static-analysis,rust,kotlin,swift,website,codeql,build-artifacts,build-perf-artifacts";
+          jobs="static-analysis,rust,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
 
           # Fetch base ref for PRs and merge_group events
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
@@ -72,7 +72,7 @@ jobs:
             jobs="${jobs},swift"
           fi
           if grep -q '^website/' changed_files.txt; then
-            jobs="${jobs},website,codeql"
+            jobs="${jobs},codeql"
           fi
 
           echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
