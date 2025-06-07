@@ -17,13 +17,15 @@ pub(crate) struct Writer {
     tag: CString,
 }
 
-impl MakeWriter {
-    pub(crate) fn new(tag: &'static str) -> Self {
+impl Default for MakeWriter {
+    fn default() -> Self {
         Self {
-            tag: CString::new(tag).expect("tag must not contain nul-byte"),
+            tag: CString::new("connlib").expect("tag must not contain nul-byte"),
         }
     }
+}
 
+impl MakeWriter {
     fn make_writer_for_level(&self, level: Level) -> BufWriter<Writer> {
         let inner = Writer {
             level,
