@@ -28,21 +28,22 @@ jobs:
       - name: Plan jobs to run
         id: plan
         run: |
+          jobs="static-analysis,rust,kotlin,swift,website,codeql,build-artifacts,build-perf-artifacts";
+
           # Fetch base ref for PRs and merge_group events
           if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
             git fetch origin ${{ github.base_ref }} --depth=1
             git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
+
+            echo "Changed files:"
+            cat changed_files.txt
           else
             # For workflow_dispatch or other events, run all jobs
 
-            jobs=static-analysis,rust,kotlin,swift,website,codeql,build-artifacts,build-perf-artifacts
             echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
 
             exit 0;
           fi
-
-          echo "Changed files:"
-          cat changed_files.txt
 
           # Run all jobs if CI configuration changes
           if grep -q '^\.github/' changed_files.txt; then
