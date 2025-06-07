@@ -45,9 +45,12 @@ jobs:
             # Rebuild apps if Rust code changes
             jobs="${jobs},kotlin"
             jobs="${jobs},swift"
+
+            jobs="${jobs},integration-tests,compatibility-tests"
           fi
           if grep -q '^elixir/' changed_files.txt; then
             jobs="${jobs},elixir"
+            jobs="${jobs},integration-tests,compatibility-tests"
           fi
           if grep -q '^kotlin/' changed_files.txt; then
             jobs="${jobs},kotlin"
