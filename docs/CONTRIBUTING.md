@@ -140,7 +140,8 @@ setup properly.
 ### asdf-vm Setup
 
 If you have `asdf` installed, you can install the required language runtimes by
-running `asdf install` from the [`scripts/asdf`](../scripts/asdf) directory.
+running `asdf install` from the [`elixir`](../elixir) or [`website`](../website)
+directory, depending on which component you are working on.
 
 - Note: For a fresh install of `asdf` you will need to install some
   [asdf-plugins](https://asdf-vm.com/manage/plugins.html). e.g. `asdf plugin add nodejs && asdf install nodejs` to set up the NodeJS plugin and package.
