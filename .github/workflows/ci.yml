@@ -98,6 +98,7 @@ jobs:
     needs: planner
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Wait for required jobs to succeed
         env:
           JOBS_TO_RUN: ${{ needs.planner.outputs.jobs_to_run }}
