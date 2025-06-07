@@ -107,23 +107,30 @@ jobs:
           jobs=$(echo "$JOBS_TO_RUN" | tr ',' '\n' | grep -v '^$')
 
           while true; do
+            echo "Checking all jobs in 10s"
+
             sleep 10
             jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs')
 
             for job in $jobs; do
               read status conclusion <<<$(echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | "\(.status) \(.conclusion)"' | head -n1)
+
               if [ -z "$status" ]; then
-                echo "Job $job not found yet, waiting..."
+                echo "Job $job not found yet, waiting"
                 continue 2
               fi
+
               if [ "$status" != "completed" ]; then
-                echo "Job $job is still running..."
+                echo "Job $job is still running"
                 continue 2
               fi
+
               if [ "$conclusion" != "success" ]; then
-                echo "Job $job failed or did not succeed! Status: $conclusion"
+                echo "Job $job did not succeed! Status: $conclusion"
                 exit 1
               fi
+
+              echo "Job $job succeeded!"
             done
 
             echo "All required jobs succeeded!"
