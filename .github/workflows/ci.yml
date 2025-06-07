@@ -98,6 +98,9 @@ jobs:
       - elixir
       - rust
       - static-analysis
+      - compatibility-tests
+      - integration-tests
+      - upload-bencher
       - codeql
     runs-on: ubuntu-latest
     steps:
