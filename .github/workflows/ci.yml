@@ -44,7 +44,7 @@ jobs:
             jobs="${jobs},rust,kotlin,swift,build-artifacts,build-perf-artifacts"
           fi
           if grep -q '^elixir/' changed_files.txt; then
-            jobs="${jobs},elixir,build-artifacts"
+            jobs="${jobs},elixir,codeql,build-artifacts"
           fi
           if grep -q '^kotlin/' changed_files.txt; then
             jobs="${jobs},kotlin"
@@ -53,7 +53,7 @@ jobs:
             jobs="${jobs},swift"
           fi
           if grep -q '^website/' changed_files.txt; then
-            jobs="${jobs},website"
+            jobs="${jobs},website,codeql"
           fi
 
           jobs="${jobs#,}"
@@ -84,6 +84,7 @@ jobs:
     uses: ./.github/workflows/_static-analysis.yml
   codeql:
     needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
@@ -95,10 +96,11 @@ jobs:
       - swift
       - elixir
       - rust
+      - codeql
       - static-analysis
       - compatibility-tests
       - integration-tests
-      - upload-bencher
+      - perf-tests
       - codeql
     runs-on: ubuntu-latest
     steps:
