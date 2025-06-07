@@ -160,7 +160,6 @@ pub fn setup_stdout() -> Result<FilterReloadHandle> {
 
     Ok(reloader)
 }
-
 /// Reads the log filter for the Tunnel service or for debug commands
 ///
 /// e.g. `info`
