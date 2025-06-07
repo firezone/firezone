@@ -265,13 +265,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.sha }}
-      - name: Authenticate to Google Cloud Staging
-        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+      - uses: ./.github/actions/gcp-docker-login
+        id: login
         with:
-          workload_identity_provider: "projects/85623168602/locations/global/workloadIdentityPools/github/providers/firezone-provider"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-          export_environment_variables: true
-          create_credentials_file: true
+          project: firezone-staging
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
@@ -324,15 +321,6 @@ jobs:
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             $clobber \
             --repo ${{ github.repository }}
-      - name: Authenticate to Google Cloud
-        id: auth
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
-        uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
-        with:
-          workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
-          service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
-          export_environment_variables: true
-          create_credentials_file: true
       - name: Copy binaries to Google Cloud Storage
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
         run: |
@@ -347,10 +335,6 @@ jobs:
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
-      - uses: ./.github/actions/gcp-docker-login
-        id: login
-        with:
-          project: firezone-staging
       - name: Build Version Tags
         run: |
           set -xe
