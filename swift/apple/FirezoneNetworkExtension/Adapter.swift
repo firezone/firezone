@@ -418,7 +418,11 @@ extension Adapter: CallbackHandlerDelegate {
   func onDisconnect(error: DisconnectError) {
     // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
     // Assigning to `nil` will invoke `Drop` on the Rust side.
-    session = nil
+    // We need to do it in a new task to all Rust to break cycling dependencies as callbacks are executed
+    // on the same runtime as the session is running.
+    Task {
+        session = nil
+    }
 
     // Since connlib has already shutdown by this point, we queue this callback
     // to ensure that we can clean up even if connlib exits before we are done.
