@@ -16,8 +16,8 @@ export default function GUI({ os }: { os: OS }) {
           applied on startup.
         </ChangeItem>
         <ChangeItem pull="9445">
-          Fixes an issue MDM-disabled update checker would cause the Client
-          to hang upon sign-in.
+          Fixes an issue where disabling the update checker via MDM would cause
+          the Client to hang upon sign-in.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.1" date={new Date("2025-06-05")}>
