@@ -4,6 +4,7 @@ on:
   pull_request:
   merge_group:
     types: [checks_requested]
+  workflow_dispatch:
   workflow_call:
     inputs:
       stage:
@@ -19,22 +20,146 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:
+  planner:
+    runs-on: ubuntu-latest
+    outputs:
+      jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plan jobs to run
+        id: plan
+        run: |
+          jobs="static-analysis,elixir,rust,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
+
+          # For workflow_dispatch or workflow_call, run all jobs
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+
+            exit 0;
+          fi
+
+          # Fetch base ref for PRs
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin ${{ github.base_ref }} --depth=1
+            git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
+
+            echo "Changed files:"
+            cat changed_files.txt
+          fi
+
+          # Fetch base ref for merge_group
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            git fetch origin ${{ github.event.merge_group.base_ref }} --depth=1
+            git diff --name-only ${{ github.event.merge_group.base_sha }} ${{ github.sha }} > changed_files.txt
+
+            echo "Changed files:"
+            cat changed_files.txt
+          fi
+
+          # Run all jobs if CI configuration changes
+          if grep -q '^\.github/' changed_files.txt; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            exit 0;
+          fi
+
+          # Run all jobs if tool versions change
+          if grep -q '^\.tool-versions' changed_files.txt; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            exit 0;
+          fi
+
+          jobs="static-analysis" # Always run static-analysis
+
+          if grep -q '^rust/' changed_files.txt; then
+            jobs="${jobs},rust,kotlin,swift,build-artifacts,build-perf-artifacts"
+          fi
+          if grep -q '^elixir/' changed_files.txt; then
+            jobs="${jobs},elixir,codeql,build-artifacts"
+          fi
+          if grep -q '^kotlin/' changed_files.txt; then
+            jobs="${jobs},kotlin"
+          fi
+          if grep -q '^swift/' changed_files.txt; then
+            jobs="${jobs},swift"
+          fi
+          if grep -q '^website/' changed_files.txt; then
+            jobs="${jobs},codeql"
+          fi
+
+          echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+
   kotlin:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
     uses: ./.github/workflows/_kotlin.yml
     secrets: inherit
   swift:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'swift')
     uses: ./.github/workflows/_swift.yml
     secrets: inherit
   elixir:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
   rust:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'rust')
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
   static-analysis:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
     uses: ./.github/workflows/_static-analysis.yml
   codeql:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
+
+  required-check:
+    name: required-check
+    needs: planner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for required jobs to succeed
+        env:
+          JOBS_TO_RUN: ${{ needs.planner.outputs.jobs_to_run }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          jobs=$(echo "$JOBS_TO_RUN" | tr ',' '\n' | grep -v '^$')
+
+          while true; do
+            echo "Checking all jobs in 10s"
+
+            sleep 10
+            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs')
+
+            for job in $jobs; do
+              read status conclusion <<<$(echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | "\(.status) \(.conclusion)"' | head -n1)
+
+              if [ -z "$status" ]; then
+                echo "Job $job not found yet, waiting"
+                continue 2
+              fi
+
+              if [ "$status" != "completed" ]; then
+                echo "Job $job is still running"
+                continue 2
+              fi
+
+              if [ "$conclusion" != "success" ]; then
+                echo "Job $job did not succeed! Status: $conclusion"
+                exit 1
+              fi
+
+              echo "Job $job succeeded!"
+            done
+
+            echo "All required jobs succeeded!"
+            break
+          done
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
@@ -65,7 +190,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-artifacts:
-    needs: update-release-draft
+    needs: [update-release-draft, planner]
+    if: contains(needs.planner.outputs.jobs_to_run, 'build-artifacts')
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:
@@ -75,7 +201,8 @@ jobs:
       stage: ${{ inputs.stage || 'debug' }}
 
   build-perf-artifacts:
-    needs: update-release-draft
+    needs: [update-release-draft, planner]
+    if: contains(needs.planner.outputs.jobs_to_run, 'build-perf-artifacts')
     uses: ./.github/workflows/_build_artifacts.yml
     secrets: inherit
     with:

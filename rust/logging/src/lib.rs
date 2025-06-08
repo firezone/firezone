@@ -61,6 +61,19 @@ where
     Ok(reload_handle1.merge(reload_handle2))
 }
 
+/// Sets up a bootstrap logger.
+pub fn setup_bootstrap() -> Result<DefaultGuard> {
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
+
+    let (filter, _) = try_filter(&directives).context("failed to parse directives")?;
+    let layer = tracing_subscriber::fmt::layer()
+        .event_format(Format::new())
+        .with_filter(filter);
+    let subscriber = Registry::default().with(layer);
+
+    Ok(tracing::dispatcher::set_default(&subscriber.into()))
+}
+
 #[expect(
     clippy::disallowed_methods,
     reason = "This is the alternative function."

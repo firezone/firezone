@@ -39,7 +39,7 @@ async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     managed
-        .ctlr_tx
+        .req_tx
         .send(ControllerRequest::ClearLogs(tx))
         .await
         .context("Failed to send `ClearLogs` command")?;
@@ -53,7 +53,7 @@ async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) -> Result<()> {
-    show_export_dialog(&app, managed.ctlr_tx.clone())?;
+    show_export_dialog(&app, managed.req_tx.clone())?;
 
     Ok(())
 }
@@ -68,7 +68,7 @@ async fn apply_general_settings(
     }
 
     managed
-        .ctlr_tx
+        .req_tx
         .send(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
         .await
         .context("Failed to send `ApplyGeneralSettings` command")?;
@@ -86,7 +86,7 @@ async fn apply_advanced_settings(
     }
 
     managed
-        .ctlr_tx
+        .req_tx
         .send(ControllerRequest::ApplyAdvancedSettings(Box::new(settings)))
         .await
         .context("Failed to send `ApplySettings` command")?;
@@ -104,7 +104,7 @@ async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<(
 #[tauri::command]
 async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed
-        .ctlr_tx
+        .req_tx
         .send(ControllerRequest::ResetGeneralSettings)
         .await
         .context("Failed to send `ResetGeneralSettings` command")?;
@@ -149,7 +149,7 @@ fn show_export_dialog(app: &tauri::AppHandle, ctlr_tx: CtlrTx) -> Result<()> {
 #[tauri::command]
 async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed
-        .ctlr_tx
+        .req_tx
         .send(ControllerRequest::SignIn)
         .await
         .context("Failed to send `SignIn` command")?;
@@ -160,7 +160,7 @@ async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
 #[tauri::command]
 async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed
-        .ctlr_tx
+        .req_tx
         .send(ControllerRequest::SignOut)
         .await
         .context("Failed to send `SignOut` command")?;
@@ -171,7 +171,7 @@ async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
 #[tauri::command]
 async fn update_state(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed
-        .ctlr_tx
+        .req_tx
         .send(ControllerRequest::UpdateState)
         .await
         .context("Failed to send `UpdateState` command")?;
