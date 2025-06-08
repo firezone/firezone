@@ -31,19 +31,29 @@ jobs:
         run: |
           jobs="static-analysis,elixir,rust,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
 
-          # Fetch base ref for PRs and merge_group events
-          if [ "${{ github.event_name }}" = "pull_request" ] || [ "${{ github.event_name }}" = "merge_group" ]; then
+          # For workflow_dispatch or workflow_call, run all jobs
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+
+            exit 0;
+          fi
+
+          # Fetch base ref for PRs
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin ${{ github.base_ref }} --depth=1
             git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
-          else
-            # For workflow_dispatch or other events, run all jobs
+          fi
 
-            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+          # Fetch base ref for merge_group
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            git fetch origin ${{ github.event.merge_group.base_ref }} --depth=1
+            git diff --name-only origin/${{ github.event.merge_group.base_ref }} ${{ github.sha }} > changed_files.txt
 
-            exit 0;
+            echo "Changed files:"
+            cat changed_files.txt
           fi
 
           # Run all jobs if CI configuration changes
