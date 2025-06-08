@@ -10,29 +10,26 @@ use anyhow::{Context as _, Result, bail};
 use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
-use firezone_telemetry::Telemetry;
+use firezone_telemetry::{Telemetry, analytics};
 use settings::AdvancedSettingsLegacy;
+use tokio::runtime::Runtime;
+use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
+    let bootstrap_log_guard =
+        firezone_logging::setup_bootstrap().expect("Failed to setup bootstrap logger");
+
     // Mitigates a bug in Ubuntu 22.04 - Under Wayland, some features of the window decorations like minimizing, closing the windows, etc., doesn't work unless you double-click the titlebar first.
     // SAFETY: No other thread is running yet
     unsafe {
         std::env::set_var("GDK_BACKEND", "x11");
     }
 
-    let cli = Cli::parse();
-
-    // TODO: Remove, this is only needed for Portal connections and the GUI process doesn't connect to the Portal. Unless it's also needed for update checks.
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Calling `install_default` only once per process should always succeed");
-
     let mut telemetry = Telemetry::default();
-    let settings = settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
-    let rt = tokio::runtime::Runtime::new().expect("Couldn't start Tokio runtime");
+    let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
-    match try_main(cli, &rt, &mut telemetry, settings) {
+    match try_main(&rt, bootstrap_log_guard, &mut telemetry) {
         Ok(()) => {
             rt.block_on(telemetry.stop());
 
@@ -49,11 +46,12 @@ fn main() -> ExitCode {
 }
 
 fn try_main(
-    cli: Cli,
-    rt: &tokio::runtime::Runtime,
+    rt: &Runtime,
+    bootstrap_log_guard: DefaultGuard,
     telemetry: &mut Telemetry,
-    mut settings: AdvancedSettingsLegacy,
 ) -> Result<()> {
+    let cli = Cli::parse();
+
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
         debug_update_check: cli.debug_update_check,
@@ -66,17 +64,49 @@ fn try_main(
         fail_with: cli.fail_on_purpose(),
     };
 
+    let mut advanced_settings =
+        settings::load_advanced_settings::<AdvancedSettingsLegacy>().unwrap_or_default();
+
+    let mdm_settings = settings::load_mdm_settings()
+        .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
+        .unwrap_or_default();
+
+    let api_url = mdm_settings
+        .api_url
+        .as_ref()
+        .unwrap_or(&advanced_settings.api_url)
+        .to_string();
+
+    telemetry.start(
+        &api_url,
+        firezone_gui_client::RELEASE,
+        firezone_telemetry::GUI_DSN,
+    );
+
     // Don't fix the log filter for smoke tests because we can't show a dialog there.
     if !config.smoke_test {
-        fix_log_filter(&mut settings)?;
+        fix_log_filter(&mut advanced_settings)?;
     }
 
-    let log_filter = std::env::var("RUST_LOG").unwrap_or_else(|_| settings.log_filter.clone());
+    let log_filter = std::env::var("RUST_LOG")
+        .ok()
+        .or(mdm_settings.log_filter.clone())
+        .unwrap_or_else(|| advanced_settings.log_filter.clone());
+
+    drop(bootstrap_log_guard);
 
     let logging::Handles {
         logger: _logger,
         reloader,
     } = firezone_gui_client::logging::setup_gui(&log_filter)?;
+
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    if let Ok(id) = firezone_bin_shared::device_id::get() {
+        Telemetry::set_firezone_id(id.id.clone());
+
+        analytics::identify(id.id, api_url, firezone_gui_client::RELEASE.to_owned());
+    }
 
     match cli.command {
         None if cli.check_elevation() => match elevation::gui_check() {
@@ -118,7 +148,7 @@ fn try_main(
         }
         Some(Cmd::SmokeTest) => {
             // Can't check elevation here because the Windows CI is always elevated
-            gui::run(rt, telemetry, config, settings, reloader)?;
+            gui::run(rt, config, mdm_settings, advanced_settings, reloader)?;
 
             return Ok(());
         }
@@ -126,7 +156,7 @@ fn try_main(
 
     // Happy-path: Run the GUI.
 
-    match gui::run(rt, telemetry, config, settings, reloader) {
+    match gui::run(rt, config, mdm_settings, advanced_settings, reloader) {
         Ok(()) => {}
         Err(anyhow) => {
             if anyhow
