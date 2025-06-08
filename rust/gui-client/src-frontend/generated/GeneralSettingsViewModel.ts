@@ -6,3 +6,5 @@ export interface GeneralSettingsViewModel {
     account_slug: string;
     account_slug_is_managed: boolean;
 }
+export const GENERAL_SETTINGS_CHANGED = "general_settings_changed";
+export const ADVANCED_SETTINGS_CHANGED = "advanced_settings_changed";

@@ -12,6 +12,15 @@ use crate::{
     settings::AdvancedSettings,
 };
 
+pub mod routes {
+    #[tslink::tslink(target = "./gui-client/src-frontend/generated/Routes.ts")]
+    pub const OVERVIEW: &str = "overview";
+    #[tslink::tslink(target = "./gui-client/src-frontend/generated/Routes.ts")]
+    pub const GENERAL_SETTINGS: &str = "general-settings";
+    #[tslink::tslink(target = "./gui-client/src-frontend/generated/Routes.ts")]
+    pub const ABOUT: &str = "about";
+}
+
 #[derive(Clone, serde::Deserialize)]
 pub struct GeneralSettingsForm {
     pub start_minimized: bool,

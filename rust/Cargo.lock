@@ -8074,9 +8074,9 @@ checksum = "e421abadd41a4225275504ea4d6566923418b7f05506fbc9c0fe86ba7396114b"
 
 [[package]]
 name = "tslink"
-version = "0.3.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6cbdb11a5a2f2c51118b6a0e4ffde3b547402970d16a80cf7b3ca29d1c7fea4"
+checksum = "18e32680d9db89f48d580c57d1b5be17c3ba2a1a2f72e7d03eb21061d0208c0d"
 dependencies = [
  "convert_case 0.6.0",
  "lazy_static",

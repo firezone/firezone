@@ -91,6 +91,9 @@ pub struct GeneralSettingsViewModel {
 }
 
 impl GeneralSettingsViewModel {
+    #[tslink::tslink(target = "./gui-client/src-frontend/generated/GeneralSettingsViewModel.ts")]
+    pub const GENERAL_SETTINGS_CHANGED: &str = "general_settings_changed";
+
     pub fn new(mdm_settings: MdmSettings, general_settings: GeneralSettings) -> Self {
         Self {
             connect_on_start_is_managed: mdm_settings.connect_on_start.is_some(),
@@ -121,6 +124,9 @@ pub struct AdvancedSettingsViewModel {
 }
 
 impl AdvancedSettingsViewModel {
+    #[tslink::tslink(target = "./gui-client/src-frontend/generated/GeneralSettingsViewModel.ts")]
+    pub const ADVANCED_SETTINGS_CHANGED: &str = "advanced_settings_changed";
+
     pub fn new(mdm_settings: MdmSettings, advanced_settings: AdvancedSettings) -> Self {
         Self {
             auth_url_is_managed: mdm_settings.auth_url.is_some(),

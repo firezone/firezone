@@ -19,7 +19,7 @@ import {
 import React, { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
 import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
-import { FileCount } from "../generated/FileCount";
+import { FileCount, LOGS_RECOUNTED } from "../generated/FileCount";
 import { Session } from "../generated/Session";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
@@ -27,7 +27,12 @@ import ColorPalette from "./ColorPalettePage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
 import Overview from "./OverviewPage";
-import { GeneralSettingsViewModel } from "../generated/GeneralSettingsViewModel";
+import {
+  ADVANCED_SETTINGS_CHANGED,
+  GENERAL_SETTINGS_CHANGED,
+  GeneralSettingsViewModel,
+} from "../generated/GeneralSettingsViewModel";
+import { ABOUT, GENERAL_SETTINGS, OVERVIEW } from "../generated/Routes";
 
 export default function App() {
   let [session, setSession] = useState<Session | null>(null);
@@ -49,29 +54,31 @@ export default function App() {
       setSession(null);
     });
     const generalSettingsChangedUnlisten = listen<GeneralSettingsViewModel>(
-      "general_settings_changed",
+      GENERAL_SETTINGS_CHANGED,
       (e) => {
         let generalSettings = e.payload;
 
-        console.log("general_settings_changed", { settings: generalSettings });
+        console.log(`${GENERAL_SETTINGS_CHANGED}`, {
+          settings: generalSettings,
+        });
         setGeneralSettings(generalSettings);
       }
     );
     const advancedSettingsChangedUnlisten = listen<AdvancedSettingsViewModel>(
-      "advanced_settings_changed",
+      ADVANCED_SETTINGS_CHANGED,
       (e) => {
         let advancedSettings = e.payload;
 
-        console.log("advanced_settings_changed", {
+        console.log(`${ADVANCED_SETTINGS_CHANGED}`, {
           settings: advancedSettings,
         });
         setAdvancedSettings(advancedSettings);
       }
     );
-    const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
+    const logsRecountedUnlisten = listen<FileCount>(LOGS_RECOUNTED, (e) => {
       let file_count = e.payload;
 
-      console.log("logs_recounted", { file_count });
+      console.log(`${LOGS_RECOUNTED}`, { file_count });
       setLogCount(file_count);
     });
 
@@ -96,7 +103,7 @@ export default function App() {
       >
         <SidebarItems>
           <SidebarItemGroup>
-            <NavLink to="/overview">
+            <NavLink to={`/${OVERVIEW}`}>
               {({ isActive }) => (
                 <SidebarItem active={isActive} icon={HomeIcon} as="div">
                   Overview
@@ -104,7 +111,7 @@ export default function App() {
               )}
             </NavLink>
             <SidebarCollapse label="Settings" open={true} icon={Bars3Icon}>
-              <NavLink to="/general-settings">
+              <NavLink to={`/${GENERAL_SETTINGS}`}>
                 {({ isActive }) => (
                   <SidebarItem active={isActive} icon={CogIcon} as="div">
                     General
@@ -134,7 +141,7 @@ export default function App() {
                 </SidebarItem>
               )}
             </NavLink>
-            <NavLink to="/about">
+            <NavLink to={`/${ABOUT}`}>
               {({ isActive }) => (
                 <SidebarItem
                   active={isActive}
