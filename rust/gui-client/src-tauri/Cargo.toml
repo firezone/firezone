@@ -98,3 +98,6 @@ tempfile = { workspace = true }
 
 [lints]
 workspace = true
+
+[tslink]
+enum_representation = "discriminated"
