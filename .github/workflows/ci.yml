@@ -50,7 +50,7 @@ jobs:
           # Fetch base ref for merge_group
           if [ "${{ github.event_name }}" = "merge_group" ]; then
             git fetch origin ${{ github.event.merge_group.base_ref }} --depth=1
-            git diff --name-only origin/${{ github.event.merge_group.base_ref }} ${{ github.sha }} > changed_files.txt
+            git diff --name-only ${{ github.event.merge_group.base_sha }} ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
