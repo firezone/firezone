@@ -567,7 +567,6 @@ impl<I: GuiIntegration> Controller<I> {
                 self.integration
                     .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
-                self.integration.set_window_visible(false)?;
             }
             SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.general_settings.favorite_resources.insert(resource_id);
