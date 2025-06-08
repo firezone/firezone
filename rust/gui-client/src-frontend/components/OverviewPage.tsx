@@ -23,47 +23,52 @@ export default function Overview(props: OverviewPageProps) {
 
 function Session(props: OverviewPageProps) {
   if (!props.session) {
-    return <SignedOut {...props} />
+    return <SignedOut {...props} />;
   }
 
   switch (props.session) {
     case "SignedOut": {
-      return <SignedOut {...props} />
+      return <SignedOut {...props} />;
     }
     case "Loading": {
-      return <Loading />
+      return <Loading />;
     }
     default:
       let { account_slug, actor_name } = props.session.SignedIn;
 
-      return <SignedIn accountSlug={ account_slug} actorName={actor_name} signOut={props.signOut} />
+      return (
+        <SignedIn
+          accountSlug={account_slug}
+          actorName={actor_name}
+          signOut={props.signOut}
+        />
+      );
   }
 }
-
 
 interface SignedOutProps {
   signIn: () => void;
 }
 
-function SignedOut({
-  signIn,
-}: SignedOutProps) {
-  return <div id="signed-out">
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-center">
-        You can sign in by clicking the Firezone icon in the taskbar or by
-        clicking 'Sign in' below.
-      </p>
-      <Button id="sign-in" onClick={signIn}>
-        Sign in
-      </Button>
-      <p className="text-xs text-center">
-        Firezone will continue running after this window is closed.
-        <br />
-        It is always available from the taskbar.
-      </p>
+function SignedOut({ signIn }: SignedOutProps) {
+  return (
+    <div id="signed-out">
+      <div className="flex flex-col items-center gap-4">
+        <p className="text-center">
+          You can sign in by clicking the Firezone icon in the taskbar or by
+          clicking 'Sign in' below.
+        </p>
+        <Button id="sign-in" onClick={signIn}>
+          Sign in
+        </Button>
+        <p className="text-xs text-center">
+          Firezone will continue running after this window is closed.
+          <br />
+          It is always available from the taskbar.
+        </p>
+      </div>
     </div>
-  </div>
+  );
 }
 
 interface SignedInProps {
@@ -72,45 +77,44 @@ interface SignedInProps {
   signOut: () => void;
 }
 
-function SignedIn({
-  actorName,
-  accountSlug,
-  signOut
-}: SignedInProps) {
-  return <div id="signed-in">
-    <div className="flex flex-col items-center gap-4">
-      <p className="text-center">
-        You are currently signed into&nbsp;
-        <span className="font-bold" id="account-slug">
-          {accountSlug}
-        </span>
-        &nbsp;as&nbsp;
-        <span className="font-bold" id="actor-name">
-          {actorName}
-        </span>
-        .<br />
-        Click the Firezone icon in the taskbar to see the list of
-        Resources.
-      </p>
-      <Button id="sign-out" onClick={signOut}>
-        Sign out
-      </Button>
-      <p className="text-xs text-center">
-        Firezone will continue running in the taskbar after this window is
-        closed.
-      </p>
+function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
+  return (
+    <div id="signed-in">
+      <div className="flex flex-col items-center gap-4">
+        <p className="text-center">
+          You are currently signed into&nbsp;
+          <span className="font-bold" id="account-slug">
+            {accountSlug}
+          </span>
+          &nbsp;as&nbsp;
+          <span className="font-bold" id="actor-name">
+            {actorName}
+          </span>
+          .<br />
+          Click the Firezone icon in the taskbar to see the list of Resources.
+        </p>
+        <Button id="sign-out" onClick={signOut}>
+          Sign out
+        </Button>
+        <p className="text-xs text-center">
+          Firezone will continue running in the taskbar after this window is
+          closed.
+        </p>
+      </div>
     </div>
-  </div>
+  );
 }
 
 function Loading() {
-  return <div id="loading">
-    <div className="flex flex-col items-center gap-4">
-      <Spinner />
-      <p className="text-xs text-center">
-        Firezone will continue running in the taskbar after this window is
-        closed.
-      </p>
+  return (
+    <div id="loading">
+      <div className="flex flex-col items-center gap-4">
+        <Spinner />
+        <p className="text-xs text-center">
+          Firezone will continue running in the taskbar after this window is
+          closed.
+        </p>
+      </div>
     </div>
-  </div>
+  );
 }
