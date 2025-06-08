@@ -418,7 +418,7 @@ extension Adapter: CallbackHandlerDelegate {
   func onDisconnect(error: DisconnectError) {
     // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
     // Assigning to `nil` will invoke `Drop` on the Rust side.
-    // We need to do it in a new task to all Rust to break cycling dependencies as callbacks are executed
+    // We need to do it in a new task to allow Rust to break cyclic dependencies as callbacks are executed
     // on the same runtime as the session is running.
     Task {
         session = nil
