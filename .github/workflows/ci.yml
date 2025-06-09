@@ -94,7 +94,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Wait for scheduled jobs to succeed
+      - name: Wait for all jobs to succeed
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
