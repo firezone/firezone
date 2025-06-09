@@ -93,6 +93,7 @@ pub trait GuiIntegration {
     fn show_about_page(&self) -> Result<()>;
 }
 
+#[derive(strum::Display)]
 pub enum ControllerRequest {
     ApplyAdvancedSettings(Box<AdvancedSettings>),
     ApplyGeneralSettings(Box<GeneralSettingsForm>),

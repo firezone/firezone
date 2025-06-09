@@ -44,9 +44,29 @@ pub use os::set_autostart;
 ///
 /// Note that this never gets Dropped because of
 /// <https://github.com/tauri-apps/tauri/issues/8631>
+#[derive(Clone)]
 pub(crate) struct Managed {
-    pub req_tx: mpsc::Sender<ControllerRequest>,
+    req_tx: mpsc::Sender<ControllerRequest>,
     pub inject_faults: bool,
+}
+
+impl Managed {
+    pub async fn send_request(&self, msg: ControllerRequest) -> Result<()> {
+        let msg_name = msg.to_string();
+
+        self.req_tx
+            .send(msg)
+            .await
+            .with_context(|| format!("Failed to send `{msg_name}`"))
+    }
+
+    pub fn blocking_send_request(&self, msg: ControllerRequest) -> Result<()> {
+        let msg_name = msg.to_string();
+
+        self.req_tx
+            .blocking_send(msg)
+            .with_context(|| format!("Failed to send `{msg_name}`"))
+    }
 }
 
 struct TauriIntegration {
