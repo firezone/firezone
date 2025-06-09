@@ -103,22 +103,19 @@ jobs:
 
             total_jobs=$(echo "$jobs_json" | jq 'length')
             failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
-            completed_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+            successful_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
 
             if [ $failed_jobs -gt 0 ]; then
               echo "At least one job has failed."
               exit 1
             fi
 
-            echo "Completed: $completed_jobs/$total_jobs"
+            echo "Succeeded: $successful_jobs/$total_jobs"
 
-            if [ $completed_jobs -eq $total_jobs ]; then
+            if [ $successful_jobs -eq $total_jobs ]; then
               echo "All jobs have completed successfully!"
               break
             fi
-
-            echo "Checking all jobs in 10s"
-            echo "------------------------"
 
             sleep 10
           done
