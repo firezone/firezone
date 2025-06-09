@@ -131,34 +131,41 @@ jobs:
           jobs=$(echo "$JOBS_TO_RUN" | tr ',' '\n' | grep -v '^$')
 
           while true; do
+            echo "------------------------"
             echo "Checking all jobs in 10s"
 
             sleep 10
             jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs')
 
             for job in $jobs; do
-              read status conclusion <<<$(echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | "\(.status) \(.conclusion)"' | head -n1)
+              echo "Checking jobs with prefix '$job'..."
 
-              if [ -z "$status" ]; then
-                echo "Job $job not found yet, waiting"
+              # Check if any matching jobs exist
+              matching_count=$(echo "$jobs_json" | jq --arg job "$job" '[.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase))] | length')
+
+              if [ "$matching_count" -eq 0 ]; then
+                echo "No jobs matching prefix '$job' found yet, waiting"
                 continue 2
               fi
 
-              if [ "$status" != "completed" ]; then
-                echo "Job $job is still running"
-                continue 2
-              fi
+              # List all matching jobs
+              echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | "  - \(.name): \(.status) (\(.conclusion // "in progress"))"'
 
-              if [ "$conclusion" != "success" ]; then
-                echo "Job $job did not succeed! Status: $conclusion"
+              failed_count=$(echo "$jobs_json" | jq --arg job "$job" '[.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | select(.conclusion != "success")] | length')
+              running_count=$(echo "$jobs_json" | jq --arg job "$job" '[.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | select(.status != "completed")] | length')
+
+              if [ "$failed_count" -gt 0 ]; then
+                echo "Found $failed_count failed jobs for prefix '$job'"
                 exit 1
               fi
 
-              echo "Job $job succeeded!"
-            done
+              if [ "$running_count" -gt 0 ]; then
+                echo "Found $running_count running jobs for prefix '$job', waiting..."
+                continue 2
+              fi
 
-            echo "All required jobs succeeded!"
-            break
+              echo "All jobs with prefix '$job' succeeded!"
+            done
           done
 
   update-release-draft:
