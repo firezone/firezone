@@ -4,7 +4,6 @@
 //! The real macOS Client is in `swift/apple`
 
 use crate::{
-    auth,
     controller::{Controller, ControllerRequest, CtlrTx, Failure, GuiIntegration},
     deep_link,
     ipc::{self, ClientRead, ClientWrite, SocketId},
@@ -14,6 +13,7 @@ use crate::{
         GeneralSettingsViewModel, MdmSettings,
     },
     updates,
+    view::SessionViewModel,
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
@@ -82,20 +82,10 @@ impl Drop for TauriIntegration {
 }
 
 impl GuiIntegration for TauriIntegration {
-    fn notify_signed_in(&self, session: &auth::Session) -> Result<()> {
+    fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
         self.app
-            .emit("signed_in", session)
-            .context("Failed to send `signed_in` event")?;
-
-        Ok(())
-    }
-
-    fn notify_signed_out(&self) -> Result<()> {
-        self.app
-            .emit("signed_out", ())
-            .context("Failed to send `signed_out` event")?;
-
-        Ok(())
+            .emit("session_changed", session)
+            .context("Failed to send `session_changed` event")
     }
 
     fn notify_settings_changed(
@@ -166,12 +156,9 @@ impl GuiIntegration for TauriIntegration {
         Ok(())
     }
 
-    fn show_overview_page(&self, current_session: Option<&auth::Session>) -> Result<()> {
+    fn show_overview_page(&self, session: &SessionViewModel) -> Result<()> {
         // Ensure state in frontend is up-to-date.
-        match current_session {
-            Some(session) => self.notify_signed_in(session)?,
-            None => self.notify_signed_out()?,
-        };
+        self.notify_session_changed(session)?;
         self.navigate("overview")?;
         self.set_window_visible(true)?;
 

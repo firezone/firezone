@@ -6,7 +6,7 @@ use crate::{
     service,
     settings::{self, AdvancedSettings, GeneralSettings, MdmSettings},
     updates, uptime,
-    view::GeneralSettingsForm,
+    view::{GeneralSettingsForm, SessionViewModel},
 };
 use anyhow::{Context, Result, anyhow, bail};
 use connlib_model::ResourceView;
@@ -65,8 +65,7 @@ pub struct Controller<I: GuiIntegration> {
 }
 
 pub trait GuiIntegration {
-    fn notify_signed_in(&self, session: &auth::Session) -> Result<()>;
-    fn notify_signed_out(&self) -> Result<()>;
+    fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()>;
     fn notify_settings_changed(
         &self,
         mdm_settings: MdmSettings,
@@ -84,7 +83,7 @@ pub trait GuiIntegration {
     fn show_update_notification(&self, ctlr_tx: CtlrTx, title: &str, url: url::Url) -> Result<()>;
 
     fn set_window_visible(&self, visible: bool) -> Result<()>;
-    fn show_overview_page(&self, current_session: Option<&auth::Session>) -> Result<()>;
+    fn show_overview_page(&self, session: &SessionViewModel) -> Result<()>;
     fn show_settings_page(
         &self,
         mdm_settings: MdmSettings,
@@ -288,10 +287,12 @@ impl<I: GuiIntegration> Controller<I> {
             tracing::info!("No token / actor_name on disk, starting in signed-out state");
         }
 
-        self.refresh_system_tray_menu();
+        self.refresh_ui_state();
 
         if !ran_before::get().await? || !self.general_settings.start_minimized {
-            self.integration.show_overview_page(self.auth.session())?;
+            let (_, session_view_model) = self.build_ui_state();
+
+            self.integration.show_overview_page(&session_view_model)?;
         }
 
         loop {
@@ -432,13 +433,12 @@ impl<I: GuiIntegration> Controller<I> {
         };
 
         let session = self.auth.session().context("Missing session")?;
-        self.integration.notify_signed_in(session)?;
 
         self.general_settings.account_slug = Some(session.account_slug.clone());
         settings::save_general(&self.general_settings).await?;
         self.notify_settings_changed()?;
 
-        self.refresh_system_tray_menu();
+        self.refresh_ui_state();
 
         Ok(())
     }
@@ -505,7 +505,7 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::debug!("Applied new settings. Log level will take effect immediately.");
 
                 // Refresh the menu in case the favorites were reset.
-                self.refresh_system_tray_menu();
+                self.refresh_ui_state();
 
                 self.integration.show_notification("Settings saved", "")?
             }
@@ -563,11 +563,10 @@ impl<I: GuiIntegration> Controller<I> {
                     .context("Couldn't start sign-in flow")?;
 
                 let url = req.to_url(&auth_url, account_slug.as_deref());
-                self.refresh_system_tray_menu();
+                self.refresh_ui_state();
                 self.integration
                     .open_url(url.expose_secret())
                     .context("Couldn't open auth page")?;
-                self.integration.set_window_visible(false)?;
             }
             SystemTrayMenu(system_tray::Event::AddFavorite(resource_id)) => {
                 self.general_settings.favorite_resources.insert(resource_id);
@@ -648,7 +647,7 @@ impl<I: GuiIntegration> Controller<I> {
                 tracing::info!("User clicked Quit in the menu");
                 self.status = Status::Quitting;
                 self.send_ipc(&service::ClientMsg::Disconnect).await?;
-                self.refresh_system_tray_menu();
+                self.refresh_ui_state();
             }
             UpdateNotificationClicked(download_url) => {
                 tracing::info!("UpdateNotificationClicked in run_controller!");
@@ -658,13 +657,11 @@ impl<I: GuiIntegration> Controller<I> {
             }
             UpdateState => {
                 self.notify_settings_changed()?;
-                match self.auth.session() {
-                    Some(session) => self.integration.notify_signed_in(session)?,
-                    None => self.integration.notify_signed_out()?,
-                };
 
                 let file_count = logging::count_logs().await?;
                 self.integration.notify_logs_recounted(&file_count)?;
+
+                self.refresh_ui_state();
             }
         }
         Ok(())
@@ -732,7 +729,7 @@ impl<I: GuiIntegration> Controller<I> {
                 }
                 tracing::debug!(len = resources.len(), "Got new Resources");
                 self.status = Status::TunnelReady { resources };
-                self.refresh_system_tray_menu();
+                self.refresh_ui_state();
 
                 self.update_disabled_resources().await?;
             }
@@ -759,7 +756,7 @@ impl<I: GuiIntegration> Controller<I> {
                     "Firezone connected",
                     "You are now signed in and able to access resources.",
                 )?;
-                self.refresh_system_tray_menu();
+                self.refresh_ui_state();
             }
             service::ServerMsg::Hello => {}
         }
@@ -790,7 +787,9 @@ impl<I: GuiIntegration> Controller<I> {
                 }
             },
             gui::ClientMsg::NewInstance => {
-                self.integration.show_overview_page(self.auth.session())?;
+                let (_, session_view_model) = self.build_ui_state();
+
+                self.integration.show_overview_page(&session_view_model)?;
             }
         }
 
@@ -817,7 +816,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.status = Status::WaitingForTunnel {
                     start_instant: *start_instant,
                 };
-                self.refresh_system_tray_menu();
+                self.refresh_ui_state();
                 Ok(())
             }
             Err(service::ConnectError::Io(error)) => {
@@ -830,7 +829,7 @@ impl<I: GuiIntegration> Controller<I> {
                 self.status = Status::RetryingConnection {
                     token: token.expose_secret().clone().into(),
                 };
-                self.refresh_system_tray_menu();
+                self.refresh_ui_state();
                 Ok(())
             }
             Err(service::ConnectError::Other(error)) => {
@@ -851,13 +850,13 @@ impl<I: GuiIntegration> Controller<I> {
     ) -> Result<()> {
         let Some(notification) = notification else {
             self.release = None;
-            self.refresh_system_tray_menu();
+            self.refresh_ui_state();
             return Ok(());
         };
 
         let release = notification.release;
         self.release = Some(release.clone());
-        self.refresh_system_tray_menu();
+        self.refresh_ui_state();
 
         if notification.tell_user {
             let title = format!("Firezone {} available for download", release.version);
@@ -891,7 +890,7 @@ impl<I: GuiIntegration> Controller<I> {
             disabled_resources,
         ))
         .await?;
-        self.refresh_system_tray_menu();
+        self.refresh_ui_state();
 
         Ok(())
     }
@@ -899,41 +898,70 @@ impl<I: GuiIntegration> Controller<I> {
     /// Saves the current settings (including favorites) to disk and refreshes the tray menu
     async fn refresh_favorite_resources(&mut self) -> Result<()> {
         settings::save_general(&self.general_settings).await?;
-        self.refresh_system_tray_menu();
+        self.refresh_ui_state();
         Ok(())
     }
 
-    /// Builds a new system tray menu and applies it to the app
-    fn refresh_system_tray_menu(&mut self) {
+    fn build_ui_state(&self) -> (system_tray::ConnlibState, SessionViewModel) {
         // TODO: Refactor `Controller` and the auth module so that "Are we logged in?"
         // doesn't require such complicated control flow to answer.
-        let connlib = if let Some(auth_session) = self.auth.session() {
+        if let Some(auth_session) = self.auth.session() {
             match &self.status {
                 Status::Disconnected => {
                     // If we have an `auth_session` but no connlib session, we are most likely configured to
                     // _not_ auto-connect on startup. Thus, we treat this the same as being signed out.
 
-                    system_tray::ConnlibState::SignedOut
+                    (
+                        system_tray::ConnlibState::SignedOut,
+                        SessionViewModel::SignedOut,
+                    )
                 }
-                Status::Quitting => system_tray::ConnlibState::Quitting,
-                Status::RetryingConnection { .. } => system_tray::ConnlibState::RetryingConnection,
-                Status::TunnelReady { resources } => {
+                Status::Quitting => (
+                    system_tray::ConnlibState::Quitting,
+                    SessionViewModel::Loading,
+                ),
+                Status::RetryingConnection { .. } => (
+                    system_tray::ConnlibState::RetryingConnection,
+                    SessionViewModel::Loading,
+                ),
+                Status::TunnelReady { resources } => (
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: auth_session.actor_name.clone(),
                         favorite_resources: self.general_settings.favorite_resources.clone(),
                         internet_resource_enabled: self.general_settings.internet_resource_enabled,
                         resources: resources.clone(),
-                    })
-                }
-                Status::WaitingForPortal { .. } => system_tray::ConnlibState::WaitingForPortal,
-                Status::WaitingForTunnel { .. } => system_tray::ConnlibState::WaitingForTunnel,
+                    }),
+                    SessionViewModel::SignedIn {
+                        account_slug: auth_session.account_slug.clone(),
+                        actor_name: auth_session.actor_name.clone(),
+                    },
+                ),
+                Status::WaitingForPortal { .. } => (
+                    system_tray::ConnlibState::WaitingForPortal,
+                    SessionViewModel::Loading,
+                ),
+                Status::WaitingForTunnel { .. } => (
+                    system_tray::ConnlibState::WaitingForTunnel,
+                    SessionViewModel::Loading,
+                ),
             }
         } else if self.auth.ongoing_request().is_some() {
             // Signing in, waiting on deep link callback
-            system_tray::ConnlibState::WaitingForBrowser
+            (
+                system_tray::ConnlibState::WaitingForBrowser,
+                SessionViewModel::Loading,
+            )
         } else {
-            system_tray::ConnlibState::SignedOut
-        };
+            (
+                system_tray::ConnlibState::SignedOut,
+                SessionViewModel::SignedOut,
+            )
+        }
+    }
+
+    /// Refreshes our UI state (i.e. tray-menu and GUI).
+    fn refresh_ui_state(&mut self) {
+        let (connlib, session_view_model) = self.build_ui_state();
 
         self.integration.set_tray_menu(system_tray::AppState {
             connlib,
@@ -944,6 +972,9 @@ impl<I: GuiIntegration> Controller<I> {
                 .is_some_and(|hide| hide),
             support_url: self.mdm_settings.support_url.clone(),
         });
+        if let Err(e) = self.integration.notify_session_changed(&session_view_model) {
+            tracing::warn!("Failed to send notify session change: {e:#}")
+        }
     }
 
     /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
@@ -973,13 +1004,12 @@ impl<I: GuiIntegration> Controller<I> {
             | Status::WaitingForTunnel { .. } => {}
         }
         self.auth.sign_out()?;
-        self.integration.notify_signed_out()?;
         self.status = Status::Disconnected;
         tracing::debug!("disconnecting connlib");
         // This is redundant if the token is expired, in that case
         // connlib already disconnected itself.
         self.send_ipc(&service::ClientMsg::Disconnect).await?;
-        self.refresh_system_tray_menu();
+        self.refresh_ui_state();
         Ok(())
     }
 

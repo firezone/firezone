@@ -19,6 +19,10 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where disabling the update checker via MDM would cause
           the Client to hang upon sign-in.
         </ChangeItem>
+        <ChangeItem pull="9477">
+          Fixes an issue where disabling "connect on start" would incorrectly
+          show the Client as "Signed in" on the next launch.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.1" date={new Date("2025-06-05")}>
         <ChangeItem pull="9418">
