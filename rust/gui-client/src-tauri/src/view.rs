@@ -6,11 +6,7 @@ use serde::Serialize;
 use tauri::{Wry, ipc::Invoke};
 use tauri_plugin_dialog::DialogExt as _;
 
-use crate::{
-    controller::{ControllerRequest, CtlrTx},
-    gui::Managed,
-    settings::AdvancedSettings,
-};
+use crate::{controller::ControllerRequest, gui::Managed, settings::AdvancedSettings};
 
 #[derive(Clone, serde::Deserialize)]
 pub struct GeneralSettingsForm {
@@ -50,10 +46,8 @@ async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     managed
-        .req_tx
-        .send(ControllerRequest::ClearLogs(tx))
-        .await
-        .context("Failed to send `ClearLogs` command")?;
+        .send_request(ControllerRequest::ClearLogs(tx))
+        .await?;
 
     rx.await
         .context("Failed to await `ClearLogs` result")?
@@ -64,7 +58,7 @@ async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 #[tauri::command]
 async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) -> Result<()> {
-    show_export_dialog(&app, managed.req_tx.clone())?;
+    show_export_dialog(&app, managed.inner().clone())?;
 
     Ok(())
 }
@@ -79,10 +73,8 @@ async fn apply_general_settings(
     }
 
     managed
-        .req_tx
-        .send(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
-        .await
-        .context("Failed to send `ApplyGeneralSettings` command")?;
+        .send_request(ControllerRequest::ApplyGeneralSettings(Box::new(settings)))
+        .await?;
 
     Ok(())
 }
@@ -97,10 +89,8 @@ async fn apply_advanced_settings(
     }
 
     managed
-        .req_tx
-        .send(ControllerRequest::ApplyAdvancedSettings(Box::new(settings)))
-        .await
-        .context("Failed to send `ApplySettings` command")?;
+        .send_request(ControllerRequest::ApplyAdvancedSettings(Box::new(settings)))
+        .await?;
 
     Ok(())
 }
@@ -115,16 +105,14 @@ async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<(
 #[tauri::command]
 async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed
-        .req_tx
-        .send(ControllerRequest::ResetGeneralSettings)
-        .await
-        .context("Failed to send `ResetGeneralSettings` command")?;
+        .send_request(ControllerRequest::ResetGeneralSettings)
+        .await?;
 
     Ok(())
 }
 
 /// Pops up the "Save File" dialog
-fn show_export_dialog(app: &tauri::AppHandle, ctlr_tx: CtlrTx) -> Result<()> {
+fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<()> {
     let now = chrono::Local::now();
     let datetime_string = now.format("%Y_%m_%d-%H-%M");
     let stem = PathBuf::from(format!("firezone_logs_{datetime_string}"));
@@ -150,8 +138,10 @@ fn show_export_dialog(app: &tauri::AppHandle, ctlr_tx: CtlrTx) -> Result<()> {
             };
 
             // blocking_send here because we're in a sync callback within Tauri somewhere
-            if let Err(e) = ctlr_tx.blocking_send(ControllerRequest::ExportLogs { path, stem }) {
-                tracing::warn!("Failed to send `ExportLogs` command: {e}");
+            if let Err(e) =
+                managed.blocking_send_request(ControllerRequest::ExportLogs { path, stem })
+            {
+                tracing::warn!("{e:#}");
             }
         });
     Ok(())
@@ -159,33 +149,21 @@ fn show_export_dialog(app: &tauri::AppHandle, ctlr_tx: CtlrTx) -> Result<()> {
 
 #[tauri::command]
 async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
-    managed
-        .req_tx
-        .send(ControllerRequest::SignIn)
-        .await
-        .context("Failed to send `SignIn` command")?;
+    managed.send_request(ControllerRequest::SignIn).await?;
 
     Ok(())
 }
 
 #[tauri::command]
 async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
-    managed
-        .req_tx
-        .send(ControllerRequest::SignOut)
-        .await
-        .context("Failed to send `SignOut` command")?;
+    managed.send_request(ControllerRequest::SignOut).await?;
 
     Ok(())
 }
 
 #[tauri::command]
 async fn update_state(managed: tauri::State<'_, Managed>) -> Result<()> {
-    managed
-        .req_tx
-        .send(ControllerRequest::UpdateState)
-        .await
-        .context("Failed to send `UpdateState` command")?;
+    managed.send_request(ControllerRequest::UpdateState).await?;
 
     Ok(())
 }
