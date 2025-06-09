@@ -129,11 +129,9 @@ defmodule Domain.Billing.Stripe.APIClient do
 
         Logger.warning(
           "Rate limited by Stripe API (429), retrying request.",
-          %{
-            request_delay: "#{delay}ms",
-            attempt_num: "#{attempt + 1} of #{max_retries}",
-            response: inspect(response)
-          }
+          request_delay: "#{delay}ms",
+          attempt_num: "#{attempt + 1} of #{max_retries}",
+          response: inspect(response)
         )
 
         Process.sleep(delay)
