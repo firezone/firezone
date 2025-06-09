@@ -29,7 +29,7 @@ jobs:
       - name: Plan jobs to run
         id: plan
         run: |
-          jobs="static-analysis,elixir,rust,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
+          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -73,6 +73,9 @@ jobs:
           if grep -q '^rust/' changed_files.txt; then
             jobs="${jobs},rust,kotlin,swift,build-artifacts,build-perf-artifacts"
           fi
+          if grep -q '^rust/gui-client' changed_files.txt; then
+            jobs="${jobs},tauri"
+          fi
           if grep -q '^elixir/' changed_files.txt; then
             jobs="${jobs},elixir,codeql,build-artifacts"
           fi
@@ -106,6 +109,11 @@ jobs:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'rust')
     uses: ./.github/workflows/_rust.yml
+    secrets: inherit
+  tauri:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
+    uses: ./.github/workflows/_tauri.yml
     secrets: inherit
   static-analysis:
     needs: planner
