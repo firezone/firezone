@@ -416,18 +416,16 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   func onDisconnect(error: DisconnectError) {
-    // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
-    // Assigning to `nil` will invoke `Drop` on the Rust side.
-    // We need to do it in a new task to allow Rust to break cyclic dependencies as callbacks are executed
-    // on the same runtime as the session is running.
-    Task {
-        session = nil
-    }
-
     // Since connlib has already shutdown by this point, we queue this callback
     // to ensure that we can clean up even if connlib exits before we are done.
     workQueue.async { [weak self] in
       guard let self = self else { return }
+
+      // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
+      // Assigning to `nil` will invoke `Drop` on the Rust side.
+      // This must happen asynchronously and not as part of the callback to allow Rust to break
+      // cyclic dependencies between the runtime and the task that is executing the callback.
+      self.session = nil
 
       // If auth expired/is invalid, delete stored token and save the reason why so the GUI can act upon it.
       if error.isAuthenticationError() {
