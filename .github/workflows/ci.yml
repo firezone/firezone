@@ -88,6 +88,37 @@ jobs:
 
           echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
 
+  required-check:
+    name: required-check
+    needs: planner
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for all jobs to complete
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          while true; do
+            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select(.name != "required-check"))')
+
+            total_jobs=$(echo "$jobs_json" | jq 'length')
+            failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
+            completed_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed")] | length')
+
+            if [ $failed_jobs -gt 0 ]; then
+              echo "At least one job has failed."
+              exit 1
+            fi
+
+            echo "Completed: $completed_jobs/$total_jobs"
+
+            if [ $completed_jobs -eq $total_jobs ]; then
+              break
+            fi
+
+            sleep 10
+          done
+
   kotlin:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
@@ -116,50 +147,6 @@ jobs:
     if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
-
-  required-check:
-    name: required-check
-    needs: planner
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Wait for required jobs to succeed
-        env:
-          JOBS_TO_RUN: ${{ needs.planner.outputs.jobs_to_run }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          jobs=$(echo "$JOBS_TO_RUN" | tr ',' '\n' | grep -v '^$')
-
-          while true; do
-            echo "Checking all jobs in 10s"
-
-            sleep 10
-            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs')
-
-            for job in $jobs; do
-              read status conclusion <<<$(echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | "\(.status) \(.conclusion)"' | head -n1)
-
-              if [ -z "$status" ]; then
-                echo "Job $job not found yet, waiting"
-                continue 2
-              fi
-
-              if [ "$status" != "completed" ]; then
-                echo "Job $job is still running"
-                continue 2
-              fi
-
-              if [ "$conclusion" != "success" ]; then
-                echo "Job $job did not succeed! Status: $conclusion"
-                exit 1
-              fi
-
-              echo "Job $job succeeded!"
-            done
-
-            echo "All required jobs succeeded!"
-            break
-          done
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
