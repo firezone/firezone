@@ -103,7 +103,7 @@ jobs:
 
             total_jobs=$(echo "$jobs_json" | jq 'length')
             failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
-            successful_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
+            successful_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed" and (.conclusion == "success" or .conclusion == "skipped")] | length')
 
             if [ $failed_jobs -gt 0 ]; then
               echo "At least one job has failed."
