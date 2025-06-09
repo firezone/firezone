@@ -151,8 +151,8 @@ jobs:
               # List all matching jobs
               echo "$jobs_json" | jq -r --arg job "$job" '.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | "  - \(.name): \(.status) (\(.conclusion // "in progress"))"'
 
-              failed_count=$(echo "$jobs_json" | jq --arg job "$job" '[.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | select(.conclusion != "success")] | length')
-              running_count=$(echo "$jobs_json" | jq --arg job "$job" '[.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | select(.status != "completed")] | length')
+              failed_count=$(echo "$jobs_json" | jq --arg job "$job" '[.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | select(.conclusion == "failure")] | length')
+              running_count=$(echo "$jobs_json" | jq --arg job "$job" '[.[] | select(.name|ascii_downcase | startswith($job|ascii_downcase)) | select(.status == "in_progress")] | length')
 
               if [ "$failed_count" -gt 0 ]; then
                 echo "Found $failed_count failed jobs for prefix '$job'"
