@@ -128,10 +128,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           while true; do
-            echo "------------------------"
-            echo "Checking all jobs in 10s"
-
-            sleep 10
             jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select(.name != "required-check"))')
 
             total_jobs=$(echo "$jobs_json" | jq 'length')
@@ -149,6 +145,11 @@ jobs:
               echo "All jobs have completed successfully!"
               break
             fi
+
+            echo "Checking all jobs in 10s"
+            echo "------------------------"
+
+            sleep 10
           done
 
   update-release-draft:
