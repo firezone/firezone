@@ -113,7 +113,6 @@ jobs:
             echo "Completed: $completed_jobs/$total_jobs"
 
             if [ $completed_jobs -eq $total_jobs ]; then
-              echo "All jobs have completed successfully!"
               break
             fi
 
