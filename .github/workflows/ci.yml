@@ -135,16 +135,16 @@ jobs:
             jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select(.name != "required-check"))')
 
             total_jobs=$(echo "$jobs_json" | jq 'length')
-            failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | map(.name) | .[]')
+            failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
             completed_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed" and .conclusion == "success")] | length')
 
-            if [ -n "$failed_jobs" ]; then
-              echo "Some jobs have failed:"
-              echo "$failed_jobs" | sed 's/^/  - /'
+            if [ $failed_jobs -gt 0 ]; then
+              echo "At least one job has failed."
               exit 1
             fi
 
-            # If all jobs are complete and successful, we're done
+            echo "Completed: $completed_jobs/$total_jobs"
+
             if [ $completed_jobs -eq $total_jobs ]; then
               echo "All jobs have completed successfully!"
               break
