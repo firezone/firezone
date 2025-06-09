@@ -28,7 +28,7 @@ pub(crate) fn reevaluate(user_id: String, env: &str) {
     let api_key = match env.parse() {
         Ok(Env::Production) => POSTHOG_API_KEY_PROD,
         Ok(Env::Staging) => POSTHOG_API_KEY_STAGING,
-        Ok(Env::OnPrem | Env::DockerCompose) | Err(_) => return,
+        Ok(Env::OnPrem | Env::DockerCompose | Env::Localhost) | Err(_) => return,
     };
 
     RUNTIME.spawn(async move {

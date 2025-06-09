@@ -45,6 +45,7 @@ pub(crate) enum Env {
     Production,
     Staging,
     DockerCompose,
+    Localhost,
     OnPrem,
 }
 
@@ -54,6 +55,7 @@ impl Env {
             "wss://api.firezone.dev" => Self::Production,
             "wss://api.firez.one" => Self::Staging,
             "ws://api:8081" => Self::DockerCompose,
+            "ws://localhost:8081" => Self::DockerCompose,
             _ => Self::OnPrem,
         }
     }
@@ -63,6 +65,7 @@ impl Env {
             Env::Production => "production",
             Env::Staging => "staging",
             Env::DockerCompose => "docker-compose",
+            Env::Localhost => "localhost",
             Env::OnPrem => "on-prem",
         }
     }
@@ -76,6 +79,7 @@ impl FromStr for Env {
             "production" => Ok(Self::Production),
             "staging" => Ok(Self::Staging),
             "docker-compose" => Ok(Self::DockerCompose),
+            "localhost" => Ok(Self::Localhost),
             "on-prem" => Ok(Self::OnPrem),
             other => bail!("Unknown env `{other}`"),
         }
