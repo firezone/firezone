@@ -44,6 +44,7 @@ pub const TESTING: Dsn = Dsn(
 pub(crate) enum Env {
     Production,
     Staging,
+    DockerCompose,
     OnPrem,
 }
 
@@ -52,6 +53,7 @@ impl Env {
         match api_url {
             "wss://api.firezone.dev" | "wss://api.firezone.dev/" => Self::Production,
             "wss://api.firez.one" | "wss://api.firez.one/" => Self::Staging,
+            "ws://api:8081" | "ws://api:8081/" => Self::DockerCompose,
             _ => Self::OnPrem,
         }
     }
@@ -60,6 +62,7 @@ impl Env {
         match self {
             Env::Production => "production",
             Env::Staging => "staging",
+            Env::DockerCompose => "docker-compose",
             Env::OnPrem => "on-prem",
         }
     }
@@ -72,6 +75,7 @@ impl FromStr for Env {
         match s {
             "production" => Ok(Self::Production),
             "staging" => Ok(Self::Staging),
+            "docker-compose" => Ok(Self::DockerCompose),
             "on-prem" => Ok(Self::OnPrem),
             other => bail!("Unknown env `{other}`"),
         }
