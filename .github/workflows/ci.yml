@@ -73,7 +73,7 @@ jobs:
           if grep -q '^rust/' changed_files.txt; then
             jobs="${jobs},rust,kotlin,swift,build-artifacts,build-perf-artifacts"
           fi
-          if grep -q '^rust/gui-client' changed_files.txt; then
+          if grep -q '^rust/gui-client/' changed_files.txt; then
             jobs="${jobs},tauri"
           fi
           if grep -q '^elixir/' changed_files.txt; then
