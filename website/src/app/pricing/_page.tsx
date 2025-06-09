@@ -416,15 +416,9 @@ export default function _Page() {
                   billing cycle.
                 </p>
                 <p className="mt-2">
-                  For the <strong>Enterprise</strong> plan, we will periodically
-                  check your active seat count and will contact you to true up
-                  your account once a quarter if there is a substantial change.
-                  Enterprise plans{" "}
-                  <strong>
-                    will never become automatically locked or disabled due to an
-                    increase in usage
-                  </strong>
-                  .
+                  For the <strong>Enterprise</strong> plan, contact your account
+                  manager to request a seat increase. You'll then be billed for
+                  the prorated amount for the remainder of the billing cycle.
                 </p>
               </Accordion.Content>
             </Accordion.Panel>
