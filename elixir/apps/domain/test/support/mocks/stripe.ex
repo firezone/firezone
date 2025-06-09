@@ -13,21 +13,30 @@ defmodule Domain.Mocks.Stripe do
     test_pid = self()
 
     Bypass.expect(bypass, "POST", customers_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      conn = fetch_request_params(conn)
-      send(test_pid, {:bypass_request, conn})
+      # Store test PID in connection for rate limiting
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
 
-      email = Map.get(conn.params, "email", "foo@example.com")
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
 
-      resp =
-        Map.merge(
-          customer_object("cus_NffrFeUfNV2Hib", account.name, email, %{
-            "account_id" => account.id
-          }),
-          resp
-        )
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          conn = fetch_request_params(conn)
+          send(test_pid, {:bypass_request, conn})
 
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+          email = Map.get(conn.params, "email", "foo@example.com")
+
+          resp =
+            Map.merge(
+              customer_object("cus_NffrFeUfNV2Hib", account.name, email, %{
+                "account_id" => account.id
+              }),
+              resp
+            )
+
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      end
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}")
@@ -49,10 +58,18 @@ defmodule Domain.Mocks.Stripe do
     test_pid = self()
 
     Bypass.expect(bypass, "POST", customer_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      conn = fetch_request_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
+
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
+
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          conn = fetch_request_params(conn)
+          send(test_pid, {:bypass_request, conn})
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      end
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}")
@@ -74,9 +91,17 @@ defmodule Domain.Mocks.Stripe do
     test_pid = self()
 
     Bypass.expect(bypass, "GET", customer_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
+
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
+
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          send(test_pid, {:bypass_request, conn})
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      end
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}")
@@ -115,9 +140,17 @@ defmodule Domain.Mocks.Stripe do
     test_pid = self()
 
     Bypass.expect(bypass, "GET", product_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
+
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
+
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          send(test_pid, {:bypass_request, conn})
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      end
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}")
@@ -150,10 +183,18 @@ defmodule Domain.Mocks.Stripe do
     test_pid = self()
 
     Bypass.expect(bypass, "POST", customers_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      conn = fetch_request_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
+
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
+
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          conn = fetch_request_params(conn)
+          send(test_pid, {:bypass_request, conn})
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      end
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}")
@@ -173,15 +214,177 @@ defmodule Domain.Mocks.Stripe do
     test_pid = self()
 
     Bypass.expect(bypass, "POST", customers_endpoint_path, fn conn ->
-      conn = Plug.Conn.fetch_query_params(conn)
-      conn = fetch_request_params(conn)
-      send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
+
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
+
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          conn = fetch_request_params(conn)
+          send(test_pid, {:bypass_request, conn})
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      end
     end)
 
     override_endpoint_url("http://localhost:#{bypass.port}")
 
     bypass
+  end
+
+  # Rate limiting control functions
+  def enable_rate_limiting(rate_limit_count \\ 2) do
+    ensure_ets_table()
+    test_pid = self()
+
+    state = %{
+      rate_limit_enabled: true,
+      rate_limit_count: rate_limit_count,
+      request_count: 0
+    }
+
+    :ets.insert(:stripe_mock_state, {test_pid, state})
+  end
+
+  def disable_rate_limiting do
+    ensure_ets_table()
+    test_pid = self()
+    :ets.delete(:stripe_mock_state, test_pid)
+  end
+
+  def reset_rate_limit_counter do
+    ensure_ets_table()
+    test_pid = self()
+
+    case :ets.lookup(:stripe_mock_state, test_pid) do
+      [{^test_pid, state}] ->
+        updated_state = Map.put(state, :request_count, 0)
+        :ets.insert(:stripe_mock_state, {test_pid, updated_state})
+
+      [] ->
+        :ok
+    end
+  end
+
+  def get_request_count do
+    ensure_ets_table()
+    test_pid = self()
+
+    case :ets.lookup(:stripe_mock_state, test_pid) do
+      [{^test_pid, state}] -> Map.get(state, :request_count, 0)
+      [] -> 0
+    end
+  end
+
+  # Rate limiting with flexible patterns
+  def configure_rate_limiting(pattern) when is_function(pattern, 1) do
+    ensure_ets_table()
+    test_pid = self()
+
+    state = %{
+      rate_limit_pattern: pattern,
+      request_count: 0
+    }
+
+    :ets.insert(:stripe_mock_state, {test_pid, state})
+  end
+
+  def configure_rate_limiting(opts) when is_list(opts) do
+    ensure_ets_table()
+    test_pid = self()
+    fail_on_attempts = Keyword.get(opts, :fail_on_attempts, [1, 2])
+    pattern = fn count -> count in fail_on_attempts end
+
+    state = %{
+      rate_limit_pattern: pattern,
+      request_count: 0
+    }
+
+    :ets.insert(:stripe_mock_state, {test_pid, state})
+  end
+
+  defp ensure_ets_table do
+    case :ets.whereis(:stripe_mock_state) do
+      :undefined ->
+        :ets.new(:stripe_mock_state, [:named_table, :public, :set])
+
+      _table ->
+        :ok
+    end
+  end
+
+  defp check_rate_limit(conn) do
+    ensure_ets_table()
+
+    # Get the test process PID from the connection
+    test_pid = get_test_pid(conn)
+
+    # Get current state and increment request count
+    {current_count, state} =
+      case :ets.lookup(:stripe_mock_state, test_pid) do
+        [{^test_pid, existing_state}] ->
+          new_count = Map.get(existing_state, :request_count, 0) + 1
+          updated_state = Map.put(existing_state, :request_count, new_count)
+          :ets.insert(:stripe_mock_state, {test_pid, updated_state})
+          {new_count, updated_state}
+
+        [] ->
+          {1, %{request_count: 1}}
+      end
+
+    cond do
+      # Check for custom pattern function
+      pattern_fn = Map.get(state, :rate_limit_pattern) ->
+        if pattern_fn.(current_count) do
+          {:rate_limited, send_rate_limit_response(conn)}
+        else
+          :ok
+        end
+
+      # Check for simple rate limiting
+      Map.get(state, :rate_limit_enabled) ->
+        rate_limit_count = Map.get(state, :rate_limit_count, 2)
+
+        if current_count <= rate_limit_count do
+          {:rate_limited, send_rate_limit_response(conn)}
+        else
+          :ok
+        end
+
+      true ->
+        :ok
+    end
+  end
+
+  defp get_test_pid(conn) do
+    # Look for the test PID in the connection's private assigns
+    case Map.get(conn.private, :test_pid) do
+      nil ->
+        # Fallback: try to find any active test process
+        case :ets.first(:stripe_mock_state) do
+          :"$end_of_table" -> self()
+          pid -> pid
+        end
+
+      pid ->
+        pid
+    end
+  end
+
+  defp send_rate_limit_response(conn) do
+    error_response = %{
+      "error" => %{
+        "code" => "lock_timeout",
+        "doc_url" => "https://stripe.com/docs/error-codes/lock-timeout",
+        "message" => "Error message here",
+        "request_log_url" => "https://dashboard.stripe.com/logs/req_ABC123DEF456",
+        "type" => "invalid_request_error"
+      }
+    }
+
+    conn
+    |> Plug.Conn.send_resp(429, Jason.encode!(error_response))
   end
 
   def customer_object(id, name, email \\ nil, metadata \\ %{}) do
