@@ -20,7 +20,7 @@ import React, { useEffect, useState } from "react";
 import { NavLink, Route, Routes } from "react-router";
 import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
 import { FileCount } from "../generated/FileCount";
-import { Session } from "../generated/Session";
+import { SessionViewModel } from "../generated/SessionViewModel";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
 import ColorPalette from "./ColorPalettePage";
@@ -30,7 +30,7 @@ import Overview from "./OverviewPage";
 import { GeneralSettingsViewModel } from "../generated/GeneralSettingsViewModel";
 
 export default function App() {
-  let [session, setSession] = useState<Session | null>(null);
+  let [session, setSession] = useState<SessionViewModel | null>(null);
   let [logCount, setLogCount] = useState<FileCount | null>(null);
   let [generalSettings, setGeneralSettings] =
     useState<GeneralSettingsViewModel | null>(null);
@@ -38,15 +38,11 @@ export default function App() {
     useState<AdvancedSettingsViewModel | null>(null);
 
   useEffect(() => {
-    const signedInUnlisten = listen<Session>("signed_in", (e) => {
+    const sessionChanged = listen<SessionViewModel>("session_changed", (e) => {
       let session = e.payload;
 
-      console.log("signed_in", { session });
+      console.log("session_changed", { session });
       setSession(session);
-    });
-    const signedOutUnlisten = listen<void>("signed_out", (_e) => {
-      console.log("signed_out");
-      setSession(null);
     });
     const generalSettingsChangedUnlisten = listen<GeneralSettingsViewModel>(
       "general_settings_changed",
@@ -78,8 +74,7 @@ export default function App() {
     invoke<void>("update_state"); // Let the backend know that we (re)-initialised
 
     return () => {
-      signedInUnlisten.then((unlistenFn) => unlistenFn());
-      signedOutUnlisten.then((unlistenFn) => unlistenFn());
+      sessionChanged.then((unlistenFn) => unlistenFn());
       generalSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
       advancedSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
       logsRecountedUnlisten.then((unlistenFn) => unlistenFn());
