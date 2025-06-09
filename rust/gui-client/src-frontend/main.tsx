@@ -34,6 +34,11 @@ const customTheme = createTheme({
       },
     },
   },
+  spinner: {
+    color: {
+      default: "fill-accent-500",
+    },
+  },
 });
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {

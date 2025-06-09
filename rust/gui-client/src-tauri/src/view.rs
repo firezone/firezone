@@ -20,6 +20,17 @@ pub struct GeneralSettingsForm {
     pub account_slug: String,
 }
 
+#[tslink::tslink(target = "./gui-client/src-frontend/generated/SessionViewModel.ts")]
+#[derive(Clone, serde::Serialize)]
+pub enum SessionViewModel {
+    SignedIn {
+        account_slug: String,
+        actor_name: String,
+    },
+    Loading,
+    SignedOut,
+}
+
 pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
     tauri::generate_handler![
         clear_logs,

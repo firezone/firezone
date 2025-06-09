@@ -82,7 +82,6 @@ pub(crate) struct Response {
     pub(crate) state: SecretString,
 }
 
-#[tslink::tslink(target = "./gui-client/src-frontend/generated/Session.ts")]
 #[derive(Default, Clone, Deserialize, Serialize)]
 pub struct Session {
     pub(crate) account_slug: String,
