@@ -17,13 +17,7 @@ use futures::{
     stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{
-    collections::BTreeSet,
-    ops::ControlFlow,
-    path::PathBuf,
-    task::Poll,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -132,15 +126,9 @@ pub enum Status {
         resources: Vec<ResourceView>,
     },
     /// Firezone is signing in to the Portal.
-    WaitingForPortal {
-        /// The instant when we sent our most recent connect request.
-        start_instant: Instant,
-    },
+    WaitingForPortal,
     /// Firezone has connected to the Portal and is raising the tunnel.
-    WaitingForTunnel {
-        /// The instant when we sent our most recent connect request.
-        start_instant: Instant,
-    },
+    WaitingForTunnel,
 }
 
 impl Default for Status {
@@ -153,8 +141,8 @@ impl Status {
     /// True if we should react to `OnUpdateResources`
     fn needs_resource_updates(&self) -> bool {
         match self {
-            Status::Disconnected | Status::Quitting | Status::WaitingForPortal { .. } => false,
-            Status::TunnelReady { .. } | Status::WaitingForTunnel { .. } => true,
+            Status::Disconnected | Status::Quitting | Status::WaitingForPortal => false,
+            Status::TunnelReady { .. } | Status::WaitingForTunnel => true,
         }
     }
 
@@ -344,7 +332,7 @@ impl<I: GuiIntegration> Controller<I> {
             Status::TunnelReady { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connected."
             ))?,
-            Status::WaitingForPortal { .. } | Status::WaitingForTunnel { .. } => Err(anyhow!(
+            Status::WaitingForPortal | Status::WaitingForTunnel => Err(anyhow!(
                 "Can't connect to Firezone, we're already connecting."
             ))?,
         }
@@ -352,8 +340,6 @@ impl<I: GuiIntegration> Controller<I> {
         let api_url = self.api_url().clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
-        // Count the start instant from before we connect
-        let start_instant = Instant::now();
         self.send_ipc(&service::ClientMsg::Connect {
             api_url: api_url.to_string(),
             token: token.expose_secret().clone(),
@@ -361,7 +347,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await?;
 
         // Change the status after we begin connecting
-        self.status = Status::WaitingForPortal { start_instant };
+        self.status = Status::WaitingForPortal;
 
         let session = self.auth.session().context("Missing session")?;
 
@@ -512,7 +498,7 @@ impl<I: GuiIntegration> Controller<I> {
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
             SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
-                Status::Disconnected | Status::WaitingForPortal { .. } => {
+                Status::Disconnected | Status::WaitingForPortal => {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
                     self.sign_out().await?;
                 }
@@ -520,7 +506,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Status::TunnelReady { .. } => tracing::error!(
                     "Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."
                 ),
-                Status::WaitingForTunnel { .. } => {
+                Status::WaitingForTunnel => {
                     tracing::debug!(
                         "Connlib is already raising the tunnel, calling `sign_out` anyway"
                     );
@@ -671,12 +657,11 @@ impl<I: GuiIntegration> Controller<I> {
                 return Ok(ControlFlow::Break(()));
             }
             service::ServerMsg::TunnelReady => {
-                let Status::WaitingForTunnel { start_instant } = self.status else {
+                let Status::WaitingForTunnel = self.status else {
                     // If we are not waiting for a tunnel, continue.
                     return Ok(ControlFlow::Continue(()));
                 };
 
-                tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
                 self.status = Status::TunnelReady { resources: vec![] };
                 self.integration.show_notification(
                     "Firezone connected",
@@ -723,7 +708,7 @@ impl<I: GuiIntegration> Controller<I> {
     }
 
     async fn handle_connect_result(&mut self, result: Result<(), String>) -> Result<()> {
-        let Status::WaitingForPortal { start_instant } = &self.status else {
+        let Status::WaitingForPortal = &self.status else {
             tracing::debug!(current_state = ?self.status, "Ignoring `ConnectResult`");
 
             return Ok(());
@@ -732,9 +717,7 @@ impl<I: GuiIntegration> Controller<I> {
         match result {
             Ok(()) => {
                 ran_before::set().await?;
-                self.status = Status::WaitingForTunnel {
-                    start_instant: *start_instant,
-                };
+                self.status = Status::WaitingForTunnel;
                 self.refresh_ui_state();
                 Ok(())
             }
@@ -838,11 +821,11 @@ impl<I: GuiIntegration> Controller<I> {
                         actor_name: auth_session.actor_name.clone(),
                     },
                 ),
-                Status::WaitingForPortal { .. } => (
+                Status::WaitingForPortal => (
                     system_tray::ConnlibState::WaitingForPortal,
                     SessionViewModel::Loading,
                 ),
-                Status::WaitingForTunnel { .. } => (
+                Status::WaitingForTunnel => (
                     system_tray::ConnlibState::WaitingForTunnel,
                     SessionViewModel::Loading,
                 ),
@@ -885,8 +868,8 @@ impl<I: GuiIntegration> Controller<I> {
             Status::Quitting => return Ok(()),
             Status::Disconnected
             | Status::TunnelReady { .. }
-            | Status::WaitingForPortal { .. }
-            | Status::WaitingForTunnel { .. } => {}
+            | Status::WaitingForPortal
+            | Status::WaitingForTunnel => {}
         }
         self.auth.sign_out()?;
         self.status = Status::Disconnected;
