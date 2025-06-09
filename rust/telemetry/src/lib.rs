@@ -50,10 +50,10 @@ pub(crate) enum Env {
 
 impl Env {
     pub(crate) fn from_api_url(api_url: &str) -> Self {
-        match api_url {
-            "wss://api.firezone.dev" | "wss://api.firezone.dev/" => Self::Production,
-            "wss://api.firez.one" | "wss://api.firez.one/" => Self::Staging,
-            "ws://api:8081" | "ws://api:8081/" => Self::DockerCompose,
+        match api_url.trim_end_matches('/') {
+            "wss://api.firezone.dev" => Self::Production,
+            "wss://api.firez.one" => Self::Staging,
+            "ws://api:8081" => Self::DockerCompose,
             _ => Self::OnPrem,
         }
     }
