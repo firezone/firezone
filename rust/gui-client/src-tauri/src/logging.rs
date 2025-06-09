@@ -211,6 +211,11 @@ pub struct FileCount {
     files: u64,
 }
 
+impl FileCount {
+    #[tslink::tslink(target = "./gui-client/src-frontend/generated/FileCount.ts")]
+    pub const LOGS_RECOUNTED: &str = "logs_recounted";
+}
+
 pub async fn clear_gui_logs() -> Result<()> {
     clear_logs(&known_dirs::logs().context("Can't compute GUI log dir")?).await
 }

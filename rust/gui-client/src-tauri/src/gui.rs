@@ -13,7 +13,7 @@ use crate::{
         self, AdvancedSettings, AdvancedSettingsLegacy, AdvancedSettingsViewModel, GeneralSettings,
         GeneralSettingsViewModel, MdmSettings,
     },
-    updates,
+    updates, view,
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
@@ -106,13 +106,13 @@ impl GuiIntegration for TauriIntegration {
     ) -> Result<()> {
         self.app
             .emit(
-                "general_settings_changed",
+                GeneralSettingsViewModel::GENERAL_SETTINGS_CHANGED,
                 GeneralSettingsViewModel::new(mdm_settings.clone(), general_settings),
             )
             .context("Failed to send `general_settings_changed` event")?;
         self.app
             .emit(
-                "advanced_settings_changed",
+                AdvancedSettingsViewModel::ADVANCED_SETTINGS_CHANGED,
                 AdvancedSettingsViewModel::new(mdm_settings, advanced_settings),
             )
             .context("Failed to send `advanced_settings_changed` event")?;
@@ -122,7 +122,7 @@ impl GuiIntegration for TauriIntegration {
 
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
         self.app
-            .emit("logs_recounted", file_count)
+            .emit(FileCount::LOGS_RECOUNTED, file_count)
             .context("Failed to send `logs_recounted` event")?;
 
         Ok(())
@@ -172,7 +172,7 @@ impl GuiIntegration for TauriIntegration {
             Some(session) => self.notify_signed_in(session)?,
             None => self.notify_signed_out()?,
         };
-        self.navigate("overview")?;
+        self.navigate(view::routes::OVERVIEW)?;
         self.set_window_visible(true)?;
 
         Ok(())
@@ -185,14 +185,14 @@ impl GuiIntegration for TauriIntegration {
         advanced_settings: AdvancedSettings,
     ) -> Result<()> {
         self.notify_settings_changed(mdm_settings, general_settings, advanced_settings)?; // Ensure settings are up to date in GUI.
-        self.navigate("general-settings")?;
+        self.navigate(view::routes::GENERAL_SETTINGS)?;
         self.set_window_visible(true)?;
 
         Ok(())
     }
 
     fn show_about_page(&self) -> Result<()> {
-        self.navigate("about")?;
+        self.navigate(view::routes::ABOUT)?;
         self.set_window_visible(true)?;
 
         Ok(())
