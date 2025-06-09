@@ -86,8 +86,6 @@ pub enum ServerMsg {
     /// "Firezone is updating, please restart the GUI" instead of an error like,
     /// "IPC connection closed".
     TerminatingGracefully,
-    /// The interface and tunnel are ready for traffic.
-    TunnelReady,
 }
 
 impl ServerMsg {
@@ -469,8 +467,6 @@ impl<'a> Handler<'a> {
                 self.dns_controller.set_dns(dns, search_domain).await?;
                 self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
                 self.dns_controller.flush()?;
-
-                self.send_ipc(ServerMsg::TunnelReady).await?;
             }
             client_shared::Event::ResourcesUpdated(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>

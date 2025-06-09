@@ -639,10 +639,20 @@ impl<I: GuiIntegration> Controller<I> {
                 if !self.status.needs_resource_updates() {
                     return Ok(ControlFlow::Continue(()));
                 }
-                tracing::debug!(len = resources.len(), "Got new Resources");
-                self.status = Status::TunnelReady { resources };
-                self.refresh_ui_state();
 
+                // If this is the first time we receive resources, show the notification that we are connected.
+                if let &Status::WaitingForTunnel = &self.status {
+                    self.integration.show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+
+                tracing::debug!(len = resources.len(), "Got new Resources");
+
+                self.status = Status::TunnelReady { resources };
+
+                self.refresh_ui_state();
                 self.update_disabled_resources().await?;
             }
             service::ServerMsg::TerminatingGracefully => {
@@ -655,19 +665,6 @@ impl<I: GuiIntegration> Controller<I> {
                 )?;
 
                 return Ok(ControlFlow::Break(()));
-            }
-            service::ServerMsg::TunnelReady => {
-                let Status::WaitingForTunnel = self.status else {
-                    // If we are not waiting for a tunnel, continue.
-                    return Ok(ControlFlow::Continue(()));
-                };
-
-                self.status = Status::TunnelReady { resources: vec![] };
-                self.integration.show_notification(
-                    "Firezone connected",
-                    "You are now signed in and able to access resources.",
-                )?;
-                self.refresh_ui_state();
             }
             service::ServerMsg::Hello => {}
         }
