@@ -13,7 +13,7 @@ use client_shared::{V4RouteList, V6RouteList};
 use firezone_logging::sentry_layer;
 use firezone_telemetry::{Telemetry, analytics};
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
-use platform::{DSN, MAX_PARTITION_TIME, MakeWriter, RELEASE, VERSION};
+use platform::RELEASE;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use tokio::sync::Mutex;
@@ -25,7 +25,7 @@ uniffi::setup_scaffolding!();
 pub struct Session {
     inner: client_shared::Session,
     events: Mutex<client_shared::EventStream>,
-    telemetry: Telemetry,
+    telemetry: Mutex<Telemetry>,
     runtime: tokio::runtime::Runtime,
 }
 
@@ -34,7 +34,10 @@ pub struct Session {
 pub struct Error(anyhow::Error);
 
 #[derive(uniffi::Error, thiserror::Error, Debug)]
-pub enum CallbackError {}
+pub enum CallbackError {
+    #[error("{0}")]
+    Failed(String),
+}
 
 #[derive(uniffi::Object, Debug)]
 pub struct DisconnectError(client_shared::DisconnectError);
@@ -49,17 +52,17 @@ pub enum Event {
         ipv4_routes: String,
         ipv6_routes: String,
     },
-    ResourcesUpdated(String),
-    Disconnected(Arc<DisconnectError>),
+    ResourcesUpdated {
+        resources: String,
+    },
+    Disconnected {
+        error: Arc<DisconnectError>,
+    },
 }
 
 #[uniffi::export]
 impl DisconnectError {
-    #[expect(
-        clippy::inherent_to_string,
-        reason = "This is the API we want to expose over FFI."
-    )]
-    pub fn to_string(&self) -> String {
+    pub fn message(&self) -> String {
         self.0.to_string()
     }
 
@@ -110,28 +113,53 @@ impl Session {
         )
     }
 
-    pub fn disconnect(&self) -> Result<(), Error> {
-        todo!()
+    pub fn disconnect(&self) {
+        self.runtime.block_on(async {
+            self.telemetry.lock().await.stop().await;
+        });
+        self.inner.stop();
     }
 
     pub fn set_disabled_resources(&self, disabled_resources: String) -> Result<(), Error> {
-        todo!()
+        let disabled_resources = serde_json::from_str(&disabled_resources)
+            .context("Failed to deserialize disabled resource IDs")?;
+
+        self.inner.set_disabled_resources(disabled_resources);
+
+        Ok(())
     }
 
     pub fn set_dns(&self, dns_servers: String) -> Result<(), Error> {
-        todo!()
+        let dns_servers =
+            serde_json::from_str(&dns_servers).context("Failed to deserialize DNS servers")?;
+
+        self.inner.set_dns(dns_servers);
+
+        Ok(())
     }
 
-    pub fn reset(&self) -> Result<(), Error> {
-        todo!()
+    pub fn reset(&self) {
+        self.inner.reset()
     }
 
     pub fn set_log_directives(&self, directives: String) -> Result<(), Error> {
-        todo!()
+        let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
+
+        reload_handle
+            .reload(&directives)
+            .context("Failed to apply new directives")?;
+
+        Ok(())
     }
 
     pub fn set_tun(&self, fd: RawFd) -> Result<(), Error> {
-        todo!()
+        let _guard = self.runtime.enter();
+        // SAFETY: FD must be open.
+        let tun = unsafe { platform::Tun::from_fd(fd).context("Failed to create new Tun")? };
+
+        self.inner.set_tun(Box::new(tun));
+
+        Ok(())
     }
 
     pub async fn next_event(&self) -> Result<Option<Event>, Error> {
@@ -163,16 +191,24 @@ impl Session {
                 let resources = serde_json::to_string(&resources)
                     .context("Failed to serialize resource list")?;
 
-                Ok(Some(Event::ResourcesUpdated(resources)))
+                Ok(Some(Event::ResourcesUpdated { resources }))
             }
-            Some(client_shared::Event::Disconnected(error)) => {
-                Ok(Some(Event::Disconnected(Arc::new(DisconnectError(error)))))
-            }
+            Some(client_shared::Event::Disconnected(error)) => Ok(Some(Event::Disconnected {
+                error: Arc::new(DisconnectError(error)),
+            })),
             None => Ok(None),
         }
     }
 }
 
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.runtime
+            .block_on(async { self.telemetry.lock().await.stop_on_crash().await })
+    }
+}
+
+#[expect(clippy::too_many_arguments, reason = "We don't care.")]
 fn connect(
     api_url: String,
     token: String,
@@ -193,6 +229,7 @@ fn connect(
     let mut telemetry = Telemetry::default();
     telemetry.start(&api_url, RELEASE, platform::DSN);
     Telemetry::set_firezone_id(device_id.clone());
+    Telemetry::set_account_slug(account_slug);
 
     analytics::identify(device_id.clone(), api_url.to_string(), RELEASE.to_owned());
 
@@ -241,16 +278,17 @@ fn connect(
     Ok(Session {
         inner: session,
         events: Mutex::new(events),
-        telemetry,
+        telemetry: Mutex::new(telemetry),
         runtime,
     })
 }
 
+static LOGGER_STATE: OnceLock<(
+    firezone_logging::file::Handle,
+    firezone_logging::FilterReloadHandle,
+)> = OnceLock::new();
+
 fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
-    static LOGGER_STATE: OnceLock<(
-        firezone_logging::file::Handle,
-        firezone_logging::FilterReloadHandle,
-    )> = OnceLock::new();
     if let Some((_, reload_handle)) = LOGGER_STATE.get() {
         reload_handle
             .reload(&log_filter)
@@ -319,5 +357,11 @@ fn install_rustls_crypto_provider() {
 impl From<anyhow::Error> for Error {
     fn from(value: anyhow::Error) -> Self {
         Self(value)
+    }
+}
+
+impl From<uniffi::UnexpectedUniFFICallbackError> for CallbackError {
+    fn from(value: uniffi::UnexpectedUniFFICallbackError) -> Self {
+        Self::Failed(format!("Callback failed: {}", value.reason))
     }
 }

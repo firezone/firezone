@@ -6,7 +6,7 @@ license = { workspace = true }
 
 [lib]
 name = "connlib"
-crate-type = ["lib", "cdylib"]
+crate-type = ["lib", "cdylib", "staticlib"]
 doc = false
 
 [dependencies]

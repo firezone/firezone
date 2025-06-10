@@ -32,6 +32,7 @@ pub struct Eventloop {
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
     Reset,
+    Stop,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetDisabledResources(BTreeSet<ResourceId>),
@@ -93,7 +94,7 @@ impl Eventloop {
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         loop {
             match self.cmd_rx.poll_recv(cx) {
-                Poll::Ready(None) => return Poll::Ready(Ok(())),
+                Poll::Ready(None | Some(Command::Stop)) => return Poll::Ready(Ok(())),
                 Poll::Ready(Some(Command::SetDns(dns))) => {
                     self.tunnel.state_mut().update_system_resolvers(dns);
 

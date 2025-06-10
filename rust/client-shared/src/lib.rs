@@ -105,6 +105,10 @@ impl Session {
     pub fn set_tun(&self, new_tun: Box<dyn Tun>) {
         let _ = self.channel.send(Command::SetTun(new_tun));
     }
+
+    pub fn stop(&self) {
+        let _ = self.channel.send(Command::Stop);
+    }
 }
 
 impl EventStream {
