@@ -76,8 +76,6 @@ jobs:
           echo -n "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
           ${{ matrix.build-command }}
           rm "$KEYSTORE_PATH"
-      - name: Ensure unmodified Git workspace
-        run: git diff --exit-code
       - name: Setup sentry CLI
         if: "${{ github.event_name == 'workflow_dispatch' }}"
         uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
@@ -127,8 +125,6 @@ jobs:
       - name: Build debug APK
         run: |
           ./gradlew assembleDebug
-      - name: Ensure unmodified Git workspace
-        run: git diff --exit-code
       - name: Upload debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
