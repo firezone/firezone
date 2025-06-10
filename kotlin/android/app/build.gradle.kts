@@ -256,55 +256,56 @@ cargo {
 }
 
 // Custom task to run uniffi-bindgen
-val generateUniffiBindings = tasks.register("generateUniffiBindings") {
-    description = "Generate Kotlin bindings using uniffi-bindgen"
-    group = "build"
+val generateUniffiBindings =
+    tasks.register("generateUniffiBindings") {
+        description = "Generate Kotlin bindings using uniffi-bindgen"
+        group = "build"
 
-    // This task should run after cargo build completes
-    dependsOn("cargoBuild")
+        // This task should run after cargo build completes
+        dependsOn("cargoBuild")
 
-    // Determine the correct path to libconnlib.so based on build flavor
-    val profile =
-        if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
-            "release"
-        } else {
-            "debug"
+        // Determine the correct path to libconnlib.so based on build flavor
+        val profile =
+            if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
+                "release"
+            } else {
+                "debug"
+            }
+
+        val rustDir = layout.projectDirectory.dir("../../../rust")
+
+        // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
+        // all the same from the bindings PoV.
+        val input = rustDir.dir("target/x86_64-linux-android/$profile/libconnlib.so")
+        val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get()
+
+        doLast {
+            // Execute uniffi-bindgen command from the rust directory
+            project.exec {
+                // Set working directory to the rust directory which is outside the gradle project
+                workingDir(rustDir)
+
+                // Build the command
+                commandLine(
+                    "cargo",
+                    "run",
+                    "--bin",
+                    "uniffi-bindgen",
+                    "generate",
+                    "--library",
+                    "--language",
+                    "kotlin",
+                    input.asFile,
+                    "--out-dir",
+                    outDir.asFile,
+                    "--no-format",
+                )
+            }
         }
 
-    val rustDir = layout.projectDirectory.dir("../../../rust")
-
-    // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
-    // all the same from the bindings PoV.
-    val input = rustDir.dir("target/x86_64-linux-android/$profile/libconnlib.so")
-    val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get();
-
-    doLast {
-        // Execute uniffi-bindgen command from the rust directory
-        project.exec {
-            // Set working directory to the rust directory which is outside the gradle project
-            workingDir(rustDir)
-
-            // Build the command
-            commandLine(
-                "cargo",
-                "run",
-                "--bin",
-                "uniffi-bindgen",
-                "generate",
-                "--library",
-                "--language",
-                "kotlin",
-                input.asFile,
-                "--out-dir",
-                outDir.asFile,
-                "--no-format",
-            )
-        }
+        inputs.file(input)
+        outputs.dir(outDir)
     }
-
-    inputs.file(input)
-    outputs.dir(outDir)
-}
 
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
     inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
