@@ -256,26 +256,33 @@ cargo {
 }
 
 // Custom task to run uniffi-bindgen
-tasks.register("generateUniffiBindings") {
+val generateUniffiBindings = tasks.register("generateUniffiBindings") {
     description = "Generate Kotlin bindings using uniffi-bindgen"
     group = "build"
 
     // This task should run after cargo build completes
     dependsOn("cargoBuild")
 
-    doLast {
-        // Determine the correct path to libconnlib.so based on build flavor
-        val profile =
-            if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
-                "release"
-            } else {
-                "debug"
-            }
+    // Determine the correct path to libconnlib.so based on build flavor
+    val profile =
+        if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
+            "release"
+        } else {
+            "debug"
+        }
 
+    val rustDir = layout.projectDirectory.dir("../../../rust")
+
+    // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
+    // all the same from the bindings PoV.
+    val input = rustDir.dir("target/x86_64-linux-android/$profile/libconnlib.so")
+    val outDir = layout.buildDirectory.dir("generated/source/uniffi/$profile").get();
+
+    doLast {
         // Execute uniffi-bindgen command from the rust directory
-        providers.exec {
+        project.exec {
             // Set working directory to the rust directory which is outside the gradle project
-            workingDir("../../../rust")
+            workingDir(rustDir)
 
             // Build the command
             commandLine(
@@ -287,25 +294,21 @@ tasks.register("generateUniffiBindings") {
                 "--library",
                 "--language",
                 "kotlin",
-                // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
-                // all the same from the bindings PoV.
-                "target/x86_64-linux-android/$profile/libconnlib.so",
+                input.asFile,
                 "--out-dir",
-                "../kotlin/android/app/src/main/java",
+                outDir.asFile,
                 "--no-format",
             )
         }
     }
+
+    inputs.file(input)
+    outputs.dir(outDir)
 }
 
 tasks.matching { it.name.matches(Regex("merge.*JniLibFolders")) }.configureEach {
     inputs.dir(layout.buildDirectory.file("rustJniLibs/android"))
     dependsOn("cargoBuild")
-}
-
-// Make sure the uniffi bindings are generated before compilation
-tasks.matching { it.name == "preBuild" }.configureEach {
-    dependsOn("generateUniffiBindings")
 }
 
 tasks.matching { it.name == "appDistributionUploadRelease" }.configureEach {
@@ -314,4 +317,12 @@ tasks.matching { it.name == "appDistributionUploadRelease" }.configureEach {
 
 kapt {
     correctErrorTypes = true
+}
+
+kotlin {
+    sourceSets {
+        main {
+            kotlin.srcDir(generateUniffiBindings)
+        }
+    }
 }
