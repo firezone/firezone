@@ -25,11 +25,8 @@ spotless {
     kotlin {
         ktlint()
         target("**/*.kt")
-        targetExclude("**/generated/*", "src/main/java/uniffi/connlib/connlib.kt")
-        licenseHeader(
-            "/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */",
-            "^(package |import |@file)",
-        )
+        targetExclude("**/generated/*")
+        licenseHeader("/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */", "^(package |import |@file)")
     }
     kotlinGradle {
         ktlint()
