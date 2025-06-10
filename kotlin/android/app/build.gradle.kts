@@ -41,7 +41,9 @@ spotless {
 apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
 
 android {
-    buildFeatures { buildConfig = true }
+    buildFeatures {
+        buildConfig = true
+    }
 
     namespace = "dev.firezone.android"
     compileSdk = 36
@@ -140,11 +142,19 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions { jvmTarget = "17" }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
 
-    buildFeatures { viewBinding = true }
+    buildFeatures {
+        viewBinding = true
+    }
 
-    testOptions { unitTests { isIncludeAndroidResources = true } }
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
