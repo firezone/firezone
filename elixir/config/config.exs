@@ -281,11 +281,8 @@ config :domain, Domain.Mailer,
   adapter: Domain.Mailer.NoopAdapter,
   from_email: "test@firez.one"
 
-# TODO: actually copy fonts here, otherwise:application
-# Failed to load resource: the server responded with a status of 404 ()
-# source-sans-pro-all-400-normal.woff:1     Failed to load resource: the server responded with a status of 404 ()
 config :esbuild,
-  version: "0.24.2",
+  version: "0.25.3",
   web: [
     args: [
       "js/app.js",
@@ -303,12 +300,12 @@ config :esbuild,
 
 # Configure tailwind (the version is required)
 config :tailwind,
-  version: "3.3.2",
+  version: "3.4.17",
   web: [
     args: [
       "--config=tailwind.config.js",
-      "--input=css/app.css",
-      "--output=tmp/tailwind/app.css"
+      "--input=css/main.css",
+      "--output=../priv/static/assets/main.css"
     ],
     cd: Path.expand("../apps/web/assets", __DIR__)
   ]
