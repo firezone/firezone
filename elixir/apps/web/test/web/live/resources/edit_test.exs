@@ -235,6 +235,18 @@ defmodule Web.Live.Resources.EditTest do
       conn
       |> live(~p"/#{account}/resources/#{resource}/edit")
 
+    old_data = %{
+      "id" => resource.id,
+      "account_id" => resource.account_id,
+      "type" => resource.type,
+      "address" => resource.address,
+      "filters" => resource.filters,
+      "ip_stack" => resource.ip_stack
+    }
+
+    data = Map.put(old_data, "filters", attrs.filters)
+    :ok = Events.Hooks.Resources.on_update(old_data, data)
+
     {:ok, _lv, html} =
       lv
       |> form("form", resource: attrs)

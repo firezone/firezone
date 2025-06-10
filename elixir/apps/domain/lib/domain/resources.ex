@@ -1,6 +1,6 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Auth}
-  alias Domain.{Accounts, Gateways, Policies, Flows}
+  alias Domain.{Accounts, Gateways, Policies}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -251,9 +251,7 @@ defmodule Domain.Resources do
   end
 
   def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do
-    case Resource.Changeset.update(resource, attrs, subject) do
-      {update_changeset, _} -> update_changeset
-    end
+    Resource.Changeset.update(resource, attrs, subject)
   end
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
@@ -261,24 +259,11 @@ defmodule Domain.Resources do
       Resource.Query.not_deleted()
       |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update_breakable(Resource.Query,
+      |> Repo.fetch_and_update(Resource.Query,
         with: fn resource ->
           resource
           |> Repo.preload(:connections)
           |> Resource.Changeset.update(attrs, subject)
-        end,
-        after_update_commit: fn resource, _changeset ->
-          # TODO: WAL
-          broadcast_resource_events(:update, resource)
-        end,
-        after_breaking_update_commit: fn updated_resource, _changeset ->
-          # The :delete resource event broadcast is a no-op.
-          # This is used to reset the resource on the client and gateway in case filters, conditions, etc are changed.
-          {:ok, _flows} = Flows.expire_flows_for(resource, subject)
-
-          # TODO: WAL
-          :ok = broadcast_resource_events(:delete, resource)
-          :ok = broadcast_resource_events(:create, updated_resource)
         end
       )
     end
@@ -341,16 +326,6 @@ defmodule Domain.Resources do
     Connection.Query.by_resource_id(resource.id)
     |> Connection.Query.by_gateway_group_id(gateway.group_id)
     |> Repo.exists?()
-  end
-
-  ### PubSub
-
-  # TODO: WAL
-  defp broadcast_resource_events(action, %Resource{} = resource) do
-    payload = {:"#{action}_resource", resource.id}
-    :ok = Domain.Events.Hooks.Resources.broadcast(resource.id, payload)
-    :ok = Domain.Events.Hooks.Accounts.broadcast_to_resources(resource.account_id, payload)
-    :ok
   end
 
   @doc false

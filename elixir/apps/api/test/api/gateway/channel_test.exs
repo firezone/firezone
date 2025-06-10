@@ -275,12 +275,25 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      {:updated, resource} =
+      {:ok, resource} =
         Domain.Resources.update_resource(
           resource,
           %{"name" => Ecto.UUID.generate()},
           subject
         )
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => resource.address,
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      data = Map.put(old_data, "name", "new name")
+      Events.Hooks.Resources.on_update(old_data, data)
 
       assert_push "resource_updated", payload
 
@@ -687,12 +700,25 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "request_connection", %{}, 200
 
-      {:updated, resource} =
+      {:ok, resource} =
         Domain.Resources.update_resource(
           resource,
           %{"name" => Ecto.UUID.generate()},
           subject
         )
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => resource.address,
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      data = Map.put(old_data, "name", "new name")
+      Events.Hooks.Resources.on_update(old_data, data)
 
       assert_push "resource_updated", payload, 200
 
@@ -909,12 +935,25 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "authorize_flow", %{}
 
-      {:updated, resource} =
+      {:ok, resource} =
         Domain.Resources.update_resource(
           resource,
           %{"name" => Ecto.UUID.generate()},
           subject
         )
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => resource.address,
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      data = Map.put(old_data, "name", "new name")
+      Events.Hooks.Resources.on_update(old_data, data)
 
       assert_push "resource_updated", payload
 

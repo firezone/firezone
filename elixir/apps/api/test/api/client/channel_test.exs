@@ -512,8 +512,20 @@ defmodule API.Client.ChannelTest do
     } do
       assert_push "init", %{}
 
-      {:updated, _resource} =
-        Domain.Resources.update_resource(resource, %{name: "foobar"}, subject)
+      {:ok, _resource} = Domain.Resources.update_resource(resource, %{name: "foobar"}, subject)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => resource.address,
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      data = Map.put(old_data, "name", "new name")
+      Events.Hooks.Resources.on_update(old_data, data)
 
       assert_push "resource_created_or_updated", %{}
     end
