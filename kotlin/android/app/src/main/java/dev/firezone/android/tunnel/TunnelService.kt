@@ -54,17 +54,20 @@ import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
 
 data class DeviceInfo(
-        var firebaseInstallationId: String? = null,
+    var firebaseInstallationId: String? = null,
 )
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
 class TunnelService : VpnService() {
-    @Inject internal lateinit var repo: Repository
+    @Inject
+    internal lateinit var repo: Repository
 
-    @Inject internal lateinit var appRestrictions: Bundle
+    @Inject
+    internal lateinit var appRestrictions: Bundle
 
-    @Inject internal lateinit var moshi: Moshi
+    @Inject
+    internal lateinit var moshi: Moshi
 
     var tunnelIpv4Address: String? = null
     var tunnelIpv6Address: String? = null
@@ -119,17 +122,17 @@ class TunnelService : VpnService() {
     override fun onBind(intent: Intent): IBinder = binder
 
     private val protectSocket: ProtectSocket =
-            object : ProtectSocket {
-                override fun protectSocket(fd: Int) {
-                    protect(fd)
-                }
+        object : ProtectSocket {
+            override fun protectSocket(fd: Int) {
+                protect(fd)
             }
+        }
 
     private fun buildVpnService() {
         fun handleApplications(
-                appRestrictions: Bundle,
-                key: String,
-                action: (String) -> Unit,
+            appRestrictions: Bundle,
+            key: String,
+            action: (String) -> Unit,
         ) {
             appRestrictions.getString(key)?.takeIf { it.isNotBlank() }?.split(",")?.forEach { p ->
                 p.trim().takeIf { it.isNotBlank() }?.let(action)
@@ -137,90 +140,90 @@ class TunnelService : VpnService() {
         }
 
         Builder()
-                .apply {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        setMetered(
-                                false
-                        ) // Inherit the metered status from the underlying networks.
-                    }
-
-                    if (tunnelRoutes.all { it.prefix != 0 }) {
-                        // Allow traffic to bypass the VPN interface when Always-on VPN is enabled
-                        // only
-                        // if full-route is not enabled.
-                        allowBypass()
-                    }
-
-                    setUnderlyingNetworks(null) // Use all available networks.
-
-                    setSession(SESSION_NAME)
-                    setMtu(MTU)
-
-                    handleApplications(appRestrictions, "allowedApplications") {
-                        addAllowedApplication(it)
-                    }
-                    handleApplications(
-                            appRestrictions,
-                            "disallowedApplications",
-                    ) { addDisallowedApplication(it) }
-
-                    // Never route GCM notifications through the tunnel.
-                    addDisallowedApplication("com.google.android.gms") // Google Mobile Services
-                    addDisallowedApplication(
-                            "com.google.firebase.messaging"
-                    ) // Firebase Cloud Messaging
-                    addDisallowedApplication("com.google.android.gsf") // Google Services Framework
-
-                    tunnelRoutes.forEach { addRoute(it.address, it.prefix) }
-
-                    tunnelDnsAddresses.forEach { dns -> addDnsServer(dns) }
-
-                    tunnelSearchDomain?.let { addSearchDomain(it) }
-
-                    addAddress(tunnelIpv4Address!!, 32)
-                    addAddress(tunnelIpv6Address!!, 128)
+            .apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    setMetered(
+                        false
+                    ) // Inherit the metered status from the underlying networks.
                 }
-                .establish()
-                ?.detachFd()
-                ?.also { fd -> commandChannel?.trySend(TunnelCommand.SetTun(fd)) }
+
+                if (tunnelRoutes.all { it.prefix != 0 }) {
+                    // Allow traffic to bypass the VPN interface when Always-on VPN is enabled
+                    // only
+                    // if full-route is not enabled.
+                    allowBypass()
+                }
+
+                setUnderlyingNetworks(null) // Use all available networks.
+
+                setSession(SESSION_NAME)
+                setMtu(MTU)
+
+                handleApplications(appRestrictions, "allowedApplications") {
+                    addAllowedApplication(it)
+                }
+                handleApplications(
+                    appRestrictions,
+                    "disallowedApplications",
+                ) { addDisallowedApplication(it) }
+
+                // Never route GCM notifications through the tunnel.
+                addDisallowedApplication("com.google.android.gms") // Google Mobile Services
+                addDisallowedApplication(
+                    "com.google.firebase.messaging"
+                ) // Firebase Cloud Messaging
+                addDisallowedApplication("com.google.android.gsf") // Google Services Framework
+
+                tunnelRoutes.forEach { addRoute(it.address, it.prefix) }
+
+                tunnelDnsAddresses.forEach { dns -> addDnsServer(dns) }
+
+                tunnelSearchDomain?.let { addSearchDomain(it) }
+
+                addAddress(tunnelIpv4Address!!, 32)
+                addAddress(tunnelIpv6Address!!, 128)
+            }
+            .establish()
+            ?.detachFd()
+            ?.also { fd -> commandChannel?.trySend(TunnelCommand.SetTun(fd)) }
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
 
     private val restrictionsReceiver =
-            object : BroadcastReceiver() {
-                override fun onReceive(
-                        context: Context,
-                        intent: Intent,
-                ) {
-                    // Only change VPN if appRestrictions have changed
-                    val restrictionsManager =
-                            context.getSystemService(Context.RESTRICTIONS_SERVICE) as
-                                    android.content.RestrictionsManager
-                    val newAppRestrictions = restrictionsManager.applicationRestrictions
-                    GlobalScope.launch {
-                        repo.saveManagedConfiguration(newAppRestrictions).collect {}
-                    }
-                    val changed =
-                            MANAGED_CONFIGURATIONS.any {
-                                newAppRestrictions.getString(it) != appRestrictions.getString(it)
-                            }
-                    if (!changed) {
-                        return
-                    }
-                    appRestrictions = newAppRestrictions
-
-                    buildVpnService()
+        object : BroadcastReceiver() {
+            override fun onReceive(
+                context: Context,
+                intent: Intent,
+            ) {
+                // Only change VPN if appRestrictions have changed
+                val restrictionsManager =
+                    context.getSystemService(Context.RESTRICTIONS_SERVICE) as
+                            android.content.RestrictionsManager
+                val newAppRestrictions = restrictionsManager.applicationRestrictions
+                GlobalScope.launch {
+                    repo.saveManagedConfiguration(newAppRestrictions).collect {}
                 }
+                val changed =
+                    MANAGED_CONFIGURATIONS.any {
+                        newAppRestrictions.getString(it) != appRestrictions.getString(it)
+                    }
+                if (!changed) {
+                    return
+                }
+                appRestrictions = newAppRestrictions
+
+                buildVpnService()
             }
+        }
 
     // Primary callback used to start and stop the VPN service
     // This can be called either from the UI or from the system
     // via AlwaysOnVpn.
     override fun onStartCommand(
-            intent: Intent?,
-            flags: Int,
-            startId: Int,
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
     ): Int {
         if (intent?.getBooleanExtra("startedByUser", false) == true) {
             startedByUser = true
@@ -248,19 +251,19 @@ class TunnelService : VpnService() {
     fun internetState(): ResourceState = resourceState
 
     private fun internetResource(): Resource? =
-            tunnelResources.firstOrNull { it.isInternetResource() }
+        tunnelResources.firstOrNull { it.isInternetResource() }
 
     // UI updates for resources
     fun resourcesUpdated() {
         val currentlyDisabled =
-                if (internetResource() != null && !resourceState.isEnabled()) {
-                    setOf(internetResource()!!.id)
-                } else {
-                    emptySet()
-                }
+            if (internetResource() != null && !resourceState.isEnabled()) {
+                setOf(internetResource()!!.id)
+            } else {
+                emptySet()
+            }
 
         commandChannel?.trySend(
-                TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled))
+            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled))
         )
     }
 
@@ -270,14 +273,14 @@ class TunnelService : VpnService() {
         repo.saveInternetResourceStateSync(resourceState)
 
         val currentlyDisabled =
-                if (internetResource() != null && !state.isEnabled()) {
-                    setOf(internetResource()!!.id)
-                } else {
-                    emptySet()
-                }
+            if (internetResource() != null && !state.isEnabled()) {
+                setOf(internetResource()!!.id)
+            } else {
+                emptySet()
+            }
 
         commandChannel?.trySend(
-                TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled))
+            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled))
         )
         resourcesUpdated()
     }
@@ -310,40 +313,40 @@ class TunnelService : VpnService() {
 
             val deviceInfo = DeviceInfo()
             runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
-                    .onSuccess { firebaseInstallationId ->
-                        deviceInfo.firebaseInstallationId = firebaseInstallationId
-                    }
-                    .onFailure { exception ->
-                        Log.d(TAG, "Failed to obtain firebase installation id: $exception")
-                    }
+                .onSuccess { firebaseInstallationId ->
+                    deviceInfo.firebaseInstallationId = firebaseInstallationId
+                }
+                .onFailure { exception ->
+                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
+                }
 
             val gson: Gson =
-                    GsonBuilder()
-                            .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
-                            .create()
+                GsonBuilder()
+                    .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+                    .create()
 
             val newChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
             commandChannel = newChannel
 
             sessionJob =
-                    serviceScope.launch {
-                        Session.newAndroid(
-                                        apiUrl = config.apiUrl,
-                                        token = token,
-                                        accountSlug = config.accountSlug,
-                                        deviceId = deviceId(),
-                                        deviceName = getDeviceName(),
-                                        osVersion = Build.VERSION.RELEASE,
-                                        logDir = getLogDir(),
-                                        logFilter = config.logFilter,
-                                        protectSocket = protectSocket,
-                                        deviceInfo = gson.toJson(deviceInfo),
-                                )
-                                .use { session ->
-                                    eventLoop(serviceScope, session, newChannel)
-                                    commandChannel = null
-                                }
-                    }
+                serviceScope.launch {
+                    Session.newAndroid(
+                        apiUrl = config.apiUrl,
+                        token = token,
+                        accountSlug = config.accountSlug,
+                        deviceId = deviceId(),
+                        deviceName = getDeviceName(),
+                        osVersion = Build.VERSION.RELEASE,
+                        logDir = getLogDir(),
+                        logFilter = config.logFilter,
+                        protectSocket = protectSocket,
+                        deviceInfo = gson.toJson(deviceInfo),
+                    )
+                        .use { session ->
+                            eventLoop(serviceScope, session, newChannel)
+                            commandChannel = null
+                        }
+                }
 
             startNetworkMonitoring()
             startDisconnectMonitoring()
@@ -354,11 +357,11 @@ class TunnelService : VpnService() {
         disconnectCallback = DisconnectMonitor(this)
         val networkRequest = NetworkRequest.Builder()
         val connectivityManager =
-                getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+            getSystemService(ConnectivityManager::class.java) as ConnectivityManager
         // Listens for changes for *all* networks
         connectivityManager.requestNetwork(
-                networkRequest.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
-                disconnectCallback!!,
+            networkRequest.removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
+            disconnectCallback!!,
         )
     }
 
@@ -366,18 +369,18 @@ class TunnelService : VpnService() {
         networkCallback = NetworkMonitor(this)
         val networkRequest = NetworkRequest.Builder()
         val connectivityManager =
-                getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+            getSystemService(ConnectivityManager::class.java) as ConnectivityManager
         // Listens for changes *not* including VPN networks
         connectivityManager.requestNetwork(
-                networkRequest.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
-                networkCallback!!,
+            networkRequest.addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build(),
+            networkCallback!!,
         )
     }
 
     private fun stopNetworkMonitoring() {
         networkCallback?.let {
             val connectivityManager =
-                    getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+                getSystemService(ConnectivityManager::class.java) as ConnectivityManager
             connectivityManager.unregisterNetworkCallback(it)
 
             networkCallback = null
@@ -387,7 +390,7 @@ class TunnelService : VpnService() {
     private fun stopDisconnectMonitoring() {
         disconnectCallback?.let {
             val connectivityManager =
-                    getSystemService(ConnectivityManager::class.java) as ConnectivityManager
+                getSystemService(ConnectivityManager::class.java) as ConnectivityManager
             connectivityManager.unregisterNetworkCallback(it)
 
             disconnectCallback = null
@@ -420,12 +423,12 @@ class TunnelService : VpnService() {
         // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if
         // it doesn't exist
         val deviceId =
-                repo.getDeviceIdSync()
-                        ?: run {
-                            val newDeviceId = java.util.UUID.randomUUID().toString()
-                            repo.saveDeviceIdSync(newDeviceId)
-                            newDeviceId
-                        }
+            repo.getDeviceIdSync()
+                ?: run {
+                    val newDeviceId = java.util.UUID.randomUUID().toString()
+                    repo.saveDeviceIdSync(newDeviceId)
+                    newDeviceId
+                }
 
         return deviceId
     }
@@ -461,16 +464,16 @@ class TunnelService : VpnService() {
     }
 
     private suspend fun eventLoop(
-            scope: CoroutineScope,
-            session: SessionInterface,
-            commandChannel: Channel<TunnelCommand>,
+        scope: CoroutineScope,
+        session: SessionInterface,
+        commandChannel: Channel<TunnelCommand>,
     ) {
         val eventChannel =
-                scope.produce {
-                    while (isActive) {
-                        send(session.nextEvent())
-                    }
+            scope.produce {
+                while (isActive) {
+                    send(session.nextEvent())
                 }
+            }
 
         var running = true
 
@@ -483,18 +486,23 @@ class TunnelService : VpnService() {
                                 session.disconnect()
                                 running = false
                             }
+
                             is TunnelCommand.SetDisabledResources -> {
                                 session.setDisabledResources(command.disabledResources)
                             }
+
                             is TunnelCommand.SetDns -> {
                                 session.setDns(command.dnsServers)
                             }
+
                             is TunnelCommand.SetLogDirectives -> {
                                 session.setLogDirectives(command.directives)
                             }
+
                             is TunnelCommand.SetTun -> {
                                 session.setTun(command.fd)
                             }
+
                             is TunnelCommand.Reset -> {
                                 session.reset()
                             }
@@ -504,26 +512,28 @@ class TunnelService : VpnService() {
                         when (event) {
                             is Event.ResourcesUpdated -> {
                                 tunnelResources =
-                                        moshi.adapter<List<Resource>>().fromJson(event.resources)!!
+                                    moshi.adapter<List<Resource>>().fromJson(event.resources)!!
                                 resourcesUpdated()
                             }
+
                             is Event.TunInterfaceUpdated -> {
                                 tunnelDnsAddresses =
-                                        moshi.adapter<MutableList<String>>().fromJson(event.dns)!!
+                                    moshi.adapter<MutableList<String>>().fromJson(event.dns)!!
                                 tunnelSearchDomain = event.searchDomain
                                 tunnelIpv4Address = event.ipv4
                                 tunnelIpv6Address = event.ipv6
                                 tunnelRoutes.clear()
                                 tunnelRoutes.addAll(
-                                        moshi.adapter<MutableList<Cidr>>()
-                                                .fromJson(event.ipv4Routes)!!
+                                    moshi.adapter<MutableList<Cidr>>()
+                                        .fromJson(event.ipv4Routes)!!
                                 )
                                 tunnelRoutes.addAll(
-                                        moshi.adapter<MutableList<Cidr>>()
-                                                .fromJson(event.ipv4Routes)!!
+                                    moshi.adapter<MutableList<Cidr>>()
+                                        .fromJson(event.ipv4Routes)!!
                                 )
                                 buildVpnService()
                             }
+
                             is Event.Disconnected -> {
                                 stopNetworkMonitoring()
                                 stopDisconnectMonitoring()
@@ -538,6 +548,7 @@ class TunnelService : VpnService() {
                                 }
                                 running = false
                             }
+
                             null -> {
                                 Log.i(TAG, "Event channel closed")
                                 running = false
@@ -573,7 +584,7 @@ class TunnelService : VpnService() {
         private const val TAG: String = "TunnelService"
 
         private val MANAGED_CONFIGURATIONS =
-                arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")
