@@ -9,11 +9,12 @@ pub(crate) const POSTHOG_API_KEY_ON_PREM: &str = "phc_4R9Ii6q4SEofVkH7LvajwuJ3ns
 
 pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
 
-pub(crate) fn api_key_for_env(env: Env) -> &'static str {
+pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
     match env {
-        Env::Production => POSTHOG_API_KEY_PROD,
-        Env::Staging => POSTHOG_API_KEY_STAGING,
-        Env::OnPrem => POSTHOG_API_KEY_ON_PREM,
+        Env::Production => Some(POSTHOG_API_KEY_PROD),
+        Env::Staging => Some(POSTHOG_API_KEY_STAGING),
+        Env::OnPrem => Some(POSTHOG_API_KEY_ON_PREM),
+        Env::DockerCompose | Env::Localhost => None,
     }
 }
 

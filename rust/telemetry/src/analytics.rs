@@ -48,8 +48,14 @@ async fn capture<P>(
 where
     P: Serialize,
 {
+    let event = event.into();
+
     let env = Env::from_api_url(&api_url);
-    let api_key = crate::posthog::api_key_for_env(env);
+    let Some(api_key) = crate::posthog::api_key_for_env(env) else {
+        tracing::debug!(%event, %env, "Not sending event because we don't have an API key");
+
+        return Ok(());
+    };
 
     let response = reqwest::ClientBuilder::new()
         .connection_verbose(true)
@@ -58,7 +64,7 @@ where
         .json(&CaptureRequest {
             api_key: api_key.to_string(),
             distinct_id,
-            event: event.into(),
+            event,
             properties,
         })
         .send()
