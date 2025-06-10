@@ -31,15 +31,12 @@ locally.
    ![Android SDK Tools](./images/android-studio-sdk-tools.png)
 
    Make sure the correct NDK version is installed by looking at:
-   `../../rust/connlib/clients/android/connlib/build.gradle.kts`
+   `./app/build.gradle.kts`
 
-1. Set the following ENV variables in the start up config for your shell:
+1. Set the following properties in your `local.properties` file:
 
    ```
-   JAVA_HOME=/Applications/Android\ Studio.app/Contents/jbr/Contents/Home
-   ANDROID_HOME=/Users/<username>/Library/Android/sdk
-   NDK_HOME=$ANDROID_HOME/ndk-bundle
-   PATH=$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/tools:$ANDROID_HOME/tools/bin
+   sdk.dir=/Users/<username>/Library/Android/sdk
    ```
 
 1. Make sure the following Rust targets are installed into the correct
