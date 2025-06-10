@@ -32,10 +32,6 @@ import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.isInternetResource
-import java.nio.file.Files
-import java.nio.file.Paths
-import java.util.concurrent.locks.ReentrantLock
-import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -49,6 +45,10 @@ import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.util.concurrent.locks.ReentrantLock
+import javax.inject.Inject
 
 data class DeviceInfo(
     var firebaseInstallationId: String? = null,
@@ -138,7 +138,7 @@ class TunnelService : VpnService() {
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     setMetered(
-                        false
+                        false,
                     ) // Inherit the metered status from the underlying networks.
                 }
 
@@ -165,7 +165,7 @@ class TunnelService : VpnService() {
                 // Never route GCM notifications through the tunnel.
                 addDisallowedApplication("com.google.android.gms") // Google Mobile Services
                 addDisallowedApplication(
-                    "com.google.firebase.messaging"
+                    "com.google.firebase.messaging",
                 ) // Firebase Cloud Messaging
                 addDisallowedApplication("com.google.android.gsf") // Google Services Framework
 
@@ -177,8 +177,7 @@ class TunnelService : VpnService() {
 
                 addAddress(tunnelIpv4Address!!, 32)
                 addAddress(tunnelIpv6Address!!, 128)
-            }
-            .establish()
+            }.establish()
             ?.detachFd()
             ?.also { fd -> commandChannel?.trySend(TunnelCommand.SetTun(fd)) }
     }
@@ -194,7 +193,7 @@ class TunnelService : VpnService() {
                 // Only change VPN if appRestrictions have changed
                 val restrictionsManager =
                     context.getSystemService(Context.RESTRICTIONS_SERVICE) as
-                            android.content.RestrictionsManager
+                        android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
                 serviceScope.launch {
                     repo.saveManagedConfiguration(newAppRestrictions).collect {}
@@ -245,8 +244,7 @@ class TunnelService : VpnService() {
 
     fun internetState(): ResourceState = resourceState
 
-    private fun internetResource(): Resource? =
-        tunnelResources.firstOrNull { it.isInternetResource() }
+    private fun internetResource(): Resource? = tunnelResources.firstOrNull { it.isInternetResource() }
 
     // UI updates for resources
     fun resourcesUpdated() {
@@ -258,7 +256,7 @@ class TunnelService : VpnService() {
             }
 
         commandChannel?.trySend(
-            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled))
+            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled)),
         )
     }
 
@@ -275,7 +273,7 @@ class TunnelService : VpnService() {
             }
 
         commandChannel?.trySend(
-            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled))
+            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled)),
         )
         resourcesUpdated()
     }
@@ -310,8 +308,7 @@ class TunnelService : VpnService() {
             runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
                 .onSuccess { firebaseInstallationId ->
                     deviceInfo.firebaseInstallationId = firebaseInstallationId
-                }
-                .onFailure { exception ->
+                }.onFailure { exception ->
                     Log.d(TAG, "Failed to obtain firebase installation id: $exception")
                 }
 
@@ -324,19 +321,19 @@ class TunnelService : VpnService() {
             commandChannel = newChannel
 
             serviceScope.launch {
-                Session.newAndroid(
-                    apiUrl = config.apiUrl,
-                    token = token,
-                    accountSlug = config.accountSlug,
-                    deviceId = deviceId(),
-                    deviceName = getDeviceName(),
-                    osVersion = Build.VERSION.RELEASE,
-                    logDir = getLogDir(),
-                    logFilter = config.logFilter,
-                    protectSocket = protectSocket,
-                    deviceInfo = gson.toJson(deviceInfo),
-                )
-                    .use { session ->
+                Session
+                    .newAndroid(
+                        apiUrl = config.apiUrl,
+                        token = token,
+                        accountSlug = config.accountSlug,
+                        deviceId = deviceId(),
+                        deviceName = getDeviceName(),
+                        osVersion = Build.VERSION.RELEASE,
+                        logDir = getLogDir(),
+                        logFilter = config.logFilter,
+                        protectSocket = protectSocket,
+                        deviceInfo = gson.toJson(deviceInfo),
+                    ).use { session ->
                         eventLoop(session, newChannel)
                         commandChannel = null
                     }
@@ -419,7 +416,10 @@ class TunnelService : VpnService() {
         val deviceId =
             repo.getDeviceIdSync()
                 ?: run {
-                    val newDeviceId = java.util.UUID.randomUUID().toString()
+                    val newDeviceId =
+                        java.util.UUID
+                            .randomUUID()
+                            .toString()
                     repo.saveDeviceIdSync(newDeviceId)
                     newDeviceId
                 }
@@ -450,10 +450,23 @@ class TunnelService : VpnService() {
 
     sealed class TunnelCommand {
         data object Disconnect : TunnelCommand()
-        data class SetDisabledResources(val disabledResources: String) : TunnelCommand()
-        data class SetDns(val dnsServers: String) : TunnelCommand()
-        data class SetLogDirectives(val directives: String) : TunnelCommand()
-        data class SetTun(val fd: Int) : TunnelCommand()
+
+        data class SetDisabledResources(
+            val disabledResources: String,
+        ) : TunnelCommand()
+
+        data class SetDns(
+            val dnsServers: String,
+        ) : TunnelCommand()
+
+        data class SetLogDirectives(
+            val directives: String,
+        ) : TunnelCommand()
+
+        data class SetTun(
+            val fd: Int,
+        ) : TunnelCommand()
+
         data object Reset : TunnelCommand()
     }
 
@@ -517,12 +530,14 @@ class TunnelService : VpnService() {
                                 tunnelIpv6Address = event.ipv6
                                 tunnelRoutes.clear()
                                 tunnelRoutes.addAll(
-                                    moshi.adapter<MutableList<Cidr>>()
-                                        .fromJson(event.ipv4Routes)!!
+                                    moshi
+                                        .adapter<MutableList<Cidr>>()
+                                        .fromJson(event.ipv4Routes)!!,
                                 )
                                 tunnelRoutes.addAll(
-                                    moshi.adapter<MutableList<Cidr>>()
-                                        .fromJson(event.ipv4Routes)!!
+                                    moshi
+                                        .adapter<MutableList<Cidr>>()
+                                        .fromJson(event.ipv4Routes)!!,
                                 )
                                 buildVpnService()
                             }
