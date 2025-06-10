@@ -523,7 +523,7 @@ class TunnelService : VpnService() {
                                 tunnelRoutes.addAll(
                                     moshi
                                         .adapter<MutableList<Cidr>>()
-                                        .fromJson(event.ipv4Routes)!!,
+                                        .fromJson(event.ipv6Routes)!!,
                                 )
                                 buildVpnService()
                             }
