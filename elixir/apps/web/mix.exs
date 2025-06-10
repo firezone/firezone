@@ -78,7 +78,6 @@ defmodule Web.MixProject do
       # Test deps
       {:floki, "~> 0.37.0", only: :test},
       {:bypass, "~> 2.1", only: :test},
-      {:bureaucrat, "~> 0.2.9", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.1", only: [:dev], runtime: false},
