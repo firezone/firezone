@@ -141,8 +141,8 @@ class TunnelService : VpnService() {
                 }
 
                 if (tunnelRoutes.all { it.prefix != 0 }) {
-                    // Allow traffic to bypass the VPN interface when Always-on VPN is enabled
-                    // only if full-route is not enabled.
+                    // Allow traffic to bypass the VPN interface when Always-on VPN is enabled only
+                    // if full-route is not enabled.
                     allowBypass()
                 }
 
@@ -159,15 +159,15 @@ class TunnelService : VpnService() {
 
                 // Never route GCM notifications through the tunnel.
                 addDisallowedApplication("com.google.android.gms") // Google Mobile Services
-                addDisallowedApplication("com.google.firebase.messaging" ) // Firebase Cloud Messaging
+                addDisallowedApplication("com.google.firebase.messaging") // Firebase Cloud Messaging
                 addDisallowedApplication("com.google.android.gsf") // Google Services Framework
 
                 tunnelRoutes.forEach {
                     addRoute(it.address, it.prefix)
                 }
 
-                tunnelDnsAddresses.forEach {
-                    dns -> addDnsServer(dns)
+                tunnelDnsAddresses.forEach { dns ->
+                    addDnsServer(dns)
                 }
 
                 tunnelSearchDomain?.let {
@@ -236,8 +236,7 @@ class TunnelService : VpnService() {
 
     fun internetState(): ResourceState = resourceState
 
-    private fun internetResource(): Resource? =
-        tunnelResources.firstOrNull { it.isInternetResource() }
+    private fun internetResource(): Resource? = tunnelResources.firstOrNull { it.isInternetResource() }
 
     // UI updates for resources
     fun resourcesUpdated() {
@@ -403,13 +402,13 @@ class TunnelService : VpnService() {
         // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
         val deviceId =
             repo.getDeviceIdSync() ?: run {
-                    val newDeviceId =
-                        java.util.UUID
-                            .randomUUID()
-                            .toString()
-                    repo.saveDeviceIdSync(newDeviceId)
-                    newDeviceId
-                }
+                val newDeviceId =
+                    java.util.UUID
+                        .randomUUID()
+                        .toString()
+                repo.saveDeviceIdSync(newDeviceId)
+                newDeviceId
+            }
 
         return deviceId
     }
