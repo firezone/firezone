@@ -92,7 +92,12 @@ config :domain, Domain.Auth.Adapters.Okta.APIClient, finch_transport_opts: []
 
 config :domain, Domain.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",
-  finch_transport_opts: []
+  finch_transport_opts: [],
+  retry_config: [
+    max_retries: 3,
+    base_delay_ms: 1000,
+    max_delay_ms: 10_000
+  ]
 
 config :domain, Domain.Billing,
   enabled: true,

@@ -26,6 +26,15 @@ config :domain, Domain.Events.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
+config :domain, Domain.Billing.Stripe.APIClient,
+  endpoint: "https://api.stripe.com",
+  finch_transport_opts: [],
+  retry_config: [
+    max_retries: 3,
+    base_delay_ms: 100,
+    max_delay_ms: 1000
+  ]
+
 config :domain, Domain.Telemetry, enabled: false
 
 config :domain, Domain.ConnectivityChecks, enabled: false
@@ -91,8 +100,6 @@ config :domain, Domain.Mailer, adapter: Domain.Mailer.TestAdapter
 config :logger, level: :warning
 
 config :argon2_elixir, t_cost: 1, m_cost: 8
-
-config :bureaucrat, :json_library, Jason
 
 config :wallaby,
   driver: Wallaby.Chrome,
