@@ -9,7 +9,7 @@ defmodule Domain.Events.Hooks.ResourceConnections do
     # The flow expires_at field is not used for any persistence-related reason.
     # Remove it and broadcast directly to subscribed pids to remove the flow
     # from their local state. This is hook is called when resources change sites.
-    Task.async(fn ->
+    Task.start(fn ->
       {:ok, _flows} = Flows.expire_flows_for_resource_id(resource_id)
     end)
 

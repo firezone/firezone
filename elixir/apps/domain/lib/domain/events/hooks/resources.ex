@@ -37,7 +37,7 @@ defmodule Domain.Events.Hooks.Resources do
              old_ip_stack != ip_stack do
     # TODO: WAL
     # Directly broadcast to subscribed pids to remove the flow
-    Task.async(fn ->
+    Task.start(fn ->
       {:ok, _flows} = Flows.expire_flows_for_resource_id(resource_id)
 
       payload = {:delete_resource, resource_id}
