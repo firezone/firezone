@@ -39,6 +39,6 @@ async fn no_packet_loops_tcp() {
     let s = String::from_utf8(bytes).unwrap();
     assert_eq!(
         s,
-        "<html>\r\n<head><title>400 Bad Request</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n<hr><center>cloudflare</center>\r\n</body>\r\n</html>\r\n"
+        "Cloudflare encountered an error processing this request: Bad Request"
     );
 }
