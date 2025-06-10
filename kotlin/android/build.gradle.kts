@@ -7,7 +7,9 @@ buildscript {
         maven(url = "https://plugins.gradle.org/m2/")
     }
 
-    dependencies { classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.9.0") }
+    dependencies {
+        classpath("androidx.navigation:navigation-safe-args-gradle-plugin:2.9.0")
+    }
 }
 
 plugins {
@@ -20,4 +22,6 @@ plugins {
     id("com.google.firebase.crashlytics") version "3.0.4" apply false
 }
 
-tasks.register("clean", Delete::class) { delete(layout.buildDirectory) }
+tasks.register("clean", Delete::class) {
+    delete(layout.buildDirectory)
+}
