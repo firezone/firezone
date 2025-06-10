@@ -26,7 +26,10 @@ spotless {
         ktlint()
         target("**/*.kt")
         targetExclude("**/generated/*")
-        licenseHeader("/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */", "^(package |import |@file)")
+        licenseHeader(
+            "/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */",
+            "^(package |import |@file)"
+        )
     }
     kotlinGradle {
         ktlint()
@@ -38,9 +41,7 @@ spotless {
 apply(plugin = "org.mozilla.rust-android-gradle.rust-android")
 
 android {
-    buildFeatures {
-        buildConfig = true
-    }
+    buildFeatures { buildConfig = true }
 
     namespace = "dev.firezone.android"
     compileSdk = 36
@@ -139,19 +140,11 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
-    }
+    kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures {
-        viewBinding = true
-    }
+    buildFeatures { viewBinding = true }
 
-    testOptions {
-        unitTests {
-            isIncludeAndroidResources = true
-        }
-    }
+    testOptions { unitTests { isIncludeAndroidResources = true } }
 }
 
 dependencies {
@@ -258,22 +251,14 @@ tasks.register("generateUniffiBindings") {
     // This task should run after cargo build completes
     dependsOn("cargoBuild")
 
-    // Directory for generated sources
-    val genDir = layout.buildDirectory.dir("generated/source").get().asFile
-
-    // Register generated sources as a source directory for the main source set
-    android.sourceSets.getByName("main").kotlin.srcDirs(genDir.absolutePath)
-
     doLast {
         // Determine the correct path to libconnlib.so based on build flavor
-        val profile = if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
-            "release"
-        } else {
-            "debug"
-        }
-
-        // Ensure the output directory exists
-        genDir.mkdirs()
+        val profile =
+            if (gradle.startParameter.taskNames.any { it.lowercase().contains("release") }) {
+                "release"
+            } else {
+                "debug"
+            }
 
         // Execute uniffi-bindgen command from the rust directory
         project.exec {
@@ -290,9 +275,12 @@ tasks.register("generateUniffiBindings") {
                 "--library",
                 "--language",
                 "kotlin",
-                "target/${profile}/libconnlib.so",
+                // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
+                // all the same from the bindings PoV.
+                "target/x86_64-linux-android/${profile}/libconnlib.so",
                 "--out-dir",
-                genDir.absolutePath
+                "../kotlin/android/app/src/main/java",
+                "--no-format"
             )
         }
     }

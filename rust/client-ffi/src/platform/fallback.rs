@@ -1,4 +1,4 @@
-use std::{io, time::Duration};
+use std::{io, os::fd::RawFd, time::Duration};
 
 use firezone_telemetry::Dsn;
 
@@ -33,5 +33,36 @@ impl io::Write for DevNull {
 
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
+    }
+}
+
+pub struct Tun;
+
+impl Tun {
+    pub unsafe fn from_fd(_: RawFd) -> io::Result<Self> {
+        Err(io::Error::other("Stub!"))
+    }
+}
+
+impl tun::Tun for Tun {
+    fn poll_send_ready(&mut self, _: &mut std::task::Context) -> std::task::Poll<io::Result<()>> {
+        todo!()
+    }
+
+    fn send(&mut self, _: ip_packet::IpPacket) -> io::Result<()> {
+        todo!()
+    }
+
+    fn poll_recv_many(
+        &mut self,
+        _: &mut std::task::Context,
+        _: &mut Vec<ip_packet::IpPacket>,
+        _: usize,
+    ) -> std::task::Poll<usize> {
+        todo!()
+    }
+
+    fn name(&self) -> &str {
+        todo!()
     }
 }
