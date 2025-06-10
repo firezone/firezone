@@ -28,7 +28,7 @@ spotless {
         targetExclude("**/generated/*", "src/main/java/uniffi/connlib/connlib.kt")
         licenseHeader(
             "/* Licensed under Apache 2.0 (C) \$YEAR Firezone, Inc. */",
-            "^(package |import |@file)"
+            "^(package |import |@file)",
         )
     }
     kotlinGradle {
@@ -289,10 +289,10 @@ tasks.register("generateUniffiBindings") {
                 "kotlin",
                 // Hardcode the x86_64 target here, it doesn't matter which one we use, they are
                 // all the same from the bindings PoV.
-                "target/x86_64-linux-android/${profile}/libconnlib.so",
+                "target/x86_64-linux-android/$profile/libconnlib.so",
                 "--out-dir",
                 "../kotlin/android/app/src/main/java",
-                "--no-format"
+                "--no-format",
             )
         }
     }
