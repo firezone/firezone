@@ -137,15 +137,12 @@ class TunnelService : VpnService() {
         Builder()
             .apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    setMetered(
-                        false,
-                    ) // Inherit the metered status from the underlying networks.
+                    setMetered(false) // Inherit the metered status from the underlying networks.
                 }
 
                 if (tunnelRoutes.all { it.prefix != 0 }) {
                     // Allow traffic to bypass the VPN interface when Always-on VPN is enabled
-                    // only
-                    // if full-route is not enabled.
+                    // only if full-route is not enabled.
                     allowBypass()
                 }
 
@@ -154,9 +151,7 @@ class TunnelService : VpnService() {
                 setSession(SESSION_NAME)
                 setMtu(MTU)
 
-                handleApplications(appRestrictions, "allowedApplications") {
-                    addAllowedApplication(it)
-                }
+                handleApplications(appRestrictions, "allowedApplications") { addAllowedApplication(it) }
                 handleApplications(
                     appRestrictions,
                     "disallowedApplications",
@@ -164,16 +159,20 @@ class TunnelService : VpnService() {
 
                 // Never route GCM notifications through the tunnel.
                 addDisallowedApplication("com.google.android.gms") // Google Mobile Services
-                addDisallowedApplication(
-                    "com.google.firebase.messaging",
-                ) // Firebase Cloud Messaging
+                addDisallowedApplication("com.google.firebase.messaging" ) // Firebase Cloud Messaging
                 addDisallowedApplication("com.google.android.gsf") // Google Services Framework
 
-                tunnelRoutes.forEach { addRoute(it.address, it.prefix) }
+                tunnelRoutes.forEach {
+                    addRoute(it.address, it.prefix)
+                }
 
-                tunnelDnsAddresses.forEach { dns -> addDnsServer(dns) }
+                tunnelDnsAddresses.forEach {
+                    dns -> addDnsServer(dns)
+                }
 
-                tunnelSearchDomain?.let { addSearchDomain(it) }
+                tunnelSearchDomain?.let {
+                    addSearchDomain(it)
+                }
 
                 addAddress(tunnelIpv4Address!!, 32)
                 addAddress(tunnelIpv6Address!!, 128)
@@ -191,17 +190,10 @@ class TunnelService : VpnService() {
                 intent: Intent,
             ) {
                 // Only change VPN if appRestrictions have changed
-                val restrictionsManager =
-                    context.getSystemService(Context.RESTRICTIONS_SERVICE) as
-                        android.content.RestrictionsManager
+                val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
-                serviceScope.launch {
-                    repo.saveManagedConfiguration(newAppRestrictions).collect {}
-                }
-                val changed =
-                    MANAGED_CONFIGURATIONS.any {
-                        newAppRestrictions.getString(it) != appRestrictions.getString(it)
-                    }
+                serviceScope.launch { repo.saveManagedConfiguration(newAppRestrictions).collect {} }
+                val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
                 if (!changed) {
                     return
                 }
@@ -244,7 +236,8 @@ class TunnelService : VpnService() {
 
     fun internetState(): ResourceState = resourceState
 
-    private fun internetResource(): Resource? = tunnelResources.firstOrNull { it.isInternetResource() }
+    private fun internetResource(): Resource? =
+        tunnelResources.firstOrNull { it.isInternetResource() }
 
     // UI updates for resources
     fun resourcesUpdated() {
@@ -265,16 +258,6 @@ class TunnelService : VpnService() {
 
         repo.saveInternetResourceStateSync(resourceState)
 
-        val currentlyDisabled =
-            if (internetResource() != null && !state.isEnabled()) {
-                setOf(internetResource()!!.id)
-            } else {
-                emptySet()
-            }
-
-        commandChannel?.trySend(
-            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled)),
-        )
         resourcesUpdated()
     }
 
@@ -313,8 +296,7 @@ class TunnelService : VpnService() {
                     .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
                     .create()
 
-            val newChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
-            commandChannel = newChannel
+            commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
             serviceScope.launch {
                 Session
@@ -333,7 +315,7 @@ class TunnelService : VpnService() {
                         startNetworkMonitoring()
                         startDisconnectMonitoring()
 
-                        eventLoop(session, newChannel)
+                        eventLoop(session, commandChannel!!)
 
                         Log.i(TAG, "Event-loop finished")
 
@@ -418,11 +400,9 @@ class TunnelService : VpnService() {
     }
 
     private fun deviceId(): String {
-        // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if
-        // it doesn't exist
+        // Get the deviceId from the preferenceRepository, or save a new UUIDv4 and return that if it doesn't exist
         val deviceId =
-            repo.getDeviceIdSync()
-                ?: run {
+            repo.getDeviceIdSync() ?: run {
                     val newDeviceId =
                         java.util.UUID
                             .randomUUID()
@@ -583,8 +563,7 @@ class TunnelService : VpnService() {
         private const val MTU: Int = 1280
         private const val TAG: String = "TunnelService"
 
-        private val MANAGED_CONFIGURATIONS =
-            arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
+        private val MANAGED_CONFIGURATIONS = arrayOf("token", "allowedApplications", "disallowedApplications", "deviceName")
 
         // FIXME: Find another way to check if we're running
         @SuppressWarnings("deprecation")
