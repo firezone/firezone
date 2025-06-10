@@ -29,10 +29,19 @@ jobs:
       - name: Plan jobs to run
         id: plan
         run: |
+          set -xe
+
           jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
+            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+
+            exit 0;
+          fi
+
+          # For main branch runs, run all jobs
+          if [ "${{ github.event_name }}" = "push" && "${{ github.ref_name }}" = "main" ]; then
             echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
 
             exit 0;
@@ -99,9 +108,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Wait for all jobs to complete
+        timeout-minutes: 60
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -xe
+
           while true; do
             jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select(.name != "required-check"))')
 
