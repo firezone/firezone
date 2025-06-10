@@ -280,19 +280,15 @@ class TunnelService : VpnService() {
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
-        // Acquire mutex lock
-        lock.lock()
-
         commandChannel?.trySend(TunnelCommand.Disconnect)
-
-        // Release mutex lock
-        lock.unlock()
     }
 
-    private fun shutdown() {
-        commandChannel?.trySend(TunnelCommand.Disconnect)
-        stopSelf()
-        tunnelState = State.DOWN
+    fun setDns(dnsList: List<String>) {
+        commandChannel?.trySend(TunnelCommand.SetDns(Gson().toJson(dnsList)))
+    }
+
+    fun reset() {
+        commandChannel?.trySend(TunnelCommand.Reset)
     }
 
     private fun connect() {
@@ -334,13 +330,24 @@ class TunnelService : VpnService() {
                         protectSocket = protectSocket,
                         deviceInfo = gson.toJson(deviceInfo),
                     ).use { session ->
+                        startNetworkMonitoring()
+                        startDisconnectMonitoring()
+
                         eventLoop(session, newChannel)
+
+                        Log.i(TAG, "Event-loop finished")
+
                         commandChannel = null
+                        tunnelState = State.DOWN
+
+                        if (startedByUser) {
+                            updateStatusNotification(TunnelStatusNotification.SignedOut)
+                        }
+
+                        stopNetworkMonitoring()
+                        stopDisconnectMonitoring()
                     }
             }
-
-            startNetworkMonitoring()
-            startDisconnectMonitoring()
         }
     }
 
@@ -490,7 +497,7 @@ class TunnelService : VpnService() {
                         when (command) {
                             is TunnelCommand.Disconnect -> {
                                 session.disconnect()
-                                running = false
+                                // Sending disconnect will close the event-stream which will exit this loop
                             }
 
                             is TunnelCommand.SetDisabledResources -> {
@@ -543,17 +550,10 @@ class TunnelService : VpnService() {
                             }
 
                             is Event.Disconnected -> {
-                                stopNetworkMonitoring()
-                                stopDisconnectMonitoring()
-
                                 // Clear any user tokens and actorNames
                                 repo.clearToken()
                                 repo.clearActorName()
 
-                                shutdown()
-                                if (startedByUser) {
-                                    updateStatusNotification(TunnelStatusNotification.SignedOut)
-                                }
                                 running = false
                             }
 
@@ -570,14 +570,6 @@ class TunnelService : VpnService() {
                 Log.e(TAG, "Error in event loop", e)
             }
         }
-    }
-
-    fun setDns(dnsList: List<String>) {
-        commandChannel?.trySend(TunnelCommand.SetDns(Gson().toJson(dnsList)))
-    }
-
-    fun reset() {
-        commandChannel?.trySend(TunnelCommand.Reset)
     }
 
     companion object {
