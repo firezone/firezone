@@ -219,6 +219,9 @@ dependencies {
     implementation("com.google.firebase:firebase-crashlytics-ktx")
     implementation("com.google.firebase:firebase-crashlytics-ndk")
     implementation("com.google.firebase:firebase-analytics-ktx")
+
+    // UniFFI
+    implementation("net.java.dev.jna:jna:5.17.0@aar")
 }
 
 cargo {
@@ -232,7 +235,6 @@ cargo {
     prebuiltToolchains = true
     module = "../../../rust/client-ffi"
     libname = "connlib"
-    verbose = true
     targets =
         listOf(
             "arm64",
@@ -261,7 +263,7 @@ tasks.register("generateUniffiBindings") {
             }
 
         // Execute uniffi-bindgen command from the rust directory
-        project.exec {
+        providers.exec {
             // Set working directory to the rust directory which is outside the gradle project
             workingDir("../../../rust")
 
@@ -298,4 +300,8 @@ tasks.matching { it.name == "preBuild" }.configureEach {
 
 tasks.matching { it.name == "appDistributionUploadRelease" }.configureEach {
     dependsOn("processReleaseGoogleServices")
+}
+
+kapt {
+    correctErrorTypes = true
 }
