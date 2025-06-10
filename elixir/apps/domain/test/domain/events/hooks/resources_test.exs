@@ -7,8 +7,25 @@ defmodule Domain.Events.Hooks.ResourcesTest do
   end
 
   describe "insert/1" do
-    test "returns :ok", %{data: data} do
+    test "returns :ok" do
+      resource_id = "test_resource"
+      account_id = "test_account"
+      :ok = subscribe(resource_id)
+      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(account_id)
+
+      data = %{"id" => resource_id, "account_id" => account_id}
+
       assert :ok == on_insert(data)
+
+      # we expect two - once for the resource subscription, and once for the account
+      assert_receive {:create_resource, ^resource_id}
+      assert_receive {:create_resource, ^resource_id}
+
+      :ok = unsubscribe(resource_id)
+
+      assert :ok = on_insert(data)
+      assert_receive {:create_resource, ^resource_id}
+      refute_receive {:create_resource, ^resource_id}
     end
   end
 

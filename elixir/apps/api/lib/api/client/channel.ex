@@ -79,6 +79,8 @@ defmodule API.Client.Channel do
       # where resource might be renamed which should be propagated to the UI.
       :ok =
         Enum.each(resources, fn resource ->
+          # TODO: WAL
+          # Why are we unsubscribing and subscribing again?
           :ok = Events.Hooks.Resources.unsubscribe(resource.id)
           :ok = Events.Hooks.Resources.subscribe(resource.id)
         end)
@@ -89,6 +91,8 @@ defmodule API.Client.Channel do
         |> Enum.flat_map(& &1.gateway_groups)
         |> Enum.uniq()
         |> Enum.each(fn gateway_group ->
+          # TODO: WAL
+          # Why are we unsubscribing and subscribing again?
           :ok = Events.Hooks.GatewayGroups.unsubscribe(gateway_group.id)
           :ok = Events.Hooks.GatewayGroups.subscribe(gateway_group.id)
         end)
@@ -316,6 +320,8 @@ defmodule API.Client.Channel do
         actor_group_id: actor_group_id,
         resource_id: resource_id
       } do
+      # TODO: WAL
+      # Why are we unsubscribing and subscribing again?
       :ok = Events.Hooks.Resources.unsubscribe(resource_id)
       :ok = Events.Hooks.Resources.subscribe(resource_id)
 
@@ -415,6 +421,8 @@ defmodule API.Client.Channel do
 
         :ok =
           Enum.each(relays, fn relay ->
+            # TODO: WAL
+            # Why are we unsubscribing and subscribing again?
             :ok = Relays.unsubscribe_from_relay_presence(relay)
             :ok = Relays.subscribe_to_relay_presence(relay)
           end)
@@ -451,6 +459,8 @@ defmodule API.Client.Channel do
 
           :ok =
             Enum.each(relays, fn relay ->
+              # TODO: WAL
+              # Why are we unsubscribing and subscribing again?
               :ok = Relays.unsubscribe_from_relay_presence(relay)
               :ok = Relays.subscribe_to_relay_presence(relay)
             end)

@@ -1,8 +1,11 @@
 defmodule Domain.Events.Hooks.Resources do
+  alias Domain.Events.Hooks.Accounts
   alias Domain.PubSub
 
-  def on_insert(_data) do
-    :ok
+  def on_insert(%{"id" => resource_id, "account_id" => account_id} = _data) do
+    payload = {:create_resource, resource_id}
+    broadcast(resource_id, payload)
+    Accounts.broadcast_to_resources(account_id, payload)
   end
 
   def on_update(_old_data, _data) do

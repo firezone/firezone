@@ -229,13 +229,8 @@ defmodule Domain.Resources do
 
   def create_resource(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      changeset = Resource.Changeset.create(subject.account, attrs, subject)
-
-      with {:ok, resource} <- Repo.insert(changeset) do
-        # TODO: WAL
-        :ok = broadcast_resource_events(:create, resource)
-        {:ok, resource}
-      end
+      Resource.Changeset.create(subject.account, attrs, subject)
+      |> Repo.insert()
     end
   end
 
@@ -251,13 +246,8 @@ defmodule Domain.Resources do
       }
     }
 
-    changeset = Resource.Changeset.create(account, attrs)
-
-    with {:ok, resource} <- Repo.insert(changeset) do
-      # TODO: WAL
-      :ok = broadcast_resource_events(:create, resource)
-      {:ok, resource}
-    end
+    Resource.Changeset.create(account, attrs)
+    |> Repo.insert()
   end
 
   def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do
