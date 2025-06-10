@@ -37,9 +37,6 @@ import java.nio.file.Paths
 import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
@@ -90,10 +87,8 @@ class TunnelService : VpnService() {
     val lock = ReentrantLock()
 
     var startedByUser: Boolean = false
-    private var sessionJob: Job? = null
     private var commandChannel: Channel<TunnelCommand>? = null
-    private val serviceJob = SupervisorJob()
-    private val serviceScope = CoroutineScope(Dispatchers.IO + serviceJob)
+    private val serviceScope = CoroutineScope(SupervisorJob())
 
     var tunnelResources: List<Resource>
         get() = _tunnelResources
@@ -201,7 +196,7 @@ class TunnelService : VpnService() {
                     context.getSystemService(Context.RESTRICTIONS_SERVICE) as
                             android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
-                GlobalScope.launch {
+                serviceScope.launch {
                     repo.saveManagedConfiguration(newAppRestrictions).collect {}
                 }
                 val changed =
@@ -239,7 +234,7 @@ class TunnelService : VpnService() {
 
     override fun onDestroy() {
         unregisterReceiver(restrictionsReceiver)
-        serviceJob.cancel()
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -297,7 +292,7 @@ class TunnelService : VpnService() {
     }
 
     private fun shutdown() {
-        sessionJob?.cancel()
+        commandChannel?.trySend(TunnelCommand.Disconnect)
         stopSelf()
         tunnelState = State.DOWN
     }
@@ -328,25 +323,24 @@ class TunnelService : VpnService() {
             val newChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
             commandChannel = newChannel
 
-            sessionJob =
-                serviceScope.launch {
-                    Session.newAndroid(
-                        apiUrl = config.apiUrl,
-                        token = token,
-                        accountSlug = config.accountSlug,
-                        deviceId = deviceId(),
-                        deviceName = getDeviceName(),
-                        osVersion = Build.VERSION.RELEASE,
-                        logDir = getLogDir(),
-                        logFilter = config.logFilter,
-                        protectSocket = protectSocket,
-                        deviceInfo = gson.toJson(deviceInfo),
-                    )
-                        .use { session ->
-                            eventLoop(serviceScope, session, newChannel)
-                            commandChannel = null
-                        }
-                }
+            serviceScope.launch {
+                Session.newAndroid(
+                    apiUrl = config.apiUrl,
+                    token = token,
+                    accountSlug = config.accountSlug,
+                    deviceId = deviceId(),
+                    deviceName = getDeviceName(),
+                    osVersion = Build.VERSION.RELEASE,
+                    logDir = getLogDir(),
+                    logFilter = config.logFilter,
+                    protectSocket = protectSocket,
+                    deviceInfo = gson.toJson(deviceInfo),
+                )
+                    .use { session ->
+                        eventLoop(session, newChannel)
+                        commandChannel = null
+                    }
+            }
 
             startNetworkMonitoring()
             startDisconnectMonitoring()
@@ -464,12 +458,11 @@ class TunnelService : VpnService() {
     }
 
     private suspend fun eventLoop(
-        scope: CoroutineScope,
         session: SessionInterface,
         commandChannel: Channel<TunnelCommand>,
     ) {
         val eventChannel =
-            scope.produce {
+            serviceScope.produce {
                 while (isActive) {
                     send(session.nextEvent())
                 }
