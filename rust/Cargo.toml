@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "apple-client-ffi",
-    "client-ffi",
     "bin-shared",
+    "client-ffi",
     "client-shared",
     "connlib/bufferpool",
     "connlib/dns-over-tcp",
