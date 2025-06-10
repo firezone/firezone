@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@fontsource/source-sans-3':
+      '@fontsource-variable/source-sans-3':
         specifier: ^5.2.8
         version: 5.2.8
       flowbite:
@@ -17,8 +17,8 @@ importers:
 
 packages:
 
-  '@fontsource/source-sans-3@5.2.8':
-    resolution: {integrity: sha512-3NRlxRk9QHkLQbKbPn+sfcl+bPURLmgd5RKlK+SWd+YBepCEeAS0XUU8ro5ychlm4vYp8xUQOyFweLElpFw8QQ==}
+  '@fontsource-variable/source-sans-3@5.2.8':
+    resolution: {integrity: sha512-iRQD4k06Wxm1668+AbPBoVo+CbgRsOz2E0/XibDJ7kAm9UhdhmNmsMTvs9KEl/mQxUj/487tr9w47NoM/TMhZQ==}
 
   '@popperjs/core@2.11.8':
     resolution: {integrity: sha512-P1st0aksCrn9sGZhp8GMYwBnQsbvAWsZAX44oXNNvLHGqAOcoVxmjZiohstwQ7SqKnbR47akdNi+uleWD8+g6A==}
@@ -115,7 +115,7 @@ packages:
 
 snapshots:
 
-  '@fontsource/source-sans-3@5.2.8': {}
+  '@fontsource-variable/source-sans-3@5.2.8': {}
 
   '@popperjs/core@2.11.8': {}
 
