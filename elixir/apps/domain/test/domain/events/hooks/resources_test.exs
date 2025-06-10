@@ -7,7 +7,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
   end
 
   describe "insert/1" do
-    test "returns :ok" do
+    test "broadcasts :create_resource to subscribed" do
       resource_id = "test_resource"
       account_id = "test_account"
       :ok = subscribe(resource_id)
@@ -30,14 +30,54 @@ defmodule Domain.Events.Hooks.ResourcesTest do
   end
 
   describe "update/2" do
+    test "broadcasts :delete_resource to subscribed for soft-deletions" do
+      resource_id = "test_resource"
+      account_id = "test_account"
+      :ok = subscribe(resource_id)
+      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(account_id)
+
+      old_data = %{"id" => resource_id, "account_id" => account_id, "deleted_at" => nil}
+
+      data = %{
+        "id" => resource_id,
+        "account_id" => account_id,
+        "deleted_at" => DateTime.utc_now()
+      }
+
+      assert :ok == on_update(old_data, data)
+      assert_receive {:delete_resource, ^resource_id}
+      assert_receive {:delete_resource, ^resource_id}
+
+      :ok = unsubscribe(resource_id)
+
+      assert :ok = on_update(old_data, data)
+      assert_receive {:delete_resource, ^resource_id}
+      refute_receive {:delete_resource, ^resource_id}
+    end
+
     test "returns :ok", %{old_data: old_data, data: data} do
       assert :ok == on_update(old_data, data)
     end
   end
 
   describe "delete/1" do
-    test "returns :ok", %{data: data} do
-      assert :ok == on_delete(data)
+    test "broadcasts :delete_resource to subscribed" do
+      resource_id = "test_resource"
+      account_id = "test_account"
+      :ok = subscribe(resource_id)
+      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(account_id)
+
+      old_data = %{"id" => resource_id, "account_id" => account_id}
+
+      assert :ok == on_delete(old_data)
+      assert_receive {:delete_resource, ^resource_id}
+      assert_receive {:delete_resource, ^resource_id}
+
+      :ok = unsubscribe(resource_id)
+
+      assert :ok = on_delete(old_data)
+      assert_receive {:delete_resource, ^resource_id}
+      refute_receive {:delete_resource, ^resource_id}
     end
   end
 end

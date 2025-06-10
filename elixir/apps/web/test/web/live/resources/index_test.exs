@@ -302,6 +302,19 @@ defmodule Web.Live.Resources.IndexTest do
 
       Domain.Resources.delete_resource(resource, subject)
 
+      Events.Hooks.Resources.on_update(
+        %{
+          "id" => resource.id,
+          "account_id" => account.id,
+          "deleted_at" => nil
+        },
+        %{
+          "id" => resource.id,
+          "account_id" => account.id,
+          "deleted_at" => DateTime.utc_now()
+        }
+      )
+
       reload_btn =
         lv
         |> element("#resources-reload-btn")

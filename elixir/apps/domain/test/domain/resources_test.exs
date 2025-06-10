@@ -1738,31 +1738,6 @@ defmodule Domain.ResourcesTest do
       assert Repo.aggregate(Resources.Connection.Query.by_gateway_group_id(group.id), :count) == 0
     end
 
-    test "broadcasts an account message when resource is deleted", %{
-      account: account,
-      resource: resource,
-      subject: subject
-    } do
-      :ok = Events.Hooks.Accounts.subscribe_to_resources(account.id)
-
-      assert {:ok, resource} = delete_resource(resource, subject)
-
-      assert_receive {:delete_resource, resource_id}
-      assert resource_id == resource.id
-    end
-
-    test "broadcasts a resource message when resource is deleted", %{
-      resource: resource,
-      subject: subject
-    } do
-      :ok = Events.Hooks.Resources.subscribe(resource.id)
-
-      assert {:ok, resource} = delete_resource(resource, subject)
-
-      assert_receive {:delete_resource, resource_id}
-      assert resource_id == resource.id
-    end
-
     test "returns error when subject has no permission to delete resources", %{
       resource: resource,
       subject: subject

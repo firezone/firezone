@@ -304,8 +304,6 @@ defmodule Domain.Resources do
       )
       |> case do
         {:ok, resource} ->
-          # TODO: WAL
-          :ok = broadcast_resource_events(:delete, resource)
           {:ok, _policies} = Policies.delete_policies_for(resource, subject)
           {:ok, resource}
 
