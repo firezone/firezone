@@ -264,6 +264,7 @@ skip = [
   "syn",
   "thiserror",
   "thiserror-impl",
+  "toml",
   "toml_edit",
   "tower",
   "wasi",
