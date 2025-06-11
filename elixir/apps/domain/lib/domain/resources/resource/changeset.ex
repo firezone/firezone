@@ -5,7 +5,6 @@ defmodule Domain.Resources.Resource.Changeset do
 
   @fields ~w[address address_description name type ip_stack]a
   @update_fields ~w[address address_description name type ip_stack]a
-  @replace_fields ~w[type address filters ip_stack]a
   @required_fields ~w[name type]a
 
   # Reference list of common TLDs from IANA
@@ -68,7 +67,6 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
       required: true
     )
-    |> maybe_breaking_change()
   end
 
   def delete(%Resource{} = resource) do
@@ -263,16 +261,6 @@ defmodule Domain.Resources.Resource.Changeset do
         |> Enum.reduce(changeset, fn {_type, cidr}, changeset ->
           validate_not_in_cidr(changeset, :address, cidr)
         end)
-    end
-  end
-
-  defp maybe_breaking_change(%{valid?: false} = changeset), do: {changeset, false}
-
-  defp maybe_breaking_change(changeset) do
-    if any_field_changed?(changeset, @replace_fields) do
-      {changeset, true}
-    else
-      {changeset, false}
     end
   end
 

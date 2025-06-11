@@ -228,6 +228,12 @@ defmodule Domain.Flows do
     |> expire_flows()
   end
 
+  def expire_flows_for_resource_id(resource_id) do
+    Flow.Query.all()
+    |> Flow.Query.by_resource_id(resource_id)
+    |> expire_flows()
+  end
+
   defp expire_flows(queryable, subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
       queryable

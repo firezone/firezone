@@ -1,5 +1,6 @@
 defmodule Web.Live.Resources.IndexTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -267,7 +268,13 @@ defmodule Web.Live.Resources.IndexTest do
       refute html =~ "The table data has changed."
       refute html =~ "reload-btn"
 
-      Fixtures.Resources.create_resource(account: account)
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      # Simulate WAL broadcast
+      Events.Hooks.Resources.on_insert(%{
+        "id" => resource.id,
+        "account_id" => account.id
+      })
 
       reload_btn =
         lv
@@ -294,6 +301,19 @@ defmodule Web.Live.Resources.IndexTest do
       refute html =~ "reload-btn"
 
       Domain.Resources.delete_resource(resource, subject)
+
+      Events.Hooks.Resources.on_update(
+        %{
+          "id" => resource.id,
+          "account_id" => account.id,
+          "deleted_at" => nil
+        },
+        %{
+          "id" => resource.id,
+          "account_id" => account.id,
+          "deleted_at" => DateTime.utc_now()
+        }
+      )
 
       reload_btn =
         lv

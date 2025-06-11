@@ -1,6 +1,6 @@
 defmodule Domain.Resources do
-  alias Domain.{Repo, Auth, PubSub}
-  alias Domain.{Accounts, Gateways, Policies, Flows}
+  alias Domain.{Repo, Auth}
+  alias Domain.{Accounts, Gateways, Policies}
   alias Domain.Resources.{Authorizer, Resource, Connection}
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -229,13 +229,8 @@ defmodule Domain.Resources do
 
   def create_resource(attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      changeset = Resource.Changeset.create(subject.account, attrs, subject)
-
-      with {:ok, resource} <- Repo.insert(changeset) do
-        # TODO: WAL
-        :ok = broadcast_resource_events(:create, resource)
-        {:ok, resource}
-      end
+      Resource.Changeset.create(subject.account, attrs, subject)
+      |> Repo.insert()
     end
   end
 
@@ -251,19 +246,12 @@ defmodule Domain.Resources do
       }
     }
 
-    changeset = Resource.Changeset.create(account, attrs)
-
-    with {:ok, resource} <- Repo.insert(changeset) do
-      # TODO: WAL
-      :ok = broadcast_resource_events(:create, resource)
-      {:ok, resource}
-    end
+    Resource.Changeset.create(account, attrs)
+    |> Repo.insert()
   end
 
   def change_resource(%Resource{} = resource, attrs \\ %{}, %Auth.Subject{} = subject) do
-    case Resource.Changeset.update(resource, attrs, subject) do
-      {update_changeset, _} -> update_changeset
-    end
+    Resource.Changeset.update(resource, attrs, subject)
   end
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
@@ -271,28 +259,11 @@ defmodule Domain.Resources do
       Resource.Query.not_deleted()
       |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update_breakable(Resource.Query,
+      |> Repo.fetch_and_update(Resource.Query,
         with: fn resource ->
           resource
           |> Repo.preload(:connections)
           |> Resource.Changeset.update(attrs, subject)
-        end,
-        after_update_commit: fn resource, changeset ->
-          if Map.has_key?(changeset.changes, :connections) do
-            {:ok, _flows} = Flows.expire_flows_for(resource, subject)
-          end
-
-          # TODO: WAL
-          broadcast_resource_events(:update, resource)
-        end,
-        after_breaking_update_commit: fn updated_resource, _changeset ->
-          # The :delete resource event broadcast is a no-op.
-          # This is used to reset the resource on the client and gateway in case filters, conditions, etc are changed.
-          {:ok, _flows} = Flows.expire_flows_for(resource, subject)
-
-          # TODO: WAL
-          :ok = broadcast_resource_events(:delete, resource)
-          :ok = broadcast_resource_events(:create, updated_resource)
         end
       )
     end
@@ -318,8 +289,6 @@ defmodule Domain.Resources do
       )
       |> case do
         {:ok, resource} ->
-          # TODO: WAL
-          :ok = broadcast_resource_events(:delete, resource)
           {:ok, _policies} = Policies.delete_policies_for(resource, subject)
           {:ok, resource}
 
@@ -357,46 +326,6 @@ defmodule Domain.Resources do
     Connection.Query.by_resource_id(resource.id)
     |> Connection.Query.by_gateway_group_id(gateway.group_id)
     |> Repo.exists?()
-  end
-
-  ### PubSub
-
-  defp resource_topic(%Resource{} = resource), do: resource_topic(resource.id)
-  defp resource_topic(resource_id), do: "resource:#{resource_id}"
-
-  defp account_topic(%Accounts.Account{} = account), do: account_topic(account.id)
-  defp account_topic(account_id), do: "account_policies:#{account_id}"
-
-  def subscribe_to_events_for_resource(resource_or_id) do
-    resource_or_id |> resource_topic() |> PubSub.subscribe()
-  end
-
-  def unsubscribe_from_events_for_resource(resource_or_id) do
-    resource_or_id |> resource_topic() |> PubSub.unsubscribe()
-  end
-
-  def subscribe_to_events_for_account(account_or_id) do
-    account_or_id |> account_topic() |> PubSub.subscribe()
-  end
-
-  # TODO: WAL
-  defp broadcast_resource_events(action, %Resource{} = resource) do
-    payload = {:"#{action}_resource", resource.id}
-    :ok = broadcast_to_resource(resource, payload)
-    :ok = broadcast_to_account(resource.account_id, payload)
-    :ok
-  end
-
-  defp broadcast_to_resource(resource_or_id, payload) do
-    resource_or_id
-    |> resource_topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  defp broadcast_to_account(account_or_id, payload) do
-    account_or_id
-    |> account_topic()
-    |> PubSub.broadcast(payload)
   end
 
   @doc false

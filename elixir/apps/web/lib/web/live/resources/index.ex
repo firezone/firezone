@@ -1,10 +1,11 @@
 defmodule Web.Resources.Index do
   use Web, :live_view
+  alias Domain.Events
   alias Domain.Resources
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Resources.subscribe_to_events_for_account(socket.assigns.account)
+      :ok = Events.Hooks.Accounts.subscribe_to_resources(socket.assigns.account.id)
     end
 
     socket =

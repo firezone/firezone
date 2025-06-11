@@ -3,6 +3,7 @@ defmodule Domain.ResourcesTest do
   import Domain.Resources
   alias Domain.Resources
   alias Domain.Actors
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -1466,27 +1467,6 @@ defmodule Domain.ResourcesTest do
       assert Repo.aggregate(Domain.Network.Address, :count) == address_count
     end
 
-    test "broadcasts an account message when resource is created", %{
-      account: account,
-      subject: subject
-    } do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      attrs =
-        Fixtures.Resources.resource_attrs(
-          connections: [
-            %{gateway_group_id: gateway.group_id}
-          ]
-        )
-
-      :ok = subscribe_to_events_for_account(account)
-
-      assert {:ok, resource} = create_resource(attrs, subject)
-
-      assert_receive {:create_resource, resource_id}
-      assert resource_id == resource.id
-    end
-
     test "returns error when subject has no permission to create resources", %{
       subject: subject
     } do
@@ -1512,7 +1492,7 @@ defmodule Domain.ResourcesTest do
     end
 
     test "does nothing on empty attrs", %{resource: resource, subject: subject} do
-      assert {:updated, _resource} = update_resource(resource, %{}, subject)
+      assert {:ok, _resource} = update_resource(resource, %{}, subject)
     end
 
     test "returns error on invalid attrs", %{resource: resource, subject: subject} do
@@ -1533,42 +1513,15 @@ defmodule Domain.ResourcesTest do
              }
     end
 
-    test "broadcasts an account message when resource is updated", %{
-      account: account,
-      resource: resource,
-      subject: subject
-    } do
-      :ok = subscribe_to_events_for_account(account)
-
-      attrs = %{"name" => "foo"}
-      assert {:updated, resource} = update_resource(resource, attrs, subject)
-
-      assert_receive {:update_resource, resource_id}
-      assert resource_id == resource.id
-    end
-
-    test "broadcasts a resource message when resource is updated", %{
-      resource: resource,
-      subject: subject
-    } do
-      :ok = subscribe_to_events_for_resource(resource)
-
-      attrs = %{"name" => "foo"}
-      assert {:updated, resource} = update_resource(resource, attrs, subject)
-
-      assert_receive {:update_resource, resource_id}
-      assert resource_id == resource.id
-    end
-
     test "allows to update name", %{resource: resource, subject: subject} do
       attrs = %{"name" => "foo"}
-      assert {:updated, resource} = update_resource(resource, attrs, subject)
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
       assert resource.name == "foo"
     end
 
     test "allows to update resource address", %{resource: resource, subject: subject} do
       attrs = %{"address_description" => "http://#{resource.address}:1234/foo"}
-      assert {:updated, resource} = update_resource(resource, attrs, subject)
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
       assert resource.address_description == attrs["address_description"]
     end
 
@@ -1580,7 +1533,7 @@ defmodule Domain.ResourcesTest do
       flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
 
       attrs = %{"name" => "foo"}
-      assert {:updated, _resource} = update_resource(resource, attrs, subject)
+      assert {:ok, _resource} = update_resource(resource, attrs, subject)
 
       flow = Repo.reload(flow)
       assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :gt
@@ -1591,7 +1544,7 @@ defmodule Domain.ResourcesTest do
       gateway1 = Fixtures.Gateways.create_gateway(account: account, group: group)
 
       attrs = %{"connections" => [%{gateway_group_id: gateway1.group_id}]}
-      assert {:updated, resource} = update_resource(resource, attrs, subject)
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway1.group_id]
 
@@ -1606,15 +1559,19 @@ defmodule Domain.ResourcesTest do
         ]
       }
 
-      assert {:updated, resource} = update_resource(resource, attrs, subject)
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert Enum.sort(gateway_group_ids) == Enum.sort([gateway1.group_id, gateway2.group_id])
 
       attrs = %{"connections" => [%{gateway_group_id: gateway2.group_id}]}
-      assert {:updated, resource} = update_resource(resource, attrs, subject)
+      assert {:ok, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway2.group_id]
 
+      # TODO: WAL
+      # Remove this when directly broadcasting flow removals
+      Events.Hooks.ResourceConnections.on_delete(%{"resource_id" => resource.id})
+      Process.sleep(100)
       flow = Repo.reload(flow)
       assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
@@ -1631,42 +1588,16 @@ defmodule Domain.ResourcesTest do
     test "updates the resource when address is changed", %{resource: resource, subject: subject} do
       attrs = %{"address" => "foo"}
 
-      assert {:updated, updated_resource} =
-               update_resource(resource, attrs, subject)
+      assert {:ok, updated_resource} = update_resource(resource, attrs, subject)
 
       assert updated_resource.address == attrs["address"]
       refute updated_resource.address == resource.address
     end
 
-    test "broadcasts events and expires flows when resource is updated", %{
-      account: account,
-      resource: resource,
-      subject: subject
-    } do
-      flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      :ok = subscribe_to_events_for_account(account)
-
-      attrs = %{"address" => "foo"}
-
-      assert {:updated, updated_resource} =
-               update_resource(resource, attrs, subject)
-
-      # Resource id doesn't change when updated, but for clarity we still test that we receive the
-      # destructive events for the old resource id and the creation events for the new resource id.
-      updated_resource_id = updated_resource.id
-      resource_id = resource.id
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:create_resource, ^updated_resource_id}
-
-      flow = Repo.reload(flow)
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
-    end
-
     test "updates the resource when type is changed", %{resource: resource, subject: subject} do
       attrs = %{"type" => "ip", "address" => "10.0.10.1"}
 
-      assert {:updated, updated_resource} =
-               update_resource(resource, attrs, subject)
+      assert {:ok, updated_resource} = update_resource(resource, attrs, subject)
 
       assert updated_resource.id == resource.id
       refute updated_resource.type == resource.type
@@ -1677,8 +1608,7 @@ defmodule Domain.ResourcesTest do
     test "updates the resource when filters are changed", %{resource: resource, subject: subject} do
       attrs = %{"filters" => []}
 
-      assert {:updated, updated_resource} =
-               update_resource(resource, attrs, subject)
+      assert {:ok, updated_resource} = update_resource(resource, attrs, subject)
 
       refute updated_resource.filters == resource.filters
       assert updated_resource.filters == attrs["filters"]
@@ -1752,31 +1682,6 @@ defmodule Domain.ResourcesTest do
       assert {:ok, _resource} = delete_resource(resource, subject)
 
       assert Repo.aggregate(Resources.Connection.Query.by_gateway_group_id(group.id), :count) == 0
-    end
-
-    test "broadcasts an account message when resource is deleted", %{
-      account: account,
-      resource: resource,
-      subject: subject
-    } do
-      :ok = subscribe_to_events_for_account(account)
-
-      assert {:ok, resource} = delete_resource(resource, subject)
-
-      assert_receive {:delete_resource, resource_id}
-      assert resource_id == resource.id
-    end
-
-    test "broadcasts a resource message when resource is deleted", %{
-      resource: resource,
-      subject: subject
-    } do
-      :ok = subscribe_to_events_for_resource(resource)
-
-      assert {:ok, resource} = delete_resource(resource, subject)
-
-      assert_receive {:delete_resource, resource_id}
-      assert resource_id == resource.id
     end
 
     test "returns error when subject has no permission to delete resources", %{
