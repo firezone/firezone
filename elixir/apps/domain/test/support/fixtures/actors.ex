@@ -14,7 +14,6 @@ defmodule Domain.Fixtures.Actors do
       attrs
       |> group_attrs()
       |> Map.put(:type, :managed)
-      |> Map.put_new(:membership_rules, [%{operator: true}])
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->

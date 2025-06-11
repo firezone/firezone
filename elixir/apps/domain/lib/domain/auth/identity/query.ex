@@ -110,62 +110,6 @@ defmodule Domain.Auth.Identity.Query do
     end
   end
 
-  def by_membership_rules(queryable, rules) do
-    dynamic =
-      Enum.reduce(rules, false, fn
-        rule, false ->
-          membership_rule_dynamic(rule)
-
-        rule, dynamic ->
-          dynamic([identities: identities], ^dynamic or ^membership_rule_dynamic(rule))
-      end)
-
-    where(queryable, ^dynamic)
-  end
-
-  defp membership_rule_dynamic(%{path: path, operator: :is_in, values: values}) do
-    dynamic(
-      [identities: identities],
-      fragment("? \\?| ?", json_extract_path(identities.provider_state, ^path), ^values)
-    )
-  end
-
-  defp membership_rule_dynamic(%{path: path, operator: :is_not_in, values: values}) do
-    dynamic(
-      [identities: identities],
-      fragment("NOT (? \\?| ?)", json_extract_path(identities.provider_state, ^path), ^values)
-    )
-  end
-
-  defp membership_rule_dynamic(%{path: path, operator: :contains, values: [value]}) do
-    dynamic(
-      [identities: identities],
-      fragment(
-        "?->>0 LIKE '%' || ? || '%'",
-        json_extract_path(identities.provider_state, ^path),
-        ^value
-      )
-    )
-  end
-
-  defp membership_rule_dynamic(%{path: path, operator: :does_not_contain, values: [value]}) do
-    dynamic(
-      [identities: identities],
-      fragment(
-        "?->>0 NOT LIKE '%' || ? || '%'",
-        json_extract_path(identities.provider_state, ^path),
-        ^value
-      )
-    )
-  end
-
-  defp membership_rule_dynamic(%{operator: true}) do
-    dynamic(
-      [identities: identities],
-      true
-    )
-  end
-
   def lock(queryable) do
     lock(queryable, "FOR UPDATE")
   end

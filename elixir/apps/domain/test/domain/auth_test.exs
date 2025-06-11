@@ -2081,123 +2081,6 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "all_actor_ids_by_membership_rules!/2" do
-    test "returns actor ids by evaluating membership rules" do
-      account = Fixtures.Accounts.create_account()
-      identity = Fixtures.Auth.create_identity(account: account)
-
-      rules = [%{operator: true}]
-
-      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
-      assert actor_id == identity.actor_id
-    end
-
-    test "does return identities from other accounts" do
-      account = Fixtures.Accounts.create_account()
-      Fixtures.Auth.create_identity()
-
-      rules = [%{operator: true}]
-
-      assert all_actor_ids_by_membership_rules!(account.id, rules) == []
-    end
-
-    test "does not return identities for deleted actors" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(account: account)
-      Fixtures.Auth.create_identity(account: account, actor: actor)
-      Fixtures.Actors.delete(actor)
-
-      rules = [%{operator: true}]
-
-      assert all_actor_ids_by_membership_rules!(account.id, rules) == []
-    end
-
-    test "does not return identities for disabled actors" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(account: account)
-      Fixtures.Auth.create_identity(account: account, actor: actor)
-      Fixtures.Actors.disable(actor)
-
-      rules = [%{operator: true}]
-
-      assert all_actor_ids_by_membership_rules!(account.id, rules) == []
-    end
-
-    test "allows to use is_in operator" do
-      account = Fixtures.Accounts.create_account()
-
-      rules = [%{path: ["claims", "group"], operator: :is_in, values: ["admin"]}]
-
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
-
-      Fixtures.Auth.create_identity(account: account)
-      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
-      |> Repo.update!()
-
-      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
-      assert actor_id == identity.actor_id
-    end
-
-    test "allows to use is_not_in operator" do
-      account = Fixtures.Accounts.create_account()
-
-      rules = [%{path: ["claims", "group"], operator: :is_not_in, values: ["user"]}]
-
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
-
-      Fixtures.Auth.create_identity(account: account)
-      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
-      |> Repo.update!()
-
-      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
-      assert actor_id == identity.actor_id
-    end
-
-    test "allows to use contains operator" do
-      account = Fixtures.Accounts.create_account()
-
-      rules = [%{path: ["claims", "group"], operator: :contains, values: ["ad"]}]
-
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
-
-      Fixtures.Auth.create_identity(account: account)
-      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "foo"}})
-      |> Repo.update!()
-
-      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
-      assert actor_id == identity.actor_id
-    end
-
-    test "allows to use does_not_contain operator" do
-      account = Fixtures.Accounts.create_account()
-
-      rules = [
-        %{path: ["claims", "group"], operator: :does_not_contain, values: ["use"]}
-      ]
-
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
-
-      Fixtures.Auth.create_identity(account: account)
-      |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "user"}})
-      |> Repo.update!()
-
-      assert [actor_id] = all_actor_ids_by_membership_rules!(account.id, rules)
-      assert actor_id == identity.actor_id
-    end
-  end
-
   describe "upsert_identity/3" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -2279,7 +2162,7 @@ defmodule Domain.AuthTest do
       assert updated_identity.provider_state == %{}
     end
 
-    test "updates dynamic group memberships", %{
+    test "updates managed group memberships", %{
       account: account,
       provider: provider,
       actor: actor
@@ -2437,7 +2320,7 @@ defmodule Domain.AuthTest do
       assert is_nil(identity.deleted_at)
     end
 
-    test "updates dynamic group memberships", %{
+    test "updates managed group memberships", %{
       account: account,
       provider: provider,
       actor: actor,
@@ -2592,7 +2475,7 @@ defmodule Domain.AuthTest do
       assert is_nil(identity.deleted_at)
     end
 
-    test "updates dynamic group memberships" do
+    test "updates managed group memberships" do
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_userpass_provider(account: account)
       provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
@@ -2676,154 +2559,6 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "replace_identity/3" do
-    setup do
-      account = Fixtures.Accounts.create_account()
-      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
-      provider = Fixtures.Auth.create_email_provider(account: account)
-
-      actor =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account,
-          provider: provider
-        )
-
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      %{
-        account: account,
-        actor: actor,
-        identity: identity,
-        subject: subject,
-        provider: provider
-      }
-    end
-
-    test "returns error when identity is deleted", %{identity: identity, subject: subject} do
-      {:ok, _identity} = delete_identity(identity, subject)
-      attrs = %{provider_identifier: Ecto.UUID.generate()}
-
-      assert replace_identity(identity, attrs, subject) == {:error, :not_found}
-    end
-
-    test "returns error when provider_identifier is invalid", %{
-      identity: identity,
-      subject: subject
-    } do
-      provider_identifier = Ecto.UUID.generate()
-
-      attrs = %{
-        provider_identifier: provider_identifier,
-        provider_identifier_confirmation: provider_identifier
-      }
-
-      assert {:error, changeset} = replace_identity(identity, attrs, subject)
-      assert errors_on(changeset) == %{provider_identifier: ["is an invalid email address"]}
-
-      attrs = %{provider_identifier: nil, provider_identifier_confirmation: nil}
-      assert {:error, changeset} = replace_identity(identity, attrs, subject)
-      assert errors_on(changeset) == %{provider_identifier: ["can't be blank"]}
-
-      attrs = %{provider_identifier: Fixtures.Auth.email()}
-      assert {:error, changeset} = replace_identity(identity, attrs, subject)
-      assert errors_on(changeset) == %{provider_identifier_confirmation: ["email does not match"]}
-
-      refute Repo.get(Auth.Identity, identity.id).deleted_at
-    end
-
-    test "replaces existing identity with a new one", %{
-      identity: identity,
-      provider: provider,
-      subject: subject
-    } do
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-
-      attrs = %{
-        provider_identifier: provider_identifier,
-        provider_identifier_confirmation: provider_identifier
-      }
-
-      assert {:ok, new_identity} = replace_identity(identity, attrs, subject)
-
-      assert new_identity.provider_identifier == attrs.provider_identifier
-      assert new_identity.provider_id == identity.provider_id
-      assert new_identity.actor_id == identity.actor_id
-
-      assert new_identity.provider_state == %{}
-      assert new_identity.provider_virtual_state == %{}
-      assert new_identity.account_id == identity.account_id
-      assert is_nil(new_identity.deleted_at)
-
-      assert Repo.get(Auth.Identity, identity.id).deleted_at
-    end
-
-    test "updates dynamic group memberships", %{
-      account: account,
-      identity: identity,
-      provider: provider,
-      subject: subject
-    } do
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-
-      attrs = %{
-        provider_identifier: provider_identifier,
-        provider_identifier_confirmation: provider_identifier
-      }
-
-      group = Fixtures.Actors.create_managed_group(account: account)
-
-      assert {:ok, identity} = replace_identity(identity, attrs, subject)
-
-      group = Repo.preload(group, :memberships, force: true)
-      assert [membership] = group.memberships
-      assert membership.actor_id == identity.actor_id
-      assert membership.group_id == group.id
-    end
-
-    test "deletes tokens of replaced identity", %{
-      account: account,
-      identity: identity,
-      provider: provider,
-      subject: subject
-    } do
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-
-      attrs = %{
-        provider_identifier: provider_identifier,
-        provider_identifier_confirmation: provider_identifier
-      }
-
-      token = Fixtures.Tokens.create_token(account: account, identity: identity)
-
-      assert {:ok, _new_identity} = replace_identity(identity, attrs, subject)
-
-      assert token = Repo.get(Domain.Tokens.Token, token.id)
-      assert token.deleted_at
-    end
-
-    test "returns error when subject cannot delete identities", %{
-      identity: identity,
-      subject: subject
-    } do
-      subject = Fixtures.Auth.remove_permissions(subject)
-      attrs = %{provider_identifier: Ecto.UUID.generate()}
-
-      assert replace_identity(identity, attrs, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [
-                   {:one_of,
-                    [
-                      Authorizer.manage_identities_permission(),
-                      Authorizer.manage_own_identities_permission()
-                    ]}
-                 ]}}
-    end
-  end
-
   describe "delete_identity/2" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -2881,7 +2616,7 @@ defmodule Domain.AuthTest do
       assert Repo.get(Auth.Identity, identity.id).deleted_at
     end
 
-    test "updates dynamic group memberships", %{
+    test "updates managed group memberships", %{
       account: account,
       provider: provider,
       actor: actor,
@@ -3101,7 +2836,7 @@ defmodule Domain.AuthTest do
       assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
     end
 
-    test "updates dynamic group memberships", %{
+    test "does not remove actor from managed group", %{
       account: account,
       provider: provider,
       subject: subject
@@ -3114,8 +2849,8 @@ defmodule Domain.AuthTest do
       assert delete_identities_for(actor, subject) == :ok
 
       group = Repo.preload(group, :memberships, force: true)
-      assert length(group.memberships) == 1
-      refute Enum.any?(group.memberships, &(&1.actor_id == actor.id))
+      assert length(group.memberships) == 2
+      assert actor.id in Enum.map(group.memberships, & &1.actor_id)
     end
 
     test "does not remove identities that belong to another actor", %{

@@ -220,21 +220,19 @@ defmodule Domain.Actors do
   end
 
   # TODO: Refactor this function not to lock
-  def update_dynamic_group_memberships(account_id) do
+  def update_managed_group_memberships(account_id) do
     Repo.transaction(fn ->
       Group.Query.not_deleted()
       |> Group.Query.by_account_id(account_id)
-      |> Group.Query.by_type({:in, [:dynamic, :managed]})
+      |> Group.Query.by_type({:in, [:managed]})
       |> Group.Query.lock()
       |> Repo.all()
       |> Enum.map(fn group ->
-        changeset =
-          group
-          |> Repo.preload(:memberships)
-          |> Ecto.Changeset.change()
-          |> Group.Changeset.put_dynamic_memberships(account_id)
+        # TODO: IDP Sync
+        # Remove everyone group type in favor of special case for everyone group
+        query = Group.Query.update_everyone_group_memberships(group.id, account_id)
 
-        {:ok, group} = Repo.update(changeset)
+        {:ok, _count} = Repo.transaction(query)
 
         group
       end)
@@ -584,7 +582,6 @@ defmodule Domain.Actors do
               Membership.Query.by_actor_id(actor.id)
               |> Repo.delete_all()
 
-            {:ok, _groups} = update_dynamic_group_memberships(actor.account_id)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
             Actor.Changeset.delete_actor(actor)

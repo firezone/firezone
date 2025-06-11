@@ -141,6 +141,39 @@ defmodule Domain.Actors.Group.Query do
     )
   end
 
+  # TODO: IDP Sync
+  # Remove this in favor of special case for everyone group
+  def update_everyone_group_memberships(group_id, account_id) do
+    # We don't treat disabled actors as deleted since that was the prior behavior,
+    # and this will be cleaned up when refactoring the IDP sync.
+    deletion_query =
+      from(
+        agm in Domain.Actors.Membership,
+        join: a in assoc(agm, :actor),
+        where:
+          agm.group_id == ^group_id and agm.account_id == ^account_id and not is_nil(a.deleted_at)
+      )
+
+    insertion_query =
+      from(
+        a in Domain.Actors.Actor,
+        where: is_nil(a.deleted_at) and a.account_id == ^account_id,
+        select: %{
+          actor_id: a.id,
+          group_id: type(^group_id, :binary_id),
+          account_id: type(^account_id, :binary_id)
+        }
+      )
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.delete_all(:delete_memberships, deletion_query)
+    |> Ecto.Multi.insert_all(:insert_memberships, Domain.Actors.Membership, insertion_query,
+      on_conflict: :nothing,
+      # primary key
+      conflict_target: [:actor_id, :group_id]
+    )
+  end
+
   def lock(queryable) do
     lock(queryable, "FOR UPDATE")
   end
