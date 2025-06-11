@@ -117,7 +117,7 @@ defmodule API.Gateway.Channel do
   # This event is ignored because we will receive a reject_access message from
   # the Flows which will trigger a reject_access event
   def handle_info({:delete_resource, resource_id}, socket) do
-    :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
+    :ok = Events.Hooks.Resources.unsubscribe(resource_id)
     {:noreply, socket}
   end
 
@@ -171,6 +171,8 @@ defmodule API.Gateway.Channel do
 
         :ok =
           Enum.each(relays, fn relay ->
+            # TODO: WAL
+            # Why are we unsubscribing and subscribing again?
             :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
             :ok = Domain.Relays.subscribe_to_relay_presence(relay)
           end)
@@ -212,6 +214,8 @@ defmodule API.Gateway.Channel do
 
           :ok =
             Enum.each(relays, fn relay ->
+              # TODO: WAL
+              # Why are we unsubscribing and subscribing again?
               :ok = Relays.unsubscribe_from_relay_presence(relay)
               :ok = Relays.subscribe_to_relay_presence(relay)
             end)
@@ -318,8 +322,10 @@ defmodule API.Gateway.Channel do
       client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
       resource = Resources.fetch_resource_by_id!(resource_id)
 
-      :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-      :ok = Resources.subscribe_to_events_for_resource(resource_id)
+      # TODO: WAL
+      # Why are we unsubscribing and subscribing again?
+      :ok = Events.Hooks.Resources.unsubscribe(resource_id)
+      :ok = Events.Hooks.Resources.subscribe(resource_id)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
 
@@ -388,8 +394,10 @@ defmodule API.Gateway.Channel do
              socket.assigns.gateway.last_seen_version
            ) do
         {:cont, resource} ->
-          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-          :ok = Resources.subscribe_to_events_for_resource(resource_id)
+          # TODO: WAL
+          # Why are we unsubscribing and subscribing again?
+          :ok = Events.Hooks.Resources.unsubscribe(resource_id)
+          :ok = Events.Hooks.Resources.subscribe(resource_id)
 
           opentelemetry_headers = :otel_propagator_text_map.inject([])
           ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})
@@ -458,8 +466,10 @@ defmodule API.Gateway.Channel do
              socket.assigns.gateway.last_seen_version
            ) do
         {:cont, resource} ->
-          :ok = Resources.unsubscribe_from_events_for_resource(resource_id)
-          :ok = Resources.subscribe_to_events_for_resource(resource_id)
+          # TODO: WAL
+          # Why are we unsubscribing and subscribing again?
+          :ok = Events.Hooks.Resources.unsubscribe(resource_id)
+          :ok = Events.Hooks.Resources.subscribe(resource_id)
 
           opentelemetry_headers = :otel_propagator_text_map.inject([])
           ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})

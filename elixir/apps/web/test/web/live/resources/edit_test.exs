@@ -1,5 +1,6 @@
 defmodule Web.Live.Resources.EditTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -228,11 +229,23 @@ defmodule Web.Live.Resources.EditTest do
       }
     }
 
-    :ok = Domain.Resources.subscribe_to_events_for_account(account)
+    :ok = Events.Hooks.Accounts.subscribe_to_resources(account.id)
 
     {:ok, lv, _html} =
       conn
       |> live(~p"/#{account}/resources/#{resource}/edit")
+
+    old_data = %{
+      "id" => resource.id,
+      "account_id" => resource.account_id,
+      "type" => resource.type,
+      "address" => resource.address,
+      "filters" => resource.filters,
+      "ip_stack" => resource.ip_stack
+    }
+
+    data = Map.put(old_data, "filters", attrs.filters)
+    :ok = Events.Hooks.Resources.on_update(old_data, data)
 
     {:ok, _lv, html} =
       lv

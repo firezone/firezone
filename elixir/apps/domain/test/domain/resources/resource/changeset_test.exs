@@ -208,7 +208,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
             {"192.168.1.255/32", "192.168.1.255/32"},
             {"2607:f8b0:4012:0::200e/128", "2607:f8b0:4012::200e/128"}
           ] do
-        {changeset, _} =
+        changeset =
           update(
             resource,
             %{
@@ -241,7 +241,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
         "2607:f8b0:4012:0::200e/128:80"
       ]
       |> Enum.each(fn invalid_cidr ->
-        {changeset, _} = update(resource, %{type: :cidr, address: invalid_cidr}, subject)
+        changeset = update(resource, %{type: :cidr, address: invalid_cidr}, subject)
         refute changeset.valid?, "Expected '#{invalid_cidr}' to be invalid"
       end)
     end
@@ -253,7 +253,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
             {"192.168.1.255", "192.168.1.255"},
             {"2607:f8b0:4012:0::200e", "2607:f8b0:4012::200e"}
           ] do
-        {changeset, _} =
+        changeset =
           update(
             resource,
             %{
@@ -283,14 +283,14 @@ defmodule Domain.Resources.Resource.ChangesetTest do
         "[2607:f8b0:4012:0::200e]:80"
       ]
       |> Enum.each(fn invalid_ip ->
-        {changeset, _} = update(resource, %{type: :ip, address: invalid_ip}, subject)
+        changeset = update(resource, %{type: :ip, address: invalid_ip}, subject)
         refute changeset.valid?, "Expected '#{invalid_ip}' to be invalid"
       end)
     end
 
     test "accepts valid DNS addresses", %{resource: resource, subject: subject} do
       for valid_address <- @valid_dns_addresses do
-        {changeset, _} =
+        changeset =
           update(
             resource,
             %{
@@ -307,7 +307,7 @@ defmodule Domain.Resources.Resource.ChangesetTest do
       end
 
       for invalid_address <- @invalid_dns_addresses do
-        {changeset, _} = update(resource, %{type: :dns, address: invalid_address}, subject)
+        changeset = update(resource, %{type: :dns, address: invalid_address}, subject)
         refute changeset.valid?, "Expected '#{invalid_address}' to be invalid"
       end
     end

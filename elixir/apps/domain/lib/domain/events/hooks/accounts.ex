@@ -37,6 +37,12 @@ defmodule Domain.Events.Hooks.Accounts do
     |> PubSub.subscribe()
   end
 
+  def subscribe_to_resources(account_id) do
+    account_id
+    |> resources_topic()
+    |> PubSub.subscribe()
+  end
+
   def subscribe_to_clients_presence(account_id) do
     account_id
     |> clients_presence_topic()
@@ -49,8 +55,6 @@ defmodule Domain.Events.Hooks.Accounts do
     |> PubSub.subscribe()
   end
 
-  # No unsubscribe needed - account deletions destroy any subscribed entities
-
   def clients_presence_topic(account_id) do
     "presences:#{clients_topic(account_id)}"
   end
@@ -61,6 +65,16 @@ defmodule Domain.Events.Hooks.Accounts do
 
   def gateways_presence_topic(account_id) do
     "presences:account_gateways:#{account_id}"
+  end
+
+  def broadcast_to_resources(account_id, payload) do
+    account_id
+    |> resources_topic()
+    |> PubSub.broadcast(payload)
+  end
+
+  defp resources_topic(account_id) do
+    "account_resources:#{account_id}"
   end
 
   defp topic(account_id) do

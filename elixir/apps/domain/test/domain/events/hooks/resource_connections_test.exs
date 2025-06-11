@@ -1,5 +1,5 @@
 defmodule Domain.Events.Hooks.ResourceConnectionsTest do
-  use ExUnit.Case, async: true
+  use Domain.DataCase, async: true
   import Domain.Events.Hooks.ResourceConnections
 
   setup do
@@ -19,8 +19,20 @@ defmodule Domain.Events.Hooks.ResourceConnectionsTest do
   end
 
   describe "delete/1" do
-    test "returns :ok", %{data: data} do
-      assert :ok == on_delete(data)
+    test "returns :ok" do
+      flow = Fixtures.Flows.create_flow()
+
+      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :lt
+
+      assert :ok == on_delete(%{"resource_id" => flow.resource_id})
+
+      # TODO: WAL
+      # Remove this when flow removal is directly broadcasted
+      Process.sleep(100)
+
+      flow = Repo.reload(flow)
+
+      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :gt
     end
   end
 end
