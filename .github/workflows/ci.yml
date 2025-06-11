@@ -29,7 +29,7 @@ jobs:
       - name: Plan jobs to run
         id: plan
         run: |
-          set -xe
+          set -e
 
           jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
 
@@ -112,7 +112,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -xe
+          set -e
 
           while true; do
             jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select(.name != "required-check"))')
@@ -131,6 +131,9 @@ jobs:
             if [ $completed_jobs -eq $total_jobs ]; then
               break
             fi
+
+            echo "Jobs not yet completed:"
+            echo "$jobs_json" | jq -r '.[] | select(.status != "completed") | "- " + .name + " (Status: " + .status + ")" '
 
             sleep 10
           done
