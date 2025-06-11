@@ -10,21 +10,14 @@ use crate::{
 };
 use anyhow::{Context, Result, anyhow, bail};
 use connlib_model::ResourceView;
-use firezone_bin_shared::DnsControlMethod;
 use firezone_logging::FilterReloadHandle;
 use firezone_telemetry::Telemetry;
 use futures::{
-    SinkExt, Stream, StreamExt,
+    SinkExt, StreamExt,
     stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{
-    collections::BTreeSet,
-    ops::ControlFlow,
-    path::PathBuf,
-    task::Poll,
-    time::{Duration, Instant},
-};
+use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -59,9 +52,6 @@ pub struct Controller<I: GuiIntegration> {
             ipc::ServerWrite<gui::ServerMsg>,
         )>,
     >,
-
-    dns_notifier: BoxStream<'static, Result<()>>,
-    network_notifier: BoxStream<'static, Result<()>>,
 }
 
 pub trait GuiIntegration {
@@ -129,12 +119,6 @@ pub enum Failure {
 pub enum Status {
     /// Firezone is disconnected.
     Disconnected,
-    /// At least one connection request has failed, due to failing to reach the Portal, and we are waiting for a network change before we try again
-    RetryingConnection {
-        /// The token to log in to the Portal, for retrying the connection request.
-        #[debug(skip)]
-        token: SecretString,
-    },
     Quitting, // The user asked to quit and we're waiting for the tunnel daemon to gracefully disconnect so we can flush telemetry.
     /// Firezone is ready to use.
     TunnelReady {
@@ -142,18 +126,9 @@ pub enum Status {
         resources: Vec<ResourceView>,
     },
     /// Firezone is signing in to the Portal.
-    WaitingForPortal {
-        /// The instant when we sent our most recent connect request.
-        start_instant: Instant,
-        /// The token to log in to the Portal, in case we need to retry the connection request.
-        #[debug(skip)]
-        token: SecretString,
-    },
+    WaitingForPortal,
     /// Firezone has connected to the Portal and is raising the tunnel.
-    WaitingForTunnel {
-        /// The instant when we sent our most recent connect request.
-        start_instant: Instant,
-    },
+    WaitingForTunnel,
 }
 
 impl Default for Status {
@@ -163,25 +138,11 @@ impl Default for Status {
 }
 
 impl Status {
-    /// True if we want to hear about DNS and network changes.
-    fn needs_network_changes(&self) -> bool {
-        match self {
-            Status::Disconnected | Status::RetryingConnection { .. } => false,
-            Status::Quitting => false,
-            Status::TunnelReady { .. }
-            | Status::WaitingForPortal { .. }
-            | Status::WaitingForTunnel { .. } => true,
-        }
-    }
-
     /// True if we should react to `OnUpdateResources`
     fn needs_resource_updates(&self) -> bool {
         match self {
-            Status::Disconnected
-            | Status::RetryingConnection { .. }
-            | Status::Quitting
-            | Status::WaitingForPortal { .. } => false,
-            Status::TunnelReady { .. } | Status::WaitingForTunnel { .. } => true,
+            Status::Disconnected | Status::Quitting | Status::WaitingForPortal => false,
+            Status::TunnelReady { .. } | Status::WaitingForTunnel => true,
         }
     }
 
@@ -197,8 +158,6 @@ impl Status {
 }
 
 enum EventloopTick {
-    NetworkChanged(Result<()>),
-    DnsChanged(Result<()>),
     IpcMsg(Option<Result<service::ServerMsg>>),
     ControllerRequest(Option<ControllerRequest>),
     UpdateNotification(Option<updates::Notification>),
@@ -238,9 +197,6 @@ impl<I: GuiIntegration> Controller<I> {
             .await
             .map_err(FailedToReceiveHello)?;
 
-        let dns_notifier = new_dns_notifier().await?.boxed();
-        let network_notifier = new_network_notifier().await?.boxed();
-
         let controller = Controller {
             general_settings,
             mdm_settings,
@@ -257,8 +213,6 @@ impl<I: GuiIntegration> Controller<I> {
             status: Default::default(),
             updates_rx: ReceiverStream::new(updates_rx),
             uptime: Default::default(),
-            dns_notifier,
-            network_notifier,
             gui_ipc_clients: stream::unfold(gui_ipc, |mut gui_ipc| async move {
                 let result = gui_ipc.next_client_split().await;
 
@@ -298,31 +252,6 @@ impl<I: GuiIntegration> Controller<I> {
 
         loop {
             match self.tick().await {
-                EventloopTick::NetworkChanged(Ok(())) => {
-                    if self.status.needs_network_changes() {
-                        tracing::debug!("Internet up/down changed, calling `Session::reset`");
-                        self.send_ipc(&service::ClientMsg::Reset).await?
-                    }
-
-                    self.try_retry_connection().await?
-                }
-                EventloopTick::DnsChanged(Ok(())) => {
-                    if self.status.needs_network_changes() {
-                        let resolvers = firezone_bin_shared::system_resolvers_for_gui()?;
-                        tracing::debug!(
-                            ?resolvers,
-                            "New DNS resolvers, calling `Session::set_dns`"
-                        );
-                        self.send_ipc(&service::ClientMsg::SetDns(resolvers))
-                            .await?;
-                    }
-
-                    self.try_retry_connection().await?
-                }
-                EventloopTick::NetworkChanged(Err(e)) | EventloopTick::DnsChanged(Err(e)) => {
-                    return Err(e);
-                }
-
                 EventloopTick::IpcMsg(msg) => {
                     let msg = msg
                         .context("IPC closed")?
@@ -375,14 +304,6 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn tick(&mut self) -> EventloopTick {
         std::future::poll_fn(|cx| {
-            if let Poll::Ready(Some(res)) = self.dns_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(EventloopTick::DnsChanged(res));
-            }
-
-            if let Poll::Ready(Some(res)) = self.network_notifier.poll_next_unpin(cx) {
-                return Poll::Ready(EventloopTick::NetworkChanged(res));
-            }
-
             if let Poll::Ready(maybe_ipc) = self.ipc_rx.poll_next_unpin(cx) {
                 return Poll::Ready(EventloopTick::IpcMsg(maybe_ipc));
             }
@@ -406,12 +327,12 @@ impl<I: GuiIntegration> Controller<I> {
 
     async fn start_session(&mut self, token: SecretString) -> Result<()> {
         match self.status {
-            Status::Disconnected | Status::RetryingConnection { .. } => {}
+            Status::Disconnected => {}
             Status::Quitting => Err(anyhow!("Can't connect to Firezone, we're quitting"))?,
             Status::TunnelReady { .. } => Err(anyhow!(
                 "Can't connect to Firezone, we're already connected."
             ))?,
-            Status::WaitingForPortal { .. } | Status::WaitingForTunnel { .. } => Err(anyhow!(
+            Status::WaitingForPortal | Status::WaitingForTunnel => Err(anyhow!(
                 "Can't connect to Firezone, we're already connecting."
             ))?,
         }
@@ -419,8 +340,6 @@ impl<I: GuiIntegration> Controller<I> {
         let api_url = self.api_url().clone();
         tracing::info!(api_url = api_url.to_string(), "Starting connlib...");
 
-        // Count the start instant from before we connect
-        let start_instant = Instant::now();
         self.send_ipc(&service::ClientMsg::Connect {
             api_url: api_url.to_string(),
             token: token.expose_secret().clone(),
@@ -428,10 +347,7 @@ impl<I: GuiIntegration> Controller<I> {
         .await?;
 
         // Change the status after we begin connecting
-        self.status = Status::WaitingForPortal {
-            start_instant,
-            token,
-        };
+        self.status = Status::WaitingForPortal;
 
         let session = self.auth.session().context("Missing session")?;
 
@@ -582,9 +498,7 @@ impl<I: GuiIntegration> Controller<I> {
                 .set_text(s)
                 .context("Couldn't copy resource URL or other text to clipboard")?,
             SystemTrayMenu(system_tray::Event::CancelSignIn) => match &self.status {
-                Status::Disconnected
-                | Status::RetryingConnection { .. }
-                | Status::WaitingForPortal { .. } => {
+                Status::Disconnected | Status::WaitingForPortal => {
                     tracing::info!("Calling `sign_out` to cancel sign-in");
                     self.sign_out().await?;
                 }
@@ -592,7 +506,7 @@ impl<I: GuiIntegration> Controller<I> {
                 Status::TunnelReady { .. } => tracing::error!(
                     "Can't cancel sign-in, the tunnel is already up. This is a logic error in the code."
                 ),
-                Status::WaitingForTunnel { .. } => {
+                Status::WaitingForTunnel => {
                     tracing::debug!(
                         "Connlib is already raising the tunnel, calling `sign_out` anyway"
                     );
@@ -604,9 +518,6 @@ impl<I: GuiIntegration> Controller<I> {
                     .favorite_resources
                     .remove(&resource_id);
                 self.refresh_favorite_resources().await?;
-            }
-            SystemTrayMenu(system_tray::Event::RetryPortalConnection) => {
-                self.try_retry_connection().await?
             }
             SystemTrayMenu(system_tray::Event::EnableInternetResource) => {
                 self.general_settings.internet_resource_enabled = Some(true);
@@ -728,10 +639,20 @@ impl<I: GuiIntegration> Controller<I> {
                 if !self.status.needs_resource_updates() {
                     return Ok(ControlFlow::Continue(()));
                 }
-                tracing::debug!(len = resources.len(), "Got new Resources");
-                self.status = Status::TunnelReady { resources };
-                self.refresh_ui_state();
 
+                // If this is the first time we receive resources, show the notification that we are connected.
+                if let &Status::WaitingForTunnel = &self.status {
+                    self.integration.show_notification(
+                        "Firezone connected",
+                        "You are now signed in and able to access resources.",
+                    )?;
+                }
+
+                tracing::debug!(len = resources.len(), "Got new Resources");
+
+                self.status = Status::TunnelReady { resources };
+
+                self.refresh_ui_state();
                 self.update_disabled_resources().await?;
             }
             service::ServerMsg::TerminatingGracefully => {
@@ -744,20 +665,6 @@ impl<I: GuiIntegration> Controller<I> {
                 )?;
 
                 return Ok(ControlFlow::Break(()));
-            }
-            service::ServerMsg::TunnelReady => {
-                let Status::WaitingForTunnel { start_instant } = self.status else {
-                    // If we are not waiting for a tunnel, continue.
-                    return Ok(ControlFlow::Continue(()));
-                };
-
-                tracing::info!(elapsed = ?start_instant.elapsed(), "Tunnel ready");
-                self.status = Status::TunnelReady { resources: vec![] };
-                self.integration.show_notification(
-                    "Firezone connected",
-                    "You are now signed in and able to access resources.",
-                )?;
-                self.refresh_ui_state();
             }
             service::ServerMsg::Hello => {}
         }
@@ -797,15 +704,8 @@ impl<I: GuiIntegration> Controller<I> {
         Ok(())
     }
 
-    async fn handle_connect_result(
-        &mut self,
-        result: Result<(), service::ConnectError>,
-    ) -> Result<()> {
-        let Status::WaitingForPortal {
-            start_instant,
-            token,
-        } = &self.status
-        else {
+    async fn handle_connect_result(&mut self, result: Result<(), String>) -> Result<()> {
+        let Status::WaitingForPortal = &self.status else {
             tracing::debug!(current_state = ?self.status, "Ignoring `ConnectResult`");
 
             return Ok(());
@@ -814,26 +714,11 @@ impl<I: GuiIntegration> Controller<I> {
         match result {
             Ok(()) => {
                 ran_before::set().await?;
-                self.status = Status::WaitingForTunnel {
-                    start_instant: *start_instant,
-                };
+                self.status = Status::WaitingForTunnel;
                 self.refresh_ui_state();
                 Ok(())
             }
-            Err(service::ConnectError::Io(error)) => {
-                // This is typically something like, we don't have Internet access so we can't
-                // open the PhoenixChannel's WebSocket.
-                tracing::info!(
-                    error,
-                    "Failed to connect to Firezone Portal, will try again when the network changes"
-                );
-                self.status = Status::RetryingConnection {
-                    token: token.expose_secret().clone().into(),
-                };
-                self.refresh_ui_state();
-                Ok(())
-            }
-            Err(service::ConnectError::Other(error)) => {
+            Err(error) => {
                 // We log this here directly instead of forwarding it because errors hard-abort the event-loop and we still want to be able to export logs and stuff.
                 // See <https://github.com/firezone/firezone/issues/6547>.
                 tracing::error!("Failed to connect to Firezone: {error}");
@@ -921,10 +806,6 @@ impl<I: GuiIntegration> Controller<I> {
                     system_tray::ConnlibState::Quitting,
                     SessionViewModel::Loading,
                 ),
-                Status::RetryingConnection { .. } => (
-                    system_tray::ConnlibState::RetryingConnection,
-                    SessionViewModel::Loading,
-                ),
                 Status::TunnelReady { resources } => (
                     system_tray::ConnlibState::SignedIn(system_tray::SignedIn {
                         actor_name: auth_session.actor_name.clone(),
@@ -937,11 +818,11 @@ impl<I: GuiIntegration> Controller<I> {
                         actor_name: auth_session.actor_name.clone(),
                     },
                 ),
-                Status::WaitingForPortal { .. } => (
+                Status::WaitingForPortal => (
                     system_tray::ConnlibState::WaitingForPortal,
                     SessionViewModel::Loading,
                 ),
-                Status::WaitingForTunnel { .. } => (
+                Status::WaitingForTunnel => (
                     system_tray::ConnlibState::WaitingForTunnel,
                     SessionViewModel::Loading,
                 ),
@@ -978,31 +859,14 @@ impl<I: GuiIntegration> Controller<I> {
         }
     }
 
-    /// If we're in the `RetryingConnection` state, use the token to retry the Portal connection
-    async fn try_retry_connection(&mut self) -> Result<()> {
-        let token = match &self.status {
-            Status::Disconnected
-            | Status::Quitting
-            | Status::TunnelReady { .. }
-            | Status::WaitingForPortal { .. }
-            | Status::WaitingForTunnel { .. } => return Ok(()),
-            Status::RetryingConnection { token } => token,
-        };
-        tracing::debug!("Retrying Portal connection...");
-        self.start_session(token.expose_secret().clone().into())
-            .await?;
-        Ok(())
-    }
-
     /// Deletes the auth token, stops connlib, and refreshes the tray menu
     async fn sign_out(&mut self) -> Result<()> {
         match self.status {
             Status::Quitting => return Ok(()),
             Status::Disconnected
-            | Status::RetryingConnection { .. }
             | Status::TunnelReady { .. }
-            | Status::WaitingForPortal { .. }
-            | Status::WaitingForTunnel { .. } => {}
+            | Status::WaitingForPortal
+            | Status::WaitingForTunnel => {}
         }
         self.auth.sign_out()?;
         self.status = Status::Disconnected;
@@ -1057,34 +921,6 @@ impl<I: GuiIntegration> Controller<I> {
             .connect_on_start
             .or(self.general_settings.connect_on_start)
     }
-}
-
-async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_dns_notifier(
-        tokio::runtime::Handle::current(),
-        DnsControlMethod::default(),
-    )
-    .await?;
-
-    Ok(stream::try_unfold(worker, |mut worker| async move {
-        let () = worker.notified().await?;
-
-        Ok(Some(((), worker)))
-    }))
-}
-
-async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
-    let worker = firezone_bin_shared::new_network_notifier(
-        tokio::runtime::Handle::current(),
-        DnsControlMethod::default(),
-    )
-    .await?;
-
-    Ok(stream::try_unfold(worker, |mut worker| async move {
-        let () = worker.notified().await?;
-
-        Ok(Some(((), worker)))
-    }))
 }
 
 async fn receive_hello(ipc_rx: &mut ipc::ClientRead<service::ServerMsg>) -> Result<()> {

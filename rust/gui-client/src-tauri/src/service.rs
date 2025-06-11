@@ -16,8 +16,9 @@ use firezone_bin_shared::{
 use firezone_logging::{FilterReloadHandle, err_with_src, telemetry_span};
 use firezone_telemetry::{Telemetry, analytics};
 use futures::{
-    Future as _, SinkExt as _, Stream as _,
+    Future as _, SinkExt as _, Stream, StreamExt,
     future::poll_fn,
+    stream::{self, BoxStream},
     task::{Context, Poll},
 };
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
@@ -25,7 +26,7 @@ use secrecy::{Secret, SecretString};
 use std::{
     collections::BTreeSet,
     io::{self, Write},
-    net::IpAddr,
+    mem,
     pin::pin,
     sync::Arc,
     time::Duration,
@@ -58,8 +59,6 @@ pub enum ClientMsg {
     ApplyLogFilter {
         directives: String,
     },
-    Reset,
-    SetDns(Vec<IpAddr>),
     SetDisabledResources(BTreeSet<ResourceId>),
     StartTelemetry {
         environment: String,
@@ -74,7 +73,7 @@ pub enum ServerMsg {
     Hello,
     /// The Tunnel service finished clearing its log dir.
     ClearedLogs(Result<(), String>),
-    ConnectResult(Result<(), ConnectError>),
+    ConnectResult(Result<(), String>),
     DisconnectedGracefully,
     OnDisconnect {
         error_msg: String,
@@ -87,28 +86,11 @@ pub enum ServerMsg {
     /// "Firezone is updating, please restart the GUI" instead of an error like,
     /// "IPC connection closed".
     TerminatingGracefully,
-    /// The interface and tunnel are ready for traffic.
-    TunnelReady,
 }
 
-// All variants are `String` because almost no error type implements `Serialize`
-#[derive(Debug, serde::Deserialize, serde::Serialize, thiserror::Error)]
-pub enum ConnectError {
-    #[error("IO error: {0}")]
-    Io(String),
-    #[error("{0}")]
-    Other(String),
-}
-
-impl From<io::Error> for ConnectError {
-    fn from(v: io::Error) -> Self {
-        Self::Io(v.to_string())
-    }
-}
-
-impl From<anyhow::Error> for ConnectError {
-    fn from(v: anyhow::Error) -> Self {
-        Self::Other(format!("{v:#}"))
+impl ServerMsg {
+    fn connect_result(result: Result<()>) -> Self {
+        Self::ConnectResult(result.map_err(|e| format!("{e:#}")))
     }
 }
 
@@ -170,16 +152,88 @@ struct Handler<'a> {
     dns_controller: &'a mut DnsController,
     ipc_rx: ipc::ServerRead<ClientMsg>,
     ipc_tx: ipc::ServerWrite<ServerMsg>,
-    last_connlib_start_instant: Option<Instant>,
     log_filter_reloader: &'a FilterReloadHandle,
-    session: Option<Session>,
+    session: Session,
     telemetry: Telemetry,
     tun_device: TunDeviceManager,
+    dns_notifier: BoxStream<'static, Result<()>>,
+    network_notifier: BoxStream<'static, Result<()>>,
 }
 
-struct Session {
-    event_stream: client_shared::EventStream,
-    connlib: client_shared::Session,
+#[derive(Default)]
+enum Session {
+    /// We've launched `connlib` but haven't heard back from it yet.
+    Creating {
+        event_stream: client_shared::EventStream,
+        connlib: client_shared::Session,
+        started_at: Instant,
+    },
+    Connected {
+        event_stream: client_shared::EventStream,
+        connlib: client_shared::Session,
+    },
+    WaitingForNetwork {
+        api_url: String,
+        token: SecretString,
+    },
+    #[default]
+    None,
+}
+
+impl Session {
+    fn transition_to_connected(&mut self) -> Result<()> {
+        match mem::take(self) {
+            Session::Creating {
+                event_stream,
+                connlib,
+                started_at,
+            } => {
+                tracing::info!(elapsed = ?started_at.elapsed(), "Tunnel ready");
+
+                *self = Self::Connected {
+                    event_stream,
+                    connlib,
+                };
+            }
+            Session::Connected {
+                event_stream,
+                connlib,
+            } => {
+                *self = Self::Connected {
+                    event_stream,
+                    connlib,
+                };
+            }
+            Session::WaitingForNetwork { .. } => {
+                bail!("Invalid state! Cannot transition into `Connected` from `WaitingForNetwork`")
+            }
+            Session::None => bail!("No session"),
+        }
+
+        Ok(())
+    }
+
+    fn as_connlib(&self) -> Option<&client_shared::Session> {
+        match self {
+            Session::Creating { connlib, .. } => Some(connlib),
+            Session::Connected { connlib, .. } => Some(connlib),
+            Session::WaitingForNetwork { .. } => None,
+            Session::None => None,
+        }
+    }
+
+    fn as_event_stream(&mut self) -> Option<&mut client_shared::EventStream> {
+        match self {
+            Session::Creating { event_stream, .. } => Some(event_stream),
+            Session::Connected { event_stream, .. } => Some(event_stream),
+            Session::WaitingForNetwork { .. } => None,
+            Session::None => None,
+        }
+    }
+
+    fn is_none(&self) -> bool {
+        matches!(self, Self::None)
+    }
 }
 
 enum Event {
@@ -189,6 +243,8 @@ enum Event {
     IpcDisconnected,
     IpcError(anyhow::Error),
     Terminate,
+    NetworkChanged(Result<()>),
+    DnsChanged(Result<()>),
 }
 
 // Open to better names
@@ -218,6 +274,8 @@ impl<'a> Handler<'a> {
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
         let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, 1)?;
+        let dns_notifier = new_dns_notifier().await?.boxed();
+        let network_notifier = new_network_notifier().await?.boxed();
 
         ipc_tx
             .send(&ServerMsg::Hello)
@@ -229,11 +287,12 @@ impl<'a> Handler<'a> {
             dns_controller,
             ipc_rx,
             ipc_tx,
-            last_connlib_start_instant: None,
             log_filter_reloader,
-            session: None,
+            session: Session::None,
             telemetry: Telemetry::default(),
             tun_device,
+            dns_notifier,
+            network_notifier,
         })
     }
 
@@ -282,6 +341,60 @@ impl<'a> Handler<'a> {
                     let _ = self.send_ipc(ServerMsg::TerminatingGracefully).await;
                     break HandlerOk::ServiceTerminating;
                 }
+                Event::NetworkChanged(Err(e)) => {
+                    tracing::warn!("Error while listening for network change events: {e:#}")
+                }
+                Event::DnsChanged(Err(e)) => {
+                    tracing::warn!("Error while listening for DNS change events: {e:#}")
+                }
+                Event::NetworkChanged(Ok(())) => match &self.session {
+                    Session::Creating { .. } => {
+                        tracing::debug!("Ignoring network change since we're still signing in");
+                    }
+                    Session::Connected { connlib, .. } => {
+                        connlib.reset();
+                    }
+                    Session::WaitingForNetwork { api_url, token } => {
+                        tracing::info!("Attempting to re-connect upon network change");
+
+                        let result = self.try_connect(&api_url.clone(), token.clone());
+
+                        if let Some(e) = result
+                            .as_ref()
+                            .err()
+                            .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                        {
+                            tracing::debug!("Still cannot connect to Firezone: {e}");
+
+                            continue;
+                        }
+
+                        let msg = match result {
+                            Ok(session) => {
+                                self.session = session;
+
+                                ServerMsg::connect_result(Ok(()))
+                            }
+                            Err(e) => ServerMsg::connect_result(Err(e)),
+                        };
+
+                        let _ = self
+                            .ipc_tx
+                            .send(&msg)
+                            .await
+                            .context("Failed to send `ConnectResult`");
+                    }
+                    Session::None => continue,
+                },
+                Event::DnsChanged(Ok(())) => {
+                    let Session::Connected { connlib, .. } = &self.session else {
+                        continue;
+                    };
+
+                    let resolvers = self.dns_controller.system_resolvers();
+
+                    connlib.set_dns(resolvers);
+                }
             }
         };
 
@@ -299,6 +412,15 @@ impl<'a> Handler<'a> {
         if let Poll::Ready(()) = signals.poll_recv(cx) {
             return Poll::Ready(Event::Terminate);
         }
+
+        if let Poll::Ready(Some(result)) = self.network_notifier.poll_next_unpin(cx) {
+            return Poll::Ready(Event::NetworkChanged(result));
+        }
+
+        if let Poll::Ready(Some(result)) = self.dns_notifier.poll_next_unpin(cx) {
+            return Poll::Ready(Event::DnsChanged(result));
+        }
+
         // `FramedRead::next` is cancel-safe.
         if let Poll::Ready(result) = pin!(&mut self.ipc_rx).poll_next(cx) {
             return Poll::Ready(match result {
@@ -307,21 +429,23 @@ impl<'a> Handler<'a> {
                 None => Event::IpcDisconnected,
             });
         }
-        if let Some(session) = self.session.as_mut() {
-            if let Poll::Ready(option) = session.event_stream.poll_next(cx) {
+
+        if let Some(event_stream) = self.session.as_event_stream() {
+            if let Poll::Ready(option) = event_stream.poll_next(cx) {
                 return Poll::Ready(match option {
                     Some(x) => Event::Connlib(x),
                     None => Event::CallbackChannelClosed,
                 });
             }
         }
+
         Poll::Pending
     }
 
     async fn handle_connlib_event(&mut self, msg: client_shared::Event) -> Result<()> {
         match msg {
             client_shared::Event::Disconnected(error) => {
-                let _ = self.session.take();
+                self.session = Session::None;
                 self.dns_controller.deactivate()?;
                 self.send_ipc(ServerMsg::OnDisconnect {
                     error_msg: error.to_string(),
@@ -337,15 +461,12 @@ impl<'a> Handler<'a> {
                 ipv4_routes,
                 ipv6_routes,
             } => {
+                self.session.transition_to_connected()?;
+
                 self.tun_device.set_ips(ipv4, ipv6).await?;
                 self.dns_controller.set_dns(dns, search_domain).await?;
-                if let Some(instant) = self.last_connlib_start_instant.take() {
-                    tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
-                }
                 self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
                 self.dns_controller.flush()?;
-
-                self.send_ipc(ServerMsg::TunnelReady).await?;
             }
             client_shared::Event::ResourcesUpdated(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
@@ -365,16 +486,38 @@ impl<'a> Handler<'a> {
                     .await?
             }
             ClientMsg::Connect { api_url, token } => {
-                // Warning: Connection errors don't bubble to callers of `handle_ipc_msg`.
-                let token = secrecy::SecretString::from(token);
-                let result = self.connect_to_firezone(&api_url, token);
+                let token = SecretString::new(token);
 
-                self.send_ipc(ServerMsg::ConnectResult(result)).await?
+                let result = self.try_connect(&api_url, token.clone());
+
+                if let Some(e) = result
+                    .as_ref()
+                    .err()
+                    .and_then(|e| e.root_cause().downcast_ref::<io::Error>())
+                {
+                    tracing::debug!(
+                        "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
+                    );
+                    self.session = Session::WaitingForNetwork { api_url, token };
+
+                    return Ok(());
+                }
+
+                let msg = match result {
+                    Ok(session) => {
+                        self.session = session;
+
+                        ServerMsg::connect_result(Ok(()))
+                    }
+                    Err(e) => ServerMsg::connect_result(Err(e)),
+                };
+
+                self.send_ipc(msg).await?;
             }
             ClientMsg::Disconnect => {
-                if self.session.take().is_some() {
-                    self.dns_controller.deactivate()?;
-                }
+                self.session = Session::None;
+                self.dns_controller.deactivate()?;
+
                 // Always send `DisconnectedGracefully` even if we weren't connected,
                 // so this will be idempotent.
                 self.send_ipc(ServerMsg::DisconnectedGracefully).await?;
@@ -390,35 +533,14 @@ impl<'a> Handler<'a> {
                     tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
                 }
             }
-            ClientMsg::Reset => {
-                if self.last_connlib_start_instant.is_some() {
-                    tracing::debug!("Ignoring reset since we're still signing in");
-                    return Ok(());
-                }
-                let Some(session) = self.session.as_ref() else {
-                    tracing::debug!("Cannot reset if we're signed out");
-                    return Ok(());
-                };
-
-                session.connlib.reset();
-            }
-            ClientMsg::SetDns(resolvers) => {
-                let Some(session) = self.session.as_ref() else {
-                    tracing::debug!("Cannot set DNS resolvers if we're signed out");
-                    return Ok(());
-                };
-
-                tracing::debug!(?resolvers);
-                session.connlib.set_dns(resolvers);
-            }
             ClientMsg::SetDisabledResources(disabled_resources) => {
-                let Some(session) = self.session.as_ref() else {
+                let Some(connlib) = self.session.as_connlib() else {
                     // At this point, the GUI has already saved the disabled Resources to disk, so it'll be correct on the next sign-in anyway.
                     tracing::debug!("Cannot set disabled resources if we're signed out");
                     return Ok(());
                 };
 
-                session.connlib.set_disabled_resources(disabled_resources);
+                connlib.set_disabled_resources(disabled_resources);
             }
             ClientMsg::StartTelemetry {
                 environment,
@@ -439,14 +561,10 @@ impl<'a> Handler<'a> {
 
     /// Connects connlib
     ///
-    /// Panics if there's no Tokio runtime or if connlib is already connected
-    ///
-    /// Throws matchable errors for bad URLs, unable to reach the portal, or unable to create the tunnel device
-    fn connect_to_firezone(
-        &mut self,
-        api_url: &str,
-        token: SecretString,
-    ) -> Result<(), ConnectError> {
+    /// Panics if there's no Tokio runtime or if connlib is already connected.
+    fn try_connect(&mut self, api_url: &str, token: SecretString) -> Result<Session> {
+        let started_at = Instant::now();
+
         let _connect_span = telemetry_span!("connect_to_firezone").entered();
 
         assert!(self.session.is_none());
@@ -466,8 +584,6 @@ impl<'a> Handler<'a> {
         )
         .context("Failed to create `LoginUrl`")?;
 
-        self.last_connlib_start_instant = Some(Instant::now());
-
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
@@ -480,7 +596,7 @@ impl<'a> Handler<'a> {
                     .build()
             },
             Arc::new(tcp_socket_factory),
-        )?; // Turn this `io::Error` directly into an `Error` so we can distinguish it from others in the GUI client.
+        )?;
 
         // Read the resolvers before starting connlib, in case connlib's startup interferes.
         let dns = self.dns_controller.system_resolvers();
@@ -506,13 +622,11 @@ impl<'a> Handler<'a> {
         };
         connlib.set_tun(tun);
 
-        let session = Session {
+        Ok(Session::Creating {
             event_stream,
             connlib,
-        };
-        self.session = Some(session);
-
-        Ok(())
+            started_at,
+        })
     }
 
     async fn send_ipc(&mut self, msg: ServerMsg) -> Result<()> {
@@ -589,4 +703,32 @@ pub fn run_smoke_test() -> Result<()> {
 #[cfg(not(debug_assertions))]
 pub fn run_smoke_test() -> Result<()> {
     anyhow::bail!("Smoke test is not built for release binaries.");
+}
+
+async fn new_dns_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_dns_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
+}
+
+async fn new_network_notifier() -> Result<impl Stream<Item = Result<()>>> {
+    let worker = firezone_bin_shared::new_network_notifier(
+        tokio::runtime::Handle::current(),
+        DnsControlMethod::default(),
+    )
+    .await?;
+
+    Ok(stream::try_unfold(worker, |mut worker| async move {
+        let () = worker.notified().await?;
+
+        Ok(Some(((), worker)))
+    }))
 }
