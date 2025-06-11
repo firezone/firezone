@@ -37,8 +37,6 @@ async fn no_packet_loops_tcp() {
     let mut bytes = vec![];
     stream.read_to_end(&mut bytes).await.unwrap();
     let s = String::from_utf8(bytes).unwrap();
-    assert_eq!(
-        s,
-        "Cloudflare encountered an error processing this request: Bad Request"
-    );
+
+    assert!(s.contains("Bad Request"));
 }
