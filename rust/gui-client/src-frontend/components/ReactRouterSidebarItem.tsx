@@ -18,11 +18,7 @@ export default function ReactRouterSidebarItem({
   // Custom navigation handler for SidebarItems to avoid full page reloads
   const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const target = event.currentTarget;
-    const href = target.getAttribute("href");
-    if (href) {
-      navigate(href);
-    }
+    navigate(href);
   };
 
   return (
