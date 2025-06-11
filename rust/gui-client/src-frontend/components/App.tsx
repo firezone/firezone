@@ -17,7 +17,7 @@ import {
   SidebarItems,
 } from "flowbite-react";
 import React, { useEffect, useState } from "react";
-import { NavLink, Route, Routes } from "react-router";
+import { Route, Routes, useNavigate, useLocation } from "react-router";
 import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
 import { FileCount } from "../generated/FileCount";
 import { SessionViewModel } from "../generated/SessionViewModel";
@@ -36,6 +36,19 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   let [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Custom navigation handler for SidebarItems to avoid full page reloads
+  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const target = event.currentTarget;
+    const href = target.getAttribute("href");
+    if (href) {
+      navigate(href);
+    }
+  };
 
   useEffect(() => {
     const sessionChanged = listen<SessionViewModel>("session_changed", (e) => {
@@ -79,7 +92,7 @@ export default function App() {
       advancedSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
       logsRecountedUnlisten.then((unlistenFn) => unlistenFn());
     };
-  }, []);
+  }, [location, handleClick]);
 
   const isDev = import.meta.env.DEV;
 
@@ -91,65 +104,59 @@ export default function App() {
       >
         <SidebarItems>
           <SidebarItemGroup>
-            <NavLink to="/overview">
-              {({ isActive }) => (
-                <SidebarItem active={isActive} icon={HomeIcon} as="div">
-                  Overview
-                </SidebarItem>
-              )}
-            </NavLink>
+            <SidebarItem
+              active={location.pathname.startsWith("/overview")}
+              icon={HomeIcon}
+              href="/overview"
+              onClick={handleClick}
+            >
+              Overview
+            </SidebarItem>
             <SidebarCollapse label="Settings" open={true} icon={Bars3Icon}>
-              <NavLink to="/general-settings">
-                {({ isActive }) => (
-                  <SidebarItem active={isActive} icon={CogIcon} as="div">
-                    General
-                  </SidebarItem>
-                )}
-              </NavLink>
-              <NavLink to="/advanced-settings">
-                {({ isActive }) => (
-                  <SidebarItem
-                    active={isActive}
-                    icon={WrenchScrewdriverIcon}
-                    as="div"
-                  >
-                    Advanced
-                  </SidebarItem>
-                )}
-              </NavLink>
+              <SidebarItem
+                active={location.pathname.startsWith("/general-settings")}
+                icon={CogIcon}
+                href="/general-settings"
+                onClick={handleClick}
+              >
+                General
+              </SidebarItem>
+              <SidebarItem
+                active={location.pathname.startsWith("/advanced-settings")}
+                icon={WrenchScrewdriverIcon}
+                href="/advanced-settings"
+                onClick={handleClick}
+              >
+                Advanced
+              </SidebarItem>
             </SidebarCollapse>
-            <NavLink to="/diagnostics">
-              {({ isActive }) => (
-                <SidebarItem
-                  active={isActive}
-                  icon={DocumentMagnifyingGlassIcon}
-                  as="div"
-                >
-                  Diagnostics
-                </SidebarItem>
-              )}
-            </NavLink>
-            <NavLink to="/about">
-              {({ isActive }) => (
-                <SidebarItem
-                  active={isActive}
-                  icon={InformationCircleIcon}
-                  as="div"
-                >
-                  About
-                </SidebarItem>
-              )}
-            </NavLink>
+            <SidebarItem
+              active={location.pathname.startsWith("/diagnostics")}
+              icon={DocumentMagnifyingGlassIcon}
+              href="/diagnostics"
+              onClick={handleClick}
+            >
+              Diagnostics
+            </SidebarItem>
+            <SidebarItem
+              active={location.pathname.startsWith("/about")}
+              icon={InformationCircleIcon}
+              href="/about"
+              onClick={handleClick}
+            >
+              About
+            </SidebarItem>
           </SidebarItemGroup>
           {isDev && (
             <SidebarItemGroup>
-              <NavLink to="/colour-palette">
-                {({ isActive }) => (
-                  <SidebarItem active={isActive} icon={SwatchIcon} as="div">
-                    Color Palette
-                  </SidebarItem>
-                )}
-              </NavLink>
+              <SidebarItem
+                active={location.pathname.startsWith("/colour-palette")}
+                icon={SwatchIcon}
+                href="/colour-palette"
+                onClick={handleClick}
+              >
+                Color Palette
+              </SidebarItem>
             </SidebarItemGroup>
           )}
         </SidebarItems>

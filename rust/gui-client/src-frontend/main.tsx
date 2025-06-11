@@ -8,8 +8,12 @@ import * as Sentry from "@sentry/react";
 const customTheme = createTheme({
   sidebar: {
     root: { inner: "rounded-none bg-white" },
+    collapse: {
+      button: "cursor-pointer",
+    },
   },
   button: {
+    base: "cursor-pointer",
     color: {
       default: "bg-accent-450 hover:bg-accent-700 text-white",
       alternative:
