@@ -1791,11 +1791,8 @@ defmodule Domain.ActorsTest do
 
       assert memberships = Repo.all(Actors.Membership)
       assert length(memberships) == 0
-
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
-
       assert {:ok, _results} = update_managed_group_memberships(account.id)
-
       assert memberships = Repo.all(Actors.Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
       refute Enum.any?(memberships, &(&1.group_id == static_group.id))
@@ -1806,11 +1803,220 @@ defmodule Domain.ActorsTest do
       identity: identity
     } do
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
-
       assert {:ok, _results} = update_managed_group_memberships(account.id)
-
       assert memberships = Repo.all(Actors.Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
+    end
+
+    test "removes memberships when actor is deleted", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      actor2 = Fixtures.Actors.create_actor(account: account)
+
+      Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      # Delete the actor
+      {:ok, _deleted_actor} = Actors.delete_actor(actor2, subject)
+
+      # Update memberships - should remove the membership for deleted actor and keep for the existing actor
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert [membership] = Repo.all(Actors.Membership)
+      assert membership.actor_id == actor.id
+    end
+
+    test "removes memberships when managed group is deleted", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      managed_group =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      # Create initial memberships
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert [membership] = Repo.all(Actors.Membership)
+      assert membership.actor_id == actor.id
+      assert membership.group_id == managed_group.id
+
+      # Delete the managed group
+      {:ok, _deleted_group} = Actors.delete_group(managed_group, subject)
+
+      # Update memberships - should remove the membership for deleted group
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert [] = Repo.all(Actors.Membership)
+    end
+
+    test "handles multiple actors and multiple managed groups", %{
+      account: account,
+      actor: actor1
+    } do
+      # Create additional actors
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      # Create multiple managed groups
+      managed_group1 =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group 1")
+
+      managed_group2 =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group 2")
+
+      # Update memberships
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
+      memberships = Repo.all(Actors.Membership)
+      # 3 actors × 2 managed groups
+      assert length(memberships) == 6
+
+      # Verify each actor is in each managed group
+      actor_ids = [actor1.id, actor2.id, actor3.id]
+      group_ids = [managed_group1.id, managed_group2.id]
+
+      for actor_id <- actor_ids, group_id <- group_ids do
+        assert Enum.any?(memberships, fn m ->
+                 m.actor_id == actor_id && m.group_id == group_id
+               end)
+      end
+    end
+
+    test "doesn't create duplicate memberships on multiple runs", %{
+      account: account,
+      actor: actor
+    } do
+      managed_group =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      # Run the function multiple times
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
+      # Should still only have one membership
+      assert [membership] = Repo.all(Actors.Membership)
+      assert membership.actor_id == actor.id
+      assert membership.group_id == managed_group.id
+    end
+
+    test "handles accounts with no managed groups", %{account: account} do
+      # Create some non-managed groups
+      _static_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          name: "Static Group",
+          subject: %{account: account}
+        )
+
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert [] = Repo.all(Actors.Membership)
+    end
+
+    test "handles accounts with no actors", %{account: account} do
+      Repo.delete_all(Auth.Identity)
+      Repo.delete_all(Actors.Actor)
+
+      Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert [] = Repo.all(Actors.Membership)
+    end
+
+    test "only affects the specified account" do
+      account1 = Fixtures.Accounts.create_account()
+      account2 = Fixtures.Accounts.create_account()
+
+      managed_group1 =
+        Fixtures.Actors.create_managed_group(
+          account: account1,
+          name: "Account 1 Group",
+          memberships: []
+        )
+
+      Fixtures.Actors.create_managed_group(
+        account: account2,
+        name: "Account 2 Group",
+        memberships: []
+      )
+
+      actor1 = Fixtures.Actors.create_actor(account: account1)
+      Fixtures.Actors.create_actor(account: account2)
+
+      # Update memberships for account1 only
+      assert {:ok, _results} = update_managed_group_memberships(account1.id)
+
+      memberships = Repo.all(Actors.Membership)
+
+      # Should only have membership for account1
+      assert [membership] = memberships
+      assert membership.actor_id == actor1.id
+      assert membership.group_id == managed_group1.id
+      assert membership.account_id == account1.id
+
+      # No memberships should exist for account2
+      refute Enum.any?(memberships, &(&1.account_id == account2.id))
+    end
+
+    test "preserves existing non-stale memberships and adds missing ones", %{
+      account: account,
+      actor: actor1
+    } do
+      managed_group =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
+
+      # Membership is already created for actor1
+
+      # Update memberships - should keep existing and add missing for actor2
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
+      memberships = Repo.all(Actors.Membership)
+      assert length(memberships) == 2
+
+      # Original membership should still exist
+      assert Repo.get_by(Actors.Membership, actor_id: actor1.id, group_id: managed_group.id)
+
+      # New membership for actor2 should be created
+      assert Enum.any?(
+               memberships,
+               &(&1.actor_id == actor2.id and &1.group_id == managed_group.id)
+             )
+    end
+
+    test "handles mixed scenarios with additions and deletions", %{
+      account: account,
+      actor: actor1,
+      subject: subject
+    } do
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      managed_group1 = Fixtures.Actors.create_managed_group(account: account, name: "Group 1")
+      managed_group2 = Fixtures.Actors.create_managed_group(account: account, name: "Group 2")
+
+      # Initial state: all actors in all groups
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      # 3 actors × 2 groups
+      assert length(Repo.all(Actors.Membership)) == 6
+
+      # Delete one actor and one group
+      {:ok, _} = Actors.delete_actor(actor2, subject)
+      {:ok, _} = Actors.delete_group(managed_group2, subject)
+
+      # Update memberships
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
+      memberships = Repo.all(Actors.Membership)
+      # 2 remaining actors × 1 remaining group
+      assert length(memberships) == 2
+
+      # Verify correct memberships remain
+      remaining_actor_ids = [actor1.id, actor3.id]
+
+      assert Enum.all?(memberships, fn m ->
+               m.actor_id in remaining_actor_ids && m.group_id == managed_group1.id
+             end)
     end
   end
 
