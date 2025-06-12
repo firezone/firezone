@@ -1,7 +1,7 @@
 defmodule Domain.PoliciesTest do
   use Domain.DataCase, async: true
   import Domain.Policies
-  alias Domain.Policies
+  alias Domain.{Events, Policies}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -390,6 +390,48 @@ defmodule Domain.PoliciesTest do
                }
              ]
     end
+
+    test "broadcasts an account message when policy is created", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      attrs = %{
+        actor_group_id: actor_group.id,
+        resource_id: resource.id
+      }
+
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
+
+      assert {:ok, policy} = create_policy(attrs, subject)
+
+      assert_receive {:create_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts an actor group message when policy is created", %{
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      attrs = %{
+        actor_group_id: actor_group.id,
+        resource_id: resource.id
+      }
+
+      :ok = subscribe_to_events_for_actor_group(actor_group)
+
+      assert {:ok, policy} = create_policy(attrs, subject)
+
+      assert_receive {:allow_access, policy_id, actor_group_id, resource_id}
+      assert policy_id == policy.id
+      assert actor_group_id == actor_group.id
+      assert resource_id == resource.id
+    end
   end
 
   describe "update_policy/3" do
@@ -426,6 +468,47 @@ defmodule Domain.PoliciesTest do
       attrs = %{description: "updated policy description"}
       assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
       assert updated_policy.description == attrs.description
+    end
+
+    test "broadcasts an account message when policy is updated", %{
+      account: account,
+      subject: subject,
+      policy: policy
+    } do
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
+
+      attrs = %{description: "updated policy description"}
+      assert {:ok, policy} = update_policy(policy, attrs, subject)
+
+      assert_receive {:update_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts a policy message when policy is updated", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_policy(policy)
+
+      attrs = %{description: "updated policy description"}
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
+      assert updated_policy.id == policy.id
+
+      assert_receive {:update_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "does not broadcast an actor group message when policy is updated", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
+
+      attrs = %{description: "updated policy description"}
+      assert {:ok, _policy} = update_policy(policy, attrs, subject)
+
+      refute_receive {:allow_access, _policy_id, _actor_group_id, _resource_id}
+      refute_receive {:reject_access, _policy_id, _actor_group_id, _resource_id}
     end
 
     test "updates a policy when resource_id is changed", %{
@@ -512,7 +595,22 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{resource_id: new_resource.id, actor_group_id: new_actor_group.id}
 
-      assert {:ok, _updated_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
+
+      # Updating a policy sends delete and create events
+      assert_receive {:delete_policy, policy_id}
+      assert policy_id == policy.id
+
+      assert_receive {:create_policy, policy_id}
+      assert policy_id == updated_policy.id
+
+      assert_receive {:reject_access, policy_id, actor_group_id, resource_id}
+      assert policy_id == policy.id
+      assert actor_group_id == policy.actor_group_id
+      assert resource_id == policy.resource_id
+
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "returns error when subject has no permission to update policies", %{
@@ -575,6 +673,70 @@ defmodule Domain.PoliciesTest do
       assert is_nil(other_policy.disabled_at)
     end
 
+    test "expires policy flows", %{
+      account: account,
+      policy: policy,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy
+        )
+
+      assert {:ok, _policy} = disable_policy(policy, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+    end
+
+    test "broadcasts an account message when policy is disabled", %{
+      account: account,
+      subject: subject,
+      policy: policy
+    } do
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
+
+      assert {:ok, policy} = disable_policy(policy, subject)
+
+      assert_receive {:disable_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts a policy message when policy is disabled", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_policy(policy)
+
+      assert {:ok, policy} = disable_policy(policy, subject)
+
+      assert_receive {:disable_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts an actor group message when policy is disabled", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
+
+      assert {:ok, policy} = disable_policy(policy, subject)
+
+      assert_receive {:reject_access, policy_id, actor_group_id, resource_id}
+      assert policy_id == policy.id
+      assert actor_group_id == policy.actor_group_id
+      assert resource_id == policy.resource_id
+    end
+
     test "does not do anything when an policy is disabled twice", %{
       subject: subject,
       account: account
@@ -630,6 +792,45 @@ defmodule Domain.PoliciesTest do
       assert is_nil(policy.disabled_at)
     end
 
+    test "broadcasts an account message when policy is enabled", %{
+      account: account,
+      subject: subject,
+      policy: policy
+    } do
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
+
+      assert {:ok, policy} = enable_policy(policy, subject)
+
+      assert_receive {:enable_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts a policy message when policy is enabled", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_policy(policy)
+
+      assert {:ok, policy} = enable_policy(policy, subject)
+
+      assert_receive {:enable_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts an actor group message when policy is enabled", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
+
+      assert {:ok, policy} = enable_policy(policy, subject)
+
+      assert_receive {:allow_access, policy_id, actor_group_id, resource_id}
+      assert policy_id == policy.id
+      assert actor_group_id == policy.actor_group_id
+      assert resource_id == policy.resource_id
+    end
+
     test "does not do anything when an policy is enabled twice", %{
       subject: subject,
       policy: policy
@@ -674,6 +875,70 @@ defmodule Domain.PoliciesTest do
     test "deletes policy", %{policy: policy, subject: subject} do
       assert {:ok, deleted_policy} = delete_policy(policy, subject)
       assert deleted_policy.deleted_at != nil
+    end
+
+    test "expires policy flows", %{
+      account: account,
+      policy: policy,
+      identity: identity,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          policy: policy
+        )
+
+      assert {:ok, _policy} = delete_policy(policy, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+
+      flow = Repo.reload(flow)
+      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+    end
+
+    test "broadcasts an account message when policy is deleted", %{
+      account: account,
+      subject: subject,
+      policy: policy
+    } do
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
+
+      assert {:ok, policy} = delete_policy(policy, subject)
+
+      assert_receive {:delete_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts a policy message when policy is deleted", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_policy(policy)
+
+      assert {:ok, policy} = delete_policy(policy, subject)
+
+      assert_receive {:delete_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts an actor group message when policy is deleted", %{
+      subject: subject,
+      policy: policy
+    } do
+      :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
+
+      assert {:ok, policy} = delete_policy(policy, subject)
+
+      assert_receive {:reject_access, policy_id, actor_group_id, resource_id}
+      assert policy_id == policy.id
+      assert actor_group_id == policy.actor_group_id
+      assert resource_id == policy.resource_id
     end
 
     test "returns error when subject has no permission to delete policies", %{
@@ -810,6 +1075,70 @@ defmodule Domain.PoliciesTest do
       assert deleted_policy.id == policy.id
 
       assert is_nil(Repo.get(Policies.Policy, other_policy.id).deleted_at)
+    end
+
+    test "expires policy flows", %{
+      account: account,
+      identity: identity,
+      policy: policy,
+      resource: resource,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, identity: identity)
+
+      Fixtures.Flows.create_flow(
+        account: account,
+        subject: subject,
+        client: client,
+        policy: policy,
+        resource: resource
+      )
+
+      assert {:ok, [_deleted_policy]} = delete_policies_for(resource, subject)
+
+      expires_at = Repo.one(Domain.Flows.Flow).expires_at
+      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+    end
+
+    test "broadcasts an account message when policy is deleted", %{
+      account: account,
+      resource: resource,
+      subject: subject
+    } do
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
+
+      assert {:ok, [policy]} = delete_policies_for(resource, subject)
+
+      assert_receive {:delete_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts a policy message when policy is deleted", %{
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      :ok = subscribe_to_events_for_policy(policy)
+
+      assert {:ok, [policy]} = delete_policies_for(resource, subject)
+
+      assert_receive {:delete_policy, policy_id}
+      assert policy_id == policy.id
+    end
+
+    test "broadcasts an actor group message when policy is deleted", %{
+      resource: resource,
+      actor_group: actor_group,
+      subject: subject
+    } do
+      :ok = subscribe_to_events_for_actor_group(actor_group)
+
+      assert {:ok, [policy]} = delete_policies_for(resource, subject)
+
+      assert_receive {:reject_access, policy_id, actor_group_id, resource_id}
+      assert policy_id == policy.id
+      assert actor_group_id == policy.actor_group_id
+      assert resource_id == policy.resource_id
     end
 
     test "returns error when subject has no permission to delete policies", %{

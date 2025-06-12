@@ -9,13 +9,9 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
   def on_update(_old_data, _data), do: :ok
 
   def on_delete(%{"actor_id" => actor_id, "group_id" => group_id} = _old_data) do
-    Task.start(fn ->
-      {:ok, _flows} = Flows.expire_flows_for(actor_id, group_id)
-      broadcast_access(:reject, actor_id, group_id)
-      broadcast(:delete, actor_id, group_id)
-    end)
-
-    :ok
+    {:ok, _flows} = Flows.expire_flows_for(actor_id, group_id)
+    broadcast_access(:reject, actor_id, group_id)
+    broadcast(:delete, actor_id, group_id)
   end
 
   def broadcast(action, actor_id, group_id) do
@@ -26,8 +22,7 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
   end
 
   defp broadcast_access(action, actor_id, group_id) do
-    # TODO: WAL
-    # This N+1 query will go away when we broadcast flows directly
+    # TODO: There's likely a bug here - need to omit disabled policies too
     Policies.Policy.Query.not_deleted()
     |> Policies.Policy.Query.by_actor_group_id(group_id)
     |> Repo.all()

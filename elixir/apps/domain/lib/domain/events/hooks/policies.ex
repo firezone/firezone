@@ -3,12 +3,7 @@ defmodule Domain.Events.Hooks.Policies do
   require Logger
 
   def on_insert(
-        %{
-          "id" => policy_id,
-          "account_id" => account_id,
-          "actor_group_id" => actor_group_id,
-          "resource_id" => resource_id
-        } =
+        %{"id" => policy_id, "actor_group_id" => actor_group_id, "resource_id" => resource_id} =
           _data
       ) do
     # TODO: WAL
@@ -16,7 +11,7 @@ defmodule Domain.Events.Hooks.Policies do
     payload = {:create_policy, policy_id}
     access_payload = {:allow_access, policy_id, actor_group_id, resource_id}
     :ok = broadcast(policy_id, payload)
-    :ok = Events.Hooks.Accounts.broadcast_to_policies(account_id, payload)
+    :ok = Events.Hooks.Accounts.broadcast_to_policies(policy_id, payload)
     :ok = Events.Hooks.ActorGroups.broadcast_to_policies(actor_group_id, access_payload)
   end
 
@@ -26,7 +21,6 @@ defmodule Domain.Events.Hooks.Policies do
         %{
           "disabled_at" => nil,
           "id" => policy_id,
-          "account_id" => account_id,
           "actor_group_id" => actor_group_id,
           "resource_id" => resource_id
         } = _data
@@ -37,7 +31,7 @@ defmodule Domain.Events.Hooks.Policies do
     payload = {:enable_policy, policy_id}
     access_payload = {:allow_access, policy_id, actor_group_id, resource_id}
     :ok = broadcast(policy_id, payload)
-    :ok = Events.Hooks.Accounts.broadcast_to_policies(account_id, payload)
+    :ok = Events.Hooks.Accounts.broadcast_to_policies(policy_id, payload)
     :ok = Events.Hooks.ActorGroups.broadcast_to_policies(actor_group_id, access_payload)
   end
 
@@ -47,7 +41,6 @@ defmodule Domain.Events.Hooks.Policies do
         %{
           "disabled_at" => disabled_at,
           "id" => policy_id,
-          "account_id" => account_id,
           "actor_group_id" => actor_group_id,
           "resource_id" => resource_id
         } = _data
@@ -61,11 +54,9 @@ defmodule Domain.Events.Hooks.Policies do
       payload = {:disable_policy, policy_id}
       access_payload = {:reject_access, policy_id, actor_group_id, resource_id}
       :ok = broadcast(policy_id, payload)
-      :ok = Events.Hooks.Accounts.broadcast_to_policies(account_id, payload)
+      :ok = Events.Hooks.Accounts.broadcast_to_policies(policy_id, payload)
       :ok = Events.Hooks.ActorGroups.broadcast_to_policies(actor_group_id, access_payload)
     end)
-
-    :ok
   end
 
   # Soft-delete
@@ -83,14 +74,12 @@ defmodule Domain.Events.Hooks.Policies do
   def on_update(
         %{
           "id" => old_policy_id,
-          "account_id" => old_account_id,
           "actor_group_id" => old_actor_group_id,
           "resource_id" => old_resource_id,
           "conditions" => old_conditions
         } = _old_data,
         %{
           "id" => policy_id,
-          "account_id" => account_id,
           "actor_group_id" => actor_group_id,
           "resource_id" => resource_id,
           "conditions" => conditions
@@ -108,35 +97,34 @@ defmodule Domain.Events.Hooks.Policies do
         payload = {:delete_policy, old_policy_id}
         access_payload = {:reject_access, old_policy_id, old_actor_group_id, old_resource_id}
         :ok = broadcast(old_policy_id, payload)
-        :ok = Events.Hooks.Accounts.broadcast_to_policies(old_account_id, payload)
+        :ok = Events.Hooks.Accounts.broadcast_to_policies(old_policy_id, payload)
         :ok = Events.Hooks.ActorGroups.broadcast_to_policies(old_actor_group_id, access_payload)
 
         payload = {:create_policy, policy_id}
         access_payload = {:allow_access, policy_id, actor_group_id, resource_id}
         :ok = broadcast(policy_id, payload)
-        :ok = Events.Hooks.Accounts.broadcast_to_policies(account_id, payload)
+        :ok = Events.Hooks.Accounts.broadcast_to_policies(policy_id, payload)
         :ok = Events.Hooks.ActorGroups.broadcast_to_policies(actor_group_id, access_payload)
       end)
     else
       Logger.warning("Breaking update ignored for policy as it is deleted or disabled",
         policy_id: policy_id
       )
-    end
 
-    :ok
+      :ok
+    end
   end
 
   # Regular update - name, description, etc
-  def on_update(_old_data, %{"id" => policy_id, "account_id" => account_id} = _data) do
+  def on_update(_old_data, %{"id" => policy_id} = _data) do
     payload = {:update_policy, policy_id}
     :ok = broadcast(policy_id, payload)
-    :ok = Events.Hooks.Accounts.broadcast_to_policies(account_id, payload)
+    :ok = Events.Hooks.Accounts.broadcast_to_policies(policy_id, payload)
   end
 
   def on_delete(
         %{
           "id" => policy_id,
-          "account_id" => account_id,
           "actor_group_id" => actor_group_id,
           "resource_id" => resource_id
         } = _old_data
@@ -148,11 +136,25 @@ defmodule Domain.Events.Hooks.Policies do
       payload = {:delete_policy, policy_id}
       access_payload = {:reject_access, policy_id, actor_group_id, resource_id}
       :ok = broadcast(policy_id, payload)
-      :ok = Events.Hooks.Accounts.broadcast_to_policies(account_id, payload)
+      :ok = Events.Hooks.Accounts.broadcast_to_policies(policy_id, payload)
       :ok = Events.Hooks.ActorGroups.broadcast_to_policies(actor_group_id, access_payload)
     end)
+  end
 
-    :ok
+  def subscribe(policy_id) do
+    policy_id
+    |> topic()
+    |> PubSub.subscribe()
+  end
+
+  defp broadcast(policy_id, payload) do
+    policy_id
+    |> topic()
+    |> PubSub.broadcast(payload)
+  end
+
+  defp topic(policy_id) do
+    "policy:#{policy_id}"
   end
 
   def subscribe(policy_id) do

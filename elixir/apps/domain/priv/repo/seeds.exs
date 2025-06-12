@@ -994,8 +994,8 @@ defmodule Domain.Repo.Seeds do
         %{
           type: :cidr,
           name: "MyCorp Network",
-          address: "172.20.0.1/16",
-          address_description: "172.20.0.1/16",
+          address: "172.1.0.1/16",
+          address_description: "172.1.0.1/16",
           connections: [%{gateway_group_id: gateway_group.id}],
           filters: []
         },
