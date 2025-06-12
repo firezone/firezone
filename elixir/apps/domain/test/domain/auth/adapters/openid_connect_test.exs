@@ -306,7 +306,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
     # NOTE: The only time this should happen is if an IdP reuses an email address
     #       that is already in use in Firezone for a given provider
-    test "allows duplicate emails when provider_identitier is unique", %{
+    test "allows duplicate emails when provider_identifier is unique", %{
       account: account,
       provider: provider,
       bypass: bypass
