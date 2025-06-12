@@ -2,10 +2,6 @@
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
-import com.google.firebase.crashlytics.ktx.crashlytics
-import com.google.firebase.ktx.Firebase
-import com.google.gson.Gson
-import dev.firezone.android.tunnel.ConnlibSession
 import dev.firezone.android.tunnel.TunnelService
 import dev.firezone.android.tunnel.TunnelStatusNotification
 import java.net.InetAddress
@@ -35,16 +31,12 @@ class NetworkMonitor(
                     linkProperties.dnsServers.mapNotNull {
                         it.hostAddress?.split("%")?.getOrNull(0)
                     }
-                tunnelService.connlibSessionPtr?.let {
-                    ConnlibSession.setDns(it, Gson().toJson(dnsList))
-                } ?: Firebase.crashlytics.recordException(NullPointerException("connlibSessionPtr is null"))
+                tunnelService.setDns(dnsList)
             }
 
             if (lastNetwork != network) {
                 lastNetwork = network
-                tunnelService.connlibSessionPtr?.let {
-                    ConnlibSession.reset(it)
-                } ?: Firebase.crashlytics.recordException(NullPointerException("connlibSessionPtr is null"))
+                tunnelService.reset()
             }
 
             // Release mutex lock
