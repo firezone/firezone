@@ -1,7 +1,7 @@
 defmodule Domain.PoliciesTest do
   use Domain.DataCase, async: true
   import Domain.Policies
-  alias Domain.Policies
+  alias Domain.{Events, Policies}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -403,7 +403,7 @@ defmodule Domain.PoliciesTest do
         resource_id: resource.id
       }
 
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
 
       assert {:ok, policy} = create_policy(attrs, subject)
 
@@ -453,7 +453,7 @@ defmodule Domain.PoliciesTest do
     end
 
     test "does nothing on empty params", %{policy: policy, subject: subject} do
-      assert {:updated, _policy} = update_policy(policy, %{}, subject)
+      assert {:ok, _policy} = update_policy(policy, %{}, subject)
     end
 
     test "returns changeset error on invalid params", %{account: account, subject: subject} do
@@ -466,7 +466,7 @@ defmodule Domain.PoliciesTest do
 
     test "allows update to description", %{policy: policy, subject: subject} do
       attrs = %{description: "updated policy description"}
-      assert {:updated, updated_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
       assert updated_policy.description == attrs.description
     end
 
@@ -475,10 +475,10 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
 
       attrs = %{description: "updated policy description"}
-      assert {:updated, policy} = update_policy(policy, attrs, subject)
+      assert {:ok, policy} = update_policy(policy, attrs, subject)
 
       assert_receive {:update_policy, policy_id}
       assert policy_id == policy.id
@@ -491,7 +491,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_policy(policy)
 
       attrs = %{description: "updated policy description"}
-      assert {:updated, updated_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
       assert updated_policy.id == policy.id
 
       assert_receive {:update_policy, policy_id}
@@ -505,7 +505,7 @@ defmodule Domain.PoliciesTest do
       :ok = subscribe_to_events_for_actor_group(policy.actor_group_id)
 
       attrs = %{description: "updated policy description"}
-      assert {:updated, _policy} = update_policy(policy, attrs, subject)
+      assert {:ok, _policy} = update_policy(policy, attrs, subject)
 
       refute_receive {:allow_access, _policy_id, _actor_group_id, _resource_id}
       refute_receive {:reject_access, _policy_id, _actor_group_id, _resource_id}
@@ -520,7 +520,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{resource_id: new_resource.id}
 
-      assert {:updated, updated_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
 
       assert updated_policy.resource_id != policy.resource_id
       assert updated_policy.resource_id == attrs[:resource_id]
@@ -537,7 +537,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{actor_group_id: new_actor_group.id}
 
-      assert {:updated, updated_policy} =
+      assert {:ok, updated_policy} =
                update_policy(policy, attrs, subject)
 
       assert updated_policy.id == policy.id
@@ -561,7 +561,7 @@ defmodule Domain.PoliciesTest do
         ]
       }
 
-      assert {:updated, updated_policy} =
+      assert {:ok, updated_policy} =
                update_policy(policy, attrs, subject)
 
       assert updated_policy.id == policy.id
@@ -599,7 +599,7 @@ defmodule Domain.PoliciesTest do
 
       attrs = %{resource_id: new_resource.id, actor_group_id: new_actor_group.id}
 
-      assert {:updated, updated_policy} = update_policy(policy, attrs, subject)
+      assert {:ok, updated_policy} = update_policy(policy, attrs, subject)
 
       # Updating a policy sends delete and create events
       assert_receive {:delete_policy, policy_id}
@@ -707,7 +707,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
 
       assert {:ok, policy} = disable_policy(policy, subject)
 
@@ -801,7 +801,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
 
       assert {:ok, policy} = enable_policy(policy, subject)
 
@@ -911,7 +911,7 @@ defmodule Domain.PoliciesTest do
       subject: subject,
       policy: policy
     } do
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
 
       assert {:ok, policy} = delete_policy(policy, subject)
 
@@ -1109,7 +1109,7 @@ defmodule Domain.PoliciesTest do
       resource: resource,
       subject: subject
     } do
-      :ok = subscribe_to_events_for_account(account)
+      :ok = Events.Hooks.Accounts.subscribe_to_policies(account.id)
 
       assert {:ok, [policy]} = delete_policies_for(resource, subject)
 

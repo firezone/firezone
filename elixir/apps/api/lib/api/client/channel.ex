@@ -138,8 +138,8 @@ defmodule API.Client.Channel do
 
       # We subscribe for policy access events for the actor and the groups the client is a member of,
       actor_group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)
-      :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
-      :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
+      :ok = Enum.each(actor_group_ids, &Events.Hooks.ActorGroups.subscribe_to_policies/1)
+      :ok = Events.Hooks.Actors.subscribe_to_policies(socket.assigns.subject.actor.id)
 
       {:ok, socket} = init(socket)
 
@@ -299,12 +299,12 @@ defmodule API.Client.Channel do
 
   # Those events are broadcasted by Actors whenever a membership is created or deleted
   def handle_info({:create_membership, _actor_id, group_id}, socket) do
-    :ok = Policies.subscribe_to_events_for_actor_group(group_id)
+    :ok = Events.Hooks.ActorGroups.subscribe_to_policies(group_id)
     {:noreply, socket}
   end
 
   def handle_info({:delete_membership, _actor_id, group_id}, socket) do
-    :ok = Policies.unsubscribe_from_events_for_actor_group(group_id)
+    :ok = Events.Hooks.ActorGroups.unsubscribe_from_policies(group_id)
     {:noreply, socket}
   end
 

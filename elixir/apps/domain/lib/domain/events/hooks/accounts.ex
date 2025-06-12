@@ -2,9 +2,7 @@ defmodule Domain.Events.Hooks.Accounts do
   alias Domain.PubSub
   require Logger
 
-  def on_insert(_data) do
-    :ok
-  end
+  def on_insert(_data), do: :ok
 
   # Account disabled - disconnect clients
   def on_update(
@@ -43,6 +41,12 @@ defmodule Domain.Events.Hooks.Accounts do
     |> PubSub.subscribe()
   end
 
+  def subscribe_to_policies(account_id) do
+    account_id
+    |> policies_topic()
+    |> PubSub.subscribe()
+  end
+
   def subscribe_to_clients_presence(account_id) do
     account_id
     |> clients_presence_topic()
@@ -73,8 +77,18 @@ defmodule Domain.Events.Hooks.Accounts do
     |> PubSub.broadcast(payload)
   end
 
+  def broadcast_to_policies(account_id, payload) do
+    account_id
+    |> policies_topic()
+    |> PubSub.broadcast(payload)
+  end
+
   defp resources_topic(account_id) do
     "account_resources:#{account_id}"
+  end
+
+  defp policies_topic(account_id) do
+    "account_policies:#{account_id}"
   end
 
   defp topic(account_id) do
