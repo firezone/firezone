@@ -1794,7 +1794,7 @@ defmodule Domain.ActorsTest do
 
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
-      assert {:ok, [_group]} = update_managed_group_memberships(account.id)
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
 
       assert memberships = Repo.all(Actors.Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
@@ -1807,7 +1807,7 @@ defmodule Domain.ActorsTest do
     } do
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
-      assert {:ok, [_group]} = update_managed_group_memberships(account.id)
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
 
       assert memberships = Repo.all(Actors.Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))

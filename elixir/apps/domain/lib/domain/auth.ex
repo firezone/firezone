@@ -439,7 +439,7 @@ defmodule Domain.Auth do
       {:ok, identity} ->
         # TODO: IDP Sync
         # Remove this in favor of special case everyone group
-        {:ok, _groups} = Actors.update_managed_group_memberships(actor.account_id)
+        {:ok, _results} = Actors.update_managed_group_memberships(actor.account_id)
         {:ok, identity}
 
       {:error, changeset} ->
@@ -464,7 +464,7 @@ defmodule Domain.Auth do
       |> Repo.insert()
       |> case do
         {:ok, identity} ->
-          {:ok, _groups} = Actors.update_managed_group_memberships(account_id)
+          {:ok, _results} = Actors.update_managed_group_memberships(account_id)
           {:ok, identity}
 
         {:error, changeset} ->
@@ -486,7 +486,7 @@ defmodule Domain.Auth do
       {:ok, identity} ->
         # TODO: IDP Sync
         # Remove this in favor of special case everyone group
-        {:ok, _groups} = Actors.update_managed_group_memberships(account_id)
+        {:ok, _results} = Actors.update_managed_group_memberships(account_id)
         {:ok, identity}
 
       {:error, changeset} ->
@@ -520,7 +520,7 @@ defmodule Domain.Auth do
         {:ok, identity} ->
           # TODO: IDP Sync
           # Remove this in favor of special case everyone group
-          {:ok, _groups} = Actors.update_managed_group_memberships(identity.account_id)
+          {:ok, _results} = Actors.update_managed_group_memberships(identity.account_id)
           {:ok, identity}
 
         {:error, reason} ->
@@ -554,7 +554,7 @@ defmodule Domain.Auth do
 
       # TODO: IDP Sync
       # Remove this in favor of special case everyone group
-      {:ok, _groups} = Actors.update_managed_group_memberships(assoc.account_id)
+      {:ok, _results} = Actors.update_managed_group_memberships(assoc.account_id)
 
       :ok
     end

@@ -219,24 +219,9 @@ defmodule Domain.Actors do
     {:error, :synced_group}
   end
 
-  # TODO: Refactor this function not to lock
   def update_managed_group_memberships(account_id) do
-    Repo.transaction(fn ->
-      Group.Query.not_deleted()
-      |> Group.Query.by_account_id(account_id)
-      |> Group.Query.by_type({:in, [:managed]})
-      |> Group.Query.lock()
-      |> Repo.all()
-      |> Enum.map(fn group ->
-        # TODO: IDP Sync
-        # Remove everyone group type in favor of special case for everyone group
-        query = Group.Query.update_everyone_group_memberships(group.id, account_id)
-
-        {:ok, _count} = Repo.transaction(query)
-
-        group
-      end)
-    end)
+    Group.Query.update_everyone_group_memberships(account_id)
+    |> Repo.transaction()
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do

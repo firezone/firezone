@@ -143,39 +143,68 @@ defmodule Domain.Actors.Group.Query do
 
   # TODO: IDP Sync
   # Remove this in favor of special case for everyone group
-  def update_everyone_group_memberships(group_id, account_id) do
-    # We don't treat disabled actors as deleted since that was the prior behavior,
-    # and this will be cleaned up when refactoring the IDP sync.
-    deletion_query =
+  # We use CTE here which should be very performant even for very large inserts and deletions
+  def update_everyone_group_memberships(account_id) do
+    # Delete memberships for actors and groups that are soft-deleted
+    delete_memberships =
       from(
         agm in Domain.Actors.Membership,
-        join: a in assoc(agm, :actor),
         where:
-          agm.group_id == ^group_id and agm.account_id == ^account_id and not is_nil(a.deleted_at)
+          agm.account_id == ^account_id and
+            (exists(
+               from(a in Domain.Actors.Actor,
+                 where: a.id == parent_as(:agm).actor_id and not is_nil(a.deleted_at)
+               )
+             ) or
+               exists(
+                 from(g in Domain.Actors.Group,
+                   where: g.id == parent_as(:agm).group_id and not is_nil(g.deleted_at)
+                 )
+               ))
       )
+      |> from(as: :agm)
 
-    insertion_query =
-      from(
-        a in Domain.Actors.Actor,
-        where: is_nil(a.deleted_at) and a.account_id == ^account_id,
-        select: %{
-          actor_id: a.id,
-          group_id: type(^group_id, :binary_id),
-          account_id: type(^account_id, :binary_id)
-        }
-      )
+    # Insert memberships for the cross join of non-deleted actors and managed groups
+    insert_with_cte_fn = fn repo, _changes ->
+      current_memberships_cte =
+        from(
+          a in Domain.Actors.Actor,
+          cross_join: g in Domain.Actors.Group,
+          where:
+            is_nil(a.deleted_at) and
+              a.account_id == ^account_id and
+              g.type == :managed and
+              g.account_id == ^account_id and
+              is_nil(g.deleted_at),
+          select: %{
+            actor_id: a.id,
+            group_id: g.id
+          }
+        )
+
+      insert_query =
+        from(
+          cm in "current_memberships",
+          select: %{
+            actor_id: cm.actor_id,
+            group_id: cm.group_id,
+            account_id: type(^account_id, :binary_id)
+          }
+        )
+        |> with_cte("current_memberships", as: ^current_memberships_cte)
+
+      case repo.insert_all(Domain.Actors.Membership, insert_query,
+             on_conflict: :nothing,
+             conflict_target: [:actor_id, :group_id]
+           ) do
+        {count, _} -> {:ok, count}
+        error -> {:error, error}
+      end
+    end
 
     Ecto.Multi.new()
-    |> Ecto.Multi.delete_all(:delete_memberships, deletion_query)
-    |> Ecto.Multi.insert_all(:insert_memberships, Domain.Actors.Membership, insertion_query,
-      on_conflict: :nothing,
-      # primary key
-      conflict_target: [:actor_id, :group_id]
-    )
-  end
-
-  def lock(queryable) do
-    lock(queryable, "FOR UPDATE")
+    |> Ecto.Multi.delete_all(:delete_memberships, delete_memberships)
+    |> Ecto.Multi.run(:insert_memberships, insert_with_cte_fn)
   end
 
   # Pagination
