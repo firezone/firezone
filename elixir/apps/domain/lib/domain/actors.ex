@@ -418,7 +418,7 @@ defmodule Domain.Actors do
     |> Repo.insert()
     |> case do
       {:ok, actor} ->
-        update_managed_group_memberships(account.id)
+        {:ok, _results} = update_managed_group_memberships(account.id)
         {:ok, actor}
 
       {:error, changeset} ->
@@ -433,7 +433,7 @@ defmodule Domain.Actors do
          :ok <- ensure_billing_limits_not_exceeded(account, changeset) do
       case Repo.insert(changeset) do
         {:ok, actor} ->
-          update_managed_group_memberships(account.id)
+          {:ok, _results} = update_managed_group_memberships(account.id)
           {:ok, actor}
 
         {:error, changeset} ->
