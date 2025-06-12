@@ -306,7 +306,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
 
     # NOTE: The only time this should happen is if an IdP reuses an email address
     #       that is already in use in Firezone for a given provider
-    test "return error on identity conflict", %{
+    test "allows duplicate emails when provider_identitier is unique", %{
       account: account,
       provider: provider,
       bypass: bypass
@@ -349,7 +349,11 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       redirect_uri = "https://example.com/"
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
-      assert {:error, %Ecto.Changeset{}} = verify_and_update_identity(provider, payload)
+      assert {:ok, updated_identity, _expires} = verify_and_update_identity(provider, payload)
+      refute updated_identity.id == identity.id
+      refute updated_identity.provider_identifier == identity.provider_identifier
+      assert updated_identity.email == email
+      assert identity.email == email
     end
 
     test "verifies newly created identities by email profile field", %{
