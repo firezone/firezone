@@ -435,16 +435,6 @@ defmodule Domain.Auth do
       on_conflict: {:replace, [:provider_state]},
       returning: true
     )
-    |> case do
-      {:ok, identity} ->
-        # TODO: IDP Sync
-        # Remove this in favor of special case everyone group
-        {:ok, _results} = Actors.update_managed_group_memberships(actor.account_id)
-        {:ok, identity}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
   end
 
   def new_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs \\ %{}) do
@@ -453,7 +443,7 @@ defmodule Domain.Auth do
   end
 
   def create_identity(
-        %Actors.Actor{account_id: account_id} = actor,
+        %Actors.Actor{} = actor,
         %Provider{} = provider,
         attrs,
         %Subject{} = subject
@@ -462,14 +452,6 @@ defmodule Domain.Auth do
       Identity.Changeset.create_identity(actor, provider, attrs, subject)
       |> Adapters.identity_changeset(provider)
       |> Repo.insert()
-      |> case do
-        {:ok, identity} ->
-          {:ok, _results} = Actors.update_managed_group_memberships(account_id)
-          {:ok, identity}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
     end
   end
 
@@ -482,16 +464,6 @@ defmodule Domain.Auth do
     Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
     |> Repo.insert()
-    |> case do
-      {:ok, identity} ->
-        # TODO: IDP Sync
-        # Remove this in favor of special case everyone group
-        {:ok, _results} = Actors.update_managed_group_memberships(account_id)
-        {:ok, identity}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
   end
 
   def delete_identity(%Identity{created_by: :provider}, %Subject{}) do
@@ -516,16 +488,6 @@ defmodule Domain.Auth do
           Identity.Changeset.delete_identity(identity)
         end
       )
-      |> case do
-        {:ok, identity} ->
-          # TODO: IDP Sync
-          # Remove this in favor of special case everyone group
-          {:ok, _results} = Actors.update_managed_group_memberships(identity.account_id)
-          {:ok, identity}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
     end
   end
 
@@ -551,10 +513,6 @@ defmodule Domain.Auth do
         queryable
         |> Authorizer.for_subject(Identity, subject)
         |> Repo.update_all(set: [deleted_at: DateTime.utc_now(), provider_state: %{}])
-
-      # TODO: IDP Sync
-      # Remove this in favor of special case everyone group
-      {:ok, _results} = Actors.update_managed_group_memberships(assoc.account_id)
 
       :ok
     end

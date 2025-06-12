@@ -69,38 +69,8 @@ defmodule Domain.Actors.Group.Changeset do
           with: &Actors.Membership.Changeset.for_group(account_id, &1, &2)
         )
 
-      {_data_or_changes, :managed} ->
-        changeset
-        |> cast_managed_memberships(account_id)
-
       _other ->
         changeset
     end
-  end
-
-  defp cast_managed_memberships(changeset, account_id) do
-    with true <- changeset.valid? do
-      put_managed_memberships(changeset, account_id)
-    else
-      _ -> changeset
-    end
-  end
-
-  # TODO: IDP Sync
-  # We assume managed = everyone group as that's the only managed group we have
-  # Remove this when cleaning up everyone group
-  def put_managed_memberships(changeset, account_id) do
-    memberships =
-      Domain.Actors.Actor.Query.not_deleted()
-      |> Domain.Actors.Actor.Query.by_account_id(account_id)
-      |> Domain.Actors.Actor.Query.select_id()
-      |> Domain.Repo.all()
-      |> Enum.map(fn actor_id ->
-        Actors.Membership.Changeset.for_group(account_id, %Actors.Membership{}, %{
-          actor_id: actor_id
-        })
-      end)
-
-    put_change(changeset, :memberships, memberships)
   end
 end

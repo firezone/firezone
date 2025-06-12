@@ -416,6 +416,14 @@ defmodule Domain.Actors do
   def create_actor(%Accounts.Account{} = account, attrs) do
     Actor.Changeset.create(account.id, attrs)
     |> Repo.insert()
+    |> case do
+      {:ok, actor} ->
+        update_managed_group_memberships(account.id)
+        {:ok, actor}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
@@ -423,7 +431,14 @@ defmodule Domain.Actors do
          :ok <- Accounts.ensure_has_access_to(subject, account),
          changeset = Actor.Changeset.create(account.id, attrs, subject),
          :ok <- ensure_billing_limits_not_exceeded(account, changeset) do
-      Repo.insert(changeset)
+      case Repo.insert(changeset) do
+        {:ok, actor} ->
+          update_managed_group_memberships(account.id)
+          {:ok, actor}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 

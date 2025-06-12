@@ -1498,7 +1498,10 @@ defmodule Domain.ActorsTest do
       assert group.id
       assert group.name == attrs.name
 
-      group = Repo.preload(group, :memberships)
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
+      group = Repo.preload(group, :memberships, force: true)
+
       assert [membership] = group.memberships
       assert membership.group_id == group.id
       assert membership.actor_id == identity.actor_id
@@ -3184,12 +3187,14 @@ defmodule Domain.ActorsTest do
 
       group = Fixtures.Actors.create_managed_group(account: account)
 
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
       assert {:ok, actor} = delete_actor(actor, subject)
       assert actor.deleted_at
 
       group = Repo.preload(group, :memberships, force: true)
-      assert length(group.memberships) == 1
-      assert Enum.all?(group.memberships, &(&1.actor_id == new_actor.id))
+      assert [membership] = group.memberships
+      assert membership.actor_id == new_actor.id
     end
 
     test "deletes token", %{

@@ -2162,27 +2162,6 @@ defmodule Domain.AuthTest do
       assert updated_identity.provider_state == %{}
     end
 
-    test "updates managed group memberships", %{
-      account: account,
-      provider: provider,
-      actor: actor
-    } do
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-
-      attrs = %{
-        provider_identifier: provider_identifier,
-        provider_identifier_confirmation: provider_identifier
-      }
-
-      group = Fixtures.Actors.create_managed_group(account: account)
-
-      assert {:ok, _identity} = upsert_identity(actor, provider, attrs)
-
-      group = Repo.preload(group, :memberships, force: true)
-      assert [membership] = group.memberships
-      assert membership.actor_id == actor.id
-    end
-
     test "returns error when identifier is invalid", %{
       provider: provider,
       actor: actor
@@ -2320,29 +2299,6 @@ defmodule Domain.AuthTest do
       assert is_nil(identity.deleted_at)
     end
 
-    test "updates managed group memberships", %{
-      account: account,
-      provider: provider,
-      actor: actor,
-      subject: subject
-    } do
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-
-      attrs = %{
-        provider_identifier: provider_identifier,
-        provider_identifier_confirmation: provider_identifier
-      }
-
-      group = Fixtures.Actors.create_managed_group(account: account)
-
-      assert {:ok, _identity} = create_identity(actor, provider, attrs, subject)
-
-      group = Repo.preload(group, :memberships, force: true)
-      assert [membership] = group.memberships
-      assert membership.actor_id == actor.id
-      assert membership.group_id == group.id
-    end
-
     test "returns error when identity already exists", %{
       account: account,
       provider: provider,
@@ -2475,34 +2431,6 @@ defmodule Domain.AuthTest do
       assert is_nil(identity.deleted_at)
     end
 
-    test "updates managed group memberships" do
-      account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_userpass_provider(account: account)
-      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
-
-      actor =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account,
-          provider: provider
-        )
-
-      password = "Firezone1234"
-
-      attrs = %{
-        provider_identifier: provider_identifier,
-        provider_virtual_state: %{"password" => password, "password_confirmation" => password}
-      }
-
-      group = Fixtures.Actors.create_managed_group(account: account)
-
-      assert {:ok, _identity} = create_identity(actor, provider, attrs)
-
-      group = Repo.preload(group, :memberships, force: true)
-      assert [membership] = group.memberships
-      assert membership.actor_id == actor.id
-    end
-
     test "returns error when identifier is invalid" do
       account = Fixtures.Accounts.create_account()
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
@@ -2614,24 +2542,6 @@ defmodule Domain.AuthTest do
       assert deleted_identity.deleted_at
 
       assert Repo.get(Auth.Identity, identity.id).deleted_at
-    end
-
-    test "updates managed group memberships", %{
-      account: account,
-      provider: provider,
-      actor: actor,
-      subject: subject
-    } do
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-
-      group = Fixtures.Actors.create_managed_group(account: account)
-
-      assert {:ok, _identity} = delete_identity(identity, subject)
-
-      group = Repo.preload(group, :memberships, force: true)
-      assert [membership] = group.memberships
-      assert membership.actor_id == actor.id
-      assert membership.group_id == group.id
     end
 
     test "deletes identity that belongs to another actor with manage permission", %{
@@ -2834,23 +2744,6 @@ defmodule Domain.AuthTest do
 
       expires_at = Repo.one(Domain.Flows.Flow).expires_at
       assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
-    end
-
-    test "does not remove actor from managed group", %{
-      account: account,
-      provider: provider,
-      subject: subject
-    } do
-      actor = Fixtures.Actors.create_actor(account: account, provider: provider)
-      Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-
-      group = Fixtures.Actors.create_managed_group(account: account)
-
-      assert delete_identities_for(actor, subject) == :ok
-
-      group = Repo.preload(group, :memberships, force: true)
-      assert length(group.memberships) == 2
-      assert actor.id in Enum.map(group.memberships, & &1.actor_id)
     end
 
     test "does not remove identities that belong to another actor", %{
