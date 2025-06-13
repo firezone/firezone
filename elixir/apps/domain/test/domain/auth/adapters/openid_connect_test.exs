@@ -315,7 +315,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       email = Fixtures.Auth.email()
       sub = Ecto.UUID.generate()
 
-      _existing_identity =
+      existing_identity =
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
@@ -351,8 +351,8 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       payload = {redirect_uri, code_verifier, "MyFakeCode"}
 
       assert {:ok, updated_identity, _expires} = verify_and_update_identity(provider, payload)
-      refute updated_identity.id == identity.id
-      refute updated_identity.provider_identifier == identity.provider_identifier
+      assert updated_identity.id == existing_identity.id
+      assert updated_identity.provider_identifier == existing_identity.provider_identifier
       assert updated_identity.email == email
       assert identity.email == email
     end

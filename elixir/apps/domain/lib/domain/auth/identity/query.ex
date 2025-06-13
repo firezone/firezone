@@ -90,10 +90,12 @@ defmodule Domain.Auth.Identity.Query do
       queryable,
       [identities: identities],
       identities.provider_identifier == ^provider_identifier or
-        (is_nil(identities.last_seen_at) and
-           identities.provider_identifier == ^email)
+        (is_nil(identities.last_seen_at) and identities.provider_identifier == ^email)
     )
-    |> order_by([identities: identities], desc_nulls_last: identities.last_seen_at)
+    |> order_by([identities: identities],
+      desc: identities.provider_identifier == ^provider_identifier,
+      desc_nulls_last: identities.last_seen_at
+    )
     |> limit(1)
   end
 
