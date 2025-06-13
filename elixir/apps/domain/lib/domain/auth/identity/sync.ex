@@ -20,7 +20,7 @@ defmodule Domain.Auth.Identity.Sync do
            insert_identities(provider, attrs_by_provider_identifier, insert),
          {:ok, updated} <-
            update_identities_and_actors(identities, attrs_by_provider_identifier, update) do
-      Domain.Actors.update_dynamic_group_memberships(provider.account_id)
+      Domain.Actors.update_managed_group_memberships(provider.account_id)
 
       actor_ids_by_provider_identifier =
         for identity <- updated ++ inserted,

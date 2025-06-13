@@ -303,6 +303,10 @@ defmodule Domain.Actors.Actor.Query do
      )}
   end
 
+  def select_id(queryable) do
+    select(queryable, [actors: actors], actors.id)
+  end
+
   def filter_by_identity_provider_id(queryable, provider_id) do
     subquery =
       Domain.Auth.Identity.Query.all()

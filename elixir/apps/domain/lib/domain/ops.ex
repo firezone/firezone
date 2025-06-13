@@ -23,8 +23,7 @@ defmodule Domain.Ops do
 
       {:ok, _everyone_group} =
         Domain.Actors.create_managed_group(account, %{
-          name: "Everyone",
-          membership_rules: [%{operator: true}]
+          name: "Everyone"
         })
 
       {:ok, email_provider} =

@@ -94,23 +94,8 @@ defmodule Web.Groups.Show do
         </.edit_button>
       </:action>
       <:content>
-        <.flash
-          :if={
-            Actors.group_managed?(@group) and
-              not Enum.any?(@group.membership_rules, &(&1 == %Actors.MembershipRule{operator: true}))
-          }
-          kind={:info}
-        >
+        <.flash :if={Actors.group_managed?(@group)} kind={:info}>
           This group is managed by Firezone and cannot be edited.
-        </.flash>
-        <.flash
-          :if={
-            Actors.group_managed?(@group) and
-              Enum.any?(@group.membership_rules, &(&1 == %Actors.MembershipRule{operator: true}))
-          }
-          kind={:info}
-        >
-          <p>This Group contains all Users and cannot be edited.</p>
         </.flash>
         <.flash :if={Actors.group_synced?(@group)} kind={:info}>
           This group is synced from an external source and cannot be edited.

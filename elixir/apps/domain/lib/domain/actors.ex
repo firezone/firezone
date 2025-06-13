@@ -173,6 +173,14 @@ defmodule Domain.Actors do
   def create_managed_group(%Accounts.Account{} = account, attrs) do
     Group.Changeset.create(account, attrs)
     |> Repo.insert()
+    |> case do
+      {:ok, group} ->
+        {:ok, _results} = update_managed_group_memberships(account.id)
+        {:ok, group}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do
@@ -219,26 +227,9 @@ defmodule Domain.Actors do
     {:error, :synced_group}
   end
 
-  # TODO: Refactor this function not to lock
-  def update_dynamic_group_memberships(account_id) do
-    Repo.transaction(fn ->
-      Group.Query.not_deleted()
-      |> Group.Query.by_account_id(account_id)
-      |> Group.Query.by_type({:in, [:dynamic, :managed]})
-      |> Group.Query.lock()
-      |> Repo.all()
-      |> Enum.map(fn group ->
-        changeset =
-          group
-          |> Repo.preload(:memberships)
-          |> Ecto.Changeset.change()
-          |> Group.Changeset.put_dynamic_memberships(account_id)
-
-        {:ok, group} = Repo.update(changeset)
-
-        group
-      end)
-    end)
+  def update_managed_group_memberships(account_id) do
+    Group.Query.update_everyone_group_memberships(account_id)
+    |> Repo.transaction()
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
@@ -433,6 +424,14 @@ defmodule Domain.Actors do
   def create_actor(%Accounts.Account{} = account, attrs) do
     Actor.Changeset.create(account.id, attrs)
     |> Repo.insert()
+    |> case do
+      {:ok, actor} ->
+        {:ok, _results} = update_managed_group_memberships(account.id)
+        {:ok, actor}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
   def create_actor(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
@@ -440,7 +439,14 @@ defmodule Domain.Actors do
          :ok <- Accounts.ensure_has_access_to(subject, account),
          changeset = Actor.Changeset.create(account.id, attrs, subject),
          :ok <- ensure_billing_limits_not_exceeded(account, changeset) do
-      Repo.insert(changeset)
+      case Repo.insert(changeset) do
+        {:ok, actor} ->
+          {:ok, _results} = update_managed_group_memberships(account.id)
+          {:ok, actor}
+
+        {:error, changeset} ->
+          {:error, changeset}
+      end
     end
   end
 
@@ -584,7 +590,6 @@ defmodule Domain.Actors do
               Membership.Query.by_actor_id(actor.id)
               |> Repo.delete_all()
 
-            {:ok, _groups} = update_dynamic_group_memberships(actor.account_id)
             {:ok, _tokens} = Tokens.delete_tokens_for(actor, subject)
 
             Actor.Changeset.delete_actor(actor)

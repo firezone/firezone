@@ -1470,8 +1470,7 @@ defmodule Domain.ActorsTest do
       assert {:error, changeset} = create_managed_group(account, %{})
 
       assert errors_on(changeset) == %{
-               name: ["can't be blank"],
-               membership_rules: ["can't be blank"]
+               name: ["can't be blank"]
              }
     end
 
@@ -1480,12 +1479,11 @@ defmodule Domain.ActorsTest do
       assert {:error, changeset} = create_managed_group(account, attrs)
 
       assert errors_on(changeset) == %{
-               name: ["should be at most 255 character(s)"],
-               membership_rules: ["can't be blank"]
+               name: ["should be at most 255 character(s)"]
              }
 
       Fixtures.Actors.create_managed_group(account: account, name: "foo")
-      attrs = %{name: "foo", type: :static, membership_rules: [%{operator: true}]}
+      attrs = %{name: "foo", type: :static}
       assert {:error, changeset} = create_managed_group(account, attrs)
       assert "has already been taken" in errors_on(changeset).name
     end
@@ -1494,13 +1492,14 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(account: account)
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
 
-      attrs = Fixtures.Actors.group_attrs(membership_rules: [%{operator: true}])
+      attrs = Fixtures.Actors.group_attrs()
 
       assert {:ok, group} = create_managed_group(account, attrs)
       assert group.id
       assert group.name == attrs.name
 
-      group = Repo.preload(group, :memberships)
+      group = Repo.preload(group, :memberships, force: true)
+
       assert [membership] = group.memberships
       assert membership.group_id == group.id
       assert membership.actor_id == identity.actor_id
@@ -1686,52 +1685,6 @@ defmodule Domain.ActorsTest do
       assert group.name == attrs.name
     end
 
-    test "updates dynamic group membership rules", %{account: account, subject: subject} do
-      group =
-        Fixtures.Actors.create_group(
-          type: :dynamic,
-          account: account,
-          membership_rules: [%{operator: true}]
-        )
-
-      attrs =
-        Fixtures.Actors.group_attrs(
-          membership_rules: [
-            %{path: ["claims", "group"], operator: "contains", values: ["admin"]}
-          ]
-        )
-
-      assert {:ok, group} = update_group(group, attrs, subject)
-
-      assert group.membership_rules == [
-               %Domain.Actors.MembershipRule{
-                 path: ["claims", "group"],
-                 operator: :contains,
-                 values: ["admin"]
-               }
-             ]
-    end
-
-    test "updates dynamic group memberships", %{
-      account: account,
-      subject: subject
-    } do
-      group =
-        Fixtures.Actors.create_group(
-          type: :dynamic,
-          account: account,
-          membership_rules: [
-            %{path: ["claims", "email"], operator: "is_in", values: ["xxx@fz.one"]}
-          ]
-        )
-
-      assert Repo.aggregate(Actors.Membership.Query.by_group_id(group.id), :count) == 0
-
-      attrs = %{membership_rules: [%{operator: "true"}]}
-      assert {:ok, %{memberships: memberships}} = update_group(group, attrs, subject)
-      assert length(memberships) == 2
-    end
-
     test "updates group memberships", %{
       account: account,
       actor: actor1,
@@ -1810,105 +1763,239 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "update_dynamic_group_memberships/1" do
-    test "updates memberships" do
+  describe "update_managed_group_memberships/1" do
+    setup do
       account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      subject = Fixtures.Auth.create_subject(identity: identity)
 
-      Fixtures.Actors.create_group(
-        type: :dynamic,
-        membership_rules: [%{operator: true}],
-        account: account
-      )
+      %{
+        account: account,
+        actor: actor,
+        identity: identity,
+        subject: subject
+      }
+    end
 
-      identity = Fixtures.Auth.create_identity(account: account)
-
-      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+    test "doesn't affect non-managed group memberships", %{
+      account: account,
+      subject: subject,
+      identity: identity
+    } do
+      static_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          name: "Non-managed Group",
+          subject: subject
+        )
 
       assert memberships = Repo.all(Actors.Membership)
+      assert length(memberships) == 0
+      Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      assert memberships = Repo.all(Actors.Membership)
+      assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
+      refute Enum.any?(memberships, &(&1.group_id == static_group.id))
+    end
+
+    test "updates memberships when identity creates new actor", %{
+      account: account,
+      identity: identity
+    } do
+      Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      assert memberships = Repo.all(Actors.Membership)
+      assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
+    end
+
+    test "removes memberships when actor is deleted", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      actor2 = Fixtures.Actors.create_actor(account: account)
+
+      Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      # Delete the actor
+      {:ok, _deleted_actor} = Actors.delete_actor(actor2, subject)
+
+      # Update memberships - should remove the membership for deleted actor and keep for the existing actor
+      assert [membership] = Repo.all(Actors.Membership)
+      assert membership.actor_id == actor.id
+    end
+
+    test "removes memberships when managed group is deleted", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      managed_group =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      # Create initial memberships
+      assert [membership] = Repo.all(Actors.Membership)
+      assert membership.actor_id == actor.id
+      assert membership.group_id == managed_group.id
+
+      # Delete the managed group
+      {:ok, _deleted_group} = Actors.delete_group(managed_group, subject)
+
+      # Update memberships - should remove the membership for deleted group
+      assert [] = Repo.all(Actors.Membership)
+    end
+
+    test "handles multiple actors and multiple managed groups", %{
+      account: account,
+      actor: actor1
+    } do
+      # Create additional actors
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      # Create multiple managed groups
+      managed_group1 =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group 1")
+
+      managed_group2 =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group 2")
+
+      memberships = Repo.all(Actors.Membership)
+      # 3 actors × 2 managed groups
+      assert length(memberships) == 6
+
+      # Verify each actor is in each managed group
+      actor_ids = [actor1.id, actor2.id, actor3.id]
+      group_ids = [managed_group1.id, managed_group2.id]
+
+      for actor_id <- actor_ids, group_id <- group_ids do
+        assert Enum.any?(memberships, fn m ->
+                 m.actor_id == actor_id && m.group_id == group_id
+               end)
+      end
+    end
+
+    test "doesn't create duplicate memberships on multiple runs", %{
+      account: account,
+      actor: actor
+    } do
+      managed_group =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      # Run the function multiple times
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
+      # Should still only have one membership
+      assert [membership] = Repo.all(Actors.Membership)
+      assert membership.actor_id == actor.id
+      assert membership.group_id == managed_group.id
+    end
+
+    test "handles accounts with no managed groups", %{account: account} do
+      # Create some non-managed groups
+      _static_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          name: "Static Group",
+          subject: %{account: account}
+        )
+
+      assert {:ok, _results} = update_managed_group_memberships(account.id)
+      assert [] = Repo.all(Actors.Membership)
+    end
+
+    test "handles accounts with no actors", %{account: account} do
+      Repo.delete_all(Auth.Identity)
+      Repo.delete_all(Actors.Actor)
+
+      Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      assert [] = Repo.all(Actors.Membership)
+    end
+
+    test "only affects the specified account" do
+      account1 = Fixtures.Accounts.create_account()
+      account2 = Fixtures.Accounts.create_account()
+
+      managed_group1 =
+        Fixtures.Actors.create_managed_group(
+          account: account1,
+          name: "Account 1 Group"
+        )
+
+      Fixtures.Actors.create_managed_group(
+        account: account2,
+        name: "Account 2 Group"
+      )
+
+      actor1 = Fixtures.Actors.create_actor(account: account1)
+      Fixtures.Actors.create_actor(account: account2)
+
+      memberships = Repo.all(Actors.Membership)
+
+      # Should only have membership for account1
       assert length(memberships) == 2
-      assert Enum.any?(memberships, fn membership -> membership.actor_id == identity.actor_id end)
+      assert Enum.count(memberships, &(&1.account_id == account1.id)) == 1
+      assert membership = Enum.find(memberships, &(&1.actor_id == actor1.id))
+      assert membership.group_id == managed_group1.id
+      assert membership.account_id == account1.id
     end
 
-    test "allows to use is_in operator" do
-      account = Fixtures.Accounts.create_account()
+    test "preserves existing non-stale memberships and adds missing ones", %{
+      account: account,
+      actor: actor1
+    } do
+      managed_group =
+        Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
-      Fixtures.Actors.create_group(
-        type: :dynamic,
-        membership_rules: [%{path: ["claims", "group"], operator: :is_in, values: ["admin"]}],
-        account: account
-      )
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
 
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
+      # Membership is already created for actor1
 
-      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+      memberships = Repo.all(Actors.Membership)
+      assert length(memberships) == 2
 
-      assert membership = Repo.one(Actors.Membership)
-      assert membership.actor_id == identity.actor_id
+      # Original membership should still exist
+      assert Repo.get_by(Actors.Membership, actor_id: actor1.id, group_id: managed_group.id)
+
+      # New membership for actor2 should be created
+      assert Enum.any?(
+               memberships,
+               &(&1.actor_id == actor2.id and &1.group_id == managed_group.id)
+             )
     end
 
-    test "allows to use is_not_in operator" do
-      account = Fixtures.Accounts.create_account()
+    test "handles mixed scenarios with additions and deletions", %{
+      account: account,
+      actor: actor1,
+      subject: subject
+    } do
+      actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
+      actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
-      Fixtures.Actors.create_group(
-        type: :dynamic,
-        membership_rules: [%{path: ["claims", "group"], operator: :is_not_in, values: ["user"]}],
-        account: account
-      )
+      managed_group1 = Fixtures.Actors.create_managed_group(account: account, name: "Group 1")
+      managed_group2 = Fixtures.Actors.create_managed_group(account: account, name: "Group 2")
 
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
+      # 3 actors × 2 groups
+      assert length(Repo.all(Actors.Membership)) == 6
 
-      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
+      # Delete one actor and one group
+      {:ok, _} = Actors.delete_actor(actor2, subject)
+      {:ok, _} = Actors.delete_group(managed_group2, subject)
 
-      assert membership = Repo.one(Actors.Membership)
-      assert membership.actor_id == identity.actor_id
-    end
+      memberships = Repo.all(Actors.Membership)
+      # 2 remaining actors × 1 remaining group
+      assert length(memberships) == 2
 
-    test "allows to use contains operator" do
-      account = Fixtures.Accounts.create_account()
+      # Verify correct memberships remain
+      remaining_actor_ids = [actor1.id, actor3.id]
 
-      Fixtures.Actors.create_group(
-        type: :dynamic,
-        membership_rules: [%{path: ["claims", "group"], operator: :contains, values: ["ad"]}],
-        account: account
-      )
-
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
-
-      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
-
-      assert membership = Repo.one(Actors.Membership)
-      assert membership.actor_id == identity.actor_id
-    end
-
-    test "allows to use does_not_contain operator" do
-      account = Fixtures.Accounts.create_account()
-
-      Fixtures.Actors.create_group(
-        type: :dynamic,
-        membership_rules: [
-          %{path: ["claims", "group"], operator: :does_not_contain, values: ["usr"]}
-        ],
-        account: account
-      )
-
-      identity =
-        Fixtures.Auth.create_identity(account: account)
-        |> Ecto.Changeset.change(provider_state: %{"claims" => %{"group" => "admin"}})
-        |> Repo.update!()
-
-      assert {:ok, [_group]} = update_dynamic_group_memberships(account.id)
-
-      assert membership = Repo.one(Actors.Membership)
-      assert membership.actor_id == identity.actor_id
+      assert Enum.all?(memberships, fn m ->
+               m.actor_id in remaining_actor_ids && m.group_id == managed_group1.id
+             end)
     end
   end
 
@@ -3071,8 +3158,8 @@ defmodule Domain.ActorsTest do
       assert is_nil(other_actor.deleted_at)
     end
 
-    test "updates dynamic groups memberships", %{account: account, actor: actor, subject: subject} do
-      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    test "updates managed group memberships", %{account: account, actor: actor, subject: subject} do
+      new_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       group = Fixtures.Actors.create_managed_group(account: account)
 
@@ -3080,7 +3167,8 @@ defmodule Domain.ActorsTest do
       assert actor.deleted_at
 
       group = Repo.preload(group, :memberships, force: true)
-      assert group.memberships == []
+      assert [membership] = group.memberships
+      assert membership.actor_id == new_actor.id
     end
 
     test "deletes token", %{

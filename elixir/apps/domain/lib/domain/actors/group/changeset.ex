@@ -15,7 +15,7 @@ defmodule Domain.Actors.Group.Changeset do
     %Actors.Group{memberships: []}
     |> cast(attrs, ~w[name type]a)
     |> validate_required(~w[name type]a)
-    |> validate_inclusion(:type, ~w[dynamic static]a)
+    |> validate_inclusion(:type, ~w[static]a)
     |> changeset()
     |> put_change(:account_id, account.id)
     |> cast_membership_assocs(account.id)
@@ -50,7 +50,7 @@ defmodule Domain.Actors.Group.Changeset do
     group
     |> cast(attrs, ~w[name]a)
     |> validate_required(~w[name]a)
-    |> validate_inclusion(:type, ~w[dynamic static]a)
+    |> validate_inclusion(:type, ~w[static]a)
     |> changeset()
     |> cast_membership_assocs(group.account_id)
   end
@@ -69,45 +69,8 @@ defmodule Domain.Actors.Group.Changeset do
           with: &Actors.Membership.Changeset.for_group(account_id, &1, &2)
         )
 
-      {_data_or_changes, type} when type in [:dynamic, :managed] ->
-        changeset
-        |> cast_embed(:membership_rules,
-          with: &Actors.MembershipRule.Changeset.changeset(&1, &2),
-          required: true
-        )
-        |> cast_dynamic_memberships(account_id)
-
       _other ->
         changeset
     end
-  end
-
-  defp cast_dynamic_memberships(changeset, account_id) do
-    with true <- changeset.valid?,
-         true <- changed?(changeset, :membership_rules) do
-      put_dynamic_memberships(changeset, account_id)
-    else
-      _ -> changeset
-    end
-  end
-
-  def put_dynamic_memberships(changeset, account_id) do
-    {_data_or_changes, rules} = fetch_field(changeset, :membership_rules)
-
-    rules =
-      Enum.map(rules, fn
-        %Ecto.Changeset{} = changeset -> apply_changes(changeset)
-        schema -> schema
-      end)
-
-    memberships =
-      Auth.all_actor_ids_by_membership_rules!(account_id, rules)
-      |> Enum.map(fn actor_id ->
-        Actors.Membership.Changeset.for_group(account_id, %Actors.Membership{}, %{
-          actor_id: actor_id
-        })
-      end)
-
-    put_change(changeset, :memberships, memberships)
   end
 end
