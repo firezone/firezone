@@ -81,8 +81,6 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       assert_receive {:disable_policy, ^policy_id}
       assert_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
 
-      # TODO: WAL
-      # Remove this after direct broadcast
       Process.sleep(100)
 
       flow = Repo.reload(flow)
@@ -116,8 +114,6 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       assert_receive {:delete_policy, ^policy_id}
       assert_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
 
-      # TODO: WAL
-      # Remove this after direct broadcast
       Process.sleep(100)
 
       flow = Repo.reload(flow)
@@ -156,8 +152,6 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       assert_receive {:create_policy, ^policy_id}
       assert_receive {:allow_access, ^policy_id, ^actor_group_id, "new-resource-123"}
 
-      # TODO: WAL
-      # Remove this after direct broadcast
       Process.sleep(100)
 
       flow = Repo.reload(flow)
@@ -193,8 +187,6 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       refute_receive {:create_policy, ^policy_id}
       refute_receive {:allow_access, ^policy_id, ^actor_group_id, "new-resource-123"}
 
-      # TODO: WAL
-      # Remove this after direct broadcast
       Process.sleep(100)
 
       flow = Repo.reload(flow)
@@ -257,8 +249,6 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       assert_receive {:delete_policy, ^policy_id}
       assert_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
 
-      # TODO: WAL
-      # Remove this after direct broadcast
       Process.sleep(100)
 
       flow = Repo.reload(flow)
