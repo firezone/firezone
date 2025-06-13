@@ -26,7 +26,8 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
   end
 
   defp broadcast_access(action, actor_id, group_id) do
-    # TODO: There's likely a bug here - need to omit disabled policies too
+    # TODO: WAL
+    # This N+1 query will go away when we broadcast flows directly
     Policies.Policy.Query.not_deleted()
     |> Policies.Policy.Query.by_actor_group_id(group_id)
     |> Repo.all()
