@@ -173,6 +173,14 @@ defmodule Domain.Actors do
   def create_managed_group(%Accounts.Account{} = account, attrs) do
     Group.Changeset.create(account, attrs)
     |> Repo.insert()
+    |> case do
+      {:ok, group} ->
+        {:ok, _results} = update_managed_group_memberships(account.id)
+        {:ok, group}
+
+      {:error, changeset} ->
+        {:error, changeset}
+    end
   end
 
   def create_group(attrs, %Auth.Subject{} = subject) do

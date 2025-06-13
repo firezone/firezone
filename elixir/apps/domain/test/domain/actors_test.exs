@@ -1498,8 +1498,6 @@ defmodule Domain.ActorsTest do
       assert group.id
       assert group.name == attrs.name
 
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
-
       group = Repo.preload(group, :memberships, force: true)
 
       assert [membership] = group.memberships
@@ -1795,7 +1793,7 @@ defmodule Domain.ActorsTest do
       assert memberships = Repo.all(Actors.Membership)
       assert length(memberships) == 0
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
       assert memberships = Repo.all(Actors.Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
       refute Enum.any?(memberships, &(&1.group_id == static_group.id))
@@ -1806,7 +1804,7 @@ defmodule Domain.ActorsTest do
       identity: identity
     } do
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
+
       assert memberships = Repo.all(Actors.Membership)
       assert Enum.all?(memberships, &(&1.actor_id == identity.actor_id))
     end
@@ -1824,7 +1822,6 @@ defmodule Domain.ActorsTest do
       {:ok, _deleted_actor} = Actors.delete_actor(actor2, subject)
 
       # Update memberships - should remove the membership for deleted actor and keep for the existing actor
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
       assert [membership] = Repo.all(Actors.Membership)
       assert membership.actor_id == actor.id
     end
@@ -1838,7 +1835,6 @@ defmodule Domain.ActorsTest do
         Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
       # Create initial memberships
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
       assert [membership] = Repo.all(Actors.Membership)
       assert membership.actor_id == actor.id
       assert membership.group_id == managed_group.id
@@ -1847,7 +1843,6 @@ defmodule Domain.ActorsTest do
       {:ok, _deleted_group} = Actors.delete_group(managed_group, subject)
 
       # Update memberships - should remove the membership for deleted group
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
       assert [] = Repo.all(Actors.Membership)
     end
 
@@ -1865,9 +1860,6 @@ defmodule Domain.ActorsTest do
 
       managed_group2 =
         Fixtures.Actors.create_managed_group(account: account, name: "Managed Group 2")
-
-      # Update memberships
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
 
       memberships = Repo.all(Actors.Membership)
       # 3 actors × 2 managed groups
@@ -1921,7 +1913,6 @@ defmodule Domain.ActorsTest do
 
       Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
 
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
       assert [] = Repo.all(Actors.Membership)
     end
 
@@ -1932,32 +1923,25 @@ defmodule Domain.ActorsTest do
       managed_group1 =
         Fixtures.Actors.create_managed_group(
           account: account1,
-          name: "Account 1 Group",
-          memberships: []
+          name: "Account 1 Group"
         )
 
       Fixtures.Actors.create_managed_group(
         account: account2,
-        name: "Account 2 Group",
-        memberships: []
+        name: "Account 2 Group"
       )
 
       actor1 = Fixtures.Actors.create_actor(account: account1)
       Fixtures.Actors.create_actor(account: account2)
 
-      # Update memberships for account1 only
-      assert {:ok, _results} = update_managed_group_memberships(account1.id)
-
       memberships = Repo.all(Actors.Membership)
 
       # Should only have membership for account1
-      assert [membership] = memberships
-      assert membership.actor_id == actor1.id
+      assert length(memberships) == 2
+      assert Enum.count(memberships, &(&1.account_id == account1.id)) == 1
+      assert membership = Enum.find(memberships, &(&1.actor_id == actor1.id))
       assert membership.group_id == managed_group1.id
       assert membership.account_id == account1.id
-
-      # No memberships should exist for account2
-      refute Enum.any?(memberships, &(&1.account_id == account2.id))
     end
 
     test "preserves existing non-stale memberships and adds missing ones", %{
@@ -1970,9 +1954,6 @@ defmodule Domain.ActorsTest do
       actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
 
       # Membership is already created for actor1
-
-      # Update memberships - should keep existing and add missing for actor2
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
 
       memberships = Repo.all(Actors.Membership)
       assert length(memberships) == 2
@@ -1998,17 +1979,12 @@ defmodule Domain.ActorsTest do
       managed_group1 = Fixtures.Actors.create_managed_group(account: account, name: "Group 1")
       managed_group2 = Fixtures.Actors.create_managed_group(account: account, name: "Group 2")
 
-      # Initial state: all actors in all groups
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
       # 3 actors × 2 groups
       assert length(Repo.all(Actors.Membership)) == 6
 
       # Delete one actor and one group
       {:ok, _} = Actors.delete_actor(actor2, subject)
       {:ok, _} = Actors.delete_group(managed_group2, subject)
-
-      # Update memberships
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
 
       memberships = Repo.all(Actors.Membership)
       # 2 remaining actors × 1 remaining group
@@ -3186,8 +3162,6 @@ defmodule Domain.ActorsTest do
       new_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
 
       group = Fixtures.Actors.create_managed_group(account: account)
-
-      assert {:ok, _results} = update_managed_group_memberships(account.id)
 
       assert {:ok, actor} = delete_actor(actor, subject)
       assert actor.deleted_at
