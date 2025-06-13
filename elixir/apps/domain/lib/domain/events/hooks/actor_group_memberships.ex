@@ -9,9 +9,13 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
   def on_update(_old_data, _data), do: :ok
 
   def on_delete(%{"actor_id" => actor_id, "group_id" => group_id} = _old_data) do
-    {:ok, _flows} = Flows.expire_flows_for(actor_id, group_id)
-    broadcast_access(:reject, actor_id, group_id)
-    broadcast(:delete, actor_id, group_id)
+    Task.start(fn ->
+      {:ok, _flows} = Flows.expire_flows_for(actor_id, group_id)
+      broadcast_access(:reject, actor_id, group_id)
+      broadcast(:delete, actor_id, group_id)
+    end)
+
+    :ok
   end
 
   def broadcast(action, actor_id, group_id) do
