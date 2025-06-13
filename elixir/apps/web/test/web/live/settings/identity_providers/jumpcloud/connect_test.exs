@@ -202,8 +202,9 @@ defmodule Web.Live.Settings.IdentityProviders.JumpCloud.Connect do
           "sub" => sub
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass, %{"sub" => sub})
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo(%{"sub" => sub})
 
       cookie_key = "fz_auth_state_#{provider.id}"
       redirected_conn = fetch_cookies(redirected_conn)
@@ -265,9 +266,9 @@ defmodule Web.Live.Settings.IdentityProviders.JumpCloud.Connect do
           "sub" => sub
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-
-      Mocks.OpenIDConnect.expect_userinfo(bypass, %{
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo(%{
         "sub" => sub
       })
 

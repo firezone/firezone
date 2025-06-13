@@ -138,8 +138,10 @@ defmodule Domain.Auth.Adapters.OktaTest do
       bypass: bypass
     } do
       {token, claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -173,15 +175,15 @@ defmodule Domain.Auth.Adapters.OktaTest do
     } do
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
         "refresh_token" => "MY_REFRESH_TOKEN",
         "expires_in" => 3600
       })
-
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -241,15 +243,15 @@ defmodule Domain.Auth.Adapters.OktaTest do
           "sub" => "foo@bar.com"
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
         "refresh_token" => "MY_REFRESH_TOKEN",
         "expires_in" => 3600
       })
-
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -267,15 +269,15 @@ defmodule Domain.Auth.Adapters.OktaTest do
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
         "refresh_token" => "MY_REFRESH_TOKEN",
         "expires_in" => 3600
       })
-
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = PKCE.code_verifier()
       redirect_uri = "https://example.com/"

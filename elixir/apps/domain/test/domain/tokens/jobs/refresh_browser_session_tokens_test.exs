@@ -35,15 +35,15 @@ defmodule Domain.Tokens.Jobs.RefreshBrowserSessionTokensTest do
 
       {id_token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{
         "token_type" => "Bearer",
         "id_token" => id_token,
         "access_token" => "MY_ACCESS_TOKEN",
         "refresh_token" => "MY_REFRESH_TOKEN",
         "expires_in" => 3600
       })
-
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       assert execute(%{}) == :ok
 

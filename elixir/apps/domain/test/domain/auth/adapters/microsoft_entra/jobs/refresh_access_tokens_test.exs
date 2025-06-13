@@ -36,15 +36,15 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokensTest do
     } do
       {token, claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{
         "token_type" => "Bearer",
         "id_token" => token,
         "access_token" => "MY_ACCESS_TOKEN",
         "refresh_token" => "OTHER_REFRESH_TOKEN",
         "expires_in" => nil
       })
-
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       assert execute(%{}) == :ok
 

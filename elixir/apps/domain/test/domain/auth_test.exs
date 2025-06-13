@@ -3210,8 +3210,9 @@ defmodule Domain.AuthTest do
           "sub" => "foo@bar.com"
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3256,8 +3257,9 @@ defmodule Domain.AuthTest do
           "exp" => DateTime.to_unix(expires_at)
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3304,8 +3306,9 @@ defmodule Domain.AuthTest do
           "exp" => DateTime.to_unix(expires_at)
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3339,8 +3342,9 @@ defmodule Domain.AuthTest do
           "exp" => DateTime.to_unix(expires_at)
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3373,8 +3377,9 @@ defmodule Domain.AuthTest do
           "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3406,8 +3411,9 @@ defmodule Domain.AuthTest do
           "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3439,8 +3445,9 @@ defmodule Domain.AuthTest do
           "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3471,8 +3478,9 @@ defmodule Domain.AuthTest do
           "exp" => DateTime.utc_now() |> DateTime.add(1_000_000, :second) |> DateTime.to_unix()
         })
 
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3499,8 +3507,10 @@ defmodule Domain.AuthTest do
       subject = Fixtures.Auth.create_subject(identity: identity)
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3525,8 +3535,10 @@ defmodule Domain.AuthTest do
       subject = Fixtures.Auth.create_subject(identity: identity)
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3550,8 +3562,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3575,8 +3589,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"
@@ -3601,8 +3617,10 @@ defmodule Domain.AuthTest do
       subject = Fixtures.Auth.create_subject(identity: identity)
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       code_verifier = Domain.Auth.Adapters.OpenIDConnect.PKCE.code_verifier()
       redirect_uri = "https://example.com/"

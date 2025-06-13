@@ -1088,8 +1088,10 @@ defmodule Web.AuthControllerTest do
         )
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       conn =
         conn
@@ -1123,8 +1125,10 @@ defmodule Web.AuthControllerTest do
         )
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       conn =
         conn
@@ -1162,8 +1166,10 @@ defmodule Web.AuthControllerTest do
         )
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       conn =
         conn
@@ -1206,8 +1212,10 @@ defmodule Web.AuthControllerTest do
         )
 
       {token, _claims} = Mocks.OpenIDConnect.generate_openid_connect_token(provider, identity)
-      Mocks.OpenIDConnect.expect_refresh_token(bypass, %{"id_token" => token})
-      Mocks.OpenIDConnect.expect_userinfo(bypass)
+
+      bypass
+      |> Mocks.OpenIDConnect.expect_refresh_token(%{"id_token" => token})
+      |> Mocks.OpenIDConnect.expect_userinfo()
 
       conn =
         conn
