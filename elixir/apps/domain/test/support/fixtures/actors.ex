@@ -14,7 +14,6 @@ defmodule Domain.Fixtures.Actors do
       attrs
       |> group_attrs()
       |> Map.put(:type, :managed)
-      |> Map.put_new(:membership_rules, [%{operator: true}])
 
     {account, attrs} =
       pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
@@ -95,7 +94,7 @@ defmodule Domain.Fixtures.Actors do
         Fixtures.Accounts.create_account(assoc_attrs)
       end)
 
-    {provider, attrs} =
+    {_provider, attrs} =
       pop_assoc_fixture(attrs, :provider, fn assoc_attrs ->
         {provider, _bypass} =
           assoc_attrs
@@ -105,8 +104,9 @@ defmodule Domain.Fixtures.Actors do
         provider
       end)
 
-    Actors.Actor.Changeset.create(provider.account_id, attrs)
-    |> Repo.insert!()
+    {:ok, actor} = Actors.create_actor(account, attrs)
+
+    actor
   end
 
   def create_membership(attrs \\ %{}) do

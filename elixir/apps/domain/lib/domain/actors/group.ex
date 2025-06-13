@@ -3,7 +3,7 @@ defmodule Domain.Actors.Group do
 
   schema "actor_groups" do
     field :name, :string
-    field :type, Ecto.Enum, values: ~w[managed dynamic static]a
+    field :type, Ecto.Enum, values: ~w[managed static]a
 
     # Those fields will be set for groups we synced from IdP's
     belongs_to :provider, Domain.Auth.Provider
@@ -13,7 +13,6 @@ defmodule Domain.Actors.Group do
       foreign_key: :actor_group_id,
       where: [deleted_at: nil]
 
-    embeds_many :membership_rules, Domain.Actors.MembershipRule, on_replace: :delete
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
 
     # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,
