@@ -142,7 +142,7 @@ defmodule Domain.Actors.Group.Query do
   end
 
   # TODO: IDP Sync
-  # Remove this in favor of special case for everyone group
+  # See: https://github.com/firezone/firezone/issues/8750
   # We use CTE here which should be very performant even for very large inserts and deletions
   def update_everyone_group_memberships(account_id) do
     # Delete memberships for actors and groups that are soft-deleted
@@ -164,7 +164,7 @@ defmodule Domain.Actors.Group.Query do
       )
       |> from(as: :agm)
 
-    # Insert memberships for the cross join of non-deleted actors and managed groups
+    # Insert memberships for the cross join of non-deleted user actors and managed groups
     insert_with_cte_fn = fn repo, _changes ->
       current_memberships_cte =
         from(
@@ -173,6 +173,7 @@ defmodule Domain.Actors.Group.Query do
           where:
             is_nil(a.deleted_at) and
               a.account_id == ^account_id and
+              a.type in [:account_user, :account_admin_user] and
               g.type == :managed and
               g.account_id == ^account_id and
               is_nil(g.deleted_at),
