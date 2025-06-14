@@ -74,6 +74,8 @@ defmodule Domain.Events.Hooks.ResourcesTest do
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 
@@ -95,6 +97,8 @@ defmodule Domain.Events.Hooks.ResourcesTest do
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 
@@ -116,6 +120,8 @@ defmodule Domain.Events.Hooks.ResourcesTest do
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 
@@ -137,6 +143,8 @@ defmodule Domain.Events.Hooks.ResourcesTest do
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 

@@ -999,10 +999,9 @@ defmodule Domain.FlowsTest do
 
     test "expires flows for policy", %{
       flow: flow,
-      policy: policy,
-      subject: subject
+      policy: policy
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(policy, subject)
+      assert {:ok, [expired_flow]} = expire_flows_for_policy_id(policy.id)
       assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
       assert expired_flow.id == flow.id
     end
