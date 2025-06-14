@@ -1,5 +1,6 @@
 defmodule Web.Live.Policies.IndexTest do
   use Web.ConnCase, async: true
+  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -92,7 +93,14 @@ defmodule Web.Live.Policies.IndexTest do
       refute html =~ "The table data has changed."
       refute html =~ "reload-btn"
 
-      Fixtures.Policies.create_policy(account: account, description: "foo bar")
+      policy = Fixtures.Policies.create_policy(account: account, description: "foo bar")
+
+      Events.Hooks.Policies.on_insert(%{
+        "id" => policy.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "account_id" => account.id
+      })
 
       reload_btn =
         lv
@@ -119,6 +127,17 @@ defmodule Web.Live.Policies.IndexTest do
       refute html =~ "reload-btn"
 
       Domain.Policies.delete_policy(policy, subject)
+
+      Events.Hooks.Policies.on_delete(%{
+        "id" => policy.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "account_id" => account.id
+      })
+
+      # TODO: WAL
+      # Remove this after direct broadcast
+      Process.sleep(100)
 
       reload_btn =
         lv

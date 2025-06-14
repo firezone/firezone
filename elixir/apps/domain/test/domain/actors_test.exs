@@ -854,18 +854,8 @@ defmodule Domain.ActorsTest do
           provider_identifier: "G:GROUP_ID4"
         )
 
-      group1_policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
-
       actor = Fixtures.Actors.create_actor(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: group1)
-
-      group1_flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          actor_group: group1,
-          resource_id: group1_policy.resource_id,
-          policy: group1_policy
-        )
 
       attrs_list = [
         %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID2"},
@@ -889,9 +879,6 @@ defmodule Domain.ActorsTest do
       assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 3
 
       assert Map.keys(group_ids_by_provider_identifier) |> length() == 3
-
-      group1_flow = Repo.reload(group1_flow)
-      assert DateTime.compare(group1_flow.expires_at, DateTime.utc_now()) == :lt
     end
 
     test "circuit breaker prevents mass deletion of groups", %{
@@ -1258,6 +1245,10 @@ defmodule Domain.ActorsTest do
         "actor_id" => identity2.actor_id,
         "group_id" => group2.id
       })
+
+      # TODO: WAL
+      # Remove this when direct broadcast is implemented
+      Process.sleep(100)
 
       flow = Repo.reload(flow)
       assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt

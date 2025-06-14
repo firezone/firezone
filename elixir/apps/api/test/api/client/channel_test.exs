@@ -708,7 +708,21 @@ defmodule API.Client.ChannelTest do
       subject: subject
     } do
       assert_push "init", %{}
-      {:ok, _resource} = Domain.Policies.disable_policy(dns_resource_policy, subject)
+      {:ok, policy} = Domain.Policies.disable_policy(dns_resource_policy, subject)
+
+      # Simulate disable
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => policy.account_id,
+        "resource_id" => policy.resource_id,
+        "actor_group_id" => policy.actor_group_id,
+        "conditions" => [],
+        "disabled_at" => nil
+      }
+
+      data = Map.put(old_data, "disabled_at", "2024-01-01T00:00:00Z")
+      Events.Hooks.Policies.on_update(old_data, data)
+
       assert_push "resource_deleted", _payload
       refute_push "resource_created_or_updated", _payload
     end
@@ -934,6 +948,19 @@ defmodule API.Client.ChannelTest do
       send(socket.channel_pid, {:create_membership, actor.id, group.id})
 
       Fixtures.Policies.disable_policy(policy)
+
+      # Simulate disable
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => policy.account_id,
+        "resource_id" => policy.resource_id,
+        "actor_group_id" => policy.actor_group_id,
+        "conditions" => [],
+        "disabled_at" => nil
+      }
+
+      data = Map.put(old_data, "disabled_at", "2024-01-01T00:00:00Z")
+      Events.Hooks.Policies.on_update(old_data, data)
 
       assert_push "resource_deleted", resource_id
       assert resource_id == resource.id

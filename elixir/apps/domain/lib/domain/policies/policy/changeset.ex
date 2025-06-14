@@ -5,7 +5,6 @@ defmodule Domain.Policies.Policy.Changeset do
 
   @fields ~w[description actor_group_id resource_id]a
   @update_fields ~w[description actor_group_id resource_id]a
-  @replace_fields ~w[actor_group_id resource_id conditions]a
   @required_fields ~w[actor_group_id resource_id]a
 
   def create(attrs, %Auth.Subject{} = subject) do
@@ -25,18 +24,6 @@ defmodule Domain.Policies.Policy.Changeset do
     |> validate_required(@required_fields)
     |> cast_embed(:conditions, with: &Domain.Policies.Condition.Changeset.changeset/3)
     |> changeset()
-    |> maybe_breaking_update()
-  end
-
-  defp maybe_breaking_update(%{valid?: false} = changeset),
-    do: {changeset, false}
-
-  defp maybe_breaking_update(changeset) do
-    if any_field_changed?(changeset, @replace_fields) do
-      {changeset, true}
-    else
-      {changeset, false}
-    end
   end
 
   def disable(%Policy{} = policy, %Auth.Subject{}) do

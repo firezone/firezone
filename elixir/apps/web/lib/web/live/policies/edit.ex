@@ -219,9 +219,8 @@ defmodule Web.Policies.Edit do
       |> maybe_drop_unsupported_conditions(socket)
 
     case Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
-      {:updated, updated_policy} ->
-        {:noreply,
-         push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{updated_policy}")}
+      {:ok, policy} ->
+        {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
