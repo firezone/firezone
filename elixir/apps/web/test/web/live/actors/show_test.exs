@@ -1,6 +1,5 @@
 defmodule Web.Live.Actors.ShowTest do
   use Web.ConnCase, async: true
-  alias Domain.Events
 
   test "redirects to sign in page for unauthorized user", %{conn: conn} do
     account = Fixtures.Accounts.create_account()
@@ -92,8 +91,8 @@ defmodule Web.Live.Actors.ShowTest do
       |> live(~p"/#{account}/actors/#{actor}")
 
     Domain.Config.put_env_override(:test_pid, self())
-    :ok = Events.Hooks.Actors.subscribe_to_clients_presence(actor.id)
-    assert Events.Hooks.Clients.connect(client) == :ok
+    :ok = Domain.Clients.Presence.Actor.subscribe(actor.id)
+    assert Domain.Clients.Presence.connect(client) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 500
 

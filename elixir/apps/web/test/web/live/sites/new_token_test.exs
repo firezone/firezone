@@ -1,6 +1,5 @@
 defmodule Web.Live.Sites.NewTokenTest do
   use Web.ConnCase, async: true
-  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -37,11 +36,11 @@ defmodule Web.Live.Sites.NewTokenTest do
       |> List.last()
       |> String.trim("&quot;")
 
-    :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(group.id)
+    :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
     context = Fixtures.Auth.build_context(type: :gateway_group)
     assert {:ok, group, token} = Domain.Gateways.authenticate(token, context)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group, token: token)
-    :ok = Events.Hooks.Gateways.connect(gateway)
+    :ok = Domain.Gateways.Presence.connect(gateway)
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _group_id}
 

@@ -2,7 +2,7 @@ defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Clients.Components
-  alias Domain.{Accounts, Clients, Events, Flows}
+  alias Domain.{Accounts, Clients, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, client} <-
@@ -14,7 +14,7 @@ defmodule Web.Clients.Show do
              ]
            ) do
       if connected?(socket) do
-        :ok = Events.Hooks.Actors.subscribe_to_clients_presence(client.actor_id)
+        :ok = Clients.Presence.Actor.subscribe(client.actor_id)
       end
 
       socket =
