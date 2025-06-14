@@ -1769,6 +1769,20 @@ defmodule Domain.ActorsTest do
       }
     end
 
+    test "doesn't include service accounts", %{
+      account: account
+    } do
+      service_account =
+        Fixtures.Actors.create_actor(type: :service_account, account: account)
+
+      Fixtures.Actors.create_managed_group(account: account, name: "Managed Group")
+
+      refute Enum.any?(
+               Repo.all(Actors.Membership),
+               &(&1.actor_id == service_account.id)
+             )
+    end
+
     test "doesn't affect non-managed group memberships", %{
       account: account,
       subject: subject,
@@ -1843,7 +1857,7 @@ defmodule Domain.ActorsTest do
     } do
       # Create additional actors
       actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
-      actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      _actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       # Create multiple managed groups
       managed_group1 =
@@ -1853,11 +1867,11 @@ defmodule Domain.ActorsTest do
         Fixtures.Actors.create_managed_group(account: account, name: "Managed Group 2")
 
       memberships = Repo.all(Actors.Membership)
-      # 3 actors × 2 managed groups
-      assert length(memberships) == 6
+      # 2 user actors × 2 managed groups
+      assert length(memberships) == 4
 
-      # Verify each actor is in each managed group
-      actor_ids = [actor1.id, actor2.id, actor3.id]
+      # Verify each user actor is in each managed group
+      actor_ids = [actor1.id, actor2.id]
       group_ids = [managed_group1.id, managed_group2.id]
 
       for actor_id <- actor_ids, group_id <- group_ids do
@@ -1965,24 +1979,24 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       actor2 = Fixtures.Actors.create_actor(type: :account_user, account: account)
-      actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
+      _actor3 = Fixtures.Actors.create_actor(type: :service_account, account: account)
 
       managed_group1 = Fixtures.Actors.create_managed_group(account: account, name: "Group 1")
       managed_group2 = Fixtures.Actors.create_managed_group(account: account, name: "Group 2")
 
-      # 3 actors × 2 groups
-      assert length(Repo.all(Actors.Membership)) == 6
+      # 2 user actors × 2 groups
+      assert length(Repo.all(Actors.Membership)) == 4
 
       # Delete one actor and one group
       {:ok, _} = Actors.delete_actor(actor2, subject)
       {:ok, _} = Actors.delete_group(managed_group2, subject)
 
       memberships = Repo.all(Actors.Membership)
-      # 2 remaining actors × 1 remaining group
-      assert length(memberships) == 2
+      # 1 remaining user actor × 1 remaining group
+      assert length(memberships) == 1
 
       # Verify correct memberships remain
-      remaining_actor_ids = [actor1.id, actor3.id]
+      remaining_actor_ids = [actor1.id]
 
       assert Enum.all?(memberships, fn m ->
                m.actor_id in remaining_actor_ids && m.group_id == managed_group1.id
