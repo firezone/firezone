@@ -27,7 +27,7 @@ defmodule Domain.Events.Hooks.FlowsTest do
         "resource_id" => resource_id
       }
 
-      :ok = subscribe(flow_id)
+      :ok = Domain.PubSub.Flow.subscribe(flow_id)
 
       assert :ok == on_update(old_data, data)
       assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
@@ -47,7 +47,7 @@ defmodule Domain.Events.Hooks.FlowsTest do
         "resource_id" => resource_id
       }
 
-      :ok = subscribe(flow_id)
+      :ok = Domain.PubSub.Flow.subscribe(flow_id)
 
       assert :ok == on_update(old_data, data)
       refute_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
@@ -84,7 +84,7 @@ defmodule Domain.Events.Hooks.FlowsTest do
         "resource_id" => resource_id
       }
 
-      :ok = subscribe(flow_id)
+      :ok = Domain.PubSub.Flow.subscribe(flow_id)
 
       assert :ok == on_delete(old_data)
       assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}

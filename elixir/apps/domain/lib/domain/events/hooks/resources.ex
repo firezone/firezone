@@ -1,12 +1,15 @@
 defmodule Domain.Events.Hooks.Resources do
-  alias Domain.Events.Hooks.Accounts
+  @behaviour Domain.Events.Hooks
   alias Domain.{Flows, PubSub}
 
+  @impl true
   def on_insert(%{"id" => resource_id, "account_id" => account_id} = _data) do
     payload = {:create_resource, resource_id}
-    broadcast(resource_id, payload)
-    Accounts.broadcast_to_resources(account_id, payload)
+    PubSub.Resource.broadcast(resource_id, payload)
+    PubSub.Account.Resources.broadcast(account_id, payload)
   end
+
+  @impl true
 
   # Soft-delete
   def on_update(%{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at} = _data)
@@ -41,12 +44,12 @@ defmodule Domain.Events.Hooks.Resources do
       {:ok, _flows} = Flows.expire_flows_for_resource_id(resource_id)
 
       payload = {:delete_resource, resource_id}
-      broadcast(resource_id, payload)
-      Accounts.broadcast_to_resources(account_id, payload)
+      PubSub.Resource.broadcast(resource_id, payload)
+      PubSub.Account.Resources.broadcast(account_id, payload)
 
       payload = {:create_resource, resource_id}
-      broadcast(resource_id, payload)
-      Accounts.broadcast_to_resources(account_id, payload)
+      PubSub.Resource.broadcast(resource_id, payload)
+      PubSub.Account.Resources.broadcast(account_id, payload)
     end)
 
     :ok
@@ -55,35 +58,14 @@ defmodule Domain.Events.Hooks.Resources do
   # Non-breaking update - for non-addressability changes - e.g. name, description, etc.
   def on_update(_old_data, %{"id" => resource_id, "account_id" => account_id} = _data) do
     payload = {:update_resource, resource_id}
-    broadcast(resource_id, payload)
-    Accounts.broadcast_to_resources(account_id, payload)
+    PubSub.Resource.broadcast(resource_id, payload)
+    PubSub.Account.Resources.broadcast(account_id, payload)
   end
 
+  @impl true
   def on_delete(%{"id" => resource_id, "account_id" => account_id} = _old_data) do
     payload = {:delete_resource, resource_id}
-    broadcast(resource_id, payload)
-    Accounts.broadcast_to_resources(account_id, payload)
-  end
-
-  def subscribe(resource_id) do
-    resource_id
-    |> topic()
-    |> PubSub.subscribe()
-  end
-
-  def unsubscribe(resource_id) do
-    resource_id
-    |> topic()
-    |> PubSub.unsubscribe()
-  end
-
-  def broadcast(resource_id, payload) do
-    resource_id
-    |> topic()
-    |> PubSub.broadcast(payload)
-  end
-
-  defp topic(resource_id) do
-    "resource:#{resource_id}"
+    PubSub.Resource.broadcast(resource_id, payload)
+    PubSub.Account.Resources.broadcast(account_id, payload)
   end
 end

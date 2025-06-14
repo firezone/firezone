@@ -1,6 +1,6 @@
 defmodule Web.Live.Resources.EditTest do
   use Web.ConnCase, async: true
-  alias Domain.Events
+  alias Domain.{Events, PubSub}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -229,7 +229,7 @@ defmodule Web.Live.Resources.EditTest do
       }
     }
 
-    :ok = Events.Hooks.Accounts.subscribe_to_resources(account.id)
+    :ok = PubSub.Account.Resources.subscribe(account.id)
 
     {:ok, lv, _html} =
       conn

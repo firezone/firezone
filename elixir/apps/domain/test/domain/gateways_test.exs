@@ -1,7 +1,7 @@
 defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
-  alias Domain.{Events, Gateways, Tokens, Resources}
+  alias Domain.{Gateways, Tokens, Resources}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -622,7 +622,7 @@ defmodule Domain.GatewaysTest do
     } do
       offline_gateway = Fixtures.Gateways.create_gateway(account: account)
       online_gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(online_gateway)
+      :ok = Gateways.Presence.connect(online_gateway)
       Fixtures.Gateways.create_gateway()
 
       assert {:ok, gateways, _metadata} = list_gateways(subject, preload: :online?)
@@ -689,7 +689,7 @@ defmodule Domain.GatewaysTest do
           connections: [%{gateway_group_id: gateway.group_id}]
         )
 
-      assert Events.Hooks.Gateways.connect(gateway) == :ok
+      assert Gateways.Presence.connect(gateway) == :ok
 
       assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource(resource, subject)
       assert connected_gateway.id == gateway.id
@@ -702,7 +702,7 @@ defmodule Domain.GatewaysTest do
       resource = Fixtures.Resources.create_resource(account: account)
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert Events.Hooks.Gateways.connect(gateway) == :ok
+      assert Gateways.Presence.connect(gateway) == :ok
 
       assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
@@ -711,7 +711,7 @@ defmodule Domain.GatewaysTest do
   describe "gateway_can_connect_to_resource?/2" do
     test "returns true when gateway can connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Gateways.Presence.connect(gateway)
 
       resource =
         Fixtures.Resources.create_resource(
@@ -724,7 +724,7 @@ defmodule Domain.GatewaysTest do
 
     test "returns false when gateway cannot connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Gateways.Presence.connect(gateway)
 
       resource = Fixtures.Resources.create_resource(account: account)
 
@@ -1206,15 +1206,15 @@ defmodule Domain.GatewaysTest do
     test "does not allow duplicate presence", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert Events.Hooks.Gateways.connect(gateway) == :ok
+      assert Gateways.Presence.connect(gateway) == :ok
 
       assert {:error, {:already_tracked, _pid, _topic, _key}} =
-               Events.Hooks.Gateways.connect(gateway)
+               Gateways.Presence.connect(gateway)
     end
 
     test "tracks gateway presence for account", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert Events.Hooks.Gateways.connect(gateway) == :ok
+      assert Gateways.Presence.connect(gateway) == :ok
 
       gateway = fetch_gateway_by_id!(gateway.id, preload: [:online?])
       assert gateway.online? == true

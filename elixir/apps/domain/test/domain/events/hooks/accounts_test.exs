@@ -16,7 +16,7 @@ defmodule Domain.Events.Hooks.AccountsTest do
     test "sends :config_changed if config changes" do
       account = Fixtures.Accounts.create_account()
 
-      :ok = subscribe(account.id)
+      :ok = Domain.PubSub.Account.subscribe(account.id)
 
       old_data = %{
         "id" => account.id,
@@ -38,7 +38,7 @@ defmodule Domain.Events.Hooks.AccountsTest do
     test "does not send :config_changed if config does not change" do
       account = Fixtures.Accounts.create_account()
 
-      :ok = subscribe(account.id)
+      :ok = Domain.PubSub.Account.subscribe(account.id)
 
       old_data = %{
         "id" => account.id,
@@ -60,7 +60,7 @@ defmodule Domain.Events.Hooks.AccountsTest do
       old_data = %{"id" => account_id, "disabled_at" => nil}
       data = %{"id" => account_id, "disabled_at" => DateTime.utc_now()}
 
-      :ok = subscribe_to_clients(account_id)
+      :ok = Domain.PubSub.Account.Clients.subscribe(account_id)
 
       assert :ok == on_update(old_data, data)
 

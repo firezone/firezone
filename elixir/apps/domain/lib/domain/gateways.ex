@@ -1,7 +1,7 @@
 defmodule Domain.Gateways do
   use Supervisor
   alias Domain.Accounts.Account
-  alias Domain.{Repo, Auth, Events, Geo}
+  alias Domain.{Repo, Auth, Geo}
   alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
@@ -220,9 +220,7 @@ defmodule Domain.Gateways do
 
   @doc false
   def preload_gateways_presence([gateway]) do
-    gateway.account_id
-    |> Events.Hooks.Accounts.gateways_presence_topic()
-    |> Presence.get_by_key(gateway.id)
+    Presence.Account.get(gateway.account_id, gateway.id)
     |> case do
       [] -> %{gateway | online?: false}
       %{metas: [_ | _]} -> %{gateway | online?: true}
@@ -238,8 +236,7 @@ defmodule Domain.Gateways do
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
       |> Enum.reduce(%{}, fn account_id, acc ->
-        connected_gateways =
-          account_id |> Events.Hooks.Accounts.gateways_presence_topic() |> Presence.list()
+        connected_gateways = Presence.Account.list(account_id)
 
         Map.merge(acc, connected_gateways)
       end)
@@ -250,9 +247,7 @@ defmodule Domain.Gateways do
   end
 
   def all_online_gateway_ids_by_group_id!(group_id) do
-    group_id
-    |> Events.Hooks.GatewayGroups.presence_topic()
-    |> Presence.list()
+    Presence.Group.list(group_id)
     |> Map.keys()
   end
 
@@ -265,9 +260,7 @@ defmodule Domain.Gateways do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       connected_gateway_ids =
-        resource.account_id
-        |> Events.Hooks.Accounts.gateways_presence_topic()
-        |> Presence.list()
+        Presence.Account.list(resource.account_id)
         |> Map.keys()
 
       gateways =
@@ -284,9 +277,7 @@ defmodule Domain.Gateways do
 
   def gateway_can_connect_to_resource?(%Gateway{} = gateway, %Resources.Resource{} = resource) do
     connected_gateway_ids =
-      resource.account_id
-      |> Events.Hooks.Accounts.gateways_presence_topic()
-      |> Presence.list()
+      Presence.Account.list(resource.account_id)
       |> Map.keys()
 
     cond do

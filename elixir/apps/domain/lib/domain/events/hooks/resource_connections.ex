@@ -1,9 +1,14 @@
 defmodule Domain.Events.Hooks.ResourceConnections do
+  @behaviour Domain.Events.Hooks
   alias Domain.Flows
 
+  @impl true
   def on_insert(_data), do: :ok
+
+  @impl true
   def on_update(_old_data, _data), do: :ok
 
+  @impl true
   def on_delete(%{"resource_id" => resource_id} = _old_data) do
     # TODO: WAL
     # The flow expires_at field is not used for any persistence-related reason.
