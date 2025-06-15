@@ -437,7 +437,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "swift format --recursive --parallel --in-place .\n";
+			shellScript = "swift format format --recursive --parallel --in-place .\nfind . -name \"*.swift\" -not -path \"./FirezoneNetworkExtension/Connlib/Generated/*\" | xargs swift format lint --parallel --strict -\n";
 		};
 		8D8555822D0A796100A1EA09 /* Build Connlib */ = {
 			isa = PBXShellScriptBuildPhase;
