@@ -61,7 +61,7 @@ class SystemConfigurationResolvers {
   ///    so return those if found. Otherwise, return the DHCP ones.
   public func getDefaultDNSServers(interfaceName: String?) -> [String] {
     guard let dynamicStore = dynamicStore,
-          let interfaceName = interfaceName
+      let interfaceName = interfaceName
     else {
       return []
     }
@@ -77,7 +77,7 @@ class SystemConfigurationResolvers {
     // Loop over all the services found, checking for the one we want
     for service in services {
       guard let configInterfaceName = fetch(path: service, key: "DeviceName") as? String,
-            configInterfaceName == interfaceName
+        configInterfaceName == interfaceName
       else { continue }
 
       // Extract our serviceId

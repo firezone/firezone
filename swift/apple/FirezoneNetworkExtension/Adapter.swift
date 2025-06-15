@@ -60,14 +60,14 @@ class Adapter {
   private var networkMonitor: NWPathMonitor?
 
   /// Used to avoid path update callback cycles on iOS
-#if os(iOS)
-  private var gateways: [Network.NWEndpoint] = []
-#endif
+  #if os(iOS)
+    private var gateways: [Network.NWEndpoint] = []
+  #endif
 
-#if os(macOS)
-  /// Used for finding system DNS resolvers on macOS when network conditions have changed.
-  private let systemConfigurationResolvers = SystemConfigurationResolvers()
-#endif
+  #if os(macOS)
+    /// Used for finding system DNS resolvers on macOS when network conditions have changed.
+    private let systemConfigurationResolvers = SystemConfigurationResolvers()
+  #endif
 
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
@@ -144,8 +144,9 @@ class Adapter {
           interfaceName: path.availableInterfaces.first?.name)
 
         if self.lastFetchedResolvers != resolvers,
-           let encoded = try? JSONEncoder().encode(resolvers),
-           let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString() {
+          let encoded = try? JSONEncoder().encode(resolvers),
+          let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString()
+        {
 
           do {
             try session?.setDns(jsonResolvers)
@@ -316,7 +317,7 @@ class Adapter {
     }
 
     guard let currentlyDisabled = try? JSONEncoder().encode(disablingResources),
-          let toSet = String(data: currentlyDisabled, encoding: .utf8)
+      let toSet = String(data: currentlyDisabled, encoding: .utf8)
     else {
       fatalError("Should be able to encode 'disablingResources'")
     }
@@ -341,20 +342,20 @@ extension Adapter {
     networkMonitor.start(queue: self.workQueue)
   }
 
-#if os(iOS)
-  private func shouldFetchSystemResolvers(path: Network.NWPath) -> Bool {
-    if path.gateways != gateways {
-      gateways = path.gateways
+  #if os(iOS)
+    private func shouldFetchSystemResolvers(path: Network.NWPath) -> Bool {
+      if path.gateways != gateways {
+        gateways = path.gateways
+        return true
+      }
+
+      return false
+    }
+  #else
+    private func shouldFetchSystemResolvers(path _: Network.NWPath) -> Bool {
       return true
     }
-
-    return false
-  }
-#else
-  private func shouldFetchSystemResolvers(path _: Network.NWPath) -> Bool {
-    return true
-  }
-#endif
+  #endif
 }
 
 // MARK: Implementing CallbackHandlerDelegate
@@ -373,16 +374,18 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      let networkSettings = self.networkSettings
-      ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
+      let networkSettings =
+        self.networkSettings
+        ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
 
       Log.log(
-        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses) \(routeListv4) \(routeListv6)")
+        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses) \(routeListv4) \(routeListv6)"
+      )
 
       guard let data4 = routeListv4.data(using: .utf8),
-            let data6 = routeListv6.data(using: .utf8),
-            let decoded4 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data4),
-            let decoded6 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data6)
+        let data6 = routeListv6.data(using: .utf8),
+        let decoded4 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data4),
+        let decoded6 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data6)
       else {
         fatalError("Could not decode route list from connlib")
       }
@@ -437,10 +440,10 @@ extension Adapter: CallbackHandlerDelegate {
         } catch {
           Log.error(error)
         }
-#if os(iOS)
-        // iOS notifications should be shown from the tunnel process
-        SessionNotification.showSignedOutNotificationiOS()
-#endif
+        #if os(iOS)
+          // iOS notifications should be shown from the tunnel process
+          SessionNotification.showSignedOutNotificationiOS()
+        #endif
       }
 
       // Tell the system to shut us down
@@ -449,12 +452,12 @@ extension Adapter: CallbackHandlerDelegate {
   }
 
   private func getSystemDefaultResolvers(interfaceName: String?) -> [String] {
-#if os(macOS)
-    let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
-      interfaceName: interfaceName)
-#elseif os(iOS)
-    let resolvers = resetToSystemDNSGettingBindResolvers()
-#endif
+    #if os(macOS)
+      let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
+        interfaceName: interfaceName)
+    #elseif os(iOS)
+      let resolvers = resetToSystemDNSGettingBindResolvers()
+    #endif
 
     var parsedResolvers: [String] = []
 
@@ -477,54 +480,53 @@ extension Adapter: CallbackHandlerDelegate {
 
 // MARK: Getting System Resolvers on iOS
 #if os(iOS)
-extension Adapter {
-  // When the tunnel is up, we can only get the system's default resolvers
-  // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
-  // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
-  // sentinel, which isn't helpful to us.
-  private func resetToSystemDNSGettingBindResolvers() -> [String] {
-    guard let networkSettings = networkSettings
-    else {
-      // Network Settings hasn't been applied yet, so our sentinel isn't
-      // the system's resolver and we can grab the system resolvers directly.
-      // If we try to continue below without valid tunnel addresses assigned
-      // to the interface, we'll crash.
-      return BindResolvers().getservers().map(BindResolvers.getnameinfo)
+  extension Adapter {
+    // When the tunnel is up, we can only get the system's default resolvers
+    // by reading /etc/resolv.conf when matchDomains is set to a non-empty string.
+    // If matchDomains is an empty string, /etc/resolv.conf will contain connlib's
+    // sentinel, which isn't helpful to us.
+    private func resetToSystemDNSGettingBindResolvers() -> [String] {
+      guard let networkSettings = networkSettings
+      else {
+        // Network Settings hasn't been applied yet, so our sentinel isn't
+        // the system's resolver and we can grab the system resolvers directly.
+        // If we try to continue below without valid tunnel addresses assigned
+        // to the interface, we'll crash.
+        return BindResolvers().getservers().map(BindResolvers.getnameinfo)
+      }
+
+      var resolvers: [String] = []
+
+      // The caller is in an async context, so it's ok to block this thread here.
+      let semaphore = DispatchSemaphore(value: 0)
+
+      // Set tunnel's matchDomains to a dummy string that will never match any name
+      networkSettings.setDummyMatchDomain()
+
+      // Call apply to populate /etc/resolv.conf with the system's default resolvers
+      networkSettings.apply {
+        guard let networkSettings = self.networkSettings else { return }
+
+        // Only now can we get the system resolvers
+        resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
+
+        // Restore connlib's DNS resolvers
+        networkSettings.clearDummyMatchDomain()
+        networkSettings.apply { semaphore.signal() }
+      }
+
+      semaphore.wait()
+      return resolvers
     }
-
-    var resolvers: [String] = []
-
-    // The caller is in an async context, so it's ok to block this thread here.
-    let semaphore = DispatchSemaphore(value: 0)
-
-    // Set tunnel's matchDomains to a dummy string that will never match any name
-    networkSettings.setDummyMatchDomain()
-
-    // Call apply to populate /etc/resolv.conf with the system's default resolvers
-    networkSettings.apply {
-      guard let networkSettings = self.networkSettings else { return }
-
-      // Only now can we get the system resolvers
-      resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
-
-      // Restore connlib's DNS resolvers
-      networkSettings.clearDummyMatchDomain()
-      networkSettings.apply { semaphore.signal() }
-    }
-
-    semaphore.wait()
-    return resolvers
   }
-}
 #endif
 
 extension Network.NWPath {
   func connectivityDifferentFrom(path: Network.NWPath) -> Bool {
     // We define a path as different from another if the following properties change
-    return path.supportsIPv4 != self.supportsIPv4 ||
-    path.supportsIPv6 != self.supportsIPv6 ||
-    path.availableInterfaces.first?.name != self.availableInterfaces.first?.name ||
-    // Apple provides no documentation on whether order is meaningful, so assume it isn't.
-    Set(self.gateways) != Set(path.gateways)
+    return path.supportsIPv4 != self.supportsIPv4 || path.supportsIPv6 != self.supportsIPv6
+      || path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
+      // Apple provides no documentation on whether order is meaningful, so assume it isn't.
+      || Set(self.gateways) != Set(path.gateways)
   }
 }

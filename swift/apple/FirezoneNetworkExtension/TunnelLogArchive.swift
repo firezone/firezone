@@ -5,9 +5,9 @@
 //
 
 import AppleArchive
-import System
-import Foundation
 import FirezoneKit
+import Foundation
+import System
 
 /// We must enable the app sandbox when distributing the macOS client in the App Store. Since the tunnel
 /// process runs as root, this makes sharing log files between the app process (running as the
@@ -32,7 +32,7 @@ class TunnelLogArchive {
     case unableToReadArchive
   }
 
-  let chunkSize = 1024 * 1024 // 1 MiB
+  let chunkSize = 1024 * 1024  // 1 MiB
   let encoder = PropertyListEncoder()
   let archiveURL = FileManager
     .default
@@ -86,7 +86,7 @@ class TunnelLogArchive {
     self.offset += UInt64(data.count)
 
     let chunk = LogChunk(
-      done: data.count < chunkSize, // we're done if we read less than chunkSize
+      done: data.count < chunkSize,  // we're done if we read less than chunkSize
       data: data
     )
 

@@ -23,46 +23,46 @@ struct FirezoneApp: App {
     let store = Store()
     _store = StateObject(wrappedValue: store)
 
-#if os(macOS)
-    appDelegate.store = store
-#endif
+    #if os(macOS)
+      appDelegate.store = store
+    #endif
   }
 
   var body: some Scene {
-#if os(iOS)
-    WindowGroup {
-      AppView()
-        .environmentObject(errorHandler)
-        .environmentObject(store)
-    }
-#elseif os(macOS)
-    WindowGroup(
-      "Welcome to Firezone",
-      id: AppView.WindowDefinition.main.identifier
-    ) {
-      if let menuBar = appDelegate.menuBar {
-        // menuBar will be initialized by this point
+    #if os(iOS)
+      WindowGroup {
         AppView()
+          .environmentObject(errorHandler)
           .environmentObject(store)
-          .environmentObject(menuBar)
-      } else {
-        ProgressView("Loading...")
       }
-    }
-    .handlesExternalEvents(
-      matching: [AppView.WindowDefinition.main.externalEventMatchString]
-    )
-    // macOS doesn't have Sheets, need to use another Window group to show settings
-    WindowGroup(
-      "Settings",
-      id: AppView.WindowDefinition.settings.identifier
-    ) {
-      SettingsView(store: store)
-    }
-    .handlesExternalEvents(
-      matching: [AppView.WindowDefinition.settings.externalEventMatchString]
-    )
-#endif
+    #elseif os(macOS)
+      WindowGroup(
+        "Welcome to Firezone",
+        id: AppView.WindowDefinition.main.identifier
+      ) {
+        if let menuBar = appDelegate.menuBar {
+          // menuBar will be initialized by this point
+          AppView()
+            .environmentObject(store)
+            .environmentObject(menuBar)
+        } else {
+          ProgressView("Loading...")
+        }
+      }
+      .handlesExternalEvents(
+        matching: [AppView.WindowDefinition.main.externalEventMatchString]
+      )
+      // macOS doesn't have Sheets, need to use another Window group to show settings
+      WindowGroup(
+        "Settings",
+        id: AppView.WindowDefinition.settings.identifier
+      ) {
+        SettingsView(store: store)
+      }
+      .handlesExternalEvents(
+        matching: [AppView.WindowDefinition.settings.externalEventMatchString]
+      )
+    #endif
   }
 }
 
@@ -89,7 +89,7 @@ struct FirezoneApp: App {
       let osVersion = ProcessInfo.processInfo.operatingSystemVersion
 
       guard osVersion.majorVersion == 15,
-            osVersion.minorVersion == 0
+        osVersion.minorVersion == 0
       else {
         return
       }
@@ -97,11 +97,11 @@ struct FirezoneApp: App {
       let alert = NSAlert()
       alert.messageText = "macOS Update Required"
       alert.informativeText =
-      """
-      macOS 15.0 contains a known issue that can prevent Firezone and other VPN
-      apps from functioning correctly. It's highly recommended you upgrade to
-      macOS 15.1 or higher.
-      """
+        """
+        macOS 15.0 contains a known issue that can prevent Firezone and other VPN
+        apps from functioning correctly. It's highly recommended you upgrade to
+        macOS 15.1 or higher.
+        """
       alert.addButton(withTitle: "Open System Preferences")
       alert.addButton(withTitle: "OK")
 
