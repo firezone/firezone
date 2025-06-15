@@ -144,7 +144,11 @@ impl Appender {
         let filename = format!("{}.{date}.{}", self.file_base_name, self.file_extension);
 
         let path = self.directory.join(&filename);
-        let latest = self.directory.join("latest");
+        let latest = self
+            .directory
+            .parent()
+            .ok_or(io::Error::other("Log directory must have a parent"))?
+            .join(format!("{}_latest", self.file_base_name));
         let mut open_options = fs::OpenOptions::new();
         open_options.append(true).create(true);
 
