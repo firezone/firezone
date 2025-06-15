@@ -84,9 +84,9 @@ public enum ResourceStatus: String, Decodable {
       return "You're connected to a healthy Gateway in this Site."
     case .unknown:
       return """
-      No connection has been attempted to Resources in this Site.
-      Access a Resource to establish a Gateway connection.
-      """
+        No connection has been attempted to Resources in this Site.
+        Access a Resource to establish a Gateway connection.
+        """
     }
   }
 }
@@ -94,6 +94,6 @@ public enum ResourceStatus: String, Decodable {
 public enum ResourceType: String, Decodable {
   case dns
   case cidr
-  case ip // swiftlint:disable:this identifier_name
+  case ip
   case internet
 }

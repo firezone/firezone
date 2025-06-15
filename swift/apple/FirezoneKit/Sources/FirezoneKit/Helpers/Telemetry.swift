@@ -34,8 +34,9 @@ public enum Telemetry {
 
   public static func start() {
     SentrySDK.start { options in
-      options.dsn = "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"
-      options.environment = "entrypoint" // will be reconfigured in VPNConfigurationManager
+      options.dsn =
+        "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488"
+      options.environment = "entrypoint"  // will be reconfigured in VPNConfigurationManager
       options.releaseName = releaseName()
       options.dist = distributionType()
     }
@@ -69,7 +70,7 @@ public enum Telemetry {
 
   private static func updateUser(id: String?, slug: String?) {
     guard let id,
-          let slug
+      let slug
     else {
       return
     }
@@ -93,13 +94,14 @@ public enum Telemetry {
   }
 
   private static func releaseName() -> String {
-    let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"]
-    as? String ?? "unknown"
+    let version =
+      Bundle.main.infoDictionary?["CFBundleShortVersionString"]
+      as? String ?? "unknown"
 
-#if os(iOS)
-    return "ios-client@\(version)"
-#else
-    return "macos-client@\(version)"
-#endif
+    #if os(iOS)
+      return "ios-client@\(version)"
+    #else
+      return "macos-client@\(version)"
+    #endif
   }
 }

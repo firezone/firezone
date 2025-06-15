@@ -6,12 +6,12 @@
 
 import Combine
 import NetworkExtension
-import UserNotifications
 import OSLog
+import UserNotifications
 
 #if os(macOS)
-import ServiceManagement
-import AppKit
+  import ServiceManagement
+  import AppKit
 #endif
 
 @MainActor
@@ -27,10 +27,10 @@ public final class Store: ObservableObject {
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
 
-#if os(macOS)
-  // Track whether our system extension has been installed (macOS)
-  @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
-#endif
+  #if os(macOS)
+    // Track whether our system extension has been installed (macOS)
+    @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
+  #endif
 
   var firezoneId: String?
 
@@ -57,12 +57,16 @@ public final class Store: ObservableObject {
     // We monitor for any configuration changes and tell the tunnel service about them
     self.configuration.objectWillChange
       .receive(on: DispatchQueue.main)
-      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main) // These happen quite frequently
+      .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // These happen quite frequently
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
 
         if self.vpnConfigurationManager != nil {
-          Task { do { try await self.ipcClient().setConfiguration(self.configuration) } catch { Log.error(error) } }
+          Task {
+            do { try await self.ipcClient().setConfiguration(self.configuration) } catch {
+              Log.error(error)
+            }
+          }
         }
       })
       .store(in: &cancellables)
@@ -82,20 +86,21 @@ public final class Store: ObservableObject {
     }
   }
 
-#if os(macOS)
-  func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws {
-    let manager = SystemExtensionManager()
+  #if os(macOS)
+    func systemExtensionRequest(_ requestType: SystemExtensionRequestType) async throws {
+      let manager = SystemExtensionManager()
 
-    self.systemExtensionStatus =
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
-      manager.sendRequest(
-        requestType: requestType,
-        identifier: VPNConfigurationManager.bundleIdentifier,
-        continuation: continuation
-      )
+      self.systemExtensionStatus =
+        try await withCheckedThrowingContinuation {
+          (continuation: CheckedContinuation<SystemExtensionStatus, Error>) in
+          manager.sendRequest(
+            requestType: requestType,
+            identifier: VPNConfigurationManager.bundleIdentifier,
+            continuation: continuation
+          )
+        }
     }
-  }
-#endif
+  #endif
 
   private func setupTunnelObservers() async throws {
     let vpnStatusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
@@ -114,26 +119,26 @@ public final class Store: ObservableObject {
       endUpdatingResources()
     }
 
-#if os(macOS)
-    // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
-    // from the tunnel process, because the UI process is not guaranteed to be alive.
-    if vpnStatus == .disconnected {
-      do {
-        let reason = try await ipcClient().consumeStopReason()
-        if reason == .authenticationCanceled {
-          await self.sessionNotification.showSignedOutAlertmacOS()
+    #if os(macOS)
+      // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
+      // from the tunnel process, because the UI process is not guaranteed to be alive.
+      if vpnStatus == .disconnected {
+        do {
+          let reason = try await ipcClient().consumeStopReason()
+          if reason == .authenticationCanceled {
+            await self.sessionNotification.showSignedOutAlertmacOS()
+          }
+        } catch {
+          Log.error(error)
         }
-      } catch {
-        Log.error(error)
       }
-    }
 
-    // When this happens, it's because either our VPN configuration or System Extension (or both) were removed.
-    // So load the system extension status again to determine which view to load.
-    if vpnStatus == .invalid {
-      try await systemExtensionRequest(.check)
-    }
-#endif
+      // When this happens, it's because either our VPN configuration or System Extension (or both) were removed.
+      // So load the system extension status again to determine which view to load.
+      if vpnStatus == .invalid {
+        try await systemExtensionRequest(.check)
+      }
+    #endif
   }
 
   private func initNotifications() async {
@@ -141,14 +146,14 @@ public final class Store: ObservableObject {
   }
 
   private func initSystemExtension() async throws {
-#if os(macOS)
-    try await systemExtensionRequest(.check)
+    #if os(macOS)
+      try await systemExtensionRequest(.check)
 
-    // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
-    if systemExtensionStatus == .needsReplacement {
-      try await systemExtensionRequest(.install)
-    }
-#endif
+      // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
+      if systemExtensionStatus == .needsReplacement {
+        try await systemExtensionRequest(.install)
+      }
+    #endif
   }
 
   private func initVPNConfiguration() async throws {

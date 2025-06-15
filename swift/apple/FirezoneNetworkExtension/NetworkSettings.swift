@@ -34,9 +34,9 @@ class NetworkSettings {
 
   func setSearchDomain(domain: String?) {
     guard let domain = domain else {
-        self.matchDomains = [""]
-        self.searchDomains = [""]
-        return
+      self.matchDomains = [""]
+      self.searchDomains = [""]
+      return
     }
 
     self.matchDomains = ["", domain]
@@ -61,7 +61,8 @@ class NetworkSettings {
     let tunnelNetworkSettings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: "127.0.0.1")
 
     // Set tunnel addresses and routes
-    let ipv4Settings = NEIPv4Settings(addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
+    let ipv4Settings = NEIPv4Settings(
+      addresses: [tunnelAddressIPv4!], subnetMasks: ["255.255.255.255"])
     // This is a hack since macos routing table ignores, for full route, any prefix smaller than 120.
     // Without this, adding a full route, remove the previous default route and leaves the system with none,
     // completely breaking IPv6 on the user's system.
@@ -122,7 +123,7 @@ enum IPv4SubnetMaskLookup {
     29: "255.255.255.248",
     30: "255.255.255.252",
     31: "255.255.255.254",
-    32: "255.255.255.255"
+    32: "255.255.255.255",
   ]
 }
 

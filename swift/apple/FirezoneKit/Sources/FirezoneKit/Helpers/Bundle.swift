@@ -9,7 +9,8 @@ import Foundation
 public enum BundleHelper {
   static func isAppStore() -> Bool {
     if let receiptURL = Bundle.main.appStoreReceiptURL,
-       FileManager.default.fileExists(atPath: receiptURL.path) {
+      FileManager.default.fileExists(atPath: receiptURL.path)
+    {
       return true
     }
 
@@ -18,7 +19,7 @@ public enum BundleHelper {
 
   static var gitSha: String {
     guard let gitSha = Bundle.main.object(forInfoDictionaryKey: "GitSha") as? String,
-          !gitSha.isEmpty
+      !gitSha.isEmpty
     else { return "unknown" }
 
     return String(gitSha.prefix(8))

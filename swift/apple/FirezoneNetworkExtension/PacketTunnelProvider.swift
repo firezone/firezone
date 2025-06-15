@@ -79,8 +79,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       }
 
       guard let apiURL = legacyConfiguration?["apiURL"] ?? tunnelConfiguration?.apiURL,
-            let logFilter = legacyConfiguration?["logFilter"] ?? tunnelConfiguration?.logFilter,
-            let accountSlug = legacyConfiguration?["accountSlug"] ?? tunnelConfiguration?.accountSlug
+        let logFilter = legacyConfiguration?["logFilter"] ?? tunnelConfiguration?.logFilter,
+        let accountSlug = legacyConfiguration?["accountSlug"] ?? tunnelConfiguration?.accountSlug
       else {
         throw PacketTunnelProviderError.tunnelConfigurationIsInvalid
       }
@@ -244,7 +244,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     case .idle:
       guard let logFolderURL = SharedAccess.logFolderURL,
-            let logFolderPath = FilePath(logFolderURL)
+        let logFolderPath = FilePath(logFolderURL)
       else {
         completionHandler(nil)
 
@@ -289,7 +289,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // 1. Try to load from file, deleting it
     if let containerURL = FileManager.default.containerURL(
       forSecurityApplicationGroupIdentifier: BundleHelper.appGroupId),
-       let idFromFile = try? String(contentsOf: containerURL.appendingPathComponent(filename)) {
+      let idFromFile = try? String(contentsOf: containerURL.appendingPathComponent(filename))
+    {
       defaults.set(idFromFile, forKey: key)
       try? FileManager.default.removeItem(at: containerURL.appendingPathComponent(filename))
       return
@@ -314,7 +315,7 @@ extension TunnelConfiguration {
       "apiURL": apiURL,
       "logFilter": logFilter,
       "accountSlug": accountSlug,
-      "internetResourceEnabled": internetResourceEnabled
+      "internetResourceEnabled": internetResourceEnabled,
     ]
 
     UserDefaults.standard.set(dict, forKey: key)
@@ -329,9 +330,9 @@ extension TunnelConfiguration {
     }
 
     guard let apiURL = dict["apiURL"] as? String,
-          let logFilter = dict["logFilter"] as? String,
-          let accountSlug = dict["accountSlug"] as? String,
-          let internetResourceEnabled = dict["internetResourceEnabled"] as? Bool
+      let logFilter = dict["logFilter"] as? String,
+      let accountSlug = dict["accountSlug"] as? String,
+      let internetResourceEnabled = dict["internetResourceEnabled"] as? Bool
     else {
       return nil
     }

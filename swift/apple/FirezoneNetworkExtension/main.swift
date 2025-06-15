@@ -4,8 +4,8 @@
 //  LICENSE: Apache-2.0
 //
 
-import Foundation
 import FirezoneKit
+import Foundation
 import NetworkExtension
 
 //  Entrypoint for the macOS app

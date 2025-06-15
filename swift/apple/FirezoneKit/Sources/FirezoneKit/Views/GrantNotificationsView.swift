@@ -50,17 +50,18 @@ struct GrantNotificationsView: View {
       })
   }
 
-  func grantNotifications () {
+  func grantNotifications() {
     Task {
       do {
         try await store.grantNotifications()
       } catch {
         Log.error(error)
 
-        errorHandler.handle(ErrorAlert(
-          title: "Error granting notifications",
-          error: error
-        ))
+        errorHandler.handle(
+          ErrorAlert(
+            title: "Error granting notifications",
+            error: error
+          ))
       }
     }
   }

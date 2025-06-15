@@ -72,15 +72,15 @@ class IPCClient {
     try session().stopTunnel()
   }
 
-#if os(macOS)
-  // On macOS, IPC calls to the system extension won't work after it's been upgraded, until the startTunnel call.
-  // Since we rely on IPC for the GUI to function, we need to send a dummy `startTunnel` that doesn't actually
-  // start the tunnel, but causes the system to start the extension.
-  func startSystemExtension() throws {
-    let options: [String: NSObject] = ["dryRun": true as NSObject]
-    try session().startTunnel(options: options)
-  }
-#endif
+  #if os(macOS)
+    // On macOS, IPC calls to the system extension won't work after it's been upgraded, until the startTunnel call.
+    // Since we rely on IPC for the GUI to function, we need to send a dummy `startTunnel` that doesn't actually
+    // start the tunnel, but causes the system to start the extension.
+    func startSystemExtension() throws {
+      let options: [String: NSObject] = ["dryRun": true as NSObject]
+      try session().startTunnel(options: options)
+    }
+  #endif
 
   @MainActor
   func setConfiguration(_ configuration: Configuration) async throws {
@@ -96,30 +96,31 @@ class IPCClient {
         // Request list of resources from the provider. We send the hash of the resource list we already have.
         // If it differs, we'll get the full list in the callback. If not, we'll get nil.
         try session([.connected]).sendProviderMessage(
-          encoder.encode(ProviderMessage.getResourceList(resourceListHash))) { data in
-            guard let data = data
-            else {
-              // No data returned; Resources haven't changed
-              continuation.resume(returning: self.resourcesListCache)
+          encoder.encode(ProviderMessage.getResourceList(resourceListHash))
+        ) { data in
+          guard let data = data
+          else {
+            // No data returned; Resources haven't changed
+            continuation.resume(returning: self.resourcesListCache)
 
-              return
-            }
-
-            // Save hash to compare against
-            self.resourceListHash = Data(SHA256.hash(data: data))
-
-            let jsonDecoder = JSONDecoder()
-            jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
-
-            do {
-              let decoded = try jsonDecoder.decode([Resource].self, from: data)
-              self.resourcesListCache = ResourceList.loaded(decoded)
-
-              continuation.resume(returning: self.resourcesListCache)
-            } catch {
-              continuation.resume(throwing: error)
-            }
+            return
           }
+
+          // Save hash to compare against
+          self.resourceListHash = Data(SHA256.hash(data: data))
+
+          let jsonDecoder = JSONDecoder()
+          jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
+
+          do {
+            let decoded = try jsonDecoder.decode([Resource].self, from: data)
+            self.resourcesListCache = ResourceList.loaded(decoded)
+
+            continuation.resume(returning: self.resourcesListCache)
+          } catch {
+            continuation.resume(throwing: error)
+          }
+        }
       } catch {
         continuation.resume(throwing: error)
       }
@@ -174,9 +175,10 @@ class IPCClient {
             return
           }
 
-          guard let chunk = try? self.decoder.decode(
-            LogChunk.self, from: data
-          )
+          guard
+            let chunk = try? self.decoder.decode(
+              LogChunk.self, from: data
+            )
           else {
             errorHandler(Error.decodeIPCDataFailed)
 
@@ -207,8 +209,8 @@ class IPCClient {
         ) { data in
 
           guard let data = data,
-                let reason = String(data: data, encoding: .utf8),
-                let rawValue = Int(reason)
+            let reason = String(data: data, encoding: .utf8),
+            let rawValue = Int(reason)
           else {
             continuation.resume(returning: nil)
 
@@ -225,9 +227,12 @@ class IPCClient {
 
   // Subscribe to system notifications about our VPN status changing
   // and let our handler know about them.
-  func subscribeToVPNStatusUpdates(handler: @escaping @MainActor (NEVPNStatus) async throws -> Void) {
+  func subscribeToVPNStatusUpdates(handler: @escaping @MainActor (NEVPNStatus) async throws -> Void)
+  {
     Task {
-      for await notification in NotificationCenter.default.notifications(named: .NEVPNStatusDidChange) {
+      for await notification in NotificationCenter.default.notifications(
+        named: .NEVPNStatusDidChange)
+      {
         guard let session = notification.object as? NETunnelProviderSession
         else {
           return
@@ -248,7 +253,8 @@ class IPCClient {
     return session.status
   }
 
-  private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws -> NETunnelProviderSession {
+  private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws -> NETunnelProviderSession
+  {
     if requiredStatuses.isEmpty || requiredStatuses.contains(session.status) {
       return session
     }

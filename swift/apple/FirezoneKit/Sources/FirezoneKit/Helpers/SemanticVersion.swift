@@ -34,8 +34,8 @@ struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
     }
 
     guard let major = Int(components[0]),
-          let minor = Int(components[1]),
-          let patch = Int(components[2])
+      let minor = Int(components[1]),
+      let patch = Int(components[2])
     else {
       throw Error.invalidVersionString
     }
@@ -58,8 +58,6 @@ struct SemanticVersion: Comparable, CustomStringConvertible, Codable {
   }
 
   static func == (lhs: SemanticVersion, rhs: SemanticVersion) -> Bool {
-    return lhs.major == rhs.major &&
-    lhs.minor == rhs.minor &&
-    lhs.patch == rhs.patch
+    return lhs.major == rhs.major && lhs.minor == rhs.minor && lhs.patch == rhs.patch
   }
 }

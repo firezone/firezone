@@ -23,10 +23,12 @@ struct WelcomeView: View {
           .frame(maxWidth: 300)
           .padding(.horizontal, 10)
           .padding(.vertical, 10)
-        Text("""
-          Welcome to Firezone.
-          Sign in to access Resources.
-        """).multilineTextAlignment(.center)
+        Text(
+          """
+            Welcome to Firezone.
+            Sign in to access Resources.
+          """
+        ).multilineTextAlignment(.center)
           .padding(.bottom, 10)
         Button("Sign in") {
           Task {
@@ -35,10 +37,11 @@ struct WelcomeView: View {
             } catch {
               Log.error(error)
 
-              self.errorHandler.handle(ErrorAlert(
-                title: "Error signing in",
-                error: error
-              ))
+              self.errorHandler.handle(
+                ErrorAlert(
+                  title: "Error signing in",
+                  error: error
+                ))
             }
           }
         }

@@ -70,7 +70,9 @@ class SettingsViewModel: ObservableObject {
     if !configuration.isApiURLForced { apiURL = Configuration.defaultApiURL }
     if !configuration.isLogFilterForced { logFilter = Configuration.defaultLogFilter }
     if !configuration.isAccountSlugForced { accountSlug = Configuration.defaultAccountSlug }
-    if !configuration.isConnectOnStartForced { connectOnStart = Configuration.defaultConnectOnStart }
+    if !configuration.isConnectOnStartForced {
+      connectOnStart = Configuration.defaultConnectOnStart
+    }
     if !configuration.isStartOnLoginForced { startOnLogin = Configuration.defaultStartOnLogin }
 
     updateDerivedState()
@@ -84,37 +86,33 @@ class SettingsViewModel: ObservableObject {
     configuration.connectOnStart = connectOnStart
     configuration.startOnLogin = startOnLogin
 
-#if os(macOS)
-    try await configuration.updateAppService()
-#endif
+    #if os(macOS)
+      try await configuration.updateAppService()
+    #endif
 
     updateDerivedState()
   }
 
   func isAllForced() -> Bool {
-    return (
-      configuration.isAuthURLForced &&
-      configuration.isApiURLForced &&
-      configuration.isLogFilterForced &&
-      configuration.isAccountSlugForced &&
-      configuration.isConnectOnStartForced &&
-      configuration.isStartOnLoginForced
-    )
+    return
+      (configuration.isAuthURLForced && configuration.isApiURLForced
+      && configuration.isLogFilterForced && configuration.isAccountSlugForced
+      && configuration.isConnectOnStartForced && configuration.isStartOnLoginForced)
   }
 
   func isValid() -> Bool {
     guard let apiURL = URL(string: apiURL),
-          apiURL.host != nil,
-          ["wss", "ws"].contains(apiURL.scheme),
-          apiURL.pathComponents.isEmpty
+      apiURL.host != nil,
+      ["wss", "ws"].contains(apiURL.scheme),
+      apiURL.pathComponents.isEmpty
     else {
       return false
     }
 
     guard let authURL = URL(string: authURL),
-          authURL.host != nil,
-          ["http", "https"].contains(authURL.scheme),
-          authURL.pathComponents.isEmpty
+      authURL.host != nil,
+      ["http", "https"].contains(authURL.scheme),
+      authURL.pathComponents.isEmpty
     else {
       return false
     }
@@ -128,37 +126,27 @@ class SettingsViewModel: ObservableObject {
   }
 
   func isDefault() -> Bool {
-    return (
-      (configuration.isAuthURLForced || authURL == Configuration.defaultAuthURL) &&
-      (configuration.isApiURLForced || apiURL == Configuration.defaultApiURL) &&
-      (configuration.isLogFilterForced || logFilter == Configuration.defaultLogFilter) &&
-      (configuration.isAccountSlugForced || accountSlug == Configuration.defaultAccountSlug) &&
-      (configuration.isConnectOnStartForced || connectOnStart == Configuration.defaultConnectOnStart) &&
-      (configuration.isStartOnLoginForced || startOnLogin == Configuration.defaultStartOnLogin)
-    )
+    return
+      ((configuration.isAuthURLForced || authURL == Configuration.defaultAuthURL)
+      && (configuration.isApiURLForced || apiURL == Configuration.defaultApiURL)
+      && (configuration.isLogFilterForced || logFilter == Configuration.defaultLogFilter)
+      && (configuration.isAccountSlugForced || accountSlug == Configuration.defaultAccountSlug)
+      && (configuration.isConnectOnStartForced
+        || connectOnStart == Configuration.defaultConnectOnStart)
+      && (configuration.isStartOnLoginForced || startOnLogin == Configuration.defaultStartOnLogin))
   }
 
   func isSaved() -> Bool {
-    return (
-      authURL == configuration.authURL &&
-      apiURL == configuration.apiURL &&
-      logFilter == configuration.logFilter &&
-      accountSlug == configuration.accountSlug &&
-      connectOnStart == configuration.connectOnStart &&
-      startOnLogin == configuration.startOnLogin
-    )
+    return
+      (authURL == configuration.authURL && apiURL == configuration.apiURL
+      && logFilter == configuration.logFilter && accountSlug == configuration.accountSlug
+      && connectOnStart == configuration.connectOnStart
+      && startOnLogin == configuration.startOnLogin)
   }
 
   private func updateDerivedState() {
-    shouldDisableApplyButton = (
-      isAllForced() ||
-      isSaved() ||
-      !isValid()
-    )
+    shouldDisableApplyButton = (isAllForced() || isSaved() || !isValid())
 
-    shouldDisableResetButton = (
-      isAllForced() ||
-      isDefault()
-    )
+    shouldDisableResetButton = (isAllForced() || isDefault())
   }
 }

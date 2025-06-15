@@ -8,7 +8,7 @@
 import Foundation
 
 #if os(macOS)
-import ServiceManagement
+  import ServiceManagement
 #endif
 
 @MainActor
@@ -76,15 +76,15 @@ public class Configuration: ObservableObject {
     set { defaults.set(newValue, forKey: Keys.internetResourceEnabled) }
   }
 
-#if DEBUG
-  static let defaultAuthURL = "https://app.firez.one"
-  static let defaultApiURL = "wss://api.firez.one"
-  static let defaultLogFilter = "debug"
-#else
-  static let defaultAuthURL = "https://app.firezone.dev"
-  static let defaultApiURL = "wss://api.firezone.dev"
-  static let defaultLogFilter = "info"
-#endif
+  #if DEBUG
+    static let defaultAuthURL = "https://app.firez.one"
+    static let defaultApiURL = "wss://api.firez.one"
+    static let defaultLogFilter = "debug"
+  #else
+    static let defaultAuthURL = "https://app.firezone.dev"
+    static let defaultApiURL = "wss://api.firezone.dev"
+    static let defaultLogFilter = "info"
+  #endif
 
   static let defaultAccountSlug = ""
   static let defaultSupportURL = "https://firezone.dev/support"
@@ -124,7 +124,8 @@ public class Configuration: ObservableObject {
   }
 
   deinit {
-    NotificationCenter.default.removeObserver(self, name: UserDefaults.didChangeNotification, object: defaults)
+    NotificationCenter.default.removeObserver(
+      self, name: UserDefaults.didChangeNotification, object: defaults)
   }
 
   func toTunnelConfiguration() -> TunnelConfiguration {
@@ -136,28 +137,28 @@ public class Configuration: ObservableObject {
     )
   }
 
-#if os(macOS)
-  // Register / unregister our launch service based on configuration. This is a major pain to do on macOS 12 and below,
-  // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
-  func updateAppService() async throws {
-    if #available(macOS 13.0, *) {
-      if !startOnLogin, SMAppService.mainApp.status == .enabled {
-        try await SMAppService.mainApp.unregister()
-        return
-      }
+  #if os(macOS)
+    // Register / unregister our launch service based on configuration. This is a major pain to do on macOS 12 and below,
+    // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
+    func updateAppService() async throws {
+      if #available(macOS 13.0, *) {
+        if !startOnLogin, SMAppService.mainApp.status == .enabled {
+          try await SMAppService.mainApp.unregister()
+          return
+        }
 
-      if startOnLogin, SMAppService.mainApp.status != .enabled {
-        try SMAppService.mainApp.register()
+        if startOnLogin, SMAppService.mainApp.status != .enabled {
+          try SMAppService.mainApp.register()
+        }
       }
     }
-  }
-#endif
+  #endif
 
   @objc private func handleUserDefaultsChanged(_ notification: Notification) {
-#if os(macOS)
-    // This is idempotent
-    Task { do { try await updateAppService() } }
-#endif
+    #if os(macOS)
+      // This is idempotent
+      Task { do { try await updateAppService() } }
+    #endif
 
     // Update published properties
     self.publishedInternetResourceEnabled = internetResourceEnabled
@@ -175,7 +176,8 @@ public struct TunnelConfiguration: Codable {
   public let logFilter: String
   public let internetResourceEnabled: Bool
 
-  public init(apiURL: String, accountSlug: String, logFilter: String, internetResourceEnabled: Bool) {
+  public init(apiURL: String, accountSlug: String, logFilter: String, internetResourceEnabled: Bool)
+  {
     self.apiURL = apiURL
     self.accountSlug = accountSlug
     self.logFilter = logFilter

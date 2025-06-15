@@ -5,8 +5,8 @@
 //  Created by Jamil Bou Kheir on 4/1/24.
 //
 
-import Foundation
 import AuthenticationServices
+import Foundation
 
 /// Wraps the ASWebAuthenticationSession ordeal so it can be called from either
 /// the AuthView (iOS) or the MenuBar (macOS)
@@ -19,18 +19,21 @@ struct WebAuthSession {
     let configuration = configuration ?? Configuration.shared
 
     guard let authURL = URL(string: configuration.authURL),
-          let authClient = try? AuthClient(authURL: authURL.appendingPathComponent(configuration.accountSlug)),
-          let url = try? authClient.build()
+      let authClient = try? AuthClient(
+        authURL: authURL.appendingPathComponent(configuration.accountSlug)),
+      let url = try? authClient.build()
     else {
       // Should never get here because we perform URL validation on input, but handle this just in case
       throw AuthClientError.invalidAuthURL
     }
 
     let authResponse: AuthResponse? = try await withCheckedThrowingContinuation { continuation in
-      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { returnedURL, error in
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) {
+        returnedURL, error in
         do {
           if let error = error as? ASWebAuthenticationSessionError,
-             error.code == .canceledLogin {
+            error.code == .canceledLogin
+          {
             // User canceled sign in
             continuation.resume(returning: nil)
             return

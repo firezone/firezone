@@ -51,17 +51,18 @@ public enum Keychain {
   }
 
   public static func load(persistentRef: PersistentRef) -> Data? {
-    let query = [
-      kSecClass: kSecClassGenericPassword,
-      kSecValuePersistentRef: persistentRef,
-      kSecReturnData: true
-    ] as [CFString: Any]
+    let query =
+      [
+        kSecClass: kSecClassGenericPassword,
+        kSecValuePersistentRef: persistentRef,
+        kSecReturnData: true,
+      ] as [CFString: Any]
 
     var result: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
 
     guard status == Result.success.rawValue,
-          let resultData = result as? Data
+      let resultData = result as? Data
     else {
       return nil
     }
@@ -72,14 +73,14 @@ public enum Keychain {
   public static func search(query: [CFString: Any]) -> PersistentRef? {
     let query = query.merging([
       kSecClass: kSecClassGenericPassword,
-      kSecReturnPersistentRef: true
+      kSecReturnPersistentRef: true,
     ]) { (_, new) in new }
 
     var result: CFTypeRef?
     let status = SecItemCopyMatching(query as CFDictionary, &result)
 
     guard status == Result.success.rawValue,
-          let persistentRef = result as? Data
+      let persistentRef = result as? Data
     else {
       return nil
     }
