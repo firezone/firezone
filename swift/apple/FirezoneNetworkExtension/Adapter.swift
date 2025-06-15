@@ -5,7 +5,6 @@
 //
 
 // TODO: Refactor to fix file length
-// swiftlint:disable file_length
 
 import CryptoKit
 import FirezoneKit
@@ -361,7 +360,6 @@ extension Adapter {
 // MARK: Implementing CallbackHandlerDelegate
 
 extension Adapter: CallbackHandlerDelegate {
-  // swiftlint:disable:next function_parameter_count
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
@@ -462,13 +460,15 @@ extension Adapter: CallbackHandlerDelegate {
     var parsedResolvers: [String] = []
 
     // Normalize addresses to remove any possible scope suffixes
-    resolvers.forEach { stringAddress in
+    for stringAddress in resolvers {
       if let ipv4Address = IPv4Address(stringAddress) {
-        return parsedResolvers.append("\(ipv4Address)")
+        parsedResolvers.append("\(ipv4Address)")
+        break
       }
 
       if let ipv6Address = IPv6Address(stringAddress) {
-        return parsedResolvers.append("\(ipv6Address)")
+        parsedResolvers.append("\(ipv6Address)")
+        break
       }
 
       Log.warning("IP address \(stringAddress) did not parse as either IPv4 or IPv6")

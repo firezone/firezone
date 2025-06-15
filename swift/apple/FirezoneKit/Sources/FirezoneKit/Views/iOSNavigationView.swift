@@ -1,5 +1,5 @@
 //
-//  iOSNavigationView.swift
+//  IOSNavigationView.swift
 //
 //
 //  Created by Jamil Bou Kheir on 5/25/24.
@@ -9,7 +9,7 @@
 import SwiftUI
 
 #if os(iOS)
-  struct iOSNavigationView<Content: View>: View {  // swiftlint:disable:this type_name
+  struct IOSNavigationView<Content: View>: View {
     @State private var isSettingsPresented = false
     @EnvironmentObject var store: Store
     @Environment(\.openURL) var openURL

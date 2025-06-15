@@ -6,7 +6,6 @@
 //
 
 // TODO: Refactor to fix file length
-// swiftlint:disable file_length
 
 import Combine
 import Foundation
@@ -18,7 +17,6 @@ import SwiftUI
   @MainActor
   // TODO: Refactor to MenuBarExtra for macOS 13+
   // https://developer.apple.com/documentation/swiftui/menubarextra
-  // swiftlint:disable:next type_body_length
   public final class MenuBar: NSObject, ObservableObject {
     var statusItem: NSStatusItem
     var lastShownFavorites: [Resource] = []
@@ -571,7 +569,6 @@ import SwiftUI
     }
 
     // TODO: Refactor this when refactoring for macOS 13
-    // swiftlint:disable:next function_body_length
     func nonInternetResourceHeader(resource: Resource) -> NSMenu {
       let subMenu = NSMenu()
 
@@ -597,7 +594,8 @@ import SwiftUI
         }
       } else {
         // Show Address first if addressDescription is missing
-        resourceAddressDescriptionItem.title = resource.address ?? ""  // Address is none only for internet resource
+        // Address is none only for internet resource
+        resourceAddressDescriptionItem.title = resource.address ?? ""
         resourceAddressDescriptionItem.action = #selector(resourceValueTapped(_:))
       }
       resourceAddressDescriptionItem.isEnabled = true
@@ -726,7 +724,7 @@ import SwiftUI
           try await WebAuthSession.signIn(store: store)
         } catch {
           Log.error(error)
-          macOSAlert.show(for: error)
+          MacOSAlert.show(for: error)
         }
       }
     }
@@ -756,7 +754,7 @@ import SwiftUI
           }
         } catch {
           Log.error(error)
-          macOSAlert.show(for: error)
+          MacOSAlert.show(for: error)
         }
       }
     }

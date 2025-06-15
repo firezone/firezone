@@ -94,6 +94,6 @@ public enum ResourceStatus: String, Decodable {
 public enum ResourceType: String, Decodable {
   case dns
   case cidr
-  case ip  // swiftlint:disable:this identifier_name
+  case ip
   case internet
 }

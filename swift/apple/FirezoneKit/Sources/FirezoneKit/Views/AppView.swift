@@ -30,7 +30,8 @@ public struct AppView: View {
       store.$vpnStatus
         .combineLatest(store.$systemExtensionStatus)
         .receive(on: DispatchQueue.main)
-        .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // Prevents flurry of windows from opening
+        // Prevents flurry of windows from opening
+        .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)
         .sink(receiveValue: { vpnStatus, systemExtensionStatus in
           // Open window in case permissions are revoked
           if vpnStatus == .invalid || systemExtensionStatus != .installed {
@@ -97,11 +98,11 @@ public struct AppView: View {
       case (_, .notDetermined):
         GrantNotificationsView()
       case (.disconnected, _):
-        iOSNavigationView {
+        IOSNavigationView {
           WelcomeView()
         }
       case (_, _):
-        iOSNavigationView {
+        IOSNavigationView {
           SessionView()
         }
       }

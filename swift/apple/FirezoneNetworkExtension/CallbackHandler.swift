@@ -17,7 +17,6 @@ extension RustString: @unchecked Sendable {}
 extension RustString: Error {}
 
 public protocol CallbackHandlerDelegate: AnyObject {
-  // swiftlint:disable:next function_parameter_count
   func onSetInterfaceConfig(
     tunnelAddressIPv4: String,
     tunnelAddressIPv6: String,
@@ -32,7 +31,6 @@ public protocol CallbackHandlerDelegate: AnyObject {
 
 public class CallbackHandler {
   public weak var delegate: CallbackHandlerDelegate?
-  // swiftlint:disable:next function_parameter_count
   func onSetInterfaceConfig(
     tunnelAddressIPv4: RustString,
     tunnelAddressIPv6: RustString,

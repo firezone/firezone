@@ -200,8 +200,10 @@
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-      if response.actionIdentifier == NotificationAdapter.dismissIdentifier {  // User dismissed this notification
-        if let lastNotifiedVersion = getLastNotifiedVersion() {  // Don't notify them again for this version
+      if response.actionIdentifier == NotificationAdapter.dismissIdentifier {
+        // User dismissed this notification
+        if let lastNotifiedVersion = getLastNotifiedVersion() {
+          // Don't notify them again for this version
           setLastDismissedVersion(version: lastNotifiedVersion)
         }
 

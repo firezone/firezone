@@ -5,7 +5,6 @@
 //
 
 // TODO: Refactor to fix file length
-// swiftlint:disable file_length
 
 import Combine
 import OSLog
@@ -74,7 +73,6 @@ extension FileManager {
 }
 
 // TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
-// swiftlint:disable:next type_body_length
 public struct SettingsView: View {
   @StateObject private var viewModel: SettingsViewModel
   @Environment(\.dismiss) var dismiss
@@ -640,7 +638,7 @@ public struct SettingsView: View {
               Log.error(error)
             }
 
-            macOSAlert.show(for: error)
+            MacOSAlert.show(for: error)
           }
 
           self.isExportingLogs = false
@@ -758,7 +756,7 @@ public struct SettingsView: View {
         #if os(iOS)
           errorHandler.handle(ErrorAlert(title: "Error performing action", error: error))
         #elseif os(macOS)
-          macOSAlert.show(for: error)
+          MacOSAlert.show(for: error)
         #endif
       }
     }

@@ -151,7 +151,7 @@ struct GrantVPNView: View {
           NSApp.activate(ignoringOtherApps: true)
         } catch {
           Log.error(error)
-          macOSAlert.show(for: error)
+          MacOSAlert.show(for: error)
         }
       }
     }
@@ -173,7 +173,7 @@ struct GrantVPNView: View {
           }
         } catch {
           Log.error(error)
-          macOSAlert.show(for: error)
+          MacOSAlert.show(for: error)
         }
       }
     }

@@ -1,5 +1,5 @@
 //
-//  macOSAlert.swift
+//  MacOSAlert.swift
 //  (c) 2024 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
@@ -10,8 +10,6 @@
   import AppKit
   import NetworkExtension
 
-  // swiftlint:disable cyclomatic_complexity
-  // swiftlint:disable function_body_length
   protocol UserFriendlyError {
     func userMessage() -> String?
   }
@@ -183,11 +181,13 @@
     func userMessage() -> String? {
       switch domain {
       case NEVPNErrorDomain:
-        let code = NEVPNError.Code(rawValue: self.code)!  // SAFETY: These are the same error type
+        // SAFETY: These are the same error type
+        let code = NEVPNError.Code(rawValue: self.code)!
         let err = NEVPNError(code)
         return err.userMessage()
       case OSSystemExtensionErrorDomain:
-        let code = OSSystemExtensionError.Code(rawValue: self.code)!  // SAFETY: These are the same error type
+        // SAFETY: These are the same error types
+        let code = OSSystemExtensionError.Code(rawValue: self.code)!
         let err = OSSystemExtensionError(code)
         return err.userMessage()
       default:
@@ -197,7 +197,7 @@
   }
 
   @MainActor
-  struct macOSAlert {  // swiftlint:disable:this type_name
+  struct MacOSAlert {
     static func show(for error: Error) {
       let message = (error as UserFriendlyError).userMessage() ?? "\(error)"
       let alert = NSAlert()
@@ -210,5 +210,3 @@
   }
 
 #endif
-// swiftlint:enable cyclomatic_complexity
-// swiftlint:enable function_body_length
