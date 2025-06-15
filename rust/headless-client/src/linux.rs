@@ -3,6 +3,7 @@
 use super::TOKEN_ENV_KEY;
 use anyhow::{Result, bail};
 use firezone_bin_shared::BUNDLE_ID;
+use nix::fcntl::AT_FDCWD;
 use std::path::{Path, PathBuf};
 
 // The Client currently must run as root to control DNS
@@ -15,7 +16,7 @@ pub(crate) fn default_token_path() -> PathBuf {
 }
 
 pub(crate) fn check_token_permissions(path: &Path) -> Result<()> {
-    let Ok(stat) = nix::sys::stat::fstatat(None, path, nix::fcntl::AtFlags::empty()) else {
+    let Ok(stat) = nix::sys::stat::fstatat(AT_FDCWD, path, nix::fcntl::AtFlags::empty()) else {
         // File doesn't exist or can't be read
         tracing::info!(
             ?path,
