@@ -23,6 +23,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  static-analysis:
+    name: static-analysis
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: swift format
+        working-directory: swift/apple
+        run: |
+          swift format . --recursive --in-place
+
+          if [ ! -z "$(git status --porcelain)" ]; then
+            echo 'swift format corrected files!'
+            git diff
+            exit 1
+          fi
+
+      - name: swiftlint
+        working-directory: swift/apple
+        run: |
+          # The binary is not installed by default
+          brew install swiftlint
+
+          swiftlint --autocorrect
+          swiftlint --strict
+
+          if [ ! -z "$(git status --porcelain)" ]; then
+            echo 'swiftlint corrected files!'
+            git diff
+            exit 1
+          fi
+
   build:
     name: ${{ matrix.job_name }}
     needs: update-release-draft
@@ -71,20 +103,6 @@ jobs:
         with:
           path: ~/Library/Developer/Xcode/DerivedData
           key: ${{ runner.os }}-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
-      - name: swiftlint
-        run: |
-          # The binary is not installed by default
-          brew install swiftlint
-
-          cd swift/apple
-          swiftlint --autocorrect
-          swiftlint --strict
-
-          if [ ! -z "$(git status --porcelain)" ]; then
-            echo 'swiftlint corrected files!'
-            git diff
-            exit 1
-          fi
       - run: ${{ matrix.build-script }}
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"
