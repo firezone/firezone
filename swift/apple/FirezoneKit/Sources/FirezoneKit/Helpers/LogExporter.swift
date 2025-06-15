@@ -48,7 +48,7 @@ import System
       // 2. Create tunnel log archive from tunnel process
       let tunnelLogURL =
         sharedLogFolderURL
-        .appendingPathComponent("tunnel.aar")
+        .appendingPathComponent("tunnel.zip")
       fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
       let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
 
@@ -79,19 +79,19 @@ import System
       }
 
       // 4. Create app log archive
-      let appLogURL = sharedLogFolderURL.appendingPathComponent("app.aar")
-      try LogCompressor().start(
-        source: toPath(logFolderURL),
-        to: toPath(appLogURL)
+      let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
+      try ZipService.createZip(
+        source: logFolderURL,
+        to: appLogURL
       )
 
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 
       // Write final log archive
-      try LogCompressor().start(
-        source: toPath(sharedLogFolderURL),
-        to: toPath(archiveURL)
+      try ZipService.createZip(
+        source: sharedLogFolderURL,
+        to: archiveURL
       )
 
       // Remove intermediate log archives
