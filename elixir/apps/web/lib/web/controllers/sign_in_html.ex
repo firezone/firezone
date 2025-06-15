@@ -25,6 +25,12 @@ defmodule Web.SignInHTML do
           nonce={@conn.private.csp_nonce}
           href={~p"/assets/app.css"}
         />
+        <link
+          phx-track-static
+          rel="stylesheet"
+          nonce={@conn.private.csp_nonce}
+          href={~p"/assets/main.css"}
+        />
       </head>
       <body class="bg-neutral-50">
         <main class="h-auto pt-16">
