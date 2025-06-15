@@ -243,15 +243,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       sendChunk(tunnelLogArchive)
 
     case .idle:
-      guard let logFolderURL = SharedAccess.logFolderURL,
-        let logFolderPath = FilePath(logFolderURL)
+      guard let logFolderURL = SharedAccess.connlibLogFolderURL
       else {
         completionHandler(nil)
 
         return
       }
 
-      let tunnelLogArchive = TunnelLogArchive(source: logFolderPath)
+      let tunnelLogArchive = TunnelLogArchive(source: logFolderURL)
 
       do {
         try tunnelLogArchive.archive()
