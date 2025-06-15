@@ -53,7 +53,7 @@ public class CallbackHandler {
       """)
 
     guard let dnsData = dnsAddresses.toString().data(using: .utf8),
-          let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
+      let dnsArray = try? JSONDecoder().decode([String].self, from: dnsData)
     else {
       fatalError("Should be able to decode DNS Addresses from connlib")
     }

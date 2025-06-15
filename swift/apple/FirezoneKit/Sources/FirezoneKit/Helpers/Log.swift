@@ -8,23 +8,25 @@ import Foundation
 import OSLog
 
 public final class Log {
-  private static var logger = switch Bundle.main.bundleIdentifier {
-  case "dev.firezone.firezone":
-    Logger(subsystem: "dev.firezone.firezone", category: "app")
-  case "dev.firezone.firezone.network-extension":
-    Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
-  default:
-    fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
-  }
+  private static var logger =
+    switch Bundle.main.bundleIdentifier {
+    case "dev.firezone.firezone":
+      Logger(subsystem: "dev.firezone.firezone", category: "app")
+    case "dev.firezone.firezone.network-extension":
+      Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
+    default:
+      fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
+    }
 
-  private static var logWriter = switch Bundle.main.bundleIdentifier {
-  case "dev.firezone.firezone":
-    LogWriter(folderURL: SharedAccess.appLogFolderURL, logger: logger)
-  case "dev.firezone.firezone.network-extension":
-    LogWriter(folderURL: SharedAccess.tunnelLogFolderURL, logger: logger)
-  default:
-    fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
-  }
+  private static var logWriter =
+    switch Bundle.main.bundleIdentifier {
+    case "dev.firezone.firezone":
+      LogWriter(folderURL: SharedAccess.appLogFolderURL, logger: logger)
+    case "dev.firezone.firezone.network-extension":
+      LogWriter(folderURL: SharedAccess.tunnelLogFolderURL, logger: logger)
+    default:
+      fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
+    }
 
   public static func log(_ message: String) {
     debug(message)
@@ -77,7 +79,7 @@ public final class Log {
         including: [
           .totalFileAllocatedSizeKey,
           .totalFileSizeKey,
-          .isRegularFileKey
+          .isRegularFileKey,
         ]
       ) { url, resourceValues in
         taskGroup.addTask {
@@ -104,12 +106,13 @@ public final class Log {
   // Don't capture certain kinds of IPC and security errors in DEBUG builds
   // because these happen often due to code signing requirements.
   private static func shouldCaptureError(_ err: Error) -> Bool {
-#if DEBUG
-    if let err = err as? IPCClient.Error,
-       case IPCClient.Error.noIPCData = err {
-      return false
-    }
-#endif
+    #if DEBUG
+      if let err = err as? IPCClient.Error,
+        case IPCClient.Error.noIPCData = err
+      {
+        return false
+      }
+    #endif
 
     return true
   }
@@ -150,20 +153,21 @@ private final class LogWriter {
 
     // Create log dir if not exists
     guard let folderURL = folderURL,
-          SharedAccess.ensureDirectoryExists(at: folderURL.path)
+      SharedAccess.ensureDirectoryExists(at: folderURL.path)
     else {
       logger.error("Log directory isn't acceptable!")
       return nil
     }
 
-    let logFileURL = folderURL
+    let logFileURL =
+      folderURL
       .appendingPathComponent(dateFormatter.string(from: Date()))
       .appendingPathExtension("jsonl")
 
     // Create log file
     guard fileManager.createFile(atPath: logFileURL.path, contents: Data()),
-          let handle = try? FileHandle(forWritingTo: logFileURL),
-          (try? handle.seekToEnd()) != nil
+      let handle = try? FileHandle(forWritingTo: logFileURL),
+      (try? handle.seekToEnd()) != nil
     else {
       logger.error("Could not create log file: \(logFileURL.path)")
       return nil

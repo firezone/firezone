@@ -5,17 +5,17 @@
 //
 
 #if os(macOS)
-import AppKit
+  import AppKit
 
-@MainActor
-public extension NSWorkspace {
-  func openAsync(_ url: URL) async {
-    let configuration = NSWorkspace.OpenConfiguration()
-    return await withCheckedContinuation { continuation in
-      open(url, configuration: configuration) { _, _ in
-        continuation.resume()
+  @MainActor
+  extension NSWorkspace {
+    public func openAsync(_ url: URL) async {
+      let configuration = NSWorkspace.OpenConfiguration()
+      return await withCheckedContinuation { continuation in
+        open(url, configuration: configuration) { _, _ in
+          continuation.resume()
+        }
       }
     }
   }
-}
 #endif

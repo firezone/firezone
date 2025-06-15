@@ -52,16 +52,16 @@ public struct LogCompressor {
     let headerKeys = "TYP,PAT,LNK,DEV,DAT,UID,GID,MOD,FLG,MTM,BTM,CTM"
 
     guard let writeStream = writeStream,
-          let compressionStream =
-            ArchiveByteStream.compressionStream(
-              using: .lzfse,
-              writingTo: writeStream
-            ),
-          let encodeStream =
-            ArchiveStream.encodeStream(
-              writingTo: compressionStream
-            ),
-          let keySet = ArchiveHeader.FieldKeySet(headerKeys)
+      let compressionStream =
+        ArchiveByteStream.compressionStream(
+          using: .lzfse,
+          writingTo: writeStream
+        ),
+      let encodeStream =
+        ArchiveStream.encodeStream(
+          writingTo: compressionStream
+        ),
+      let keySet = ArchiveHeader.FieldKeySet(headerKeys)
     else {
       throw CompressionError.unableToInitialize
     }

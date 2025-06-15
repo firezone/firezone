@@ -1,4 +1,4 @@
---swiftversion 5.7
+--swiftversion 6.1
 --binarygrouping none
 --decimalgrouping none
 --hexgrouping none
@@ -11,3 +11,4 @@
 --extensionacl on-declarations
 --maxwidth 100
 --header \n {file}\n (c) {created.year} Firezone, Inc.\n LICENSE: Apache-2.0\n
+--exclude FirezoneNetworkExtension/Connlib/Generated/**

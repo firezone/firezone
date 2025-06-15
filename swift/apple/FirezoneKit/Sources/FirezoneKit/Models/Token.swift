@@ -9,17 +9,17 @@ import Foundation
 
 public struct Token: CustomStringConvertible {
   // Debug builds can't write to release build Keychain items, so keep them separate
-#if DEBUG
-  private static let label = "Firezone token (debug)"
-#else
-  private static let label = "Firezone token"
-#endif
+  #if DEBUG
+    private static let label = "Firezone token (debug)"
+  #else
+    private static let label = "Firezone token"
+  #endif
 
   private static let query: [CFString: Any] = [
     kSecAttrLabel: "Firezone token",
     kSecAttrAccount: "1",
     kSecAttrService: BundleHelper.appGroupId,
-    kSecAttrDescription: "Firezone access token"
+    kSecAttrDescription: "Firezone access token",
   ]
 
   private var data: Data
@@ -28,7 +28,7 @@ public struct Token: CustomStringConvertible {
 
   public init?(_ tokenString: String?) {
     guard let tokenString = tokenString,
-          let data = tokenString.data(using: .utf8)
+      let data = tokenString.data(using: .utf8)
     else { return nil }
 
     self.data = data
@@ -62,7 +62,7 @@ public struct Token: CustomStringConvertible {
 
     let query = Token.query.merging([
       kSecClass: kSecClassGenericPassword,
-      kSecValueData: data
+      kSecValueData: data,
     ]) { (_, new) in new }
 
     try Keychain.add(query: query)
