@@ -109,12 +109,17 @@ import System
     }
 
     static func export(to archiveURL: URL) async throws {
+      guard let logFolderURL = SharedAccess.logFolderURL
+      else {
+        throw ExportError.invalidSourceDirectory
+      }
+
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 
       // Write final log archive
       try ZipService.createZip(
-        source: SharedAccess.logFolderURL,
+        source: logFolderURL,
         to: archiveURL
       )
     }
