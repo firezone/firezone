@@ -37,7 +37,6 @@ export default function App() {
   let [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
 
-
   useEffect(() => {
     const sessionChanged = listen<SessionViewModel>("session_changed", (e) => {
       let session = e.payload;
@@ -92,17 +91,11 @@ export default function App() {
       >
         <SidebarItems>
           <SidebarItemGroup>
-            <ReactRouterSidebarItem
-              icon={HomeIcon}
-              href="/overview"
-            >
+            <ReactRouterSidebarItem icon={HomeIcon} href="/overview">
               Overview
             </ReactRouterSidebarItem>
             <SidebarCollapse label="Settings" open={true} icon={Bars3Icon}>
-              <ReactRouterSidebarItem
-                icon={CogIcon}
-                href="/general-settings"
-              >
+              <ReactRouterSidebarItem icon={CogIcon} href="/general-settings">
                 General
               </ReactRouterSidebarItem>
               <ReactRouterSidebarItem
@@ -118,19 +111,13 @@ export default function App() {
             >
               Diagnostics
             </ReactRouterSidebarItem>
-            <ReactRouterSidebarItem
-              icon={InformationCircleIcon}
-              href="/about"
-            >
+            <ReactRouterSidebarItem icon={InformationCircleIcon} href="/about">
               About
             </ReactRouterSidebarItem>
           </SidebarItemGroup>
           {isDev && (
             <SidebarItemGroup>
-              <ReactRouterSidebarItem
-                icon={SwatchIcon}
-                href="/colour-palette"
-              >
+              <ReactRouterSidebarItem icon={SwatchIcon} href="/colour-palette">
                 Color Palette
               </ReactRouterSidebarItem>
             </SidebarItemGroup>
