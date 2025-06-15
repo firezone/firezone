@@ -29,6 +29,9 @@ export default function Apple() {
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
         </ChangeItem>
+        <ChangeItem pull="9536">
+          Uses `.zip` to compress logs instead of Apple Archive.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.2" date={new Date("2025-06-03")}>
         <ChangeItem pull="9300">
