@@ -12,17 +12,17 @@ import { listen } from "@tauri-apps/api/event";
 import {
   Sidebar,
   SidebarCollapse,
-  SidebarItem,
   SidebarItemGroup,
   SidebarItems,
 } from "flowbite-react";
 import React, { useEffect, useState } from "react";
-import { Route, Routes, useNavigate, useLocation } from "react-router";
+import { Route, Routes } from "react-router";
 import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
 import { FileCount } from "../generated/FileCount";
 import { SessionViewModel } from "../generated/SessionViewModel";
 import About from "./AboutPage";
 import AdvancedSettingsPage from "./AdvancedSettingsPage";
+import ReactRouterSidebarItem from "./ReactRouterSidebarItem";
 import ColorPalette from "./ColorPalettePage";
 import Diagnostics from "./DiagnosticsPage";
 import GeneralSettingsPage from "./GeneralSettingsPage";
@@ -36,19 +36,6 @@ export default function App() {
     useState<GeneralSettingsViewModel | null>(null);
   let [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
-
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  // Custom navigation handler for SidebarItems to avoid full page reloads
-  const handleClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const target = event.currentTarget;
-    const href = target.getAttribute("href");
-    if (href) {
-      navigate(href);
-    }
-  };
 
   useEffect(() => {
     const sessionChanged = listen<SessionViewModel>("session_changed", (e) => {
@@ -104,59 +91,35 @@ export default function App() {
       >
         <SidebarItems>
           <SidebarItemGroup>
-            <SidebarItem
-              active={location.pathname.startsWith("/overview")}
-              icon={HomeIcon}
-              href="/overview"
-              onClick={handleClick}
-            >
+            <ReactRouterSidebarItem icon={HomeIcon} href="/overview">
               Overview
-            </SidebarItem>
+            </ReactRouterSidebarItem>
             <SidebarCollapse label="Settings" open={true} icon={Bars3Icon}>
-              <SidebarItem
-                active={location.pathname.startsWith("/general-settings")}
-                icon={CogIcon}
-                href="/general-settings"
-                onClick={handleClick}
-              >
+              <ReactRouterSidebarItem icon={CogIcon} href="/general-settings">
                 General
-              </SidebarItem>
-              <SidebarItem
-                active={location.pathname.startsWith("/advanced-settings")}
+              </ReactRouterSidebarItem>
+              <ReactRouterSidebarItem
                 icon={WrenchScrewdriverIcon}
                 href="/advanced-settings"
-                onClick={handleClick}
               >
                 Advanced
-              </SidebarItem>
+              </ReactRouterSidebarItem>
             </SidebarCollapse>
-            <SidebarItem
-              active={location.pathname.startsWith("/diagnostics")}
+            <ReactRouterSidebarItem
               icon={DocumentMagnifyingGlassIcon}
               href="/diagnostics"
-              onClick={handleClick}
             >
               Diagnostics
-            </SidebarItem>
-            <SidebarItem
-              active={location.pathname.startsWith("/about")}
-              icon={InformationCircleIcon}
-              href="/about"
-              onClick={handleClick}
-            >
+            </ReactRouterSidebarItem>
+            <ReactRouterSidebarItem icon={InformationCircleIcon} href="/about">
               About
-            </SidebarItem>
+            </ReactRouterSidebarItem>
           </SidebarItemGroup>
           {isDev && (
             <SidebarItemGroup>
-              <SidebarItem
-                active={location.pathname.startsWith("/colour-palette")}
-                icon={SwatchIcon}
-                href="/colour-palette"
-                onClick={handleClick}
-              >
+              <ReactRouterSidebarItem icon={SwatchIcon} href="/colour-palette">
                 Color Palette
-              </SidebarItem>
+              </ReactRouterSidebarItem>
             </SidebarItemGroup>
           )}
         </SidebarItems>
