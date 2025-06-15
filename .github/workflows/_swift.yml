@@ -32,10 +32,7 @@ jobs:
       - name: swift format
         working-directory: swift/apple
         run: |
-          # Version on GitHub runners is too old
-          brew install swift-format
-
-          swift format . --recursive --in-place
+          xcrun swift-format . --recursive --in-place
 
           if [ ! -z "$(git status --porcelain)" ]; then
             echo 'swift format corrected files!'
