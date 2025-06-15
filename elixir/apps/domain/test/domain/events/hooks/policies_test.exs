@@ -1,7 +1,7 @@
 defmodule Domain.Events.Hooks.PoliciesTest do
   use Domain.DataCase, async: true
   import Domain.Events.Hooks.Policies
-  alias Domain.Events
+  alias Domain.PubSub
 
   describe "insert/1" do
     test "broadcasts :create_policy and :allow_access" do
@@ -17,9 +17,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
         "resource_id" => resource_id
       }
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = PubSub.Policy.subscribe(policy_id)
+      :ok = PubSub.Account.Policies.subscribe(account_id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_insert(data)
       assert_receive {:create_policy, ^policy_id}
@@ -45,9 +45,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "disabled_at", nil)
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = Domain.PubSub.Policy.subscribe(policy_id)
+      :ok = Domain.PubSub.Account.Policies.subscribe(account_id)
+      :ok = Domain.PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
       assert_receive {:enable_policy, ^policy_id}
@@ -72,9 +72,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "disabled_at", "2023-10-01T00:00:00Z")
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = PubSub.Policy.subscribe(policy_id)
+      :ok = PubSub.Account.Policies.subscribe(account_id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
       assert_receive {:disable_policy, ^policy_id}
@@ -107,9 +107,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = PubSub.Policy.subscribe(policy_id)
+      :ok = PubSub.Account.Policies.subscribe(account_id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
       assert_receive {:delete_policy, ^policy_id}
@@ -142,9 +142,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "resource_id", "new-resource-123")
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = PubSub.Policy.subscribe(policy_id)
+      :ok = PubSub.Account.Policies.subscribe(account_id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
 
@@ -182,9 +182,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "resource_id", "new-resource-123")
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = PubSub.Policy.subscribe(policy_id)
+      :ok = PubSub.Account.Policies.subscribe(account_id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
 
@@ -219,9 +219,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "resource_id", "new-resource-123")
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = PubSub.Policy.subscribe(policy_id)
+      :ok = PubSub.Account.Policies.subscribe(account_id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
 
@@ -248,9 +248,9 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
-      :ok = subscribe(policy_id)
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(account_id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(actor_group_id)
+      :ok = PubSub.Policy.subscribe(policy_id)
+      :ok = PubSub.Account.Policies.subscribe(account_id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
       assert_receive {:delete_policy, ^policy_id}

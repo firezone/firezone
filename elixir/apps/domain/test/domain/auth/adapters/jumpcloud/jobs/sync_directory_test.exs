@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
   use Domain.DataCase, async: true
-  alias Domain.{Auth, Actors, Events}
+  alias Domain.{Auth, Actors, Events, PubSub}
   alias Domain.Mocks.WorkOSDirectory
   import Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory
 
@@ -416,12 +416,12 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
 
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(other_actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(deleted_membership.actor_id)
-      :ok = Events.Hooks.Actors.subscribe_to_policies(actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_policies(other_actor.id)
-      :ok = Events.Hooks.ActorGroups.subscribe_to_policies(deleted_group.id)
+      :ok = PubSub.Actor.Memberships.subscribe(actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(other_actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(deleted_membership.actor_id)
+      :ok = PubSub.Actor.Policies.subscribe(actor.id)
+      :ok = PubSub.Actor.Policies.subscribe(other_actor.id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(deleted_group.id)
 
       WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}")
       WorkOSDirectory.mock_list_directories_endpoint(bypass)

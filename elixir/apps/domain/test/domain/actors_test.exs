@@ -632,7 +632,7 @@ defmodule Domain.ActorsTest do
     } do
       actor = Fixtures.Actors.create_actor(account: account)
       client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Events.Hooks.Clients.connect(client)
+      Clients.Presence.connect(client)
 
       assert {:ok, peek} = peek_actor_clients([actor], 3, subject)
       assert [%Clients.Client{} = client] = peek[actor.id].items

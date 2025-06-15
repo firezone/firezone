@@ -1,11 +1,12 @@
 defmodule Domain.Events.Hooks.Flows do
+  @behaviour Domain.Events.Hooks
   alias Domain.PubSub
   require Logger
 
-  def on_insert(_data) do
-    :ok
-  end
+  @impl true
+  def on_insert(_data), do: :ok
 
+  @impl true
   def on_update(
         _old_data,
         %{
@@ -17,7 +18,7 @@ defmodule Domain.Events.Hooks.Flows do
       ) do
     if expired?(expires_at) do
       # Flow has become expired
-      broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
+      PubSub.Flow.broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
     else
       :ok
     end
@@ -25,6 +26,7 @@ defmodule Domain.Events.Hooks.Flows do
 
   # During normal operation we don't expect to delete flows, however, this is implemented as a safeguard for cases
   # where we might manually clear flows in a migration or some other mechanism.
+  @impl true
   def on_delete(
         %{
           "id" => flow_id,
@@ -32,19 +34,7 @@ defmodule Domain.Events.Hooks.Flows do
           "resource_id" => resource_id
         } = _old_data
       ) do
-    broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
-  end
-
-  def subscribe(flow_id) do
-    flow_id
-    |> topic()
-    |> PubSub.subscribe()
-  end
-
-  def unsubscribe(flow_id) do
-    flow_id
-    |> topic()
-    |> PubSub.unsubscribe()
+    PubSub.Flow.broadcast(flow_id, {:expire_flow, flow_id, client_id, resource_id})
   end
 
   defp expired?(nil), do: false
@@ -55,15 +45,5 @@ defmodule Domain.Events.Hooks.Flows do
     else
       _ -> false
     end
-  end
-
-  defp topic(flow_id) do
-    "flows:#{flow_id}"
-  end
-
-  defp broadcast(flow_id, payload) do
-    flow_id
-    |> topic()
-    |> PubSub.broadcast(payload)
   end
 end

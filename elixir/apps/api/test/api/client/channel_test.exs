@@ -1,6 +1,6 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.Events
+  alias Domain.{Clients, Events, PubSub}
 
   setup do
     account =
@@ -168,8 +168,7 @@ defmodule API.Client.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{account: account, client: client} do
-      presence =
-        Domain.Clients.Presence.list(Events.Hooks.Accounts.clients_presence_topic(account.id))
+      presence = Clients.Presence.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, client.id)
       assert is_number(online_at)
@@ -502,7 +501,7 @@ defmodule API.Client.ChannelTest do
     } do
       assert_push "init", %{}
       Process.flag(:trap_exit, true)
-      Events.Hooks.Clients.broadcast(client.id, :token_expired)
+      PubSub.Client.broadcast(client.id, :token_expired)
       assert_push "disconnect", %{reason: :token_expired}, 250
     end
 
@@ -1128,7 +1127,7 @@ defmodule API.Client.ChannelTest do
       resource = Fixtures.Resources.create_resource(account: account)
 
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -1175,7 +1174,7 @@ defmodule API.Client.ChannelTest do
         "connected_gateway_ids" => []
       }
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       push(socket, "create_flow", attrs)
       # assert_reply ref, :error, %{reason: :not_found}
@@ -1195,7 +1194,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -1235,7 +1234,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "create_flow", %{
@@ -1290,7 +1289,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "create_flow", %{
@@ -1340,7 +1339,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "create_flow", %{
@@ -1444,7 +1443,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "create_flow", %{
@@ -1490,7 +1489,7 @@ defmodule API.Client.ChannelTest do
             )
         )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -1525,7 +1524,7 @@ defmodule API.Client.ChannelTest do
             )
         )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -1562,7 +1561,7 @@ defmodule API.Client.ChannelTest do
           group: gateway_group
         )
 
-      :ok = Events.Hooks.Gateways.connect(gateway1)
+      :ok = Domain.Gateways.Presence.connect(gateway1)
 
       gateway2 =
         Fixtures.Gateways.create_gateway(
@@ -1570,7 +1569,7 @@ defmodule API.Client.ChannelTest do
           group: gateway_group
         )
 
-      :ok = Events.Hooks.Gateways.connect(gateway2)
+      :ok = Domain.Gateways.Presence.connect(gateway2)
 
       push(socket, "create_flow", %{
         "resource_id" => resource.id,
@@ -1621,7 +1620,7 @@ defmodule API.Client.ChannelTest do
       resource = Fixtures.Resources.create_resource(account: account)
 
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       attrs = %{
         "resource_id" => resource.id
@@ -1637,7 +1636,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -1664,7 +1663,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -1686,7 +1685,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => dns_resource.id})
       assert_reply ref, :error, %{reason: :offline}
@@ -1733,7 +1732,7 @@ defmodule API.Client.ChannelTest do
         resource: resource
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -1753,7 +1752,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -1798,7 +1797,7 @@ defmodule API.Client.ChannelTest do
           }
         )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
@@ -1818,7 +1817,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -1870,7 +1869,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -1912,7 +1911,7 @@ defmodule API.Client.ChannelTest do
             )
         )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -1939,7 +1938,7 @@ defmodule API.Client.ChannelTest do
             )
         )
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
@@ -1976,7 +1975,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2021,7 +2020,7 @@ defmodule API.Client.ChannelTest do
         "payload" => "DNS_Q"
       }
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "reuse_connection", attrs)
 
@@ -2038,7 +2037,7 @@ defmodule API.Client.ChannelTest do
       resource = Fixtures.Resources.create_resource(account: account)
 
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2075,7 +2074,7 @@ defmodule API.Client.ChannelTest do
       resource_id = resource.id
       client_id = client.id
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2135,7 +2134,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Phoenix.PubSub.subscribe(Domain.PubSub, Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "reuse_connection", %{
@@ -2179,7 +2178,7 @@ defmodule API.Client.ChannelTest do
       socket: socket
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2199,7 +2198,7 @@ defmodule API.Client.ChannelTest do
       resource = Fixtures.Resources.create_resource(account: account)
 
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2246,7 +2245,7 @@ defmodule API.Client.ChannelTest do
         "client_preshared_key" => "PSK"
       }
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       ref = push(socket, "request_connection", attrs)
 
@@ -2283,7 +2282,7 @@ defmodule API.Client.ChannelTest do
       resource_id = resource.id
       client_id = client.id
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
       attrs = %{
@@ -2346,7 +2345,7 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Phoenix.PubSub.subscribe(Domain.PubSub, Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "request_connection", %{
@@ -2388,7 +2387,7 @@ defmodule API.Client.ChannelTest do
         "gateway_ids" => [gateway.id]
       }
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "broadcast_ice_candidates", attrs)
@@ -2426,7 +2425,7 @@ defmodule API.Client.ChannelTest do
         "gateway_ids" => [gateway.id]
       }
 
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
