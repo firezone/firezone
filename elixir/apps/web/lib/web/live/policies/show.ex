@@ -1,7 +1,7 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Accounts, Policies, Flows, Auth}
+  alias Domain.{Accounts, Policies, PubSub, Flows, Auth}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
@@ -16,7 +16,7 @@ defmodule Web.Policies.Show do
       providers = Auth.all_active_providers_for_account!(socket.assigns.account)
 
       if connected?(socket) do
-        :ok = Policies.subscribe_to_events_for_policy(policy)
+        :ok = PubSub.Policy.subscribe(policy.id)
       end
 
       socket =

@@ -1,6 +1,6 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.Events
+  alias Domain.{Events, Gateways, PubSub}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -9,7 +9,7 @@ defmodule API.Gateway.ChannelTest do
     subject = Fixtures.Auth.create_subject(identity: identity)
     client = Fixtures.Clients.create_client(subject: subject)
     gateway = Fixtures.Gateways.create_gateway(account: account)
-    {:ok, gateway_group} = Domain.Gateways.fetch_group_by_id(gateway.group_id, subject)
+    {:ok, gateway_group} = Gateways.fetch_group_by_id(gateway.group_id, subject)
 
     resource =
       Fixtures.Resources.create_resource(
@@ -52,10 +52,7 @@ defmodule API.Gateway.ChannelTest do
 
   describe "join/3" do
     test "tracks presence after join", %{account: account, gateway: gateway} do
-      presence =
-        account.id
-        |> Events.Hooks.Accounts.gateways_presence_topic()
-        |> Domain.Gateways.Presence.list()
+      presence = Gateways.Presence.Account.list(account.id)
 
       assert %{metas: [%{online_at: online_at, phx_ref: _ref}]} = Map.fetch!(presence, gateway.id)
       assert is_number(online_at)
@@ -1136,8 +1133,8 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Events.Hooks.Clients.connect(client)
-      Domain.PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+      :ok = Domain.Clients.Presence.connect(client)
+      PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
 
       push(socket, "broadcast_ice_candidates", attrs)
 
@@ -1174,8 +1171,8 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Events.Hooks.Clients.connect(client)
-      Domain.PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+      :ok = Domain.Clients.Presence.connect(client)
+      PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 

@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
   use Domain.DataCase, async: true
-  alias Domain.{Auth, Actors, Events}
+  alias Domain.{Auth, Actors, Events, PubSub}
   alias Domain.Mocks.MicrosoftEntraDirectory
   import Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory
 
@@ -464,12 +464,12 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
 
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(other_actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(deleted_membership.actor_id)
-      :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
-      :ok = Domain.Policies.subscribe_to_events_for_actor(other_actor)
-      :ok = Domain.Policies.subscribe_to_events_for_actor_group(deleted_group)
+      :ok = PubSub.Actor.Memberships.subscribe(actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(other_actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(deleted_membership.actor_id)
+      :ok = PubSub.Actor.Policies.subscribe(actor.id)
+      :ok = PubSub.Actor.Policies.subscribe(other_actor.id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(deleted_group.id)
 
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
@@ -562,12 +562,24 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       group_id = deleted_group.id
       resource_id = deleted_policy.resource_id
 
+      # Simulate WAL events
       Events.Hooks.ActorGroupMemberships.on_delete(%{
         "actor_id" => deleted_identity.actor_id,
         "group_id" => deleted_group.id
       })
 
+      Events.Hooks.Policies.on_delete(%{
+        "id" => policy_id,
+        "account_id" => deleted_policy.id,
+        "actor_group_id" => group_id,
+        "resource_id" => resource_id
+      })
+
       assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
+
+      # TODO: WAL
+      # Remove this after direct broadcast
+      Process.sleep(100)
 
       # Deleted policies expire all flows authorized by them
       deleted_group_flow = Repo.reload(deleted_group_flow)

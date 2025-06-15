@@ -2,14 +2,14 @@ defmodule Web.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Resources.Components
-  alias Domain.{Accounts, Events, Resources, Policies, Flows}
+  alias Domain.{Accounts, PubSub, Resources, Policies, Flows}
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <- fetch_resource(id, socket.assigns.subject),
          {:ok, actor_groups_peek} <-
            Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
       if connected?(socket) do
-        :ok = Events.Hooks.Resources.subscribe(resource.id)
+        :ok = PubSub.Resource.subscribe(resource.id)
       end
 
       socket =

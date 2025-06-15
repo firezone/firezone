@@ -1,13 +1,14 @@
 defmodule Domain.Events.Hooks.ResourcesTest do
   use Domain.DataCase, async: true
   import Domain.Events.Hooks.Resources
+  alias Domain.PubSub
 
   describe "insert/1" do
     test "broadcasts :create_resource to subscribed" do
       resource_id = "test_resource"
       account_id = "test_account"
-      :ok = subscribe(resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(account_id)
+      :ok = PubSub.Resource.subscribe(resource_id)
+      :ok = PubSub.Account.Resources.subscribe(account_id)
 
       data = %{"id" => resource_id, "account_id" => account_id}
 
@@ -17,7 +18,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
       assert_receive {:create_resource, ^resource_id}
       assert_receive {:create_resource, ^resource_id}
 
-      :ok = unsubscribe(resource_id)
+      :ok = PubSub.Resource.unsubscribe(resource_id)
 
       assert :ok = on_insert(data)
       assert_receive {:create_resource, ^resource_id}
@@ -44,8 +45,8 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     test "broadcasts :delete_resource to subscribed for soft-deletions" do
       resource_id = "test_resource"
       account_id = "test_account"
-      :ok = subscribe(resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(account_id)
+      :ok = PubSub.Resource.subscribe(resource_id)
+      :ok = PubSub.Account.Resources.subscribe(account_id)
 
       old_data = %{"id" => resource_id, "account_id" => account_id, "deleted_at" => nil}
 
@@ -59,7 +60,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
 
-      :ok = unsubscribe(resource_id)
+      :ok = PubSub.Resource.unsubscribe(resource_id)
 
       assert :ok = on_update(old_data, data)
       assert_receive {:delete_resource, ^resource_id}
@@ -67,13 +68,15 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource type changes", %{flow: flow, old_data: old_data} do
-      :ok = subscribe(flow.resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(flow.account_id)
+      :ok = PubSub.Resource.subscribe(flow.resource_id)
+      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
       data = Map.put(old_data, "type", "cidr")
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 
@@ -88,13 +91,15 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource address changes", %{flow: flow, old_data: old_data} do
-      :ok = subscribe(flow.resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(flow.account_id)
+      :ok = PubSub.Resource.subscribe(flow.resource_id)
+      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
       data = Map.put(old_data, "address", "4.3.2.1")
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 
@@ -109,13 +114,15 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource filters change", %{flow: flow, old_data: old_data} do
-      :ok = subscribe(flow.resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(flow.account_id)
+      :ok = PubSub.Resource.subscribe(flow.resource_id)
+      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
       data = Map.put(old_data, "filters", ["new_filter"])
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 
@@ -130,13 +137,15 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource ip_stack changes", %{flow: flow, old_data: old_data} do
-      :ok = subscribe(flow.resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(flow.account_id)
+      :ok = PubSub.Resource.subscribe(flow.resource_id)
+      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
       data = Map.put(old_data, "ip_stack", "ipv4_only")
 
       assert :ok == on_update(old_data, data)
 
+      # TODO: WAL
+      # Remove this after direct broadcast
       Process.sleep(100)
       flow = Repo.reload(flow)
 
@@ -151,8 +160,8 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "broadcasts update for non-addressability change", %{flow: flow, old_data: old_data} do
-      :ok = subscribe(flow.resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(flow.account_id)
+      :ok = PubSub.Resource.subscribe(flow.resource_id)
+      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
       data = Map.put(old_data, "name", "New Name")
 
@@ -173,8 +182,8 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     test "broadcasts :delete_resource to subscribed" do
       resource_id = "test_resource"
       account_id = "test_account"
-      :ok = subscribe(resource_id)
-      :ok = Domain.Events.Hooks.Accounts.subscribe_to_resources(account_id)
+      :ok = PubSub.Resource.subscribe(resource_id)
+      :ok = PubSub.Account.Resources.subscribe(account_id)
 
       old_data = %{"id" => resource_id, "account_id" => account_id}
 
@@ -182,7 +191,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
 
-      :ok = unsubscribe(resource_id)
+      :ok = PubSub.Resource.unsubscribe(resource_id)
 
       assert :ok = on_delete(old_data)
       assert_receive {:delete_resource, ^resource_id}

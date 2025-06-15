@@ -109,14 +109,12 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, everyone_group} =
       Domain.Actors.create_managed_group(account, %{
-        name: "Everyone",
-        membership_rules: [%{operator: true}]
+        name: "Everyone"
       })
 
     {:ok, _everyone_group} =
       Domain.Actors.create_managed_group(other_account, %{
-        name: "Everyone",
-        membership_rules: [%{operator: true}]
+        name: "Everyone"
       })
 
     {:ok, email_provider} =
@@ -884,9 +882,9 @@ defmodule Domain.Repo.Seeds do
       Resources.create_resource(
         %{
           type: :dns,
-          name: "google.com",
-          address: "google.com",
-          address_description: "https://google.com/",
+          name: "foobar.com",
+          address: "foobar.com",
+          address_description: "https://foobar.com/",
           connections: [%{gateway_group_id: gateway_group.id}],
           filters: []
         },
@@ -949,8 +947,8 @@ defmodule Domain.Repo.Seeds do
       Resources.create_resource(
         %{
           type: :dns,
-          name: "Google",
-          address: "*.google.com",
+          name: "Example",
+          address: "*.example.com",
           connections: [%{gateway_group_id: gateway_group.id}],
           filters: []
         },
@@ -978,9 +976,9 @@ defmodule Domain.Repo.Seeds do
       Resources.create_resource(
         %{
           type: :ip,
-          name: "CloudFlare DNS",
-          address: "1.1.1.1",
-          address_description: "http://1.1.1.1:3000/",
+          name: "Public DNS",
+          address: "1.2.3.4",
+          address_description: "http://1.2.3.4:3000/",
           connections: [%{gateway_group_id: gateway_group.id}],
           filters: [
             %{ports: ["80", "433"], protocol: :tcp},

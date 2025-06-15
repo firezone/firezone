@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
   use Domain.DataCase, async: true
-  alias Domain.{Auth, Actors, Events}
+  alias Domain.{Auth, Actors, Events, PubSub}
   alias Domain.Mocks.OktaDirectory
   import Domain.Auth.Adapters.Okta.Jobs.SyncDirectory
 
@@ -708,12 +708,12 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
 
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(other_actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(deleted_membership.actor_id)
-      :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
-      :ok = Domain.Policies.subscribe_to_events_for_actor(other_actor)
-      :ok = Domain.Policies.subscribe_to_events_for_actor_group(deleted_group)
+      :ok = PubSub.Actor.Memberships.subscribe(actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(other_actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(deleted_membership.actor_id)
+      :ok = PubSub.Actor.Policies.subscribe(actor.id)
+      :ok = PubSub.Actor.Policies.subscribe(other_actor.id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(deleted_group.id)
 
       OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!(groups))
       OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
@@ -796,10 +796,22 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       group_id = deleted_group.id
       resource_id = deleted_policy.resource_id
 
+      # Simulate WAL events
       Events.Hooks.ActorGroupMemberships.on_delete(%{
         "actor_id" => actor.id,
         "group_id" => deleted_group.id
       })
+
+      Events.Hooks.Policies.on_delete(%{
+        "id" => policy_id,
+        "actor_group_id" => group_id,
+        "resource_id" => resource_id,
+        "account_id" => deleted_policy.account_id
+      })
+
+      # TODO: WAL
+      # Remove this after direct broadcast
+      Process.sleep(100)
 
       assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
 

@@ -41,7 +41,7 @@ jobs:
           fi
 
           # For main branch runs, run all jobs
-          if [ "${{ github.event_name }}" = "push" && "${{ github.ref_name }}" = "main" ]; then
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_name }}" = "main" ]; then
             echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
 
             exit 0;

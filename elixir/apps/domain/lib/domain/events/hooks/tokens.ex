@@ -1,10 +1,15 @@
 defmodule Domain.Events.Hooks.Tokens do
-  def on_insert(_data) do
-    :ok
-  end
+  @behaviour Domain.Events.Hooks
+  alias Domain.PubSub
+
+  @impl true
+  def on_insert(_data), do: :ok
+
+  @impl true
 
   # updates for email tokens have no side effects
   def on_update(%{"type" => "email"}, _data), do: :ok
+
   def on_update(_old_data, %{"type" => "email"}), do: :ok
 
   # Soft-delete
@@ -14,17 +19,10 @@ defmodule Domain.Events.Hooks.Tokens do
   end
 
   # Regular update
-  def on_update(_old_data, _new_data) do
-    :ok
-  end
+  def on_update(_old_data, _new_data), do: :ok
 
+  @impl true
   def on_delete(%{"id" => token_id}) do
-    broadcast_disconnect(token_id)
-  end
-
-  defp broadcast_disconnect(token_id) do
-    topic = Domain.Tokens.socket_id(token_id)
-    payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
-    Phoenix.PubSub.broadcast(Domain.PubSub, topic, payload)
+    PubSub.Token.disconnect(token_id)
   end
 end

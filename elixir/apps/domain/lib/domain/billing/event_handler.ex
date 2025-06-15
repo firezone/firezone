@@ -271,10 +271,11 @@ defmodule Domain.Billing.EventHandler do
         with {:ok, account} <- Domain.Accounts.create_account(attrs),
              {:ok, account} <- Billing.update_customer(account),
              {:ok, account} <- Domain.Billing.create_subscription(account) do
+          # TODO: IDP Sync
+          # Use special case everyone group instead of storing in DB
           {:ok, _everyone_group} =
             Domain.Actors.create_managed_group(account, %{
-              name: "Everyone",
-              membership_rules: [%{operator: true}]
+              name: "Everyone"
             })
 
           {:ok, email_provider} =

@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
   use Domain.DataCase, async: true
-  alias Domain.{Auth, Actors, Events}
+  alias Domain.{Auth, Actors, Events, PubSub}
   alias Domain.Mocks.WorkOSDirectory
   import Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory
 
@@ -416,12 +416,12 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
 
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(other_actor.id)
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(deleted_membership.actor_id)
-      :ok = Domain.Policies.subscribe_to_events_for_actor(actor)
-      :ok = Domain.Policies.subscribe_to_events_for_actor(other_actor)
-      :ok = Domain.Policies.subscribe_to_events_for_actor_group(deleted_group)
+      :ok = PubSub.Actor.Memberships.subscribe(actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(other_actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(deleted_membership.actor_id)
+      :ok = PubSub.Actor.Policies.subscribe(actor.id)
+      :ok = PubSub.Actor.Policies.subscribe(other_actor.id)
+      :ok = PubSub.ActorGroup.Policies.subscribe(deleted_group.id)
 
       WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}")
       WorkOSDirectory.mock_list_directories_endpoint(bypass)
@@ -495,12 +495,24 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       group_id = deleted_group.id
       resource_id = deleted_policy.resource_id
 
+      # Simulate the WAL events
       Events.Hooks.ActorGroupMemberships.on_delete(%{
         "actor_id" => actor.id,
         "group_id" => deleted_group.id
       })
 
+      Events.Hooks.Policies.on_delete(%{
+        "id" => policy_id,
+        "account_id" => deleted_policy.account_id,
+        "actor_group_id" => group_id,
+        "resource_id" => resource_id
+      })
+
       assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
+
+      # TODO: WAL
+      # Remove this after direct broadcast
+      Process.sleep(100)
 
       # Deleted policies expire all flows authorized by them
       deleted_group_flow = Repo.reload(deleted_group_flow)

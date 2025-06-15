@@ -19,7 +19,7 @@ defmodule Domain.Events.Hooks.GatewaysTest do
       old_data = %{"id" => gateway.id, "deleted_at" => nil}
       data = %{"id" => gateway.id, "deleted_at" => "2023-10-01T00:00:00Z"}
 
-      :ok = connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       :ok = on_update(old_data, data)
 
       assert_receive "disconnect"
@@ -31,7 +31,7 @@ defmodule Domain.Events.Hooks.GatewaysTest do
       old_data = %{"id" => gateway.id}
       data = %{"id" => gateway.id, "name" => "New Gateway Name"}
 
-      :ok = connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       :ok = on_update(old_data, data)
 
       refute_receive "disconnect"
@@ -44,7 +44,7 @@ defmodule Domain.Events.Hooks.GatewaysTest do
 
       old_data = %{"id" => gateway.id}
 
-      :ok = connect(gateway)
+      :ok = Domain.Gateways.Presence.connect(gateway)
       :ok = on_delete(old_data)
 
       assert_receive "disconnect"

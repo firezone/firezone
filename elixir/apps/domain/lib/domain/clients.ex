@@ -1,7 +1,7 @@
 defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth}
-  alias Domain.{Accounts, Actors, Events, Flows}
+  alias Domain.{Accounts, Actors, Flows}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
 
@@ -106,9 +106,7 @@ defmodule Domain.Clients do
 
   @doc false
   def preload_clients_presence([client]) do
-    client.account_id
-    |> Events.Hooks.Accounts.clients_presence_topic()
-    |> Presence.get_by_key(client.id)
+    Presence.Account.get(client.account_id, client.id)
     |> case do
       [] -> %{client | online?: false}
       %{metas: [_ | _]} -> %{client | online?: true}
@@ -135,8 +133,7 @@ defmodule Domain.Clients do
 
   def online_client_ids(account_id) do
     account_id
-    |> Events.Hooks.Accounts.clients_presence_topic()
-    |> Presence.list()
+    |> Presence.Account.list()
     |> Map.keys()
   end
 

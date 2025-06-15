@@ -93,8 +93,8 @@ defmodule API.PolicyController do
 
     with {:ok, policy} <- Policies.fetch_policy_by_id_or_persistent_id(id, subject) do
       case Policies.update_policy(policy, params, subject) do
-        {:updated, updated_policy} ->
-          render(conn, :show, policy: updated_policy)
+        {:ok, policy} ->
+          render(conn, :show, policy: policy)
 
         {:error, reason} ->
           {:error, reason}

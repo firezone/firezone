@@ -411,14 +411,6 @@ defmodule Domain.Auth do
     Identity.Sync.sync_provider_identities(provider, attrs_list)
   end
 
-  def all_actor_ids_by_membership_rules!(account_id, membership_rules) do
-    Identity.Query.not_disabled()
-    |> Identity.Query.by_account_id(account_id)
-    |> Identity.Query.by_membership_rules(membership_rules)
-    |> Identity.Query.returning_distinct_actor_ids()
-    |> Repo.all()
-  end
-
   def get_identity_email(%Identity{} = identity) do
     provider_email(identity) || identity.provider_identifier
   end
@@ -443,14 +435,6 @@ defmodule Domain.Auth do
       on_conflict: {:replace, [:provider_state]},
       returning: true
     )
-    |> case do
-      {:ok, identity} ->
-        {:ok, _groups} = Actors.update_dynamic_group_memberships(actor.account_id)
-        {:ok, identity}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
   end
 
   def new_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs \\ %{}) do
@@ -459,7 +443,7 @@ defmodule Domain.Auth do
   end
 
   def create_identity(
-        %Actors.Actor{account_id: account_id} = actor,
+        %Actors.Actor{} = actor,
         %Provider{} = provider,
         attrs,
         %Subject{} = subject
@@ -468,14 +452,6 @@ defmodule Domain.Auth do
       Identity.Changeset.create_identity(actor, provider, attrs, subject)
       |> Adapters.identity_changeset(provider)
       |> Repo.insert()
-      |> case do
-        {:ok, identity} ->
-          {:ok, _groups} = Actors.update_dynamic_group_memberships(account_id)
-          {:ok, identity}
-
-        {:error, changeset} ->
-          {:error, changeset}
-      end
     end
   end
 
@@ -488,54 +464,6 @@ defmodule Domain.Auth do
     Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
     |> Repo.insert()
-    |> case do
-      {:ok, identity} ->
-        {:ok, _groups} = Actors.update_dynamic_group_memberships(account_id)
-        {:ok, identity}
-
-      {:error, changeset} ->
-        {:error, changeset}
-    end
-  end
-
-  def replace_identity(%Identity{} = identity, attrs, %Subject{} = subject) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_identities_permission(),
-         Authorizer.manage_own_identities_permission()
-       ]}
-
-    with :ok <- ensure_has_permissions(subject, required_permissions) do
-      Ecto.Multi.new()
-      |> Ecto.Multi.run(:identity, fn _repo, _effects_so_far ->
-        Identity.Query.not_deleted()
-        |> Identity.Query.by_id(identity.id)
-        |> Identity.Query.lock()
-        |> Identity.Query.with_preloaded_assoc(:inner, :actor)
-        |> Identity.Query.with_preloaded_assoc(:inner, :provider)
-        |> Repo.fetch(Identity.Query)
-      end)
-      |> Ecto.Multi.insert(:new_identity, fn %{identity: identity} ->
-        Identity.Changeset.create_identity(identity.actor, identity.provider, attrs, subject)
-        |> Adapters.identity_changeset(identity.provider)
-      end)
-      |> Ecto.Multi.run(:delete_tokens, fn _repo, %{identity: identity} ->
-        {:ok, _tokens} = Tokens.delete_tokens_for(identity, subject)
-      end)
-      |> Ecto.Multi.update(:deleted_identity, fn %{identity: identity} ->
-        Identity.Changeset.delete_identity(identity)
-      end)
-      |> Repo.transaction()
-      |> case do
-        {:ok, %{new_identity: identity}} ->
-          {:ok, _groups} = Actors.update_dynamic_group_memberships(identity.account_id)
-          {:ok, identity}
-
-        {:error, _step, error_or_changeset, _effects_so_far} ->
-          {:error, error_or_changeset}
-      end
-    end
   end
 
   def delete_identity(%Identity{created_by: :provider}, %Subject{}) do
@@ -560,14 +488,6 @@ defmodule Domain.Auth do
           Identity.Changeset.delete_identity(identity)
         end
       )
-      |> case do
-        {:ok, identity} ->
-          {:ok, _groups} = Actors.update_dynamic_group_memberships(identity.account_id)
-          {:ok, identity}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
     end
   end
 
@@ -593,8 +513,6 @@ defmodule Domain.Auth do
         queryable
         |> Authorizer.for_subject(Identity, subject)
         |> Repo.update_all(set: [deleted_at: DateTime.utc_now(), provider_state: %{}])
-
-      {:ok, _groups} = Actors.update_dynamic_group_memberships(assoc.account_id)
 
       :ok
     end

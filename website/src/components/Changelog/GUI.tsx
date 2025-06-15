@@ -11,6 +11,15 @@ export default function GUI({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9537">
+          Fixes an issue that caused increased CPU and memory consumption.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.5.2" date={new Date("2025-06-12")}>
+        <ChangeItem pull="8160">
+          Moves network change listening to the tunnel service for improved
+          reliability.
+        </ChangeItem>
         <ChangeItem pull="9505">
           Fixes minor visual inconsistencies in the main app window.
         </ChangeItem>
@@ -26,7 +35,7 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where disabling "connect on start" would incorrectly
           show the Client as "Signed in" on the next launch.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.1" date={new Date("2025-06-05")}>
         <ChangeItem pull="9418">
           Fixes an issue where advanced settings were not saved and loaded

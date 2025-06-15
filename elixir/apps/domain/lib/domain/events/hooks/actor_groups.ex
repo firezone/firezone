@@ -1,13 +1,12 @@
 defmodule Domain.Events.Hooks.ActorGroups do
-  def on_insert(_data) do
-    :ok
-  end
+  @behaviour Domain.Events.Hooks
 
-  def on_update(_old_data, _data) do
-    :ok
-  end
+  @impl true
+  def on_insert(_data), do: :ok
 
-  def on_delete(_old_data) do
-    :ok
-  end
+  @impl true
+  def on_update(_old_data, _data), do: :ok
+
+  @impl true
+  def on_delete(_old_data), do: :ok
 end

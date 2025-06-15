@@ -1,8 +1,7 @@
 defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Notifications.Jobs.OutdatedGateways
-  alias Domain.ComponentVersions
-  alias Domain.Events
+  alias Domain.{ComponentVersions, Gateways, PubSub}
 
   describe "execute/1" do
     setup do
@@ -42,8 +41,10 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       new_config = update_component_versions_config(gateway: new_version)
       Domain.Config.put_env_override(ComponentVersions, new_config)
 
-      :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(gateway_group.id)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Gateways.Presence.Group.subscribe(gateway_group.id)
+      {:ok, _} = Gateways.Presence.Group.track(gateway.group_id, gateway.id)
+      {:ok, _} = Gateways.Presence.Account.track(gateway.account_id, gateway.id)
+      :ok = PubSub.Gateway.subscribe(gateway.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       assert execute(%{}) == :ok
@@ -66,8 +67,10 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       new_config = update_component_versions_config(gateway: version)
       Domain.Config.put_env_override(ComponentVersions, new_config)
 
-      :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(gateway_group.id)
-      :ok = Events.Hooks.Gateways.connect(gateway)
+      :ok = Gateways.Presence.Group.subscribe(gateway_group.id)
+      {:ok, _} = Gateways.Presence.Group.track(gateway.group_id, gateway.id)
+      {:ok, _} = Gateways.Presence.Account.track(gateway.account_id, gateway.id)
+      :ok = PubSub.Gateway.subscribe(gateway.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       assert execute(%{}) == :ok

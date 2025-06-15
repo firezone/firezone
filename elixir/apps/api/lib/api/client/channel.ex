@@ -1,7 +1,7 @@
 defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
-  alias Domain.{Accounts, Clients, Actors, Events, Resources, Gateways, Relays, Policies, Flows}
+  alias Domain.{Accounts, Clients, Actors, PubSub, Resources, Gateways, Relays, Policies, Flows}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -81,8 +81,8 @@ defmodule API.Client.Channel do
         Enum.each(resources, fn resource ->
           # TODO: WAL
           # Why are we unsubscribing and subscribing again?
-          :ok = Events.Hooks.Resources.unsubscribe(resource.id)
-          :ok = Events.Hooks.Resources.subscribe(resource.id)
+          :ok = PubSub.Resource.unsubscribe(resource.id)
+          :ok = PubSub.Resource.subscribe(resource.id)
         end)
 
       # Subscribe for known gateway group names so that if they are updated - we can render change in the UI
@@ -93,8 +93,8 @@ defmodule API.Client.Channel do
         |> Enum.each(fn gateway_group ->
           # TODO: WAL
           # Why are we unsubscribing and subscribing again?
-          :ok = Events.Hooks.GatewayGroups.unsubscribe(gateway_group.id)
-          :ok = Events.Hooks.GatewayGroups.subscribe(gateway_group.id)
+          :ok = PubSub.GatewayGroup.unsubscribe(gateway_group.id)
+          :ok = PubSub.GatewayGroup.subscribe(gateway_group.id)
         end)
 
       # Return all connected relays for the account
@@ -128,18 +128,18 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
-      :ok = Events.Hooks.Clients.connect(socket.assigns.client)
+      :ok = Clients.Presence.connect(socket.assigns.client)
 
       # Subscribe for account config updates
-      :ok = Events.Hooks.Accounts.subscribe(socket.assigns.client.account_id)
+      :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
       # We subscribe for membership updates for all actor groups the client is a member of,
-      :ok = Events.Hooks.Actors.subscribe_to_memberships(socket.assigns.subject.actor.id)
+      :ok = PubSub.Actor.Memberships.subscribe(socket.assigns.subject.actor.id)
 
       # We subscribe for policy access events for the actor and the groups the client is a member of,
       actor_group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)
-      :ok = Enum.each(actor_group_ids, &Policies.subscribe_to_events_for_actor_group/1)
-      :ok = Policies.subscribe_to_events_for_actor(socket.assigns.subject.actor)
+      :ok = Enum.each(actor_group_ids, &PubSub.ActorGroup.Policies.subscribe/1)
+      :ok = PubSub.Actor.Policies.subscribe(socket.assigns.subject.actor.id)
 
       {:ok, socket} = init(socket)
 
@@ -299,12 +299,12 @@ defmodule API.Client.Channel do
 
   # Those events are broadcasted by Actors whenever a membership is created or deleted
   def handle_info({:create_membership, _actor_id, group_id}, socket) do
-    :ok = Policies.subscribe_to_events_for_actor_group(group_id)
+    :ok = PubSub.ActorGroup.Policies.subscribe(group_id)
     {:noreply, socket}
   end
 
   def handle_info({:delete_membership, _actor_id, group_id}, socket) do
-    :ok = Policies.unsubscribe_from_events_for_actor_group(group_id)
+    :ok = PubSub.ActorGroup.Policies.unsubscribe(group_id)
     {:noreply, socket}
   end
 
@@ -322,8 +322,8 @@ defmodule API.Client.Channel do
       } do
       # TODO: WAL
       # Why are we unsubscribing and subscribing again?
-      :ok = Events.Hooks.Resources.unsubscribe(resource_id)
-      :ok = Events.Hooks.Resources.subscribe(resource_id)
+      :ok = PubSub.Resource.unsubscribe(resource_id)
+      :ok = PubSub.Resource.subscribe(resource_id)
 
       case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
              preload: [:gateway_groups]
@@ -364,7 +364,7 @@ defmodule API.Client.Channel do
         actor_group_id: actor_group_id,
         resource_id: resource_id
       } do
-      :ok = Events.Hooks.Resources.unsubscribe(resource_id)
+      :ok = PubSub.Resource.unsubscribe(resource_id)
 
       # We potentially can re-create the flow but this will require keep tracking of client connections to gateways,
       # which is not worth it as this case should be pretty rare. Instead we just tell client to remove it
@@ -648,7 +648,7 @@ defmodule API.Client.Channel do
         ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
 
         :ok =
-          Events.Hooks.Gateways.broadcast(
+          PubSub.Gateway.broadcast(
             gateway.id,
             {:authorize_flow, {self(), socket_ref(socket)},
              %{
@@ -791,7 +791,7 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          Events.Hooks.Gateways.broadcast(
+          PubSub.Gateway.broadcast(
             gateway.id,
             {:allow_access, {self(), socket_ref(socket)},
              %{
@@ -853,7 +853,7 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          Events.Hooks.Gateways.broadcast(
+          PubSub.Gateway.broadcast(
             gateway.id,
             {:request_connection, {self(), socket_ref(socket)},
              %{
@@ -900,7 +900,7 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(gateway_ids, fn gateway_id ->
-          Events.Hooks.Gateways.broadcast(
+          PubSub.Gateway.broadcast(
             gateway_id,
             {:ice_candidates, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
@@ -925,7 +925,7 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(gateway_ids, fn gateway_id ->
-          Events.Hooks.Gateways.broadcast(
+          PubSub.Gateway.broadcast(
             gateway_id,
             {:invalidate_ice_candidates, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
