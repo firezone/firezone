@@ -252,7 +252,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       let tunnelLogArchive = TunnelLogArchive(source: logFolderURL)
 
+      let latestSymlink = logFolderURL.appendingPathComponent("latest")
+      let tempSymlink = logFolderURL.deletingLastPathComponent().appendingPathComponent("latest")
+
       do {
+        // Move the `latest` symlink out of the way before creating the archive.
+        // Apple's implementation of zip appears to not be able to handle symlinks well
+        let _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
+        defer {
+          let _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
+        }
+
         try tunnelLogArchive.archive()
       } catch {
         Log.error(error)
