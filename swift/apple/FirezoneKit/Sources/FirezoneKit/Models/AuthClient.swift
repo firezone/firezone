@@ -16,20 +16,20 @@ enum AuthClientError: Error {
     switch self {
     case .invalidCallbackURL:
       return """
-      Invalid callback URL. Please try signing in again.
-      If this issue persists, contact your administrator.
-      """
+        Invalid callback URL. Please try signing in again.
+        If this issue persists, contact your administrator.
+        """
     case .randomNumberGenerationFailure(let errorStatus):
       return """
-      Could not generate secure sign in params. Please try signing in again.
-      If this issue persists, contact your administrator.
+        Could not generate secure sign in params. Please try signing in again.
+        If this issue persists, contact your administrator.
 
-      Code: \(errorStatus)
-      """
+        Code: \(errorStatus)
+        """
     case .invalidAuthURL:
       return """
-      The provided Auth URL seems invalid. Please double-check your settings.
-      """
+        The provided Auth URL seems invalid. Please double-check your settings.
+        """
     }
   }
 }
@@ -47,7 +47,8 @@ struct AuthClient {
 
   // Builds a full URL to send to the portal
   func build() throws -> URL {
-    return authURL
+    return
+      authURL
       .appendingQueryItem(URLQueryItem(name: "state", value: state))
       .appendingQueryItem(URLQueryItem(name: "nonce", value: nonce))
       .appendingQueryItem(URLQueryItem(name: "as", value: "client"))
@@ -55,12 +56,12 @@ struct AuthClient {
 
   func response(url: URL?) throws -> AuthResponse {
     guard let url = url,
-          let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
-          let returnedState = urlComponents.sanitizedQueryParam("state"),
-          areStringsEqualConstantTime(state, returnedState),
-          let fragment = urlComponents.sanitizedQueryParam("fragment"),
-          let actorName = urlComponents.sanitizedQueryParam("actor_name"),
-          let accountSlug = urlComponents.sanitizedQueryParam("account_slug")
+      let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
+      let returnedState = urlComponents.sanitizedQueryParam("state"),
+      areStringsEqualConstantTime(state, returnedState),
+      let fragment = urlComponents.sanitizedQueryParam("fragment"),
+      let actorName = urlComponents.sanitizedQueryParam("actor_name"),
+      let accountSlug = urlComponents.sanitizedQueryParam("account_slug")
     else {
       throw AuthClientError.invalidCallbackURL
     }

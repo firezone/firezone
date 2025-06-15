@@ -9,10 +9,10 @@ import SwiftUI
 
 extension View {
   func actionVerbage() -> String {
-#if os(macOS)
-    return "clicking"
-#else
-    return "tapping"
-#endif
+    #if os(macOS)
+      return "clicking"
+    #else
+      return "tapping"
+    #endif
   }
 }

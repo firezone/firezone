@@ -5,7 +5,6 @@
 //
 
 // TODO: Refactor to fix file length
-// swiftlint:disable file_length
 
 import Combine
 import OSLog
@@ -19,14 +18,14 @@ enum SettingsViewError: Error {
     switch self {
     case .logFolderIsUnavailable:
       return """
-        Log folder is unavailable.
-        Try restarting your device or reinstalling Firezone if this issue persists.
-      """
+          Log folder is unavailable.
+          Try restarting your device or reinstalling Firezone if this issue persists.
+        """
     case .configurationNotInitialized:
       return """
-        Configuration is not initialized.
-        Try restarting your device or reinstalling Firezone if this issue persists.
-      """
+          Configuration is not initialized.
+          Try restarting your device or reinstalling Firezone if this issue persists.
+        """
     }
   }
 }
@@ -74,7 +73,6 @@ extension FileManager {
 }
 
 // TODO: Move business logic to ViewModel to remove dependency on Store and fix body length
-// swiftlint:disable:next type_body_length
 public struct SettingsView: View {
   @StateObject private var viewModel: SettingsViewModel
   @Environment(\.dismiss) var dismiss
@@ -137,67 +135,69 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
-#if os(iOS)
-    NavigationView {
-      ZStack {
-        Color(UIColor.systemGroupedBackground)
-          .ignoresSafeArea()
+    #if os(iOS)
+      NavigationView {
+        ZStack {
+          Color(UIColor.systemGroupedBackground)
+            .ignoresSafeArea()
 
-        VStack {
-          TabView {
-            generalTab
-              .tabItem {
-                Image(systemName: "slider.horizontal.3")
-                Text("General")
-              }
-            advancedTab
-              .tabItem {
-                Image(systemName: "gearshape.2")
-                Text("Advanced")
-              }
-              .badge(viewModel.isValid() ? nil : "!")
-            logsTab
-              .tabItem {
-                Image(systemName: "doc.text")
-                Text("Diagnostic Logs")
-              }
-          }
-        }
-        .padding(.bottom, 10)
-        .toolbar {
-          ToolbarItem(placement: .navigationBarTrailing) {
-            Button("Save") {
-              let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
-              if case .connected = store.vpnStatus {
-                self.confirmationAlertContinueAction = action
-                self.isShowingConfirmationAlert = true
-              } else {
-                withErrorHandler { try await action.performAction(on: self) }
-              }
+          VStack {
+            TabView {
+              generalTab
+                .tabItem {
+                  Image(systemName: "slider.horizontal.3")
+                  Text("General")
+                }
+              advancedTab
+                .tabItem {
+                  Image(systemName: "gearshape.2")
+                  Text("Advanced")
+                }
+                .badge(viewModel.isValid() ? nil : "!")
+              logsTab
+                .tabItem {
+                  Image(systemName: "doc.text")
+                  Text("Diagnostic Logs")
+                }
             }
-            .disabled(viewModel.shouldDisableApplyButton)
           }
-          ToolbarItem(placement: .navigationBarLeading) {
-            Button("Cancel") { dismiss() }
-          }
-        }
-        .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.inline)
-        .alert(
-          "Some settings may not have been applied",
-          isPresented: $isShowingConfirmationAlert,
-          presenting: confirmationAlertContinueAction,
-          actions: { confirmationAlertContinueAction in
-            Button("OK") {
-              withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
+          .padding(.bottom, 10)
+          .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+              Button("Save") {
+                let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
+                if case .connected = store.vpnStatus {
+                  self.confirmationAlertContinueAction = action
+                  self.isShowingConfirmationAlert = true
+                } else {
+                  withErrorHandler { try await action.performAction(on: self) }
+                }
+              }
+              .disabled(viewModel.shouldDisableApplyButton)
             }
-          },
-          message: { _ in
-            Text("Some settings require signing out and in again before they take effect.")
+            ToolbarItem(placement: .navigationBarLeading) {
+              Button("Cancel") { dismiss() }
+            }
           }
-        )
+          .navigationTitle("Settings")
+          .navigationBarTitleDisplayMode(.inline)
+          .alert(
+            "Some settings may not have been applied",
+            isPresented: $isShowingConfirmationAlert,
+            presenting: confirmationAlertContinueAction,
+            actions: { confirmationAlertContinueAction in
+              Button("OK") {
+                withErrorHandler {
+                  try await confirmationAlertContinueAction.performAction(on: self)
+                }
+              }
+            },
+            message: { _ in
+              Text("Some settings require signing out and in again before they take effect.")
+            }
+          )
+        }
       }
-    }
     #elseif os(macOS)
       VStack {
         TabView {
@@ -267,142 +267,142 @@ public struct SettingsView: View {
   }
 
   private var generalTab: some View {
-#if os(macOS)
-    VStack {
-      Spacer()
-      HStack {
+    #if os(macOS)
+      VStack {
         Spacer()
-        Form {
-          HStack {
-            Text("Account Slug")
-              .frame(width: 150, alignment: .trailing)
-            TextField(
-              "",
-              text: $viewModel.accountSlug,
-              prompt: Text(PlaceholderText.accountSlug)
-            )
-            .disabled(configuration.isAccountSlugForced)
-            .frame(width: 250)
-          }
-          .padding(.bottom, 10)
-
-          Toggle(isOn: $viewModel.connectOnStart) {
-            Text("Automatically connect when Firezone is launched")
-          }
-          .toggleStyle(.checkbox)
-          .disabled(configuration.isConnectOnStartForced)
-
-          Toggle(isOn: $viewModel.startOnLogin) {
-            Text("Start Firezone when you sign into your Mac")
-          }
-          .toggleStyle(.checkbox)
-          .disabled(configuration.isStartOnLoginForced)
-        }
-        .padding(10)
-        Spacer()
-      }
-      Spacer()
-    }
-#elseif os(iOS)
-    VStack {
-      Form {
-        Section(
-          content: {
-            VStack(alignment: .leading, spacing: 2) {
+        HStack {
+          Spacer()
+          Form {
+            HStack {
               Text("Account Slug")
-                .foregroundStyle(.secondary)
-                .font(.caption)
+                .frame(width: 150, alignment: .trailing)
               TextField(
-                PlaceholderText.accountSlug,
-                text: $viewModel.accountSlug
+                "",
+                text: $viewModel.accountSlug,
+                prompt: Text(PlaceholderText.accountSlug)
               )
-              .autocorrectionDisabled()
-              .textInputAutocapitalization(.never)
-              .submitLabel(.done)
               .disabled(configuration.isAccountSlugForced)
-              .padding(.bottom, 10)
-
-              Spacer()
-
-              Toggle(isOn: $viewModel.connectOnStart) {
-                Text("Automatically connect when Firezone is launched")
-              }
-              .toggleStyle(.switch)
-              .disabled(configuration.isConnectOnStartForced)
+              .frame(width: 250)
             }
-          },
-          header: { Text("General Settings") },
-        )
+            .padding(.bottom, 10)
+
+            Toggle(isOn: $viewModel.connectOnStart) {
+              Text("Automatically connect when Firezone is launched")
+            }
+            .toggleStyle(.checkbox)
+            .disabled(configuration.isConnectOnStartForced)
+
+            Toggle(isOn: $viewModel.startOnLogin) {
+              Text("Start Firezone when you sign into your Mac")
+            }
+            .toggleStyle(.checkbox)
+            .disabled(configuration.isStartOnLoginForced)
+          }
+          .padding(10)
+          Spacer()
+        }
+        Spacer()
       }
-    }
-#endif
+    #elseif os(iOS)
+      VStack {
+        Form {
+          Section(
+            content: {
+              VStack(alignment: .leading, spacing: 2) {
+                Text("Account Slug")
+                  .foregroundStyle(.secondary)
+                  .font(.caption)
+                TextField(
+                  PlaceholderText.accountSlug,
+                  text: $viewModel.accountSlug
+                )
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+                .submitLabel(.done)
+                .disabled(configuration.isAccountSlugForced)
+                .padding(.bottom, 10)
+
+                Spacer()
+
+                Toggle(isOn: $viewModel.connectOnStart) {
+                  Text("Automatically connect when Firezone is launched")
+                }
+                .toggleStyle(.switch)
+                .disabled(configuration.isConnectOnStartForced)
+              }
+            },
+            header: { Text("General Settings") },
+          )
+        }
+      }
+    #endif
   }
 
   private var advancedTab: some View {
     #if os(macOS)
-    VStack {
-      Spacer()
-
-      // Note
-      HStack {
+      VStack {
         Spacer()
-        Text(FootnoteText.forAdvanced ?? "")
-          .foregroundStyle(.secondary)
-          .frame(width: 400, alignment: .trailing)
-        Spacer()
-      }
 
-      Spacer()
-
-      // Text fields
-      HStack {
-        Spacer()
-        Form {
-          // Auth Base URL
-          HStack {
-            Text("Auth Base URL")
-              .frame(width: 150, alignment: .trailing)
-            TextField(
-              "",
-              text: $viewModel.authURL,
-              prompt: Text(PlaceholderText.authURL)
-            )
-            .disabled(configuration.isAuthURLForced)
-            .frame(width: 250)
-          }
-
-          // API URL
-          HStack {
-            Text("API URL")
-              .frame(width: 150, alignment: .trailing)
-            TextField(
-              "",
-              text: $viewModel.apiURL,
-              prompt: Text(PlaceholderText.apiURL)
-            )
-            .disabled(configuration.isApiURLForced)
-            .frame(width: 250)
-          }
-
-          // Log Filter
-          HStack {
-            Text("Log Filter")
-              .frame(width: 150, alignment: .trailing)
-            TextField(
-              "",
-              text: $viewModel.logFilter,
-              prompt: Text(PlaceholderText.logFilter)
-            )
-            .disabled(configuration.isLogFilterForced)
-            .frame(width: 250)
-          }
+        // Note
+        HStack {
+          Spacer()
+          Text(FootnoteText.forAdvanced ?? "")
+            .foregroundStyle(.secondary)
+            .frame(width: 400, alignment: .trailing)
+          Spacer()
         }
-        .frame(width: 500)
+
+        Spacer()
+
+        // Text fields
+        HStack {
+          Spacer()
+          Form {
+            // Auth Base URL
+            HStack {
+              Text("Auth Base URL")
+                .frame(width: 150, alignment: .trailing)
+              TextField(
+                "",
+                text: $viewModel.authURL,
+                prompt: Text(PlaceholderText.authURL)
+              )
+              .disabled(configuration.isAuthURLForced)
+              .frame(width: 250)
+            }
+
+            // API URL
+            HStack {
+              Text("API URL")
+                .frame(width: 150, alignment: .trailing)
+              TextField(
+                "",
+                text: $viewModel.apiURL,
+                prompt: Text(PlaceholderText.apiURL)
+              )
+              .disabled(configuration.isApiURLForced)
+              .frame(width: 250)
+            }
+
+            // Log Filter
+            HStack {
+              Text("Log Filter")
+                .frame(width: 150, alignment: .trailing)
+              TextField(
+                "",
+                text: $viewModel.logFilter,
+                prompt: Text(PlaceholderText.logFilter)
+              )
+              .disabled(configuration.isLogFilterForced)
+              .frame(width: 250)
+            }
+          }
+          .frame(width: 500)
+          Spacer()
+        }
+
         Spacer()
       }
-
-      Spacer()
-    }
     #elseif os(iOS)
       VStack {
         Form {
@@ -630,13 +630,15 @@ public struct SettingsView: View {
             window.contentViewController?.presentingViewController?.dismiss(self)
           } catch {
             if let error = error as? IPCClient.Error,
-               case IPCClient.Error.noIPCData = error {
-              Log.warning("\(#function): Error exporting logs: \(error). Is the XPC service running?")
+              case IPCClient.Error.noIPCData = error
+            {
+              Log.warning(
+                "\(#function): Error exporting logs: \(error). Is the XPC service running?")
             } else {
               Log.error(error)
             }
 
-            macOSAlert.show(for: error)
+            MacOSAlert.show(for: error)
           }
 
           self.isExportingLogs = false
@@ -651,14 +653,14 @@ public struct SettingsView: View {
     }
     self.isCalculatingLogsSize = true
     self.calculateLogSizeTask =
-    Task.detached(priority: .background) {
-      let calculatedLogsSize = await calculateLogDirSize()
-      await MainActor.run {
-        self.calculatedLogsSize = calculatedLogsSize
-        self.isCalculatingLogsSize = false
-        self.calculateLogSizeTask = nil
+      Task.detached(priority: .background) {
+        let calculatedLogsSize = await calculateLogDirSize()
+        await MainActor.run {
+          self.calculatedLogsSize = calculatedLogsSize
+          self.isCalculatingLogsSize = false
+          self.calculateLogSizeTask = nil
+        }
       }
-    }
   }
 
   private func cancelRefreshLogSize() {
@@ -704,12 +706,12 @@ public struct SettingsView: View {
     let logFolderSize = await Log.size(of: logFilesFolderURL)
 
     do {
-#if os(macOS)
-      let providerLogFolderSize = try await store.ipcClient().getLogFolderSize()
-      let totalSize = logFolderSize + providerLogFolderSize
-#else
-      let totalSize = logFolderSize
-#endif
+      #if os(macOS)
+        let providerLogFolderSize = try await store.ipcClient().getLogFolderSize()
+        let totalSize = logFolderSize + providerLogFolderSize
+      #else
+        let totalSize = logFolderSize
+      #endif
 
       let byteCountFormatter = ByteCountFormatter()
       byteCountFormatter.countStyle = .file
@@ -720,7 +722,8 @@ public struct SettingsView: View {
 
     } catch {
       if let error = error as? IPCClient.Error,
-         case IPCClient.Error.noIPCData = error {
+        case IPCClient.Error.noIPCData = error
+      {
         // Will happen if the extension is not enabled
         Log.warning("\(#function): Unable to count logs: \(error). Is the XPC service running?")
       } else {
@@ -739,9 +742,9 @@ public struct SettingsView: View {
 
     try Log.clear(in: SharedAccess.logFolderURL)
 
-#if os(macOS)
-    try await store.clearLogs()
-#endif
+    #if os(macOS)
+      try await store.clearLogs()
+    #endif
   }
 
   private func withErrorHandler(action: @escaping () async throws -> Void) {
@@ -750,11 +753,11 @@ public struct SettingsView: View {
         try await action()
       } catch {
         Log.error(error)
-#if os(iOS)
-        errorHandler.handle(ErrorAlert(title: "Error performing action", error: error))
-#elseif os(macOS)
-        macOSAlert.show(for: error)
-#endif
+        #if os(iOS)
+          errorHandler.handle(ErrorAlert(title: "Error performing action", error: error))
+        #elseif os(macOS)
+          MacOSAlert.show(for: error)
+        #endif
       }
     }
   }

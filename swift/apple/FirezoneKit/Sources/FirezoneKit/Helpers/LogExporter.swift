@@ -19,118 +19,119 @@ import System
 /// thus avoiding IPC. In this case we write directly to the provided archiveURL.
 
 #if os(macOS)
-enum LogExporter {
-  enum ExportError: Error {
-    case invalidSourceDirectory
-    case invalidFilePath
-    case invalidFileHandle
-  }
-
-  static func export(
-    to archiveURL: URL,
-    with ipcClient: IPCClient
-  ) async throws {
-    guard let logFolderURL = SharedAccess.logFolderURL
-    else {
-      throw ExportError.invalidSourceDirectory
+  enum LogExporter {
+    enum ExportError: Error {
+      case invalidSourceDirectory
+      case invalidFilePath
+      case invalidFileHandle
     }
 
-    // 1. Create a temporary working directory to stage app and tunnel archives
-    let sharedLogFolderURL = fileManager
-      .temporaryDirectory
-      .appendingPathComponent("firezone_logs")
-    try? fileManager.removeItem(at: sharedLogFolderURL)
-    try fileManager.createDirectory(
-      at: sharedLogFolderURL,
-      withIntermediateDirectories: true
-    )
+    static func export(
+      to archiveURL: URL,
+      with ipcClient: IPCClient
+    ) async throws {
+      guard let logFolderURL = SharedAccess.logFolderURL
+      else {
+        throw ExportError.invalidSourceDirectory
+      }
 
-    // 2. Create tunnel log archive from tunnel process
-    let tunnelLogURL = sharedLogFolderURL
-      .appendingPathComponent("tunnel.aar")
-    fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
-    let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
+      // 1. Create a temporary working directory to stage app and tunnel archives
+      let sharedLogFolderURL = fileManager
+        .temporaryDirectory
+        .appendingPathComponent("firezone_logs")
+      try? fileManager.removeItem(at: sharedLogFolderURL)
+      try fileManager.createDirectory(
+        at: sharedLogFolderURL,
+        withIntermediateDirectories: true
+      )
 
-    // 3. Await tunnel log export from tunnel process
-    try await withCheckedThrowingContinuation { continuation in
-      ipcClient.exportLogs(
-        appender: { chunk in
-          do {
-            // Append each chunk to the archive
-            try fileHandle.seekToEnd()
-            fileHandle.write(chunk.data)
+      // 2. Create tunnel log archive from tunnel process
+      let tunnelLogURL =
+        sharedLogFolderURL
+        .appendingPathComponent("tunnel.aar")
+      fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
+      let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
 
-            if chunk.done {
-              try fileHandle.close()
-              continuation.resume()
+      // 3. Await tunnel log export from tunnel process
+      try await withCheckedThrowingContinuation { continuation in
+        ipcClient.exportLogs(
+          appender: { chunk in
+            do {
+              // Append each chunk to the archive
+              try fileHandle.seekToEnd()
+              fileHandle.write(chunk.data)
+
+              if chunk.done {
+                try fileHandle.close()
+                continuation.resume()
+              }
+
+            } catch {
+              try? fileHandle.close()
+
+              continuation.resume(throwing: error)
             }
-
-          } catch {
-            try? fileHandle.close()
-
+          },
+          errorHandler: { error in
             continuation.resume(throwing: error)
           }
-        },
-        errorHandler: { error in
-          continuation.resume(throwing: error)
-        }
+        )
+      }
+
+      // 4. Create app log archive
+      let appLogURL = sharedLogFolderURL.appendingPathComponent("app.aar")
+      try LogCompressor().start(
+        source: toPath(logFolderURL),
+        to: toPath(appLogURL)
       )
+
+      // Remove existing archive if it exists
+      try? fileManager.removeItem(at: archiveURL)
+
+      // Write final log archive
+      try LogCompressor().start(
+        source: toPath(sharedLogFolderURL),
+        to: toPath(archiveURL)
+      )
+
+      // Remove intermediate log archives
+      try? fileManager.removeItem(at: tunnelLogURL)
+      try? fileManager.removeItem(at: appLogURL)
     }
-
-    // 4. Create app log archive
-    let appLogURL = sharedLogFolderURL.appendingPathComponent("app.aar")
-    try LogCompressor().start(
-      source: toPath(logFolderURL),
-      to: toPath(appLogURL)
-    )
-
-    // Remove existing archive if it exists
-    try? fileManager.removeItem(at: archiveURL)
-
-    // Write final log archive
-    try LogCompressor().start(
-      source: toPath(sharedLogFolderURL),
-      to: toPath(archiveURL)
-    )
-
-    // Remove intermediate log archives
-    try? fileManager.removeItem(at: tunnelLogURL)
-    try? fileManager.removeItem(at: appLogURL)
   }
-}
 #endif
 
 #if os(iOS)
-enum LogExporter {
-  enum ExportError: Error {
-    case invalidSourceDirectory
-    case invalidFilePath
-  }
-
-  static func export(to archiveURL: URL) async throws {
-    guard let logFolderURL = SharedAccess.logFolderURL
-    else {
-      throw ExportError.invalidSourceDirectory
+  enum LogExporter {
+    enum ExportError: Error {
+      case invalidSourceDirectory
+      case invalidFilePath
     }
 
-    // Remove existing archive if it exists
-    try? fileManager.removeItem(at: archiveURL)
+    static func export(to archiveURL: URL) async throws {
+      guard let logFolderURL = SharedAccess.logFolderURL
+      else {
+        throw ExportError.invalidSourceDirectory
+      }
 
-    // Write final log archive
-    try LogCompressor().start(
-      source: toPath(logFolderURL),
-      to: toPath(archiveURL)
-    )
-  }
+      // Remove existing archive if it exists
+      try? fileManager.removeItem(at: archiveURL)
 
-  // iOS doesn't let us save to any ol' place, we must write to our temporary
-  // directory and then the OS will move it into place when the ShareSheet
-  // is dismissed.
-  static func tempFile() -> URL {
-    let fileName = "firezone_logs_\(now()).aar"
-    return fileManager.temporaryDirectory.appendingPathComponent(fileName)
+      // Write final log archive
+      try LogCompressor().start(
+        source: toPath(logFolderURL),
+        to: toPath(archiveURL)
+      )
+    }
+
+    // iOS doesn't let us save to any ol' place, we must write to our temporary
+    // directory and then the OS will move it into place when the ShareSheet
+    // is dismissed.
+    static func tempFile() -> URL {
+      let fileName = "firezone_logs_\(now()).aar"
+      return fileManager.temporaryDirectory.appendingPathComponent(fileName)
+    }
   }
-}
 #endif
 
 extension LogExporter {
@@ -141,7 +142,7 @@ extension LogExporter {
     dateFormatter.formatOptions = [
       .withFullDate,
       .withTime,
-      .withTimeZone
+      .withTimeZone,
     ]
     let timeStampString = dateFormatter.string(from: Date())
 

@@ -35,7 +35,7 @@ public class VPNConfigurationManager {
 
     protocolConfiguration.providerConfiguration = nil
     protocolConfiguration.providerBundleIdentifier = VPNConfigurationManager.bundleIdentifier
-    protocolConfiguration.serverAddress = "Firezone" // can be any non-empty string
+    protocolConfiguration.serverAddress = "Firezone"  // can be any non-empty string
     manager.localizedDescription = VPNConfigurationManager.bundleDescription
     manager.protocolConfiguration = protocolConfiguration
 
@@ -49,9 +49,11 @@ public class VPNConfigurationManager {
     self.manager = manager
   }
 
-  public static func legacyConfiguration(protocolConfiguration: NETunnelProviderProtocol?) -> [String: String]? {
+  public static func legacyConfiguration(protocolConfiguration: NETunnelProviderProtocol?)
+    -> [String: String]?
+  {
     guard let protocolConfiguration = protocolConfiguration,
-          let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
+      let providerConfiguration = protocolConfiguration.providerConfiguration as? [String: String]
     else {
       return nil
     }
@@ -87,10 +89,11 @@ public class VPNConfigurationManager {
   // been moved to a dedicated UserDefaults-backed persistent store.
   @MainActor
   func maybeMigrateConfiguration() async throws {
-    guard let legacyConfiguration = Self.legacyConfiguration(
-      protocolConfiguration: manager.protocolConfiguration as? NETunnelProviderProtocol
-    ),
-          let session = session()
+    guard
+      let legacyConfiguration = Self.legacyConfiguration(
+        protocolConfiguration: manager.protocolConfiguration as? NETunnelProviderProtocol
+      ),
+      let session = session()
     else {
       return
     }
@@ -115,12 +118,14 @@ public class VPNConfigurationManager {
     }
 
     if let logFilter = legacyConfiguration["logFilter"],
-       !logFilter.isEmpty {
+      !logFilter.isEmpty
+    {
       configuration.logFilter = logFilter
     }
 
     if let internetResourceEnabled = legacyConfiguration["internetResourceEnabled"],
-       ["false", "true"].contains(internetResourceEnabled) {
+      ["false", "true"].contains(internetResourceEnabled)
+    {
       configuration.internetResourceEnabled = internetResourceEnabled == "true"
     }
 
