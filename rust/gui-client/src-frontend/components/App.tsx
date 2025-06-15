@@ -92,7 +92,7 @@ export default function App() {
       advancedSettingsChangedUnlisten.then((unlistenFn) => unlistenFn());
       logsRecountedUnlisten.then((unlistenFn) => unlistenFn());
     };
-  }, [location, handleClick]);
+  }, []);
 
   const isDev = import.meta.env.DEV;
 
