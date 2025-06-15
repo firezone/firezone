@@ -596,7 +596,7 @@ public struct SettingsView: View {
       let savePanel = NSSavePanel()
       savePanel.prompt = "Save"
       savePanel.nameFieldLabel = "Save log archive to:"
-      let fileName = "firezone_logs_\(LogExporter.now()).aar"
+      let fileName = "firezone_logs_\(LogExporter.now()).zip"
 
       savePanel.nameFieldStringValue = fileName
 
