@@ -243,7 +243,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       sendChunk(tunnelLogArchive)
 
     case .idle:
-      guard let logFolderURL = SharedAccess.logFolderURL
+      guard let logFolderURL = SharedAccess.connlibLogFolderURL
       else {
         completionHandler(nil)
 
