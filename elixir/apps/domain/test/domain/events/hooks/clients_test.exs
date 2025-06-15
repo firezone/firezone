@@ -1,6 +1,7 @@
 defmodule Domain.Events.Hooks.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Events.Hooks.Clients
+  alias Domain.{Clients, PubSub}
 
   setup do
     %{old_data: %{}, data: %{}}
@@ -15,7 +16,7 @@ defmodule Domain.Events.Hooks.ClientsTest do
   describe "update/2" do
     test "soft-delete broadcasts disconnect" do
       client = Fixtures.Clients.create_client()
-      :ok = connect(client)
+      :ok = Clients.Presence.connect(client)
 
       old_data = %{"id" => client.id, "deleted_at" => nil}
       data = %{"id" => client.id, "deleted_at" => DateTime.utc_now()}
@@ -28,7 +29,7 @@ defmodule Domain.Events.Hooks.ClientsTest do
 
     test "update broadcasts :update" do
       client = Fixtures.Clients.create_client()
-      :ok = connect(client)
+      :ok = Clients.Presence.connect(client)
 
       old_data = %{"id" => client.id, "name" => "Old Client"}
       data = %{"id" => client.id, "name" => "Updated Client"}
@@ -43,7 +44,7 @@ defmodule Domain.Events.Hooks.ClientsTest do
   describe "delete/1" do
     test "broadcasts disconnect" do
       client = Fixtures.Clients.create_client()
-      :ok = connect(client)
+      :ok = Clients.Presence.connect(client)
 
       old_data = %{"id" => client.id}
 
@@ -57,20 +58,12 @@ defmodule Domain.Events.Hooks.ClientsTest do
   describe "connect/1" do
     test "tracks client presence and subscribes to topics" do
       client = Fixtures.Clients.create_client()
-      assert :ok == connect(client)
+      assert :ok == Clients.Presence.connect(client)
 
-      assert client.account_id
-             |> Domain.Events.Hooks.Accounts.clients_presence_topic()
-             |> Domain.Clients.Presence.get_by_key(client.id)
+      assert Clients.Presence.Account.get(client.account_id, client.id)
+      assert Clients.Presence.Actor.get(client.actor_id, client.id)
 
-      assert client.actor_id
-             |> Domain.Events.Hooks.Actors.clients_presence_topic()
-             |> Domain.Clients.Presence.get_by_key(client.id)
-
-      Domain.PubSub.broadcast(
-        Domain.Events.Hooks.Accounts.clients_topic(client.account_id),
-        :test_event
-      )
+      PubSub.Account.Clients.broadcast(client.account_id, :test_event)
 
       assert_receive :test_event
     end
@@ -79,9 +72,9 @@ defmodule Domain.Events.Hooks.ClientsTest do
   describe "broadcast/2" do
     test "broadcasts payload to client topic" do
       client = Fixtures.Clients.create_client()
-      :ok = connect(client)
+      :ok = Clients.Presence.connect(client)
 
-      assert :ok == broadcast(client.id, :updated)
+      assert :ok == PubSub.Client.broadcast(client.id, :updated)
 
       assert_receive :updated
     end

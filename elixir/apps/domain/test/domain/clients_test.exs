@@ -1,7 +1,7 @@
 defmodule Domain.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Clients
-  alias Domain.{Clients, Events}
+  alias Domain.{Clients, PubSub}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -117,7 +117,11 @@ defmodule Domain.ClientsTest do
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == false
 
-      assert Events.Hooks.Clients.connect(client) == :ok
+      {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
+      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
+      :ok = PubSub.Client.subscribe(client.id)
+      :ok = PubSub.Account.Clients.subscribe(client.account_id)
+
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == true
     end
@@ -222,7 +226,10 @@ defmodule Domain.ClientsTest do
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == false
 
-      assert Events.Hooks.Clients.connect(client) == :ok
+      {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
+      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
+      :ok = PubSub.Client.subscribe(client.id)
+      :ok = PubSub.Account.Clients.subscribe(client.account_id)
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == true
     end
@@ -281,7 +288,10 @@ defmodule Domain.ClientsTest do
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == false
 
-      assert Events.Hooks.Clients.connect(client) == :ok
+      {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
+      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
+      :ok = PubSub.Client.subscribe(client.id)
+      :ok = PubSub.Account.Clients.subscribe(client.account_id)
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == true
     end
@@ -395,7 +405,7 @@ defmodule Domain.ClientsTest do
       client_attrs = Fixtures.Clients.client_attrs()
 
       assert changeset = change_client(client, client_attrs)
-      assert %Ecto.Changeset{data: %Domain.Clients.Client{}} = changeset
+      assert %Ecto.Changeset{data: %Clients.Client{}} = changeset
 
       assert changeset.changes == %{name: client_attrs.name}
     end

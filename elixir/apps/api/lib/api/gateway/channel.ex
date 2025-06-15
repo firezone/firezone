@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Events, Resources, Relays, Flows}
+  alias Domain.{Clients, Gateways, PubSub, Resources, Relays, Flows}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -36,7 +36,7 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
-      :ok = Events.Hooks.Gateways.connect(socket.assigns.gateway)
+      :ok = Gateways.Presence.connect(socket.assigns.gateway)
 
       config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
       ipv4_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv4_masquerade)
@@ -117,7 +117,7 @@ defmodule API.Gateway.Channel do
   # This event is ignored because we will receive a reject_access message from
   # the Flows which will trigger a reject_access event
   def handle_info({:delete_resource, resource_id}, socket) do
-    :ok = Events.Hooks.Resources.unsubscribe(resource_id)
+    :ok = PubSub.Resource.unsubscribe(resource_id)
     {:noreply, socket}
   end
 
@@ -134,7 +134,7 @@ defmodule API.Gateway.Channel do
         client_id: client_id,
         resource_id: resource_id
       } do
-      :ok = Events.Hooks.Flows.unsubscribe(flow_id)
+      :ok = PubSub.Flow.unsubscribe(flow_id)
 
       push(socket, "reject_access", %{
         flow_id: flow_id,
@@ -311,7 +311,7 @@ defmodule API.Gateway.Channel do
     } = payload
 
     OpenTelemetry.Tracer.with_span "gateway.authorize_flow" do
-      :ok = Events.Hooks.Flows.subscribe(flow_id)
+      :ok = PubSub.Flow.subscribe(flow_id)
 
       Logger.debug("Gateway authorizes a new network flow",
         flow_id: flow_id,
@@ -324,8 +324,8 @@ defmodule API.Gateway.Channel do
 
       # TODO: WAL
       # Why are we unsubscribing and subscribing again?
-      :ok = Events.Hooks.Resources.unsubscribe(resource_id)
-      :ok = Events.Hooks.Resources.subscribe(resource_id)
+      :ok = PubSub.Resource.unsubscribe(resource_id)
+      :ok = PubSub.Resource.subscribe(resource_id)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
 
@@ -384,7 +384,7 @@ defmodule API.Gateway.Channel do
         client_id: client_id,
         resource_id: resource_id
       } do
-      :ok = Events.Hooks.Flows.subscribe(flow_id)
+      :ok = PubSub.Flow.subscribe(flow_id)
 
       client = Clients.fetch_client_by_id!(client_id)
       resource = Resources.fetch_resource_by_id!(resource_id)
@@ -396,8 +396,8 @@ defmodule API.Gateway.Channel do
         {:cont, resource} ->
           # TODO: WAL
           # Why are we unsubscribing and subscribing again?
-          :ok = Events.Hooks.Resources.unsubscribe(resource_id)
-          :ok = Events.Hooks.Resources.subscribe(resource_id)
+          :ok = PubSub.Resource.unsubscribe(resource_id)
+          :ok = PubSub.Resource.subscribe(resource_id)
 
           opentelemetry_headers = :otel_propagator_text_map.inject([])
           ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})
@@ -451,7 +451,7 @@ defmodule API.Gateway.Channel do
     } = attrs
 
     OpenTelemetry.Tracer.with_span "gateway.request_connection" do
-      :ok = Events.Hooks.Flows.subscribe(flow_id)
+      :ok = PubSub.Flow.subscribe(flow_id)
 
       Logger.debug("Gateway received connection request message",
         client_id: client_id,
@@ -468,8 +468,8 @@ defmodule API.Gateway.Channel do
         {:cont, resource} ->
           # TODO: WAL
           # Why are we unsubscribing and subscribing again?
-          :ok = Events.Hooks.Resources.unsubscribe(resource_id)
-          :ok = Events.Hooks.Resources.subscribe(resource_id)
+          :ok = PubSub.Resource.unsubscribe(resource_id)
+          :ok = PubSub.Resource.subscribe(resource_id)
 
           opentelemetry_headers = :otel_propagator_text_map.inject([])
           ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})
@@ -609,7 +609,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          Events.Hooks.Clients.broadcast(
+          PubSub.Client.broadcast(
             client_id,
             {:ice_candidates, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
@@ -634,7 +634,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          Events.Hooks.Clients.broadcast(
+          PubSub.Client.broadcast(
             client_id,
             {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}

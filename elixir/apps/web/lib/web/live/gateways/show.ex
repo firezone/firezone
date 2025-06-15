@@ -1,13 +1,12 @@
 defmodule Web.Gateways.Show do
   use Web, :live_view
   alias Domain.Gateways
-  alias Domain.Events
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, gateway} <-
            Gateways.fetch_gateway_by_id(id, socket.assigns.subject, preload: [:group, :online?]) do
       if connected?(socket) do
-        :ok = Events.Hooks.GatewayGroups.subscribe_to_presence(gateway.group_id)
+        :ok = Gateways.Presence.Group.subscribe(gateway.group_id)
       end
 
       socket =

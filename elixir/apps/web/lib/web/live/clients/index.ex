@@ -3,11 +3,10 @@ defmodule Web.Clients.Index do
   import Web.Actors.Components
   import Web.Clients.Components
   alias Domain.Clients
-  alias Domain.Events
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Events.Hooks.Accounts.subscribe_to_clients_presence(socket.assigns.subject.account.id)
+      :ok = Clients.Presence.Account.subscribe(socket.assigns.subject.account.id)
     end
 
     socket =

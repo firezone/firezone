@@ -1,10 +1,10 @@
 defmodule Web.Policies.Index do
   use Web, :live_view
-  alias Domain.{Events, Policies}
+  alias Domain.{PubSub, Policies}
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = Events.Hooks.Accounts.subscribe_to_policies(socket.assigns.account.id)
+      :ok = PubSub.Account.Policies.subscribe(socket.assigns.account.id)
     end
 
     socket =

@@ -1,7 +1,7 @@
 defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
   use API.ChannelCase, async: true
   import Domain.Events.Hooks.ActorGroupMemberships
-  alias Domain.Events.Hooks.Actors
+  alias Domain.PubSub
 
   setup do
     %{old_data: %{}, data: %{}}
@@ -17,9 +17,14 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
         "group_id" => group_id
       }
 
-      :ok = Actors.subscribe_to_memberships(actor_id)
+      :ok = PubSub.Actor.Memberships.subscribe(actor_id)
 
       assert :ok == on_insert(data)
+
+      # TODO: WAL
+      # Remove this when direct broadcast is implement
+      Process.sleep(100)
+
       assert_receive {:create_membership, ^actor_id, ^group_id}
     end
   end
@@ -81,7 +86,7 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
         "group_id" => group_id
       }
 
-      :ok = Actors.subscribe_to_memberships(actor_id)
+      :ok = PubSub.Actor.Memberships.subscribe(actor_id)
 
       assert :ok == on_delete(data)
       assert_receive {:delete_membership, ^actor_id, ^group_id}
