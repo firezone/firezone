@@ -48,7 +48,7 @@ import System
       // 2. Create tunnel log archive from tunnel process
       let tunnelLogURL =
         sharedLogFolderURL
-        .appendingPathComponent("tunnel.aar")
+        .appendingPathComponent("tunnel.zip")
       fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
       let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
 
