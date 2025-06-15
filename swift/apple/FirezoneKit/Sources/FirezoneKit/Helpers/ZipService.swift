@@ -15,7 +15,7 @@ extension URL {
 enum CreateZipError: Swift.Error {
   case urlNotADirectory(URL)
   case failedToCreateZIP(Swift.Error)
-  case failedToGetDataFromZipURL
+  case failedToMoveZIP(Swift.Error)
 }
 
 // MARK: - ZipService
@@ -33,8 +33,8 @@ public final class ZipService {
 
     var fileManagerError: Swift.Error?
     var coordinatorError: NSError?
-    let coordinator = NSFileCoordinator()
-    coordinator.coordinate(
+
+    NSFileCoordinator().coordinate(
       readingItemAt: directoryURL,
       options: .forUploading,
       error: &coordinatorError
@@ -45,8 +45,13 @@ public final class ZipService {
         fileManagerError = error
       }
     }
-    if let error = coordinatorError ?? fileManagerError {
+
+    if let error = coordinatorError {
       throw CreateZipError.failedToCreateZIP(error)
+    }
+
+    if let error = fileManagerError {
+      throw CreateZipError.failedToMoveZIP(error)
     }
   }
 }
