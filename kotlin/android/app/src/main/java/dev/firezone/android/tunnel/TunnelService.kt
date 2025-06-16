@@ -82,10 +82,6 @@ class TunnelService : VpnService() {
     // the VPN from the system settings or MDM disconnects us.
     private var disconnectCallback: DisconnectMonitor? = null
 
-    // General purpose mutex lock for preventing network monitoring from calling connlib
-    // during shutdown.
-    val lock = ReentrantLock()
-
     var startedByUser: Boolean = false
     private var commandChannel: Channel<TunnelCommand>? = null
     private val serviceScope = CoroutineScope(SupervisorJob())

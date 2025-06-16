@@ -16,31 +16,25 @@ class NetworkMonitor(
         network: Network,
         linkProperties: LinkProperties,
     ) {
-        // Acquire mutex lock
-        if (tunnelService.lock.tryLock()) {
-            if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
-                tunnelService.tunnelState = TunnelService.Companion.State.UP
-                tunnelService.updateStatusNotification(TunnelStatusNotification.Connected)
-            }
+        if (tunnelService.tunnelState != TunnelService.Companion.State.UP) {
+            tunnelService.tunnelState = TunnelService.Companion.State.UP
+            tunnelService.updateStatusNotification(TunnelStatusNotification.Connected)
+        }
 
-            if (lastDns != linkProperties.dnsServers) {
-                lastDns = linkProperties.dnsServers
+        if (lastDns != linkProperties.dnsServers) {
+            lastDns = linkProperties.dnsServers
 
-                // Strip the scope id from IPv6 addresses. See https://github.com/firezone/firezone/issues/5781
-                val dnsList =
-                    linkProperties.dnsServers.mapNotNull {
-                        it.hostAddress?.split("%")?.getOrNull(0)
-                    }
-                tunnelService.setDns(dnsList)
-            }
+            // Strip the scope id from IPv6 addresses. See https://github.com/firezone/firezone/issues/5781
+            val dnsList =
+                linkProperties.dnsServers.mapNotNull {
+                    it.hostAddress?.split("%")?.getOrNull(0)
+                }
+            tunnelService.setDns(dnsList)
+        }
 
-            if (lastNetwork != network) {
-                lastNetwork = network
-                tunnelService.reset()
-            }
-
-            // Release mutex lock
-            tunnelService.lock.unlock()
+        if (lastNetwork != network) {
+            lastNetwork = network
+            tunnelService.reset()
         }
 
         super.onLinkPropertiesChanged(network, linkProperties)
