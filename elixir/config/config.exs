@@ -58,8 +58,6 @@ config :domain, Domain.Events.ReplicationConnection,
     gateway_groups
     gateways
     policies
-    relay_groups
-    relays
     resource_connections
     resources
     tokens

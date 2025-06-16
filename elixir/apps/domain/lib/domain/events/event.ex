@@ -1,6 +1,6 @@
 defmodule Domain.Events.Event do
-  alias Domain.Events.Decoder
-  alias Domain.Events.Hooks
+  alias Domain.ChangeLogs
+  alias Domain.Events.{Decoder, Hooks}
 
   require Logger
 
@@ -16,11 +16,42 @@ defmodule Domain.Events.Event do
     old_data = zip(old_tuple_data, relation.columns)
     data = zip(tuple_data, relation.columns)
 
+    log(op, table, old_data, data)
     process(op, table, old_data, data)
+  end
 
-    # TODO: WAL
-    # This is only for load testing. Remove this.
-    Domain.PubSub.broadcast("events", {op, table, old_data, data})
+  # Bump this to signify a change in the audit log schema. Use with care.
+  @vsn 0
+
+  defp log(op, table, old_data, data) do
+    attrs = %{
+      op: op,
+      table: table,
+      old_data: old_data,
+      data: data,
+      vsn: @vsn
+    }
+
+    case ChangeLogs.create_change_log(attrs) do
+      {:ok, change_log} ->
+        {:ok, change_log}
+
+      {:error, %Ecto.Changeset{errors: errors} = changeset} ->
+        if foreign_key_error?(errors) do
+          # Expected under normal operation when an account is deleted
+          {:ok, nil}
+        else
+          Logger.error("Failed to create change log", changeset: inspect(changeset))
+        end
+
+        {:error, changeset}
+    end
+  end
+
+  defp foreign_key_error?(errors) do
+    Enum.any?(errors, fn {field, {message, _}} ->
+      field == :account_id and message == "does not exist"
+    end)
   end
 
   ############
@@ -213,38 +244,6 @@ defmodule Domain.Events.Event do
 
   defp process(:delete, "policies", old_data, _data) do
     Hooks.Policies.on_delete(old_data)
-  end
-
-  ################
-  # relay_groups #
-  ################
-
-  defp process(:insert, "relay_groups", _old_data, data) do
-    Hooks.RelayGroups.on_insert(data)
-  end
-
-  defp process(:update, "relay_groups", old_data, data) do
-    Hooks.RelayGroups.on_update(old_data, data)
-  end
-
-  defp process(:delete, "relay_groups", old_data, _data) do
-    Hooks.RelayGroups.on_delete(old_data)
-  end
-
-  ##########
-  # relays #
-  ##########
-
-  defp process(:insert, "relays", _old_data, data) do
-    Hooks.Relays.on_insert(data)
-  end
-
-  defp process(:update, "relays", old_data, data) do
-    Hooks.Relays.on_update(old_data, data)
-  end
-
-  defp process(:delete, "relays", old_data, _data) do
-    Hooks.Relays.on_delete(old_data)
   end
 
   ########################
