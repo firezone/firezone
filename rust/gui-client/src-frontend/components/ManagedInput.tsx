@@ -8,7 +8,7 @@ import {
 import React, { PropsWithChildren } from "react";
 
 export function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
-  let { managed, ...inputProps } = props;
+  const { managed, ...inputProps } = props;
 
   if (managed) {
     return (
@@ -24,7 +24,7 @@ export function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
 export function ManagedToggleSwitch(
   props: ToggleSwitchProps & { managed: boolean }
 ) {
-  let { managed, ...toggleSwitchProps } = props;
+  const { managed, ...toggleSwitchProps } = props;
 
   if (managed) {
     return (
@@ -38,7 +38,7 @@ export function ManagedToggleSwitch(
 }
 
 function ManagedTooltip(props: PropsWithChildren) {
-  let { children } = props;
+  const { children } = props;
 
   return (
     <Tooltip
