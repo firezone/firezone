@@ -33,6 +33,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  static-analysis:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: ./.github/actions/setup-node
+      - run: pnpm install
+      - run: pnpm eslint .
+
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
     needs: update-release-draft
