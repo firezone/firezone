@@ -47,7 +47,6 @@ import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 
 data class DeviceInfo(
@@ -327,17 +326,17 @@ class TunnelService : VpnService() {
     }
 
     private fun sendTunnelCommand(command: TunnelCommand) {
-        val commandName = command.javaClass.name;
+        val commandName = command.javaClass.name
 
         if (commandChannel == null) {
-            Log.d(TAG, "Cannot send ${commandName}: No active connlib session");
-            return;
+            Log.d(TAG, "Cannot send $commandName: No active connlib session")
+            return
         }
 
         try {
-            commandChannel?.trySend(command)?.getOrThrow();
+            commandChannel?.trySend(command)?.getOrThrow()
         } catch (e: Exception) {
-            Log.w(TAG, "Cannot send ${commandName}: ${e.message}");
+            Log.w(TAG, "Cannot send $commandName: ${e.message}")
         }
     }
 
