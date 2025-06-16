@@ -174,7 +174,7 @@ class TunnelService : VpnService() {
                 addAddress(tunnelIpv6Address!!, 128)
             }.establish()
             ?.detachFd()
-            ?.also { fd -> commandChannel?.trySend(TunnelCommand.SetTun(fd)) }
+            ?.also { fd -> sendTunnelCommand(TunnelCommand.SetTun(fd)) }
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
@@ -243,9 +243,7 @@ class TunnelService : VpnService() {
                 emptySet()
             }
 
-        commandChannel?.trySend(
-            TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled)),
-        )
+        sendTunnelCommand(TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled)))
     }
 
     fun internetResourceToggled(state: ResourceState) {
@@ -258,15 +256,15 @@ class TunnelService : VpnService() {
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
-        commandChannel?.trySend(TunnelCommand.Disconnect)
+        sendTunnelCommand(TunnelCommand.Disconnect)
     }
 
     fun setDns(dnsList: List<String>) {
-        commandChannel?.trySend(TunnelCommand.SetDns(Gson().toJson(dnsList)))
+        sendTunnelCommand(TunnelCommand.SetDns(Gson().toJson(dnsList)))
     }
 
     fun reset() {
-        commandChannel?.trySend(TunnelCommand.Reset)
+        sendTunnelCommand(TunnelCommand.Reset)
     }
 
     private fun connect() {
@@ -325,6 +323,21 @@ class TunnelService : VpnService() {
                         stopDisconnectMonitoring()
                     }
             }
+        }
+    }
+
+    private fun sendTunnelCommand(command: TunnelCommand) {
+        val commandName = command.javaClass.name;
+
+        if (commandChannel == null) {
+            Log.d(TAG, "Cannot send ${commandName}: No active connlib session");
+            return;
+        }
+
+        try {
+            commandChannel?.trySend(command)?.getOrThrow();
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot send ${commandName}: ${e.message}");
         }
     }
 
