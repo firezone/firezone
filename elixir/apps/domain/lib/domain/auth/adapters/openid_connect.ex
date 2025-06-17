@@ -326,9 +326,15 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
   defp fetch_userinfo(config, tokens) do
     case OpenIDConnect.fetch_userinfo(config, tokens["access_token"]) do
-      {:ok, userinfo} -> {:ok, userinfo}
-      {:error, :userinfo_endpoint_is_not_implemented} -> {:ok, %{}}
-      {:error, _reason} -> {:error, :invalid_token}
+      {:ok, userinfo} ->
+        {:ok, userinfo}
+
+      {:error, :userinfo_endpoint_is_not_implemented} ->
+        {:ok, %{}}
+
+      {:error, reason} ->
+        Logger.warning("Invalid OIDC ID token", reason: reason)
+        {:error, :invalid_token}
     end
   end
 
