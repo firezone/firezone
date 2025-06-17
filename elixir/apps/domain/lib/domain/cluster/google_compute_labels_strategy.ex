@@ -58,6 +58,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
           Map.put(state, :connected_nodes, nodes)
 
         {:error, problem_nodes} ->
+          problem_nodes = Enum.map(problem_nodes, &elem(&1, 0))
+
           state = Map.put(state, :connected_nodes, nodes -- problem_nodes)
 
           # Expected during deploy as the list of nodes received does not factor in the health check
