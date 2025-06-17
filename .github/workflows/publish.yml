@@ -1,4 +1,4 @@
-name: Publish Images
+name: Publish
 run-name: Triggered by ${{ github.actor }}
 on:
   release:
@@ -10,7 +10,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish-artifacts:
+  publish-docker-images:
     if: ${{ startsWith(github.event.release.name, 'gateway') || startsWith(github.event.release.name, 'headless-client') }}
     runs-on: ubuntu-22.04
     permissions:
@@ -108,3 +108,41 @@ jobs:
               gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch} \
               gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}
           done
+
+  create-version-bump-pr:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component:
+          - android-client
+          - apple-client
+          - gateway
+          - gui-client
+          - headless-client
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+
+      - uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec #v6.3.0
+        with:
+          gpg_private_key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+
+      - id: Create PR
+        if: ${{ startsWith(github.event.release.name, matrix.component) }}
+        run: |
+          # Extract version from release name
+          version=${{ github.event.release.name }}
+          version=${version#${{ matrix.component }}-}
+
+          # Configure local git instance
+          git config --local user.email "github-bot@firezone.dev"
+          git config --local user.name "Firezone Bot"
+
+          # Create the PR
+          scripts/create-publish-pr.sh ${{ matrix.component }} $version
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
