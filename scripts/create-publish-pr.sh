@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-local component="$1"
-local version="$2"
+component="$1"
+version="$2"
 
 # Create branch
 git checkout -b "chore/publish-$component-$version"
 
 # Update version variables in script
-scripts/bump-versions.sh update_version_variables $component $version
+scripts/bump-versions.sh update_version_variables "$component" "$version"
 git add scripts/bump-versions.sh
 git commit -m "chore: bump versions for $component to $version"
 
