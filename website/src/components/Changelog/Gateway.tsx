@@ -24,8 +24,8 @@ export default function Gateway() {
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
         <ChangeItem pull="9564">
-          Fixes an issue where connections would fail to establish if
-          both Client and Gateway were behind symmetric NAT.
+          Fixes an issue where connections would fail to establish if both
+          Client and Gateway were behind symmetric NAT.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.4.10" date={new Date("2025-06-05")}>
