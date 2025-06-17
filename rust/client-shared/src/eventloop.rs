@@ -255,7 +255,11 @@ impl Eventloop {
                 backoff,
                 max_elapsed_time,
                 error,
-            } => tracing::debug!(?backoff, ?max_elapsed_time, "{error:#}"),
+            } => tracing::info!(
+                ?backoff,
+                ?max_elapsed_time,
+                "Hiccup in portal connection: {error:#}"
+            ),
         }
     }
 
