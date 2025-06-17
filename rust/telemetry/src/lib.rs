@@ -2,8 +2,11 @@
 
 use std::{borrow::Cow, fmt, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::bail;
-use sentry::protocol::SessionStatus;
+use anyhow::{Ok, Result, bail};
+use sentry::{
+    BeforeCallback,
+    protocol::{Event, SessionStatus},
+};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -154,6 +157,7 @@ impl Telemetry {
                     if tx.name() == "telemetry" { 1.0 } else { 0.0 }
                 })),
                 max_breadcrumbs: 500,
+                before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
                 ..Default::default()
             },
         ));
@@ -226,6 +230,27 @@ impl Telemetry {
     }
 }
 
+fn event_rate_limiter(timeout: Duration) -> BeforeCallback<Event<'static>> {
+    let cache = moka::sync::CacheBuilder::<String, (), _>::default()
+        .max_capacity(10_000)
+        .time_to_live(timeout)
+        .build();
+
+    Arc::new(move |event: Event<'static>| {
+        let Some(message) = &event.message else {
+            return Some(event);
+        };
+
+        if cache.contains_key(message) {
+            return None;
+        }
+
+        cache.insert(message.clone(), ());
+
+        Some(event)
+    })
+}
+
 fn update_user(update: impl FnOnce(&mut sentry::User)) {
     sentry::Hub::main().configure_scope(|scope| {
         let mut user = scope.user().cloned().unwrap_or_default();
@@ -250,5 +275,28 @@ mod tests {
         telemetry.start("wss://example.com", "1.0.0", TESTING);
 
         assert!(telemetry.inner.is_none());
+    }
+
+    #[test]
+    fn rate_limits_events_with_same_message() {
+        let before_send = event_rate_limiter(Duration::from_secs(1));
+
+        let event1 = event("foo");
+        let event2 = event("bar");
+
+        assert!(before_send(event1.clone()).is_some());
+        assert!(before_send(event2.clone()).is_some());
+        assert!(before_send(event1.clone()).is_none());
+
+        std::thread::sleep(Duration::from_secs(1));
+
+        assert!(before_send(event1.clone()).is_some());
+    }
+
+    fn event(msg: &str) -> Event<'static> {
+        Event {
+            message: Some(msg.to_owned()),
+            ..Default::default()
+        }
     }
 }
