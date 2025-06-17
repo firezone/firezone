@@ -2271,3 +2271,26 @@ impl fmt::Display for SessionId {
         write!(f, "{:X}", &self.0.hex())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_ice_timeout() {
+        let mut agent = IceAgent::new();
+
+        apply_default_stun_timings(&mut agent);
+
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(9250))
+    }
+
+    #[test]
+    fn idle_ice_timeout() {
+        let mut agent = IceAgent::new();
+
+        apply_idle_stun_timings(&mut agent);
+
+        assert_eq!(agent.ice_timeout(), Duration::from_secs(240))
+    }
+}
