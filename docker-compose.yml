@@ -75,6 +75,7 @@ services:
       RELEASE_HOSTNAME: "web.cluster.local"
       RELEASE_NAME: "web"
       # Database
+      RUN_CONDITIONAL_MIGRATIONS: "true"
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_NAME: firezone_dev
@@ -147,6 +148,7 @@ services:
       RELEASE_HOSTNAME: "api.cluster.local"
       RELEASE_NAME: "api"
       # Database
+      RUN_CONDITIONAL_MIGRATIONS: "true"
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_NAME: firezone_dev
@@ -211,6 +213,7 @@ services:
       RELEASE_HOSTNAME: "domain.cluster.local"
       RELEASE_NAME: "domain"
       # Database
+      RUN_CONDITIONAL_MIGRATIONS: "true"
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_NAME: firezone_dev
@@ -279,6 +282,7 @@ services:
       RELEASE_HOSTNAME: "mix.cluster.local"
       RELEASE_NAME: "mix"
       # Database
+      RUN_CONDITIONAL_MIGRATIONS: "true"
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_NAME: firezone_dev
