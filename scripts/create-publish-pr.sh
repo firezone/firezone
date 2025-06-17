@@ -26,4 +26,5 @@ git push -u origin HEAD --force
 
 gh pr create \
     --title "chore: publish $component $version" \
+    --body "" \
     --reviewer @firezone/engineering
