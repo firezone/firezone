@@ -29,16 +29,24 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
-import dev.firezone.android.tunnel.callback.ConnlibCallback
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
 import dev.firezone.android.tunnel.model.isInternetResource
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ClosedReceiveChannelException
+import kotlinx.coroutines.channels.produce
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
+import uniffi.connlib.Event
+import uniffi.connlib.ProtectSocket
+import uniffi.connlib.Session
+import uniffi.connlib.SessionInterface
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.concurrent.Executors
-import java.util.concurrent.locks.ReentrantLock
 import javax.inject.Inject
 
 data class DeviceInfo(
@@ -73,12 +81,9 @@ class TunnelService : VpnService() {
     // the VPN from the system settings or MDM disconnects us.
     private var disconnectCallback: DisconnectMonitor? = null
 
-    // General purpose mutex lock for preventing network monitoring from calling connlib
-    // during shutdown.
-    val lock = ReentrantLock()
-
     var startedByUser: Boolean = false
-    var connlibSessionPtr: Long? = null
+    private var commandChannel: Channel<TunnelCommand>? = null
+    private val serviceScope = CoroutineScope(SupervisorJob())
 
     var tunnelResources: List<Resource>
         get() = _tunnelResources
@@ -106,62 +111,10 @@ class TunnelService : VpnService() {
 
     override fun onBind(intent: Intent): IBinder = binder
 
-    private val callback: ConnlibCallback =
-        object : ConnlibCallback {
-            override fun onUpdateResources(resourceListJSON: String) {
-                moshi.adapter<List<Resource>>().fromJson(resourceListJSON)?.let {
-                    tunnelResources = it
-                    resourcesUpdated()
-                }
-            }
-
-            override fun onSetInterfaceConfig(
-                addressIPv4: String,
-                addressIPv6: String,
-                dnsAddresses: String,
-                searchDomain: String?,
-                routes4JSON: String,
-                routes6JSON: String,
-            ) {
-                // init tunnel config
-                tunnelDnsAddresses = moshi.adapter<MutableList<String>>().fromJson(dnsAddresses)!!
-                val routes4 = moshi.adapter<MutableList<Cidr>>().fromJson(routes4JSON)!!
-                val routes6 = moshi.adapter<MutableList<Cidr>>().fromJson(routes6JSON)!!
-
-                tunnelSearchDomain = searchDomain
-                tunnelIpv4Address = addressIPv4
-                tunnelIpv6Address = addressIPv6
-                tunnelRoutes.clear()
-                tunnelRoutes.addAll(routes4)
-                tunnelRoutes.addAll(routes6)
-
-                buildVpnService()
-            }
-
-            // Unexpected disconnect, most likely a 401. Clear the token and initiate a stop of the
-            // service.
-            override fun onDisconnect(error: String): Boolean {
-                stopNetworkMonitoring()
-                stopDisconnectMonitoring()
-
-                // Clear any user tokens and actorNames
-                repo.clearToken()
-                repo.clearActorName()
-
-                // Free the connlib session
-                connlibSessionPtr?.let {
-                    ConnlibSession.disconnect(it)
-                }
-
-                shutdown()
-                if (startedByUser) {
-                    updateStatusNotification(TunnelStatusNotification.SignedOut)
-                }
-                return true
-            }
-
-            override fun protectFileDescriptor(fileDescriptor: Int) {
-                protect(fileDescriptor)
+    private val protectSocket: ProtectSocket =
+        object : ProtectSocket {
+            override fun protectSocket(fd: Int) {
+                protect(fd)
             }
         }
 
@@ -220,11 +173,7 @@ class TunnelService : VpnService() {
                 addAddress(tunnelIpv6Address!!, 128)
             }.establish()
             ?.detachFd()
-            ?.also { fd ->
-                connlibSessionPtr?.let {
-                    ConnlibSession.setTun(it, fd)
-                }
-            }
+            ?.also { fd -> sendTunnelCommand(TunnelCommand.SetTun(fd)) }
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
@@ -238,7 +187,7 @@ class TunnelService : VpnService() {
                 // Only change VPN if appRestrictions have changed
                 val restrictionsManager = context.getSystemService(Context.RESTRICTIONS_SERVICE) as android.content.RestrictionsManager
                 val newAppRestrictions = restrictionsManager.applicationRestrictions
-                GlobalScope.launch { repo.saveManagedConfiguration(newAppRestrictions).collect {} }
+                serviceScope.launch { repo.saveManagedConfiguration(newAppRestrictions).collect {} }
                 val changed = MANAGED_CONFIGURATIONS.any { newAppRestrictions.getString(it) != appRestrictions.getString(it) }
                 if (!changed) {
                     return
@@ -271,6 +220,7 @@ class TunnelService : VpnService() {
 
     override fun onDestroy() {
         unregisterReceiver(restrictionsReceiver)
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -292,9 +242,7 @@ class TunnelService : VpnService() {
                 emptySet()
             }
 
-        connlibSessionPtr?.let {
-            ConnlibSession.setDisabledResources(it, Gson().toJson(currentlyDisabled))
-        }
+        sendTunnelCommand(TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled)))
     }
 
     fun internetResourceToggled(state: ResourceState) {
@@ -307,25 +255,15 @@ class TunnelService : VpnService() {
 
     // Call this to stop the tunnel and shutdown the service, leaving the token intact.
     fun disconnect() {
-        // Acquire mutex lock
-        lock.lock()
-
-        stopNetworkMonitoring()
-
-        connlibSessionPtr?.let {
-            ConnlibSession.disconnect(it)
-        }
-
-        shutdown()
-
-        // Release mutex lock
-        lock.unlock()
+        sendTunnelCommand(TunnelCommand.Disconnect)
     }
 
-    private fun shutdown() {
-        connlibSessionPtr = null
-        stopSelf()
-        tunnelState = State.DOWN
+    fun setDns(dnsList: List<String>) {
+        sendTunnelCommand(TunnelCommand.SetDns(Gson().toJson(dnsList)))
+    }
+
+    fun reset() {
+        sendTunnelCommand(TunnelCommand.Reset)
     }
 
     private fun connect() {
@@ -337,40 +275,68 @@ class TunnelService : VpnService() {
             tunnelState = State.CONNECTING
             updateStatusNotification(TunnelStatusNotification.Connecting)
 
-            val executor = Executors.newSingleThreadExecutor()
-
-            executor.execute {
-                val deviceInfo = DeviceInfo()
-
-                runCatching {
-                    Tasks.await(FirebaseInstallations.getInstance().id)
-                }.onSuccess { firebaseInstallationId ->
+            val deviceInfo = DeviceInfo()
+            runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
+                .onSuccess { firebaseInstallationId ->
                     deviceInfo.firebaseInstallationId = firebaseInstallationId
                 }.onFailure { exception ->
                     Log.d(TAG, "Failed to obtain firebase installation id: $exception")
                 }
 
-                val gson: Gson =
-                    GsonBuilder()
-                        .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
-                        .create()
+            val gson: Gson =
+                GsonBuilder()
+                    .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
+                    .create()
 
-                connlibSessionPtr =
-                    ConnlibSession.connect(
+            commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
+
+            serviceScope.launch {
+                Session
+                    .newAndroid(
                         apiUrl = config.apiUrl,
                         token = token,
+                        accountSlug = config.accountSlug,
                         deviceId = deviceId(),
                         deviceName = getDeviceName(),
                         osVersion = Build.VERSION.RELEASE,
                         logDir = getLogDir(),
                         logFilter = config.logFilter,
-                        callback = callback,
+                        protectSocket = protectSocket,
                         deviceInfo = gson.toJson(deviceInfo),
-                    )
+                    ).use { session ->
+                        startNetworkMonitoring()
+                        startDisconnectMonitoring()
 
-                startNetworkMonitoring()
-                startDisconnectMonitoring()
+                        eventLoop(session, commandChannel!!)
+
+                        Log.i(TAG, "Event-loop finished")
+
+                        commandChannel = null
+                        tunnelState = State.DOWN
+
+                        if (startedByUser) {
+                            updateStatusNotification(TunnelStatusNotification.SignedOut)
+                        }
+
+                        stopNetworkMonitoring()
+                        stopDisconnectMonitoring()
+                    }
             }
+        }
+    }
+
+    private fun sendTunnelCommand(command: TunnelCommand) {
+        val commandName = command.javaClass.name
+
+        if (commandChannel == null) {
+            Log.d(TAG, "Cannot send $commandName: No active connlib session")
+            return
+        }
+
+        try {
+            commandChannel?.trySend(command)?.getOrThrow()
+        } catch (e: Exception) {
+            Log.w(TAG, "Cannot send $commandName: ${e.message}")
         }
     }
 
@@ -473,6 +439,123 @@ class TunnelService : VpnService() {
             Build.MODEL
         } else {
             deviceName
+        }
+    }
+
+    sealed class TunnelCommand {
+        data object Disconnect : TunnelCommand()
+
+        data class SetDisabledResources(
+            val disabledResources: String,
+        ) : TunnelCommand()
+
+        data class SetDns(
+            val dnsServers: String,
+        ) : TunnelCommand()
+
+        data class SetLogDirectives(
+            val directives: String,
+        ) : TunnelCommand()
+
+        data class SetTun(
+            val fd: Int,
+        ) : TunnelCommand()
+
+        data object Reset : TunnelCommand()
+    }
+
+    private suspend fun eventLoop(
+        session: SessionInterface,
+        commandChannel: Channel<TunnelCommand>,
+    ) {
+        val eventChannel =
+            serviceScope.produce {
+                while (isActive) {
+                    send(session.nextEvent())
+                }
+            }
+
+        var running = true
+
+        while (running) {
+            try {
+                select<Unit> {
+                    commandChannel.onReceive { command ->
+                        when (command) {
+                            is TunnelCommand.Disconnect -> {
+                                session.disconnect()
+                                // Sending disconnect will close the event-stream which will exit this loop
+                            }
+
+                            is TunnelCommand.SetDisabledResources -> {
+                                session.setDisabledResources(command.disabledResources)
+                            }
+
+                            is TunnelCommand.SetDns -> {
+                                session.setDns(command.dnsServers)
+                            }
+
+                            is TunnelCommand.SetLogDirectives -> {
+                                session.setLogDirectives(command.directives)
+                            }
+
+                            is TunnelCommand.SetTun -> {
+                                session.setTun(command.fd)
+                            }
+
+                            is TunnelCommand.Reset -> {
+                                session.reset()
+                            }
+                        }
+                    }
+                    eventChannel.onReceive { event ->
+                        when (event) {
+                            is Event.ResourcesUpdated -> {
+                                tunnelResources =
+                                    moshi.adapter<List<Resource>>().fromJson(event.resources)!!
+                                resourcesUpdated()
+                            }
+
+                            is Event.TunInterfaceUpdated -> {
+                                tunnelDnsAddresses =
+                                    moshi.adapter<MutableList<String>>().fromJson(event.dns)!!
+                                tunnelSearchDomain = event.searchDomain
+                                tunnelIpv4Address = event.ipv4
+                                tunnelIpv6Address = event.ipv6
+                                tunnelRoutes.clear()
+                                tunnelRoutes.addAll(
+                                    moshi
+                                        .adapter<MutableList<Cidr>>()
+                                        .fromJson(event.ipv4Routes)!!,
+                                )
+                                tunnelRoutes.addAll(
+                                    moshi
+                                        .adapter<MutableList<Cidr>>()
+                                        .fromJson(event.ipv6Routes)!!,
+                                )
+                                buildVpnService()
+                            }
+
+                            is Event.Disconnected -> {
+                                // Clear any user tokens and actorNames
+                                repo.clearToken()
+                                repo.clearActorName()
+
+                                running = false
+                            }
+
+                            null -> {
+                                Log.i(TAG, "Event channel closed")
+                                running = false
+                            }
+                        }
+                    }
+                }
+            } catch (e: ClosedReceiveChannelException) {
+                running = false
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in event loop", e)
+            }
         }
     }
 
