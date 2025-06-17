@@ -13,13 +13,11 @@ git checkout -b "chore/publish-$component-$version"
 
 # Update version variables in script
 "$path_to_bump_versions" update_version_variables "$component" "$version"
-git add "$path_to_bump_versions"
-git commit -m "chore: bump versions for $component to $version"
-
 # Bump versions across the codebase
 "$path_to_bump_versions"
+
 git add -A
-git commit -m "chore: bump versions for $component"
+git commit -m "chore: bump versions for $component  to $version"
 
 # Create PR
 git push -u origin HEAD --force
