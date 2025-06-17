@@ -21,6 +21,12 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
 
+      - uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec #v6.3.0
+        with:
+          gpg_private_key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
+          git_user_signingkey: true
+          git_commit_gpgsign: true
+
       - id: Create PR
         if: ${{ startsWith(github.event.release.name, matrix.component) }}
         run: |
