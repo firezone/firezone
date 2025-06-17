@@ -60,8 +60,8 @@ function update_version_variables() {
     NEXT_PATCH=$((PATCH + 1))
     NEXT_VERSION="$MAJOR.$MINOR.$NEXT_PATCH"
 
-    sed -i "s/$current_version_variable=\"[0-9]\+\.[0-9]\+\.[0-9]\+\"/$current_version_variable=\"${NEW_VERSION}\"/" "$path_to_self"
-    sed -i "s/$next_version_variable=\"[0-9]\+\.[0-9]\+\.[0-9]\+\"/$next_version_variable=\"${NEXT_VERSION}\"/" "$path_to_self"
+    sed "${SEDARG[@]}" "s/$current_version_variable=\"[0-9]\+\.[0-9]\+\.[0-9]\+\"/$current_version_variable=\"${NEW_VERSION}\"/" "$path_to_self"
+    sed "${SEDARG[@]}" "s/$next_version_variable=\"[0-9]\+\.[0-9]\+\.[0-9]\+\"/$next_version_variable=\"${NEXT_VERSION}\"/" "$path_to_self"
 }
 
 # macOS / iOS
