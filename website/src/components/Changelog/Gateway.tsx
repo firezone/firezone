@@ -23,6 +23,7 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased></Unreleased>
+      <Entry version="2.0.0" date={new Date("2025-06-17")}></Entry>
       <Entry version="1.4.10" date={new Date("2025-06-05")}>
         <ChangeItem pull="9147">
           Fixes an issue where connections failed to establish on machines with

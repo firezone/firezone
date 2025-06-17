@@ -2295,7 +2295,7 @@ dependencies = [
 
 [[package]]
 name = "firezone-gateway"
-version = "1.4.11"
+version = "2.0.1"
 dependencies = [
  "anyhow",
  "backoff",
