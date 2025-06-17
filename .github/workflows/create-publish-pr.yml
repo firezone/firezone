@@ -32,25 +32,8 @@ jobs:
           git config --local user.email "github-bot@firezone.dev"
           git config --local user.name "Firezone Bot"
 
-          # Create branch
-          git checkout -b "chore/publish-${{ matrix.component }}-$version"
-
-          # Update version variables in script
-          scripts/bump-versions.sh update_version_variables ${{ matrix.component }} $version
-          git add scripts/bump-versions.sh
-          git commit -m "chore: bump versions for ${{ matrix.component }} to $version"
-
-          # Bump versions across the codebase
-          scripts/bump-versions.sh
-          git add -A
-          git commit -m "chore: bump versions for ${{ matrix.component }}"
-
-          # Create PR
-          git push -u origin HEAD --force
-
-          gh pr create \
-            --title "chore: publish ${{ matrix.component }} $version" \
-            --reviewer @firezone/engineering
+          # Create the PR
+          scripts/create-publish-pr.sh ${{ matrix.component }} $version
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
