@@ -109,7 +109,7 @@ jobs:
               gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}
           done
 
-  create-version-bump-pr:
+  create-publish-pr:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -124,12 +124,6 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
 
-      - uses: crazy-max/ghaction-import-gpg@e89d40939c28e39f97cf32126055eeae86ba74ec #v6.3.0
-        with:
-          gpg_private_key: ${{ secrets.RELEASE_PR_BOT_GPG_KEY }}
-          git_user_signingkey: true
-          git_commit_gpgsign: true
-
       - id: Create PR
         if: ${{ startsWith(github.event.release.name, matrix.component) }}
         run: |
@@ -137,12 +131,23 @@ jobs:
           version=${{ github.event.release.name }}
           version=${version#${{ matrix.component }}-}
 
-          # Configure local git instance
+          # Configure gpg
+          echo "${RELEASE_PR_BOT_GPG_KEY}" | gpg --import --batch
+          GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format long "github-bot@firezone.dev" | grep sec | sed 's/.*\/\([^ ]*\).*/\1/')
+
+          # Configure git
           git config --local user.email "github-bot@firezone.dev"
           git config --local user.name "Firezone Bot"
+          git config --local user.signingkey "${GPG_KEY_ID}"
+          git config --local commit.gpgsign true
+
+          echo "use-agent" >> ~/.gnupg/gpg.conf
+          echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+          export GPG_TTY=$(tty)
 
           # Create the PR
           scripts/create-publish-pr.sh ${{ matrix.component }} $version
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
+          RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
