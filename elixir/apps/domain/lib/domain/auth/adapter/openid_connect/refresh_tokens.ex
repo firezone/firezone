@@ -22,6 +22,7 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.RefreshTokens do
 
         {:error, reason} ->
           Logger.error("Failed refreshing access token",
+            provider: provider.id,
             reason: inspect(reason)
           )
       end

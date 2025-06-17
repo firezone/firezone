@@ -5,7 +5,6 @@ defmodule Web.Application do
   def start(_type, _args) do
     configure_logger()
 
-    _ = OpentelemetryLiveView.setup()
     _ = :opentelemetry_cowboy.setup()
     _ = OpentelemetryPhoenix.setup(adapter: :cowboy2)
 
