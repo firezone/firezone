@@ -25,5 +25,5 @@ git commit -m "chore: bump versions for $component"
 git push -u origin HEAD --force
 
 gh pr create \
-  --title "chore: publish $component $version" \
-  --reviewer @firezone/engineering
+    --title "chore: publish $component $version" \
+    --reviewer @firezone/engineering

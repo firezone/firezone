@@ -51,7 +51,7 @@ function update_version_variables() {
     current_version_variable="current_${COMPONENT//-/_}_version"
     next_version_variable="next_${COMPONENT//-/_}_version"
 
-    IFS='.' read -r -a version_parts <<< "$NEW_VERSION"
+    IFS='.' read -r -a version_parts <<<"$NEW_VERSION"
     MAJOR="${version_parts[0]}"
     MINOR="${version_parts[1]}"
     PATCH="${version_parts[2]}"
