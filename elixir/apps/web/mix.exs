@@ -63,7 +63,6 @@ defmodule Web.MixProject do
       # Observability
       {:opentelemetry_telemetry, "~> 1.1", override: true},
       {:opentelemetry_cowboy, "~> 1.0"},
-      {:opentelemetry_liveview, "~> 1.0.0-rc.4"},
       {:opentelemetry_phoenix, "~> 2.0"},
       {:nimble_options, "~> 1.0", override: true},
       {:sentry, "~> 10.0"},
