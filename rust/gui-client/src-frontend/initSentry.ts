@@ -6,7 +6,7 @@ type Environment = "production" | "staging" | "on-prem" | "unknown";
 let client: Client | undefined;
 
 export default function initSentry(apiUrl: string) {
-  let env = environment(URL.parse(apiUrl));
+  const env = environment(URL.parse(apiUrl));
 
   if (env == "on-prem" || env == "unknown") {
     if (client) {
@@ -16,7 +16,7 @@ export default function initSentry(apiUrl: string) {
     return;
   }
 
-  let options = {
+  const options = {
     dsn: "https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312",
     environment: env,
     release: `gui-client@${__APP_VERSION__}`,

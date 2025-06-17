@@ -33,8 +33,8 @@ function Session(props: OverviewPageProps) {
     case "Loading": {
       return <Loading />;
     }
-    default:
-      let { account_slug, actor_name } = props.session.SignedIn;
+    default: {
+      const { account_slug, actor_name } = props.session.SignedIn;
 
       return (
         <SignedIn
@@ -43,6 +43,7 @@ function Session(props: OverviewPageProps) {
           signOut={props.signOut}
         />
       );
+    }
   }
 }
 
@@ -56,7 +57,7 @@ function SignedOut({ signIn }: SignedOutProps) {
       <div className="flex flex-col items-center gap-4">
         <p className="text-center">
           You can sign in by clicking the Firezone icon in the taskbar or by
-          clicking 'Sign in' below.
+          clicking &quot;Sign in&quot; below.
         </p>
         <Button id="sign-in" onClick={signIn}>
           Sign in

@@ -30,16 +30,16 @@ import Overview from "./OverviewPage";
 import { GeneralSettingsViewModel } from "../generated/GeneralSettingsViewModel";
 
 export default function App() {
-  let [session, setSession] = useState<SessionViewModel | null>(null);
-  let [logCount, setLogCount] = useState<FileCount | null>(null);
-  let [generalSettings, setGeneralSettings] =
+  const [session, setSession] = useState<SessionViewModel | null>(null);
+  const [logCount, setLogCount] = useState<FileCount | null>(null);
+  const [generalSettings, setGeneralSettings] =
     useState<GeneralSettingsViewModel | null>(null);
-  let [advancedSettings, setAdvancedSettings] =
+  const [advancedSettings, setAdvancedSettings] =
     useState<AdvancedSettingsViewModel | null>(null);
 
   useEffect(() => {
     const sessionChanged = listen<SessionViewModel>("session_changed", (e) => {
-      let session = e.payload;
+      const session = e.payload;
 
       console.log("session_changed", { session });
       setSession(session);
@@ -47,7 +47,7 @@ export default function App() {
     const generalSettingsChangedUnlisten = listen<GeneralSettingsViewModel>(
       "general_settings_changed",
       (e) => {
-        let generalSettings = e.payload;
+        const generalSettings = e.payload;
 
         console.log("general_settings_changed", { settings: generalSettings });
         setGeneralSettings(generalSettings);
@@ -56,7 +56,7 @@ export default function App() {
     const advancedSettingsChangedUnlisten = listen<AdvancedSettingsViewModel>(
       "advanced_settings_changed",
       (e) => {
-        let advancedSettings = e.payload;
+        const advancedSettings = e.payload;
 
         console.log("advanced_settings_changed", {
           settings: advancedSettings,
@@ -65,13 +65,13 @@ export default function App() {
       }
     );
     const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
-      let file_count = e.payload;
+      const file_count = e.payload;
 
       console.log("logs_recounted", { file_count });
       setLogCount(file_count);
     });
 
-    invoke<void>("update_state"); // Let the backend know that we (re)-initialised
+    invoke("update_state"); // Let the backend know that we (re)-initialised
 
     return () => {
       sessionChanged.then((unlistenFn) => unlistenFn());
@@ -168,7 +168,7 @@ export default function App() {
                 exportLogs={() => invoke("export_logs")}
                 clearLogs={async () => {
                   await invoke("clear_logs");
-                  let logCount = await invoke<FileCount>("count_logs");
+                  const logCount = await invoke<FileCount>("count_logs");
 
                   setLogCount(logCount);
                 }}

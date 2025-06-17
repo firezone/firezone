@@ -14,8 +14,8 @@ export default function Diagnostics({
   exportLogs,
   clearLogs,
 }: DiagnosticsPageProps) {
-  let bytes = logCount?.bytes ?? 0;
-  let files = logCount?.files ?? 0;
+  const bytes = logCount?.bytes ?? 0;
+  const files = logCount?.files ?? 0;
 
   const megabytes = Math.round(bytes / 100000) / 10;
 
