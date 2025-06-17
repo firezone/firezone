@@ -297,7 +297,12 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
       {:error, {:invalid_jwt, "invalid exp claim: token has expired"}} ->
         {:error, :expired_token}
 
-      {:error, {:invalid_jwt, _reason}} ->
+      {:error, {:invalid_jwt, reason}} ->
+        Logger.info("Invalid token was returned",
+          provider_id: provider.id,
+          reason: inspect(reason)
+        )
+
         {:error, :invalid_token}
 
       {:error, {status, _reason} = other} when status in 400..499 ->
