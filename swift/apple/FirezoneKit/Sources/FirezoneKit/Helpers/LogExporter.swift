@@ -48,7 +48,7 @@ import System
       // 2. Create tunnel log archive from tunnel process
       let tunnelLogURL =
         sharedLogFolderURL
-        .appendingPathComponent("tunnel.aar")
+        .appendingPathComponent("tunnel.zip")
       fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
       let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
 
@@ -79,19 +79,19 @@ import System
       }
 
       // 4. Create app log archive
-      let appLogURL = sharedLogFolderURL.appendingPathComponent("app.aar")
-      try LogCompressor().start(
-        source: toPath(logFolderURL),
-        to: toPath(appLogURL)
+      let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
+      try ZipService.createZip(
+        source: logFolderURL,
+        to: appLogURL
       )
 
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 
       // Write final log archive
-      try LogCompressor().start(
-        source: toPath(sharedLogFolderURL),
-        to: toPath(archiveURL)
+      try ZipService.createZip(
+        source: sharedLogFolderURL,
+        to: archiveURL
       )
 
       // Remove intermediate log archives
@@ -117,10 +117,16 @@ import System
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 
+      // Remove `latest` symlink from connlib directory.
+      // It is not useful on iOS and causes problems when zipping the directory.
+      try? fileManager.removeItem(
+        at: logFolderURL.appendingPathComponent("connlib").appendingPathComponent("latest")
+      )
+
       // Write final log archive
-      try LogCompressor().start(
-        source: toPath(logFolderURL),
-        to: toPath(archiveURL)
+      try ZipService.createZip(
+        source: logFolderURL,
+        to: archiveURL
       )
     }
 
@@ -128,7 +134,7 @@ import System
     // directory and then the OS will move it into place when the ShareSheet
     // is dismissed.
     static func tempFile() -> URL {
-      let fileName = "firezone_logs_\(now()).aar"
+      let fileName = "firezone_logs_\(now()).zip"
       return fileManager.temporaryDirectory.appendingPathComponent(fileName)
     }
   }
