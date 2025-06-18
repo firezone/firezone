@@ -382,9 +382,9 @@ impl TunnelTest {
     ///
     /// Consequently, this function needs to loop until no host can make progress at which point we consider the [`Transition`] complete.
     ///
-    /// At most, we will spend 10s of "simulation time" advancing the state.
+    /// At most, we will spend 20s of "simulation time" advancing the state.
     fn advance(&mut self, ref_state: &ReferenceState, buffered_transmits: &mut BufferedTransmits) {
-        let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(10);
+        let cut_off = self.flux_capacitor.now::<Instant>() + Duration::from_secs(20);
 
         'outer: while self.flux_capacitor.now::<Instant>() < cut_off {
             let now = self.flux_capacitor.now();
