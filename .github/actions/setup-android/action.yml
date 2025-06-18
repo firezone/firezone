@@ -19,7 +19,7 @@ runs:
       with:
         # By default tools and platform-tools are installed, which we don't use currently
         # These consume lots of disk space
-        packages: ''
+        packages: ""
 
     - name: Install NDK
       run: sdkmanager "ndk;28.1.13356709" # Must match `kotlin/android/app/build.gradle.kts`
