@@ -105,7 +105,9 @@ struct FirezoneApp: App {
       alert.addButton(withTitle: "Open System Preferences")
       alert.addButton(withTitle: "OK")
 
+      SentrySDK.pauseAppHangTracking()
       let response = alert.runModal()
+      SentrySDK.resumeAppHangTracking()
 
       if response == .alertFirstButtonReturn {
         let softwareUpdateURL = URL(
