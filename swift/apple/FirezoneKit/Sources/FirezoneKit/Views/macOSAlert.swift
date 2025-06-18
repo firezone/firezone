@@ -205,7 +205,10 @@
       alert.messageText = "An error occurred."
       alert.informativeText = message
       alert.alertStyle = .critical
+
+      SentrySDK.pauseAppHangTracking()
       alert.runModal()
+      SentrySDK.resumeAppHangTracking()
     }
   }
 
