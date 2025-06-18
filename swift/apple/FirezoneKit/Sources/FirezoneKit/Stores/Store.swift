@@ -8,10 +8,13 @@ import Combine
 import NetworkExtension
 import OSLog
 import UserNotifications
+import AuthenticationServices
 
 #if os(macOS)
   import ServiceManagement
   import AppKit
+#else
+  import UIKit
 #endif
 
 @MainActor
@@ -32,6 +35,10 @@ public final class Store: ObservableObject {
     @Published private(set) var systemExtensionStatus: SystemExtensionStatus?
   #endif
 
+  // Authentication session management
+  private var currentWebAuthSession: ASWebAuthenticationSession?
+  @Published public private(set) var authSessionInterrupted: Bool = false
+
   var firezoneId: String?
 
   let sessionNotification = SessionNotification()
@@ -50,7 +57,7 @@ public final class Store: ObservableObject {
 
     self.sessionNotification.signInHandler = {
       Task {
-        do { try await WebAuthSession.signIn(store: self) } catch { Log.error(error) }
+        await self.initiateSignIn()
       }
     }
 
@@ -71,6 +78,22 @@ public final class Store: ObservableObject {
       })
       .store(in: &cancellables)
 
+    // Subscribe to app lifecycle notifications
+    #if os(iOS)
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(handleAppWillResignActive),
+        name: UIApplication.willResignActiveNotification,
+        object: nil
+      )
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(handleAppDidBecomeActive),
+        name: UIApplication.didBecomeActiveNotification,
+        object: nil
+      )
+    #endif
+
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.
     // When everything loads correctly, we attempt to start the tunnel if connectOnStart is enabled.
     Task {
@@ -84,6 +107,12 @@ public final class Store: ObservableObject {
         Log.error(error)
       }
     }
+  }
+
+  deinit {
+    #if os(iOS)
+      NotificationCenter.default.removeObserver(self)
+    #endif
   }
 
   #if os(macOS)
@@ -284,5 +313,75 @@ public final class Store: ObservableObject {
     resourcesTimer?.invalidate()
     resourcesTimer = nil
     resourceList = ResourceList.loading
+  }
+
+  #if os(iOS)
+    @objc private func handleAppWillResignActive() {
+      if self.currentWebAuthSession != nil {
+        Log.info("App resigning active, cancelling web auth session")
+        self.currentWebAuthSession?.cancel()
+        self.authSessionInterrupted = true
+      }
+    }
+
+    @objc private func handleAppDidBecomeActive() {
+      // No direct action needed here, UI observes authSessionInterrupted
+      Log.info("App did become active")
+    }
+  #endif
+
+  public func initiateSignIn() async {
+    let scheme = "firezone-fd0020211111"
+    
+    guard let authURL = URL(string: configuration.authURL),
+      let authClient = try? AuthClient(
+        authURL: authURL.appendingPathComponent(configuration.accountSlug)),
+      let url = try? authClient.build()
+    else {
+      Log.error(AuthClientError.invalidAuthURL)
+      return
+    }
+
+    let authResponse: AuthResponse? = try? await withCheckedThrowingContinuation { continuation in
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) { returnedURL, error in
+        defer { self.currentWebAuthSession = nil }
+        
+        do {
+          if let error = error as? ASWebAuthenticationSessionError,
+            error.code == .canceledLogin
+          {
+            // If authSessionInterrupted is true, this cancel was intentional due to backgrounding
+            if self.authSessionInterrupted {
+              Log.info("Web authentication session cancelled due to app backgrounding")
+            } else {
+              Log.info("Web authentication session cancelled by user")
+            }
+            self.authSessionInterrupted = false // Reset the flag
+            continuation.resume(returning: nil)
+            return
+          } else if let error = error {
+            throw error
+          }
+
+          let authResponse = try authClient.response(url: returnedURL)
+          continuation.resume(returning: authResponse)
+        } catch {
+          continuation.resume(throwing: error)
+        }
+      }
+
+      self.currentWebAuthSession = session
+      session.presentationContextProvider = WebAuthSession.anchor
+      session.prefersEphemeralWebBrowserSession = false
+      session.start()
+    }
+
+    if let authResponse {
+      do {
+        try await self.signIn(authResponse: authResponse)
+      } catch {
+        Log.error(error)
+      }
+    }
   }
 }

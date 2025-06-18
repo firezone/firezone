@@ -30,19 +30,17 @@ struct WelcomeView: View {
           """
         ).multilineTextAlignment(.center)
           .padding(.bottom, 10)
+        
+        if store.authSessionInterrupted {
+          Text("Sign-in was interrupted. Please try again.")
+            .foregroundColor(.red)
+            .padding(.bottom, 10)
+        }
+        
         Button("Sign in") {
+          store.authSessionInterrupted = false // Reset flag
           Task {
-            do {
-              try await WebAuthSession.signIn(store: store)
-            } catch {
-              Log.error(error)
-
-              self.errorHandler.handle(
-                ErrorAlert(
-                  title: "Error signing in",
-                  error: error
-                ))
-            }
+            await store.initiateSignIn()
           }
         }
         .buttonStyle(.borderedProminent)

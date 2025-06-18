@@ -720,12 +720,7 @@ import SwiftUI
 
     @objc func signInButtonTapped() {
       Task {
-        do {
-          try await WebAuthSession.signIn(store: store)
-        } catch {
-          Log.error(error)
-          MacOSAlert.show(for: error)
-        }
+        await store.initiateSignIn()
       }
     }
 

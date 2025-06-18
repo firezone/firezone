@@ -106,18 +106,7 @@ import SwiftUI
 
     func signInButtonTapped() {
       Task {
-        do {
-          try await WebAuthSession.signIn(store: store)
-        } catch {
-          Log.error(error)
-
-          self.errorHandler.handle(
-            ErrorAlert(
-              title: "Error signing in",
-              error: error
-            )
-          )
-        }
+        await store.initiateSignIn()
       }
     }
 
