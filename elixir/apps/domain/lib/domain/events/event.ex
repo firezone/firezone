@@ -1,4 +1,10 @@
 defmodule Domain.Events.Event do
+  @moduledoc """
+    Handles the ingestion of events from the Postgres Write-Ahead Log (WAL) and processes them
+    according to the defined hooks for each table.
+
+    A GenServer is used for convenience to manage state related to event processing.
+  """
   alias Domain.ChangeLogs
   alias Domain.Events.{Decoder, Hooks}
 
