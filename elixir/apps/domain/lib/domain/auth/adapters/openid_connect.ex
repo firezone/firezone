@@ -333,25 +333,15 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
         access_token: inspect(access_token.fields)
       )
 
-      Logger.info(inspect(access_token.fields))
-
       Logger.info("ID Token Claims",
         provider_id: provider.id,
         id_token: inspect(id_token.fields)
       )
-
-      Logger.info(inspect(id_token.fields))
     else
       {:error, reason} ->
         Logger.info("Error parsing JWT",
           provider_id: provider.id,
           reason: inspect(reason)
-        )
-
-      other ->
-        Logger.info("Error parsing JWT",
-          provider_id: provider.id,
-          reason: inspect(other)
         )
     end
 
@@ -361,9 +351,17 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
   defp parse_jwt(token) do
     {:ok, JOSE.JWT.peek(token)}
   rescue
-    ArgumentError -> {:error, "Could not parse token"}
-    Jason.DecodeError -> {:error, "Could not decode token json"}
-    _ -> {:error, "Unknown error while parsing jwt"}
+    ae in ArgumentError ->
+      Logger.info("Arg Error", reason: inspect(ae))
+      {:error, "Could not parse token"}
+
+    de in Jason.DecodeError ->
+      Logger.info("Decode Error", reason: inspect(de))
+      {:error, "Could not decode token json"}
+
+    other ->
+      Logger.info("Unknown error while parsing jwt", reason: inspect(other))
+      {:error, "Unknown error while parsing jwt"}
   end
 
   defp fetch_userinfo(config, tokens) do
