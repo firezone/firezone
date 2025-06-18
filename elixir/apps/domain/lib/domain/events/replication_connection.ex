@@ -18,6 +18,7 @@ defmodule Domain.Events.ReplicationConnection do
   """
   use Postgrex.ReplicationConnection
   require Logger
+  require OpenTelemetry.Tracer
 
   import Domain.Events.Protocol
   import Domain.Events.Decoder
@@ -27,6 +28,9 @@ defmodule Domain.Events.ReplicationConnection do
   alias Domain.Events.Protocol.{KeepAlive, Write}
 
   @status_log_interval :timer.minutes(5)
+
+  # How long to allow the WAL stream to lag before we log a warning.
+  @alert_threshold_ms 5_000
 
   @type t :: %__MODULE__{
           schema: String.t(),
@@ -65,7 +69,7 @@ defmodule Domain.Events.ReplicationConnection do
 
   @impl true
   def init(state) do
-    {:ok, state}
+    {:ok, Map.put(state, :lag_threshold_exceeded, false)}
   end
 
   @doc """
@@ -186,11 +190,13 @@ defmodule Domain.Events.ReplicationConnection do
   end
 
   def handle_data(data, state) when is_write(data) do
-    %Write{message: message} = parse(data)
+    OpenTelemetry.Tracer.with_span "#{__MODULE__}.handle_data/2" do
+      %Write{message: message} = parse(data)
 
-    message
-    |> decode_message()
-    |> handle_message(%{state | counter: state.counter + 1})
+      message
+      |> decode_message()
+      |> handle_message(%{state | counter: state.counter + 1})
+    end
   end
 
   def handle_data(data, state) do
@@ -248,7 +254,11 @@ defmodule Domain.Events.ReplicationConnection do
     {:noreply, [], state}
   end
 
-  defp handle_message(%Decoder.Messages.Commit{}, state) do
+  defp handle_message(%Decoder.Messages.Commit{commit_timestamp: commit_timestamp}, state) do
+    # Since we receive a commit for each operation and we process each operation
+    # one-by-one, we can use the commit timestamp to check if we are lagging behind.
+    lag_ms = DateTime.diff(commit_timestamp, DateTime.utc_now(), :millisecond)
+    send(self(), {:check_alert, lag_ms})
     {:noreply, [], state}
   end
 
@@ -274,6 +284,20 @@ defmodule Domain.Events.ReplicationConnection do
   end
 
   @impl true
+
+  # Log only once when crossing the threshold
+
+  def handle_info({:check_alert, lag_ms}, %{lag_threshold_exceeded: false} = state)
+      when lag_ms >= @alert_threshold_ms do
+    Logger.warning("Event processing lag exceeds threshold", lag_ms: lag_ms)
+    {:noreply, %{state | lag_threshold_exceeded: true}}
+  end
+
+  def handle_info({:check_alert, lag_ms}, %{lag_threshold_exceeded: true} = state)
+      when lag_ms < @alert_threshold_ms do
+    Logger.info("Event processing lag is back below threshold", lag_ms: lag_ms)
+    {:noreply, %{state | lag_threshold_exceeded: false}}
+  end
 
   def handle_info(:interval_logger, state) do
     Logger.info("Processed #{state.counter} write messages from the WAL stream")
