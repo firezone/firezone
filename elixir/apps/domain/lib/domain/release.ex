@@ -13,17 +13,7 @@ defmodule Domain.Release do
       )
 
     for repo <- @repos do
-      {:ok, _, _} =
-        Ecto.Migrator.with_repo(
-          repo,
-          &Ecto.Migrator.run(&1, migration_paths(@otp_app, conditional), :up, all: true)
-        )
-    end
-
-    unless conditional do
-      for repo <- @repos do
-        check_pending_conditional_migrations(@otp_app, repo)
-      end
+      {:ok, _, _} = do_migration(repo, conditional)
     end
   end
 
@@ -54,23 +44,34 @@ defmodule Domain.Release do
     end
   end
 
-  defp migration_paths(app, true) do
-    [
-      priv_dir(app, ["repo", "migrations"]),
-      priv_dir(app, ["repo", "conditional_migrations"])
-    ]
-  end
+  defp do_migration(repo, conditional) do
+    default_path = priv_dir(@otp_app, ["repo", "migrations"])
+    conditional_path = priv_dir(@otp_app, ["repo", "conditional_migrations"])
 
-  defp migration_paths(app, false) do
-    [
-      priv_dir(app, ["repo", "migrations"])
-    ]
+    paths =
+      if conditional do
+        [
+          default_path,
+          conditional_path
+        ]
+      else
+        [
+          default_path
+        ]
+      end
+
+    Ecto.Migrator.with_repo(repo, fn repo ->
+      Ecto.Migrator.run(repo, paths, :up, all: true)
+
+      if conditional do
+        check_pending_conditional_migrations(@otp_app, repo)
+      end
+    end)
   end
 
   defp check_pending_conditional_migrations(app, repo) do
     conditional_path = priv_dir(app, ["repo", "conditional_migrations"])
 
-    # Check if the directory exists
     if File.dir?(conditional_path) do
       # Get all migrations from the conditional directory
       case Ecto.Migrator.migrations(repo, conditional_path) do
