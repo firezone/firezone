@@ -7,12 +7,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   use GenServer
 
   alias Telemetry.Metrics
-
-  alias Domain.{
-    GoogleCloudPlatform,
-    Repo,
-    Telemetry.Reporter.Log
-  }
+  alias Domain.GoogleCloudPlatform
 
   require Logger
 
@@ -25,10 +20,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
   # Maximum time in seconds to wait before flushing the buffer
   # in case it did not reach the @buffer_size limit within the flush interval
-  # This is bounded by the maximum rate we can send metrics to Google Cloud.
-  # A locking mechanism is used to ensure multiple nodes flushing
-  # metrics independently don't exceed this in aggregate.
-  @flush_interval 5
+  @flush_interval 60
   @flush_timer :timer.seconds(@flush_interval)
 
   def start_link(opts) do
@@ -111,10 +103,8 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
     {buffer_size, buffer} =
       if buffer_size >= @buffer_size do
-        log = get_log()
-
         # Flush immediately if the buffer is full
-        flush(project_id, resource, labels, {buffer_size, buffer}, log, false)
+        flush(project_id, resource, labels, {buffer_size, buffer})
       else
         {buffer_size, buffer}
       end
@@ -123,11 +113,9 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
   end
 
   def handle_info(:flush, {events, project_id, {resource, labels}, {buffer_size, buffer}}) do
-    log = get_log()
-
     {buffer_size, buffer} =
-      if all_intervals_greater_than_5s?(buffer) && havent_flushed_in_over_5s?(log) do
-        flush(project_id, resource, labels, {buffer_size, buffer}, log, true)
+      if all_intervals_greater_than_5s?(buffer) do
+        flush(project_id, resource, labels, {buffer_size, buffer})
       else
         {buffer_size, buffer}
       end
@@ -137,12 +125,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
 
     Process.send_after(self(), :flush, @flush_timer + jitter)
     {:noreply, {events, project_id, {resource, labels}, {buffer_size, buffer}}}
-  end
-
-  defp get_log do
-    Log.Query.all()
-    |> Log.Query.by_reporter_module("#{__MODULE__}")
-    |> Repo.one()
   end
 
   # Google Cloud Monitoring API does not support sampling intervals shorter than 5 seconds
@@ -175,16 +157,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
       end
 
     DateTime.diff(ended_at, started_at, :second) > 5
-  end
-
-  defp havent_flushed_in_over_5s?(nil), do: true
-
-  defp havent_flushed_in_over_5s?(log) do
-    last_flushed_at = log.last_flushed_at
-    now = DateTime.utc_now()
-    diff = DateTime.diff(now, last_flushed_at, :second)
-
-    diff >= @flush_interval
   end
 
   # counts the total number of emitted events
@@ -298,9 +270,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
          project_id,
          resource,
          labels,
-         {buffer_size, buffer},
-         log,
-         lock
+         {buffer_size, buffer}
        ) do
     time_series =
       buffer
@@ -309,50 +279,19 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         format_time_series(schema, name, labels, resource, measurements, unit)
       end)
 
-    case update_last_flushed_at(log, lock) do
-      {:ok, _} ->
-        case GoogleCloudPlatform.send_metrics(project_id, time_series) do
-          :ok ->
-            :ok
-
-          {:error, reason} ->
-            Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
-              reason: inspect(reason),
-              time_series: inspect(time_series),
-              count: buffer_size
-            )
-        end
-
+    case GoogleCloudPlatform.send_metrics(project_id, time_series) do
+      :ok ->
         {0, %{}}
 
-      {:error, changeset} ->
-        Logger.info(
-          "Failed to update last_flushed_at. Waiting for next flush.",
-          changeset: inspect(changeset)
+      {:error, reason} ->
+        Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
+          reason: inspect(reason),
+          time_series: inspect(time_series),
+          count: buffer_size
         )
 
         {buffer_size, buffer}
     end
-  end
-
-  defp update_last_flushed_at(nil, _) do
-    %Log{last_flushed_at: DateTime.utc_now(), reporter_module: "#{__MODULE__}"}
-    |> Log.Changeset.changeset()
-    |> Repo.insert()
-  end
-
-  defp update_last_flushed_at(log, false) do
-    log
-    |> Log.Changeset.changeset()
-    |> Repo.update(force: true)
-  end
-
-  defp update_last_flushed_at(log, true) do
-    log
-    |> Log.Changeset.changeset()
-    |> Log.Changeset.update_last_flushed_at_with_lock(DateTime.utc_now())
-    # No fields are updated, but we need to force the update for optimistic locking to work
-    |> Repo.update(force: true)
   end
 
   defp truncate_labels(labels) do
