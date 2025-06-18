@@ -6,6 +6,7 @@
 //  A thin wrapper around UserDefaults for user and admin managed app configuration.
 
 import Foundation
+import Sentry
 
 #if os(macOS)
   import ServiceManagement

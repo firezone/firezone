@@ -6,6 +6,7 @@
 
 import FirezoneKit
 import SwiftUI
+import Sentry
 
 @main
 struct FirezoneApp: App {

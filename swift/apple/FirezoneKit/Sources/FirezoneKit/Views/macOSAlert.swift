@@ -9,6 +9,7 @@
   import SystemExtensions
   import AppKit
   import NetworkExtension
+  import Sentry
 
   protocol UserFriendlyError {
     func userMessage() -> String?

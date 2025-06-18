@@ -7,6 +7,7 @@
 
 import Combine
 import SwiftUI
+import Sentry
 
 #if os(macOS)
   import SystemExtensions

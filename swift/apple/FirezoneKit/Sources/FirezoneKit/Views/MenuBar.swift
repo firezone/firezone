@@ -12,6 +12,7 @@ import Foundation
 import NetworkExtension
 import OSLog
 import SwiftUI
+import Sentry
 
 #if os(macOS)
   @MainActor
