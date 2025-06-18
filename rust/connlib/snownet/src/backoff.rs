@@ -1,7 +1,7 @@
 use std::time::{Duration, Instant};
 
 const MULTIPLIER: f32 = 1.5;
-const MAX_ELAPSED_TIME: Duration = Duration::from_secs(8);
+const MAX_ELAPSED_TIME: Duration = Duration::from_secs(15);
 
 #[derive(Debug)]
 pub struct ExponentialBackoff {
@@ -53,7 +53,7 @@ pub fn new(now: Instant, interval: Duration) -> ExponentialBackoff {
 ///
 /// The current strategy is multiplying the previous interval by 1.5 and adding them up.
 #[cfg(test)]
-pub fn steps(start: Instant) -> [Instant; 4] {
+pub fn steps(start: Instant) -> [Instant; 6] {
     fn secs(secs: f64) -> Duration {
         Duration::from_nanos((secs * 1_000_000_000.0) as u64)
     }
@@ -63,6 +63,8 @@ pub fn steps(start: Instant) -> [Instant; 4] {
         start + secs(1.0 + 1.5),
         start + secs(1.0 + 1.5 + 2.25),
         start + secs(1.0 + 1.5 + 2.25 + 3.375),
+        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625),
+        start + secs(1.0 + 1.5 + 2.25 + 3.375 + 5.0625 + 7.59375),
     ]
 }
 
