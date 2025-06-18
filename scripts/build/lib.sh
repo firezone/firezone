@@ -12,6 +12,9 @@ function setup_runner() {
     # Use the latest version of Xcode - matches what we typically use for development
     sudo xcode-select --switch "$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)"
 
+    # The GitHub runners stopped including the iOS SDK
+    xcodebuild -downloadPlatform iOS
+
     profiles_path="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
     keychain_pass=$(openssl rand -base64 32)
     keychain_path="$(mktemp -d)/app-signing.keychain-db"
