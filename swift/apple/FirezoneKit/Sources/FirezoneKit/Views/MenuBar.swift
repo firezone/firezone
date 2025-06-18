@@ -12,6 +12,7 @@ import Foundation
 import NetworkExtension
 import OSLog
 import SwiftUI
+import Sentry
 
 #if os(macOS)
   @MainActor
@@ -748,6 +749,8 @@ import SwiftUI
             let alert = NSAlert()
             alert.messageText =
               "Firezone requires permission to install VPN configurations. Without it, all functionality will be disabled."
+            SentrySDK.pauseAppHangTracking()
+            defer { SentrySDK.resumeAppHangTracking() }
             _ = alert.runModal()
           } else {
             throw error

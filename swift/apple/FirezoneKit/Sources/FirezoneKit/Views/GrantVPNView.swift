@@ -7,6 +7,7 @@
 
 import Combine
 import SwiftUI
+import Sentry
 
 #if os(macOS)
   import SystemExtensions
@@ -167,6 +168,8 @@ struct GrantVPNView: View {
             alert.messageText = "Permission required."
             alert.informativeText =
               "Firezone requires permission to install VPN configurations. Without it, all functionality will be disabled."
+            SentrySDK.pauseAppHangTracking()
+            defer { SentrySDK.resumeAppHangTracking() }
             _ = alert.runModal()
           } else {
             throw error
