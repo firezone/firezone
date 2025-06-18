@@ -16,6 +16,10 @@ runs:
     - uses: gradle/actions/setup-gradle@8379f6a1328ee0e06e2bb424dadb7b159856a326 # v4.4.0
 
     - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+      with:
+        # By default tools and platform-tools are installed, which we don't use currently
+        # These consume lots of disk space
+        packages: ''
 
     - name: Install NDK
       run: sdkmanager "ndk;28.1.13356709" # Must match `kotlin/android/app/build.gradle.kts`
