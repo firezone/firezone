@@ -13,6 +13,8 @@ partition_suffix =
 
 config :domain, sql_sandbox: true
 
+config :domain, run_conditional_migrations: true
+
 config :domain, Domain.Repo,
   database: "firezone_test#{partition_suffix}",
   pool: Ecto.Adapters.SQL.Sandbox,

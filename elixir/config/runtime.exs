@@ -42,6 +42,8 @@ if config_env() == :prod do
       database: compile_config!(:database_name)
     ]
 
+  config :domain, run_conditional_migrations: compile_config!(:run_conditional_migrations)
+
   config :domain, Domain.Tokens,
     key_base: compile_config!(:tokens_key_base),
     salt: compile_config!(:tokens_salt)

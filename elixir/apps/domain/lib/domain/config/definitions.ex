@@ -263,6 +263,12 @@ defmodule Domain.Config.Definitions do
   ##############################################
 
   @doc """
+  Whether to run migrations in the priv/repo/conditional_migrations directory.
+  If set to false, these migrations must be manually run from an IEx shell.
+  """
+  defconfig(:run_conditional_migrations, :boolean, default: false)
+
+  @doc """
   PostgreSQL host.
   """
   defconfig(:database_host, :string, default: "postgres")
