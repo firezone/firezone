@@ -2239,7 +2239,7 @@ fn new_agent() -> IceAgent {
 }
 
 fn apply_default_stun_timings(agent: &mut IceAgent) {
-    agent.set_max_stun_retransmits(8);
+    agent.set_max_stun_retransmits(12);
     agent.set_max_stun_rto(Duration::from_millis(1500));
     agent.set_initial_stun_rto(Duration::from_millis(250))
 }
@@ -2282,7 +2282,7 @@ mod tests {
 
         apply_default_stun_timings(&mut agent);
 
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(9250))
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(15250))
     }
 
     #[test]
