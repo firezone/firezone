@@ -2246,8 +2246,8 @@ fn apply_default_stun_timings(agent: &mut IceAgent) {
 
 fn apply_idle_stun_timings(agent: &mut IceAgent) {
     agent.set_max_stun_retransmits(4);
-    agent.set_max_stun_rto(Duration::from_secs(60));
-    agent.set_initial_stun_rto(Duration::from_secs(60));
+    agent.set_max_stun_rto(Duration::from_secs(25));
+    agent.set_initial_stun_rto(Duration::from_secs(25));
 }
 
 /// A session ID is constant for as long as a [`Node`] is operational.
@@ -2291,6 +2291,6 @@ mod tests {
 
         apply_idle_stun_timings(&mut agent);
 
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(240))
+        assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
     }
 }
