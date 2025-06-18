@@ -23,6 +23,13 @@ defmodule Domain.Events.Event do
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
+  defp log(_op, "flows", _old_data, _data) do
+    # TODO: WAL
+    # Flows are not logged to the change log as they are used only to trigger side effects which
+    # will be removed. Remove the flows table publication when that happens.
+    {:ok, nil}
+  end
+
   defp log(op, table, old_data, data) do
     attrs = %{
       op: op,
@@ -42,9 +49,9 @@ defmodule Domain.Events.Event do
           {:ok, nil}
         else
           Logger.error("Failed to create change log", changeset: inspect(changeset))
-        end
 
-        {:error, changeset}
+          {:error, changeset}
+        end
     end
   end
 

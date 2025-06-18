@@ -1,3 +1,5 @@
+# TODO: WAL
+# Move side-effects from flows to state table in clients and gateways
 defmodule Domain.Events.Hooks.Flows do
   @behaviour Domain.Events.Hooks
   alias Domain.PubSub
