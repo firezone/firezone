@@ -5,7 +5,6 @@ import Story from "./story";
 import Mission from "./mission";
 import Principles from "./principles";
 import Investors from "./investors";
-import Team from "./team";
 import Contact from "./contact";
 
 export default function Page() {
@@ -16,7 +15,6 @@ export default function Page() {
       <Mission />
       <Principles />
       <Investors />
-      <Team />
       <Contact />
     </>
   );
