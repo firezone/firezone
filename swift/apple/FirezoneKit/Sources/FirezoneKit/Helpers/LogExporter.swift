@@ -117,6 +117,12 @@ import System
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 
+      // Remove `latest` symlink from connlib directory.
+      // It is not useful on iOS and causes problems when zipping the directory.
+      try? fileManager.removeItem(
+        at: logFolderURL.appendingPathComponent("connlib").appendingPathComponent("latest")
+      )
+
       // Write final log archive
       try ZipService.createZip(
         source: logFolderURL,

@@ -34,16 +34,6 @@ public final class ZipService {
     var fileManagerError: Swift.Error?
     var coordinatorError: NSError?
 
-    let latestSymlink = directoryURL.appendingPathComponent("latest")
-    let tempSymlink = directoryURL.deletingLastPathComponent().appendingPathComponent("latest")
-
-    // Move the `latest` symlink out of the way before creating the archive.
-    // Apple's implementation of zip appears to not be able to handle symlinks well
-    let _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
-    defer {
-      let _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
-    }
-
     NSFileCoordinator().coordinate(
       readingItemAt: directoryURL,
       options: .forUploading,
