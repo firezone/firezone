@@ -17,6 +17,9 @@ config :domain, generators: [binary_id: true, context_app: :domain]
 
 config :domain, sql_sandbox: false
 
+# Don't run conditional migrations by default
+config :domain, run_conditional_migrations: false
+
 config :domain, Domain.Repo,
   hostname: "localhost",
   username: "postgres",

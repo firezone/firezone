@@ -55,8 +55,17 @@ defmodule Firezone.MixProject do
   end
 
   defp aliases do
+    migration_args =
+      "--migrations-path apps/domain/priv/repo/migrations --migrations-path apps/domain/priv/repo/conditional_migrations"
+
     [
-      "ecto.seed": ["ecto.create", "ecto.migrate", "run apps/domain/priv/repo/seeds.exs"],
+      "ecto.migrate": ["ecto.migrate #{migration_args}"],
+      "ecto.rollback": ["ecto.rollback #{migration_args}"],
+      "ecto.seed": [
+        "ecto.create",
+        "ecto.migrate #{migration_args}",
+        "run apps/domain/priv/repo/seeds.exs"
+      ],
       "ecto.setup": ["ecto.create", "ecto.migrate"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       sobelow: ["cmd mix sobelow"],
