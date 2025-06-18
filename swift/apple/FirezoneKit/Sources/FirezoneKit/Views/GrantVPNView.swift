@@ -167,7 +167,9 @@ struct GrantVPNView: View {
             alert.messageText = "Permission required."
             alert.informativeText =
               "Firezone requires permission to install VPN configurations. Without it, all functionality will be disabled."
+            SentrySDK.pauseAppHangTracking()
             _ = alert.runModal()
+            SentrySDK.resumeAppHangTracking()
           } else {
             throw error
           }
