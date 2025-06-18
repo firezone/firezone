@@ -6,6 +6,7 @@
 //  A thin wrapper around UserDefaults for user and admin managed app configuration.
 
 import Foundation
+import Sentry
 
 #if os(macOS)
   import ServiceManagement
@@ -142,12 +143,17 @@ public class Configuration: ObservableObject {
     // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
     func updateAppService() async throws {
       if #available(macOS 13.0, *) {
-        if !startOnLogin, SMAppService.mainApp.status == .enabled {
+          // Getting the status initially appears to be blocking sometimes
+          SentrySDK.pauseAppHangTracking()
+          defer { SentrySDK.resumeAppHangTracking() }
+          let status = SMAppService.mainApp.status
+
+        if !startOnLogin, status == .enabled {
           try await SMAppService.mainApp.unregister()
           return
         }
 
-        if startOnLogin, SMAppService.mainApp.status != .enabled {
+        if startOnLogin, status != .enabled {
           try SMAppService.mainApp.register()
         }
       }

@@ -9,6 +9,7 @@
   import SystemExtensions
   import AppKit
   import NetworkExtension
+  import Sentry
 
   protocol UserFriendlyError {
     func userMessage() -> String?
@@ -205,6 +206,9 @@
       alert.messageText = "An error occurred."
       alert.informativeText = message
       alert.alertStyle = .critical
+
+      SentrySDK.pauseAppHangTracking()
+      defer { SentrySDK.resumeAppHangTracking() }
       alert.runModal()
     }
   }

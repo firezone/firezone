@@ -6,6 +6,7 @@
 
 import FirezoneKit
 import SwiftUI
+import Sentry
 
 @main
 struct FirezoneApp: App {
@@ -105,6 +106,8 @@ struct FirezoneApp: App {
       alert.addButton(withTitle: "Open System Preferences")
       alert.addButton(withTitle: "OK")
 
+      SentrySDK.pauseAppHangTracking()
+      defer { SentrySDK.resumeAppHangTracking() }
       let response = alert.runModal()
 
       if response == .alertFirstButtonReturn {
