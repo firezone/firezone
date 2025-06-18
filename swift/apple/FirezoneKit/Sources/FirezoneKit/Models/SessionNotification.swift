@@ -108,8 +108,8 @@ public class SessionNotification: NSObject {
 
       await withCheckedContinuation { continuation in
         SentrySDK.pauseAppHangTracking()
+        defer { SentrySDK.resumeAppHangTracking() }
         let response = alert.runModal()
-        SentrySDK.resumeAppHangTracking()
 
         if response == NSApplication.ModalResponse.alertFirstButtonReturn {
           Log.log("\(#function): 'Sign In' clicked in notification")

@@ -145,8 +145,8 @@ public class Configuration: ObservableObject {
       if #available(macOS 13.0, *) {
           // Getting the status initially appears to be blocking sometimes
           SentrySDK.pauseAppHangTracking()
+          defer { SentrySDK.resumeAppHangTracking() }
           let status = SMAppService.mainApp.status
-          SentrySDK.resumeAppHangTracking()
 
         if !startOnLogin, status == .enabled {
           try await SMAppService.mainApp.unregister()

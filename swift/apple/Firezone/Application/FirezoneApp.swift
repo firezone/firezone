@@ -107,8 +107,8 @@ struct FirezoneApp: App {
       alert.addButton(withTitle: "OK")
 
       SentrySDK.pauseAppHangTracking()
+      defer { SentrySDK.resumeAppHangTracking() }
       let response = alert.runModal()
-      SentrySDK.resumeAppHangTracking()
 
       if response == .alertFirstButtonReturn {
         let softwareUpdateURL = URL(

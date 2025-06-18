@@ -750,8 +750,8 @@ import Sentry
             alert.messageText =
               "Firezone requires permission to install VPN configurations. Without it, all functionality will be disabled."
             SentrySDK.pauseAppHangTracking()
+            defer { SentrySDK.resumeAppHangTracking() }
             _ = alert.runModal()
-            SentrySDK.resumeAppHangTracking()
           } else {
             throw error
           }

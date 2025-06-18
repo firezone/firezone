@@ -208,8 +208,8 @@
       alert.alertStyle = .critical
 
       SentrySDK.pauseAppHangTracking()
+      defer { SentrySDK.resumeAppHangTracking() }
       alert.runModal()
-      SentrySDK.resumeAppHangTracking()
     }
   }
 
