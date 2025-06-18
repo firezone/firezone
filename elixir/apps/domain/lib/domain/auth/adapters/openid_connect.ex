@@ -269,6 +269,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
     config = config_for_provider(provider)
 
     with {:ok, tokens} <- OpenIDConnect.fetch_tokens(config, token_params),
+         :ok <- log_claims(provider, tokens),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
          {:ok, userinfo} <- fetch_userinfo(config, tokens) do
       expires_at =
@@ -322,6 +323,47 @@ defmodule Domain.Auth.Adapters.OpenIDConnect do
 
         {:error, :internal_error}
     end
+  end
+
+  defp log_claims(provider, tokens) do
+    with {:ok, access_token} <- parse_jwt(tokens["access_token"]),
+         {:ok, id_token} <- parse_jwt(tokens["id_token"]) do
+      Logger.info("Access Token Claims",
+        provider_id: provider.id,
+        access_token: inspect(access_token.fields)
+      )
+
+      Logger.info(inspect(access_token.fields))
+
+      Logger.info("ID Token Claims",
+        provider_id: provider.id,
+        id_token: inspect(id_token.fields)
+      )
+
+      Logger.info(inspect(id_token.fields))
+    else
+      {:error, reason} ->
+        Logger.info("Error parsing JWT",
+          provider_id: provider.id,
+          reason: inspect(reason)
+        )
+
+      other ->
+        Logger.info("Error parsing JWT",
+          provider_id: provider.id,
+          reason: inspect(other)
+        )
+    end
+
+    :ok
+  end
+
+  defp parse_jwt(token) do
+    {:ok, JOSE.JWT.peek(token)}
+  rescue
+    ArgumentError -> {:error, "Could not parse token"}
+    Jason.DecodeError -> {:error, "Could not decode token json"}
+    _ -> {:error, "Unknown error while parsing jwt"}
   end
 
   defp fetch_userinfo(config, tokens) do
