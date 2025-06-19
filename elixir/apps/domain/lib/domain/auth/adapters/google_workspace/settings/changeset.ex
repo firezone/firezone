@@ -19,6 +19,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Settings.Changeset do
       settings
       |> cast(attrs, @fields)
       |> validate_required(@fields)
+      |> trim_fields()
       |> OpenIDConnect.Settings.Changeset.validate_discovery_document_uri()
       |> validate_inclusion(:response_type, ~w[code])
       |> cast_embed(:service_account_json_key,
@@ -35,5 +36,13 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Settings.Changeset do
     key
     |> cast(attrs, @key_fields)
     |> validate_required(@key_fields)
+  end
+
+  defp trim_fields(changeset) do
+    changeset
+    |> Domain.Repo.Changeset.trim_change(:response_type)
+    |> Domain.Repo.Changeset.trim_change(:client_id)
+    |> Domain.Repo.Changeset.trim_change(:client_secret)
+    |> Domain.Repo.Changeset.trim_change(:discovery_document_uri)
   end
 end

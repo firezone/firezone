@@ -130,6 +130,77 @@ defmodule Domain.Auth.Adapters.GoogleWorkspaceTest do
                }
              }
     end
+
+    test "trims whitespace in adapter config" do
+      account = Fixtures.Accounts.create_account()
+      bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+      discovery_document_url = "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+
+      attrs =
+        Fixtures.Auth.provider_attrs(
+          adapter: :google_workspace,
+          adapter_config: %{
+            response_type: "   code   ",
+            client_id: "   client_id   ",
+            client_secret: "   client_secret   ",
+            discovery_document_uri: "   " <> discovery_document_url <> "   ",
+            service_account_json_key: %{
+              type: "service_account",
+              project_id: "project_id",
+              private_key_id: "private_key_id",
+              private_key: "private_key",
+              client_email: "client_email",
+              client_id: "client_id",
+              auth_uri: "auth_uri",
+              token_uri: "token_uri",
+              auth_provider_x509_cert_url: "auth_provider_x509_cert_url",
+              client_x509_cert_url: "client_x509_cert_url",
+              universe_domain: "universe_domain"
+            }
+          }
+        )
+
+      changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
+
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
+      assert {:ok, provider} = Repo.insert(changeset)
+
+      assert provider.name == attrs.name
+      assert provider.adapter == attrs.adapter
+
+      assert provider.adapter_config == %{
+               "scope" =>
+                 Enum.join(
+                   [
+                     "openid",
+                     "email",
+                     "profile",
+                     "https://www.googleapis.com/auth/admin.directory.customer.readonly",
+                     "https://www.googleapis.com/auth/admin.directory.orgunit.readonly",
+                     "https://www.googleapis.com/auth/admin.directory.group.readonly",
+                     "https://www.googleapis.com/auth/admin.directory.user.readonly"
+                   ],
+                   " "
+                 ),
+               "response_type" => "code",
+               "client_id" => "client_id",
+               "client_secret" => "client_secret",
+               "discovery_document_uri" => discovery_document_url,
+               "service_account_json_key" => %{
+                 type: "service_account",
+                 client_id: "client_id",
+                 project_id: "project_id",
+                 private_key: "private_key",
+                 private_key_id: "private_key_id",
+                 client_email: "client_email",
+                 auth_uri: "auth_uri",
+                 token_uri: "token_uri",
+                 auth_provider_x509_cert_url: "auth_provider_x509_cert_url",
+                 client_x509_cert_url: "client_x509_cert_url",
+                 universe_domain: "universe_domain"
+               }
+             }
+    end
   end
 
   describe "ensure_deprovisioned/1" do

@@ -10,6 +10,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
     struct
     |> cast(attrs, @fields)
     |> validate_required(@fields)
+    |> trim_fields()
     |> validate_discovery_document_uri()
     |> validate_inclusion(:response_type, ~w[code])
     |> validate_format(:scope, ~r/openid/, message: "must include openid scope")
@@ -42,5 +43,13 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
           [{:discovery_document_uri, "invalid URL"}]
       end
     end)
+  end
+
+  defp trim_fields(changeset) do
+    changeset
+    |> Domain.Repo.Changeset.trim_change(:response_type)
+    |> Domain.Repo.Changeset.trim_change(:client_id)
+    |> Domain.Repo.Changeset.trim_change(:client_secret)
+    |> Domain.Repo.Changeset.trim_change(:discovery_document_uri)
   end
 end
