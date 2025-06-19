@@ -1680,7 +1680,7 @@ where
     }
 
     fn transition_to_idle(&mut self, peer_socket: PeerSocket<RId>, agent: &mut IceAgent) {
-        tracing::debug!("Connection is idle");
+        tracing::info!("Connection is idle");
         *self = Self::Idle { peer_socket };
         apply_idle_stun_timings(agent);
     }
