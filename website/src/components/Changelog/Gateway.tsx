@@ -22,12 +22,13 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.11" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.10" date={new Date("2025-06-05")}>
         <ChangeItem pull="9147">
           Fixes an issue where connections failed to establish on machines with
