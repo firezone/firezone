@@ -10,7 +10,7 @@ function setup_runner() {
     local ne_profile_file="$4"
 
     # Use the latest version of Xcode - matches what we typically use for development
-    sudo xcode-select --switch "$(ls -d /Applications/Xcode*.app | sort -V | tail -n 1)"
+    sudo xcode-select --switch "$(ls -d /Applications/Xcode*${XCODE_MAJOR}*.app | sort -V | tail -n 1)"
 
     # The GitHub runners stopped including the iOS SDK
     xcodebuild -downloadPlatform iOS
