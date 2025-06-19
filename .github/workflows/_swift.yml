@@ -27,6 +27,8 @@ jobs:
     name: ${{ matrix.job_name }}
     needs: update-release-draft
     runs-on: macos-15
+    env:
+      XCODE_MAJOR: 16
     permissions:
       contents: write # for attaching the build artifacts to the release
       id-token: write
