@@ -10,12 +10,13 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.4" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.3" date={new Date("2025-06-16")}>
         <ChangeItem pull="9537">
           Fixes an issue that caused increased CPU and memory consumption.

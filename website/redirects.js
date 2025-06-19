@@ -10,14 +10,14 @@ module.exports = [
     source: "/dl/firezone-client-macos/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.2/firezone-macos-client-1.5.2.dmg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.3/firezone-macos-client-1.5.3.dmg",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-macos/pkg/latest",
     destination:
       // mark:current-apple-version
-      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.2/firezone-macos-client-1.5.2.pkg",
+      "https://www.github.com/firezone/firezone/releases/download/macos-client-1.5.3/firezone-macos-client-1.5.3.pkg",
     permanent: false,
   },
   /*
@@ -41,7 +41,7 @@ module.exports = [
     source: "/dl/firezone-client-gui-windows/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.3/firezone-client-gui-windows_1.5.3_x86_64.msi",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.4/firezone-client-gui-windows_1.5.4_x86_64.msi",
     permanent: false,
   },
   /*
@@ -65,14 +65,14 @@ module.exports = [
     source: "/dl/firezone-client-gui-linux/latest/x86_64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.3/firezone-client-gui-linux_1.5.3_x86_64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.4/firezone-client-gui-linux_1.5.4_x86_64.deb",
     permanent: false,
   },
   {
     source: "/dl/firezone-client-gui-linux/latest/aarch64",
     destination:
       // mark:current-gui-version
-      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.3/firezone-client-gui-linux_1.5.3_aarch64.deb",
+      "https://www.github.com/firezone/firezone/releases/download/gui-client-1.5.4/firezone-client-gui-linux_1.5.4_aarch64.deb",
     permanent: false,
   },
   {
@@ -105,21 +105,21 @@ module.exports = [
     source: "/dl/firezone-gateway/latest/x86_64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.10/firezone-gateway_1.4.10_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.11/firezone-gateway_1.4.11_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.10/firezone-gateway_1.4.10_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.11/firezone-gateway_1.4.11_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.10/firezone-gateway_1.4.10_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.11/firezone-gateway_1.4.11_armv7",
     permanent: false,
   },
   /*
