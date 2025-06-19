@@ -5,7 +5,8 @@ defmodule Domain.Release do
   @repos Application.compile_env!(@otp_app, :ecto_repos)
 
   def migrate(opts \\ []) do
-    Application.ensure_all_started(:sentry)
+    IO.puts("Starting sentry app..")
+    {:ok, _} = Application.ensure_all_started(:sentry)
 
     conditional =
       Keyword.get(
@@ -105,7 +106,7 @@ defmodule Domain.Release do
     Logger.error(error)
 
     # Sentry logger handler may not be fully initialized, so manually send
-    # a message and wait for it to flush.
+    # a message and wait for it to send.
     Task.start(fn ->
       Sentry.capture_message(error)
     end)
