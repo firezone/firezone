@@ -47,14 +47,13 @@ defmodule Domain.Config.Definition do
           default: term,
           sensitive: boolean(),
           dump: dump_callback(),
-          legacy_keys: [legacy_key()],
           changeset: changeset_callback()
         ]
 
   defmacro __using__(_opts) do
     quote do
       import Domain.Config.Definition
-      import Domain.Config, only: [compile_config!: 1]
+      import Domain.Config, only: [env_var_to_config!: 1]
 
       # Accumulator keeps the list of defined config keys
       Module.register_attribute(__MODULE__, :configs, accumulate: true)
@@ -103,7 +102,7 @@ defmodule Domain.Config.Definition do
 
   def fetch_spec_and_opts!(module, key) do
     {type, opts} = apply(module, key, [])
-    {resolve_opts, opts} = Keyword.split(opts, [:legacy_keys, :default])
+    {resolve_opts, opts} = Keyword.split(opts, [:default])
     {validate_opts, opts} = Keyword.split(opts, [:changeset])
     {debug_opts, opts} = Keyword.split(opts, [:sensitive])
     {dump_opts, opts} = Keyword.split(opts, [:dump])

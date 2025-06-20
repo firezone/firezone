@@ -10,11 +10,10 @@ defmodule Domain.Config do
   end
 
   def fetch_resolved_configs_with_sources!(_account_id, keys, _opts \\ []) do
-    db_config = %{}
-    env_config = System.get_env()
+    env_var_to_config = System.get_env()
 
     for key <- keys, into: %{} do
-      case Fetcher.fetch_source_and_config(Definitions, key, db_config, env_config) do
+      case Fetcher.fetch_source_and_config(Definitions, key, env_var_to_config) do
         {:ok, source, config} ->
           {key, {source, config}}
 
@@ -25,15 +24,15 @@ defmodule Domain.Config do
   end
 
   @doc """
-  Similar to `compile_config/2` but raises an error if the configuration is invalid.
+  Similar to `env_var_to_config/2` but raises an error if the configuration is invalid.
 
   This function does not resolve values from the database because it's intended use is during
   compilation and before application boot (in `config/runtime.exs`).
 
   If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
   """
-  def compile_config!(module \\ Definitions, key, env_config \\ System.get_env()) do
-    case Fetcher.fetch_source_and_config(module, key, %{}, env_config) do
+  def env_var_to_config!(module \\ Definitions, key, env_var_to_config \\ System.get_env()) do
+    case Fetcher.fetch_source_and_config(module, key, env_var_to_config) do
       {:ok, _source, value} ->
         value
 
@@ -43,15 +42,15 @@ defmodule Domain.Config do
   end
 
   @doc """
-  Similar to `compile_config!/3` but returns nil if the configuration is invalid.
+  Similar to `env_var_to_config!/3` but returns nil if the configuration is invalid.
 
   This function does not resolve values from the database because it's intended use is during
   compilation and before application boot (in `config/runtime.exs`).
 
   If you need to resolve values from the database, use `fetch_config/1` or `fetch_config!/1`.
   """
-  def compile_config(module \\ Definitions, key, env_config \\ System.get_env()) do
-    case Fetcher.fetch_source_and_config(module, key, %{}, env_config) do
+  def env_var_to_config(module \\ Definitions, key, env_var_to_config \\ System.get_env()) do
+    case Fetcher.fetch_source_and_config(module, key, env_var_to_config) do
       {:ok, _source, value} ->
         value
 

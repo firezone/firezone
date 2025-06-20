@@ -1,19 +1,15 @@
 defmodule Domain.Config.Resolver do
-  alias Domain.Config.Errors
-
-  @type source :: {:env, atom()} | {:db, atom()} | :default
+  @type source :: {:env, atom()} | :default
 
   @spec resolve(
           key :: atom(),
-          env_configurations :: map(),
-          db_configurations :: map(),
-          opts :: [{:legacy_keys, [Domain.Config.Definition.legacy_key()]}]
+          env_var_to_configurations :: map(),
+          opts :: Keyword.t()
         ) ::
           {:ok, {source :: source(), value :: term()}} | :error
-  def resolve(key, env_configurations, db_configurations, opts) do
+  def resolve(key, env_var_to_configurations, opts) do
     with :error <- resolve_process_env_value(key),
-         :error <- resolve_env_value(env_configurations, key, opts),
-         :error <- resolve_db_value(db_configurations, key),
+         :error <- resolve_env_value(env_var_to_configurations, key),
          :error <- resolve_default_value(opts) do
       :error
     end
@@ -76,11 +72,8 @@ defmodule Domain.Config.Resolver do
     defp resolve_process_env_value(_key), do: :error
   end
 
-  defp resolve_env_value(env_configurations, key, opts) do
-    legacy_keys = Keyword.get(opts, :legacy_keys, [])
-
-    with :error <- fetch_env(env_configurations, key),
-         :error <- fetch_legacy_env(env_configurations, key, legacy_keys) do
+  defp resolve_env_value(env_var_to_configurations, key) do
+    with :error <- fetch_env(env_var_to_configurations, key) do
       :error
     else
       {:ok, {_source, nil}} -> :error
@@ -88,10 +81,10 @@ defmodule Domain.Config.Resolver do
     end
   end
 
-  defp fetch_env(env_configurations, key) do
+  defp fetch_env(env_var_to_configurations, key) do
     key = env_key(key)
 
-    case Map.fetch(env_configurations, key) do
+    case Map.fetch(env_var_to_configurations, key) do
       {:ok, value} -> {:ok, {{:env, key}, value}}
       :error -> :error
     end
@@ -101,35 +94,6 @@ defmodule Domain.Config.Resolver do
     key
     |> to_string()
     |> String.upcase()
-  end
-
-  defp fetch_legacy_env(env_configurations, key, legacy_keys) do
-    Enum.find_value(legacy_keys, :error, fn {:env, legacy_key, removed_at} ->
-      case fetch_env(env_configurations, legacy_key) do
-        {:ok, value} ->
-          maybe_warn_on_legacy_key(key, legacy_key, removed_at)
-          {:ok, value}
-
-        :error ->
-          nil
-      end
-    end)
-  end
-
-  defp maybe_warn_on_legacy_key(_key, _legacy_key, nil) do
-    :ok
-  end
-
-  defp maybe_warn_on_legacy_key(key, legacy_key, removed_at) do
-    Errors.legacy_key_used(key, legacy_key, removed_at)
-  end
-
-  defp resolve_db_value(db_configurations, key) do
-    case Map.fetch(db_configurations, key) do
-      :error -> :error
-      {:ok, nil} -> :error
-      {:ok, value} -> {:ok, {{:db, key}, value}}
-    end
   end
 
   defp resolve_default_value(opts) do

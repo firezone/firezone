@@ -4,69 +4,40 @@ defmodule Domain.Config.ResolverTest do
 
   describe "resolve/4" do
     test "returns nil when variable is not found" do
-      env_configurations = %{}
-      db_configurations = %{}
+      env_var_to_configurations = %{}
 
-      assert resolve(:foo, env_configurations, db_configurations, []) == :error
+      assert resolve(:foo, env_var_to_configurations, []) == :error
     end
 
     test "returns default value when variable is not found" do
-      env_configurations = %{}
-      db_configurations = %{}
+      env_var_to_configurations = %{}
       opts = [default: :foo]
 
-      assert resolve(:foo, env_configurations, db_configurations, opts) == {:ok, {:default, :foo}}
+      assert resolve(:foo, env_var_to_configurations, opts) == {:ok, {:default, :foo}}
     end
 
     test "returns variable from system environment" do
-      env_configurations = %{"FOO" => "bar"}
-      db_configurations = %{}
+      env_var_to_configurations = %{"FOO" => "bar"}
 
-      assert resolve(:foo, env_configurations, db_configurations, []) ==
+      assert resolve(:foo, env_var_to_configurations, []) ==
                {:ok, {{:env, "FOO"}, "bar"}}
-    end
-
-    test "returns variable from system environment with legacy key" do
-      env_configurations = %{"FOO" => "bar"}
-      db_configurations = %{}
-      opts = [legacy_keys: [{:env, "FOO", "1.0"}]]
-
-      assert resolve(:bar, env_configurations, db_configurations, opts) ==
-               {:ok, {{:env, "FOO"}, "bar"}}
-    end
-
-    test "returns variable from database" do
-      env_configurations = %{}
-      db_configurations = %Domain.Accounts.Config{clients_upstream_dns: "1.2.3.4"}
-
-      assert resolve(:clients_upstream_dns, env_configurations, db_configurations, []) ==
-               {:ok, {{:db, :clients_upstream_dns}, "1.2.3.4"}}
     end
 
     test "precedence" do
       key = :my_key
       env = %{"FOO" => "3.3.2.2"}
-      db = %{}
 
       # `nil` by default
       opts = []
-      assert resolve(key, env, db, opts) == :error
+      assert resolve(key, env, opts) == :error
 
       # `default` opt overrides `nil`
       opts = [default: "8.8.4.4"]
-      assert resolve(key, env, db, opts) == {:ok, {:default, "8.8.4.4"}}
+      assert resolve(key, env, opts) == {:ok, {:default, "8.8.4.4"}}
 
-      # DB value overrides default
-      db = %{my_key: "1.2.3.4"}
-      assert resolve(key, env, db, opts) == {:ok, {{:db, key}, "1.2.3.4"}}
-
-      # Legacy env overrides DB
-      opts = [legacy_keys: [{:env, "FOO", "1.0"}]]
-      assert resolve(key, env, db, opts) == {:ok, {{:env, "FOO"}, "3.3.2.2"}}
-
-      # Env overrides legacy env
+      # Env overrides default
       env = Map.merge(env, %{"MY_KEY" => "2.7.2.8"})
-      assert resolve(key, env, db, opts) == {:ok, {{:env, "MY_KEY"}, "2.7.2.8"}}
+      assert resolve(key, env, opts) == {:ok, {{:env, "MY_KEY"}, "2.7.2.8"}}
     end
   end
 end

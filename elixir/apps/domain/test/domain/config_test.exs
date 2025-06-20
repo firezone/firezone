@@ -8,10 +8,7 @@ defmodule Domain.ConfigTest do
 
     defconfig(:required, Types.IP)
 
-    defconfig(:optional_generated, Types.IP,
-      legacy_keys: [{:env, "OGID", "1.0"}],
-      default: fn -> "1.1.1.1" end
-    )
+    defconfig(:optional_generated, Types.IP, default: fn -> "1.1.1.1" end)
 
     defconfig(:one_of, {:one_of, [:string, :integer]},
       changeset: fn
@@ -103,7 +100,7 @@ defmodule Domain.ConfigTest do
 
       ### Using environment variables
 
-      You can set this configuration via environment variable by adding it to `.env` file:
+      You can set this configuration with an environment variable:
 
           SECRET_KEY_BASE=YOUR_VALUE
 
@@ -112,8 +109,6 @@ defmodule Domain.ConfigTest do
 
       Primary secret key base for the Phoenix application.
 
-
-      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
       """
 
       assert_raise RuntimeError, message, fn ->
@@ -152,7 +147,7 @@ defmodule Domain.ConfigTest do
 
       ### Using environment variables
 
-      You can set this configuration via environment variable by adding it to `.env` file:
+      You can set this configuration with an environment variable:
 
           SECRET_KEY_BASE=YOUR_VALUE
 
@@ -161,8 +156,6 @@ defmodule Domain.ConfigTest do
 
       Primary secret key base for the Phoenix application.
 
-
-      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
       """
 
       assert_raise RuntimeError, message, fn ->
@@ -186,8 +179,6 @@ defmodule Domain.ConfigTest do
 
       If this field is not set or set to `nil`, the server for `api` and `web` apps will not start.
 
-
-      You can find more information on configuration here: https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing
       """
 
       assert_raise RuntimeError, message, fn ->
@@ -196,9 +187,9 @@ defmodule Domain.ConfigTest do
     end
   end
 
-  describe "compile_config!/1" do
+  describe "env_var_to_config!/1" do
     test "returns config value" do
-      assert compile_config!(Test, :optional_generated) ==
+      assert env_var_to_config!(Test, :optional_generated) ==
                %Postgrex.INET{address: {1, 1, 1, 1}, netmask: nil}
     end
 
@@ -210,13 +201,13 @@ defmodule Domain.ConfigTest do
 
       ### Using environment variables
 
-      You can set this configuration via environment variable by adding it to `.env` file:
+      You can set this configuration with an environment variable:
 
           REQUIRED=YOUR_VALUE
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :required)
+        env_var_to_config!(Test, :required)
       end
     end
 
@@ -230,7 +221,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :integer, %{"INTEGER" => "123a"})
+        env_var_to_config!(Test, :integer, %{"INTEGER" => "123a"})
       end
     end
 
@@ -244,7 +235,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :required, %{"REQUIRED" => "a.b.c.d"})
+        env_var_to_config!(Test, :required, %{"REQUIRED" => "a.b.c.d"})
       end
 
       message = """
@@ -256,7 +247,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :one_of, %{"ONE_OF" => "X"})
+        env_var_to_config!(Test, :one_of, %{"ONE_OF" => "X"})
       end
 
       message = """
@@ -270,7 +261,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :array, %{"ARRAY" => "1,-1,0,2,-100,-2"})
+        env_var_to_config!(Test, :array, %{"ARRAY" => "1,-1,0,2,-100,-2"})
       end
 
       message = """
@@ -282,7 +273,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :url, %{"URL" => "foo.bar/baz"})
+        env_var_to_config!(Test, :url, %{"URL" => "foo.bar/baz"})
       end
     end
 
@@ -296,7 +287,7 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :sensitive, %{"SENSITIVE" => "foo"})
+        env_var_to_config!(Test, :sensitive, %{"SENSITIVE" => "foo"})
       end
     end
 
@@ -310,15 +301,15 @@ defmodule Domain.ConfigTest do
       """
 
       assert_raise RuntimeError, message, fn ->
-        compile_config!(Test, :enum, %{"ENUM" => "foo"})
+        env_var_to_config!(Test, :enum, %{"ENUM" => "foo"})
       end
     end
 
     test "casts module name enums" do
-      assert compile_config!(Test, :enum, %{"ENUM" => "value1"}) == :foo
-      assert compile_config!(Test, :enum, %{"ENUM" => "value2"}) == Domain.ConfigTest.Test
+      assert env_var_to_config!(Test, :enum, %{"ENUM" => "value1"}) == :foo
+      assert env_var_to_config!(Test, :enum, %{"ENUM" => "value2"}) == Domain.ConfigTest.Test
 
-      assert compile_config!(Test, :enum, %{"ENUM" => "Elixir.Domain.ConfigTest.Test"}) ==
+      assert env_var_to_config!(Test, :enum, %{"ENUM" => "Elixir.Domain.ConfigTest.Test"}) ==
                Domain.ConfigTest.Test
     end
   end
