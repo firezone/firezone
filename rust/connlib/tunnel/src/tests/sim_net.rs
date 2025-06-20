@@ -10,7 +10,6 @@ use std::{
     collections::HashSet,
     fmt,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    num::NonZeroU16,
     time::{Duration, Instant},
 };
 use tracing::Span;
@@ -25,13 +24,8 @@ pub(crate) struct Host<T> {
 
     pub(crate) ip4: Option<Ipv4Addr>,
     pub(crate) ip6: Option<Ipv6Addr>,
+    port: u16,
 
-    // In production, we always rebind to a new port.
-    // To mimic this, we track the used ports here to not sample an existing one.
-    #[debug(skip)]
-    pub(crate) old_ports: HashSet<u16>,
-
-    default_port: u16,
     #[debug(skip)]
     allocated_ports: HashSet<(u16, AddressFamily)>,
 
@@ -49,15 +43,14 @@ pub(crate) struct Host<T> {
 }
 
 impl<T> Host<T> {
-    pub(crate) fn new(inner: T, latency: Duration) -> Self {
+    pub(crate) fn new(inner: T, latency: Duration, port: u16) -> Self {
         Self {
             inner,
             ip4: None,
             ip6: None,
+            port,
             span: Span::none(),
-            default_port: 0,
             allocated_ports: HashSet::default(),
-            old_ports: HashSet::default(),
             latency,
             inbox: BufferedTransmits::default(),
         }
@@ -78,7 +71,7 @@ impl<T> Host<T> {
             IpAddr::V6(_) => self.ip6?.into(),
         };
 
-        Some(SocketAddr::new(ip, self.default_port))
+        Some(SocketAddr::new(ip, self.port))
     }
 
     pub(crate) fn allocate_port(&mut self, port: u16, family: AddressFamily) {
@@ -89,31 +82,9 @@ impl<T> Host<T> {
         self.allocated_ports.remove(&(port, family));
     }
 
-    pub(crate) fn update_interface(
-        &mut self,
-        ip4: Option<Ipv4Addr>,
-        ip6: Option<Ipv6Addr>,
-        port: u16,
-    ) {
-        // 1. Remember what the current port was.
-        self.old_ports.insert(self.default_port);
-
-        // 2. Update to the new IPs.
+    pub(crate) fn update_interface(&mut self, ip4: Option<Ipv4Addr>, ip6: Option<Ipv6Addr>) {
         self.ip4 = ip4;
         self.ip6 = ip6;
-
-        // 3. Allocate the new port.
-        self.default_port = port;
-
-        self.deallocate_port(port, AddressFamily::V4);
-        self.deallocate_port(port, AddressFamily::V6);
-
-        if ip4.is_some() {
-            self.allocate_port(port, AddressFamily::V4);
-        }
-        if ip6.is_some() {
-            self.allocate_port(port, AddressFamily::V6);
-        }
     }
 
     pub(crate) fn is_sender(&self, src: IpAddr) -> bool {
@@ -181,9 +152,8 @@ where
             ip4: self.ip4,
             ip6: self.ip6,
             span,
-            default_port: self.default_port,
+            port: self.port,
             allocated_ports: self.allocated_ports.clone(),
-            old_ports: self.old_ports.clone(),
             latency: self.latency,
             inbox: self.inbox.clone(),
         }
@@ -306,23 +276,19 @@ impl From<ClientId> for HostId {
 
 pub(crate) fn host<T>(
     socket_ips: impl Strategy<Value = IpStack>,
-    default_port: impl Strategy<Value = u16>,
+    port: impl Strategy<Value = u16>,
     state: impl Strategy<Value = T>,
     latency: impl Strategy<Value = Duration>,
 ) -> impl Strategy<Value = Host<T>>
 where
     T: fmt::Debug,
 {
-    (state, socket_ips, default_port, latency).prop_map(move |(state, ip_stack, port, latency)| {
-        let mut host = Host::new(state, latency);
-        host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied(), port);
+    (state, socket_ips, port, latency).prop_map(move |(state, ip_stack, port, latency)| {
+        let mut host = Host::new(state, latency, port);
+        host.update_interface(ip_stack.as_v4().copied(), ip_stack.as_v6().copied());
 
         host
     })
-}
-
-pub(crate) fn any_port() -> impl Strategy<Value = u16> {
-    any::<NonZeroU16>().prop_map(|v| v.into())
 }
 
 pub(crate) fn any_ip_stack() -> impl Strategy<Value = IpStack> {
