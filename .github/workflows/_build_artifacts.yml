@@ -467,6 +467,7 @@ jobs:
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}@sha256:%s ' *)
-          echo "$sources"
+          echo "Tags: $tags"
+          echo "Sources: $sources"
           docker buildx imagetools create "$tags" "$sources"
           docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"
