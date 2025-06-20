@@ -53,12 +53,6 @@ runs:
       run: Set-MpPreference -DisableRealtimeMonitoring $true
       shell: powershell
 
-    - name: Repair VS installation
-      if: ${{ runner.os == 'Windows' }}
-      run: |
-        vs_buildtools.exe --add Microsoft.VisualStudio.Workload.VCTools --quiet --wait --norestart
-      shell: powershell
-
     - name: Extract Rust version
       run: |
         RUST_TOOLCHAIN=$(grep 'channel' rust-toolchain.toml | awk -F '"' '{print $2}')
@@ -87,3 +81,9 @@ runs:
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
+
+    - name: Repair VS installation
+      if: ${{ runner.os == 'Windows' }}
+      run: |
+        vs_buildtools.exe --add Microsoft.VisualStudio.Workload.VCTools --quiet --wait --norestart
+      shell: powershell
