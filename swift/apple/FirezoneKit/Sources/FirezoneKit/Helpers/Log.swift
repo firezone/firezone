@@ -136,9 +136,11 @@ private final class LogWriter {
   // All log writes happen in the workQueue
   private let workQueue: DispatchQueue
   private let logger: Logger
-  private let handle: FileHandle
+  private var handle: FileHandle
   private let dateFormatter: ISO8601DateFormatter
   private let jsonEncoder: JSONEncoder
+  private let folderURL: URL  // Add this to store folder URL
+  private var currentLogFileURL: URL  // Add this to track current file
 
   init?(folderURL: URL?, logger: Logger) {
     let fileManager = FileManager.default
@@ -159,10 +161,14 @@ private final class LogWriter {
       return nil
     }
 
+    self.folderURL = folderURL  // Store folder URL
+
     let logFileURL =
       folderURL
       .appendingPathComponent(dateFormatter.string(from: Date()))
       .appendingPathExtension("jsonl")
+
+    self.currentLogFileURL = logFileURL  // Store current file URL
 
     // Create log file
     guard fileManager.createFile(atPath: logFileURL.path, contents: Data()),
@@ -185,6 +191,37 @@ private final class LogWriter {
     }
   }
 
+  // Returns a valid file handle, recreating file if necessary
+  private func ensureFileExists() -> FileHandle? {
+    let fileManager = FileManager.default
+
+    // Check if current file still exists
+    if fileManager.fileExists(atPath: currentLogFileURL.path) {
+      return handle
+    }
+
+    // File was deleted, need to recreate
+    try? handle.close()
+
+    // Ensure directory exists
+    guard SharedAccess.ensureDirectoryExists(at: folderURL.path) else {
+      logger.error("Could not recreate log directory")
+      return nil
+    }
+
+    // Create new log file
+    guard fileManager.createFile(atPath: currentLogFileURL.path, contents: Data()),
+      let newHandle = try? FileHandle(forWritingTo: currentLogFileURL),
+      (try? newHandle.seekToEnd()) != nil
+    else {
+      logger.error("Could not recreate log file: \(self.currentLogFileURL.path)")
+      return nil
+    }
+
+    self.handle = newHandle
+    return newHandle
+  }
+
   func write(severity: Severity, message: String) {
     let logEntry = LogEntry(
       time: dateFormatter.string(from: Date()),
@@ -200,7 +237,12 @@ private final class LogWriter {
     jsonData.append(Data("\n".utf8))
 
     workQueue.async { [weak self] in
-      self?.handle.write(jsonData)
+      guard let self = self else { return }
+
+      // Get valid handle, recreating file if necessary
+      if let handle = self.ensureFileExists() {
+        handle.write(jsonData)
+      }
     }
   }
 }

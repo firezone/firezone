@@ -5,8 +5,8 @@
 //
 
 import Foundation
-import UserNotifications
 import Sentry
+import UserNotifications
 
 #if os(macOS)
   import AppKit
