@@ -60,8 +60,6 @@ defmodule Domain.Events.Hooks.Policies do
       )
       when not is_nil(disabled_at) do
     Task.start(fn ->
-      Flows.expire_flows_for_policy_id(policy_id)
-
       # TODO: WAL
       # Disabling a policy should broadcast directly to the subscribed clients/gateways
       payload = {:disable_policy, policy_id}
@@ -70,6 +68,8 @@ defmodule Domain.Events.Hooks.Policies do
 
       payload = {:reject_access, policy_id, actor_group_id, resource_id}
       :ok = PubSub.ActorGroup.Policies.broadcast(actor_group_id, payload)
+
+      Flows.expire_flows_for_policy_id(policy_id)
     end)
 
     :ok
@@ -108,8 +108,6 @@ defmodule Domain.Events.Hooks.Policies do
     # Only act upon this if the policy is not deleted or disabled
     if is_nil(data["deleted_at"]) and is_nil(data["disabled_at"]) do
       Task.start(fn ->
-        Flows.expire_flows_for_policy_id(policy_id)
-
         # TODO: WAL
         # Deleting a policy should broadcast directly to the subscribed clients/gateways
         payload = {:delete_policy, old_policy_id}
@@ -125,6 +123,8 @@ defmodule Domain.Events.Hooks.Policies do
 
         payload = {:allow_access, policy_id, actor_group_id, resource_id}
         :ok = PubSub.ActorGroup.Policies.broadcast(actor_group_id, payload)
+
+        Flows.expire_flows_for_policy_id(policy_id)
       end)
     else
       Logger.warning("Breaking update ignored for policy as it is deleted or disabled",
@@ -152,8 +152,6 @@ defmodule Domain.Events.Hooks.Policies do
         } = _old_data
       ) do
     Task.start(fn ->
-      Flows.expire_flows_for_policy_id(policy_id)
-
       # TODO: WAL
       # Deleting a policy should broadcast directly to the subscribed clients/gateways
       payload = {:delete_policy, policy_id}
@@ -162,6 +160,8 @@ defmodule Domain.Events.Hooks.Policies do
 
       payload = {:reject_access, policy_id, actor_group_id, resource_id}
       :ok = PubSub.ActorGroup.Policies.broadcast(actor_group_id, payload)
+
+      Flows.expire_flows_for_policy_id(policy_id)
     end)
 
     :ok
