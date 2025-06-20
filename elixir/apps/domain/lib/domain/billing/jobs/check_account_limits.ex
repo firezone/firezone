@@ -10,6 +10,10 @@ defmodule Domain.Billing.Jobs.CheckAccountLimits do
   def execute(_config) do
     Accounts.all_active_accounts!()
     |> Enum.each(fn account ->
+      # TODO: Slow DB queries
+      # These can be slow if an index-only scan is not possible.
+      # Consider using a trigger function and counter fields to maintain an accurate
+      # count of account limits.
       if Billing.enabled?() and Billing.account_provisioned?(account) do
         []
         |> check_users_limit(account)
