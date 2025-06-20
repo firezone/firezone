@@ -457,7 +457,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
              }
     end
 
-    test "submits the metrics to Google Cloud when buffer is filled" do
+    test "submits the metrics to Google Cloud when incoming metrics surpass buffer length" do
       Bypass.open()
       |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
       |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
@@ -465,8 +465,9 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
+      # Send 199 metrics
       {_, _, _, {buffer_size, buffer}} =
-        Enum.reduce(1..201, {[], "proj", tags, {0, %{}}}, fn i, state ->
+        Enum.reduce(1..199, {[], "proj", tags, {0, %{}}}, fn i, state ->
           {:noreply, state} =
             handle_info(
               {:compressed_metrics,
@@ -477,14 +478,22 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
           state
         end)
 
+      assert buffer_size == 199
+
+      refute_receive {:bypass_request, _conn, _body}
+
+      # Send the 200th metric, which should trigger the flush
+      {:noreply, {_, _, _, {buffer_size, buffer}}} =
+        handle_info(
+          {:compressed_metrics,
+           [{Telemetry.Metrics.Counter, [:foo, 200], %{}, now, 200, :request}]},
+          {[], "proj", tags, {buffer_size, buffer}}
+        )
+
+      assert buffer == %{{Telemetry.Metrics.Counter, [:foo, 200], %{}, :request} => {now, now, 1}}
       assert buffer_size == 1
-
-      assert buffer == %{
-               {Telemetry.Metrics.Counter, [:foo, 201], %{}, :request} => {now, now, 1}
-             }
-
       assert_receive {:bypass_request, _conn, %{"timeSeries" => time_series}}
-      assert length(time_series) == 200
+      assert length(time_series) == 199
     end
   end
 end
