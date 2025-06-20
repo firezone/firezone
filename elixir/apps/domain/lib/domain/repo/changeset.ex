@@ -131,13 +131,22 @@ defmodule Domain.Repo.Changeset do
   defp maybe_apply(changeset, fun) when is_function(fun, 1), do: fun.(changeset)
   defp maybe_apply(_changeset, value), do: value
 
-  def trim_change(%Ecto.Changeset{} = changeset, field) do
+  def trim_change(%Ecto.Changeset{} = changeset, field) when is_atom(field) do
     update_change(changeset, field, fn
       nil -> nil
-      changes when is_list(changes) -> Enum.map(changes, &String.trim/1)
-      change -> String.trim(change)
+      changes when is_list(changes) -> Enum.map(changes, &safe_trim/1)
+      change when is_binary(change) -> String.trim(change)
+      change -> change
     end)
   end
+
+  def trim_change(%Ecto.Changeset{} = changeset, fields) when is_list(fields) do
+    Enum.reduce(fields, changeset, fn field, changeset ->
+      trim_change(changeset, field)
+    end)
+  end
+
+  def trim_change(%Ecto.Changeset{} = changeset, _field), do: changeset
 
   def copy_change(%Ecto.Changeset{} = changeset, from, to) do
     case fetch_change(changeset, from) do
@@ -585,4 +594,7 @@ defmodule Domain.Repo.Changeset do
   defp atom_keys_to_string(map) do
     for {k, v} <- map, into: %{}, do: {to_string(k), v}
   end
+
+  defp safe_trim(term) when is_binary(term), do: String.trim(term)
+  defp safe_trim(term), do: term
 end

@@ -14,6 +14,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Settings.Changeset do
       settings
       |> cast(attrs, @fields)
       |> validate_required(@fields)
+      |> Domain.Repo.Changeset.trim_change(@fields)
       |> OpenIDConnect.Settings.Changeset.validate_discovery_document_uri()
       |> validate_inclusion(:response_type, ~w[code])
 
