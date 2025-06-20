@@ -1,7 +1,7 @@
 import Config
 
 if config_env() == :prod do
-  import Domain.Config, only: [compile_config!: 1, compile_config: 1]
+  import Domain.Config, only: [env_var_to_config!: 1, env_var_to_config: 1]
 
   ###############################
   ##### Domain ##################
@@ -10,129 +10,130 @@ if config_env() == :prod do
   config :domain,
          Domain.Repo,
          [
-           {:database, compile_config!(:database_name)},
-           {:username, compile_config!(:database_user)},
-           {:port, compile_config!(:database_port)},
-           {:pool_size, compile_config!(:database_pool_size)},
-           {:ssl, compile_config!(:database_ssl_enabled)},
-           {:ssl_opts, compile_config!(:database_ssl_opts)},
-           {:parameters, compile_config!(:database_parameters)}
+           {:database, env_var_to_config!(:database_name)},
+           {:username, env_var_to_config!(:database_user)},
+           {:port, env_var_to_config!(:database_port)},
+           {:pool_size, env_var_to_config!(:database_pool_size)},
+           {:ssl, env_var_to_config!(:database_ssl_enabled)},
+           {:ssl_opts, env_var_to_config!(:database_ssl_opts)},
+           {:parameters, env_var_to_config!(:database_parameters)}
          ] ++
-           if(compile_config(:database_password),
-             do: [{:password, compile_config!(:database_password)}],
+           if(env_var_to_config(:database_password),
+             do: [{:password, env_var_to_config!(:database_password)}],
              else: []
            ) ++
-           if(compile_config(:database_socket_dir),
-             do: [{:socket_dir, compile_config!(:database_socket_dir)}],
-             else: [{:hostname, compile_config!(:database_host)}]
+           if(env_var_to_config(:database_socket_dir),
+             do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+             else: [{:hostname, env_var_to_config!(:database_host)}]
            )
 
   config :domain, Domain.Events.ReplicationConnection,
-    enabled: compile_config!(:background_jobs_enabled),
-    replication_slot_name: compile_config!(:database_replication_slot_name),
-    publication_name: compile_config!(:database_publication_name),
+    enabled: env_var_to_config!(:background_jobs_enabled),
+    replication_slot_name: env_var_to_config!(:database_replication_slot_name),
+    publication_name: env_var_to_config!(:database_publication_name),
     connection_opts: [
-      hostname: compile_config!(:database_host),
-      port: compile_config!(:database_port),
-      ssl: compile_config!(:database_ssl_enabled),
-      ssl_opts: compile_config!(:database_ssl_opts),
-      parameters: compile_config!(:database_parameters),
-      username: compile_config!(:database_user),
-      password: compile_config!(:database_password),
-      database: compile_config!(:database_name)
+      hostname: env_var_to_config!(:database_host),
+      port: env_var_to_config!(:database_port),
+      ssl: env_var_to_config!(:database_ssl_enabled),
+      ssl_opts: env_var_to_config!(:database_ssl_opts),
+      parameters: env_var_to_config!(:database_parameters),
+      username: env_var_to_config!(:database_user),
+      password: env_var_to_config!(:database_password),
+      database: env_var_to_config!(:database_name)
     ]
 
-  config :domain, run_conditional_migrations: compile_config!(:run_conditional_migrations)
+  config :domain, run_conditional_migrations: env_var_to_config!(:run_conditional_migrations)
 
   config :domain, Domain.Tokens,
-    key_base: compile_config!(:tokens_key_base),
-    salt: compile_config!(:tokens_salt)
+    key_base: env_var_to_config!(:tokens_key_base),
+    salt: env_var_to_config!(:tokens_salt)
 
   config :domain, Domain.Gateways,
-    gateway_ipv4_masquerade: compile_config!(:gateway_ipv4_masquerade),
-    gateway_ipv6_masquerade: compile_config!(:gateway_ipv6_masquerade)
+    gateway_ipv4_masquerade: env_var_to_config!(:gateway_ipv4_masquerade),
+    gateway_ipv6_masquerade: env_var_to_config!(:gateway_ipv6_masquerade)
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
-    finch_transport_opts: compile_config!(:http_client_ssl_opts)
+    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
 
   config :domain, Domain.Billing.Stripe.APIClient,
     endpoint: "https://api.stripe.com",
     finch_transport_opts: []
 
   config :domain, Domain.Billing,
-    enabled: compile_config!(:billing_enabled),
-    secret_key: compile_config!(:stripe_secret_key),
-    webhook_signing_secret: compile_config!(:stripe_webhook_signing_secret),
-    default_price_id: compile_config!(:stripe_default_price_id)
+    enabled: env_var_to_config!(:billing_enabled),
+    secret_key: env_var_to_config!(:stripe_secret_key),
+    webhook_signing_secret: env_var_to_config!(:stripe_webhook_signing_secret),
+    default_price_id: env_var_to_config!(:stripe_default_price_id)
 
-  config :domain, platform_adapter: compile_config!(:platform_adapter)
+  config :domain, platform_adapter: env_var_to_config!(:platform_adapter)
 
-  if platform_adapter = compile_config!(:platform_adapter) do
-    config :domain, platform_adapter, compile_config!(:platform_adapter_config)
+  if platform_adapter = env_var_to_config!(:platform_adapter) do
+    config :domain, platform_adapter, env_var_to_config!(:platform_adapter_config)
   end
 
   config :domain, Domain.Cluster,
-    adapter: compile_config!(:erlang_cluster_adapter),
-    adapter_config: compile_config!(:erlang_cluster_adapter_config)
+    adapter: env_var_to_config!(:erlang_cluster_adapter),
+    adapter_config: env_var_to_config!(:erlang_cluster_adapter_config)
 
   config :domain, Domain.Instrumentation,
-    client_logs_enabled: compile_config!(:instrumentation_client_logs_enabled),
-    client_logs_bucket: compile_config!(:instrumentation_client_logs_bucket)
+    client_logs_enabled: env_var_to_config!(:instrumentation_client_logs_enabled),
+    client_logs_bucket: env_var_to_config!(:instrumentation_client_logs_bucket)
 
   config :domain, Domain.Analytics,
-    mixpanel_token: compile_config!(:mixpanel_token),
-    hubspot_workspace_id: compile_config!(:hubspot_workspace_id)
+    mixpanel_token: env_var_to_config!(:mixpanel_token),
+    hubspot_workspace_id: env_var_to_config!(:hubspot_workspace_id)
 
   config :domain, :enabled_features,
-    idp_sync: compile_config!(:feature_idp_sync_enabled),
-    sign_up: compile_config!(:feature_sign_up_enabled),
-    flow_activities: compile_config!(:feature_flow_activities_enabled),
-    self_hosted_relays: compile_config!(:feature_self_hosted_relays_enabled),
-    policy_conditions: compile_config!(:feature_policy_conditions_enabled),
-    multi_site_resources: compile_config!(:feature_multi_site_resources_enabled),
-    rest_api: compile_config!(:feature_rest_api_enabled),
-    internet_resource: compile_config!(:feature_internet_resource_enabled)
+    idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
+    sign_up: env_var_to_config!(:feature_sign_up_enabled),
+    flow_activities: env_var_to_config!(:feature_flow_activities_enabled),
+    self_hosted_relays: env_var_to_config!(:feature_self_hosted_relays_enabled),
+    policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
+    multi_site_resources: env_var_to_config!(:feature_multi_site_resources_enabled),
+    rest_api: env_var_to_config!(:feature_rest_api_enabled),
+    internet_resource: env_var_to_config!(:feature_internet_resource_enabled)
 
-  config :domain, sign_up_whitelisted_domains: compile_config!(:sign_up_whitelisted_domains)
+  config :domain, sign_up_whitelisted_domains: env_var_to_config!(:sign_up_whitelisted_domains)
 
-  config :domain, docker_registry: compile_config!(:docker_registry)
+  config :domain, docker_registry: env_var_to_config!(:docker_registry)
 
-  config :domain, outbound_email_adapter_configured?: !!compile_config!(:outbound_email_adapter)
+  config :domain,
+    outbound_email_adapter_configured?: !!env_var_to_config!(:outbound_email_adapter)
 
-  config :domain, web_external_url: compile_config!(:web_external_url)
+  config :domain, web_external_url: env_var_to_config!(:web_external_url)
 
   # Enable background jobs only on dedicated nodes
   config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Billing.Jobs.CheckAccountLimits,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokens,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   config :domain, Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory,
-    enabled: compile_config!(:background_jobs_enabled)
+    enabled: env_var_to_config!(:background_jobs_enabled)
 
   # Don't enable the mock sync directory job in production
   config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory, enabled: false
 
-  if web_external_url = compile_config!(:web_external_url) do
+  if web_external_url = env_var_to_config!(:web_external_url) do
     %{
       scheme: web_external_url_scheme,
       host: web_external_url_host,
@@ -146,9 +147,9 @@ if config_env() == :prod do
 
     config :web, Web.Endpoint,
       http: [
-        ip: compile_config!(:phoenix_listen_address).address,
-        port: compile_config!(:phoenix_http_web_port),
-        protocol_options: compile_config!(:phoenix_http_protocol_options)
+        ip: env_var_to_config!(:phoenix_listen_address).address,
+        port: env_var_to_config!(:phoenix_http_web_port),
+        protocol_options: env_var_to_config!(:phoenix_http_protocol_options)
       ],
       url: [
         scheme: web_external_url_scheme,
@@ -156,7 +157,7 @@ if config_env() == :prod do
         port: web_external_url_port,
         path: web_external_url_path
       ],
-      secret_key_base: compile_config!(:secret_key_base),
+      secret_key_base: env_var_to_config!(:secret_key_base),
       check_origin: [
         "#{web_external_url_scheme}://#{web_external_url_host}:#{web_external_url_port}",
         "#{web_external_url_scheme}://*.#{web_external_url_host}:#{web_external_url_port}",
@@ -164,22 +165,22 @@ if config_env() == :prod do
         "#{web_external_url_scheme}://*.#{web_external_url_host}"
       ],
       live_view: [
-        signing_salt: compile_config!(:live_view_signing_salt)
+        signing_salt: env_var_to_config!(:live_view_signing_salt)
       ]
 
     config :web,
-      external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
-      private_clients: compile_config!(:phoenix_private_clients)
+      external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
+      private_clients: env_var_to_config!(:phoenix_private_clients)
 
     config :web,
-      cookie_secure: compile_config!(:phoenix_secure_cookies),
-      cookie_signing_salt: compile_config!(:cookie_signing_salt),
-      cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
+      cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
+      cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
+      cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
 
-    config :web, api_url_override: compile_config!(:api_url_override)
+    config :web, api_url_override: env_var_to_config!(:api_url_override)
   end
 
-  if api_external_url = compile_config!(:api_external_url) do
+  if api_external_url = env_var_to_config!(:api_external_url) do
     %{
       scheme: api_external_url_scheme,
       host: api_external_url_host,
@@ -193,9 +194,9 @@ if config_env() == :prod do
 
     config :api, API.Endpoint,
       http: [
-        ip: compile_config!(:phoenix_listen_address).address,
-        port: compile_config!(:phoenix_http_api_port),
-        protocol_options: compile_config!(:phoenix_http_protocol_options)
+        ip: env_var_to_config!(:phoenix_listen_address).address,
+        port: env_var_to_config!(:phoenix_http_api_port),
+        protocol_options: env_var_to_config!(:phoenix_http_protocol_options)
       ],
       url: [
         scheme: api_external_url_scheme,
@@ -203,20 +204,20 @@ if config_env() == :prod do
         port: api_external_url_port,
         path: api_external_url_path
       ],
-      secret_key_base: compile_config!(:secret_key_base)
+      secret_key_base: env_var_to_config!(:secret_key_base)
 
     config :api,
-      cookie_secure: compile_config!(:phoenix_secure_cookies),
-      cookie_signing_salt: compile_config!(:cookie_signing_salt),
-      cookie_encryption_salt: compile_config!(:cookie_encryption_salt)
+      cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
+      cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
+      cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
 
     config :api,
-      external_trusted_proxies: compile_config!(:phoenix_external_trusted_proxies),
-      private_clients: compile_config!(:phoenix_private_clients)
+      external_trusted_proxies: env_var_to_config!(:phoenix_external_trusted_proxies),
+      private_clients: env_var_to_config!(:phoenix_private_clients)
 
     config :api, API.RateLimit,
-      refill_rate: compile_config!(:api_refill_rate),
-      capacity: compile_config!(:api_capacity)
+      refill_rate: env_var_to_config!(:api_refill_rate),
+      capacity: env_var_to_config!(:api_capacity)
 
     config :web,
       api_external_url: api_external_url
@@ -250,33 +251,35 @@ if config_env() == :prod do
   end
 
   config :domain, Domain.Telemetry,
-    healthz_port: compile_config!(:healthz_port),
-    metrics_reporter: compile_config!(:telemetry_metrics_reporter)
+    healthz_port: env_var_to_config!(:healthz_port),
+    metrics_reporter: env_var_to_config!(:telemetry_metrics_reporter)
 
-  if telemetry_metrics_reporter = compile_config!(:telemetry_metrics_reporter) do
-    config :domain, telemetry_metrics_reporter, compile_config!(:telemetry_metrics_reporter_opts)
+  if telemetry_metrics_reporter = env_var_to_config!(:telemetry_metrics_reporter) do
+    config :domain,
+           telemetry_metrics_reporter,
+           env_var_to_config!(:telemetry_metrics_reporter_opts)
   end
 
   config :domain,
-    http_client_ssl_opts: compile_config!(:http_client_ssl_opts)
+    http_client_ssl_opts: env_var_to_config!(:http_client_ssl_opts)
 
   config :openid_connect,
-    finch_transport_opts: compile_config!(:http_client_ssl_opts)
+    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
 
   config :domain,
          Domain.Mailer,
          [
-           adapter: compile_config!(:outbound_email_adapter),
-           from_email: compile_config!(:outbound_email_from)
-         ] ++ compile_config!(:outbound_email_adapter_opts)
+           adapter: env_var_to_config!(:outbound_email_adapter),
+           from_email: env_var_to_config!(:outbound_email_from)
+         ] ++ env_var_to_config!(:outbound_email_adapter_opts)
 
   config :workos, WorkOS.Client,
-    api_key: compile_config!(:workos_api_key),
-    client_id: compile_config!(:workos_client_id)
+    api_key: env_var_to_config!(:workos_api_key),
+    client_id: env_var_to_config!(:workos_client_id)
 
   # Sentry
 
-  with api_external_url <- compile_config!(:api_external_url),
+  with api_external_url <- env_var_to_config!(:api_external_url),
        api_external_url_host <- URI.parse(api_external_url).host,
        environment_name when environment_name in [:staging, :production] <-
          (case api_external_url_host do

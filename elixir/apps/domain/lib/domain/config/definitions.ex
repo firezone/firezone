@@ -403,10 +403,10 @@ defmodule Domain.Config.Definitions do
       keyword = Dumper.keyword(map)
 
       cond do
-        compile_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Epmd ->
+        env_var_to_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Epmd ->
           Keyword.update!(keyword, :hosts, fn hosts -> Enum.map(hosts, &String.to_atom/1) end)
 
-        compile_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Kubernetes ->
+        env_var_to_config!(:erlang_cluster_adapter) == Elixir.Cluster.Strategy.Kubernetes ->
           Keyword.new(keyword, fn
             {k, v} when k in [:mode, :kubernetes_ip_lookup_mode] -> {k, String.to_atom(v)}
             {k, v} -> {k, v}
@@ -581,7 +581,7 @@ defmodule Domain.Config.Definitions do
   """
   defconfig(:outbound_email_from, :string,
     default: fn ->
-      external_uri = URI.parse(compile_config!(:web_external_url))
+      external_uri = URI.parse(env_var_to_config!(:web_external_url))
       "firezone@#{external_uri.host}"
     end,
     sensitive: true,

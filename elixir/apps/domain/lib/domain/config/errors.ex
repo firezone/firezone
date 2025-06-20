@@ -2,8 +2,6 @@ defmodule Domain.Config.Errors do
   alias Domain.Config.Definition
   require Logger
 
-  @env_doc_url "https://www.firezone.dev/docs/reference/env-vars/#environment-variable-listing"
-
   def raise_error!(errors) do
     errors
     |> format_error()
@@ -18,7 +16,6 @@ defmodule Domain.Config.Errors do
       "Missing required configuration value for '#{key}'.",
       "## How to fix?",
       env_example(key),
-      db_example(key),
       format_doc(module, key)
     ]
     |> Enum.reject(&is_nil/1)
@@ -49,7 +46,6 @@ defmodule Domain.Config.Errors do
 
   defp source({:app_env, key}), do: "application environment #{key}"
   defp source({:env, key}), do: "environment variable #{Domain.Config.Resolver.env_key(key)}"
-  defp source({:db, key}), do: "database configuration #{key}"
   defp source(:default), do: "default value"
 
   defp format_errors(module, key, values_and_errors) do
@@ -84,8 +80,6 @@ defmodule Domain.Config.Errors do
         ## Documentation
 
         #{doc}
-
-        You can find more information on configuration here: #{@env_doc_url}
         """
     end
   end
@@ -105,27 +99,9 @@ defmodule Domain.Config.Errors do
     """
     ### Using environment variables
 
-    You can set this configuration via environment variable by adding it to `.env` file:
+    You can set this configuration with an environment variable:
 
         #{Domain.Config.Resolver.env_key(key)}=YOUR_VALUE
     """
-  end
-
-  defp db_example(key) do
-    if key in Domain.Accounts.Config.__schema__(:fields) do
-      """
-      ### Using database
-
-      Or you can set this configuration in the database by either setting it via the admin panel,
-      or by running an SQL query:
-
-          cd $HOME/.firezone
-          docker compose exec postgres psql \\
-            -U postgres \\
-            -h 127.0.0.1 \\
-            -d firezone \\
-            -c "UPDATE configurations SET #{key} = 'YOUR_VALUE'"
-      """
-    end
   end
 end

@@ -29,7 +29,7 @@ defmodule Domain.Auth.Adapters do
   end
 
   def list_user_provisioned_adapters! do
-    enabled_adapters = Domain.Config.compile_config!(:auth_provider_adapters)
+    enabled_adapters = Domain.Config.env_var_to_config!(:auth_provider_adapters)
     enabled_idp_adapters = enabled_adapters -- ~w[email userpass]a
     Map.take(@adapters, enabled_idp_adapters)
   end
