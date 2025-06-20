@@ -557,7 +557,13 @@ import SwiftUI
         title: resourceTitle(resource: resource), action: nil, keyEquivalent: "")
 
       item.isHidden = false
-      item.submenu = createSubMenu(resource: resource)
+      // Store the resource to be accessed later by the delegate
+      item.representedObject = resource
+
+      // Create an empty submenu and set the delegate
+      let subMenu = NSMenu()
+      subMenu.delegate = self // MenuBar is the delegate
+      item.submenu = subMenu
 
       return item
     }
@@ -569,9 +575,7 @@ import SwiftUI
     }
 
     // TODO: Refactor this when refactoring for macOS 13
-    func nonInternetResourceHeader(resource: Resource) -> NSMenu {
-      let subMenu = NSMenu()
-
+    func populateNonInternetResourceHeader(for resource: Resource, in menu: NSMenu) {
       // Show addressDescription first if it's present
       let resourceAddressDescriptionItem = NSMenuItem()
       if let addressDescription = resource.addressDescription {
@@ -600,14 +604,14 @@ import SwiftUI
       }
       resourceAddressDescriptionItem.isEnabled = true
       resourceAddressDescriptionItem.target = self
-      subMenu.addItem(resourceAddressDescriptionItem)
+      menu.addItem(resourceAddressDescriptionItem)
 
-      subMenu.addItem(NSMenuItem.separator())
+      menu.addItem(NSMenuItem.separator())
 
       let resourceSectionItem = NSMenuItem()
       resourceSectionItem.title = "Resource"
       resourceSectionItem.isEnabled = false
-      subMenu.addItem(resourceSectionItem)
+      menu.addItem(resourceSectionItem)
 
       // Resource name
       let resourceNameItem = NSMenuItem()
@@ -616,7 +620,7 @@ import SwiftUI
       resourceNameItem.toolTip = "Resource name (click to copy)"
       resourceNameItem.isEnabled = true
       resourceNameItem.target = self
-      subMenu.addItem(resourceNameItem)
+      menu.addItem(resourceNameItem)
 
       // Resource address
       let resourceAddressItem = NSMenuItem()
@@ -625,7 +629,7 @@ import SwiftUI
       resourceAddressItem.toolTip = "Resource address (click to copy)"
       resourceAddressItem.isEnabled = true
       resourceAddressItem.target = self
-      subMenu.addItem(resourceAddressItem)
+      menu.addItem(resourceAddressItem)
 
       let toggleFavoriteItem = NSMenuItem()
 
@@ -641,22 +645,19 @@ import SwiftUI
       toggleFavoriteItem.isEnabled = true
       toggleFavoriteItem.representedObject = resource.id
       toggleFavoriteItem.target = self
-      subMenu.addItem(toggleFavoriteItem)
-
-      return subMenu
+      menu.addItem(toggleFavoriteItem)
     }
 
-    func internetResourceHeader(resource: Resource) -> NSMenu {
-      let subMenu = NSMenu()
+    func populateInternetResourceHeader(for resource: Resource, in menu: NSMenu) {
       let description = NSMenuItem()
 
       description.title = "All network traffic"
       description.isEnabled = false
 
-      subMenu.addItem(description)
+      menu.addItem(description)
 
       // Resource enable / disable toggle
-      subMenu.addItem(NSMenuItem.separator())
+      menu.addItem(NSMenuItem.separator())
       let enableToggle = NSMenuItem()
       enableToggle.title = internetResourceToggleTitle()
       enableToggle.target = self
@@ -664,35 +665,27 @@ import SwiftUI
       enableToggle.isEnabled = true
       enableToggle.action = #selector(internetResourceToggle(_:))
 
-      subMenu.addItem(enableToggle)
-
-      return subMenu
+      menu.addItem(enableToggle)
     }
 
-    func resourceHeader(resource: Resource) -> NSMenu {
+    func populateSubMenu(_ subMenu: NSMenu, for resource: Resource) {
       if resource.isInternetResource() {
-        internetResourceHeader(resource: resource)
+        populateInternetResourceHeader(for: resource, in: subMenu)
       } else {
-        nonInternetResourceHeader(resource: resource)
+        populateNonInternetResourceHeader(for: resource, in: subMenu)
       }
-    }
-
-    func createSubMenu(resource: Resource) -> NSMenu {
-      let siteSectionItem = NSMenuItem()
-      let siteNameItem = NSMenuItem()
-      let siteStatusItem = NSMenuItem()
-
-      let subMenu = resourceHeader(resource: resource)
 
       // Site details
       if let site = resource.sites.first {
         subMenu.addItem(NSMenuItem.separator())
 
+        let siteSectionItem = NSMenuItem()
         siteSectionItem.title = "Site"
         siteSectionItem.isEnabled = false
         subMenu.addItem(siteSectionItem)
 
         // Site name
+        let siteNameItem = NSMenuItem()
         siteNameItem.title = site.name
         siteNameItem.action = #selector(resourceValueTapped(_:))
         siteNameItem.toolTip = "Site name (click to copy)"
@@ -701,6 +694,7 @@ import SwiftUI
         subMenu.addItem(siteNameItem)
 
         // Site status
+        let siteStatusItem = NSMenuItem()
         siteStatusItem.action = #selector(resourceValueTapped(_:))
         siteStatusItem.title = resource.status.toSiteStatus()
         siteStatusItem.toolTip = "\(resource.status.toSiteStatusTooltip()) (click to copy)"
@@ -712,9 +706,9 @@ import SwiftUI
         if let siteUnknownIcon { siteStatusItem.mixedStateImage = siteUnknownIcon }
         subMenu.addItem(siteStatusItem)
       }
-
-      return subMenu
     }
+
+    // This function was removed as part of lazy loading implementation
 
     // MARK: Responding to click events
 
@@ -926,5 +920,17 @@ import SwiftUI
   }
 
   extension MenuBar: NSMenuDelegate {
+    func menuNeedsUpdate(_ menu: NSMenu) {
+      // Find the resource associated with this submenu
+      guard let resourceMenuItem = menu.superitem,
+            let resource = resourceMenuItem.representedObject as? Resource
+      else { return }
+
+      // Clear existing items (important if menu is shown multiple times)
+      menu.removeAllItems()
+
+      // Populate the submenu using a new helper function
+      populateSubMenu(menu, for: resource)
+    }
   }
 #endif
