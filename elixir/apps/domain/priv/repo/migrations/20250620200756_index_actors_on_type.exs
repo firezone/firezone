@@ -14,6 +14,11 @@ defmodule Domain.Repo.Migrations.IndexActorsOnType do
   end
 
   def down do
-    drop(index(:actors, [:account_id, :type], name: :index_actors_on_account_id_and_type))
+    drop(
+      index(:actors, [:account_id, :type],
+        name: :index_actors_on_account_id_and_type,
+        concurrently: true
+      )
+    )
   end
 end
