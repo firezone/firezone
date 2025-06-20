@@ -13,9 +13,6 @@ jobs:
   publish_clients:
     name: Publish ${{ matrix.identifier }} to winget
     runs-on: windows-latest
-    permissions:
-      contents: write
-      packages: write
     strategy:
       matrix:
         include:
