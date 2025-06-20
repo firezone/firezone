@@ -35,14 +35,14 @@ jobs:
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
-            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
 
             exit 0;
           fi
 
           # For main branch runs, run all jobs
           if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref_name }}" = "main" ]; then
-            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
 
             exit 0;
           fi
@@ -68,13 +68,13 @@ jobs:
 
           # Run all jobs if CI configuration changes
           if grep -q '^\.github/' changed_files.txt; then
-            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
             exit 0;
           fi
 
           # Run all jobs if tool versions change
           if grep -q '^\.tool-versions' changed_files.txt; then
-            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
             exit 0;
           fi
 
@@ -105,7 +105,7 @@ jobs:
             jobs="${jobs},codeql"
           fi
 
-          echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+          echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
 
   required-check:
     name: required-check
@@ -127,14 +127,14 @@ jobs:
             failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
             completed_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed")] | length')
 
-            if [ $failed_jobs -gt 0 ]; then
+            if [ "$failed_jobs" -gt 0 ]; then
               echo "At least one job has failed."
               exit 1
             fi
 
             echo "Completed: $completed_jobs/$total_jobs"
 
-            if [ $completed_jobs -eq $total_jobs ]; then
+            if [ "$completed_jobs" -eq "$total_jobs" ]; then
               break
             fi
 

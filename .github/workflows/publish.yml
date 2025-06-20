@@ -101,25 +101,25 @@ jobs:
           for arch in "${ARCHITECTURES[@]}"; do
             # Copy sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/${arch}.sha256sum.txt
+              "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.txt" \
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/$arch.sha256sum.t"xt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt
+              "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.txt" \
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.t"xt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}.sha256sum.txt
+              "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.txt" \
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/$arch.sha256sum.t"xt
 
             # Copy binaries
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch} \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/${arch}
+              "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch" \
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/$ar"ch
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch} \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}
+              "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch" \
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$ar"ch
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch} \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}
+              "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch" \
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/$ar"ch
           done
 
   create-publish-pr:
@@ -143,13 +143,13 @@ jobs:
           version=${version#${{ matrix.component }}-}
 
           # Configure gpg
-          echo "${RELEASE_PR_BOT_GPG_KEY}" | gpg --import --batch
+          echo "$RELEASE_PR_BOT_GPG_KEY" | gpg --import --batch
           GPG_KEY_ID=$(gpg --list-secret-keys --keyid-format long "github-bot@firezone.dev" | grep sec | sed 's/.*\/\([^ ]*\).*/\1/')
 
           # Configure git
           git config --local user.email "github-bot@firezone.dev"
           git config --local user.name "Firezone Bot"
-          git config --local user.signingkey "${GPG_KEY_ID}"
+          git config --local user.signingkey "$GPG_KEY_ID"
           git config --local commit.gpgsign true
 
           echo "use-agent" >> ~/.gnupg/gpg.conf
@@ -157,7 +157,7 @@ jobs:
           export GPG_TTY=$(tty)
 
           # Create the PR
-          scripts/create-publish-pr.sh ${{ matrix.component }} $version
+          scripts/create-publish-pr.sh ${{ matrix.component }} "$version"
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}

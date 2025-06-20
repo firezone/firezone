@@ -20,7 +20,7 @@ jobs:
           PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY_NAME: ${{ github.repository }}
         run: |
-          PR_TITLE=$(gh pr view $PULL_REQUEST_NUMBER --repo $REPOSITORY_NAME --json title -q '.title')
+          PR_TITLE=$(gh pr view "$PULL_REQUEST_NUMBER" --repo "$REPOSITORY_NAME" --json title -q '.title')
 
           pr_title_length=${#PR_TITLE}
 
