@@ -103,24 +103,24 @@ jobs:
             # Copy sha256sum.txt
             gcloud storage cp \
               "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.txt" \
-              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/$arch.sha256sum.t"xt
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/$arch.sha256sum.txt"
             gcloud storage cp \
               "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.txt" \
-              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.t"xt
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.txt"
             gcloud storage cp \
               "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch.sha256sum.txt" \
-              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/$arch.sha256sum.t"xt
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/$arch.sha256sum.txt"
 
             # Copy binaries
             gcloud storage cp \
               "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch" \
-              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/$ar"ch
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/$arch"
             gcloud storage cp \
               "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch" \
-              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$ar"ch
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch"
             gcloud storage cp \
               "gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/$arch" \
-              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/$ar"ch
+              "gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/$arch"
           done
 
   create-publish-pr:
