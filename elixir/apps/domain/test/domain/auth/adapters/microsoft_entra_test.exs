@@ -105,6 +105,52 @@ defmodule Domain.Auth.Adapters.MicrosoftEntraTest do
                "discovery_document_uri" => discovery_document_url
              }
     end
+
+    test "trims whitespace in adapter config" do
+      account = Fixtures.Accounts.create_account()
+      bypass = Domain.Mocks.OpenIDConnect.discovery_document_server()
+      discovery_document_url = "http://localhost:#{bypass.port}/.well-known/openid-configuration"
+
+      attrs =
+        Fixtures.Auth.provider_attrs(
+          adapter: :microsoft_entra,
+          adapter_config: %{
+            response_type: "   code   ",
+            client_id: "   client_id   ",
+            client_secret: "   client_secret   ",
+            discovery_document_uri: "   " <> discovery_document_url <> "   "
+          }
+        )
+
+      changeset = Ecto.Changeset.change(%Auth.Provider{account_id: account.id}, attrs)
+
+      assert %Ecto.Changeset{} = changeset = provider_changeset(changeset)
+      assert {:ok, provider} = Repo.insert(changeset)
+
+      assert provider.name == attrs.name
+      assert provider.adapter == attrs.adapter
+
+      assert provider.adapter_config == %{
+               "scope" =>
+                 Enum.join(
+                   [
+                     "openid",
+                     "email",
+                     "profile",
+                     "offline_access",
+                     "Group.Read.All",
+                     "GroupMember.Read.All",
+                     "User.Read",
+                     "User.Read.All"
+                   ],
+                   " "
+                 ),
+               "response_type" => "code",
+               "client_id" => "client_id",
+               "client_secret" => "client_secret",
+               "discovery_document_uri" => discovery_document_url
+             }
+    end
   end
 
   describe "ensure_deprovisioned/1" do

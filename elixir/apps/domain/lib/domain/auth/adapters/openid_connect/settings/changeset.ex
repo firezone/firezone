@@ -10,6 +10,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
     struct
     |> cast(attrs, @fields)
     |> validate_required(@fields)
+    |> Domain.Repo.Changeset.trim_change(@fields)
     |> validate_discovery_document_uri()
     |> validate_inclusion(:response_type, ~w[code])
     |> validate_format(:scope, ~r/openid/, message: "must include openid scope")
