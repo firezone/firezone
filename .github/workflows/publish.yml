@@ -155,7 +155,8 @@ jobs:
 
           echo "use-agent" >> ~/.gnupg/gpg.conf
           echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-          export GPG_TTY=$(tty)
+          GPG_TTY=$(tty)
+          export GPG_TTY
 
           # Create the PR
           scripts/create-publish-pr.sh ${{ matrix.component }} "$version"
