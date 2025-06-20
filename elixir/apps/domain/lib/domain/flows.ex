@@ -161,6 +161,10 @@ defmodule Domain.Flows do
     end
   end
 
+  # TODO: WAL
+  # Remove all of the indexes used for these after flow expiration is moved to state
+  # broadcasts
+
   def expire_flows_for(%Auth.Identity{} = identity) do
     Flow.Query.all()
     |> Flow.Query.by_identity_id(identity.id)

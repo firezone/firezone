@@ -18,9 +18,9 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
   @impl true
   def on_delete(%{"actor_id" => actor_id, "group_id" => group_id} = _old_data) do
     Task.start(fn ->
-      {:ok, _flows} = Flows.expire_flows_for(actor_id, group_id)
       :ok = PubSub.Actor.Memberships.broadcast(actor_id, {:delete_membership, actor_id, group_id})
       broadcast_access(:reject, actor_id, group_id)
+      {:ok, _flows} = Flows.expire_flows_for(actor_id, group_id)
     end)
 
     :ok
