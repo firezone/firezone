@@ -43,7 +43,7 @@ jobs:
             echo "Version manifests up to date"
           else
             # Uncommitted changes
-            echo '`scripts/bump-versions.sh` found outdated files! Showing diff'
+            echo "'scripts/bump-versions.sh' found outdated files! Showing diff"
             git diff
             exit 1
           fi
