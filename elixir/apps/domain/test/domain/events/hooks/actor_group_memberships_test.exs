@@ -82,6 +82,7 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
       group_id = "#{Ecto.UUID.generate()}"
 
       data = %{
+        "account_id" => "#{Ecto.UUID.generate()}",
         "actor_id" => actor_id,
         "group_id" => group_id
       }
@@ -105,6 +106,7 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
 
       assert :ok =
                on_delete(%{
+                 "account_id" => actor.account_id,
                  "actor_id" => actor.id,
                  "group_id" => actor_group.id
                })

@@ -798,6 +798,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
 
       # Simulate WAL events
       Events.Hooks.ActorGroupMemberships.on_delete(%{
+        "account_id" => deleted_membership.account_id,
         "actor_id" => actor.id,
         "group_id" => deleted_group.id
       })
