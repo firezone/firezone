@@ -37,13 +37,11 @@ class VpnPermissionActivity : AppCompatActivity() {
 
         if (permissionIntent == null) {
             finish()
-            return;
+            return
         }
 
         result.launch(permissionIntent)
     }
 
-    private fun vpnPermissionIntent() {
-        return android.net.VpnService.prepare(this)
-    }
+    private fun vpnPermissionIntent() = android.net.VpnService.prepare(this)
 }
