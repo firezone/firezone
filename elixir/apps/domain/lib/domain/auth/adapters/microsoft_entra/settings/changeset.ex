@@ -13,20 +13,12 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Settings.Changeset do
       settings
       |> cast(attrs, @fields)
       |> validate_required(@fields)
-      |> trim_fields()
+      |> Domain.Repo.Changeset.trim_change(@fields)
       |> OpenIDConnect.Settings.Changeset.validate_discovery_document_uri()
       |> validate_inclusion(:response_type, ~w[code])
 
     Enum.reduce(Settings.scope(), changeset, fn scope, changeset ->
       validate_format(changeset, :scope, ~r/#{scope}/, message: "must include #{scope} scope")
     end)
-  end
-
-  defp trim_fields(changeset) do
-    changeset
-    |> Domain.Repo.Changeset.trim_change(:response_type)
-    |> Domain.Repo.Changeset.trim_change(:client_id)
-    |> Domain.Repo.Changeset.trim_change(:client_secret)
-    |> Domain.Repo.Changeset.trim_change(:discovery_document_uri)
   end
 end
