@@ -15,8 +15,6 @@ defmodule Domain.Config.DefinitionTest do
 
     defconfig(:optional, Types.IP, default: "0.0.0.0")
 
-    defconfig(:with_legacy_key, :string, legacy_keys: [{:env, "FOO", "100.0"}])
-
     defconfig(:with_validation, :integer,
       changeset: fn changeset, key ->
         Ecto.Changeset.validate_number(changeset, key,
@@ -41,7 +39,6 @@ defmodule Domain.Config.DefinitionTest do
                {Definitions, :with_dump},
                {Definitions, :sensitive},
                {Definitions, :with_validation},
-               {Definitions, :with_legacy_key},
                {Definitions, :optional},
                {Definitions, :required}
              ]
@@ -50,7 +47,6 @@ defmodule Domain.Config.DefinitionTest do
     test "inserts a function which returns spec of a given config definition" do
       assert Definitions.required() == {Types.IP, []}
       assert Definitions.optional() == {Types.IP, default: "0.0.0.0"}
-      assert Definitions.with_legacy_key() == {:string, legacy_keys: [{:env, "FOO", "100.0"}]}
       assert {:integer, changeset: _cb} = Definitions.with_validation()
 
       assert InvalidDefinitions.required() == {Types.IP, [foo: :bar]}
@@ -69,9 +65,6 @@ defmodule Domain.Config.DefinitionTest do
 
       assert fetch_spec_and_opts!(Definitions, :optional) ==
                {Types.IP, {[default: "0.0.0.0"], [], [], []}}
-
-      assert fetch_spec_and_opts!(Definitions, :with_legacy_key) ==
-               {:string, {[legacy_keys: [{:env, "FOO", "100.0"}]], [], [], []}}
 
       assert {:integer, {[], [{:changeset, _cb}], [], []}} =
                fetch_spec_and_opts!(Definitions, :with_validation)
