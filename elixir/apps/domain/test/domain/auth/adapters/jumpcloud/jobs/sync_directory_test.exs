@@ -497,6 +497,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
 
       # Simulate the WAL events
       Events.Hooks.ActorGroupMemberships.on_delete(%{
+        "account_id" => deleted_group.account_id,
         "actor_id" => actor.id,
         "group_id" => deleted_group.id
       })

@@ -733,6 +733,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
 
       # Simulate WAL events
       Events.Hooks.ActorGroupMemberships.on_delete(%{
+        "account_id" => deleted_identity.account_id,
         "actor_id" => deleted_identity.actor_id,
         "group_id" => deleted_group.id
       })

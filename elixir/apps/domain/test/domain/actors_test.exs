@@ -1237,11 +1237,13 @@ defmodule Domain.ActorsTest do
       # TODO: WAL
       # These tests will be made redundant soon
       Events.Hooks.ActorGroupMemberships.on_delete(%{
+        "account_id" => account.id,
         "actor_id" => identity1.actor_id,
         "group_id" => group1.id
       })
 
       Events.Hooks.ActorGroupMemberships.on_delete(%{
+        "account_id" => account.id,
         "actor_id" => identity2.actor_id,
         "group_id" => group2.id
       })
