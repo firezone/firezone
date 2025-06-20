@@ -261,7 +261,12 @@ fn mio_worker_task(
     let mut events = mio::Events::with_capacity(1024);
 
     loop {
-        poll.poll(&mut events, Some(Duration::from_secs(1)))?; // Suspend for up to 1 second to wait for IO events.
+        // Suspend for up to 1 second to wait for IO events.
+        match poll.poll(&mut events, Some(Duration::from_secs(1))) {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e.into()),
+        };
 
         // Send all events into the channel, block as necessary.
         for event in events.iter() {
