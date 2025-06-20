@@ -37,3 +37,4 @@ jobs:
           version: ${{ steps.get-version.outputs.version }}
           token: ${{ secrets.WINGET_TOKEN }}
           release-notes-url: https://firezone.dev/changelog
+          release-tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
