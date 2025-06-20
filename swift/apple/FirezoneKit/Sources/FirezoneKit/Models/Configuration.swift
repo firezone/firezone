@@ -143,10 +143,10 @@ public class Configuration: ObservableObject {
     // so this feature only enabled for macOS 13 and higher given the tiny Firezone installbase for macOS 12.
     func updateAppService() async throws {
       if #available(macOS 13.0, *) {
-          // Getting the status initially appears to be blocking sometimes
-          SentrySDK.pauseAppHangTracking()
-          defer { SentrySDK.resumeAppHangTracking() }
-          let status = SMAppService.mainApp.status
+        // Getting the status initially appears to be blocking sometimes
+        SentrySDK.pauseAppHangTracking()
+        defer { SentrySDK.resumeAppHangTracking() }
+        let status = SMAppService.mainApp.status
 
         if !startOnLogin, status == .enabled {
           try await SMAppService.mainApp.unregister()
