@@ -219,8 +219,9 @@ defmodule Domain.Flows do
     |> expire_flows(subject)
   end
 
-  def expire_flows_for(actor_id, group_id) do
+  def expire_flows_for(account_id, actor_id, group_id) do
     Flow.Query.all()
+    |> Flow.Query.by_account_id(account_id)
     |> Flow.Query.by_actor_id(actor_id)
     |> Flow.Query.by_policy_actor_group_id(group_id)
     |> expire_flows()
