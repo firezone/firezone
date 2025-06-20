@@ -191,12 +191,13 @@ private final class LogWriter {
     }
   }
 
-  private func ensureFileExists() -> Bool {
+  // Returns a valid file handle, recreating file if necessary
+  private func ensureFileExists() -> FileHandle? {
     let fileManager = FileManager.default
 
     // Check if current file still exists
     if fileManager.fileExists(atPath: currentLogFileURL.path) {
-      return true
+      return handle
     }
 
     // File was deleted, need to recreate
@@ -205,7 +206,7 @@ private final class LogWriter {
     // Ensure directory exists
     guard SharedAccess.ensureDirectoryExists(at: folderURL.path) else {
       logger.error("Could not recreate log directory")
-      return false
+      return nil
     }
 
     // Create new log file
@@ -214,11 +215,11 @@ private final class LogWriter {
       (try? newHandle.seekToEnd()) != nil
     else {
       logger.error("Could not recreate log file: \(self.currentLogFileURL.path)")
-      return false
+      return nil
     }
 
     self.handle = newHandle
-    return true
+    return newHandle
   }
 
   func write(severity: Severity, message: String) {
@@ -238,9 +239,9 @@ private final class LogWriter {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      // Check and recreate file if necessary before writing
-      if self.ensureFileExists() {
-        self.handle.write(jsonData)
+      // Get valid handle, recreating file if necessary
+      if let handle = self.ensureFileExists() {
+        handle.write(jsonData)
       }
     }
   }
