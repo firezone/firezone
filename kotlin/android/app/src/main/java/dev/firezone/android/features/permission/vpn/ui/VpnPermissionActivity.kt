@@ -25,6 +25,7 @@ class VpnPermissionActivity : AppCompatActivity() {
         // Check if permission is already granted and finish immediately if so
         if (vpnPermissionIntent() == null) {
             finish()
+            return
         }
 
         binding.btnRequest.setOnClickListener {
