@@ -112,7 +112,7 @@ jobs:
           FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
-          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
+          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > "$FIREBASE_CREDENTIALS_PATH"
           ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
 
   build_debug:
