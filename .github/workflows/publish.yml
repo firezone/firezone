@@ -51,6 +51,7 @@ jobs:
           MAJOR_VERSION="${VERSION%%.*}"
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
+          # shellcheck disable=SC2129 # individual env exports are cleaner
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "major_version=$MAJOR_VERSION" >> "$GITHUB_OUTPUT"
