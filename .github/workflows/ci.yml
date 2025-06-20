@@ -392,9 +392,10 @@ jobs:
             --testbed github-actions \
             --file bmf.json \
             --adapter json \
-            --branch "${{ github.head_ref || github.ref_name }}" \
+            --branch "${{ env.BRANCH }}" \
             --branch-start-point "${{ github.base_ref }}" \
             --github-actions ${{ secrets.GITHUB_TOKEN }} \
             --ci-only-on-alert
         env:
           BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+          BRANCH: "${{ github.head_ref || github.ref_name }}"
