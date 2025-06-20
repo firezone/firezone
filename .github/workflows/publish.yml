@@ -124,7 +124,7 @@ jobs:
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
 
-      - id: Create PR
+      - name: Create PR
         if: ${{ startsWith(github.event.release.name, matrix.component) }}
         run: |
           # Extract version from release name
