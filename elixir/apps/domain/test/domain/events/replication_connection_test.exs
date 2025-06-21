@@ -187,6 +187,63 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       assert {:noreply, [], ^state} = ReplicationConnection.handle_data(unknown_data, state)
     end
+
+    test "sends {:check_alert, lag_ms} > 5_000 ms" do
+      state =
+        %{@mock_state | step: :streaming}
+        |> Map.put(:lag_threshold_exceeded, false)
+
+      server_wal_start = 123_456_789
+      server_wal_end = 987_654_321
+      server_system_clock = 1_234_567_890
+      flags = <<0>>
+      lsn = <<0::32, 100::32>>
+      end_lsn = <<0::32, 200::32>>
+
+      # Simulate a commit timestamp that exceeds the threshold
+      timestamp =
+        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) + 10_000_000
+
+      commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
+
+      write_message =
+        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
+          commit_data::binary>>
+
+      assert {:noreply, [], _state} =
+               ReplicationConnection.handle_data(write_message, state)
+
+      assert_receive({:check_alert, lag_ms})
+      assert lag_ms > 5_000
+    end
+
+    test "sends {:check_alert, lag_ms} < 5_000 ms" do
+      state =
+        %{@mock_state | step: :streaming}
+        |> Map.put(:lag_threshold_exceeded, true)
+
+      server_wal_start = 123_456_789
+      server_wal_end = 987_654_321
+      server_system_clock = 1_234_567_890
+      flags = <<0>>
+      lsn = <<0::32, 100::32>>
+      end_lsn = <<0::32, 200::32>>
+      # Simulate a commit timestamp that is within the threshold
+      timestamp =
+        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) + 1_000_000
+
+      commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
+
+      write_message =
+        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
+          commit_data::binary>>
+
+      assert {:noreply, [], _state} =
+               ReplicationConnection.handle_data(write_message, state)
+
+      assert_receive({:check_alert, lag_ms})
+      assert lag_ms < 5_000
+    end
   end
 
   describe "handle_info/2" do
