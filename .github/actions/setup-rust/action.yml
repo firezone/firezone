@@ -82,6 +82,7 @@ runs:
       run: $SCCACHE_PATH --start-server
       shell: bash
 
-    - name: Repair VS installation
+    - uses: TheMrMilchmann/setup-msvc-dev@v3
       if: ${{ runner.os == 'Windows' }}
-      uses: microsoft/setup-msbuild@v2
+      with:
+        arch: x64
