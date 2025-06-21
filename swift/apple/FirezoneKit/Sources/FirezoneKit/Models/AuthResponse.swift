@@ -6,13 +6,19 @@
 
 import Foundation
 
-struct AuthResponse {
+public struct AuthResponse {
   // The user associated with this authResponse.
-  let actorName: String
+  public let actorName: String
 
   // The account slug of the account the user signed in to.
-  let accountSlug: String
+  public let accountSlug: String
 
   // The opaque auth token
-  let token: String
+  public let token: String
+  
+  public init(actorName: String, accountSlug: String, token: String) {
+    self.actorName = actorName
+    self.accountSlug = accountSlug
+    self.token = token
+  }
 }

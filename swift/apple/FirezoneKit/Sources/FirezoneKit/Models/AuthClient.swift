@@ -7,7 +7,7 @@
 import AuthenticationServices
 import Foundation
 
-enum AuthClientError: Error {
+public enum AuthClientError: Error {
   case invalidCallbackURL
   case randomNumberGenerationFailure(errorStatus: Int32)
   case invalidAuthURL
@@ -34,19 +34,19 @@ enum AuthClientError: Error {
   }
 }
 
-struct AuthClient {
+public struct AuthClient {
   private var authURL: URL
   private var state: String
   private var nonce: String
 
-  init?(authURL: URL) throws {
+  public init?(authURL: URL) throws {
     self.authURL = authURL
     state = try Self.createRandomHexString(byteCount: 32)
     nonce = try Self.createRandomHexString(byteCount: 32)
   }
 
   // Builds a full URL to send to the portal
-  func build() throws -> URL {
+  public func build() throws -> URL {
     return
       authURL
       .appendingQueryItem(URLQueryItem(name: "state", value: state))
@@ -54,7 +54,7 @@ struct AuthClient {
       .appendingQueryItem(URLQueryItem(name: "as", value: "client"))
   }
 
-  func response(url: URL?) throws -> AuthResponse {
+  public func response(url: URL?) throws -> AuthResponse {
     guard let url = url,
       let urlComponents = URLComponents(url: url, resolvingAgainstBaseURL: false),
       let returnedState = urlComponents.sanitizedQueryParam("state"),
