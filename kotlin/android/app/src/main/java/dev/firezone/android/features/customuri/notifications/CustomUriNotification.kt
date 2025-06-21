@@ -9,7 +9,7 @@ import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import dev.firezone.android.R
-import dev.firezone.android.core.presentation.MainActivity
+import dev.firezone.android.features.signin.ui.SignInActivity
 
 object CustomUriNotification {
     private const val CHANNEL_ID = "firezone-authentication-status"
@@ -41,7 +41,7 @@ object CustomUriNotification {
     }
 
     private fun configIntent(context: Context): PendingIntent {
-        val intent = Intent(context, MainActivity::class.java)
+        val intent = Intent(context, SignInActivity::class.java)
         intent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         return PendingIntent.getActivity(
             context,

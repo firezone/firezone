@@ -41,19 +41,18 @@
         </receiver>
 
         <activity
-            android:name=".core.presentation.MainActivity"
+            android:name="dev.firezone.android.features.auth.ui.AuthActivity"
+            android:exported="false" />
+
+        <activity
+            android:name="dev.firezone.android.features.signin.ui.SignInActivity"
             android:exported="true">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-
-            <nav-graph android:value="@navigation/app_nav_graph" />
         </activity>
-
-        <activity
-            android:name="dev.firezone.android.features.auth.ui.AuthActivity"
-            android:exported="false" />
 
         <activity
             android:name="dev.firezone.android.features.customuri.ui.CustomUriHandlerActivity"

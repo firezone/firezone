@@ -1,3 +1,4 @@
+/* Licensed under Apache 2.0 (C) 2025 Firezone, Inc. */
 package dev.firezone.android.features.signin.ui
 
 import android.content.Context
@@ -24,25 +25,11 @@ internal class SignInViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        // This flag is used to ensure that the initial launch check is only performed once, so
-        // that we can differentiate between a fresh launch and subsequent resumes for the connect
-        // on start logic.
-        private var hasPerformedInitialLaunchCheck = false
-
         internal fun checkTunnelState(
             context: Context,
             isInitialLaunch: Boolean = false,
         ) {
             viewModelScope.launch {
-                // We've already posted the initial action, so we can skip the rest of the checks
-                if (isInitialLaunch && hasPerformedInitialLaunchCheck) {
-                    return@launch
-                }
-
-                if (isInitialLaunch) {
-                    hasPerformedInitialLaunchCheck = true
-                }
-
                 // If we don't have VPN permission, we can't continue.
                 if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
@@ -66,6 +53,7 @@ internal class SignInViewModel
                 if (!TunnelService.isRunning(context)) {
                     TunnelService.start(context)
                 }
+
                 actionMutableLiveData.postValue(ViewAction.NavigateToSession)
             }
         }
@@ -77,8 +65,10 @@ internal class SignInViewModel
 
             object NavigateToSettings : ViewAction()
 
-            object NavigateToSignIn : ViewAction()
-
             object NavigateToSession : ViewAction()
+        }
+
+        companion object {
+            private const val TAG: String = "SignInViewModel"
         }
     }

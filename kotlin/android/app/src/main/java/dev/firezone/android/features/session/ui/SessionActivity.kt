@@ -135,6 +135,7 @@ class SessionActivity : AppCompatActivity() {
         // Go back to MainActivity if the service dies
         viewModel.serviceStatusLiveData.observe(this) { tunnelState ->
             if (tunnelState == TunnelService.Companion.State.DOWN) {
+                Log.d(TAG, "Tunnel is down, finishing")
                 finish()
             }
         }

@@ -9,8 +9,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityAuthBinding
+import dev.firezone.android.features.signin.ui.SignInActivity
 
 @AndroidEntryPoint
 class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
@@ -53,7 +53,7 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
 
     private fun navigateToSignIn() {
         startActivity(
-            Intent(this, MainActivity::class.java),
+            Intent(this, SignInActivity::class.java),
         )
         finish()
     }

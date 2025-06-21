@@ -9,9 +9,10 @@ import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
-import dev.firezone.android.core.presentation.MainActivity
 import dev.firezone.android.databinding.ActivityCustomUriHandlerBinding
 import dev.firezone.android.features.customuri.notifications.CustomUriNotification
+import dev.firezone.android.features.session.ui.SessionActivity
+import dev.firezone.android.features.signin.ui.SignInActivity
 import dev.firezone.android.tunnel.TunnelService
 
 @AndroidEntryPoint
@@ -33,12 +34,12 @@ class CustomUriHandlerActivity : AppCompatActivity(R.layout.activity_custom_uri_
                 CustomUriViewModel.ViewAction.AuthFlowComplete -> {
                     TunnelService.start(this@CustomUriHandlerActivity)
                     startActivity(
-                        Intent(this, MainActivity::class.java),
+                        Intent(this, SessionActivity::class.java),
                     )
                 }
                 is CustomUriViewModel.ViewAction.AuthFlowError -> {
                     notifyError("Errors occurred during authentication:\n${action.errors.joinToString(separator = "\n")}")
-                    startActivity(Intent(this, MainActivity::class.java))
+                    startActivity(Intent(this, SignInActivity::class.java))
                 }
                 else -> {
                     throw IllegalStateException("Unknown action: $action")
