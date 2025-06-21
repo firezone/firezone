@@ -1,5 +1,4 @@
-/* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
-package dev.firezone.android.features.splash.ui
+package dev.firezone.android.features.signin.ui
 
 import android.content.Context
 import android.os.Bundle
@@ -11,14 +10,11 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.firezone.android.core.ApplicationMode
 import dev.firezone.android.core.data.Repository
 import dev.firezone.android.tunnel.TunnelService
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-private const val REQUEST_DELAY = 1000L
-
 @HiltViewModel
-internal class SplashViewModel
+internal class SignInViewModel
     @Inject
     constructor(
         private val repo: Repository,
@@ -38,9 +34,6 @@ internal class SplashViewModel
             isInitialLaunch: Boolean = false,
         ) {
             viewModelScope.launch {
-                // Stay a while and enjoy the logo
-                delay(REQUEST_DELAY)
-
                 // We've already posted the initial action, so we can skip the rest of the checks
                 if (isInitialLaunch && hasPerformedInitialLaunchCheck) {
                     return@launch
@@ -61,13 +54,11 @@ internal class SplashViewModel
 
                 // If we don't have a token, we can't connect.
                 if (token.isNullOrBlank()) {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                     return@launch
                 }
 
-                // If it's the initial launch but connect on start isn't enabled, we navigate to sign in.
+                // If it's the initial launch but connect on start isn't enabled, then do nothing.
                 if (isInitialLaunch && !connectOnStart) {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
                     return@launch
                 }
 

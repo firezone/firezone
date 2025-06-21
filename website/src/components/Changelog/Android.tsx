@@ -25,6 +25,10 @@ export default function Android() {
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
         </ChangeItem>
+        <ChangeItem pull="9595">
+          Fixes an issue where the app would not automatically redirect to the
+          next screen after granting the permissions.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.1" date={new Date("2025-06-04")}>
         <ChangeItem pull="9394">

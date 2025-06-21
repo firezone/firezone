@@ -3,12 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/app_nav_graph"
-    app:startDestination="@id/splashFragment">
-
-    <fragment
-        android:id="@+id/splashFragment"
-        android:name="dev.firezone.android.features.splash.ui.SplashFragment"
-        tools:layout="@layout/fragment_splash" />
+    app:startDestination="@+id/signInFragment">
 
     <fragment
         android:id="@+id/signInFragment"
