@@ -81,3 +81,7 @@ runs:
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
+
+    - name: Repair VS installation
+      if: ${{ runner.os == 'Windows' }}
+      uses: microsoft/setup-msbuild@v2
