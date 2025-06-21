@@ -81,3 +81,14 @@ runs:
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
+
+    - name: Set up MSVC Build Tools
+      if: ${{ runner.os == 'Windows' }}
+      uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4cev2 # v2
+      with:
+        vsVersion: "2022"
+    - name: Install C++ build tools
+      shell: pwsh
+      if: ${{ runner.os == 'Windows' }}
+      run: |
+        choco install visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --includeOptional" --no-progress
