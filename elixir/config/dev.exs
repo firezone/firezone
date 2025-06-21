@@ -13,7 +13,7 @@ config :domain, Domain.Repo,
 
 config :domain, outbound_email_adapter_configured?: true
 
-config :domain, run_conditional_migrations: true
+config :domain, run_manual_migrations: true
 
 config :domain, Domain.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",

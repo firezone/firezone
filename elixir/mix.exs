@@ -56,7 +56,7 @@ defmodule Firezone.MixProject do
 
   defp aliases do
     migration_args =
-      "--migrations-path apps/domain/priv/repo/migrations --migrations-path apps/domain/priv/repo/conditional_migrations"
+      "--migrations-path apps/domain/priv/repo/migrations --migrations-path apps/domain/priv/repo/manual_migrations"
 
     [
       "ecto.migrate": ["ecto.migrate #{migration_args}"],

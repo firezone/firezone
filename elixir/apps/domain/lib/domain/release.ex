@@ -8,19 +8,19 @@ defmodule Domain.Release do
     IO.puts("Starting sentry app..")
     {:ok, _} = Application.ensure_all_started(:sentry)
 
-    conditional =
+    manual =
       Keyword.get(
         opts,
-        :conditional,
+        :manual,
         Application.get_env(
           :domain,
-          :run_conditional_migrations,
-          System.get_env("RUN_CONDITIONAL_MIGRATIONS") == "true"
+          :run_manual_migrations,
+          System.get_env("RUN_MANUAL_MIGRATIONS") == "true"
         )
       )
 
     for repo <- @repos do
-      {:ok, _, _} = do_migration(repo, conditional)
+      {:ok, _, _} = do_migration(repo, manual)
     end
   end
 
@@ -51,15 +51,15 @@ defmodule Domain.Release do
     end
   end
 
-  defp do_migration(repo, conditional) do
+  defp do_migration(repo, manual) do
     default_path = priv_dir(@otp_app, ["repo", "migrations"])
-    conditional_path = priv_dir(@otp_app, ["repo", "conditional_migrations"])
+    manual_path = priv_dir(@otp_app, ["repo", "manual_migrations"])
 
     paths =
-      if conditional do
+      if manual do
         [
           default_path,
-          conditional_path
+          manual_path
         ]
       else
         [
@@ -70,18 +70,18 @@ defmodule Domain.Release do
     Ecto.Migrator.with_repo(repo, fn repo ->
       Ecto.Migrator.run(repo, paths, :up, all: true)
 
-      unless conditional do
-        check_pending_conditional_migrations(@otp_app, repo)
+      unless manual do
+        check_pending_manual_migrations(@otp_app, repo)
       end
     end)
   end
 
-  defp check_pending_conditional_migrations(app, repo) do
-    conditional_path = priv_dir(app, ["repo", "conditional_migrations"])
+  defp check_pending_manual_migrations(app, repo) do
+    manual_path = priv_dir(app, ["repo", "manual_migrations"])
 
-    if File.dir?(conditional_path) do
-      # Get all migrations from the conditional directory
-      case Ecto.Migrator.migrations(repo, conditional_path) do
+    if File.dir?(manual_path) do
+      # Get all migrations from the manual directory
+      case Ecto.Migrator.migrations(repo, manual_path) do
         [] ->
           :ok
 
@@ -97,10 +97,10 @@ defmodule Domain.Release do
 
   defp maybe_log_error(pending) do
     error = """
-      #{pending} pending conditional migration(s) were not run because run_conditional_migrations is false.
+      #{pending} pending manual migration(s) were not run because run_manual_migrations is false.
       Run the following command from an IEx shell when you're ready to execute them:
 
-      Domain.Release.migrate(conditional: true)
+      Domain.Release.migrate(manual: true)
     """
 
     Logger.error(error)
