@@ -238,11 +238,9 @@ private final class LogWriter {
 
     workQueue.async { [weak self] in
       guard let self = self else { return }
+      guard let handle = self.ensureFileExists() else { return }
 
-      // Get valid handle, recreating file if necessary
-      if let handle = self.ensureFileExists() {
-        handle.write(jsonData)
-      }
+      handle.write(jsonData)
     }
   }
 }
