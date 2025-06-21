@@ -22,15 +22,27 @@ class VpnPermissionActivity : AppCompatActivity() {
         binding = ActivityVpnPermissionBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Check if permission is already granted and finish immediately if so
+        if (vpnPermissionIntent() == null) {
+            finish()
+            return
+        }
+
         binding.btnRequest.setOnClickListener {
             requestPermissions()
         }
     }
 
     private fun requestPermissions() {
-        val permissionIntent = android.net.VpnService.prepare(this)
-        if (permissionIntent != null) {
-            result.launch(permissionIntent)
+        val permissionIntent = vpnPermissionIntent()
+
+        if (permissionIntent == null) {
+            finish()
+            return
         }
+
+        result.launch(permissionIntent)
     }
+
+    private fun vpnPermissionIntent() = android.net.VpnService.prepare(this)
 }
