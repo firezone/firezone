@@ -42,7 +42,7 @@ if config_env() == :prod do
       database: env_var_to_config!(:database_name)
     ]
 
-  config :domain, run_conditional_migrations: env_var_to_config!(:run_conditional_migrations)
+  config :domain, run_manual_migrations: env_var_to_config!(:run_manual_migrations)
 
   config :domain, Domain.Tokens,
     key_base: env_var_to_config!(:tokens_key_base),
