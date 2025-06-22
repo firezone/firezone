@@ -6,8 +6,6 @@ mod fz_p2p_control;
 mod fz_p2p_control_slice;
 mod icmp_dest_unreachable;
 
-mod nat46;
-mod nat64;
 #[cfg(feature = "proptest")]
 #[allow(clippy::unwrap_used)]
 pub mod proptest;
@@ -17,9 +15,6 @@ pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
 pub use icmp_dest_unreachable::{DestUnreachable, FailedPacket};
-
-#[cfg(all(test, feature = "proptest"))]
-mod proptests;
 
 use anyhow::{Context as _, Result, bail};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -243,38 +238,6 @@ impl ConvertibleIpv4Packet {
         self.header().destination_addr()
     }
 
-    fn consume_to_ipv6(mut self, src: Ipv6Addr, dst: Ipv6Addr) -> Result<ConvertibleIpv6Packet> {
-        // `translate_in_place` expects the packet to sit at a 20-byte offset.
-        // `self.start` tells us where the packet actually starts, thus we need to pass `self.start - 20` to the function.
-        let start_minus_padding = self
-            .start
-            .checked_sub(NAT46_OVERHEAD)
-            .context("Invalid `start`of IP packet in buffer")?;
-
-        let offset = nat46::translate_in_place(
-            &mut self.buf[start_minus_padding..(self.start + self.len)],
-            src,
-            dst,
-        )
-        .context("NAT46 failed")?;
-
-        // We need to handle 2 cases here:
-        // `offset` > NAT46_OVERHEAD
-        // `offset` < NAT46_OVERHEAD
-        // By casting to an `isize` we can simply compute the _difference_ of the packet length.
-        // `offset` points into the buffer we passed to `translate_in_place`.
-        // We passed 20 (NAT46_OVERHEAD) bytes more to that function.
-        // Thus, 20 - offset tells us the difference in length of the new packet.
-        let len_diff = (NAT46_OVERHEAD as isize) - (offset as isize);
-        let len = (self.len as isize) + len_diff;
-
-        Ok(ConvertibleIpv6Packet {
-            buf: self.buf,
-            start: start_minus_padding + offset,
-            len: len as usize,
-        })
-    }
-
     fn header_length(&self) -> usize {
         (self.header().ihl() * 4) as usize
     }
@@ -323,16 +286,6 @@ impl ConvertibleIpv6Packet {
 
     fn get_destination(&self) -> Ipv6Addr {
         self.header().destination_addr()
-    }
-
-    fn consume_to_ipv4(mut self, src: Ipv4Addr, dst: Ipv4Addr) -> Result<ConvertibleIpv4Packet> {
-        nat64::translate_in_place(self.packet_mut(), src, dst).context("NAT64 failed")?;
-
-        Ok(ConvertibleIpv4Packet {
-            buf: self.buf,
-            start: self.start + 20,
-            len: self.len - 20,
-        })
     }
 
     pub fn packet(&self) -> &[u8] {
@@ -385,20 +338,6 @@ impl IpPacket {
             6 => IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?),
             v => bail!("Invalid IP version: {v}"),
         })
-    }
-
-    pub(crate) fn consume_to_ipv4(self, src: Ipv4Addr, dst: Ipv4Addr) -> Result<IpPacket> {
-        match self {
-            IpPacket::Ipv4(pkt) => Ok(IpPacket::Ipv4(pkt)),
-            IpPacket::Ipv6(pkt) => Ok(IpPacket::Ipv4(pkt.consume_to_ipv4(src, dst)?)),
-        }
-    }
-
-    pub(crate) fn consume_to_ipv6(self, src: Ipv6Addr, dst: Ipv6Addr) -> Result<IpPacket> {
-        match self {
-            IpPacket::Ipv4(pkt) => Ok(IpPacket::Ipv6(pkt.consume_to_ipv6(src, dst)?)),
-            IpPacket::Ipv6(pkt) => Ok(IpPacket::Ipv6(pkt)),
-        }
     }
 
     pub fn source(&self) -> IpAddr {
@@ -809,44 +748,18 @@ impl IpPacket {
         Some(header)
     }
 
-    pub fn translate_destination(
-        mut self,
-        src_v4: Ipv4Addr,
-        src_v6: Ipv6Addr,
-        src_proto: Protocol,
-        dst: IpAddr,
-    ) -> Result<IpPacket> {
-        let mut packet = match (&self, dst) {
-            (&IpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst)?,
-            (&IpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst)?,
-            _ => {
-                self.set_dst(dst)?;
-                self
-            }
-        };
-        packet.set_source_protocol(src_proto.value());
+    pub fn translate_destination(mut self, src_proto: Protocol, dst: IpAddr) -> Result<IpPacket> {
+        self.set_dst(dst)?;
+        self.set_source_protocol(src_proto.value());
 
-        Ok(packet)
+        Ok(self)
     }
 
-    pub fn translate_source(
-        mut self,
-        dst_v4: Ipv4Addr,
-        dst_v6: Ipv6Addr,
-        dst_proto: Protocol,
-        src: IpAddr,
-    ) -> Result<IpPacket> {
-        let mut packet = match (&self, src) {
-            (&IpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6)?,
-            (&IpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4)?,
-            _ => {
-                self.set_src(src)?;
-                self
-            }
-        };
-        packet.set_destination_protocol(dst_proto.value());
+    pub fn translate_source(mut self, dst_proto: Protocol, src: IpAddr) -> Result<IpPacket> {
+        self.set_src(src)?;
+        self.set_destination_protocol(dst_proto.value());
 
-        Ok(packet)
+        Ok(self)
     }
 
     #[inline]
