@@ -26,6 +26,17 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
         binding = FragmentSplashBinding.bind(view)
 
         setupActionObservers()
+
+        savedInstanceState?.let {
+            isInitialLaunch = it.getBoolean("isInitialLaunch", true)
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        
+        // Save the initial launch state to handle edge cases where the fragment is recreated
+        outState.putBoolean("isInitialLaunch", isInitialLaunch)
     }
 
     override fun onResume() {
