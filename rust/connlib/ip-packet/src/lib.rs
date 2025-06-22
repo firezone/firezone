@@ -820,7 +820,7 @@ impl IpPacket {
             (&IpPacket::Ipv4(_), IpAddr::V6(dst)) => self.consume_to_ipv6(src_v6, dst)?,
             (&IpPacket::Ipv6(_), IpAddr::V4(dst)) => self.consume_to_ipv4(src_v4, dst)?,
             _ => {
-                self.set_dst(dst);
+                self.set_dst(dst)?;
                 self
             }
         };
@@ -840,7 +840,7 @@ impl IpPacket {
             (&IpPacket::Ipv4(_), IpAddr::V6(src)) => self.consume_to_ipv6(src, dst_v6)?,
             (&IpPacket::Ipv6(_), IpAddr::V4(src)) => self.consume_to_ipv4(src, dst_v4)?,
             _ => {
-                self.set_src(src);
+                self.set_src(src)?;
                 self
             }
         };
@@ -850,7 +850,7 @@ impl IpPacket {
     }
 
     #[inline]
-    pub fn set_dst(&mut self, dst: IpAddr) {
+    pub fn set_dst(&mut self, dst: IpAddr) -> Result<()> {
         match (self, dst) {
             (Self::Ipv4(p), IpAddr::V4(d)) => {
                 p.header_mut().set_destination(d.octets());
@@ -859,16 +859,18 @@ impl IpPacket {
                 p.header_mut().set_destination(d.octets());
             }
             (Self::Ipv4(_), IpAddr::V6(_)) => {
-                debug_assert!(false, "Cannot set an IPv6 address on an IPv4 packet")
+                bail!("Cannot set an IPv6 address on an IPv4 packet")
             }
             (Self::Ipv6(_), IpAddr::V4(_)) => {
-                debug_assert!(false, "Cannot set an IPv4 address on an IPv6 packet")
+                bail!("Cannot set an IPv4 address on an IPv6 packet")
             }
         }
+
+        Ok(())
     }
 
     #[inline]
-    pub fn set_src(&mut self, src: IpAddr) {
+    pub fn set_src(&mut self, src: IpAddr) -> Result<()> {
         match (self, src) {
             (Self::Ipv4(p), IpAddr::V4(s)) => {
                 p.header_mut().set_source(s.octets());
@@ -877,12 +879,14 @@ impl IpPacket {
                 p.header_mut().set_source(s.octets());
             }
             (Self::Ipv4(_), IpAddr::V6(_)) => {
-                debug_assert!(false, "Cannot set an IPv6 address on an IPv4 packet")
+                bail!("Cannot set an IPv6 address on an IPv4 packet")
             }
             (Self::Ipv6(_), IpAddr::V4(_)) => {
-                debug_assert!(false, "Cannot set an IPv4 address on an IPv6 packet")
+                bail!("Cannot set an IPv4 address on an IPv6 packet")
             }
         }
+
+        Ok(())
     }
 
     /// Updates the ECN flags of this packet with the ECN value from the transport layer.

@@ -409,8 +409,8 @@ fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
     let original_src = req.source();
     let original_dst = req.destination();
 
-    req.set_dst(original_src);
-    req.set_src(original_dst);
+    req.set_dst(original_src).unwrap();
+    req.set_src(original_dst).unwrap();
 
     Some(req)
 }

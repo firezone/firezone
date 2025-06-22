@@ -241,7 +241,7 @@ mod tests {
         // Pretend we are getting a response.
         let mut response = packet.clone();
         response.set_destination_protocol(new_source_protocol.value());
-        response.set_src(new_dst_ip);
+        response.set_src(new_dst_ip).unwrap();
 
         // Update time.
         table.handle_timeout(sent_at + response_delay);
@@ -298,7 +298,7 @@ mod tests {
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
             p.set_destination_protocol(new_src_p.value());
-            p.set_src(new_d);
+            p.set_src(new_d).unwrap();
         }
 
         // Translate in
