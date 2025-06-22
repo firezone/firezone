@@ -467,7 +467,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
 
       refute_receive {:bypass_request, _conn, _body}
 
-      # Send the 201th metric, which should trigger the flush
+      # Send the 201st metric, which should trigger the flush
       {:noreply, {_, _, _, {buffer_size, buffer}}} =
         handle_info(
           {:compressed_metrics,
