@@ -60,7 +60,7 @@ internal class SplashViewModel
 
                 val connectOnStart = repo.getConfigSync().connectOnStart
 
-                // If this is the initial launch connectOnStart is true, try to connect
+                // If this is the initial launch and connectOnStart is true, try to connect
                 if (isInitialLaunch && connectOnStart) {
                     TunnelService.start(context)
                     actionMutableLiveData.postValue(ViewAction.NavigateToSession)
