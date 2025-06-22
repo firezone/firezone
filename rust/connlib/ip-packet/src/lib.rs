@@ -1036,25 +1036,23 @@ impl IpPacket {
 }
 
 fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol> {
+    // ICMP messages SHOULD always contain at least 8 bytes of the original L4 payload.
+    let (src_port, remaining) = payload
+        .split_first_chunk::<2>()
+        .context("Payload is not long enough for src port")?;
+    let (dst_port, _) = remaining
+        .split_first_chunk::<2>()
+        .context("Payload is not long enough for dst port")?;
+
     let proto = match protocol {
-        IpNumber::UDP => {
-            let udp =
-                UdpHeaderSlice::from_slice(payload).context("Failed to parse payload as UDP")?;
-
-            Layer4Protocol::Udp {
-                src: udp.source_port(),
-                dst: udp.destination_port(),
-            }
-        }
-        IpNumber::TCP => {
-            let tcp =
-                TcpHeaderSlice::from_slice(payload).context("Failed to parse payload as TCP")?;
-
-            Layer4Protocol::Tcp {
-                src: tcp.source_port(),
-                dst: tcp.destination_port(),
-            }
-        }
+        IpNumber::UDP => Layer4Protocol::Udp {
+            src: u16::from_be_bytes(*src_port),
+            dst: u16::from_be_bytes(*dst_port),
+        },
+        IpNumber::TCP => Layer4Protocol::Tcp {
+            src: u16::from_be_bytes(*src_port),
+            dst: u16::from_be_bytes(*dst_port),
+        },
         IpNumber::ICMP => {
             let icmp_type = Icmpv4Slice::from_slice(payload)
                 .context("Failed to parse payload as ICMPv4")?
