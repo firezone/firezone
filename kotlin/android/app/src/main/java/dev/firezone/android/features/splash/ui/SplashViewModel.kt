@@ -28,11 +28,6 @@ internal class SplashViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        // This flag is used to ensure that the initial launch check is only performed once, so
-        // that we can differentiate between a fresh launch and subsequent resumes for the connect
-        // on start logic.
-        private var hasPerformedInitialLaunchCheck = false
-
         internal fun checkTunnelState(
             context: Context,
             isInitialLaunch: Boolean = false,
@@ -41,15 +36,6 @@ internal class SplashViewModel
                 // Stay a while and enjoy the logo
                 delay(REQUEST_DELAY)
 
-                // We've already posted the initial action, so we can skip the rest of the checks
-                if (isInitialLaunch && hasPerformedInitialLaunchCheck) {
-                    return@launch
-                }
-
-                if (isInitialLaunch) {
-                    hasPerformedInitialLaunchCheck = true
-                }
-
                 // If we don't have VPN permission, we can't continue.
                 if (!hasVpnPermissions(context) && applicationMode != ApplicationMode.TESTING) {
                     actionMutableLiveData.postValue(ViewAction.NavigateToVpnPermission)
@@ -57,7 +43,6 @@ internal class SplashViewModel
                 }
 
                 val token = applicationRestrictions.getString("token") ?: repo.getTokenSync()
-                val connectOnStart = repo.getConfigSync().connectOnStart
 
                 // If we don't have a token, we can't connect.
                 if (token.isNullOrBlank()) {
@@ -65,17 +50,25 @@ internal class SplashViewModel
                     return@launch
                 }
 
-                // If it's the initial launch but connect on start isn't enabled, we navigate to sign in.
-                if (isInitialLaunch && !connectOnStart) {
-                    actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
+                val isRunning = TunnelService.isRunning(context)
+
+                // If the service is already running, we can go directly to the session.
+                if (isRunning) {
+                    actionMutableLiveData.postValue(ViewAction.NavigateToSession)
                     return@launch
                 }
 
-                // If we reach here, we have a token and should attempt to connect.
-                if (!TunnelService.isRunning(context)) {
+                val connectOnStart = repo.getConfigSync().connectOnStart
+
+                // If this is the initial launch connectOnStart is true, try to connect
+                if (isInitialLaunch && connectOnStart) {
                     TunnelService.start(context)
+                    actionMutableLiveData.postValue(ViewAction.NavigateToSession)
+                    return@launch
                 }
-                actionMutableLiveData.postValue(ViewAction.NavigateToSession)
+
+                // If we get here, we shouldn't start the tunnel, so show the sign in screen
+                actionMutableLiveData.postValue(ViewAction.NavigateToSignIn)
             }
         }
 
