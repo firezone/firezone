@@ -495,5 +495,98 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       assert_receive {:bypass_request, _conn, %{"timeSeries" => time_series}}
       assert length(time_series) == 199
     end
+
+    test "handles large batches that exceed buffer capacity in single message" do
+      Bypass.open()
+      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
+      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
+
+      now = DateTime.utc_now()
+      tags = {%{type: "test"}, %{app: "myapp"}}
+
+      # Start with 50 metrics in buffer
+      {_, _, _, {buffer_size, buffer}} =
+        Enum.reduce(1..50, {[], "proj", tags, {0, %{}}}, fn i, state ->
+          {:noreply, state} =
+            handle_info(
+              {:compressed_metrics,
+               [{Telemetry.Metrics.Counter, [:existing, i], %{}, now, i, :request}]},
+              state
+            )
+
+          state
+        end)
+
+      assert buffer_size == 50
+
+      # Now send a single large batch of 250 metrics (exceeds total capacity)
+      large_batch =
+        Enum.map(1..250, fn i ->
+          {Telemetry.Metrics.Counter, [:batch, i], %{batch: "large"}, now, i, :request}
+        end)
+
+      {:noreply, {_, _, _, {final_buffer_size, final_buffer}}} =
+        handle_info(
+          {:compressed_metrics, large_batch},
+          {[], "proj", tags, {buffer_size, buffer}}
+        )
+
+      # Buffer should never exceed capacity (200)
+      assert final_buffer_size <= 200
+
+      # Should receive multiple flush requests due to the large batch
+      # First flush: the initial 50 metrics
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => first_flush}}
+      assert length(first_flush) == 50
+
+      # Second flush: first chunk of the large batch (up to 200 metrics)
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => second_flush}}
+      assert length(second_flush) == 200
+
+      # Remaining metrics should still be in buffer
+      assert final_buffer_size == 50
+      assert map_size(final_buffer) == 50
+
+      # Verify all remaining metrics are from the large batch
+      Enum.each(final_buffer, fn {{_schema, name, tags, _unit}, _measurements} ->
+        assert [:batch, _] = name
+        assert tags.batch == "large"
+      end)
+    end
+
+    test "handles extremely large single batch that requires multiple flushes" do
+      Bypass.open()
+      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
+      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
+
+      now = DateTime.utc_now()
+      tags = {%{type: "test"}, %{app: "myapp"}}
+
+      # Send a massive batch of 500 metrics
+      massive_batch =
+        Enum.map(1..500, fn i ->
+          {Telemetry.Metrics.Counter, [:massive, i], %{batch: "huge"}, now, i, :request}
+        end)
+
+      {:noreply, {_, _, _, {final_buffer_size, final_buffer}}} =
+        handle_info(
+          {:compressed_metrics, massive_batch},
+          {[], "proj", tags, {0, %{}}}
+        )
+
+      # Buffer should never exceed capacity
+      assert final_buffer_size <= 200
+
+      # Should receive multiple flushes as the large batch is processed
+      # We expect at least 2 flushes (200 + 200, with 100 remaining)
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush1}}
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush2}}
+      assert length(flush1) == 200
+      assert length(flush2) == 200
+
+      # Final buffer should contain the remaining 100 metrics
+      assert final_buffer_size == 100
+      assert map_size(final_buffer) == 100
+    end
   end
 end
