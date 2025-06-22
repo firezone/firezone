@@ -320,6 +320,7 @@ class TunnelService : VpnService() {
 
                         stopNetworkMonitoring()
                         stopDisconnectMonitoring()
+                        stopSelf()
                     }
             }
         }
