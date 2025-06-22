@@ -16,6 +16,7 @@ import dev.firezone.android.features.session.ui.SessionActivity
 internal class SplashFragment : Fragment(R.layout.fragment_splash) {
     private lateinit var binding: FragmentSplashBinding
     private val viewModel: SplashViewModel by viewModels()
+    private var isInitialLaunch: Boolean = true
 
     override fun onViewCreated(
         view: View,
@@ -25,16 +26,13 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
         binding = FragmentSplashBinding.bind(view)
 
         setupActionObservers()
-
-        if (savedInstanceState == null) {
-            // Trigger the initial check for tunnel state
-            viewModel.checkTunnelState(requireContext(), isInitialLaunch = true)
-        }
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.checkTunnelState(requireContext(), isInitialLaunch = false)
+        viewModel.checkTunnelState(requireContext(), isInitialLaunch)
+
+        isInitialLaunch = false
     }
 
     private fun setupActionObservers() {
