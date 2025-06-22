@@ -465,9 +465,9 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
-      # Send 199 metrics
+      # Send 200 metrics
       {_, _, _, {buffer_size, buffer}} =
-        Enum.reduce(1..199, {[], "proj", tags, {0, %{}}}, fn i, state ->
+        Enum.reduce(1..200, {[], "proj", tags, {0, %{}}}, fn i, state ->
           {:noreply, state} =
             handle_info(
               {:compressed_metrics,
@@ -478,11 +478,11 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
           state
         end)
 
-      assert buffer_size == 199
+      assert buffer_size == 200
 
       refute_receive {:bypass_request, _conn, _body}
 
-      # Send the 200th metric, which should trigger the flush
+      # Send the 201th metric, which should trigger the flush
       {:noreply, {_, _, _, {buffer_size, buffer}}} =
         handle_info(
           {:compressed_metrics,
@@ -493,7 +493,7 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       assert buffer == %{{Telemetry.Metrics.Counter, [:foo, 200], %{}, :request} => {now, now, 1}}
       assert buffer_size == 1
       assert_receive {:bypass_request, _conn, %{"timeSeries" => time_series}}
-      assert length(time_series) == 199
+      assert length(time_series) == 200
     end
 
     test "handles large batches that exceed buffer capacity in single message" do
@@ -534,18 +534,14 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       # Buffer should never exceed capacity (200)
       assert final_buffer_size <= 200
 
-      # Should receive multiple flush requests due to the large batch
-      # First flush: the initial 50 metrics
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => first_flush}}
-      assert length(first_flush) == 50
+      # Should receive flush request due to the large batch
+      # First flush: The initial 50 metrics in buffer + 150 of the large batch
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush}}
+      assert length(flush) == 200
 
-      # Second flush: first chunk of the large batch (up to 200 metrics)
-      assert_receive {:bypass_request, _conn, %{"timeSeries" => second_flush}}
-      assert length(second_flush) == 200
-
-      # Remaining metrics should still be in buffer
-      assert final_buffer_size == 50
-      assert map_size(final_buffer) == 50
+      # Remaining metrics should still be in buffer. 50 + 250 - 200 = 100
+      assert final_buffer_size == 100
+      assert map_size(final_buffer) == 100
 
       # Verify all remaining metrics are from the large batch
       Enum.each(final_buffer, fn {{_schema, name, tags, _unit}, _measurements} ->
