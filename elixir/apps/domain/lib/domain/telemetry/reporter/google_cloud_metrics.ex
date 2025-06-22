@@ -97,7 +97,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
           {acc_buffer_length, acc_buffer} =
             if acc_buffer_length >= @buffer_capacity do
               flush(project_id, resource, labels, {acc_buffer_length, acc_buffer})
-              {0, %{}}
             else
               {acc_buffer_length, acc_buffer}
             end
@@ -287,13 +286,16 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         {0, %{}}
 
       {:error, reason} ->
-        Logger.warning("Failed to send metrics to Google Cloud",
+        # Will happen for both 4xx and 5xx errors. Metrics aren't critical, so just reset
+        # the buffer to avoid filling it in case Google API is down.
+        Logger.warning("Failed to send metrics to Google Cloud, dropping buffer",
           reason: inspect(reason),
           time_series: inspect(time_series),
-          count: buffer_length
+          buffer_length: buffer_length,
+          buffer: inspect(buffer)
         )
 
-        {buffer_length, buffer}
+        {0, %{}}
     end
   end
 
