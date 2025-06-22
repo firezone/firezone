@@ -154,19 +154,6 @@ fn assert_packets_properties<T, U>(
         tracing::error!(target: "assertions", ?unexpected_replies, ?expected_handshakes, ?received_replies, "❌ Unexpected {packet_protocol} replies on client");
     }
 
-    for (gid, expected_handshakes) in expected_handshakes.iter() {
-        let received_requests = received_requests.get(gid).unwrap();
-
-        let num_expected_handshakes = expected_handshakes.len();
-        let num_actual_handshakes = received_requests.len();
-
-        if num_expected_handshakes != num_actual_handshakes {
-            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gid, "❌ Unexpected {packet_protocol} requests");
-        } else {
-            tracing::info!(target: "assertions", %num_expected_handshakes, %gid, "✅ Performed the expected {packet_protocol} handshakes");
-        }
-    }
-
     let mut mapping = HashMap::new();
 
     // Assert properties of the individual handshakes per gateway.
@@ -174,6 +161,9 @@ fn assert_packets_properties<T, U>(
     // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
     for (gateway, expected_handshakes) in expected_handshakes {
         let received_requests = received_requests.get(gateway).unwrap();
+
+        let mut num_expected_handshakes = expected_handshakes.len();
+
         for (payload, (resource_dst, t, u)) in expected_handshakes {
             let _guard = make_span(*t, *u).entered();
 
@@ -188,6 +178,16 @@ fn assert_packets_properties<T, U>(
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
             let Some(gateway_received_request) = received_requests.get(payload) else {
+                if client_received_reply
+                    .icmp_unreachable_destination()
+                    .ok()
+                    .is_some_and(|icmp| icmp.is_some())
+                {
+                    // If the received reply is an ICMP unreachable error, it is ok to have a missing request.
+                    num_expected_handshakes -= 1;
+                    continue;
+                }
+
                 tracing::error!(target: "assertions", "❌ Missing {packet_protocol} request on gateway");
                 continue;
             };
@@ -219,6 +219,14 @@ fn assert_packets_properties<T, U>(
                     )
                 }
             }
+        }
+
+        let num_actual_handshakes = received_requests.len();
+
+        if num_expected_handshakes != num_actual_handshakes {
+            tracing::error!(target: "assertions", %num_expected_handshakes, %num_actual_handshakes, %gateway, "❌ Unexpected {packet_protocol} requests");
+        } else {
+            tracing::info!(target: "assertions", %num_expected_handshakes, %gateway, "✅ Performed the expected {packet_protocol} handshakes");
         }
     }
 }
