@@ -24,7 +24,8 @@ defmodule Domain.Events.Hooks.ResourceConnectionsTest do
 
       assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :lt
 
-      assert :ok == on_delete(%{"resource_id" => flow.resource_id})
+      assert :ok ==
+               on_delete(%{"account_id" => flow.account_id, "resource_id" => flow.resource_id})
 
       # TODO: WAL
       # Remove this when flow removal is directly broadcasted
