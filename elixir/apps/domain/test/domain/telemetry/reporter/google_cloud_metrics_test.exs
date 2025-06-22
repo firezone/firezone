@@ -4,11 +4,16 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
   alias Domain.Mocks.GoogleCloudPlatform
 
   describe "handle_info/2 for :compressed_metrics" do
-    test "aggregates and delivers Metrics.Counter metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
+    setup do
+      %Bypass{} =
+        Bypass.open()
+        |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
+        |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
 
+      :ok
+    end
+
+    test "aggregates and delivers Metrics.Counter metrics" do
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -79,10 +84,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.Distribution metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -186,10 +187,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.Sum metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -260,10 +257,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.Summary metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -385,10 +378,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.LastValue metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -458,10 +447,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "submits the metrics to Google Cloud when incoming metrics surpass buffer length" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
@@ -497,10 +482,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "handles large batches that exceed buffer capacity in single message" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
@@ -551,10 +532,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "handles extremely large single batch that requires multiple flushes" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
