@@ -295,11 +295,7 @@ impl ClientOnGateway {
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(
-                    self.gateway_tun.v4,
-                    self.gateway_tun.v6,
-                    &packet,
-                )?,
+                ip_packet::make::icmp_dst_unreachable(&packet)?,
             ));
         };
 
@@ -307,11 +303,7 @@ impl ClientOnGateway {
         if firezone_telemetry::feature_flags::icmp_unreachable_instead_of_nat64() {
             if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
                 return Ok(TranslateOutboundResult::DestinationUnreachable(
-                    ip_packet::make::icmp_dst_unreachable(
-                        self.gateway_tun.v4,
-                        self.gateway_tun.v6,
-                        &packet,
-                    )?,
+                    ip_packet::make::icmp_dst_unreachable(&packet)?,
                 ));
             }
         }
