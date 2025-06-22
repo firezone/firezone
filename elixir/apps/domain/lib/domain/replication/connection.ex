@@ -27,7 +27,25 @@ defmodule Domain.Replication.Connection do
   """
 
   defmacro __using__(opts \\ []) do
-    quote bind_quoted: [opts: opts] do
+    # Compose all the quote blocks without nesting
+    [
+      basic_setup(),
+      struct_and_constants(opts),
+      connection_functions(),
+      query_handlers(),
+      data_handlers(),
+      message_handlers(),
+      transaction_handlers(),
+      ignored_message_handlers(),
+      utility_functions(),
+      info_handlers(opts),
+      default_callbacks()
+    ]
+  end
+
+  # Extract basic imports and aliases
+  defp basic_setup do
+    quote do
       use Postgrex.ReplicationConnection
       require Logger
       require OpenTelemetry.Tracer
@@ -37,7 +55,12 @@ defmodule Domain.Replication.Connection do
 
       alias Domain.Replication.Decoder
       alias Domain.Replication.Protocol.{KeepAlive, Write}
+    end
+  end
 
+  # Extract struct definition and constants
+  defp struct_and_constants(opts) do
+    quote bind_quoted: [opts: opts] do
       # Only these two are configurable
       @alert_threshold_ms Keyword.fetch!(opts, :alert_threshold_ms)
       @publication_name Keyword.fetch!(opts, :publication_name)
@@ -77,7 +100,12 @@ defmodule Domain.Replication.Connection do
                 table_subscriptions: [],
                 relations: %{},
                 counter: 0
+    end
+  end
 
+  # Extract connection setup functions
+  defp connection_functions do
+    quote do
       def start_link(%{instance: %__MODULE__{} = instance, connection_opts: connection_opts}) do
         opts = connection_opts ++ [name: {:global, __MODULE__}]
         Postgrex.ReplicationConnection.start_link(__MODULE__, instance, opts)
@@ -97,6 +125,33 @@ defmodule Domain.Replication.Connection do
         {:query, query, %{state | step: :create_publication}}
       end
 
+      @doc """
+        Called when the connection is disconnected unexpectedly.
+
+        This will happen if:
+          1. Postgres is restarted such as during a maintenance window
+          2. The connection is closed by the server due to our failure to acknowledge
+             Keepalive messages in a timely manner
+          3. The connection is cut due to a network error
+          4. The ReplicationConnection process crashes or is killed abruptly for any reason
+          5. Potentially during a deploy if the connection is not closed gracefully.
+
+        Our Supervisor will restart this process automatically so this is not an error.
+      """
+      @impl true
+      def handle_disconnect(state) do
+        Logger.info("#{__MODULE__}: Replication connection disconnected",
+          counter: state.counter
+        )
+
+        {:noreply, %{state | step: :disconnected}}
+      end
+    end
+  end
+
+  # Extract query result handlers
+  defp query_handlers do
+    quote do
       @doc """
         Generic callback that handles replies to the queries we send.
 
@@ -169,7 +224,12 @@ defmodule Domain.Replication.Connection do
 
         {:query, query, %{state | step: :start_replication_slot}}
       end
+    end
+  end
 
+  # Extract data handling functions
+  defp data_handlers do
+    quote do
       @doc """
         Called when we receive a message from the PostgreSQL server.
 
@@ -204,11 +264,11 @@ defmodule Domain.Replication.Connection do
 
       def handle_data(data, state) when is_write(data) do
         OpenTelemetry.Tracer.with_span "#{__MODULE__}.handle_data/2" do
-          %Write{message: message} = parse(data)
+          %Write{server_wal_end: server_wal_end, message: message} = parse(data)
 
           message
           |> decode_message()
-          |> handle_message(%{state | counter: state.counter + 1})
+          |> handle_message(server_wal_end, %{state | counter: state.counter + 1})
         end
       end
 
@@ -220,7 +280,12 @@ defmodule Domain.Replication.Connection do
 
         {:noreply, [], state}
       end
+    end
+  end
 
+  # Extract core message handling functions
+  defp message_handlers do
+    quote do
       # Handles messages received:
       #
       #   1. Insert/Update/Delete/Begin/Commit - send to appropriate hook
@@ -237,6 +302,7 @@ defmodule Domain.Replication.Connection do
                name: name,
                columns: columns
              },
+             _server_wal_end,
              state
            ) do
         relation = %{
@@ -248,30 +314,36 @@ defmodule Domain.Replication.Connection do
         {:noreply, [], %{state | relations: Map.put(state.relations, id, relation)}}
       end
 
-      defp handle_message(%Decoder.Messages.Insert{} = msg, state) do
+      defp handle_message(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
         {op, table, _old_data, data} = transform(msg, state.relations)
-        :ok = on_insert(table, data)
+        :ok = on_insert(server_wal_end, table, data)
         {:noreply, [], state}
       end
 
-      defp handle_message(%Decoder.Messages.Update{} = msg, state) do
+      defp handle_message(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
         {op, table, old_data, data} = transform(msg, state.relations)
-        :ok = on_update(table, old_data, data)
+        :ok = on_update(server_wal_end, table, old_data, data)
         {:noreply, [], state}
       end
 
-      defp handle_message(%Decoder.Messages.Delete{} = msg, state) do
+      defp handle_message(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
         {op, table, old_data, _data} = transform(msg, state.relations)
-        :ok = on_delete(table, old_data)
+        :ok = on_delete(server_wal_end, table, old_data)
         {:noreply, [], state}
       end
+    end
+  end
 
-      defp handle_message(%Decoder.Messages.Begin{} = msg, state) do
+  # Extract transaction and ignored message handlers
+  defp transaction_handlers do
+    quote do
+      defp handle_message(%Decoder.Messages.Begin{} = msg, server_wal_end, state) do
         {:noreply, [], state}
       end
 
       defp handle_message(
              %Decoder.Messages.Commit{commit_timestamp: commit_timestamp} = msg,
+             _server_wal_end,
              state
            ) do
         # Since we receive a commit for each operation and we process each operation
@@ -281,21 +353,26 @@ defmodule Domain.Replication.Connection do
 
         {:noreply, [], state}
       end
+    end
+  end
 
+  # Extract handlers for ignored message types
+  defp ignored_message_handlers do
+    quote do
       # These messages are not relevant for our use case, so we ignore them.
-      defp handle_message(%Decoder.Messages.Origin{}, state) do
+      defp handle_message(%Decoder.Messages.Origin{}, _server_wal_end, state) do
         {:noreply, [], state}
       end
 
-      defp handle_message(%Decoder.Messages.Truncate{}, state) do
+      defp handle_message(%Decoder.Messages.Truncate{}, _server_wal_end, state) do
         {:noreply, [], state}
       end
 
-      defp handle_message(%Decoder.Messages.Type{}, state) do
+      defp handle_message(%Decoder.Messages.Type{}, _server_wal_end, state) do
         {:noreply, [], state}
       end
 
-      defp handle_message(%Decoder.Messages.Unsupported{data: data}, state) do
+      defp handle_message(%Decoder.Messages.Unsupported{data: data}, _server_wal_end, state) do
         Logger.warning("#{__MODULE__}: Unsupported message received",
           data: inspect(data),
           counter: state.counter
@@ -303,7 +380,12 @@ defmodule Domain.Replication.Connection do
 
         {:noreply, [], state}
       end
+    end
+  end
 
+  # Extract data transformation utilities
+  defp utility_functions do
+    quote do
       defp transform(msg, relations) do
         {op, old_tuple_data, tuple_data} = extract_msg_data(msg)
         {:ok, relation} = Map.fetch(relations, msg.relation_id)
@@ -340,6 +422,14 @@ defmodule Domain.Replication.Connection do
         |> Map.new(fn {value, column} -> {column.name, value} end)
         |> Enum.into(%{})
       end
+    end
+  end
+
+  # Extract info handlers
+  defp info_handlers(opts) do
+    quote bind_quoted: [opts: opts] do
+      @alert_threshold_ms Keyword.fetch!(opts, :alert_threshold_ms)
+      @status_log_interval :timer.minutes(5)
 
       @impl true
       # Log only once when crossing the threshold
@@ -369,35 +459,18 @@ defmodule Domain.Replication.Connection do
       def handle_info({:DOWN, _, :process, _, _}, _), do: {:disconnect, :normal}
 
       def handle_info(_, state), do: {:noreply, state}
+    end
+  end
 
-      @doc """
-        Called when the connection is disconnected unexpectedly.
-
-        This will happen if:
-          1. Postgres is restarted such as during a maintenance window
-          2. The connection is closed by the server due to our failure to acknowledge
-             Keepalive messages in a timely manner
-          3. The connection is cut due to a network error
-          4. The ReplicationConnection process crashes or is killed abruptly for any reason
-          5. Potentially during a deploy if the connection is not closed gracefully.
-
-        Our Supervisor will restart this process automatically so this is not an error.
-      """
-      @impl true
-      def handle_disconnect(state) do
-        Logger.info("#{__MODULE__}: Replication connection disconnected",
-          counter: state.counter
-        )
-
-        {:noreply, %{state | step: :disconnected}}
-      end
-
+  # Extract default callback implementations
+  defp default_callbacks do
+    quote do
       # Default implementations for required callbacks - modules using this should implement these
-      def on_insert(_table, _data), do: :ok
-      def on_update(_table, _old_data, _data), do: :ok
-      def on_delete(_table, _old_data), do: :ok
+      def on_insert(_lsn, _table, _data), do: :ok
+      def on_update(_lsn, _table, _old_data, _data), do: :ok
+      def on_delete(_lsn, _table, _old_data), do: :ok
 
-      defoverridable on_insert: 2, on_update: 3, on_delete: 2
+      defoverridable on_insert: 3, on_update: 4, on_delete: 3
     end
   end
 end

@@ -27,7 +27,7 @@ defmodule Domain.Replication.Manager do
   def handle_info({:connect, connection_module}, %{retries: retries} = state) do
     Process.send_after(self(), {:connect, connection_module}, @retry_interval)
 
-    case apply(connection_module, :start_link, [replication_child_spec(connection_module)]) do
+    case connection_module.start_link(replication_child_spec(connection_module)) do
       {:ok, _pid} ->
         # Our process won
         {:noreply, %{state | retries: 0}}

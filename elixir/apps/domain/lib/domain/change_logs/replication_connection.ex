@@ -2,35 +2,46 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   alias Domain.ChangeLogs
 
   use Domain.Replication.Connection,
-    # Allow up to 30 seconds of lag before alerting
-    alert_threshold_ms: 30_000,
+    # Allow up to 60 seconds of processing lag before alerting
+    alert_threshold_ms: 60_000,
     publication_name: "change_logs"
 
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
-  def on_insert(table, data) do
-    log(:insert, table, nil, data)
+  def on_insert(lsn, table, data) do
+    log(:insert, lsn, table, nil, data)
   end
 
-  def on_update(table, old_data, data) do
-    log(:update, table, old_data, data)
+  def on_update(lsn, table, old_data, data) do
+    log(:update, lsn, table, old_data, data)
   end
 
-  def on_delete(table, old_data) do
-    log(:delete, table, old_data, nil)
+  def on_delete(lsn, table, old_data) do
+    log(:delete, lsn, table, old_data, nil)
   end
 
-  defp log(_op, "flows", _old_data, _data) do
+  # Relay group tokens don't have account_ids
+
+  defp log(_op, _lsn, "tokens", %{"type" => "relay_group"}, _data) do
+    :ok
+  end
+
+  defp log(_op, _lsn, "tokens", _old_data, %{"type" => "relay_group"}) do
+    :ok
+  end
+
+  defp log(_op, _lsn, "flows", _old_data, _data) do
     # TODO: WAL
     # Flows are not logged to the change log as they are used only to trigger side effects which
     # will be removed. Remove the flows table publication when that happens.
     :ok
   end
 
-  defp log(op, table, old_data, data) do
+  defp log(op, lsn, table, old_data, data) do
     attrs = %{
       op: op,
+      lsn: lsn,
       table: table,
       old_data: old_data,
       data: data,
@@ -46,9 +57,18 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
           # Expected under normal operation when an account is deleted
           :ok
         else
-          Logger.error("Failed to create change log", changeset: inspect(changeset))
+          Logger.warning("Failed to create change log",
+            errors: inspect(changeset.errors),
+            table: table,
+            op: op,
+            lsn: lsn,
+            vsn: @vsn
+          )
 
-          :error
+          # TODO: WAL
+          # Don't ignore failures to insert change logs. Improve this after we have some
+          # operational experience with the data flowing in here.
+          :ok
         end
     end
   end

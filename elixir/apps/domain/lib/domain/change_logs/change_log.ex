@@ -4,6 +4,7 @@ defmodule Domain.ChangeLogs.ChangeLog do
   schema "change_logs" do
     belongs_to :account, Domain.Accounts.Account
 
+    field :lsn, :integer
     field :table, :string
     field :op, Ecto.Enum, values: [:insert, :update, :delete]
     field :old_data, :map

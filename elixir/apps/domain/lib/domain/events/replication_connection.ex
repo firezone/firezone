@@ -26,33 +26,33 @@ defmodule Domain.Events.ReplicationConnection do
     "tokens" => Hooks.Tokens
   }
 
-  def on_insert(table, data) do
+  def on_insert(_lsn, table, data) do
     hook = Map.get(@tables_to_hooks, table)
 
     if hook do
-      apply(hook, :on_insert, [data])
+      hook.on_insert(data)
     else
       log_warning(:insert, table)
       :ok
     end
   end
 
-  def on_update(table, old_data, data) do
+  def on_update(_lsn, table, old_data, data) do
     hook = Map.get(@tables_to_hooks, table)
 
     if hook do
-      apply(hook, :on_update, [old_data, data])
+      hook.on_update(old_data, data)
     else
       log_warning(:update, table)
       :ok
     end
   end
 
-  def on_delete(table, old_data) do
+  def on_delete(_lsn, table, old_data) do
     hook = Map.get(@tables_to_hooks, table)
 
     if hook do
-      apply(hook, :on_delete, [old_data])
+      hook.on_delete(old_data)
     else
       log_warning(:delete, table)
       :ok

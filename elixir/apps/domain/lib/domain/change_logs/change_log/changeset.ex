@@ -1,7 +1,7 @@
 defmodule Domain.ChangeLogs.ChangeLog.Changeset do
   use Domain, :changeset
 
-  @fields ~w[account_id table op old_data data vsn]a
+  @fields ~w[account_id lsn table op old_data data vsn]a
 
   def changeset(attrs) do
     %Domain.ChangeLogs.ChangeLog{}
@@ -10,7 +10,7 @@ defmodule Domain.ChangeLogs.ChangeLog.Changeset do
     |> validate_correct_data_present()
     |> validate_same_account()
     |> put_account_id()
-    |> validate_required([:account_id, :table, :op, :vsn])
+    |> validate_required([:account_id, :lsn, :table, :op, :vsn])
     |> foreign_key_constraint(:account_id, name: :change_logs_account_id_fkey)
   end
 

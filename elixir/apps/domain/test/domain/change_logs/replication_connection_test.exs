@@ -19,7 +19,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       initial_count = Repo.aggregate(ChangeLog, :count, :id)
 
-      assert :ok = on_insert(table, data)
+      assert :ok = on_insert(0, table, data)
 
       # No record should be created for flows
       final_count = Repo.aggregate(ChangeLog, :count, :id)
@@ -30,7 +30,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       table = "accounts"
       data = %{"id" => account.id, "name" => "test account"}
 
-      assert :ok = on_insert(table, data)
+      assert :ok = on_insert(0, table, data)
 
       # Verify the record was created
       change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
@@ -57,7 +57,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       for {table, data} <- test_cases do
         initial_count = Repo.aggregate(ChangeLog, :count, :id)
 
-        assert :ok = on_insert(table, data)
+        assert :ok = on_insert(0, table, data)
 
         final_count = Repo.aggregate(ChangeLog, :count, :id)
         assert final_count == initial_count + 1
@@ -82,7 +82,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       initial_count = Repo.aggregate(ChangeLog, :count, :id)
 
-      assert :ok = on_update(table, old_data, data)
+      assert :ok = on_update(0, table, old_data, data)
 
       # No record should be created for flows
       final_count = Repo.aggregate(ChangeLog, :count, :id)
@@ -94,7 +94,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       old_data = %{"id" => account.id, "name" => "old name"}
       data = %{"id" => account.id, "name" => "new name"}
 
-      assert :ok = on_update(table, old_data, data)
+      assert :ok = on_update(0, table, old_data, data)
 
       # Verify the record was created
       change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
@@ -126,7 +126,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         "tags" => ["updated", "important"]
       }
 
-      assert :ok = on_update(table, old_data, data)
+      assert :ok = on_update(0, table, old_data, data)
 
       change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
 
@@ -146,7 +146,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       initial_count = Repo.aggregate(ChangeLog, :count, :id)
 
-      assert :ok = on_delete(table, old_data)
+      assert :ok = on_delete(0, table, old_data)
 
       # No record should be created for flows
       final_count = Repo.aggregate(ChangeLog, :count, :id)
@@ -157,7 +157,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       table = "accounts"
       old_data = %{"id" => account.id, "name" => "deleted account"}
 
-      assert :ok = on_delete(table, old_data)
+      assert :ok = on_delete(0, table, old_data)
 
       # Verify the record was created
       change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
@@ -187,7 +187,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         "count" => 42
       }
 
-      assert :ok = on_delete(table, old_data)
+      assert :ok = on_delete(0, table, old_data)
 
       change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
 
@@ -210,14 +210,14 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       initial_count = Repo.aggregate(ChangeLog, :count, :id)
 
       # Should return :ok even if foreign key constraint fails
-      assert :ok = on_insert(table, data)
+      assert :ok = on_insert(0, table, data)
 
       # No record should be created due to foreign key error
       final_count = Repo.aggregate(ChangeLog, :count, :id)
       assert final_count == initial_count
     end
 
-    test "logs and returns :error for non-foreign-key validation errors", %{account: account} do
+    test "logs and handles non-foreign-key validation errors gracefully", %{account: account} do
       # Test with invalid data that would cause validation errors (not foreign key)
       table = "accounts"
       # Missing required fields but valid FK
@@ -227,7 +227,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          assert :error = on_insert(table, data)
+          assert :ok = on_insert(0, table, data)
         end)
 
       # Should log the error
@@ -262,7 +262,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         }
       }
 
-      assert :ok = on_insert(table, complex_data)
+      assert :ok = on_insert(0, table, complex_data)
 
       change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
 
@@ -279,13 +279,13 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       updated_data = %{"id" => account.id, "name" => "updated"}
 
       # Insert
-      assert :ok = on_insert(table, initial_data)
+      assert :ok = on_insert(0, table, initial_data)
 
       # Update
-      assert :ok = on_update(table, initial_data, updated_data)
+      assert :ok = on_update(0, table, initial_data, updated_data)
 
       # Delete
-      assert :ok = on_delete(table, updated_data)
+      assert :ok = on_delete(0, table, updated_data)
 
       # Get the three most recent records in reverse chronological order
       logs =
@@ -336,9 +336,9 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       ]
 
       for data <- test_data_sets do
-        assert :ok = on_insert("flows", data)
-        assert :ok = on_update("flows", data, data)
-        assert :ok = on_delete("flows", data)
+        assert :ok = on_insert(0, "flows", data)
+        assert :ok = on_update(0, "flows", data, data)
+        assert :ok = on_delete(0, "flows", data)
       end
 
       # No records should have been created

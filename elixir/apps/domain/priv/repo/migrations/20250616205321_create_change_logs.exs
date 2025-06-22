@@ -5,7 +5,11 @@ defmodule Domain.Repo.Migrations.CreateChangeLogs do
     create table(:change_logs, primary_key: false) do
       add(:id, :binary_id, primary_key: true)
 
-      add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all))
+      add(:account_id, references(:accounts, type: :binary_id, on_delete: :delete_all),
+        null: false
+      )
+
+      add(:lsn, :bigint, null: false)
       add(:table, :string, null: false)
       add(:op, :string, null: false)
       add(:old_data, :map)

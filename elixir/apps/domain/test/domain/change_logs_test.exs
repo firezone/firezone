@@ -11,6 +11,7 @@ defmodule Domain.ChangeLogsTest do
 
     test "inserts a change_log for an account", %{account: account} do
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :insert,
         old_data: nil,
@@ -28,6 +29,7 @@ defmodule Domain.ChangeLogsTest do
 
     test "uses the 'id' field accounts table updates", %{account: account} do
       attrs = %{
+        lsn: 1,
         table: "accounts",
         op: :update,
         old_data: %{"id" => account.id, "name" => "Old Name"},
@@ -45,6 +47,7 @@ defmodule Domain.ChangeLogsTest do
 
     test "requires vsn field", %{account: account} do
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :insert,
         old_data: nil,
@@ -58,6 +61,7 @@ defmodule Domain.ChangeLogsTest do
 
     test "requires table field", %{account: account} do
       attrs = %{
+        lsn: 1,
         op: :insert,
         old_data: nil,
         data: %{"account_id" => account.id, "key" => "value"},
@@ -71,6 +75,7 @@ defmodule Domain.ChangeLogsTest do
 
     test "requires op field to be one of :insert, :update, :delete", %{account: account} do
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :invalid_op,
         old_data: nil,
@@ -87,6 +92,7 @@ defmodule Domain.ChangeLogsTest do
     test "requires correct combination of operation and data", %{account: account} do
       # Invalid combination: :insert with old_data present
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :insert,
         old_data: %{"account_id" => account.id, "key" => "old_value"},
@@ -100,6 +106,7 @@ defmodule Domain.ChangeLogsTest do
 
       # Valid combination: :insert with old_data nil and data present
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :insert,
         old_data: nil,
@@ -111,6 +118,7 @@ defmodule Domain.ChangeLogsTest do
 
       # Valid combination: :update with both old_data and data present
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :update,
         old_data: %{"account_id" => account.id, "key" => "old_value"},
@@ -122,6 +130,7 @@ defmodule Domain.ChangeLogsTest do
 
       # Valid combination: :delete with old_data present and data nil
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :delete,
         old_data: %{"account_id" => account.id, "key" => "old_value"},
@@ -134,6 +143,7 @@ defmodule Domain.ChangeLogsTest do
 
     test "requires account_id to be populated from old_data or data" do
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :insert,
         old_data: nil,
@@ -150,6 +160,7 @@ defmodule Domain.ChangeLogsTest do
       account: account
     } do
       attrs = %{
+        lsn: 1,
         table: "resources",
         op: :update,
         old_data: %{"account_id" => account.id, "key" => "old_value"},
