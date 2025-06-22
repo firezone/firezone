@@ -43,6 +43,7 @@ jobs:
         id: set-variables
         env:
           release_name: ${{ inputs.release_name || github.event.release.name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -xe
 
