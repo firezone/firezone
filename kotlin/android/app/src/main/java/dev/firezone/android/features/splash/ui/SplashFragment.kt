@@ -34,7 +34,7 @@ internal class SplashFragment : Fragment(R.layout.fragment_splash) {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        
+
         // Save the initial launch state to handle edge cases where the fragment is recreated
         outState.putBoolean("isInitialLaunch", isInitialLaunch)
     }
