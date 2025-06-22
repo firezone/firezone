@@ -44,19 +44,12 @@ pub const MAX_UDP_PAYLOAD: u16 = MAX_IP_PAYLOAD - etherparse::UdpHeader::LEN as 
 ///
 /// - The TUN device MTU is constrained to 1280 ([`MAX_IP_SIZE`]).
 /// - WireGuard adds an overhoad of 32 bytes ([`WG_OVERHEAD`]).
-/// - In case NAT46 comes into effect, the size may increase by 20 ([`NAT46_OVERHEAD`]).
 /// - In case the connection is relayed, a 4 byte overhead is added ([`DATA_CHANNEL_OVERHEAD`]).
 ///
-/// There is only a single scenario within which all of these apply at once:
-/// A client receiving a relayed IPv6 packet from a Gateway from an IPv4-only DNS resource where the sender (i.e. the resource) maxed out the MTU (1280).
-/// In that case, the Gateway needs to translate the packet to IPv6, thus increasing the header size by 20 bytes.
 /// WireGuard adds its fixed 32-byte overhead and the relayed connections adds its 4 byte overhead.
-pub const MAX_FZ_PAYLOAD: usize =
-    MAX_IP_SIZE + WG_OVERHEAD + NAT46_OVERHEAD + DATA_CHANNEL_OVERHEAD;
+pub const MAX_FZ_PAYLOAD: usize = MAX_IP_SIZE + WG_OVERHEAD + DATA_CHANNEL_OVERHEAD;
 /// Wireguard has a 32-byte overhead (4b message type + 4b receiver idx + 8b packet counter + 16b AEAD tag)
 pub const WG_OVERHEAD: usize = 32;
-/// In order to do NAT46 without copying, we need 20 extra byte in the buffer (IPv6 packets are 20 byte bigger than IPv4).
-pub(crate) const NAT46_OVERHEAD: usize = 20;
 /// TURN's data channels have a 4 byte overhead.
 pub const DATA_CHANNEL_OVERHEAD: usize = 4;
 
@@ -132,7 +125,7 @@ impl IpPacketBuf {
     }
 
     pub fn buf(&mut self) -> &mut [u8] {
-        &mut self.inner[NAT46_OVERHEAD..] // We read packets at an offset so we can convert without copying.
+        &mut self.inner
     }
 }
 
@@ -206,17 +199,12 @@ impl std::fmt::Debug for IpPacket {
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv4Packet {
     buf: Buffer<Vec<u8>>,
-    start: usize,
     len: usize,
 }
 
 impl ConvertibleIpv4Packet {
     pub fn new(ip: IpPacketBuf, len: usize) -> Result<ConvertibleIpv4Packet> {
-        let this = Self {
-            buf: ip.inner,
-            start: NAT46_OVERHEAD,
-            len,
-        };
+        let this = Self { buf: ip.inner, len };
         Ipv4Slice::from_slice(this.packet()).context("Invalid IPv4 packet")?;
 
         Ok(this)
@@ -243,28 +231,23 @@ impl ConvertibleIpv4Packet {
     }
 
     pub fn packet(&self) -> &[u8] {
-        &self.buf[self.start..(self.start + self.len)]
+        &self.buf[..self.len]
     }
 
     fn packet_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[self.start..(self.start + self.len)]
+        &mut self.buf[..self.len]
     }
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct ConvertibleIpv6Packet {
     buf: Buffer<Vec<u8>>,
-    start: usize,
     len: usize,
 }
 
 impl ConvertibleIpv6Packet {
     pub fn new(ip: IpPacketBuf, len: usize) -> Result<ConvertibleIpv6Packet> {
-        let this = Self {
-            buf: ip.inner,
-            start: NAT46_OVERHEAD,
-            len,
-        };
+        let this = Self { buf: ip.inner, len };
 
         Ipv6Slice::from_slice(this.packet()).context("Invalid IPv6 packet")?;
 
@@ -289,11 +272,11 @@ impl ConvertibleIpv6Packet {
     }
 
     pub fn packet(&self) -> &[u8] {
-        &self.buf[self.start..(self.start + self.len)]
+        &self.buf[..self.len]
     }
 
     fn packet_mut(&mut self) -> &mut [u8] {
-        &mut self.buf[self.start..(self.start + self.len)]
+        &mut self.buf[..self.len]
     }
 }
 
@@ -333,7 +316,7 @@ impl IpPacket {
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
 
-        Ok(match buf.inner[NAT46_OVERHEAD] >> 4 {
+        Ok(match buf.inner[0] >> 4 {
             4 => IpPacket::Ipv4(ConvertibleIpv4Packet::new(buf, len)?),
             6 => IpPacket::Ipv6(ConvertibleIpv6Packet::new(buf, len)?),
             v => bail!("Invalid IP version: {v}"),
