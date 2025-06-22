@@ -81,10 +81,27 @@ defmodule Domain.Application do
   end
 
   defp replication do
-    config = Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+    config = Application.fetch_env!(:domain, Domain.Replication.Connection)
 
     if config[:enabled] do
-      [Domain.Events.ReplicationConnectionManager]
+      [
+        %{
+          id: :events_replication,
+          start: {
+            Domain.Replication.Manager,
+            :start_link,
+            [Domain.Events.ReplicationConnection, []]
+          }
+        },
+        %{
+          id: :change_logs_replication,
+          start: {
+            Domain.Replication.Manager,
+            :start_link,
+            [Domain.ChangeLogs.ReplicationConnection, []]
+          }
+        }
+      ]
     else
       []
     end

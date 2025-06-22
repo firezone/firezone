@@ -33,7 +33,7 @@ config :domain, Domain.Repo,
   migration_lock: :pg_advisory_lock,
   start_apps_before_migration: [:ssl, :logger_json]
 
-config :domain, Domain.Events.ReplicationConnection,
+config :domain, Domain.Replication.Connection,
   enabled: true,
   connection_opts: [
     hostname: "localhost",

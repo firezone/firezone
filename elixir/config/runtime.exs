@@ -27,7 +27,7 @@ if config_env() == :prod do
              else: [{:hostname, env_var_to_config!(:database_host)}]
            )
 
-  config :domain, Domain.Events.ReplicationConnection,
+  config :domain, Domain.Replication.Connection,
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_replication_slot_name),
     publication_name: env_var_to_config!(:database_publication_name),

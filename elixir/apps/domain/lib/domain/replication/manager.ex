@@ -1,4 +1,4 @@
-defmodule Domain.Events.ReplicationConnectionManager do
+defmodule Domain.Replication.Manager do
   @moduledoc """
     Manages the Postgrex.ReplicationConnection to ensure that we always have one running to prevent
     unbounded growth of the WAL log and ensure we are processing events.
@@ -12,22 +12,22 @@ defmodule Domain.Events.ReplicationConnectionManager do
   # but not too long to avoid broadcasting needed events.
   @max_retries 10
 
-  def start_link(opts) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+  def start_link(connection_module, opts) do
+    GenServer.start_link(__MODULE__, connection_module, opts)
   end
 
   @impl true
-  def init(_opts) do
-    send(self(), :connect)
+  def init(connection_module) do
+    send(self(), {:connect, connection_module})
 
     {:ok, %{retries: 0}}
   end
 
   @impl true
-  def handle_info(:connect, %{retries: retries} = state) do
-    Process.send_after(self(), :connect, @retry_interval)
+  def handle_info({:connect, connection_module}, %{retries: retries} = state) do
+    Process.send_after(self(), {:connect, connection_module}, @retry_interval)
 
-    case Domain.Events.ReplicationConnection.start_link(replication_child_spec()) do
+    case apply(connection_module, :start_link, [replication_child_spec(connection_module)]) do
       {:ok, _pid} ->
         # Our process won
         {:noreply, %{state | retries: 0}}
@@ -38,7 +38,7 @@ defmodule Domain.Events.ReplicationConnectionManager do
 
       {:error, reason} ->
         if retries < @max_retries do
-          Logger.info("Failed to start replication connection",
+          Logger.info("Failed to start replication connection #{connection_module}",
             retries: retries,
             max_retries: @max_retries,
             reason: inspect(reason)
@@ -47,7 +47,7 @@ defmodule Domain.Events.ReplicationConnectionManager do
           {:noreply, %{state | retries: retries + 1}}
         else
           Logger.error(
-            "Failed to start replication connection after #{@max_retries} attempts, giving up!",
+            "Failed to start replication connection #{connection_module} after #{@max_retries} attempts, giving up!",
             reason: inspect(reason)
           )
 
@@ -57,14 +57,14 @@ defmodule Domain.Events.ReplicationConnectionManager do
     end
   end
 
-  defp replication_child_spec do
+  def replication_child_spec(connection_module) do
     {connection_opts, config} =
-      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+      Application.fetch_env!(:domain, Domain.Replication.Connection)
       |> Keyword.pop(:connection_opts)
 
     %{
       connection_opts: connection_opts,
-      instance: struct(Domain.Events.ReplicationConnection, config)
+      instance: struct(connection_module, config)
     }
   end
 end
