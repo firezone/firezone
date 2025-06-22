@@ -15,8 +15,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      release_name: ${{ steps.release.outputs.name }}
+    steps:
+      - id: release
+        run: |
+          name="${{ inputs.release_name || github.event.release.name }}"
+          echo "name=${name}" >> "$GITHUB_OUTPUT"
+
   publish-docker-images:
-    if: ${{ startsWith(inputs.release_name || github.event.release.name, 'gateway') || startsWith(inputs.release_name || github.event.release.name, 'headless-client') }}
+    if: ${{ startsWith(jobs.resolve.outputs.release_name, 'gateway') || startsWith(jobs.resolve.outputs.release_name, 'headless-client') }}
     runs-on: ubuntu-22.04
     permissions:
       # Needed to upload artifacts to a release
@@ -37,17 +47,17 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Set variables
         id: set-variables
+        env:
+          release_name: ${{ jobs.resolve.outputs.release_name }}
         run: |
           set -xe
 
-          if [[ "${{ inputs.release_name || github.event.release.name }}" =~ gateway* ]]; then
+          if [[ "$release_name" =~ gateway* ]]; then
             ARTIFACT=gateway
-            # mark:next-gateway-version
-            VERSION="1.4.12"
-          elif [[ "${{ inputs.release_name || github.event.release.name }}" =~ headless* ]]; then
+            VERSION=${release_name#gateway-}
+          elif [[ "$release_name" =~ headless* ]]; then
             ARTIFACT=client
-            # mark:next-headless-version
-            VERSION="1.5.1"
+            VERSION=${release_name#headless-client-}
           else
             echo "Shouldn't have gotten here. Exiting."
             exit 1
@@ -56,22 +66,25 @@ jobs:
           MAJOR_VERSION="${VERSION%%.*}"
           MAJOR_MINOR_VERSION="${VERSION%.*}"
 
+          sha=$(gh release view "${release_name}" --json targetCommitish -q '.targetCommitish')
+
           echo "artifact=$ARTIFACT" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "major_version=$MAJOR_VERSION" >> "$GITHUB_OUTPUT"
           echo "major_minor_version=$MAJOR_MINOR_VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
       - name: Pull and push
         run: |
           set -xe
 
-          SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${{ steps.set-variables.outputs.artifact }}:${{ github.sha }}
+          SOURCE_TAG=${{ steps.login.outputs.registry }}/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.sha }}
 
           docker buildx imagetools create \
-            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ github.sha }} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.sha }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }} \
-            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }}-${{ github.sha }} \
+            -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.version }}-${{ steps.set-variables.outputs.sha }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_version }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:${{ steps.set-variables.outputs.major_minor_version }} \
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
@@ -93,24 +106,24 @@ jobs:
           for arch in "${ARCHITECTURES[@]}"; do
             # Copy sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt \
               gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/${arch}.sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}.sha256sum.txt \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}.sha256sum.txt \
               gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}.sha256sum.txt
 
             # Copy binaries
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch} \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch} \
               gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/latest/${arch}
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch} \
-              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch}
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch} \
+              gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch}
             gcloud storage cp \
-              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ github.sha }}/${arch} \
+              gs://firezone-staging-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.sha }}/${arch} \
               gs://firezone-prod-artifacts/firezone-${{ steps.set-variables.outputs.artifact }}/${{ steps.set-variables.outputs.version }}/${arch}
           done
 
