@@ -15,18 +15,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  resolve:
-    runs-on: ubuntu-latest
-    outputs:
-      release_name: ${{ steps.release.outputs.name }}
-    steps:
-      - id: release
-        run: |
-          name="${{ inputs.release_name || github.event.release.name }}"
-          echo "name=${name}" >> "$GITHUB_OUTPUT"
-
   publish-docker-images:
-    if: ${{ startsWith(jobs.resolve.outputs.release_name, 'gateway') || startsWith(jobs.resolve.outputs.release_name, 'headless-client') }}
+    if: ${{ \
+      startsWith(inputs.release_name || github.event.release.name, 'gateway') || \
+      startsWith(inputs.release_name || github.event.release.name, 'headless-client') }}
     runs-on: ubuntu-22.04
     permissions:
       # Needed to upload artifacts to a release
@@ -48,7 +40,7 @@ jobs:
       - name: Set variables
         id: set-variables
         env:
-          release_name: ${{ jobs.resolve.outputs.release_name }}
+          release_name: ${{ inputs.release_name || github.event.release.name }}
         run: |
           set -xe
 
