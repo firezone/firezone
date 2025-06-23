@@ -87,32 +87,31 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         {:compressed_metrics, compressed},
         {events, project_id, {resource, labels}, {buffer_length, buffer}}
       ) do
-    {buffer_length, buffer} =
-      if length(compressed) + buffer_length >= @buffer_capacity do
-        # Flush existing buffer if the new metrics push us over the buffer capacity
-        flush(project_id, resource, labels, {buffer_length, buffer})
-
-        {0, %{}}
-      else
-        # Otherwise, just append the new metrics to the existing buffer
-        {buffer_length, buffer}
-      end
-
-    {buffer_length, buffer} =
+    # Process each metric and flush if we hit capacity
+    {final_buffer_length, final_buffer} =
       Enum.reduce(
         compressed,
         {buffer_length, buffer},
-        fn {schema, name, tags, at, measurement, unit}, {buffer_length, buffer} ->
-          {increment, buffer} =
-            Map.get_and_update(buffer, {schema, name, tags, unit}, fn prev_value ->
+        fn {schema, name, tags, at, measurement, unit}, {acc_buffer_length, acc_buffer} ->
+          # Check if we need to flush before adding this metric
+          {acc_buffer_length, acc_buffer} =
+            if acc_buffer_length >= @buffer_capacity do
+              flush(project_id, resource, labels, {acc_buffer_length, acc_buffer})
+            else
+              {acc_buffer_length, acc_buffer}
+            end
+
+          # Add the metric to buffer
+          {increment, updated_buffer} =
+            Map.get_and_update(acc_buffer, {schema, name, tags, unit}, fn prev_value ->
               buffer(schema, prev_value, at, measurement)
             end)
 
-          {buffer_length + increment, buffer}
+          {acc_buffer_length + increment, updated_buffer}
         end
       )
 
-    {:noreply, {events, project_id, {resource, labels}, {buffer_length, buffer}}}
+    {:noreply, {events, project_id, {resource, labels}, {final_buffer_length, final_buffer}}}
   end
 
   def handle_info(:flush, {events, project_id, {resource, labels}, {buffer_length, buffer}}) do
@@ -287,13 +286,16 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetrics do
         {0, %{}}
 
       {:error, reason} ->
-        Logger.warning("Failed to send metrics to Google Cloud Monitoring API",
+        # Will happen for both 4xx and 5xx errors. Metrics aren't critical, so just reset
+        # the buffer to avoid filling it in case Google API is down.
+        Logger.warning("Failed to send metrics to Google Cloud, dropping buffer",
           reason: inspect(reason),
           time_series: inspect(time_series),
-          count: buffer_length
+          buffer_length: buffer_length,
+          buffer: inspect(buffer)
         )
 
-        {buffer_length, buffer}
+        {0, %{}}
     end
   end
 
