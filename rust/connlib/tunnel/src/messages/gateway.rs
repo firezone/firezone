@@ -120,6 +120,8 @@ pub struct InitGateway {
     pub config: Config,
     #[serde(default)]
     pub relays: Vec<Relay>,
+    #[serde(default)]
+    pub account_slug: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
