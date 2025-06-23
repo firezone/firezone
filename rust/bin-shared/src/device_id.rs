@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeviceId {
     pub id: String,
 }
@@ -141,5 +141,23 @@ struct DeviceIdJson {
 impl DeviceIdJson {
     fn device_id(&self) -> String {
         self.id.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use super::*;
+
+    #[test]
+    fn creates_id_if_not_exist() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("id.json");
+
+        let created_device_id = get_or_create_at(&path).unwrap();
+        let read_device_id = get_at(&path).unwrap();
+
+        assert_eq!(created_device_id, read_device_id);
     }
 }
