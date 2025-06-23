@@ -57,7 +57,7 @@ Set some environment variables to configure it:
 
 ```bash
 export FIREZONE_NAME="Development API test client"
-export FIREZONE_ID=$(uuidgen | sha256)
+export FIREZONE_ID=$(head -c 32 /dev/urandom | sha256)
 export FIREZONE_TOKEN=<TOKEN>
 export LOG_DIR="./"
 sudo -E ./firezone-client-headless-linux_1.0.0_x86_64

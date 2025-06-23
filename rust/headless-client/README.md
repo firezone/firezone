@@ -19,7 +19,7 @@ To run the headless Client:
 1. Ensure `/etc/dev.firezone.client/token` is only readable by root (i.e. `chmod 400`)
 1. Ensure `/etc/dev.firezone.client/token` contains the Service account token. The Client needs this before it can start
 1. Set `FIREZONE_ID` to a unique string to identify this client in the portal,
-   e.g. `export FIREZONE_ID=$(uuidgen | sha256)`. The client requires this variable at
+   e.g. `export FIREZONE_ID=$(head -c 32 /dev/urandom | sha256)`. The client requires this variable at
    startup. We recommend this to be a 64 character hex string.
 1. Set `LOG_DIR` to a suitable directory for writing logs
    ```
