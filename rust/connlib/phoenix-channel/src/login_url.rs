@@ -6,6 +6,7 @@ use std::{
     iter,
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    str::FromStr as _,
 };
 use url::Url;
 use uuid::Uuid;
@@ -83,7 +84,12 @@ impl LoginUrl<PublicKeyParam> {
         device_name: Option<String>,
         device_info: DeviceInfo,
     ) -> Result<Self, LoginUrlError<E>> {
-        let external_id = hex::encode(sha2::Sha256::digest(device_id));
+        let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
+            hex::encode(sha2::Sha256::digest(device_id))
+        } else {
+            device_id
+        };
+
         let device_name = device_name
             .or(get_host_name())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -116,7 +122,11 @@ impl LoginUrl<PublicKeyParam> {
         device_id: String,
         device_name: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
-        let external_id = hex::encode(sha2::Sha256::digest(device_id));
+        let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
+            hex::encode(sha2::Sha256::digest(device_id))
+        } else {
+            device_id
+        };
         let device_name = device_name
             .or(get_host_name())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
