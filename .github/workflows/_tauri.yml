@@ -13,10 +13,14 @@ env:
   RUSTDOCFLAGS: "-D warnings"
   TSLINK_BUILD: true
 
+permissions:
+  contents: "read"
+  id-token: "write"
+
 jobs:
   update-release-draft:
     name: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     env:
       # mark:next-gui-version
       RELEASE_NAME: gui-client-1.5.5
@@ -34,12 +38,54 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   static-analysis:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-node
       - run: pnpm install
       - run: pnpm eslint .
+
+  # Runs the Tauri client smoke test, built in debug mode. We can't run it in release
+  # mode because of a known issue: <https://github.com/firezone/firezone/blob/456e044f882c2bb314e19cc44c0d19c5ad817b7c/rust/windows-client/src-tauri/src/client.rs#L162-L164>
+  smoke-test:
+    name: gui-smoke-test-${{ matrix.runs-on }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on:
+          [
+            ubuntu-22.04-xlarge,
+            ubuntu-24.04-xlarge,
+            windows-2022-xlarge,
+            windows-2025-xlarge,
+          ]
+    runs-on: ${{ matrix.runs-on }}
+    defaults:
+      run:
+        # Must be in this dir for `pnpm` to work
+        working-directory: ./rust/gui-client
+      # The Windows client ignores RUST_LOG because it uses a settings file instead
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: ./.github/actions/setup-node
+      - uses: ./.github/actions/setup-rust
+      - uses: ./.github/actions/setup-tauri-v2
+        timeout-minutes: 10
+        with:
+          runtime: true
+      - run: pnpm install
+      - run: pnpm vite build
+      - name: Build client
+        run: cargo build -p firezone-gui-client --all-targets
+      - uses: taiki-e/install-action@1cefd1553b1693f47889dc747f7d230904296a3b # v2.52.6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: dump_syms
+      - name: Run smoke test
+        working-directory: ./rust
+        run: cargo run -p gui-smoke-test
+        timeout-minutes: 2
 
   build-gui:
     name: build-gui-${{ matrix.runs-on }}
@@ -52,15 +98,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runs-on: ubuntu-22.04
+          - runs-on: ubuntu-22.04-xlarge
             arch: x86_64
             os: linux
             pkg-extension: deb
-          - runs-on: ubuntu-22.04-arm
+          - runs-on: ubuntu-22.04-arm-xlarge
             arch: aarch64
             os: linux
             pkg-extension: deb
-          - runs-on: windows-2022
+          - runs-on: windows-2022-xlarge
             arch: x86_64
             os: windows
             pkg-extension: msi

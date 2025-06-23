@@ -29,15 +29,11 @@ internal class AuthViewModel
                 repo.saveNonceSync(nonce)
                 repo.saveStateSync(state)
                 val config = repo.getConfigSync()
-                val token = repo.getTokenSync()
 
                 actionMutableLiveData.postValue(
-                    if (authFlowLaunched || token != null) {
-                        ViewAction.NavigateToSignIn
-                    } else {
-                        authFlowLaunched = true
-                        ViewAction.LaunchAuthFlow("${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=client")
-                    },
+                    ViewAction.LaunchAuthFlow(
+                        "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=client",
+                    ),
                 )
             }
 
