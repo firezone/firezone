@@ -26,7 +26,7 @@ public final class ZipService {
     source directoryURL: URL,
     to zipFinalURL: URL,
   ) throws {
-    // see URL extension below
+    // see URL extension above
     guard directoryURL.isDirectory else {
       throw CreateZipError.urlNotADirectory(directoryURL)
     }

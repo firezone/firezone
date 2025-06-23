@@ -109,7 +109,10 @@ import System
     }
 
     static func export(to archiveURL: URL) async throws {
-      guard let logFolderURL = SharedAccess.logFolderURL
+      guard let logFolderURL = SharedAccess.logFolderURL,
+        let connlibLogFolderURL = SharedAccess.connlibLogFolderURL,
+        let cacheFolderURL = SharedAccess.cacheFolderURL
+
       else {
         throw ExportError.invalidSourceDirectory
       }
@@ -117,10 +120,21 @@ import System
       // Remove existing archive if it exists
       try? fileManager.removeItem(at: archiveURL)
 
+      let latestSymlink = connlibLogFolderURL.appendingPathComponent("latest")
+      let tempSymlink = cacheFolderURL.appendingPathComponent(
+        "latest")
+
+      // Move the `latest` symlink out of the way before creating the archive.
+      // Apple's implementation of zip appears to not be able to handle symlinks well
+      let _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
+      defer {
+        let _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
+      }
+
       // Write final log archive
-      try LogCompressor().start(
-        source: toPath(logFolderURL),
-        to: toPath(archiveURL)
+      try ZipService.createZip(
+        source: logFolderURL,
+        to: archiveURL
       )
     }
 
@@ -128,7 +142,7 @@ import System
     // directory and then the OS will move it into place when the ShareSheet
     // is dismissed.
     static func tempFile() -> URL {
-      let fileName = "firezone_logs_\(now()).aar"
+      let fileName = "firezone_logs_\(now()).zip"
       return fileManager.temporaryDirectory.appendingPathComponent(fileName)
     }
   }

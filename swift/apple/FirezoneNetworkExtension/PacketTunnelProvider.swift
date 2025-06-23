@@ -243,7 +243,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       sendChunk(tunnelLogArchive)
 
     case .idle:
-      guard let logFolderURL = SharedAccess.connlibLogFolderURL
+      guard let logFolderURL = SharedAccess.logFolderURL,
+        let cacheFolderURL = SharedAccess.cacheFolderURL,
+        let connlibLogFolderURL = SharedAccess.connlibLogFolderURL
       else {
         completionHandler(nil)
 
@@ -252,8 +254,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       let tunnelLogArchive = TunnelLogArchive(source: logFolderURL)
 
-      let latestSymlink = logFolderURL.appendingPathComponent("latest")
-      let tempSymlink = logFolderURL.deletingLastPathComponent().appendingPathComponent("latest")
+      let latestSymlink = connlibLogFolderURL.appendingPathComponent("latest")
+      let tempSymlink = cacheFolderURL.appendingPathComponent(
+        "latest")
 
       do {
         // Move the `latest` symlink out of the way before creating the archive.
