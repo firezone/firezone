@@ -15,7 +15,6 @@ locally.
    the same JDK on the CLI as Android Studio.
 
 1. Install the Android SDK through Android Studio.
-
    - Open Android studio, go to Android Studio > Preferences
    - Search for `sdk`
    - Find the `Android SDK` nav item under `System Settings` and select
