@@ -6,7 +6,7 @@ on:
 jobs:
   update-release-draft:
     name: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     env:
       # mark:next-apple-version
       RELEASE_NAME: macos-client-1.5.4
@@ -26,7 +26,7 @@ jobs:
   build:
     name: ${{ matrix.job_name }}
     needs: update-release-draft
-    runs-on: macos-15
+    runs-on: macos-15-xlarge
     env:
       XCODE_MAJOR: 16
     permissions:

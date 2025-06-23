@@ -12,7 +12,7 @@ on:
 jobs:
   publish_clients:
     name: Publish ${{ matrix.identifier }} to winget
-    runs-on: windows-latest
+    runs-on: windows-latest-xlarge
     permissions:
       contents: write
       packages: write

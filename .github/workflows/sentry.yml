@@ -12,7 +12,7 @@ concurrency:
 jobs:
   create_sentry_release:
     name: create_${{ matrix.component }}_sentry_release
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     strategy:
       matrix:
         include:
