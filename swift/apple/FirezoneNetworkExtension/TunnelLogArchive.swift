@@ -4,7 +4,6 @@
 //  LICENSE: Apache-2.0
 //
 
-import AppleArchive
 import FirezoneKit
 import Foundation
 import System
@@ -24,8 +23,7 @@ import System
 ///
 /// Currently this limit is set to 1 MB (chosen somewhat arbitrarily based on limited information found on the
 /// web), but can be easily enlarged in the future to reduce the number of IPC calls required to consume
-/// the entire archive. The LZFSE compression algorithm used by default in the Apple Archive Framework is
-/// quite efficient -- compression ratios for our logs can be as high as 100:1 using this format.
+/// the entire archive.
 class TunnelLogArchive {
   enum ArchiveError: Error {
     case unableToWriteArchive
@@ -37,13 +35,13 @@ class TunnelLogArchive {
   let archiveURL = FileManager
     .default
     .temporaryDirectory
-    .appendingPathComponent("logs.aar")
+    .appendingPathComponent("logs.zip")
 
   var offset: UInt64 = 0
   var fileHandle: FileHandle?
-  var source: FilePath
+  var source: URL
 
-  init(source: FilePath) {
+  init(source: URL) {
     self.source = source
   }
 
@@ -52,16 +50,11 @@ class TunnelLogArchive {
   }
 
   func archive() throws {
-    guard let archivePath = FilePath(self.archiveURL)
-    else {
-      throw ArchiveError.unableToWriteArchive
-    }
-
     try? FileManager.default.removeItem(at: self.archiveURL)
 
-    try LogCompressor().start(
+    try ZipService.createZip(
       source: source,
-      to: archivePath
+      to: self.archiveURL
     )
   }
 

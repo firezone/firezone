@@ -244,16 +244,28 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     case .idle:
       guard let logFolderURL = SharedAccess.logFolderURL,
-        let logFolderPath = FilePath(logFolderURL)
+        let cacheFolderURL = SharedAccess.cacheFolderURL,
+        let connlibLogFolderURL = SharedAccess.connlibLogFolderURL
       else {
         completionHandler(nil)
 
         return
       }
 
-      let tunnelLogArchive = TunnelLogArchive(source: logFolderPath)
+      let tunnelLogArchive = TunnelLogArchive(source: logFolderURL)
+
+      let latestSymlink = connlibLogFolderURL.appendingPathComponent("latest")
+      let tempSymlink = cacheFolderURL.appendingPathComponent(
+        "latest")
 
       do {
+        // Move the `latest` symlink out of the way before creating the archive.
+        // Apple's implementation of zip appears to not be able to handle symlinks well
+        let _ = try? FileManager.default.moveItem(at: latestSymlink, to: tempSymlink)
+        defer {
+          let _ = try? FileManager.default.moveItem(at: tempSymlink, to: latestSymlink)
+        }
+
         try tunnelLogArchive.archive()
       } catch {
         Log.error(error)
