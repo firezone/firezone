@@ -71,6 +71,11 @@ fn try_main(
         .inspect_err(|e| tracing::debug!("Failed to load MDM settings {e:#}"))
         .unwrap_or_default();
 
+    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
+    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
+    let id = firezone_bin_shared::device_id::get().context("Failed to get device ID")?;
+    Telemetry::set_firezone_id(id.id.clone());
+
     let api_url = mdm_settings
         .api_url
         .as_ref()
@@ -99,12 +104,6 @@ fn try_main(
         logger: _logger,
         reloader,
     } = firezone_gui_client::logging::setup_gui(&log_filter)?;
-
-    // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
-    // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    if let Ok(id) = firezone_bin_shared::device_id::get() {
-        Telemetry::set_firezone_id(id.id);
-    }
 
     match cli.command {
         None if cli.check_elevation() => match elevation::gui_check() {
