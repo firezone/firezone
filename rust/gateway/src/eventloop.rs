@@ -5,6 +5,7 @@ use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
 use firezone_bin_shared::TunDeviceManager;
 use firezone_logging::telemetry_span;
+use firezone_telemetry::Telemetry;
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -377,6 +378,10 @@ impl Eventloop {
                 msg: IngressMessages::Init(init),
                 ..
             } => {
+                if let Some(account_slug) = init.account_slug {
+                    Telemetry::set_account_slug(account_slug);
+                }
+
                 self.tunnel.state_mut().update_relays(
                     BTreeSet::default(),
                     firezone_tunnel::turn(&init.relays),
