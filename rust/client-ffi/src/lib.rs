@@ -231,7 +231,12 @@ fn connect(
     Telemetry::set_firezone_id(device_id.clone());
     Telemetry::set_account_slug(account_slug);
 
-    analytics::identify(device_id.clone(), api_url.to_string(), RELEASE.to_owned());
+    analytics::identify(
+        device_id.clone(),
+        api_url.to_string(),
+        RELEASE.to_owned(),
+        Some(account_slug),
+    );
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();

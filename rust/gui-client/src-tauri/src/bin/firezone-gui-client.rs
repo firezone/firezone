@@ -104,8 +104,6 @@ fn try_main(
     // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
     if let Ok(id) = firezone_bin_shared::device_id::get() {
         Telemetry::set_firezone_id(id.id.clone());
-
-        analytics::identify(id.id, api_url, firezone_gui_client::RELEASE.to_owned());
     }
 
     match cli.command {
