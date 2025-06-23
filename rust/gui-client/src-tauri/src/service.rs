@@ -552,13 +552,13 @@ impl<'a> Handler<'a> {
                 Telemetry::set_firezone_id(self.device_id.id.clone());
 
                 if let Some(account_slug) = account_slug {
-                    Telemetry::set_account_slug(account_slug);
+                    Telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(
                         self.device_id.id.clone(),
                         environment,
                         release,
-                        account_slug,
+                        Some(account_slug),
                     );
                 }
             }

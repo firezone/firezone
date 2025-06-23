@@ -229,7 +229,7 @@ fn connect(
     let mut telemetry = Telemetry::default();
     telemetry.start(&api_url, RELEASE, platform::DSN);
     Telemetry::set_firezone_id(device_id.clone());
-    Telemetry::set_account_slug(account_slug);
+    Telemetry::set_account_slug(account_slug.clone());
 
     analytics::identify(
         device_id.clone(),
