@@ -71,6 +71,8 @@ jobs:
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
+        env:
+          CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise Windows fails to link the binaries.
       - uses: taiki-e/install-action@1cefd1553b1693f47889dc747f7d230904296a3b # v2.52.6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
