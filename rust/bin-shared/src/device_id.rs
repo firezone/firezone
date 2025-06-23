@@ -147,6 +147,7 @@ impl DeviceIdJson {
 #[cfg(test)]
 mod tests {
     use tempfile::tempdir;
+    use uuid::Uuid;
 
     use super::*;
 
@@ -159,5 +160,23 @@ mod tests {
         let read_device_id = get_at(&path).unwrap();
 
         assert_eq!(created_device_id, read_device_id);
+    }
+
+    #[test]
+    fn does_not_override_existing_id() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("id.json");
+
+        let plain_id = Uuid::new_v4();
+
+        let json = serde_json::to_string(&serde_json::json!({
+            "id": plain_id
+        }))
+        .unwrap();
+        std::fs::write(&path, json).unwrap();
+
+        let read_device_id = get_or_create_at(&path).unwrap();
+
+        assert_eq!(read_device_id.id, plain_id.to_string());
     }
 }
