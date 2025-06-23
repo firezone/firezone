@@ -2,6 +2,7 @@
 
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
+use sha2::Digest;
 use std::{
     fs,
     io::Write,
@@ -38,7 +39,7 @@ fn get_at(path: &Path) -> Result<DeviceId> {
         .context("Failed to deserialize content as JSON")?;
 
     Ok(DeviceId {
-        id: device_id_json.device_id(),
+        id: device_id_json.id,
     })
 }
 
@@ -76,16 +77,15 @@ fn get_or_create_at(path: &Path) -> Result<DeviceId> {
         .ok()
         .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
     {
-        let id = j.device_id();
-        tracing::debug!(?id, "Loaded device ID from disk");
+        tracing::debug!(id = %j.id, "Loaded device ID from disk");
         // Correct permissions for #6989
         set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
-        return Ok(DeviceId { id });
+        return Ok(DeviceId { id: j.id });
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
-    let id = uuid::Uuid::new_v4();
-    let j = DeviceIdJson { id };
+    let id = hex::encode(sha2::Sha256::digest(uuid::Uuid::new_v4().to_string()));
+    let j = DeviceIdJson { id: id.clone() };
 
     let content =
         serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
@@ -94,8 +94,7 @@ fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     file.write(|f| f.write_all(content.as_bytes()))
         .context("Failed to write firezone-id file")?;
 
-    let id = j.device_id();
-    tracing::debug!(?id, "Saved device ID to disk");
+    tracing::debug!(%id, "Saved device ID to disk");
     set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
     Ok(DeviceId { id })
 }
@@ -135,13 +134,7 @@ fn set_id_permissions(_: &Path) -> Result<()> {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct DeviceIdJson {
-    id: uuid::Uuid,
-}
-
-impl DeviceIdJson {
-    fn device_id(&self) -> String {
-        self.id.to_string()
-    }
+    id: String,
 }
 
 #[cfg(test)]
