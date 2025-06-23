@@ -5,7 +5,7 @@ use std::{borrow::Cow, fmt, str::FromStr, sync::Arc, time::Duration};
 use anyhow::{Ok, Result, bail};
 use sentry::{
     BeforeCallback,
-    protocol::{Event, SessionStatus},
+    protocol::{Event, Log, LogAttribute, SessionStatus},
 };
 use sha2::Digest as _;
 
@@ -160,6 +160,7 @@ impl Telemetry {
                 max_breadcrumbs: 500,
                 before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
                 enable_logs: true,
+                before_send_log: Some(Arc::new(append_tracing_fields_to_message)),
                 ..Default::default()
             },
         ));
@@ -260,6 +261,33 @@ fn event_rate_limiter(timeout: Duration) -> BeforeCallback<Event<'static>> {
 
         Some(event)
     })
+}
+
+/// Appends all but certain attributes from a sentry [`Log`] to the message body.
+///
+/// Sentry stores all [`tracing`] fields as attributes and only renders the message.
+/// Within Firezone, we make extensive use of attributes to provide contextual information.
+/// We want to see these attributes inline with the message which is why we emulate the behaviour of `tracing_subscriber::fmt` here.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "We need to match Sentry's config signature."
+)]
+fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
+    const IGNORED_ATTRS: &[&str] = &["os.", "sentry.", "tracing.", "server.", "user."];
+
+    for (key, attribute) in &log.attributes {
+        let LogAttribute(serde_json::Value::String(attr_string)) = &attribute else {
+            continue;
+        };
+
+        if IGNORED_ATTRS.iter().any(|attr| key.starts_with(attr)) {
+            continue;
+        }
+
+        log.body.push_str(&format!(" {key}={attr_string}"));
+    }
+
+    Some(log)
 }
 
 fn update_user(update: impl FnOnce(&mut sentry::User)) {
