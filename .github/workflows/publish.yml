@@ -21,7 +21,7 @@ jobs:
         startsWith(inputs.release_name || github.event.release.name, 'gateway') ||
         startsWith(inputs.release_name || github.event.release.name, 'headless-client')
       }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     permissions:
       # Needed to upload artifacts to a release
       packages: write
@@ -123,7 +123,7 @@ jobs:
           done
 
   create-publish-pr:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-xlarge
     strategy:
       matrix:
         component:
