@@ -20,7 +20,7 @@ permissions:
 jobs:
   update-release-draft:
     name: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     env:
       # mark:next-gui-version
       RELEASE_NAME: gui-client-1.5.5
@@ -38,7 +38,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   static-analysis:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-node
@@ -52,7 +52,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-22.04, ubuntu-24.04, windows-2022, windows-2025]
+        runs-on: [ubuntu-22.04-xlarge, ubuntu-24.04-xlarge, windows-2022-xlarge, windows-2025-xlarge]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
@@ -92,15 +92,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runs-on: ubuntu-22.04
+          - runs-on: ubuntu-22.04-xlarge
             arch: x86_64
             os: linux
             pkg-extension: deb
-          - runs-on: ubuntu-22.04-arm
+          - runs-on: ubuntu-22.04-arm-xlarge
             arch: aarch64
             os: linux
             pkg-extension: deb
-          - runs-on: windows-2022
+          - runs-on: windows-2022-xlarge
             arch: x86_64
             os: windows
             pkg-extension: msi
