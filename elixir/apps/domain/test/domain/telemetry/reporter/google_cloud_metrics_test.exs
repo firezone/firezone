@@ -4,11 +4,16 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
   alias Domain.Mocks.GoogleCloudPlatform
 
   describe "handle_info/2 for :compressed_metrics" do
-    test "aggregates and delivers Metrics.Counter metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
+    setup do
+      %Bypass{} =
+        Bypass.open()
+        |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
+        |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
 
+      :ok
+    end
+
+    test "aggregates and delivers Metrics.Counter metrics" do
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -79,10 +84,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.Distribution metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -186,10 +187,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.Sum metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -260,10 +257,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.Summary metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -385,10 +378,6 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "aggregates and delivers Metrics.LastValue metrics" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       one_minute_ago = DateTime.add(now, -1, :minute)
       two_minutes_ago = DateTime.add(now, -2, :minute)
@@ -458,16 +447,12 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
     end
 
     test "submits the metrics to Google Cloud when incoming metrics surpass buffer length" do
-      Bypass.open()
-      |> GoogleCloudPlatform.mock_instance_metadata_token_endpoint()
-      |> GoogleCloudPlatform.mock_metrics_submit_endpoint()
-
       now = DateTime.utc_now()
       tags = {%{type: "test"}, %{app: "myapp"}}
 
-      # Send 199 metrics
+      # Send 200 metrics
       {_, _, _, {buffer_size, buffer}} =
-        Enum.reduce(1..199, {[], "proj", tags, {0, %{}}}, fn i, state ->
+        Enum.reduce(1..200, {[], "proj", tags, {0, %{}}}, fn i, state ->
           {:noreply, state} =
             handle_info(
               {:compressed_metrics,
@@ -478,11 +463,11 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
           state
         end)
 
-      assert buffer_size == 199
+      assert buffer_size == 200
 
       refute_receive {:bypass_request, _conn, _body}
 
-      # Send the 200th metric, which should trigger the flush
+      # Send the 201st metric, which should trigger the flush
       {:noreply, {_, _, _, {buffer_size, buffer}}} =
         handle_info(
           {:compressed_metrics,
@@ -493,7 +478,88 @@ defmodule Domain.Telemetry.Reporter.GoogleCloudMetricsTest do
       assert buffer == %{{Telemetry.Metrics.Counter, [:foo, 200], %{}, :request} => {now, now, 1}}
       assert buffer_size == 1
       assert_receive {:bypass_request, _conn, %{"timeSeries" => time_series}}
-      assert length(time_series) == 199
+      assert length(time_series) == 200
+    end
+
+    test "handles large batches that exceed buffer capacity in single message" do
+      now = DateTime.utc_now()
+      tags = {%{type: "test"}, %{app: "myapp"}}
+
+      # Start with 50 metrics in buffer
+      {_, _, _, {buffer_size, buffer}} =
+        Enum.reduce(1..50, {[], "proj", tags, {0, %{}}}, fn i, state ->
+          {:noreply, state} =
+            handle_info(
+              {:compressed_metrics,
+               [{Telemetry.Metrics.Counter, [:existing, i], %{}, now, i, :request}]},
+              state
+            )
+
+          state
+        end)
+
+      assert buffer_size == 50
+
+      # Now send a single large batch of 250 metrics (exceeds total capacity)
+      large_batch =
+        Enum.map(1..250, fn i ->
+          {Telemetry.Metrics.Counter, [:batch, i], %{batch: "large"}, now, i, :request}
+        end)
+
+      {:noreply, {_, _, _, {final_buffer_size, final_buffer}}} =
+        handle_info(
+          {:compressed_metrics, large_batch},
+          {[], "proj", tags, {buffer_size, buffer}}
+        )
+
+      # Buffer should never exceed capacity (200)
+      assert final_buffer_size <= 200
+
+      # Should receive flush request due to the large batch
+      # First flush: The initial 50 metrics in buffer + 150 of the large batch
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush}}
+      assert length(flush) == 200
+
+      # Remaining metrics should still be in buffer. 50 + 250 - 200 = 100
+      assert final_buffer_size == 100
+      assert map_size(final_buffer) == 100
+
+      # Verify all remaining metrics are from the large batch
+      Enum.each(final_buffer, fn {{_schema, name, tags, _unit}, _measurements} ->
+        assert [:batch, _] = name
+        assert tags.batch == "large"
+      end)
+    end
+
+    test "handles extremely large single batch that requires multiple flushes" do
+      now = DateTime.utc_now()
+      tags = {%{type: "test"}, %{app: "myapp"}}
+
+      # Send a massive batch of 500 metrics
+      massive_batch =
+        Enum.map(1..500, fn i ->
+          {Telemetry.Metrics.Counter, [:massive, i], %{batch: "huge"}, now, i, :request}
+        end)
+
+      {:noreply, {_, _, _, {final_buffer_size, final_buffer}}} =
+        handle_info(
+          {:compressed_metrics, massive_batch},
+          {[], "proj", tags, {0, %{}}}
+        )
+
+      # Buffer should never exceed capacity
+      assert final_buffer_size <= 200
+
+      # Should receive multiple flushes as the large batch is processed
+      # We expect at least 2 flushes (200 + 200, with 100 remaining)
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush1}}
+      assert_receive {:bypass_request, _conn, %{"timeSeries" => flush2}}
+      assert length(flush1) == 200
+      assert length(flush2) == 200
+
+      # Final buffer should contain the remaining 100 metrics
+      assert final_buffer_size == 100
+      assert map_size(final_buffer) == 100
     end
   end
 end
