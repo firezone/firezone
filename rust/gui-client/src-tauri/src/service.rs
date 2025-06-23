@@ -13,7 +13,7 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
-use firezone_logging::{FilterReloadHandle, err_with_src, telemetry_span};
+use firezone_logging::{FilterReloadHandle, err_with_src};
 use firezone_telemetry::{Telemetry, analytics};
 use futures::{
     Future as _, SinkExt as _, Stream, StreamExt,
@@ -577,8 +577,6 @@ impl<'a> Handler<'a> {
     fn try_connect(&mut self, api_url: &str, token: SecretString) -> Result<Session> {
         let started_at = Instant::now();
 
-        let _connect_span = telemetry_span!("connect_to_firezone").entered();
-
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
 
@@ -624,13 +622,10 @@ impl<'a> Handler<'a> {
         tracing::debug!(?dns, "Calling `set_dns`...");
         connlib.set_dns(dns);
 
-        let tun = {
-            let _guard = telemetry_span!("create_tun_device").entered();
-
-            self.tun_device
-                .make_tun()
-                .context("Failed to create TUN device")?
-        };
+        let tun = self
+            .tun_device
+            .make_tun()
+            .context("Failed to create TUN device")?;
         connlib.set_tun(tun);
 
         Ok(Session::Creating {

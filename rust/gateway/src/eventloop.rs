@@ -4,8 +4,8 @@ use boringtun::x25519::PublicKey;
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
 use firezone_bin_shared::TunDeviceManager;
-use firezone_logging::telemetry_span;
-use firezone_telemetry::{Telemetry, analytics};
+use firezone_telemetry::Telemetry;
+
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
     IngressMessages, RejectAccess, RequestConnection,
@@ -585,7 +585,6 @@ async fn resolve(domain: DomainName) -> Result<Vec<IpAddr>> {
     let dname = domain.to_string();
 
     let addresses = tokio::task::spawn_blocking(move || resolve_addresses(&dname))
-        .instrument(telemetry_span!("resolve_dns_resource"))
         .await
         .context("DNS resolution task failed")?
         .context("DNS resolution failed")?;
