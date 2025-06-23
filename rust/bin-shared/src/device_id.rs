@@ -27,7 +27,13 @@ pub(crate) fn path() -> Result<PathBuf> {
 /// Returns the device ID without generating it
 pub fn get() -> Result<DeviceId> {
     let path = path()?;
-    let content = fs::read_to_string(&path).context("Failed to read file")?;
+    let id = get_at(&path)?;
+
+    Ok(id)
+}
+
+fn get_at(path: &Path) -> Result<DeviceId> {
+    let content = fs::read_to_string(path).context("Failed to read file")?;
     let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
         .context("Failed to deserialize content as JSON")?;
 
@@ -46,6 +52,12 @@ pub fn get() -> Result<DeviceId> {
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create() -> Result<DeviceId> {
     let path = path()?;
+    let id = get_or_create_at(&path)?;
+
+    Ok(id)
+}
+
+fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
@@ -60,14 +72,14 @@ pub fn get_or_create() -> Result<DeviceId> {
     })?;
 
     // Try to read it from the disk
-    if let Some(j) = fs::read_to_string(&path)
+    if let Some(j) = fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
     {
         let id = j.device_id();
         tracing::debug!(?id, "Loaded device ID from disk");
         // Correct permissions for #6989
-        set_id_permissions(&path).context("Couldn't set permissions on Firezone ID file")?;
+        set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
         return Ok(DeviceId { id });
     }
 
@@ -78,13 +90,13 @@ pub fn get_or_create() -> Result<DeviceId> {
     let content =
         serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
 
-    let file = AtomicFile::new(&path, OverwriteBehavior::DisallowOverwrite);
+    let file = AtomicFile::new(path, OverwriteBehavior::DisallowOverwrite);
     file.write(|f| f.write_all(content.as_bytes()))
         .context("Failed to write firezone-id file")?;
 
     let id = j.device_id();
     tracing::debug!(?id, "Saved device ID to disk");
-    set_id_permissions(&path).context("Couldn't set permissions on Firezone ID file")?;
+    set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
     Ok(DeviceId { id })
 }
 
