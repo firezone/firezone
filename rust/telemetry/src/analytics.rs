@@ -1,5 +1,8 @@
+use std::str::FromStr;
+
 use anyhow::{Context as _, Result, bail};
 use serde::Serialize;
+use sha2::Digest as _;
 
 use crate::{Env, posthog::RUNTIME};
 
@@ -20,23 +23,47 @@ pub fn new_session(distinct_id: String, api_url: String) {
 
 /// Associate several properties with a particular "distinct_id" in PostHog.
 pub fn identify(distinct_id: String, api_url: String, release: String) {
-    RUNTIME.spawn(async move {
-        if let Err(e) = capture(
-            "$identify",
-            distinct_id,
-            api_url,
-            IdentifyProperties {
-                set: PersonProperties {
-                    release,
-                    os: std::env::consts::OS.to_owned(),
+    RUNTIME.spawn({
+        let distinct_id = distinct_id.clone();
+        let api_url = api_url.clone();
+
+        async move {
+            if let Err(e) = capture(
+                "$identify",
+                distinct_id,
+                api_url,
+                IdentifyProperties {
+                    set: PersonProperties {
+                        release,
+                        os: std::env::consts::OS.to_owned(),
+                    },
                 },
-            },
-        )
-        .await
-        {
-            tracing::debug!("Failed to log `$identify` event: {e:#}");
+            )
+            .await
+            {
+                tracing::debug!("Failed to log `$identify` event: {e:#}");
+            }
         }
     });
+
+    // Create an alias ID for the user so we can also find them under the "external ID" used in the portal.
+    if uuid::Uuid::from_str(&distinct_id).is_ok() {
+        RUNTIME.spawn(async move {
+            if let Err(e) = capture(
+                "$create_alias",
+                distinct_id.clone(),
+                api_url,
+                CreateAliasProperties {
+                    alias: hex::encode(sha2::Sha256::digest(&distinct_id)),
+                    distinct_id,
+                },
+            )
+            .await
+            {
+                tracing::debug!("Failed to log `$create_alias` event: {e:#}");
+            }
+        });
+    }
 }
 
 async fn capture<P>(
@@ -106,4 +133,10 @@ struct PersonProperties {
     release: String,
     #[serde(rename = "$os")]
     os: String,
+}
+
+#[derive(serde::Serialize)]
+struct CreateAliasProperties {
+    distinct_id: String,
+    alias: String,
 }
