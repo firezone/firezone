@@ -19,8 +19,8 @@ Linux host:
    securely in your Gateway's shell environment. The Gateway requires this
    variable at startup.
 1. Set `FIREZONE_ID` to a unique string to identify this gateway in the portal,
-   e.g. `export FIREZONE_ID=$(uuidgen)`. The Gateway requires this variable at
-   startup.
+   e.g. `export FIREZONE_ID=$(uuidgen | sha256)`. The Gateway requires this variable at
+   startup. We recommend this to be a 64 character hex string.
 1. Now, you can start the Gateway with:
 
 ```
