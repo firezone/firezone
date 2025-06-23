@@ -49,7 +49,7 @@ defmodule Domain.Events.Hooks.Resources do
       PubSub.Resource.broadcast(resource_id, payload)
       PubSub.Account.Resources.broadcast(account_id, payload)
 
-      {:ok, _flows} = Flows.expire_flows_for_resource_id(resource_id)
+      {:ok, _flows} = Flows.expire_flows_for_resource_id(account_id, resource_id)
     end)
 
     :ok
