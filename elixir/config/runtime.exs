@@ -27,7 +27,22 @@ if config_env() == :prod do
              else: [{:hostname, env_var_to_config!(:database_host)}]
            )
 
-  config :domain, Domain.Replication.Connection,
+  config :domain, Domain.ChangeLogs.ReplicationConnection,
+    enabled: env_var_to_config!(:background_jobs_enabled),
+    replication_slot_name: env_var_to_config!(:database_replication_slot_name),
+    publication_name: env_var_to_config!(:database_publication_name),
+    connection_opts: [
+      hostname: env_var_to_config!(:database_host),
+      port: env_var_to_config!(:database_port),
+      ssl: env_var_to_config!(:database_ssl_enabled),
+      ssl_opts: env_var_to_config!(:database_ssl_opts),
+      parameters: env_var_to_config!(:database_parameters),
+      username: env_var_to_config!(:database_user),
+      password: env_var_to_config!(:database_password),
+      database: env_var_to_config!(:database_name)
+    ]
+
+  config :domain, Domain.Events.ReplicationConnection,
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_replication_slot_name),
     publication_name: env_var_to_config!(:database_publication_name),

@@ -33,7 +33,40 @@ config :domain, Domain.Repo,
   migration_lock: :pg_advisory_lock,
   start_apps_before_migration: [:ssl, :logger_json]
 
-config :domain, Domain.Replication.Connection,
+config :domain, Domain.ChangeLogs.ReplicationConnection,
+  enabled: true,
+  connection_opts: [
+    hostname: "localhost",
+    port: 5432,
+    ssl: false,
+    ssl_opts: [],
+    parameters: [],
+    username: "postgres",
+    database: "firezone_dev",
+    password: "postgres"
+  ],
+  # When changing these, make sure to also:
+  #   1. Make appropriate changes to `Domain.Events.Event`
+  #   2. Add an appropriate `Domain.Events.Hooks` module
+  table_subscriptions: ~w[
+    accounts
+    actor_group_memberships
+    actor_groups
+    actors
+    auth_identities
+    auth_providers
+    clients
+    flow_activities
+    flows
+    gateway_groups
+    gateways
+    policies
+    resource_connections
+    resources
+    tokens
+  ]
+
+config :domain, Domain.Events.ReplicationConnection,
   enabled: true,
   connection_opts: [
     hostname: "localhost",

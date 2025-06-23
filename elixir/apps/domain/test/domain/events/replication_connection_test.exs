@@ -5,7 +5,9 @@ defmodule Domain.Events.ReplicationConnectionTest do
   import Domain.Events.ReplicationConnection
 
   setup do
-    tables = Application.fetch_env!(:domain, Domain.Replication.Connection)[:table_subscriptions]
+    tables =
+      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+      |> Keyword.fetch!(:table_subscriptions)
 
     %{tables: tables}
   end

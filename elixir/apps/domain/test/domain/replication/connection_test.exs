@@ -28,7 +28,7 @@ defmodule Domain.Replication.ConnectionTest do
   # Used to test live connection
   setup do
     {connection_opts, config} =
-      Application.fetch_env!(:domain, Domain.Replication.Connection)
+      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
       |> Keyword.pop(:connection_opts)
 
     init_state = %{

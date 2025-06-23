@@ -20,7 +20,13 @@ config :domain, Domain.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
 
-config :domain, Domain.Replication.Connection,
+config :domain, Domain.ChangeLogs.ReplicationConnection,
+  enabled: false,
+  connection_opts: [
+    database: "firezone_test#{partition_suffix}"
+  ]
+
+config :domain, Domain.Events.ReplicationConnection,
   enabled: false,
   connection_opts: [
     database: "firezone_test#{partition_suffix}"
