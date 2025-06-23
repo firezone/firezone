@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, fmt, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{Ok, Result, bail};
+use anyhow::{Result, bail};
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, SessionStatus},
@@ -187,6 +187,32 @@ impl Telemetry {
         });
         self.inner.replace(inner);
         sentry::start_session();
+    }
+
+    /// Refreshes the telemetry config.
+    ///
+    /// Looks at the current values of the relevant feature flags and re-initializes the client in case they changed.
+    pub fn refresh_config(&mut self) {
+        let Some(client) = self.inner.as_ref() else {
+            tracing::debug!("Cannot refresh config: no client");
+            return;
+        };
+
+        let enable_logs = feature_flags::stream_logs();
+
+        if client.options().enable_logs == enable_logs {
+            tracing::debug!("Config is up-to-date");
+            return;
+        }
+
+        let options = client.options().clone();
+
+        tracing::info!(%enable_logs, "Re-initializing telemetry");
+
+        self.inner.replace(sentry::init(sentry::ClientOptions {
+            enable_logs,
+            ..options
+        }));
     }
 
     /// Flushes events to sentry.io and drops the guard
