@@ -30,7 +30,7 @@ export default function Apple() {
           logs were cleared.
         </ChangeItem>
         <ChangeItem pull="9536">
-          Uses `.zip` to compress logs instead of Apple Archive on MacOS.
+          Uses `.zip` to compress logs instead of Apple Archive.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.3" date={new Date("2025-06-19")}>
