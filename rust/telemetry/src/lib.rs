@@ -159,6 +159,7 @@ impl Telemetry {
                 })),
                 max_breadcrumbs: 500,
                 before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
+                enable_logs: true,
                 ..Default::default()
             },
         ));
