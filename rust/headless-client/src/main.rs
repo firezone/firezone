@@ -94,9 +94,8 @@ struct Cli {
 
     /// Identifier used by the portal to identify and display the device.
     // AKA `device_id` in the Windows and Linux GUI clients
-    // Generated automatically if not provided
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
-    firezone_id: Option<String>,
+    firezone_id: String,
 
     /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
@@ -195,14 +194,10 @@ fn main() -> Result<()> {
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
 
     // AKA "Device ID", not the Firezone slug
-    let firezone_id = match cli.firezone_id {
-        Some(id) => id,
-        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
-    };
-    Telemetry::set_firezone_id(firezone_id.clone());
+    Telemetry::set_firezone_id(cli.firezone_id.clone());
 
     analytics::identify(
-        firezone_id.clone(),
+        cli.firezone_id.clone(),
         cli.api_url.to_string(),
         RELEASE.to_owned(),
     );
@@ -210,7 +205,7 @@ fn main() -> Result<()> {
     let url = LoginUrl::client(
         cli.api_url.clone(),
         &token,
-        firezone_id.clone(),
+        cli.firezone_id.clone(),
         cli.firezone_name,
         DeviceInfo {
             device_serial: device_info::serial(),
@@ -236,7 +231,7 @@ fn main() -> Result<()> {
                 .with_resource(otel::default_resource_with([
                     otel::attr::service_name!(),
                     otel::attr::service_version!(),
-                    otel::attr::service_instance_id(firezone_id.clone()),
+                    otel::attr::service_instance_id(cli.firezone_id.clone()),
                 ]))
                 .build();
 
@@ -269,7 +264,7 @@ fn main() -> Result<()> {
             rt.handle().clone(),
         );
 
-        analytics::new_session(firezone_id.clone(), cli.api_url.to_string());
+        analytics::new_session(cli.firezone_id.clone(), cli.api_url.to_string());
 
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
