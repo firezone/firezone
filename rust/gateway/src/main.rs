@@ -52,13 +52,6 @@ fn main() -> ExitCode {
         .expect("Calling `install_default` only once per process should always succeed");
 
     let mut telemetry = Telemetry::default();
-    if cli.is_telemetry_allowed() {
-        telemetry.start(
-            cli.api_url.as_str(),
-            RELEASE,
-            firezone_telemetry::GATEWAY_DSN,
-        );
-    }
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -66,7 +59,7 @@ fn main() -> ExitCode {
         .expect("Failed to create tokio runtime");
 
     match runtime
-        .block_on(try_main(cli))
+        .block_on(try_main(cli, &mut telemetry))
         .context("Failed to start Gateway")
     {
         Ok(ExitCode::SUCCESS) => {
@@ -102,14 +95,22 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
-async fn try_main(cli: Cli) -> Result<ExitCode> {
+async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
 
     tracing::debug!(?cli);
 
-    let firezone_id = get_firezone_id(cli.firezone_id).await
+    let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
+
+    if cli.is_telemetry_allowed() {
+        telemetry.start(
+            cli.api_url.as_str(),
+            concat!("gateway@", env!("CARGO_PKG_VERSION")),
+            firezone_telemetry::GATEWAY_DSN,
+        );
+    }
     Telemetry::set_firezone_id(firezone_id.clone());
 
     if cli.metrics {
