@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::{
-    TunDeviceManager, http_health_check,
+    TunDeviceManager, device_id, http_health_check,
     platform::{tcp_socket_factory, udp_socket_factory},
 };
 
@@ -215,12 +215,9 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
         }
     }
 
-    let id_path = Path::new(ID_PATH);
-    tokio::fs::create_dir_all(id_path.parent().context("Missing parent")?).await?;
-    let mut id_file = tokio::fs::File::create(id_path).await?;
-    let id = Uuid::new_v4().to_string();
-    id_file.write_all(id.as_bytes()).await?;
-    Ok(id)
+    let device_id = device_id::get_or_create_at(Path::new(ID_PATH))?;
+
+    Ok(device_id.id)
 }
 
 #[derive(Parser, Debug)]

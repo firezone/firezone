@@ -58,7 +58,7 @@ pub fn get_or_create() -> Result<DeviceId> {
     Ok(id)
 }
 
-fn get_or_create_at(path: &Path) -> Result<DeviceId> {
+pub fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
