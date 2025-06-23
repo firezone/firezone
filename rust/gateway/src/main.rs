@@ -105,13 +105,15 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
 
     if cli.is_telemetry_allowed() {
-        telemetry.start(
-            cli.api_url.as_str(),
-            concat!("gateway@", env!("CARGO_PKG_VERSION")),
-            firezone_telemetry::GATEWAY_DSN,
-        );
+        telemetry
+            .start(
+                cli.api_url.as_str(),
+                concat!("gateway@", env!("CARGO_PKG_VERSION")),
+                firezone_telemetry::GATEWAY_DSN,
+                firezone_id.clone(),
+            )
+            .await;
     }
-    Telemetry::set_firezone_id(firezone_id.clone());
 
     if cli.metrics {
         let exporter = opentelemetry_stdout::MetricExporter::default();

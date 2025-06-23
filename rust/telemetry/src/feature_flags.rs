@@ -24,27 +24,41 @@ pub fn drop_llmnr_nxdomain_responses() -> bool {
     FEATURE_FLAGS.read().drop_llmnr_nxdomain_responses
 }
 
-pub(crate) fn reevaluate(user_id: String, env: &str) {
-    let api_key = match env.parse() {
-        Ok(Env::Production) => POSTHOG_API_KEY_PROD,
-        Ok(Env::Staging) => POSTHOG_API_KEY_STAGING,
-        Ok(Env::OnPrem | Env::DockerCompose | Env::Localhost) | Err(_) => return,
+pub fn stream_logs() -> bool {
+    FEATURE_FLAGS.read().stream_logs
+}
+
+pub(crate) async fn evaluate_now(user_id: String, env: Env) {
+    if user_id.is_empty() {
+        return;
+    }
+
+    let api_key = match env {
+        Env::Production => POSTHOG_API_KEY_PROD,
+        Env::Staging => POSTHOG_API_KEY_STAGING,
+        Env::OnPrem | Env::DockerCompose | Env::Localhost => return,
     };
 
-    RUNTIME.spawn(async move {
-        let flags = decide(user_id, api_key.to_owned())
-            .await
-            .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
-            .unwrap_or_default();
+    let flags = decide(user_id, api_key.to_owned())
+        .await
+        .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
+        .unwrap_or_default();
 
-        tracing::debug!(?flags, "Evaluated feature-flags");
+    tracing::debug!(?flags, "Evaluated feature-flags");
 
-        *FEATURE_FLAGS.write() = flags;
+    *FEATURE_FLAGS.write() = flags;
 
-        sentry::Hub::main().configure_scope(|scope| {
-            scope.set_context("flags", sentry_flag_context(flags));
-        });
+    sentry::Hub::main().configure_scope(|scope| {
+        scope.set_context("flags", sentry_flag_context(flags));
     });
+}
+
+pub(crate) fn reevaluate(user_id: String, env: &str) {
+    let Ok(env) = env.parse() else {
+        return;
+    };
+
+    RUNTIME.spawn(evaluate_now(user_id, env));
 }
 
 pub(crate) async fn reeval_timer() {
@@ -117,6 +131,8 @@ struct FeatureFlags {
     icmp_unreachable_instead_of_nat64: bool,
     #[serde(default)]
     drop_llmnr_nxdomain_responses: bool,
+    #[serde(default)]
+    stream_logs: bool,
 }
 
 fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
@@ -125,12 +141,14 @@ fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
     enum SentryFlag {
         IcmpUnreachableInsteadOfNat64 { result: bool },
         DropLlmnrNxdomainResponses { result: bool },
+        StreamLogs { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
     let FeatureFlags {
         icmp_unreachable_instead_of_nat64,
         drop_llmnr_nxdomain_responses,
+        stream_logs,
     } = flags;
 
     let value = serde_json::json!({
@@ -139,6 +157,7 @@ fn sentry_flag_context(flags: FeatureFlags) -> sentry::protocol::Context {
                 result: icmp_unreachable_instead_of_nat64,
             },
             SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
+            SentryFlag::StreamLogs { result: stream_logs }
         ]
     });
 

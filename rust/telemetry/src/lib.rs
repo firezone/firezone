@@ -4,7 +4,7 @@ use std::{borrow::Cow, fmt, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Ok, Result, bail};
 use sentry::{
-    BeforeCallback,
+    BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, SessionStatus},
 };
 use sha2::Digest as _;
@@ -113,7 +113,7 @@ impl Drop for Telemetry {
 }
 
 impl Telemetry {
-    pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
+    pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = Env::from_api_url(api_url);
@@ -144,7 +144,11 @@ impl Telemetry {
             return;
         }
 
-        tracing::info!(%environment, "Starting telemetry");
+        // Important: Evaluate feature flags before checking `stream_logs` to avoid hitting the default.
+        feature_flags::evaluate_now(firezone_id.clone(), environment).await;
+        let enable_logs = feature_flags::stream_logs();
+
+        tracing::info!(%environment, %enable_logs, "Starting telemetry");
 
         let inner = sentry::init((
             dsn.0,
@@ -159,13 +163,13 @@ impl Telemetry {
                 })),
                 max_breadcrumbs: 500,
                 before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
-                enable_logs: true,
+                enable_logs,
                 before_send_log: Some(Arc::new(append_tracing_fields_to_message)),
                 ..Default::default()
             },
         ));
         // Configure scope on the main hub so that all threads will get the tags
-        sentry::Hub::main().configure_scope(|scope| {
+        sentry::Hub::main().configure_scope(move |scope| {
             scope.set_tag("api_url", api_url);
             let ctx = sentry::integrations::contexts::utils::device_context();
             scope.set_context("device", ctx);
@@ -175,6 +179,11 @@ impl Telemetry {
             if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
                 scope.set_context("os", ctx);
             }
+
+            scope.set_user(Some(User {
+                id: Some(firezone_id),
+                ..User::default()
+            }));
         });
         self.inner.replace(inner);
         sentry::start_session();
@@ -307,11 +316,15 @@ fn set_current_user(user: Option<sentry::User>) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn starting_session_for_unsupported_env_disables_current_one() {
+    #[tokio::test]
+    async fn starting_session_for_unsupported_env_disables_current_one() {
         let mut telemetry = Telemetry::default();
-        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
-        telemetry.start("wss://example.com", "1.0.0", TESTING);
+        telemetry
+            .start("wss://api.firez.one", "1.0.0", TESTING, String::new())
+            .await;
+        telemetry
+            .start("wss://example.com", "1.0.0", TESTING, String::new())
+            .await;
 
         assert!(telemetry.inner.is_none());
     }

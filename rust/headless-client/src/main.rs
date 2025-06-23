@@ -170,20 +170,34 @@ fn main() -> Result<()> {
     // and we need to recover. <https://github.com/firezone/firezone/issues/4899>
     dns_controller.deactivate()?;
 
-    let mut telemetry = Telemetry::default();
-    if cli.is_telemetry_allowed() {
-        telemetry.start(
-            cli.api_url.as_ref(),
-            RELEASE,
-            firezone_telemetry::HEADLESS_DSN,
-        );
-    }
-
-    tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
-
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
+
+    // AKA "Device ID", not the Firezone slug
+    let firezone_id = match cli.firezone_id.clone() {
+        Some(id) => id,
+        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
+    };
+
+    analytics::identify(
+        firezone_id.clone(),
+        cli.api_url.to_string(),
+        RELEASE.to_owned(),
+        None,
+    );
+
+    let mut telemetry = Telemetry::default();
+    if cli.is_telemetry_allowed() {
+        rt.block_on(telemetry.start(
+            cli.api_url.as_ref(),
+            RELEASE,
+            firezone_telemetry::HEADLESS_DSN,
+            firezone_id.clone(),
+        ));
+    }
+
+    tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 
     let token = get_token(token_env_var, &cli.token_path)?.with_context(|| {
         format!(
@@ -193,20 +207,6 @@ fn main() -> Result<()> {
     })?;
     // TODO: Should this default to 30 days?
     let max_partition_time = cli.max_partition_time.map(|d| d.into());
-
-    // AKA "Device ID", not the Firezone slug
-    let firezone_id = match cli.firezone_id {
-        Some(id) => id,
-        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
-    };
-    Telemetry::set_firezone_id(firezone_id.clone());
-
-    analytics::identify(
-        firezone_id.clone(),
-        cli.api_url.to_string(),
-        RELEASE.to_owned(),
-        None,
-    );
 
     let url = LoginUrl::client(
         cli.api_url.clone(),
