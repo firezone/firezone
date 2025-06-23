@@ -13,6 +13,10 @@ env:
   RUSTDOCFLAGS: "-D warnings"
   TSLINK_BUILD: true
 
+permissions:
+  contents: "read"
+  id-token: "write"
+
 jobs:
   update-release-draft:
     name: update-release-draft
