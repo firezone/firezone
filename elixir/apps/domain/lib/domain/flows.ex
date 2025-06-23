@@ -227,14 +227,16 @@ defmodule Domain.Flows do
     |> expire_flows()
   end
 
-  def expire_flows_for_resource_id(resource_id) do
+  def expire_flows_for_resource_id(account_id, resource_id) do
     Flow.Query.all()
+    |> Flow.Query.by_account_id(account_id)
     |> Flow.Query.by_resource_id(resource_id)
     |> expire_flows()
   end
 
-  def expire_flows_for_policy_id(policy_id) do
+  def expire_flows_for_policy_id(account_id, policy_id) do
     Flow.Query.all()
+    |> Flow.Query.by_account_id(account_id)
     |> Flow.Query.by_policy_id(policy_id)
     |> expire_flows()
   end
