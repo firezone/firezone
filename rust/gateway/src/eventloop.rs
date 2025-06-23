@@ -24,7 +24,6 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, mem};
 use tokio::sync::Mutex;
-use tracing::Instrument;
 
 use crate::RELEASE;
 
