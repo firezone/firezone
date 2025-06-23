@@ -115,9 +115,7 @@ jobs:
           set -e
 
           while true; do
-            optional_jobs=("required-check" "upload-bencher")
-            optional_jobs_json=$(printf '%s\n' "${optional_jobs[@]}" | jq -R . | jq -s .)
-            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select(.name | IN($optional_jobs_json) | not))' --argjson optional_jobs_json "$optional_jobs_json")
+            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select(.name != "required-check" and .name != "upload-bencher"))')
 
             total_jobs=$(echo "$jobs_json" | jq 'length')
             failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
