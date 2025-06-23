@@ -52,7 +52,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runs-on: [ubuntu-22.04-xlarge, ubuntu-24.04-xlarge, windows-2022-xlarge, windows-2025-xlarge]
+        runs-on:
+          [
+            ubuntu-22.04-xlarge,
+            ubuntu-24.04-xlarge,
+            windows-2022-xlarge,
+            windows-2025-xlarge,
+          ]
     runs-on: ${{ matrix.runs-on }}
     defaults:
       run:
