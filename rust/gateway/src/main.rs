@@ -33,6 +33,7 @@ use url::Url;
 mod eventloop;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
+const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -54,7 +55,7 @@ fn main() -> ExitCode {
     if cli.is_telemetry_allowed() {
         telemetry.start(
             cli.api_url.as_str(),
-            concat!("gateway@", env!("CARGO_PKG_VERSION")),
+            RELEASE,
             firezone_telemetry::GATEWAY_DSN,
         );
     }
@@ -171,7 +172,7 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     }
 
     let task = tokio::spawn(future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
+        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager, firezone_id);
 
         move |cx| eventloop.poll(cx)
     }))
