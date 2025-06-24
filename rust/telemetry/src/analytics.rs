@@ -22,7 +22,12 @@ pub fn new_session(distinct_id: String, api_url: String) {
 }
 
 /// Associate several properties with a particular "distinct_id" in PostHog.
-pub fn identify(distinct_id: String, api_url: String, release: String) {
+pub fn identify(
+    distinct_id: String,
+    api_url: String,
+    release: String,
+    account_slug: Option<String>,
+) {
     RUNTIME.spawn({
         let distinct_id = distinct_id.clone();
         let api_url = api_url.clone();
@@ -35,6 +40,7 @@ pub fn identify(distinct_id: String, api_url: String, release: String) {
                 IdentifyProperties {
                     set: PersonProperties {
                         release,
+                        account_slug,
                         os: std::env::consts::OS.to_owned(),
                     },
                 },
@@ -131,6 +137,8 @@ struct IdentifyProperties {
 #[derive(serde::Serialize)]
 struct PersonProperties {
     release: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    account_slug: Option<String>,
     #[serde(rename = "$os")]
     os: String,
 }
