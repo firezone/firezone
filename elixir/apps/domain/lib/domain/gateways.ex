@@ -311,9 +311,12 @@ defmodule Domain.Gateways do
       %{gateway: %Gateway{} = gateway, ipv4: ipv4, ipv6: ipv6} ->
         Gateway.Changeset.finalize_upsert(gateway, ipv4, ipv6)
     end)
+    |> Ecto.Multi.run(:gateway_with_account, fn _repo, %{gateway_with_address: gateway} ->
+      {:ok, Repo.preload(gateway, :account)}
+    end)
     |> Repo.transaction()
     |> case do
-      {:ok, %{gateway_with_address: gateway}} -> {:ok, gateway}
+      {:ok, %{gateway_with_account: gateway}} -> {:ok, gateway}
       {:error, :gateway, changeset, _effects_so_far} -> {:error, changeset}
     end
   end

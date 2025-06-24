@@ -6,6 +6,14 @@ defmodule Domain.Events.Hooks.Accounts do
   @impl true
   def on_insert(_data), do: :ok
 
+  # Account slug changed - disconnect gateways for updated init
+
+  @impl true
+  def on_update(%{"slug" => old_slug}, %{"slug" => slug, "id" => account_id} = _data)
+      when old_slug != slug do
+    PubSub.Account.Gateways.disconnect(account_id)
+  end
+
   # Account disabled - disconnect clients
   @impl true
   def on_update(

@@ -13,6 +13,19 @@ defmodule Domain.Events.Hooks.AccountsTest do
   end
 
   describe "update/2" do
+    test "disconnects gateways if slug changes" do
+      account = Fixtures.Accounts.create_account()
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway)
+
+      old_data = %{"slug" => "old"}
+      data = %{"slug" => "new", "id" => account.id}
+
+      assert :ok == on_update(old_data, data)
+
+      assert_receive "disconnect"
+    end
+
     test "sends :config_changed if config changes" do
       account = Fixtures.Accounts.create_account()
 

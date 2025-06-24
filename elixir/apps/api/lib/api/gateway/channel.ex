@@ -49,6 +49,7 @@ defmodule API.Gateway.Channel do
       :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
       push(socket, "init", %{
+        account_slug: socket.assigns.gateway.account.slug,
         interface: Views.Interface.render(socket.assigns.gateway),
         relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
         config: %{
