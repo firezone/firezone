@@ -640,14 +640,13 @@ impl ReferenceState {
                     && has_dns_server
                     && gateway_is_present_in_case_dns_server_is_cidr_resource
             }),
-            Transition::RoamClient { ip4, ip6, port } => {
+            Transition::RoamClient { ip4, ip6 } => {
                 // In production, we always rebind to a new port so we never roam to our old existing IP / port combination.
 
                 let is_assigned_ip4 = ip4.is_some_and(|ip| state.network.contains(ip));
                 let is_assigned_ip6 = ip6.is_some_and(|ip| state.network.contains(ip));
-                let is_previous_port = state.client.old_ports.contains(port);
 
-                !is_assigned_ip4 && !is_assigned_ip6 && !is_previous_port
+                !is_assigned_ip4 && !is_assigned_ip6
             }
             Transition::ReconnectPortal => true,
             Transition::DeactivateResource(r) => {
