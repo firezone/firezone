@@ -1,6 +1,7 @@
 defmodule Domain.Events.Hooks.Clients do
   @behaviour Domain.Events.Hooks
   alias Domain.PubSub
+  alias Domain.Clients
 
   @impl true
   def on_insert(_data), do: :ok
@@ -13,8 +14,9 @@ defmodule Domain.Events.Hooks.Clients do
   end
 
   # Regular update
-  def on_update(_old_data, %{"id" => client_id} = _data) do
-    PubSub.Client.broadcast(client_id, :updated)
+  def on_update(_old_data, data) do
+    client = Domain.struct_from_params(Clients.Client, data)
+    PubSub.Client.broadcast(client.id, {:updated, client})
   end
 
   @impl true

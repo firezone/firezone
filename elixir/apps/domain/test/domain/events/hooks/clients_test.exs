@@ -36,7 +36,8 @@ defmodule Domain.Events.Hooks.ClientsTest do
 
       assert :ok == on_update(old_data, data)
 
-      assert_receive :updated
+      assert_receive {:updated, %Clients.Client{} = updated_client}
+      assert updated_client.id == client.id
       refute_receive "disconnect"
     end
   end
