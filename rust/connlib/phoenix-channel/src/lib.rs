@@ -346,6 +346,10 @@ where
         }
     }
 
+    pub fn url(&self) -> String {
+        self.url_prototype.expose_secret().base_url()
+    }
+
     /// Initiate a graceful close of the connection.
     pub fn close(&mut self) -> Result<(), Connecting> {
         tracing::info!("Closing connection to portal");
