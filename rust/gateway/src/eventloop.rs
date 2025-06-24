@@ -92,7 +92,7 @@ impl<'a> Eventloop<'a> {
                     tracing::debug!(%domain, ?ips, ?cause, "DNS cache entry evicted");
                 })
                 .build(),
-            telemetry_refresh: tokio::time::interval(Duration::from_secs(60 * 5)),
+            telemetry_refresh: tokio::time::interval(Duration::from_secs(60)),
             telemetry,
         }
     }

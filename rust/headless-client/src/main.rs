@@ -286,7 +286,7 @@ fn main() -> Result<()> {
             new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
-        let mut telemetry_refresh = tokio::time::interval(Duration::from_secs(5 * 60));
+        let mut telemetry_refresh = tokio::time::interval(Duration::from_secs(60));
 
         let tun = {
             let _guard = telemetry_span!("create_tun_device").entered();
