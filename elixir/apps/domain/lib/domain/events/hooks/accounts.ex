@@ -11,6 +11,9 @@ defmodule Domain.Events.Hooks.Accounts do
   @impl true
   def on_update(%{"slug" => old_slug}, %{"slug" => slug, "id" => account_id} = _data)
       when old_slug != slug do
+    # Technically we could push a :slug_changed message to the Gateways here,
+    # but at the time of writing, disconnecting and reconnecting is safer to ensure
+    # all relevant state on the Gateway is updated correctly.
     PubSub.Account.Gateways.disconnect(account_id)
   end
 
