@@ -159,16 +159,11 @@ pub struct DestinationUnreachablePrototype {
 
 impl DestinationUnreachablePrototype {
     /// Turns this prototype into an actual ICMP error IP packet, targeting the given IPv4/IPv6 address, depending on the original Resource address.
-    ///
-    /// Due to our NAT64/64 implementation, the ICMP error that we receive on the Gateway may not be what we want to forward to the client.
-    /// For example, in case we translate a TCP-SYN from IPv4 to IPv6 but the IPv6 address is unreachable, we need to:
-    /// - Translate the failed packet embedded in the ICMP error back to an IPv4 packet.
-    /// - Send an ICMPv4 error instead of an ICMPv6 error.
     pub fn into_packet(self, dst_v4: Ipv4Addr, dst_v6: Ipv6Addr) -> Result<IpPacket> {
         // First, translate the failed packet as if it would have directly originated from the client (without our NAT applied).
         let original_packet = self
             .failed_packet
-            .translate_destination(self.inside_dst, self.inside_proto, dst_v4, dst_v6)
+            .translate_destination(self.inside_dst, self.inside_proto)
             .context("Failed to translate unroutable packet within ICMP error")?;
 
         // Second, generate an ICMP error that originates from the originally addressed Resource.
@@ -241,7 +236,7 @@ mod tests {
         // Pretend we are getting a response.
         let mut response = packet.clone();
         response.set_destination_protocol(new_source_protocol.value());
-        response.set_src(new_dst_ip);
+        response.set_src(new_dst_ip).unwrap();
 
         // Update time.
         table.handle_timeout(sent_at + response_delay);
@@ -298,7 +293,7 @@ mod tests {
         // Pretend we are getting a response.
         for ((p, _), (new_src_p, new_d)) in packets.iter_mut().zip(new_src_p_and_dst) {
             p.set_destination_protocol(new_src_p.value());
-            p.set_src(new_d);
+            p.set_src(new_d).unwrap();
         }
 
         // Translate in

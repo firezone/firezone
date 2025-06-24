@@ -295,25 +295,14 @@ impl ClientOnGateway {
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(
-                    self.gateway_tun.v4,
-                    self.gateway_tun.v6,
-                    &packet,
-                )?,
+                ip_packet::make::icmp_dst_unreachable(&packet)?,
             ));
         };
 
-        #[expect(clippy::collapsible_if, reason = "We want the feature flag separate.")]
-        if firezone_telemetry::feature_flags::icmp_unreachable_instead_of_nat64() {
-            if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
-                return Ok(TranslateOutboundResult::DestinationUnreachable(
-                    ip_packet::make::icmp_dst_unreachable(
-                        self.gateway_tun.v4,
-                        self.gateway_tun.v6,
-                        &packet,
-                    )?,
-                ));
-            }
+        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+            return Ok(TranslateOutboundResult::DestinationUnreachable(
+                ip_packet::make::icmp_dst_unreachable(&packet)?,
+            ));
         }
 
         let (source_protocol, real_ip) =
@@ -321,12 +310,7 @@ impl ClientOnGateway {
                 .translate_outgoing(&packet, state.resolved_ip, now)?;
 
         let mut packet = packet
-            .translate_destination(
-                self.client_tun.v4,
-                self.client_tun.v6,
-                source_protocol,
-                real_ip,
-            )
+            .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
         packet.update_checksum();
 
@@ -429,7 +413,7 @@ impl ClientOnGateway {
         };
 
         let mut packet = packet
-            .translate_source(self.client_tun.v4, self.client_tun.v6, proto, ip)
+            .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 

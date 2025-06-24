@@ -1229,7 +1229,9 @@ impl ClientState {
             connlib_dns_server,
             now + IDS_EXPIRE,
         );
-        packet.set_dst(upstream.ip());
+        if let Err(e) = packet.set_dst(upstream.ip()) {
+            tracing::warn!("Failed to set destination IP for UDP DNS query: {e:#}");
+        }
         // TODO: Remove this once we disallow non-standard DNS ports: https://github.com/firezone/firezone/issues/8330
         packet
             .as_udp_mut()
@@ -1927,7 +1929,10 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
 
     tracing::trace!(server = %src_ip, query_id = %message.id(), domain = %message.domain(), "Received UDP DNS response via tunnel");
 
-    packet.set_src(original_dst.ip());
+    if let Err(e) = packet.set_src(original_dst.ip()) {
+        tracing::warn!("Failed to set source IP for UDP DNS query: {e:#}");
+    }
+
     packet
         .as_udp_mut()
         .expect("we parsed it as a UDP packet earlier")
