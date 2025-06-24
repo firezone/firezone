@@ -81,6 +81,7 @@ defmodule Domain.Auth.Provider.Changeset do
 
   defp changeset(changeset) do
     changeset
+    |> trim_change(@required_fields)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_required(:adapter)
     |> unique_constraint(:base,

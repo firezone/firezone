@@ -785,6 +785,18 @@ defmodule Domain.AuthTest do
       assert is_nil(provider.deleted_at)
     end
 
+    test "trims whitespace when creating a provider", %{
+      account: account
+    } do
+      provider_name = "newprovider"
+      attrs = Fixtures.Auth.provider_attrs(name: "   " <> provider_name <> "   ")
+
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      assert {:ok, provider} = create_provider(account, attrs)
+      assert provider.name == provider_name
+    end
+
     test "returns error when email provider is disabled", %{
       account: account
     } do
@@ -2134,6 +2146,25 @@ defmodule Domain.AuthTest do
       assert is_nil(identity.deleted_at)
     end
 
+    test "trims whitespace when creating an identity", %{
+      provider: provider,
+      actor: actor
+    } do
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+      email = "foo@example.com"
+
+      attrs = %{
+        provider_identifier: "   " <> provider_identifier <> "   ",
+        provider_identifier_confirmation: "   " <> provider_identifier <> "   ",
+        email: "   " <> email <> "   "
+      }
+
+      assert {:ok, identity} = upsert_identity(actor, provider, attrs)
+
+      assert identity.provider_identifier == provider_identifier
+      assert identity.email == email
+    end
+
     test "updates existing identity", %{
       account: account,
       provider: provider,
@@ -2297,6 +2328,26 @@ defmodule Domain.AuthTest do
              }
 
       assert is_nil(identity.deleted_at)
+    end
+
+    test "trims whitespace when creating an identity", %{
+      provider: provider,
+      actor: actor,
+      subject: subject
+    } do
+      provider_identifier = Fixtures.Auth.random_provider_identifier(provider)
+      email = "foo@example.com"
+
+      attrs = %{
+        provider_identifier: "   " <> provider_identifier <> "   ",
+        provider_identifier_confirmation: "   " <> provider_identifier <> "   ",
+        email: "   " <> email <> "   "
+      }
+
+      assert {:ok, identity} = create_identity(actor, provider, attrs, subject)
+
+      assert identity.provider_identifier == provider_identifier
+      assert identity.email == email
     end
 
     test "returns error when identity already exists", %{

@@ -33,7 +33,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> validate_required(@required_fields)
     |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
-    |> update_change(:address, &String.trim/1)
     |> validate_address(account)
     |> cast_assoc(:connections,
       with: &Connection.Changeset.changeset(account.id, &1, &2, subject),
@@ -47,7 +46,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast(attrs, @fields)
     |> changeset()
     |> validate_required(@required_fields)
-    |> update_change(:address, &String.trim/1)
     |> validate_address(account)
     |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
@@ -266,6 +264,7 @@ defmodule Domain.Resources.Resource.Changeset do
 
   defp changeset(changeset) do
     changeset
+    |> trim_change(@fields)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:address_description, min: 1, max: 512)
     |> maybe_put_default_ip_stack()

@@ -311,6 +311,27 @@ defmodule Domain.Resources.Resource.ChangesetTest do
         refute changeset.valid?, "Expected '#{invalid_address}' to be invalid"
       end
     end
+
+    test "trims whitespace on changes" do
+      for {name, type, address, description} <- [
+            {"foo", :ip, "192.168.1.1", "local server"},
+            {"bar", :cidr, "192.168.1.0/24", "local network"},
+            {"baz", :dns, "example.com", "local server"}
+          ] do
+        changeset =
+          create(%{
+            name: "   " <> name <> "   ",
+            type: type,
+            address: "   " <> address <> "   ",
+            address_description: "   " <> description <> "   "
+          })
+
+        assert changeset.changes[:name] == name
+        assert changeset.changes[:address] == address
+        assert changeset.changes[:address_description] == description
+        assert changeset.valid?
+      end
+    end
   end
 
   def create(attrs) do

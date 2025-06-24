@@ -4,7 +4,9 @@ defmodule Domain.Actors.Actor.Changeset do
   alias Domain.Actors
   alias Domain.Actors.Actor
 
-  def allowed_updates, do: %{fields: ~w[type name]a}
+  @fields ~w[name type]a
+
+  def allowed_updates, do: %{fields: @fields}
   def allowed_updates(%Actor{last_synced_at: nil}), do: allowed_updates()
   def allowed_updates(%Actor{}), do: %{fields: ~w[type]a}
 
@@ -64,6 +66,7 @@ defmodule Domain.Actors.Actor.Changeset do
     # Actor name can be very long in case IdP syncs something crazy long to us,
     # we still don't wait to fail for that silently
     |> validate_length(:name, max: 512)
+    |> trim_change(@fields)
   end
 
   def disable_actor(%Actor{} = actor) do

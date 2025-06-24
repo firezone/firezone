@@ -29,7 +29,7 @@ defmodule Domain.Relays.Group.Changeset do
   defp changeset(group, attrs) do
     group
     |> cast(attrs, @fields)
-    |> trim_change(:name)
+    |> trim_change(@fields)
     |> put_default_value(:name, &Domain.NameGenerator.generate/0)
     |> validate_required(@fields)
     |> validate_length(:name, min: 1, max: 64)

@@ -3,6 +3,8 @@ defmodule Domain.Actors.Group.Changeset do
   alias Domain.{Auth, Accounts}
   alias Domain.Actors
 
+  @fields ~w[name type]a
+
   def upsert_conflict_target do
     {:unsafe_fragment,
      "(account_id, provider_id, provider_identifier) " <>
@@ -13,8 +15,8 @@ defmodule Domain.Actors.Group.Changeset do
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Actors.Group{memberships: []}
-    |> cast(attrs, ~w[name type]a)
-    |> validate_required(~w[name type]a)
+    |> cast(attrs, @fields)
+    |> validate_required(@fields)
     |> validate_inclusion(:type, ~w[static]a)
     |> changeset()
     |> put_change(:account_id, account.id)
@@ -57,7 +59,7 @@ defmodule Domain.Actors.Group.Changeset do
 
   defp changeset(changeset) do
     changeset
-    |> trim_change(:name)
+    |> trim_change(@fields)
     |> validate_length(:name, min: 1, max: 255)
     |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
   end

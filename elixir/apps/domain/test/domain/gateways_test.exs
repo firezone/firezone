@@ -221,6 +221,17 @@ defmodule Domain.GatewaysTest do
              }
     end
 
+    test "trims whitespace when creating a group", %{subject: subject} do
+      group_name = "foo"
+
+      attrs = %{
+        name: "   " <> group_name <> "   "
+      }
+
+      assert {:ok, group} = create_group(attrs, subject)
+      assert group.name == group_name
+    end
+
     test "returns error when subject has no permission to manage groups", %{
       subject: subject
     } do
@@ -297,6 +308,18 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, group} = update_group(group, attrs, subject)
       assert group.name == "foo"
+    end
+
+    test "trims whitespace when updating a group", %{account: account, subject: subject} do
+      group = Fixtures.Gateways.create_group(account: account)
+      updated_group_name = "foo"
+
+      attrs = %{
+        name: "   " <> updated_group_name <> "   "
+      }
+
+      assert {:ok, group} = update_group(group, attrs, subject)
+      assert group.name == updated_group_name
     end
 
     test "returns error when subject has no permission to manage groups", %{

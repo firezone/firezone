@@ -468,6 +468,14 @@ defmodule Domain.ClientsTest do
       assert is_nil(client.verified_at)
     end
 
+    test "trims whitespace when creating client", %{admin_subject: subject} do
+      client_name = "newclient"
+      attrs = Fixtures.Clients.client_attrs(name: "   " <> client_name <> "   ")
+
+      assert {:ok, client} = upsert_client(attrs, subject)
+      assert client.name == client_name
+    end
+
     test "updates client when it already exists", %{
       account: account,
       admin_actor: actor,
