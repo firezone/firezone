@@ -63,6 +63,7 @@ defmodule Domain.Auth.Provider.Changeset do
 
     provider
     |> change()
+    |> put_change(:last_synced_at, nil)
     |> put_change(:last_sync_error, error)
     |> put_change(:last_syncs_failed, last_syncs_failed + 1)
   end
