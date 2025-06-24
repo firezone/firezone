@@ -21,6 +21,7 @@ use secrecy::{Secret, SecretString};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use tokio::time::Instant;
 
@@ -285,6 +286,8 @@ fn main() -> Result<()> {
             new_network_notifier(tokio_handle.clone(), dns_control_method).await?;
         drop(tokio_handle);
 
+        let mut telemetry_refresh = tokio::time::interval(Duration::from_secs(5 * 60));
+
         let tun = {
             let _guard = telemetry_span!("create_tun_device").entered();
 
@@ -320,6 +323,10 @@ fn main() -> Result<()> {
                     session.reset();
                     continue;
                 },
+                () = telemetry_refresh.tick() => {
+                    telemetry.refresh_config();
+                    continue;
+                }
                 event = event_stream.next() => event.context("event stream unexpectedly ran empty")?,
             };
 
