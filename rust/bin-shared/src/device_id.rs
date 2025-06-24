@@ -2,13 +2,14 @@
 
 use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
+use sha2::Digest;
 use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DeviceId {
     pub id: String,
 }
@@ -27,12 +28,18 @@ pub(crate) fn path() -> Result<PathBuf> {
 /// Returns the device ID without generating it
 pub fn get() -> Result<DeviceId> {
     let path = path()?;
-    let content = fs::read_to_string(&path).context("Failed to read file")?;
+    let id = get_at(&path)?;
+
+    Ok(id)
+}
+
+fn get_at(path: &Path) -> Result<DeviceId> {
+    let content = fs::read_to_string(path).context("Failed to read file")?;
     let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
         .context("Failed to deserialize content as JSON")?;
 
     Ok(DeviceId {
-        id: device_id_json.device_id(),
+        id: device_id_json.id,
     })
 }
 
@@ -46,6 +53,12 @@ pub fn get() -> Result<DeviceId> {
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create() -> Result<DeviceId> {
     let path = path()?;
+    let id = get_or_create_at(&path)?;
+
+    Ok(id)
+}
+
+pub fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
@@ -60,31 +73,29 @@ pub fn get_or_create() -> Result<DeviceId> {
     })?;
 
     // Try to read it from the disk
-    if let Some(j) = fs::read_to_string(&path)
+    if let Some(j) = fs::read_to_string(path)
         .ok()
         .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
     {
-        let id = j.device_id();
-        tracing::debug!(?id, "Loaded device ID from disk");
+        tracing::debug!(id = %j.id, "Loaded device ID from disk");
         // Correct permissions for #6989
-        set_id_permissions(&path).context("Couldn't set permissions on Firezone ID file")?;
-        return Ok(DeviceId { id });
+        set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
+        return Ok(DeviceId { id: j.id });
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
-    let id = uuid::Uuid::new_v4();
-    let j = DeviceIdJson { id };
+    let id = hex::encode(sha2::Sha256::digest(uuid::Uuid::new_v4().to_string()));
+    let j = DeviceIdJson { id: id.clone() };
 
     let content =
         serde_json::to_string(&j).context("Impossible: Failed to serialize firezone-id")?;
 
-    let file = AtomicFile::new(&path, OverwriteBehavior::DisallowOverwrite);
+    let file = AtomicFile::new(path, OverwriteBehavior::DisallowOverwrite);
     file.write(|f| f.write_all(content.as_bytes()))
         .context("Failed to write firezone-id file")?;
 
-    let id = j.device_id();
-    tracing::debug!(?id, "Saved device ID to disk");
-    set_id_permissions(&path).context("Couldn't set permissions on Firezone ID file")?;
+    tracing::debug!(%id, "Saved device ID to disk");
+    set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
     Ok(DeviceId { id })
 }
 
@@ -123,11 +134,42 @@ fn set_id_permissions(_: &Path) -> Result<()> {
 
 #[derive(serde::Deserialize, serde::Serialize)]
 struct DeviceIdJson {
-    id: uuid::Uuid,
+    id: String,
 }
 
-impl DeviceIdJson {
-    fn device_id(&self) -> String {
-        self.id.to_string()
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+    use uuid::Uuid;
+
+    use super::*;
+
+    #[test]
+    fn creates_id_if_not_exist() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("id.json");
+
+        let created_device_id = get_or_create_at(&path).unwrap();
+        let read_device_id = get_at(&path).unwrap();
+
+        assert_eq!(created_device_id, read_device_id);
+    }
+
+    #[test]
+    fn does_not_override_existing_id() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("id.json");
+
+        let plain_id = Uuid::new_v4();
+
+        let json = serde_json::to_string(&serde_json::json!({
+            "id": plain_id
+        }))
+        .unwrap();
+        std::fs::write(&path, json).unwrap();
+
+        let read_device_id = get_or_create_at(&path).unwrap();
+
+        assert_eq!(read_device_id.id, plain_id.to_string());
     }
 }

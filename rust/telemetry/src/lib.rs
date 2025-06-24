@@ -7,6 +7,7 @@ use sentry::{
     BeforeCallback,
     protocol::{Event, SessionStatus},
 };
+use sha2::Digest as _;
 
 pub mod analytics;
 pub mod feature_flags;
@@ -215,7 +216,16 @@ impl Telemetry {
     pub fn set_firezone_id(id: String) {
         update_user({
             let id = id.clone();
-            |user| user.id = Some(id)
+            move |user| {
+                user.id = Some(id.clone());
+
+                if uuid::Uuid::from_str(&id).is_ok() {
+                    user.other.insert(
+                        "external_id".to_owned(),
+                        serde_json::Value::String(hex::encode(sha2::Sha256::digest(&id))),
+                    );
+                }
+            }
         });
 
         let Some(client) = sentry::Hub::main().client() else {

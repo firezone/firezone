@@ -2311,6 +2311,7 @@ dependencies = [
  "flume",
  "futures",
  "gat-lending-iterator",
+ "hex",
  "hex-literal",
  "ip-packet",
  "ip_network",
@@ -2327,6 +2328,7 @@ dependencies = [
  "rtnetlink",
  "serde",
  "serde_json",
+ "sha2",
  "smbios-lib",
  "socket-factory",
  "tempfile",
@@ -2570,6 +2572,7 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "hex",
  "ip-packet",
  "moka",
  "opentelemetry",
@@ -2579,9 +2582,11 @@ dependencies = [
  "sentry",
  "serde",
  "serde_json",
+ "sha2",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
