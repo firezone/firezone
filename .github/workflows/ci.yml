@@ -80,7 +80,7 @@ jobs:
 
           # Run all jobs if docker-compose changes
           if grep -q '^docker-compose.yml' changed_files.txt; then
-            echo "jobs_to_run=$jobs" >> $GITHUB_OUTPUT
+            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
             exit 0;
           fi
 
