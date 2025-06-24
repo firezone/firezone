@@ -127,8 +127,13 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
         opentelemetry::global::set_meter_provider(provider);
     }
 
-    let login = LoginUrl::gateway(cli.api_url, &cli.token, firezone_id, cli.firezone_name)
-        .context("Failed to construct URL for logging into portal")?;
+    let login = LoginUrl::gateway(
+        cli.api_url,
+        &cli.token,
+        firezone_id.clone(),
+        cli.firezone_name,
+    )
+    .context("Failed to construct URL for logging into portal")?;
 
     let resolv_conf = resolv_conf::Config::parse(
         std::fs::read_to_string("/etc/resolv.conf").context("Failed to read /etc/resolv.conf")?,
