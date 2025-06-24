@@ -323,7 +323,7 @@ fn main() -> Result<()> {
                     session.reset();
                     continue;
                 },
-                () = telemetry_refresh.tick() => {
+                _ = telemetry_refresh.tick() => {
                     telemetry.refresh_config();
                     continue;
                 }

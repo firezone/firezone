@@ -217,7 +217,7 @@ impl<'a> Eventloop<'a> {
             }
 
             match self.telemetry_refresh.poll_tick(cx) {
-                Poll::Ready(()) => {
+                Poll::Ready(_) => {
                     self.telemetry.refresh_config();
                     continue;
                 }

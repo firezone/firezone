@@ -62,18 +62,14 @@ fn main() -> ExitCode {
         .block_on(try_main(cli, &mut telemetry))
         .context("Failed to start Gateway")
     {
-        Ok(ExitCode::SUCCESS) => {
+        Ok(()) => {
+            tracing::info!("Received CTRL+C, goodbye!");
             runtime.block_on(telemetry.stop());
 
             ExitCode::SUCCESS
         }
-        Ok(_) => {
-            runtime.block_on(telemetry.stop_on_crash());
-
-            ExitCode::FAILURE
-        }
         Err(e) => {
-            tracing::error!("{e:#}");
+            tracing::info!("{e:#}");
             runtime.block_on(telemetry.stop_on_crash());
 
             ExitCode::FAILURE
@@ -95,7 +91,7 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
-async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
+async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
 
@@ -179,13 +175,12 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
         tunnel.set_tun(tun);
     }
 
-    let task = tokio::spawn(future::poll_fn({
+    let eventloop = future::poll_fn({
         let mut eventloop =
             Eventloop::new(tunnel, portal, tun_device_manager, firezone_id, telemetry);
 
         move |cx| eventloop.poll(cx)
-    }))
-    .err_into();
+    });
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
     tokio::spawn(http_health_check::serve(
@@ -193,20 +188,12 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
         || true,
     ));
 
-    match future::try_select(task, ctrl_c)
+    match future::try_select(eventloop, ctrl_c)
         .await
         .map_err(|e| e.factor_first().0)?
     {
-        future::Either::Left((Err(e), _)) => {
-            tracing::info!("{e}");
-
-            Ok(ExitCode::FAILURE)
-        }
-        future::Either::Right(((), _)) => {
-            tracing::info!("Received CTRL+C, goodbye!");
-
-            Ok(ExitCode::SUCCESS)
-        }
+        future::Either::Left((never, _)) => match never {},
+        future::Either::Right(((), _)) => Ok(()),
     }
 }
 
