@@ -28,8 +28,10 @@ defmodule Domain.Events.Hooks.AccountsTest do
 
     test "sends :config_changed if config changes" do
       account = Fixtures.Accounts.create_account()
+      gateway = Fixtures.Gateways.create_gateway(account: account)
 
       :ok = Domain.PubSub.Account.subscribe(account.id)
+      :ok = Domain.Gateways.Presence.connect(gateway)
 
       old_data = %{
         "id" => account.id,
@@ -46,6 +48,7 @@ defmodule Domain.Events.Hooks.AccountsTest do
 
       assert :ok == on_update(old_data, data)
       assert_receive :config_changed
+      refute_receive "disconnect"
     end
 
     test "does not send :config_changed if config does not change" do
