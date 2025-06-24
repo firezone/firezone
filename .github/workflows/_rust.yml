@@ -98,16 +98,16 @@ jobs:
           cargo test --all-features ${{ steps.setup-rust.outputs.test-packages }} -- --include-ignored --nocapture
 
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
-          rg --count --no-ignore SendIcmpPacket $TESTCASES_DIR
-          rg --count --no-ignore SendUdpPacket $TESTCASES_DIR
-          rg --count --no-ignore SendTcpPayload $TESTCASES_DIR
-          rg --count --no-ignore SendDnsQueries $TESTCASES_DIR
-          rg --count --no-ignore "Packet for DNS resource" $TESTCASES_DIR
-          rg --count --no-ignore "Packet for CIDR resource" $TESTCASES_DIR
-          rg --count --no-ignore "Packet for Internet resource" $TESTCASES_DIR
-          rg --count --no-ignore "Truncating DNS response" $TESTCASES_DIR
-          rg --count --no-ignore "Destination is unreachable" $TESTCASES_DIR
-          rg --count --no-ignore "Forwarding query for DNS resource to corresponding site" $TESTCASES_DIR
+          rg --count --no-ignore SendIcmpPacket "$TESTCASES_DIR"
+          rg --count --no-ignore SendUdpPacket "$TESTCASES_DIR"
+          rg --count --no-ignore SendTcpPayload "$TESTCASES_DIR"
+          rg --count --no-ignore SendDnsQueries "$TESTCASES_DIR"
+          rg --count --no-ignore "Packet for DNS resource" "$TESTCASES_DIR"
+          rg --count --no-ignore "Packet for CIDR resource" "$TESTCASES_DIR"
+          rg --count --no-ignore "Packet for Internet resource" "$TESTCASES_DIR"
+          rg --count --no-ignore "Truncating DNS response" "$TESTCASES_DIR"
+          rg --count --no-ignore "Destination is unreachable" "$TESTCASES_DIR"
+          rg --count --no-ignore "Forwarding query for DNS resource to corresponding site" "$TESTCASES_DIR"
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
