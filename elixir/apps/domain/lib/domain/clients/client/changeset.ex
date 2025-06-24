@@ -171,7 +171,7 @@ defmodule Domain.Clients.Client.Changeset do
 
   defp changeset(changeset) do
     changeset
-    |> trim_change(:name)
+    |> Domain.Repo.Changeset.trim_change(~w[name external_id]a)
     |> validate_length(:name, min: 1, max: 255)
     |> assoc_constraint(:actor)
     |> unique_constraint([:actor_id, :public_key])
