@@ -180,7 +180,8 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<ExitCode> {
     }
 
     let task = tokio::spawn(future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager, firezone_id);
+        let mut eventloop =
+            Eventloop::new(tunnel, portal, tun_device_manager, firezone_id, telemetry);
 
         move |cx| eventloop.poll(cx)
     }))

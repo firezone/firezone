@@ -49,7 +49,7 @@ enum ResolveTrigger {
     SetupNat(ResolveDnsRequest),
 }
 
-pub struct Eventloop {
+pub struct Eventloop<'a> {
     tunnel: GatewayTunnel,
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     tun_device_manager: Arc<Mutex<TunDeviceManager>>,
@@ -61,15 +61,19 @@ pub struct Eventloop {
 
     set_interface_tasks: futures_bounded::FuturesSet<Result<Interface>>,
 
+    telemetry_refresh: tokio::time::Interval,
+    telemetry: &'a mut Telemetry,
+
     logged_permission_denied: bool,
 }
 
-impl Eventloop {
+impl<'a> Eventloop<'a> {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
         firezone_id: String,
+        telemetry: &'a mut Telemetry,
     ) -> Self {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
@@ -88,11 +92,13 @@ impl Eventloop {
                     tracing::debug!(%domain, ?ips, ?cause, "DNS cache entry evicted");
                 })
                 .build(),
+            telemetry_refresh: tokio::time::interval(Duration::from_secs(60 * 5)),
+            telemetry,
         }
     }
 }
 
-impl Eventloop {
+impl<'a> Eventloop<'a> {
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
         loop {
             match self.tunnel.poll_next_event(cx) {
@@ -205,6 +211,14 @@ impl Eventloop {
                     let event = result.context("Failed to login to portal")?;
                     self.handle_portal_event(event);
 
+                    continue;
+                }
+                Poll::Pending => {}
+            }
+
+            match self.telemetry_refresh.poll_tick(cx) {
+                Poll::Ready(()) => {
+                    self.telemetry.refresh_config();
                     continue;
                 }
                 Poll::Pending => {}
