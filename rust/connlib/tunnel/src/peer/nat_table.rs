@@ -25,7 +25,7 @@ pub(crate) struct NatTable {
     expired: HashSet<(Protocol, IpAddr)>,
 }
 
-pub(crate) const TTL: Duration = Duration::from_secs(60);
+pub(crate) const TTL: Duration = Duration::from_secs(60 * 60 * 2);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
