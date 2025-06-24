@@ -342,6 +342,6 @@ mod tests {
 
         let base_url = login_url.base_url();
 
-        assert_eq!(base_url, "wss://api.firez.one")
+        assert_eq!(base_url, "wss://api.firez.one/")
     }
 }
