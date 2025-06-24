@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+hex = { workspace = true }
 ip-packet = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
 opentelemetry = { workspace = true }
@@ -15,8 +16,10 @@ reqwest = { workspace = true }
 sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing", "release-health"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }
 tracing = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 thiserror = { workspace = true }
