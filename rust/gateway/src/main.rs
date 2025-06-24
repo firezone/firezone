@@ -25,12 +25,10 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
 use std::{fmt, pin::pin};
 use std::{process::ExitCode, str::FromStr};
-use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
 use tun::Tun;
 use url::Url;
-use uuid::Uuid;
 
 mod eventloop;
 
