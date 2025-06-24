@@ -10,6 +10,7 @@ defmodule Domain.Gateways.Presence do
     with {:ok, _} <- __MODULE__.Group.track(gateway.group_id, gateway.id),
          {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id) do
       :ok = PubSub.Gateway.subscribe(gateway.id)
+      :ok = PubSub.Account.Gateways.subscribe(gateway.account_id)
     end
   end
 

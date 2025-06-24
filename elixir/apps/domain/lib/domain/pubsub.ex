@@ -84,6 +84,24 @@ defmodule Domain.PubSub do
       end
     end
 
+    defmodule Gateways do
+      def subscribe(account_id) do
+        account_id
+        |> topic()
+        |> Domain.PubSub.subscribe()
+      end
+
+      def disconnect(account_id) do
+        account_id
+        |> topic()
+        |> Domain.PubSub.broadcast("disconnect")
+      end
+
+      defp topic(account_id) do
+        Atom.to_string(__MODULE__) <> ":" <> account_id
+      end
+    end
+
     defmodule Policies do
       def subscribe(account_id) do
         account_id

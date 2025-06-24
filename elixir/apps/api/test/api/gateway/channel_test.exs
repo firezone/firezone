@@ -58,16 +58,22 @@ defmodule API.Gateway.ChannelTest do
       assert is_number(online_at)
     end
 
-    test "sends list of resources after join", %{
+    test "sends init message after join", %{
+      account: account,
       gateway: gateway
     } do
       assert_push "init", %{
+        account_slug: account_slug,
         interface: interface,
+        relays: relays,
         config: %{
           ipv4_masquerade_enabled: true,
           ipv6_masquerade_enabled: true
         }
       }
+
+      assert account_slug == account.slug
+      assert relays == []
 
       assert interface == %{
                ipv4: gateway.ipv4,
