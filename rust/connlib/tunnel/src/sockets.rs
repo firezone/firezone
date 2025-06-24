@@ -12,8 +12,14 @@ use std::{
     task::{Context, Poll, Waker},
 };
 
-const UNSPECIFIED_V4_SOCKET: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
-const UNSPECIFIED_V6_SOCKET: SocketAddrV6 = SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, 0, 0, 0);
+const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
+const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
+const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+
+const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
+    SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
+const UNSPECIFIED_V6_SOCKET: SocketAddrV6 =
+    SocketAddrV6::new(Ipv6Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT, 0, 0);
 
 #[derive(Default)]
 pub(crate) struct Sockets {
@@ -25,6 +31,9 @@ pub(crate) struct Sockets {
 
 impl Sockets {
     pub fn rebind(&mut self, socket_factory: Arc<dyn SocketFactory<UdpSocket>>) {
+        self.socket_v4 = None;
+        self.socket_v6 = None;
+
         self.socket_v4 = ThreadedUdpSocket::new(
             socket_factory.clone(),
             SocketAddr::V4(UNSPECIFIED_V4_SOCKET),
@@ -154,13 +163,13 @@ struct ThreadedUdpSocket {
 }
 
 impl ThreadedUdpSocket {
-    fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, addr: SocketAddr) -> io::Result<Self> {
+    fn new(sf: Arc<dyn SocketFactory<UdpSocket>>, preferred_addr: SocketAddr) -> io::Result<Self> {
         let (outbound_tx, outbound_rx) = flume::bounded(10);
         let (inbound_tx, inbound_rx) = flume::bounded(10);
         let (error_tx, error_rx) = flume::bounded(0);
 
         std::thread::Builder::new()
-            .name(match addr {
+            .name(match preferred_addr {
                 SocketAddr::V4(_) => "UDP IPv4".to_owned(),
                 SocketAddr::V6(_) => "UDP IPv6".to_owned(),
             })
@@ -177,7 +186,11 @@ impl ThreadedUdpSocket {
                 };
 
                 runtime.block_on(async move {
-                    let mut socket = match sf(&addr) {
+                    let mut socket = match listen(
+                        sf,
+                        // Listen on the preferred address, fall back to picking a free port if that doesn't work
+                        &[preferred_addr, SocketAddr::new(preferred_addr.ip(), 0)],
+                    ) {
                         Ok(s) => s,
                         Err(e) => {
                             let _ = error_tx.send(Err(e));
@@ -206,7 +219,7 @@ impl ThreadedUdpSocket {
                                         1,
                                         &[
                                             otel::attr::network_io_direction_transmit(),
-                                            otel::attr::network_type_for_addr(addr),
+                                            otel::attr::network_type_for_addr(preferred_addr),
                                             otel::attr::io_error_type(io),
                                             otel::attr::io_error_code(io),
                                         ],
@@ -240,7 +253,7 @@ impl ThreadedUdpSocket {
                                     1,
                                     &[
                                         otel::attr::network_io_direction_receive(),
-                                        otel::attr::network_type_for_addr(addr),
+                                        otel::attr::network_type_for_addr(preferred_addr),
                                         otel::attr::io_error_type(io),
                                         otel::attr::io_error_code(io),
                                     ],
@@ -289,6 +302,26 @@ impl ThreadedUdpSocket {
 
         Poll::Ready(iter)
     }
+}
+
+fn listen(
+    sf: Arc<dyn SocketFactory<UdpSocket>>,
+    addresses: &[SocketAddr],
+) -> io::Result<UdpSocket> {
+    let mut last_err = None;
+
+    for addr in addresses {
+        match sf(addr) {
+            Ok(s) => return Ok(s),
+            Err(e) => {
+                tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");
+
+                last_err = Some(e);
+            }
+        };
+    }
+
+    Err(last_err.unwrap_or_else(|| io::Error::other("No addresses to listen on")))
 }
 
 #[derive(thiserror::Error, Debug)]

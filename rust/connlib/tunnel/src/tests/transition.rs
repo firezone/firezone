@@ -5,7 +5,7 @@ use crate::{
 use connlib_model::{RelayId, ResourceId};
 use dns_types::{DomainName, RecordType};
 
-use super::sim_net::{Host, any_ip_stack, any_port};
+use super::sim_net::{Host, any_ip_stack};
 use crate::messages::DnsServer;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -62,7 +62,6 @@ pub(crate) enum Transition {
     RoamClient {
         ip4: Option<Ipv4Addr>,
         ip6: Option<Ipv6Addr>,
-        port: u16,
     },
 
     /// Reconnect to the portal.
@@ -374,9 +373,8 @@ pub(crate) fn maybe_available_response_rtypes(
 }
 
 pub(crate) fn roam_client() -> impl Strategy<Value = Transition> {
-    (any_ip_stack(), any_port()).prop_map(move |(ip_stack, port)| Transition::RoamClient {
+    (any_ip_stack()).prop_map(move |ip_stack| Transition::RoamClient {
         ip4: ip_stack.as_v4().copied(),
         ip6: ip_stack.as_v6().copied(),
-        port,
     })
 }
