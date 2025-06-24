@@ -48,8 +48,10 @@ defmodule API.Gateway.Channel do
       :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
       :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
+      account = Domain.Accounts.fetch_account_by_id!(socket.assigns.gateway.account_id)
+
       push(socket, "init", %{
-        account_slug: socket.assigns.gateway.account.slug,
+        account_slug: account.slug,
         interface: Views.Interface.render(socket.assigns.gateway),
         relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
         config: %{
