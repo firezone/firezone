@@ -23,6 +23,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::mem;
+use std::net::IpAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
@@ -907,6 +908,7 @@ where
             let handshake_complete_before_decapsulate = conn.wg_handshake_complete(now);
 
             let control_flow = conn.decapsulate(
+                from.ip(),
                 packet,
                 &mut self.allocations,
                 &mut self.buffered_transmits,
@@ -2103,6 +2105,7 @@ where
 
     fn decapsulate(
         &mut self,
+        src: IpAddr,
         packet: &[u8],
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
@@ -2113,7 +2116,7 @@ where
 
         let control_flow = match self
             .tunnel
-            .decapsulate_at(None, packet, ip_packet.buf(), now)
+            .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
