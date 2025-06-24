@@ -1570,7 +1570,11 @@ defmodule Domain.ResourcesTest do
 
       # TODO: WAL
       # Remove this when directly broadcasting flow removals
-      Events.Hooks.ResourceConnections.on_delete(%{"resource_id" => resource.id})
+      Events.Hooks.ResourceConnections.on_delete(%{
+        "account_id" => resource.account_id,
+        "resource_id" => resource.id
+      })
+
       # TODO: WAL
       # Remove this after direct broadcast
       Process.sleep(100)

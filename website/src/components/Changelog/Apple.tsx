@@ -29,6 +29,9 @@ export default function Apple() {
           Fixes an issue where certain log files would not be recreated after
           logs were cleared.
         </ChangeItem>
+        <ChangeItem pull="9536">
+          Uses `.zip` to compress logs instead of Apple Archive.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.3" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
