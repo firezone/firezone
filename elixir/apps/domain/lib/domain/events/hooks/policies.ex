@@ -69,7 +69,7 @@ defmodule Domain.Events.Hooks.Policies do
       payload = {:reject_access, policy_id, actor_group_id, resource_id}
       :ok = PubSub.ActorGroup.Policies.broadcast(actor_group_id, payload)
 
-      Flows.expire_flows_for_policy_id(policy_id)
+      Flows.expire_flows_for_policy_id(account_id, policy_id)
     end)
 
     :ok
@@ -124,7 +124,7 @@ defmodule Domain.Events.Hooks.Policies do
         payload = {:allow_access, policy_id, actor_group_id, resource_id}
         :ok = PubSub.ActorGroup.Policies.broadcast(actor_group_id, payload)
 
-        Flows.expire_flows_for_policy_id(policy_id)
+        Flows.expire_flows_for_policy_id(account_id, policy_id)
       end)
     else
       Logger.warning("Breaking update ignored for policy as it is deleted or disabled",
@@ -161,7 +161,7 @@ defmodule Domain.Events.Hooks.Policies do
       payload = {:reject_access, policy_id, actor_group_id, resource_id}
       :ok = PubSub.ActorGroup.Policies.broadcast(actor_group_id, payload)
 
-      Flows.expire_flows_for_policy_id(policy_id)
+      Flows.expire_flows_for_policy_id(account_id, policy_id)
     end)
 
     :ok
