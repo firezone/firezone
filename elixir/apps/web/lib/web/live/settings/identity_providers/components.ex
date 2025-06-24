@@ -327,7 +327,11 @@ defmodule Web.Settings.IdentityProviders.Components do
         <.relative_datetime datetime={@provider.last_synced_at} />
       </span>
     </div>
-    <div :if={is_nil(@provider.last_synced_at)} class="flex items-center">
+    {# TODO: IDP sync - clean this up}
+    <div
+      :if={is_nil(@provider.last_synced_at) && @provider.last_syncs_failed == 0}
+      class="flex items-center"
+    >
       <.ping_icon color="danger" />
       <span class="ml-2.5">
         Never synced
