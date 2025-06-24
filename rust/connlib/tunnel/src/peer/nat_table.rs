@@ -216,7 +216,7 @@ mod tests {
     fn translates_back_and_forth_packet(
         #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
-        #[strategy(0..120u64)] response_delay: u64,
+        #[strategy(0..15000u64)] response_delay: u64,
     ) {
         proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
 
@@ -247,7 +247,7 @@ mod tests {
             .unwrap();
 
         // Assert
-        if response_delay >= Duration::from_secs(60) {
+        if response_delay >= Duration::from_secs(7200) {
             assert_eq!(
                 translate_incoming,
                 TranslateIncomingResult::ExpiredNatSession
