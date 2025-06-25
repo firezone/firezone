@@ -6,9 +6,8 @@
 //! Source: <https://datatracker.ietf.org/doc/html/rfc1035#section-4.2.2>.
 
 use anyhow::{Context as _, Result};
-use smoltcp::socket::tcp;
 
-pub fn try_send(socket: &mut tcp::Socket, message: &[u8]) -> Result<()> {
+pub fn try_send(socket: &mut l3_tcp::Socket, message: &[u8]) -> Result<()> {
     let dns_message_length = (message.len() as u16).to_be_bytes();
 
     let written = socket
@@ -51,7 +50,7 @@ pub fn try_send(socket: &mut tcp::Socket, message: &[u8]) -> Result<()> {
     Ok(())
 }
 
-pub fn try_recv<'b, M>(socket: &'b mut tcp::Socket) -> Result<Option<M>>
+pub fn try_recv<'b, M>(socket: &'b mut l3_tcp::Socket) -> Result<Option<M>>
 where
     M: TryFrom<&'b [u8], Error: std::error::Error + Send + Sync + 'static>,
 {
