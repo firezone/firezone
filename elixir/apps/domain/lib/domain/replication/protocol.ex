@@ -1,10 +1,10 @@
 # CREDIT: https://github.com/supabase/realtime/blob/main/lib/realtime/adapters/postgres/protocol.ex
-defmodule Domain.Events.Protocol do
+defmodule Domain.Replication.Protocol do
   @moduledoc """
   This module is responsible for parsing the Postgres WAL messages.
   """
-  alias Domain.Events.Protocol.Write
-  alias Domain.Events.Protocol.KeepAlive
+  alias Domain.Replication.Protocol.Write
+  alias Domain.Replication.Protocol.KeepAlive
 
   defguard is_write(value) when binary_part(value, 0, 1) == <<?w>>
   defguard is_keep_alive(value) when binary_part(value, 0, 1) == <<?k>>
