@@ -181,8 +181,6 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
         discovered_nodes_count: count
       })
 
-      Logger.debug("Found #{count} nodes", module: __MODULE__, nodes: Enum.join(nodes, ", "))
-
       {:ok, nodes}
     end
   end
