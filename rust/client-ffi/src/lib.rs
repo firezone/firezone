@@ -226,9 +226,15 @@ fn connect(
         serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
     let secret = SecretString::from(token);
 
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .thread_name("connlib")
+        .enable_all()
+        .build()
+        .context("Failed to create tokio runtime")?;
+
     let mut telemetry = Telemetry::default();
-    telemetry.start(&api_url, RELEASE, platform::DSN);
-    Telemetry::set_firezone_id(device_id.clone());
+    runtime.block_on(telemetry.start(&api_url, RELEASE, platform::DSN, device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 
     analytics::identify(
@@ -250,12 +256,6 @@ fn connect(
     )
     .context("Failed to create login URL")?;
 
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(1)
-        .thread_name("connlib")
-        .enable_all()
-        .build()
-        .context("Failed to create tokio runtime")?;
     let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let portal = PhoenixChannel::disconnected(

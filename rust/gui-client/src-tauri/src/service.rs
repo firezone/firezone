@@ -548,8 +548,13 @@ impl<'a> Handler<'a> {
                 account_slug,
             } => {
                 self.telemetry
-                    .start(&environment, &release, firezone_telemetry::GUI_DSN);
-                Telemetry::set_firezone_id(self.device_id.id.clone());
+                    .start(
+                        &environment,
+                        &release,
+                        firezone_telemetry::GUI_DSN,
+                        self.device_id.id.clone(),
+                    )
+                    .await;
 
                 if let Some(account_slug) = account_slug {
                     Telemetry::set_account_slug(account_slug.clone());
@@ -576,7 +581,6 @@ impl<'a> Handler<'a> {
 
         assert!(self.session.is_none());
         let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
-        Telemetry::set_firezone_id(device_id.id.clone());
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,

@@ -52,13 +52,6 @@ fn main() -> ExitCode {
         .expect("Calling `install_default` only once per process should always succeed");
 
     let mut telemetry = Telemetry::default();
-    if cli.is_telemetry_allowed() {
-        telemetry.start(
-            cli.api_url.as_str(),
-            RELEASE,
-            firezone_telemetry::GATEWAY_DSN,
-        );
-    }
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -66,21 +59,17 @@ fn main() -> ExitCode {
         .expect("Failed to create tokio runtime");
 
     match runtime
-        .block_on(try_main(cli))
+        .block_on(try_main(cli, &mut telemetry))
         .context("Failed to start Gateway")
     {
-        Ok(ExitCode::SUCCESS) => {
+        Ok(()) => {
+            tracing::info!("Received CTRL+C, goodbye!");
             runtime.block_on(telemetry.stop());
 
             ExitCode::SUCCESS
         }
-        Ok(_) => {
-            runtime.block_on(telemetry.stop_on_crash());
-
-            ExitCode::FAILURE
-        }
         Err(e) => {
-            tracing::error!("{e:#}");
+            tracing::info!("{e:#}");
             runtime.block_on(telemetry.stop_on_crash());
 
             ExitCode::FAILURE
@@ -102,15 +91,25 @@ fn has_necessary_permissions() -> bool {
     is_root || has_net_admin
 }
 
-async fn try_main(cli: Cli) -> Result<ExitCode> {
+async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
 
     tracing::debug!(?cli);
 
-    let firezone_id = get_firezone_id(cli.firezone_id).await
+    let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
-    Telemetry::set_firezone_id(firezone_id.clone());
+
+    if cli.is_telemetry_allowed() {
+        telemetry
+            .start(
+                cli.api_url.as_str(),
+                concat!("gateway@", env!("CARGO_PKG_VERSION")),
+                firezone_telemetry::GATEWAY_DSN,
+                firezone_id.clone(),
+            )
+            .await;
+    }
 
     if cli.metrics {
         let exporter = opentelemetry_stdout::MetricExporter::default();
@@ -176,12 +175,12 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
         tunnel.set_tun(tun);
     }
 
-    let task = tokio::spawn(future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager, firezone_id);
+    let eventloop = future::poll_fn({
+        let mut eventloop =
+            Eventloop::new(tunnel, portal, tun_device_manager, firezone_id, telemetry);
 
         move |cx| eventloop.poll(cx)
-    }))
-    .err_into();
+    });
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
     tokio::spawn(http_health_check::serve(
@@ -189,20 +188,12 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
         || true,
     ));
 
-    match future::try_select(task, ctrl_c)
+    match future::try_select(eventloop, ctrl_c)
         .await
         .map_err(|e| e.factor_first().0)?
     {
-        future::Either::Left((Err(e), _)) => {
-            tracing::info!("{e}");
-
-            Ok(ExitCode::FAILURE)
-        }
-        future::Either::Right(((), _)) => {
-            tracing::info!("Received CTRL+C, goodbye!");
-
-            Ok(ExitCode::SUCCESS)
-        }
+        future::Either::Left((never, _)) => match never {},
+        future::Either::Right(((), _)) => Ok(()),
     }
 }
 
