@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::{
-    TunDeviceManager, http_health_check,
+    TunDeviceManager, device_id, http_health_check,
     platform::{tcp_socket_factory, udp_socket_factory},
 };
 
@@ -25,16 +25,15 @@ use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
 use std::{fmt, pin::pin};
 use std::{process::ExitCode, str::FromStr};
-use tokio::io::AsyncWriteExt;
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
 use tun::Tun;
 use url::Url;
-use uuid::Uuid;
 
 mod eventloop;
 
 const ID_PATH: &str = "/var/lib/firezone/gateway_id";
+const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -56,7 +55,7 @@ fn main() -> ExitCode {
     if cli.is_telemetry_allowed() {
         telemetry.start(
             cli.api_url.as_str(),
-            concat!("gateway@", env!("CARGO_PKG_VERSION")),
+            RELEASE,
             firezone_telemetry::GATEWAY_DSN,
         );
     }
@@ -128,8 +127,13 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
         opentelemetry::global::set_meter_provider(provider);
     }
 
-    let login = LoginUrl::gateway(cli.api_url, &cli.token, firezone_id, cli.firezone_name)
-        .context("Failed to construct URL for logging into portal")?;
+    let login = LoginUrl::gateway(
+        cli.api_url,
+        &cli.token,
+        firezone_id.clone(),
+        cli.firezone_name,
+    )
+    .context("Failed to construct URL for logging into portal")?;
 
     let resolv_conf = resolv_conf::Config::parse(
         std::fs::read_to_string("/etc/resolv.conf").context("Failed to read /etc/resolv.conf")?,
@@ -173,7 +177,7 @@ async fn try_main(cli: Cli) -> Result<ExitCode> {
     }
 
     let task = tokio::spawn(future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
+        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager, firezone_id);
 
         move |cx| eventloop.poll(cx)
     }))
@@ -215,12 +219,9 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
         }
     }
 
-    let id_path = Path::new(ID_PATH);
-    tokio::fs::create_dir_all(id_path.parent().context("Missing parent")?).await?;
-    let mut id_file = tokio::fs::File::create(id_path).await?;
-    let id = Uuid::new_v4().to_string();
-    id_file.write_all(id.as_bytes()).await?;
-    Ok(id)
+    let device_id = device_id::get_or_create_at(Path::new(ID_PATH))?;
+
+    Ok(device_id.id)
 }
 
 #[derive(Parser, Debug)]

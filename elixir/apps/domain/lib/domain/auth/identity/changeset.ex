@@ -72,6 +72,7 @@ defmodule Domain.Auth.Identity.Changeset do
     |> unique_constraint(:email,
       name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx
     )
+    |> trim_change(~w[email provider_identifier]a)
   end
 
   def update_identity_provider_state(identity_or_changeset, %{} = state, virtual_state \\ %{}) do

@@ -2,7 +2,7 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
-    sim_net::{Host, any_ip_stack, any_port, host},
+    sim_net::{Host, any_ip_stack, host},
     sim_relay::{SimRelay, map_explode},
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
@@ -231,23 +231,29 @@ impl SimClient {
 
     /// Process an IP packet received on the client.
     pub(crate) fn on_received_packet(&mut self, packet: IpPacket) {
-        if let Some((failed_packet, _)) = packet.icmp_unreachable_destination().unwrap() {
-            match failed_packet.layer4_protocol() {
-                Layer4Protocol::Udp { src, dst } => {
-                    self.received_udp_replies
-                        .insert((SPort(dst), DPort(src)), packet);
+        match packet.icmp_unreachable_destination() {
+            Ok(Some((failed_packet, _))) => {
+                match failed_packet.layer4_protocol() {
+                    Layer4Protocol::Udp { src, dst } => {
+                        self.received_udp_replies
+                            .insert((SPort(dst), DPort(src)), packet);
+                    }
+                    Layer4Protocol::Tcp { src, dst } => {
+                        self.received_tcp_replies
+                            .insert((SPort(dst), DPort(src)), packet);
+                    }
+                    Layer4Protocol::Icmp { seq, id } => {
+                        self.received_icmp_replies
+                            .insert((Seq(seq), Identifier(id)), packet);
+                    }
                 }
-                Layer4Protocol::Tcp { src, dst } => {
-                    self.received_tcp_replies
-                        .insert((SPort(dst), DPort(src)), packet);
-                }
-                Layer4Protocol::Icmp { seq, id } => {
-                    self.received_icmp_replies
-                        .insert((Seq(seq), Identifier(id)), packet);
-                }
-            }
 
-            return;
+                return;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::error!("Failed to extract ICMP unreachable destination: {e:#}")
+            }
         }
 
         if let Some(udp) = packet.as_udp() {
@@ -1101,7 +1107,7 @@ pub(crate) fn ref_client_host(
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
-        any_port(),
+        Just(52625),
         ref_client(
             tunnel_ip4s,
             tunnel_ip6s,

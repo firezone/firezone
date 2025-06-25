@@ -6,6 +6,7 @@ use std::{
     iter,
     marker::PhantomData,
     net::{Ipv4Addr, Ipv6Addr},
+    str::FromStr as _,
 };
 use url::Url;
 use uuid::Uuid;
@@ -83,7 +84,12 @@ impl LoginUrl<PublicKeyParam> {
         device_name: Option<String>,
         device_info: DeviceInfo,
     ) -> Result<Self, LoginUrlError<E>> {
-        let external_id = hex::encode(sha2::Sha256::digest(device_id));
+        let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
+            hex::encode(sha2::Sha256::digest(device_id))
+        } else {
+            device_id
+        };
+
         let device_name = device_name
             .or(get_host_name())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -116,7 +122,11 @@ impl LoginUrl<PublicKeyParam> {
         device_id: String,
         device_name: Option<String>,
     ) -> Result<Self, LoginUrlError<E>> {
-        let external_id = hex::encode(sha2::Sha256::digest(device_id));
+        let external_id = if uuid::Uuid::from_str(&device_id).is_ok() {
+            hex::encode(sha2::Sha256::digest(device_id))
+        } else {
+            device_id
+        };
         let device_name = device_name
             .or(get_host_name())
             .unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -192,6 +202,15 @@ where
 impl<TFinish> LoginUrl<TFinish> {
     pub fn host_and_port(&self) -> (&str, u16) {
         (&self.host, self.port)
+    }
+
+    pub fn base_url(&self) -> String {
+        let mut url = self.url.clone();
+
+        url.set_path("");
+        url.set_query(None);
+
+        url.to_string()
     }
 }
 
@@ -304,4 +323,25 @@ fn set_ws_scheme<E>(url: &mut Url) -> Result<(), LoginUrlError<E>> {
         .expect("Developer error: the match before this should make sure we can set this");
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_url_removes_params_and_path() {
+        let login_url = LoginUrl::client(
+            "wss://api.firez.one",
+            &SecretString::new("foobar".to_owned()),
+            "some-id".to_owned(),
+            None,
+            DeviceInfo::default(),
+        )
+        .unwrap();
+
+        let base_url = login_url.base_url();
+
+        assert_eq!(base_url, "wss://api.firez.one/")
+    }
 }

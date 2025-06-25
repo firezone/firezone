@@ -571,7 +571,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
 
       Events.Hooks.Policies.on_delete(%{
         "id" => policy_id,
-        "account_id" => deleted_policy.id,
+        "account_id" => deleted_policy.account_id,
         "actor_group_id" => group_id,
         "resource_id" => resource_id
       })

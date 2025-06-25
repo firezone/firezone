@@ -12,10 +12,7 @@ on:
 jobs:
   publish_clients:
     name: Publish ${{ matrix.identifier }} to winget
-    runs-on: windows-latest
-    permissions:
-      contents: write
-      packages: write
+    runs-on: windows-latest-xlarge
     strategy:
       matrix:
         include:
@@ -28,7 +25,7 @@ jobs:
         run: |
           version=${{ inputs.release_name || github.event.release.name }}
           version=${version#${{ matrix.tag_prefix }}-}
-          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "version=$version" >> "$GITHUB_OUTPUT"
         shell: bash
       - uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f # main
         if: ${{ startsWith((inputs.release_name || github.event.release.name), matrix.tag_prefix) }}

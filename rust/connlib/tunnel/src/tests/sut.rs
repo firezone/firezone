@@ -248,9 +248,9 @@ impl TunnelTest {
                     })
                 });
             }
-            Transition::RoamClient { ip4, ip6, port } => {
+            Transition::RoamClient { ip4, ip6 } => {
                 state.network.remove_host(&state.client);
-                state.client.update_interface(ip4, ip6, port);
+                state.client.update_interface(ip4, ip6);
                 debug_assert!(
                     state
                         .network

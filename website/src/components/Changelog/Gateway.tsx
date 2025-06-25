@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9657">
+          Fixes an issue where connections would fail to establish if the
+          Gateway was under high load.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.11" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both

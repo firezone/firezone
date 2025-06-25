@@ -4,7 +4,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     defaults:
       run:
         working-directory: ./elixir
@@ -44,7 +44,7 @@ jobs:
           reporter: java-junit
 
   type-check:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     defaults:
       run:
         working-directory: ./elixir
@@ -65,10 +65,10 @@ jobs:
         id: plt_cache
         with:
           path: elixir/priv/plts
-          key: dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.erlang-version }}-${{ hashFiles('elixir/mix.lock') }}
+          key: dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-${{ hashFiles('elixir/mix.lock') }}
           # This will make sure that we can incrementally build the PLT from older cache and save it under a new key
           restore-keys: |
-            dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.erlang-version }}-
+            dialyzer-ubuntu-22.04-${{ runner.arch }}-${{ steps.setup-beam.outputs.elixir-version }}-${{ steps.setup-beam.outputs.otp-version }}-
       - name: Create PLTs
         if: ${{ steps.plt_cache.outputs.cache-hit != 'true' }}
         run: mix dialyzer --plt
@@ -82,7 +82,7 @@ jobs:
         run: mix dialyzer --format dialyxir
 
   static-analysis:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     defaults:
       run:
         working-directory: ./elixir
@@ -111,7 +111,7 @@ jobs:
         run: mix deps.unlock --check-unused
 
   migrations-and-seed-test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     defaults:
       run:
         working-directory: ./elixir
@@ -150,7 +150,7 @@ jobs:
     name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
     permissions:
       checks: write
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     defaults:
       run:
         working-directory: ./elixir

@@ -156,16 +156,23 @@ where
     }
 }
 
-pub fn icmp_dst_unreachable(
-    ipv4_src: Ipv4Addr,
-    ipv6_src: Ipv6Addr,
-    original_packet: &IpPacket,
-) -> Result<IpPacket> {
+pub fn icmp_dst_unreachable(original_packet: &IpPacket) -> Result<IpPacket> {
     let src = original_packet.source();
+    let dst = original_packet.destination();
 
-    let icmp_error = match src {
-        IpAddr::V4(src) => icmpv4_network_unreachable(ipv4_src, src, original_packet)?,
-        IpAddr::V6(src) => icmpv6_address_unreachable(ipv6_src, src, original_packet)?,
+    let icmp_error = match (src, dst) {
+        (IpAddr::V4(src), IpAddr::V4(dst)) => {
+            icmpv4_network_unreachable(dst, src, original_packet)?
+        }
+        (IpAddr::V6(src), IpAddr::V6(dst)) => {
+            icmpv6_address_unreachable(dst, src, original_packet)?
+        }
+        (IpAddr::V4(_), IpAddr::V6(_)) => {
+            bail!("Invalid IP packet: Inconsistent IP address versions")
+        }
+        (IpAddr::V6(_), IpAddr::V4(_)) => {
+            bail!("Invalid IP packet: Inconsistent IP address versions")
+        }
     };
 
     Ok(icmp_error)
@@ -235,14 +242,22 @@ mod tests {
     fn ipv4_icmp_unreachable(
         #[strategy(payload(MAX_IP_SIZE - Ipv4Header::MIN_LEN - UdpHeader::LEN))] payload: Vec<u8>,
     ) {
-        let unreachable_packet =
-            udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, payload).unwrap();
+        let unreachable_packet = udp_packet(
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::LOCALHOST,
+            0,
+            0,
+            payload,
+        )
+        .unwrap();
 
-        let icmp_error =
-            icmp_dst_unreachable(ERROR_SRC_IPV4, ERROR_SRC_IPV6, &unreachable_packet).unwrap();
+        let icmp_error = icmp_dst_unreachable(&unreachable_packet).unwrap();
 
-        assert_eq!(icmp_error.destination(), IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert_eq!(icmp_error.source(), IpAddr::V4(ERROR_SRC_IPV4));
+        assert_eq!(
+            icmp_error.destination(),
+            IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))
+        );
+        assert_eq!(icmp_error.source(), IpAddr::V4(Ipv4Addr::LOCALHOST));
         assert!(matches!(
             icmp_error.icmp_unreachable_destination(),
             Ok(Some(_))
@@ -253,22 +268,27 @@ mod tests {
     fn ipv6_icmp_unreachable_max_payload(
         #[strategy(payload(MAX_IP_SIZE - Ipv6Header::LEN - UdpHeader::LEN))] payload: Vec<u8>,
     ) {
-        let unreachable_packet =
-            udp_packet(Ipv6Addr::LOCALHOST, Ipv6Addr::LOCALHOST, 0, 0, payload).unwrap();
+        let unreachable_packet = udp_packet(
+            Ipv6Addr::new(1, 0, 0, 0, 0, 0, 0, 1),
+            Ipv6Addr::LOCALHOST,
+            0,
+            0,
+            payload,
+        )
+        .unwrap();
 
-        let icmp_error =
-            icmp_dst_unreachable(ERROR_SRC_IPV4, ERROR_SRC_IPV6, &unreachable_packet).unwrap();
+        let icmp_error = icmp_dst_unreachable(&unreachable_packet).unwrap();
 
-        assert_eq!(icmp_error.destination(), IpAddr::V6(Ipv6Addr::LOCALHOST));
-        assert_eq!(icmp_error.source(), IpAddr::V6(ERROR_SRC_IPV6));
+        assert_eq!(
+            icmp_error.destination(),
+            IpAddr::V6(Ipv6Addr::new(1, 0, 0, 0, 0, 0, 0, 1))
+        );
+        assert_eq!(icmp_error.source(), IpAddr::V6(Ipv6Addr::LOCALHOST));
         assert!(matches!(
             icmp_error.icmp_unreachable_destination(),
             Ok(Some(_))
         ));
     }
-
-    const ERROR_SRC_IPV4: Ipv4Addr = Ipv4Addr::new(1, 1, 1, 1);
-    const ERROR_SRC_IPV6: Ipv6Addr = Ipv6Addr::new(1, 1, 1, 1, 1, 1, 1, 1);
 
     fn payload(max_size: usize) -> impl Strategy<Value = Vec<u8>> {
         collection::vec(any::<u8>(), 0..=max_size)

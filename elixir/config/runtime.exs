@@ -145,8 +145,11 @@ if config_env() == :prod do
   config :domain, Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory,
     enabled: env_var_to_config!(:background_jobs_enabled)
 
-  # Don't enable the mock sync directory job in production
-  config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory, enabled: false
+  # Enable the mock sync directory job in staging
+  config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory,
+    enabled:
+      env_var_to_config!(:background_jobs_enabled) and
+        Enum.member?(env_var_to_config!(:auth_provider_adapters), :mock)
 
   if web_external_url = env_var_to_config!(:web_external_url) do
     %{

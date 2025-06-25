@@ -14,7 +14,7 @@ permissions:
 jobs:
   static-analysis:
     # Android SDK tools hardware accel is available only on Linux runners
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-android
@@ -23,7 +23,7 @@ jobs:
 
   update-release-draft:
     name: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     permissions:
       contents: write # for updating the release draft
     env:
@@ -50,7 +50,7 @@ jobs:
     needs: update-release-draft
     if: "${{ github.event_name == 'workflow_dispatch' }}"
     # Android SDK tools hardware accel is available only on Linux runners
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     strategy:
       fail-fast: false
       matrix:
@@ -112,12 +112,12 @@ jobs:
           FIREBASE_CREDENTIALS_PATH: firebase-credentials.json
           FIREBASE_APP_TESTERS: ${{ vars.FIREBASE_APP_TESTERS }}
         run: |
-          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > $FIREBASE_CREDENTIALS_PATH
+          echo -n "$FIREBASE_APP_DISTRIBUTION_CREDENTIALS" > "$FIREBASE_CREDENTIALS_PATH"
           ./gradlew appDistributionUploadRelease uploadCrashlyticsSymbolFileRelease
 
   build_debug:
     # Android SDK tools hardware accel is available only on Linux runners
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     name: build-debug
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

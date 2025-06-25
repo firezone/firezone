@@ -74,7 +74,7 @@ env:
 jobs:
   integration-tests:
     name: ${{ matrix.test.name }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     permissions:
       contents: read
       id-token: write
@@ -125,7 +125,7 @@ jobs:
         run: |
           set -xe
 
-          if [[ ! -z "${{ matrix.test.rust_log }}" ]]; then
+          if [[ -n "${{ matrix.test.rust_log }}" ]]; then
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi
 

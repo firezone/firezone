@@ -12,6 +12,7 @@ use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
 use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
+use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
 use rand::{Rng, RngCore, SeedableRng, random};
@@ -22,6 +23,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::mem;
+use std::net::IpAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
@@ -357,6 +359,8 @@ where
         };
 
         agent.add_remote_candidate(candidate.clone());
+
+        generate_optimistic_candidates(agent);
 
         match candidate.kind() {
             CandidateKind::Host => {
@@ -904,6 +908,7 @@ where
             let handshake_complete_before_decapsulate = conn.wg_handshake_complete(now);
 
             let control_flow = conn.decapsulate(
+                from.ip(),
                 packet,
                 &mut self.allocations,
                 &mut self.buffered_transmits,
@@ -1168,6 +1173,64 @@ where
         for candidate in allocation.current_relay_candidates() {
             add_local_candidate(connection, agent, candidate, &mut self.pending_events);
         }
+    }
+}
+
+/// Generate optimistic candidates based on the ones we have already received.
+///
+/// In order to aid the creation of peer-to-peer connections,
+/// we create an additional server-reflexive candidate
+/// for each combination of public IP and host listening port.
+///
+/// IF the listening port of the remote peer happened to be forwarded, this will
+/// allow us to create a direct connection despite the presence of a symmetric NAT.
+///
+/// Consider the following scenario:
+///
+/// - Agent 1 listens on `10.0.0.1:52625` and has a public IP of `1.1.1.1`
+/// - Agent 2 listens on `192.168.0.1:52625` and has a public IP of `2.2.2.2`
+///
+/// Both agents are behind symmetric NAT.
+/// Therefore, the observed port through STUN will not be 52625 but something else entirely.
+/// For this example, let's assume 40000.
+///
+/// Now let's assume that the network administrator forwards port 52625 on one symmetric NAT.
+/// With the below strategy, agent 2 will create an additional server-reflexive candidate
+/// of `1.1.1.1:52625` based on the observed public IP and the port of the host candidate.
+/// This is the port forwarded by the network administrator which will allow the traffic to
+/// flow through to the agent.
+///
+/// In a double symmetric NAT case, this will create a peer-reflexive candidate.
+/// If only one peer is behind symmetric NAT, this creates a predictable path through the NAT.
+///
+/// In both cases, a direct connection will be established and we don't need to fall back to a relay.
+fn generate_optimistic_candidates(agent: &mut IceAgent) {
+    let remote_candidates = agent.remote_candidates();
+
+    let public_ips = remote_candidates
+        .iter()
+        .filter_map(|c| (c.kind() == CandidateKind::ServerReflexive).then_some(c.addr().ip()));
+
+    let host_candidates = remote_candidates
+        .iter()
+        .filter_map(|c| (c.kind() == CandidateKind::Host).then_some(c.addr()));
+
+    let optimistic_candidates = public_ips
+        .cartesian_product(host_candidates)
+        .filter_map(|(ip, base)| {
+            let addr = SocketAddr::new(ip, base.port());
+
+            Candidate::server_reflexive(addr, base, Protocol::Udp)
+                .inspect_err(
+                    |e| tracing::debug!(%addr, %base, "Failed to create optimistic candidate: {e}"),
+                )
+                .ok()
+        })
+        .filter(|c| !remote_candidates.contains(c))
+        .collect::<Vec<_>>();
+
+    for c in optimistic_candidates {
+        agent.add_remote_candidate(c);
     }
 }
 
@@ -2042,6 +2105,7 @@ where
 
     fn decapsulate(
         &mut self,
+        src: IpAddr,
         packet: &[u8],
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
@@ -2052,7 +2116,7 @@ where
 
         let control_flow = match self
             .tunnel
-            .decapsulate_at(None, packet, ip_packet.buf(), now)
+            .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
             TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
@@ -2274,6 +2338,8 @@ impl fmt::Display for SessionId {
 
 #[cfg(test)]
 mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
+
     use super::*;
 
     #[test]
@@ -2292,5 +2358,26 @@ mod tests {
         apply_idle_stun_timings(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
+    }
+
+    #[test]
+    fn generates_correct_optimistic_candidates() {
+        let base = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625));
+        let addr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+
+        let host = Candidate::host(base, "udp").unwrap();
+        let srvflx =
+            Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
+
+        let mut agent = IceAgent::new();
+        agent.add_remote_candidate(host);
+        agent.add_remote_candidate(srvflx);
+
+        generate_optimistic_candidates(&mut agent);
+
+        let expected_candidate =
+            Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
+
+        assert!(agent.remote_candidates().contains(&expected_candidate))
     }
 }

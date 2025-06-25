@@ -205,6 +205,7 @@ fn main() -> Result<()> {
         firezone_id.clone(),
         cli.api_url.to_string(),
         RELEASE.to_owned(),
+        None,
     );
 
     let url = LoginUrl::client(

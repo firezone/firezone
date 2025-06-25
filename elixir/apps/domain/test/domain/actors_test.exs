@@ -1554,6 +1554,23 @@ defmodule Domain.ActorsTest do
       assert group.memberships == []
     end
 
+    test "trims whitespace when creating a group", %{subject: subject} do
+      group_name = "mygroupname"
+      attrs = Fixtures.Actors.group_attrs(name: "   #{group_name}   ")
+
+      assert {:ok, group} = create_group(attrs, subject)
+      assert group.id
+      assert group.name == group_name
+
+      assert group.created_by_subject == %{
+               "name" => subject.actor.name,
+               "email" => subject.identity.email
+             }
+
+      group = Repo.preload(group, :memberships)
+      assert group.memberships == []
+    end
+
     test "creates a group with memberships", %{account: account, actor: actor, subject: subject} do
       attrs =
         Fixtures.Actors.group_attrs(
@@ -2646,8 +2663,21 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, actor} = create_actor(account, attrs)
 
+      assert actor.name == attrs.name
       assert actor.type == attrs.type
-      assert actor.type == attrs.type
+      assert is_nil(actor.disabled_at)
+      assert is_nil(actor.deleted_at)
+    end
+
+    test "trims whitespace when creating an actor", %{
+      account: account
+    } do
+      actor_name = "newactor"
+      attrs = Fixtures.Actors.actor_attrs(name: "   #{actor_name}   ")
+
+      assert {:ok, actor} = create_actor(account, attrs)
+
+      assert actor.name == actor_name
       assert is_nil(actor.disabled_at)
       assert is_nil(actor.deleted_at)
     end
@@ -2674,8 +2704,22 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, actor} = create_actor(account, attrs, subject)
 
+      assert actor.name == attrs.name
       assert actor.type == attrs.type
-      assert actor.type == attrs.type
+      assert is_nil(actor.disabled_at)
+      assert is_nil(actor.deleted_at)
+    end
+
+    test "trims whitespace when creating an actor", %{
+      account: account,
+      subject: subject
+    } do
+      actor_name = "newactor"
+      attrs = Fixtures.Actors.actor_attrs(name: "   #{actor_name}   ")
+
+      assert {:ok, actor} = create_actor(account, attrs, subject)
+
+      assert actor.name == actor_name
       assert is_nil(actor.disabled_at)
       assert is_nil(actor.deleted_at)
     end
@@ -2815,6 +2859,12 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.create_actor(name: "ABC", account: account)
       assert {:ok, %{name: "DEF"}} = update_actor(actor, %{name: "DEF"}, subject)
       assert {:ok, %{name: "ABC"}} = update_actor(actor, %{name: "ABC"}, subject)
+    end
+
+    test "trims whitespace when changing name of an actor", %{account: account, subject: subject} do
+      actor = Fixtures.Actors.create_actor(name: "ABC", account: account)
+      assert {:ok, %{name: "DEF"}} = update_actor(actor, %{name: "   DEF   "}, subject)
+      assert {:ok, %{name: "ABC"}} = update_actor(actor, %{name: "   ABC   "}, subject)
     end
 
     test "does not allow changing name of a synced actor", %{account: account, subject: subject} do

@@ -45,7 +45,7 @@ permissions:
 jobs:
   control-plane:
     name: ${{ matrix.image_name }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     strategy:
       fail-fast: false
       matrix:
@@ -113,7 +113,7 @@ jobs:
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
     if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
-    runs-on: windows-2022
+    runs-on: windows-2022-xlarge
     defaults:
       run:
         working-directory: rust
@@ -151,7 +151,7 @@ jobs:
           fi
 
           cargo build $PROFILE -p ${{ matrix.package }} --target ${{ matrix.target }}
-          mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe $ARTIFACT_PATH
+          mv target/${{ matrix.target }}/${{ inputs.profile }}/${{ matrix.package }}.exe "$ARTIFACT_PATH"
       - name: Install AzureSignTool
         shell: bash
         run: dotnet tool install --global AzureSignTool
@@ -163,7 +163,7 @@ jobs:
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
           AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
-        run: ../scripts/build/sign.sh $ARTIFACT_PATH
+        run: ../scripts/build/sign.sh "$ARTIFACT_PATH"
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name }}
         shell: bash
@@ -173,7 +173,7 @@ jobs:
 
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     defaults:
       run:
         working-directory: rust
@@ -314,22 +314,22 @@ jobs:
           fi
 
           # Used for release artifact
-          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} $BINARY_DEST_PATH
-          sha256sum $BINARY_DEST_PATH > $BINARY_DEST_PATH.sha256sum.txt
+          cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} "$BINARY_DEST_PATH"
+          sha256sum "$BINARY_DEST_PATH" > "$BINARY_DEST_PATH".sha256sum.txt
           gh release upload ${{ matrix.name.release_name }} \
             ${{ env.BINARY_DEST_PATH }} \
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
-            $clobber \
+            "$clobber" \
             --repo ${{ github.repository }}
       - name: Copy binaries to Google Cloud Storage
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
         run: |
           gcloud storage cp \
-            ${BINARY_DEST_PATH} \
+            "$BINARY_DEST_PATH" \
             gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
 
           gcloud storage cp \
-            ${BINARY_DEST_PATH}.sha256sum.txt \
+            "$BINARY_DEST_PATH".sha256sum.txt \
             gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
@@ -342,8 +342,8 @@ jobs:
           version="${{ matrix.name.version }}"
           MAJOR_VERSION="${version%%.*}"
           MAJOR_MINOR_VERSION="${version%.*}"
-          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
-          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
+          echo "MAJOR_VERSION=$MAJOR_VERSION" >> "$GITHUB_ENV"
+          echo "MAJOR_MINOR_VERSION=$MAJOR_MINOR_VERSION" >> "$GITHUB_ENV"
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -395,13 +395,13 @@ jobs:
           retention-days: 1
       - name: Output image name
         id: image-name
-        run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> $GITHUB_OUTPUT
+        run: echo "${{ matrix.name.image_name }}_image=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}" >> "$GITHUB_OUTPUT"
 
   merge-docker-artifacts:
     name: merge-${{ matrix.image.name }}
     needs: data-plane-linux
     if: ${{ always() }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-22.04-xlarge
     strategy:
       fail-fast: false
       matrix:
@@ -447,8 +447,8 @@ jobs:
           version="${{ matrix.image.version }}"
           MAJOR_VERSION="${version%%.*}"
           MAJOR_MINOR_VERSION="${version%.*}"
-          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> $GITHUB_ENV
-          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> $GITHUB_ENV
+          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> "$GITHUB_ENV"
+          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> "$GITHUB_ENV"
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -467,6 +467,10 @@ jobs:
         run: |
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           sources=$(printf '${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}@sha256:%s ' *)
-          echo "$sources"
+
+          echo "Tags: $tags"
+          echo "Sources: $sources"
+
+          # shellcheck disable=SC2086 # $tags and $sources must be split by whitespace
           docker buildx imagetools create $tags $sources
           docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"
