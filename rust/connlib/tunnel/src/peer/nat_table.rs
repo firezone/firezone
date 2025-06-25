@@ -254,8 +254,14 @@ mod tests {
             .translate_incoming(&response, sent_at + response_delay)
             .unwrap();
 
+        let ttl = match src {
+            Protocol::Tcp(_) => 7200,
+            Protocol::Udp(_) => 120,
+            Protocol::Icmp(_) => 120,
+        };
+
         // Assert
-        if response_delay >= Duration::from_secs(7200) {
+        if response_delay >= Duration::from_secs(ttl) {
             assert_eq!(
                 translate_incoming,
                 TranslateIncomingResult::ExpiredNatSession
