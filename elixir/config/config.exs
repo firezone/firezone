@@ -46,8 +46,8 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     password: "postgres"
   ],
   # When changing these, make sure to also:
-  #   1. Make appropriate changes to `Domain.Events.Event`
-  #   2. Add an appropriate `Domain.Events.Hooks` module
+  #   1. Make appropriate changes to `Domain.ChangeLogs.ReplicationConnection`
+  #   2. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
     actor_group_memberships
@@ -79,8 +79,9 @@ config :domain, Domain.Events.ReplicationConnection,
     password: "postgres"
   ],
   # When changing these, make sure to also:
-  #   1. Make appropriate changes to `Domain.Events.Event`
+  #   1. Make appropriate changes to `Domain.Events.ReplicationConnection`
   #   2. Add an appropriate `Domain.Events.Hooks` module
+  #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts
     actor_group_memberships

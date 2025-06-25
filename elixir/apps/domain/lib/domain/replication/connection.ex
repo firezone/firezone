@@ -22,8 +22,8 @@ defmodule Domain.Replication.Connection do
 
     ## Options
 
-      * `:alert_threshold_ms` - How long to allow the WAL stream to lag before logging a warning (default: 5000)
-      * `:publication_name` - Name of the PostgreSQL publication (default: "events")
+      * `:alert_threshold_ms` - How long to allow the WAL stream to lag before logging a warning
+      * `:publication_name` - Name of the PostgreSQL publication
   """
 
   defmacro __using__(opts \\ []) do
@@ -32,7 +32,9 @@ defmodule Domain.Replication.Connection do
       basic_setup(),
       struct_and_constants(opts),
       connection_functions(),
-      query_handlers(),
+      publication_handlers(),
+      replication_slot_handlers(),
+      query_helper_functions(),
       data_handlers(),
       message_handlers(),
       transaction_handlers(),
@@ -77,6 +79,8 @@ defmodule Domain.Replication.Connection do
               step:
                 :disconnected
                 | :check_publication
+                | :check_publication_tables
+                | :remove_publication_tables
                 | :create_publication
                 | :check_replication_slot
                 | :create_slot
@@ -88,7 +92,8 @@ defmodule Domain.Replication.Connection do
               proto_version: integer(),
               table_subscriptions: list(),
               relations: map(),
-              counter: integer()
+              counter: integer(),
+              tables_to_remove: MapSet.t()
             }
 
       defstruct schema: @schema,
@@ -99,7 +104,8 @@ defmodule Domain.Replication.Connection do
                 proto_version: @proto_version,
                 table_subscriptions: [],
                 relations: %{},
-                counter: 0
+                counter: 0,
+                tables_to_remove: MapSet.new()
     end
   end
 
@@ -122,7 +128,7 @@ defmodule Domain.Replication.Connection do
       @impl true
       def handle_connect(state) do
         query = "SELECT 1 FROM pg_publication WHERE pubname = '#{state.publication_name}'"
-        {:query, query, %{state | step: :create_publication}}
+        {:query, query, %{state | step: :check_publication}}
       end
 
       @doc """
@@ -149,8 +155,8 @@ defmodule Domain.Replication.Connection do
     end
   end
 
-  # Extract query result handlers
-  defp query_handlers do
+  # Handle publication-related queries
+  defp publication_handlers do
     quote do
       @doc """
         Generic callback that handles replies to the queries we send.
@@ -158,26 +164,80 @@ defmodule Domain.Replication.Connection do
         We use a simple state machine to issue queries one at a time to Postgres in order to:
 
         1. Check if the publication exists
-        2. Check if the replication slot exists
-        3. Create the publication if it doesn't exist
-        4. Create the replication slot if it doesn't exist
-        5. Start the replication slot
-        6. Start streaming data from the replication slot
+        2. If it exists, check what tables are currently in the publication
+        3. Diff the desired vs current tables and update the publication as needed
+        4. If it doesn't exist, create the publication with the desired tables
+        5. Check if the replication slot exists
+        6. Create the replication slot if it doesn't exist
+        7. Start the replication slot
+        8. Start streaming data from the replication slot
       """
       @impl true
       def handle_result(
             [%Postgrex.Result{num_rows: 1}],
-            %__MODULE__{step: :create_publication} = state
+            %__MODULE__{step: :check_publication} = state
           ) do
+        # Publication exists, check what tables are in it
+        query = """
+        SELECT schemaname, tablename
+        FROM pg_publication_tables
+        WHERE pubname = '#{state.publication_name}'
+        ORDER BY schemaname, tablename
+        """
+
+        {:query, query, %{state | step: :check_publication_tables}}
+      end
+
+      def handle_result(
+            [%Postgrex.Result{rows: existing_table_rows}],
+            %__MODULE__{step: :check_publication_tables} = state
+          ) do
+        handle_publication_tables_diff(existing_table_rows, state)
+      end
+
+      def handle_result(
+            [%Postgrex.Result{}],
+            %__MODULE__{step: :remove_publication_tables, tables_to_remove: to_remove} = state
+          ) do
+        handle_remove_publication_tables(to_remove, state)
+      end
+
+      def handle_result(
+            [%Postgrex.Result{num_rows: 0}],
+            %__MODULE__{step: :check_publication} = state
+          ) do
+        # Publication doesn't exist, create it with all desired tables
+        tables =
+          state.table_subscriptions
+          |> Enum.map_join(",", fn table -> "#{state.schema}.#{table}" end)
+
+        Logger.info("#{__MODULE__}: Creating publication with tables: #{tables}")
+        query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{tables}"
+        {:query, query, %{state | step: :check_replication_slot}}
+      end
+
+      def handle_result([%Postgrex.Result{}], %__MODULE__{step: :create_publication} = state) do
         query =
           "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
 
-        {:query, query, %{state | step: :create_replication_slot}}
+        {:query, query, %{state | step: :create_slot}}
+      end
+    end
+  end
+
+  # Handle replication slot-related queries
+  defp replication_slot_handlers do
+    quote do
+      def handle_result([%Postgrex.Result{}], %__MODULE__{step: :check_replication_slot} = state) do
+        query =
+          "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
+
+        {:query, query, %{state | step: :create_slot}}
       end
 
       def handle_result(
             [%Postgrex.Result{num_rows: 1}],
-            %__MODULE__{step: :create_replication_slot} = state
+            %__MODULE__{step: :create_slot} = state
           ) do
         {:query, "SELECT 1", %{state | step: :start_replication_slot}}
       end
@@ -198,31 +258,77 @@ defmodule Domain.Replication.Connection do
 
       def handle_result(
             [%Postgrex.Result{num_rows: 0}],
-            %__MODULE__{step: :create_publication} = state
-          ) do
-        tables =
-          state.table_subscriptions
-          |> Enum.map_join(",", fn table -> "#{state.schema}.#{table}" end)
-
-        query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{tables}"
-        {:query, query, %{state | step: :check_replication_slot}}
-      end
-
-      def handle_result([%Postgrex.Result{}], %__MODULE__{step: :check_replication_slot} = state) do
-        query =
-          "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
-
-        {:query, query, %{state | step: :create_replication_slot}}
-      end
-
-      def handle_result(
-            [%Postgrex.Result{num_rows: 0}],
-            %__MODULE__{step: :create_replication_slot} = state
+            %__MODULE__{step: :create_slot} = state
           ) do
         query =
           "CREATE_REPLICATION_SLOT #{state.replication_slot_name} LOGICAL #{state.output_plugin} NOEXPORT_SNAPSHOT"
 
         {:query, query, %{state | step: :start_replication_slot}}
+      end
+    end
+  end
+
+  # Helper functions for query handling
+  defp query_helper_functions do
+    quote do
+      # Helper function to handle publication table diffing
+      defp handle_publication_tables_diff(existing_table_rows, state) do
+        # Convert existing tables to the same format as our desired tables
+        current_tables =
+          existing_table_rows
+          |> Enum.map(fn [schema, table] -> "#{schema}.#{table}" end)
+          |> MapSet.new()
+
+        desired_tables =
+          state.table_subscriptions
+          |> Enum.map(fn table -> "#{state.schema}.#{table}" end)
+          |> MapSet.new()
+
+        to_add = MapSet.difference(desired_tables, current_tables)
+        to_remove = MapSet.difference(current_tables, desired_tables)
+
+        cond do
+          not Enum.empty?(to_add) ->
+            tables = Enum.join(to_add, ", ")
+            Logger.info("#{__MODULE__}: Adding tables to publication: #{tables}")
+
+            {:query, "ALTER PUBLICATION #{state.publication_name} ADD TABLE #{tables}",
+             %{state | step: :remove_publication_tables, tables_to_remove: to_remove}}
+
+          not Enum.empty?(to_remove) ->
+            tables = Enum.join(to_remove, ", ")
+            Logger.info("#{__MODULE__}: Removing tables from publication: #{tables}")
+
+            {:query, "ALTER PUBLICATION #{state.publication_name} DROP TABLE #{tables}",
+             %{state | step: :check_replication_slot}}
+
+          true ->
+            # No changes needed
+            Logger.info("#{__MODULE__}: Publication tables are up to date")
+
+            query =
+              "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
+
+            {:query, query, %{state | step: :create_slot}}
+        end
+      end
+
+      # Helper function to handle removing remaining tables
+      defp handle_remove_publication_tables(to_remove, state) do
+        if Enum.empty?(to_remove) do
+          # No tables to remove, proceed to replication slot
+          query =
+            "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
+
+          {:query, query, %{state | step: :create_slot}}
+        else
+          # Remove the remaining tables
+          tables = Enum.join(to_remove, ", ")
+          Logger.info("#{__MODULE__}: Removing tables from publication: #{tables}")
+
+          {:query, "ALTER PUBLICATION #{state.publication_name} DROP TABLE #{tables}",
+           %{state | step: :check_replication_slot}}
+        end
       end
     end
   end

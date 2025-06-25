@@ -22,7 +22,8 @@ defmodule Domain.Replication.ConnectionTest do
       proto_version: 1,
       table_subscriptions: ["accounts", "resources"],
       relations: %{},
-      counter: 0
+      counter: 0,
+      tables_to_remove: MapSet.new()
     }
 
   # Used to test live connection
@@ -57,7 +58,7 @@ defmodule Domain.Replication.ConnectionTest do
     test "handle_connect initiates publication check" do
       state = mock_state()
       expected_query = "SELECT 1 FROM pg_publication WHERE pubname = '#{state.publication_name}'"
-      expected_next_state = %{state | step: :create_publication}
+      expected_next_state = %{state | step: :check_publication}
 
       assert {:query, ^expected_query, ^expected_next_state} =
                TestReplicationConnection.handle_connect(state)
@@ -65,21 +66,160 @@ defmodule Domain.Replication.ConnectionTest do
   end
 
   describe "handle_result/2 callback" do
-    test "handle_result transitions from create_publication to create_replication_slot when publication exists" do
-      state = %{mock_state() | step: :create_publication}
+    test "handle_result transitions from check_publication to check_publication_tables when publication exists" do
+      state = %{mock_state() | step: :check_publication}
       result = [%Postgrex.Result{num_rows: 1}]
 
-      expected_query =
-        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
+      expected_query = """
+      SELECT schemaname, tablename
+      FROM pg_publication_tables
+      WHERE pubname = '#{state.publication_name}'
+      ORDER BY schemaname, tablename
+      """
 
-      expected_next_state = %{state | step: :create_replication_slot}
+      expected_next_state = %{state | step: :check_publication_tables}
 
       assert {:query, ^expected_query, ^expected_next_state} =
                TestReplicationConnection.handle_result(result, state)
     end
 
-    test "handle_result transitions from create_replication_slot to start_replication_slot when slot exists" do
-      state = %{mock_state() | step: :create_replication_slot}
+    test "handle_result creates publication if it doesn't exist" do
+      state = %{mock_state() | step: :check_publication}
+      result = [%Postgrex.Result{num_rows: 0}]
+
+      expected_tables = "test_schema.accounts,test_schema.resources"
+      expected_query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{expected_tables}"
+      expected_next_state = %{state | step: :check_replication_slot}
+
+      assert {:query, ^expected_query, ^expected_next_state} =
+               TestReplicationConnection.handle_result(result, state)
+    end
+
+    test "handle_result proceeds to replication slot when publication tables are up to date" do
+      state = %{mock_state() | step: :check_publication_tables}
+      # Mock existing tables that match our desired tables exactly
+      result = [
+        %Postgrex.Result{rows: [["test_schema", "accounts"], ["test_schema", "resources"]]}
+      ]
+
+      expected_query =
+        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
+
+      expected_next_state = %{state | step: :create_slot}
+
+      assert {:query, ^expected_query, ^expected_next_state} =
+               TestReplicationConnection.handle_result(result, state)
+    end
+
+    test "handle_result adds new tables when they are missing from publication" do
+      state = %{mock_state() | step: :check_publication_tables}
+      # Mock existing tables that are missing "resources"
+      result = [%Postgrex.Result{rows: [["test_schema", "accounts"]]}]
+
+      expected_query =
+        "ALTER PUBLICATION #{state.publication_name} ADD TABLE test_schema.resources"
+
+      expected_next_state = %{
+        state
+        | step: :remove_publication_tables,
+          tables_to_remove: MapSet.new()
+      }
+
+      assert {:query, ^expected_query, ^expected_next_state} =
+               TestReplicationConnection.handle_result(result, state)
+    end
+
+    test "handle_result removes unwanted tables when they exist in publication" do
+      state = %{mock_state() | step: :check_publication_tables}
+      # Mock existing tables that include an unwanted "old_table"
+      result = [
+        %Postgrex.Result{
+          rows: [
+            ["test_schema", "accounts"],
+            ["test_schema", "resources"],
+            ["test_schema", "old_table"]
+          ]
+        }
+      ]
+
+      expected_query =
+        "ALTER PUBLICATION #{state.publication_name} DROP TABLE test_schema.old_table"
+
+      expected_next_state = %{state | step: :check_replication_slot}
+
+      assert {:query, ^expected_query, ^expected_next_state} =
+               TestReplicationConnection.handle_result(result, state)
+    end
+
+    test "handle_result adds tables first, then removes unwanted tables" do
+      state = %{mock_state() | step: :check_publication_tables}
+      # Mock existing tables that have "old_table" but missing "resources"
+      result = [
+        %Postgrex.Result{rows: [["test_schema", "accounts"], ["test_schema", "old_table"]]}
+      ]
+
+      expected_query =
+        "ALTER PUBLICATION #{state.publication_name} ADD TABLE test_schema.resources"
+
+      expected_tables_to_remove = MapSet.new(["test_schema.old_table"])
+
+      expected_next_state = %{
+        state
+        | step: :remove_publication_tables,
+          tables_to_remove: expected_tables_to_remove
+      }
+
+      assert {:query, ^expected_query, ^expected_next_state} =
+               TestReplicationConnection.handle_result(result, state)
+    end
+
+    test "verify MapSet behavior for debugging" do
+      # Verify that our MapSet is not empty
+      tables_to_remove = MapSet.new(["test_schema.old_table"])
+      refute Enum.empty?(tables_to_remove)
+      assert MapSet.size(tables_to_remove) == 1
+      assert MapSet.member?(tables_to_remove, "test_schema.old_table")
+    end
+
+    test "handle_result removes tables after adding when tables_to_remove is not empty" do
+      tables_to_remove = MapSet.new(["test_schema.old_table"])
+
+      state = %{
+        mock_state()
+        | step: :remove_publication_tables,
+          tables_to_remove: tables_to_remove
+      }
+
+      result = [%Postgrex.Result{}]
+
+      # Debug: verify the state is what we think it is
+      refute Enum.empty?(state.tables_to_remove)
+      assert state.step == :remove_publication_tables
+
+      expected_query =
+        "ALTER PUBLICATION #{state.publication_name} DROP TABLE test_schema.old_table"
+
+      expected_next_state = %{state | step: :check_replication_slot}
+
+      assert {:query, ^expected_query, ^expected_next_state} =
+               TestReplicationConnection.handle_result(result, state)
+    end
+
+    test "handle_result proceeds to replication slot when no tables to remove" do
+      state = %{mock_state() | step: :remove_publication_tables, tables_to_remove: MapSet.new()}
+      result = [%Postgrex.Result{}]
+
+      expected_query =
+        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
+
+      expected_next_state = %{state | step: :create_slot}
+
+      assert {:query, ^expected_query, ^expected_next_state} =
+               TestReplicationConnection.handle_result(result, state)
+    end
+
+    test "handle_result transitions from create_slot to start_replication_slot when slot exists" do
+      state = %{mock_state() | step: :create_slot}
       result = [%Postgrex.Result{num_rows: 1}]
 
       expected_query = "SELECT 1"
@@ -102,33 +242,21 @@ defmodule Domain.Replication.ConnectionTest do
                TestReplicationConnection.handle_result(result, state)
     end
 
-    test "handle_result creates publication if it doesn't exist" do
-      state = %{mock_state() | step: :create_publication}
-      result = [%Postgrex.Result{num_rows: 0}]
-
-      expected_tables = "test_schema.accounts,test_schema.resources"
-      expected_query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{expected_tables}"
-      expected_next_state = %{state | step: :check_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result transitions from check_replication_slot to create_replication_slot after creating publication" do
+    test "handle_result transitions from check_replication_slot to create_slot after creating publication" do
       state = %{mock_state() | step: :check_replication_slot}
       result = [%Postgrex.Result{num_rows: 0}]
 
       expected_query =
         "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
 
-      expected_next_state = %{state | step: :create_replication_slot}
+      expected_next_state = %{state | step: :create_slot}
 
       assert {:query, ^expected_query, ^expected_next_state} =
                TestReplicationConnection.handle_result(result, state)
     end
 
     test "handle_result creates replication slot if it doesn't exist" do
-      state = %{mock_state() | step: :create_replication_slot}
+      state = %{mock_state() | step: :create_slot}
       result = [%Postgrex.Result{num_rows: 0}]
 
       expected_query =
