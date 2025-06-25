@@ -19,7 +19,7 @@ use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView};
 use connlib_model::{Site, SiteId};
-use firezone_logging::{err_with_src, telemetry_event, unwrap_or_debug, unwrap_or_warn};
+use firezone_logging::{err_with_src, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
@@ -474,7 +474,7 @@ impl ClientState {
                         }
                     })
                     .unwrap_or_else(|e| {
-                        telemetry_event!("Recursive UDP DNS query failed: {}", err_with_src(&e));
+                        tracing::debug!("Recursive UDP DNS query failed: {}", err_with_src(&e));
 
                         dns_types::Response::servfail(&response.query)
                     });
@@ -490,7 +490,7 @@ impl ClientState {
                         tracing::trace!("Received recursive TCP DNS response");
                     })
                     .unwrap_or_else(|e| {
-                        telemetry_event!("Recursive TCP DNS query failed: {}", err_with_src(&e));
+                        tracing::debug!("Recursive TCP DNS query failed: {}", err_with_src(&e));
 
                         dns_types::Response::servfail(&response.query)
                     });

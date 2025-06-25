@@ -198,21 +198,6 @@ pub fn test_global(directives: &str) {
 ///
 /// - error and warn events are reported as sentry exceptions
 /// - info and debug events are captured as breadcrumbs (and submitted together with warns & errors)
-///
-/// ## Telemetry events
-///
-/// This layer configuration supports a special `telemetry` event.
-/// Telemetry events are events logged on the `TRACE` level for the `telemetry` target.
-/// These events SHOULD be created using [`telemetry_event`] to ensure that they are sampled correctly.
-/// The idea here is that some events logged via `tracing` should not necessarily end up in the users log file.
-/// Yet, if they happen a lot, we still want to know about them.
-/// Coupling the `telemetry` target to the `TRACE` level pretty much prevents these events from ever showing up in log files.
-/// By sampling them, we prevent flooding Sentry with lots of these logs.
-///
-/// ## Telemetry spans
-///
-/// Only spans with the `telemetry` target on level `TRACE` will be submitted to Sentry.
-/// Similar to telemetry events, these should be created with [`telemetry_span`] to ensure they are sampled correctly.
 pub fn sentry_layer<S>() -> impl Layer<S> + Send + Sync
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -223,7 +208,6 @@ where
         .event_filter(move |md| match *md.level() {
             Level::ERROR | Level::WARN => EventFilter::Event | EventFilter::Breadcrumb | EventFilter::Log,
             Level::INFO | Level::DEBUG => EventFilter::Breadcrumb | EventFilter::Log,
-            Level::TRACE if md.target() == TELEMETRY_TARGET => EventFilter::Event,
             _ => EventFilter::Ignore,
         })
         .span_filter(|md| {
@@ -263,44 +247,4 @@ where
                 "(Code 0x00000003)",
             ],
         ).not())
-}
-
-#[doc(hidden)]
-pub const TELEMETRY_TARGET: &str = "telemetry";
-#[doc(hidden)]
-pub const TELEMETRY_SAMPLE_RATE: f32 = 0.01;
-
-/// Creates a `telemetry` span that will be active until dropped.
-///
-/// In order to save CPU power, `telemetry` spans are sampled at a rate of 1% at creation time.
-#[macro_export]
-macro_rules! telemetry_span {
-    ($($arg:tt)*) => {
-        if $crate::__export::rand::random::<f32>() < $crate::TELEMETRY_SAMPLE_RATE {
-            $crate::__export::tracing::trace_span!(target: $crate::TELEMETRY_TARGET, $($arg)*)
-        } else {
-            $crate::__export::tracing::Span::none()
-        }
-    };
-}
-
-/// Creates a `telemetry` event.
-///
-/// In order to save CPU power, `telemetry` events are sampled at a rate of 1% at creation time.
-/// In addition, all telemetry events are logged at the `DEBUG` level.
-#[macro_export]
-macro_rules! telemetry_event {
-    ($($arg:tt)*) => {
-        if $crate::__export::rand::random::<f32>() < $crate::TELEMETRY_SAMPLE_RATE {
-            $crate::__export::tracing::trace!(target: $crate::TELEMETRY_TARGET, $($arg)*);
-        }
-
-        $crate::__export::tracing::debug!($($arg)*);
-    };
-}
-
-#[doc(hidden)]
-pub mod __export {
-    pub use rand;
-    pub use tracing;
 }

@@ -13,7 +13,7 @@ use std::{io, mem};
 use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use base64::Engine;
-use firezone_logging::{err_with_src, telemetry_span};
+use firezone_logging::err_with_src;
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
@@ -261,8 +261,6 @@ where
         socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     ) -> io::Result<Self> {
         let host_and_port = url.expose_secret().host_and_port();
-
-        let _span = telemetry_span!("resolve_portal_url", host = %host_and_port.0).entered();
 
         // Statically resolve the host in the URL to a set of addresses.
         // We use these when connecting the socket to avoid a dependency on DNS resolution later on.

@@ -12,7 +12,6 @@ anyhow = { workspace = true }
 nu-ansi-term = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }
-rand = { workspace = true }
 sentry-tracing = { workspace = true }
 supports-color = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
