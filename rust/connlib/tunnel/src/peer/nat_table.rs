@@ -25,14 +25,22 @@ pub(crate) struct NatTable {
     expired: HashSet<(Protocol, IpAddr)>,
 }
 
-pub(crate) const TTL: Duration = Duration::from_secs(60 * 60 * 2);
+pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
+pub(crate) const UDP_TTL: Duration = Duration::from_secs(60 * 2);
+pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         for (outside, e) in self.last_seen.iter() {
-            if now.duration_since(*e) >= TTL {
+            let ttl = match outside.0 {
+                Protocol::Tcp(_) => TCP_TTL,
+                Protocol::Udp(_) => UDP_TTL,
+                Protocol::Icmp(_) => ICMP_TTL,
+            };
+
+            if now.duration_since(*e) >= ttl {
                 if let Some((inside, _)) = self.table.remove_by_right(outside) {
-                    tracing::debug!(?inside, ?outside, "NAT session expired");
+                    tracing::debug!(?inside, ?outside, ?ttl, "NAT session expired");
                     self.expired.insert(*outside);
                 }
             }
