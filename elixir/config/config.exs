@@ -34,6 +34,8 @@ config :domain, Domain.Repo,
   start_apps_before_migration: [:ssl, :logger_json]
 
 config :domain, Domain.ChangeLogs.ReplicationConnection,
+  replication_slot_name: "change_logs_slot",
+  publication_name: "change_logs_publication",
   enabled: true,
   connection_opts: [
     hostname: "localhost",
@@ -67,6 +69,8 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
   ]
 
 config :domain, Domain.Events.ReplicationConnection,
+  replication_slot_name: "events_slot",
+  publication_name: "events_publication",
   enabled: true,
   connection_opts: [
     hostname: "localhost",

@@ -96,8 +96,8 @@ defmodule Domain.Replication.Connection do
 
       defstruct schema: @schema,
                 step: :disconnected,
-                publication_name: "",
-                replication_slot_name: "",
+                publication_name: nil,
+                replication_slot_name: nil,
                 output_plugin: @output_plugin,
                 proto_version: @proto_version,
                 table_subscriptions: [],
@@ -209,7 +209,10 @@ defmodule Domain.Replication.Connection do
           state.table_subscriptions
           |> Enum.map_join(",", fn table -> "#{state.schema}.#{table}" end)
 
-        Logger.info("#{__MODULE__}: Creating publication with tables: #{tables}")
+        Logger.info(
+          "#{__MODULE__}: Creating publication #{state.publication_name} with tables: #{tables}"
+        )
+
         query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{tables}"
         {:query, query, %{state | step: :check_replication_slot}}
       end
