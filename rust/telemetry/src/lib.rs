@@ -2,10 +2,10 @@
 
 use std::{borrow::Cow, fmt, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{Ok, Result, bail};
+use anyhow::{Result, bail};
 use sentry::{
-    BeforeCallback,
-    protocol::{Event, SessionStatus},
+    BeforeCallback, User,
+    protocol::{Event, Log, LogAttribute, SessionStatus},
 };
 use sha2::Digest as _;
 
@@ -113,7 +113,7 @@ impl Drop for Telemetry {
 }
 
 impl Telemetry {
-    pub fn start(&mut self, api_url: &str, release: &str, dsn: Dsn) {
+    pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
         let environment = Env::from_api_url(api_url);
@@ -144,7 +144,11 @@ impl Telemetry {
             return;
         }
 
-        tracing::info!(%environment, "Starting telemetry");
+        // Important: Evaluate feature flags before checking `stream_logs` to avoid hitting the default.
+        feature_flags::evaluate_now(firezone_id.clone(), environment).await;
+        let enable_logs = feature_flags::stream_logs();
+
+        tracing::info!(%environment, %enable_logs, "Starting telemetry");
 
         let inner = sentry::init((
             dsn.0,
@@ -159,11 +163,13 @@ impl Telemetry {
                 })),
                 max_breadcrumbs: 500,
                 before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
+                enable_logs,
+                before_send_log: Some(Arc::new(append_tracing_fields_to_message)),
                 ..Default::default()
             },
         ));
         // Configure scope on the main hub so that all threads will get the tags
-        sentry::Hub::main().configure_scope(|scope| {
+        sentry::Hub::main().configure_scope(move |scope| {
             scope.set_tag("api_url", api_url);
             let ctx = sentry::integrations::contexts::utils::device_context();
             scope.set_context("device", ctx);
@@ -173,9 +179,40 @@ impl Telemetry {
             if let Some(ctx) = sentry::integrations::contexts::utils::os_context() {
                 scope.set_context("os", ctx);
             }
+
+            scope.set_user(Some(User {
+                id: Some(firezone_id),
+                ..User::default()
+            }));
         });
         self.inner.replace(inner);
         sentry::start_session();
+    }
+
+    /// Refreshes the telemetry config.
+    ///
+    /// Looks at the current values of the relevant feature flags and re-initializes the client in case they changed.
+    pub fn refresh_config(&mut self) {
+        let Some(client) = self.inner.as_ref() else {
+            tracing::debug!("Cannot refresh config: no client");
+            return;
+        };
+
+        let enable_logs = feature_flags::stream_logs();
+
+        if client.options().enable_logs == enable_logs {
+            tracing::debug!("Config is up-to-date");
+            return;
+        }
+
+        let options = client.options().clone();
+
+        tracing::info!(%enable_logs, "Re-initializing telemetry");
+
+        self.inner.replace(sentry::init(sentry::ClientOptions {
+            enable_logs,
+            ..options
+        }));
     }
 
     /// Flushes events to sentry.io and drops the guard
@@ -261,6 +298,33 @@ fn event_rate_limiter(timeout: Duration) -> BeforeCallback<Event<'static>> {
     })
 }
 
+/// Appends all but certain attributes from a sentry [`Log`] to the message body.
+///
+/// Sentry stores all [`tracing`] fields as attributes and only renders the message.
+/// Within Firezone, we make extensive use of attributes to provide contextual information.
+/// We want to see these attributes inline with the message which is why we emulate the behaviour of `tracing_subscriber::fmt` here.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "We need to match Sentry's config signature."
+)]
+fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
+    const IGNORED_ATTRS: &[&str] = &["os.", "sentry.", "tracing.", "server.", "user."];
+
+    for (key, attribute) in &log.attributes {
+        let LogAttribute(serde_json::Value::String(attr_string)) = &attribute else {
+            continue;
+        };
+
+        if IGNORED_ATTRS.iter().any(|attr| key.starts_with(attr)) {
+            continue;
+        }
+
+        log.body.push_str(&format!(" {key}={attr_string}"));
+    }
+
+    Some(log)
+}
+
 fn update_user(update: impl FnOnce(&mut sentry::User)) {
     sentry::Hub::main().configure_scope(|scope| {
         let mut user = scope.user().cloned().unwrap_or_default();
@@ -278,11 +342,15 @@ fn set_current_user(user: Option<sentry::User>) {
 mod tests {
     use super::*;
 
-    #[test]
-    fn starting_session_for_unsupported_env_disables_current_one() {
+    #[tokio::test]
+    async fn starting_session_for_unsupported_env_disables_current_one() {
         let mut telemetry = Telemetry::default();
-        telemetry.start("wss://api.firez.one", "1.0.0", TESTING);
-        telemetry.start("wss://example.com", "1.0.0", TESTING);
+        telemetry
+            .start("wss://api.firez.one", "1.0.0", TESTING, String::new())
+            .await;
+        telemetry
+            .start("wss://example.com", "1.0.0", TESTING, String::new())
+            .await;
 
         assert!(telemetry.inner.is_none());
     }

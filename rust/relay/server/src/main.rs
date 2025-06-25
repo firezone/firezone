@@ -118,19 +118,20 @@ fn main() {
 
     let args = Args::parse();
 
-    let mut telemetry = Telemetry::default();
-    if args.telemetry {
-        telemetry.start(
-            args.api_url.as_str(),
-            VERSION.unwrap_or("unknown"),
-            RELAY_DSN,
-        );
-    }
-
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .expect("Failed to build tokio runtime");
+
+    let mut telemetry = Telemetry::default();
+    if args.telemetry {
+        runtime.block_on(telemetry.start(
+            args.api_url.as_str(),
+            VERSION.unwrap_or("unknown"),
+            RELAY_DSN,
+            String::new(), // Relays don't have a Firezone ID.
+        ));
+    }
 
     match runtime.block_on(try_main(args)) {
         Ok(()) => runtime.block_on(telemetry.stop()),

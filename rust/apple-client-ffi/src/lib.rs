@@ -254,9 +254,14 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
         device_info: String,
     ) -> Result<Self> {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .thread_name("connlib")
+            .enable_all()
+            .build()?;
+
         let mut telemetry = Telemetry::default();
-        telemetry.start(&api_url, RELEASE, APPLE_DSN);
-        Telemetry::set_firezone_id(device_id.clone());
+        runtime.block_on(telemetry.start(&api_url, RELEASE, APPLE_DSN, device_id.clone()));
         Telemetry::set_account_slug(account_slug.clone());
 
         analytics::identify(
@@ -281,11 +286,6 @@ impl WrappedSession {
             device_info,
         )?;
 
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(1)
-            .thread_name("connlib")
-            .enable_all()
-            .build()?;
         let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
         let portal = PhoenixChannel::disconnected(

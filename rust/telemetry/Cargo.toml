@@ -13,7 +13,7 @@ opentelemetry = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 parking_lot = { workspace = true }
 reqwest = { workspace = true }
-sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing", "release-health"] }
+sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing", "release-health", "logs"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
