@@ -554,7 +554,7 @@ impl TunnelTest {
             }
         });
         while let Some(transmit) = self.client.exec_mut(|c| {
-            let packet = c.tcp_dns_client.poll_outbound()?;
+            let packet = c.poll_outbound()?;
             c.encapsulate(packet, now)
         }) {
             buffered_transmits.push_from(transmit, &self.client, now)

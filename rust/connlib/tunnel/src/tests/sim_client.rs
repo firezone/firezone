@@ -178,6 +178,10 @@ impl SimClient {
         Some(transmit)
     }
 
+    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+        self.tcp_dns_client.poll_outbound()
+    }
+
     fn update_sent_requests(&mut self, packet: &IpPacket) {
         if let Some(icmp) = packet.as_icmpv4() {
             if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
