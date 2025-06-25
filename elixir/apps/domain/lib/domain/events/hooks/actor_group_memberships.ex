@@ -31,7 +31,7 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
   defp broadcast_access(action, actor_id, group_id) do
     Policies.Policy.Query.not_deleted()
     |> Policies.Policy.Query.by_actor_group_id(group_id)
-    |> Repo.all(timeout: 30_000)
+    |> Repo.all(checkout_timeout: 30_000)
     |> Enum.each(fn policy ->
       payload = {:"#{action}_access", policy.id, policy.actor_group_id, policy.resource_id}
       :ok = PubSub.Actor.Policies.broadcast(actor_id, payload)
