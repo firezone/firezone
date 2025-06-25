@@ -536,7 +536,7 @@ impl TunnelTest {
     ) {
         // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
         self.client.exec_mut(|c| {
-            c.tcp_dns_client.handle_timeout(now);
+            c.handle_timeout(now);
 
             while let Some(result) = c.tcp_dns_client.poll_query_result() {
                 match result.result {
@@ -560,15 +560,10 @@ impl TunnelTest {
             buffered_transmits.push_from(transmit, &self.client, now)
         }
 
-        // Handle the client's `Transmit`s and timeout.
+        // Handle the client's `Transmit`s.
         while let Some(transmit) = self.client.poll_inbox(now) {
             self.client.exec_mut(|c| c.receive(transmit, now))
         }
-        self.client.exec_mut(|c| {
-            if c.sut.poll_timeout().is_some_and(|t| t <= now) {
-                c.sut.handle_timeout(now)
-            }
-        });
 
         // Handle all gateway `Transmit`s and timeouts.
         for (_, gateway) in self.gateways.iter_mut() {

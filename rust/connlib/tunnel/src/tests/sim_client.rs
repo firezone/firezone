@@ -182,6 +182,14 @@ impl SimClient {
         self.tcp_dns_client.poll_outbound()
     }
 
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.tcp_dns_client.handle_timeout(now);
+
+        if self.sut.poll_timeout().is_some_and(|t| t <= now) {
+            self.sut.handle_timeout(now)
+        }
+    }
+
     fn update_sent_requests(&mut self, packet: &IpPacket) {
         if let Some(icmp) = packet.as_icmpv4() {
             if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
