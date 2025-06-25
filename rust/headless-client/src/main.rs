@@ -11,7 +11,6 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory},
     signals,
 };
-use firezone_logging::telemetry_span;
 use firezone_telemetry::{Telemetry, analytics, otel};
 use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
 use phoenix_channel::PhoenixChannel;
@@ -245,8 +244,6 @@ fn main() -> Result<()> {
             opentelemetry::global::set_meter_provider(provider);
         }
 
-        let connect_span = telemetry_span!("connect_to_firezone").entered();
-
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
         // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
@@ -288,15 +285,9 @@ fn main() -> Result<()> {
 
         let mut telemetry_refresh = tokio::time::interval(Duration::from_secs(60));
 
-        let tun = {
-            let _guard = telemetry_span!("create_tun_device").entered();
-
-            tun_device.make_tun()?
-        };
+        let tun = tun_device.make_tun()?;
         session.set_tun(tun);
         session.set_dns(dns_controller.system_resolvers());
-
-        drop(connect_span);
 
         let result = loop {
             let event = tokio::select! {

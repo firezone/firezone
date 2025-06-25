@@ -5,7 +5,6 @@ mod udp_dns;
 
 use crate::{device_channel::Device, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, Result};
-use firezone_logging::{telemetry_event, telemetry_span};
 use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
 use gat_lending_iterator::LendingIterator;
@@ -22,7 +21,6 @@ use std::{
     task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
-use tracing::Instrument;
 use tun::Tun;
 
 /// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
@@ -371,8 +369,7 @@ impl Io {
                 if self
                     .dns_queries
                     .try_push(
-                        udp_dns::send(self.udp_socket_factory.clone(), query.server, query.message)
-                            .instrument(telemetry_span!("recursive_udp_dns_query")),
+                        udp_dns::send(self.udp_socket_factory.clone(), query.server, query.message),
                         meta,
                     )
                     .is_err()
@@ -384,8 +381,7 @@ impl Io {
                 if self
                     .dns_queries
                     .try_push(
-                        tcp_dns::send(self.tcp_socket_factory.clone(), query.server, query.message)
-                            .instrument(telemetry_span!("recursive_tcp_dns_query")),
+                        tcp_dns::send(self.tcp_socket_factory.clone(), query.server, query.message),
                         meta,
                     )
                     .is_err()
@@ -416,8 +412,6 @@ impl Io {
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
     let len = d.packet.len();
     if len > MAX_FZ_PAYLOAD {
-        telemetry_event!(from = %d.from, %len, "Dropping too large datagram (max allowed: {MAX_FZ_PAYLOAD} bytes)");
-
         return false;
     }
 

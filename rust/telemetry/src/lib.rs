@@ -156,11 +156,6 @@ impl Telemetry {
                 environment: Some(Cow::Borrowed(environment.as_str())),
                 // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
                 release: Some(release.to_owned().into()),
-                traces_sampler: Some(Arc::new(|tx| {
-                    // Only submit `telemetry` spans to Sentry.
-                    // Those get sampled at creation time (to save CPU power) so we want to submit all of them.
-                    if tx.name() == "telemetry" { 1.0 } else { 0.0 }
-                })),
                 max_breadcrumbs: 500,
                 before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
                 enable_logs,

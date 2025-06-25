@@ -5,7 +5,7 @@ use dns_types::{
     DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response, ResponseBuilder,
     ResponseCode,
 };
-use firezone_logging::{err_with_src, telemetry_span};
+use firezone_logging::err_with_src;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::io;
@@ -231,8 +231,6 @@ impl StubResolver {
     ///
     /// This performs a linear search and is thus O(N) and **must not** be called in the hot-path of packet routing.
     fn match_resource_linear(&self, domain: &dns_types::DomainName) -> Option<Resource> {
-        let _span = telemetry_span!("match_resource_linear").entered();
-
         let name = Candidate::from_domain(domain);
 
         for (pattern, r) in &self.dns_resources {
