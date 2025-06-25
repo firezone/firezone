@@ -85,6 +85,7 @@ fn try_main(
         id.id.clone(),
         api_url.clone(),
         firezone_gui_client::RELEASE.to_owned(),
+        None,
     );
 
     rt.block_on(telemetry.start(
