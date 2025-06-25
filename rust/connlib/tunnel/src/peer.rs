@@ -997,7 +997,7 @@ mod tests {
         )
         .unwrap();
 
-        now += nat_table::TTL;
+        now += nat_table::UDP_TTL;
         peer.handle_timeout(now);
 
         assert!(
