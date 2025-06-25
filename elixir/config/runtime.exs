@@ -29,8 +29,8 @@ if config_env() == :prod do
 
   config :domain, Domain.ChangeLogs.ReplicationConnection,
     enabled: env_var_to_config!(:background_jobs_enabled),
-    replication_slot_name: env_var_to_config!(:database_replication_slot_name),
-    publication_name: env_var_to_config!(:database_publication_name),
+    replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
+    publication_name: env_var_to_config!(:database_change_logs_publication_name),
     connection_opts: [
       hostname: env_var_to_config!(:database_host),
       port: env_var_to_config!(:database_port),
@@ -44,8 +44,8 @@ if config_env() == :prod do
 
   config :domain, Domain.Events.ReplicationConnection,
     enabled: env_var_to_config!(:background_jobs_enabled),
-    replication_slot_name: env_var_to_config!(:database_replication_slot_name),
-    publication_name: env_var_to_config!(:database_publication_name),
+    replication_slot_name: env_var_to_config!(:database_events_replication_slot_name),
+    publication_name: env_var_to_config!(:database_events_publication_name),
     connection_opts: [
       hostname: env_var_to_config!(:database_host),
       port: env_var_to_config!(:database_port),
