@@ -28,6 +28,8 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
     unless Domain.GoogleCloudPlatform.enabled?(),
       do: "Google Cloud Platform clustering strategy requires GoogleCloudPlatform to be enabled"
 
+    state = Map.put(state, :below_threshold?, false)
+
     {:ok, state, {:continue, :start}}
   end
 
@@ -68,16 +70,7 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
             problem_nodes: inspect(problem_nodes)
           )
 
-          # Only log error if the number of connected nodes falls below the expected threshold
-          unless enough_nodes_connected?(state) do
-            Logger.error("Connected nodes count is below threshold",
-              connected_nodes: inspect(state.connected_nodes),
-              problem_nodes: inspect(problem_nodes),
-              config: inspect(state.config)
-            )
-          end
-
-          state
+          maybe_log_threshold_error(state, problem_nodes)
       end
     else
       {:error, fetch_failed_reason} ->
@@ -127,6 +120,32 @@ defmodule Domain.Cluster.GoogleComputeLabelsStrategy do
           :timer.sleep(backoff_interval)
           fetch_nodes(state, remaining_retry_count - 1)
         end
+    end
+  end
+
+  # Only log error if the number of connected nodes falls below the expected threshold.
+  # We only log crossing the boundary to avoid flooding the logs with messages
+  defp maybe_log_threshold_error(state, problem_nodes) do
+    if enough_nodes_connected?(state) do
+      if state.below_threshold? do
+        Logger.info("Connected nodes count is back above threshold",
+          connected_nodes: inspect(state.connected_nodes),
+          problem_nodes: inspect(problem_nodes),
+          config: inspect(state.config)
+        )
+      end
+
+      %{state | below_threshold?: false}
+    else
+      unless state.below_threshold? do
+        Logger.error("Connected nodes count is below threshold",
+          connected_nodes: inspect(state.connected_nodes),
+          problem_nodes: inspect(problem_nodes),
+          config: inspect(state.config)
+        )
+      end
+
+      %{state | below_threshold?: true}
     end
   end
 
