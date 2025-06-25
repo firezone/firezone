@@ -762,15 +762,27 @@ defmodule API.Client.ChannelTest do
     end
   end
 
-  describe "handle_info/2 :updated" do
-    test "sends init message", %{
-      socket: socket
+  describe "handle_info/2 {:updated, client}" do
+    test "sends init message when breaking fields change", %{
+      socket: socket,
+      client: client
     } do
       assert_push "init", %{}
 
-      send(socket.channel_pid, :updated)
-
+      updated_client = %{client | verified_at: DateTime.utc_now()}
+      send(socket.channel_pid, {:updated, updated_client})
       assert_push "init", %{}
+    end
+
+    test "does not send init message when name changes", %{
+      socket: socket,
+      client: client
+    } do
+      assert_push "init", %{}
+
+      send(socket.channel_pid, {:updated, %{client | name: "New Name"}})
+
+      refute_push "init", %{}
     end
   end
 
