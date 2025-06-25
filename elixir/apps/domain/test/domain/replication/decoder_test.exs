@@ -1,8 +1,8 @@
-defmodule Domain.Events.DecoderTest do
+defmodule Domain.Replication.DecoderTest do
   use ExUnit.Case, async: true
 
-  alias Domain.Events.Decoder
-  alias Domain.Events.Decoder.Messages
+  alias Domain.Replication.Decoder
+  alias Domain.Replication.Decoder.Messages
 
   @lsn_binary <<0::integer-32, 23_785_280::integer-32>>
   @lsn_decoded {0, 23_785_280}

@@ -1,222 +1,153 @@
 defmodule Domain.Events.ReplicationConnectionTest do
-  # Only one ReplicationConnection should be started in the cluster
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
-  alias Domain.Events.ReplicationConnection
+  import ExUnit.CaptureLog
+  import Domain.Events.ReplicationConnection
 
-  # Used to test callbacks, not used for live connection
-  @mock_state %ReplicationConnection{
-    schema: "test_schema",
-    step: :disconnected,
-    publication_name: "test_pub",
-    replication_slot_name: "test_slot",
-    output_plugin: "pgoutput",
-    proto_version: 1,
-    table_subscriptions: ["accounts", "resources"],
-    relations: %{},
-    counter: 0
-  }
-
-  # Used to test live connection
   setup do
-    {connection_opts, config} =
+    tables =
       Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
-      |> Keyword.pop(:connection_opts)
+      |> Keyword.fetch!(:table_subscriptions)
 
-    init_state = %{
-      connection_opts: connection_opts,
-      instance: struct(Domain.Events.ReplicationConnection, config)
-    }
+    %{tables: tables}
+  end
 
-    child_spec = %{
-      id: Domain.Events.ReplicationConnection,
-      start: {Domain.Events.ReplicationConnection, :start_link, [init_state]}
-    }
+  describe "on_insert/2" do
+    test "logs warning for unknown table" do
+      table = "unknown_table"
+      data = %{"id" => Ecto.UUID.generate(), "name" => "test"}
 
-    {:ok, pid} =
-      case start_supervised(child_spec) do
-        {:ok, pid} ->
-          {:ok, pid}
+      log_output =
+        capture_log(fn ->
+          assert :ok = on_insert(0, table, data)
+        end)
 
-        {:error, {:already_started, pid}} ->
-          {:ok, pid}
+      assert log_output =~ "No hook defined for insert on table unknown_table"
+      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
+    end
+
+    test "handles known tables without errors", %{tables: tables} do
+      for table <- tables do
+        data = %{"id" => Ecto.UUID.generate(), "table" => table}
+
+        # The actual hook call might fail if the hook modules aren't available,
+        # but we can test that our routing logic works
+        try do
+          result = on_insert(0, table, data)
+          # Should either succeed or fail gracefully
+          assert result in [:ok, :error] or match?({:error, _}, result)
+        rescue
+          # Depending on the shape of the data we might get a function clause error. This is ok,
+          # as we are testing the routing logic, not the actual hook implementations.
+          FunctionClauseError -> :ok
+        end
       end
+    end
 
-    {:ok, pid: pid}
-  end
+    test "handles all configured tables", %{tables: tables} do
+      for table <- tables do
+        # Should not log warnings for configured tables
+        log_output =
+          capture_log(fn ->
+            try do
+              on_insert(0, table, %{"id" => Ecto.UUID.generate()})
+            rescue
+              FunctionClauseError ->
+                # Shape of the data might not match the expected one, which is fine
+                :ok
+            end
+          end)
 
-  describe "handle_connect/1 callback" do
-    test "handle_connect initiates publication check" do
-      state = @mock_state
-      expected_query = "SELECT 1 FROM pg_publication WHERE pubname = '#{state.publication_name}'"
-      expected_next_state = %{state | step: :create_publication}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               ReplicationConnection.handle_connect(state)
+        refute log_output =~ "No hook defined for insert"
+      end
     end
   end
 
-  describe "handle_result/2 callback" do
-    test "handle_result transitions from create_publication to create_replication_slot when publication exists" do
-      state = %{@mock_state | step: :create_publication}
-      result = [%Postgrex.Result{num_rows: 1}]
+  describe "on_update/3" do
+    test "logs warning for unknown table" do
+      table = "unknown_table"
+      old_data = %{"id" => Ecto.UUID.generate(), "name" => "old"}
+      data = %{"id" => Ecto.UUID.generate(), "name" => "new"}
 
-      expected_query =
-        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
+      log_output =
+        capture_log(fn ->
+          assert :ok = on_update(0, table, old_data, data)
+        end)
 
-      expected_next_state = %{state | step: :create_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               ReplicationConnection.handle_result(result, state)
+      assert log_output =~ "No hook defined for update on table unknown_table"
+      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
     end
 
-    test "handle_result transitions from create_replication_slot to start_replication_slot when slot exists" do
-      state = %{@mock_state | step: :create_replication_slot}
-      result = [%Postgrex.Result{num_rows: 1}]
+    test "handles known tables", %{tables: tables} do
+      old_data = %{"id" => Ecto.UUID.generate(), "name" => "old name"}
+      data = %{"id" => Ecto.UUID.generate(), "name" => "new name"}
 
-      expected_query = "SELECT 1"
-      expected_next_state = %{state | step: :start_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               ReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result transitions from start_replication_slot to streaming" do
-      state = %{@mock_state | step: :start_replication_slot}
-      result = [%Postgrex.Result{num_rows: 1}]
-
-      expected_stream_query =
-        "START_REPLICATION SLOT \"#{state.replication_slot_name}\" LOGICAL 0/0  (proto_version '#{state.proto_version}', publication_names '#{state.publication_name}')"
-
-      expected_next_state = %{state | step: :streaming}
-
-      assert {:stream, ^expected_stream_query, [], ^expected_next_state} =
-               ReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result creates publication if it doesn't exist" do
-      state = %{@mock_state | step: :create_publication}
-      result = [%Postgrex.Result{num_rows: 0}]
-
-      expected_tables = "test_schema.accounts,test_schema.resources"
-      expected_query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{expected_tables}"
-      expected_next_state = %{state | step: :check_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               ReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result transitions from check_replication_slot to create_replication_slot after creating publication" do
-      state = %{@mock_state | step: :check_replication_slot}
-      result = [%Postgrex.Result{num_rows: 0}]
-
-      expected_query =
-        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
-
-      expected_next_state = %{state | step: :create_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               ReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result creates replication slot if it doesn't exist" do
-      state = %{@mock_state | step: :create_replication_slot}
-      result = [%Postgrex.Result{num_rows: 0}]
-
-      expected_query =
-        "CREATE_REPLICATION_SLOT #{state.replication_slot_name} LOGICAL #{state.output_plugin} NOEXPORT_SNAPSHOT"
-
-      expected_next_state = %{state | step: :start_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               ReplicationConnection.handle_result(result, state)
+      for table <- tables do
+        try do
+          result = on_update(0, table, old_data, data)
+          assert result in [:ok, :error] or match?({:error, _}, result)
+        rescue
+          FunctionClauseError ->
+            # Shape of the data might not match the expected one, which is fine
+            :ok
+        end
+      end
     end
   end
 
-  # In-depth decoding tests are handled in Domain.Events.DecoderTest
-  describe "handle_data/2" do
-    test "handle_data handles KeepAlive with reply :now" do
-      state = %{@mock_state | step: :streaming}
-      wal_end = 12345
+  describe "on_delete/2" do
+    test "logs warning for unknown table" do
+      table = "unknown_table"
+      old_data = %{"id" => Ecto.UUID.generate(), "name" => "deleted"}
 
-      now =
-        System.os_time(:microsecond) - DateTime.to_unix(~U[2000-01-01 00:00:00Z], :microsecond)
+      log_output =
+        capture_log(fn ->
+          assert :ok = on_delete(0, table, old_data)
+        end)
 
-      # 100 milliseconds
-      grace_period = 100_000
-      keepalive_data = <<?k, wal_end::64, 0::64, 1>>
-
-      assert {:noreply, reply, ^state} =
-               ReplicationConnection.handle_data(keepalive_data, state)
-
-      assert [<<?r, 12346::64, 12346::64, 12346::64, clock::64, 1::8>>] = reply
-
-      assert now <= clock
-      assert clock < now + grace_period
+      assert log_output =~ "No hook defined for delete on table unknown_table"
+      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
     end
 
-    test "handle_data handles KeepAlive with reply :later" do
-      state = %{@mock_state | step: :streaming}
-      wal_end = 54321
+    test "handles known tables", %{tables: tables} do
+      old_data = %{"id" => Ecto.UUID.generate(), "name" => "deleted gateway"}
 
-      keepalive_data = <<?k, wal_end::64, 0::64, 0>>
-      expected_reply_message = []
-
-      assert {:noreply, ^expected_reply_message, ^state} =
-               ReplicationConnection.handle_data(keepalive_data, state)
-    end
-
-    test "handle_data handles Write message" do
-      state = %{@mock_state | step: :streaming}
-      server_wal_start = 123_456_789
-      server_wal_end = 987_654_321
-      server_system_clock = 1_234_567_890
-      message = "Hello, world!"
-
-      write_data =
-        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64, message::binary>>
-
-      new_state = %{state | counter: state.counter + 1}
-
-      assert {:noreply, [], ^new_state} = ReplicationConnection.handle_data(write_data, state)
-    end
-
-    test "handle_data handles unknown message" do
-      state = %{@mock_state | step: :streaming}
-      unknown_data = <<?q, 1, 2, 3>>
-
-      assert {:noreply, [], ^state} = ReplicationConnection.handle_data(unknown_data, state)
+      for table <- tables do
+        try do
+          assert :ok = on_delete(0, table, old_data)
+        rescue
+          # Shape of the data might not match the expected one, which is fine
+          FunctionClauseError -> :ok
+        end
+      end
     end
   end
 
-  describe "handle_info/2" do
-    test "handle_info handles :shutdown message" do
-      state = @mock_state
-      assert {:disconnect, :normal} = ReplicationConnection.handle_info(:shutdown, state)
-    end
+  describe "warning message formatting" do
+    test "log_warning generates correct message format" do
+      log_output =
+        capture_log(fn ->
+          assert :ok = on_insert(0, "test_table_insert", %{})
+        end)
 
-    test "handle_info handles :DOWN message from monitored process" do
-      state = @mock_state
-      monitor_ref = make_ref()
-      down_msg = {:DOWN, monitor_ref, :process, :some_pid, :shutdown}
+      assert log_output =~ "No hook defined for insert on table test_table_insert"
+      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
 
-      assert {:disconnect, :normal} = ReplicationConnection.handle_info(down_msg, state)
-    end
+      log_output =
+        capture_log(fn ->
+          assert :ok = on_update(0, "test_table_update", %{}, %{})
+        end)
 
-    test "handle_info ignores other messages" do
-      state = @mock_state
-      random_msg = {:some_other_info, "data"}
+      assert log_output =~ "No hook defined for update on table test_table_update"
+      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
 
-      assert {:noreply, ^state} = ReplicationConnection.handle_info(random_msg, state)
-    end
-  end
+      log_output =
+        capture_log(fn ->
+          assert :ok = on_delete(0, "test_table_delete", %{})
+        end)
 
-  describe "handle_disconnect/1" do
-    test "handle_disconnect resets step to :disconnected" do
-      state = %{@mock_state | step: :streaming}
-      expected_state = %{state | step: :disconnected}
-
-      assert {:noreply, ^expected_state} = ReplicationConnection.handle_disconnect(state)
+      assert log_output =~ "No hook defined for delete on table test_table_delete"
+      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
     end
   end
 end

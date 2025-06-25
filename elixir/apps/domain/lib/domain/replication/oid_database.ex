@@ -1,5 +1,5 @@
 # CREDIT: https://github.com/supabase/realtime/blob/main/lib/realtime/adapters/postgres/oid_database.ex
-defmodule Domain.Events.OidDatabase do
+defmodule Domain.Replication.OidDatabase do
   @moduledoc "This module maps a numeric PostgreSQL type ID to a descriptive string."
 
   @doc """

@@ -81,12 +81,25 @@ defmodule Domain.Application do
   end
 
   defp replication do
-    config = Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+    connection_modules = [
+      Domain.Events.ReplicationConnection,
+      Domain.ChangeLogs.ReplicationConnection
+    ]
 
-    if config[:enabled] do
-      [Domain.Events.ReplicationConnectionManager]
-    else
-      []
-    end
+    # Filter out disabled replication connections
+    Enum.reduce(connection_modules, [], fn module, enabled ->
+      config = Application.fetch_env!(:domain, module)
+
+      if config[:enabled] do
+        spec = %{
+          id: module,
+          start: {Domain.Replication.Manager, :start_link, [module, []]}
+        }
+
+        [spec | enabled]
+      else
+        enabled
+      end
+    end)
   end
 end

@@ -1,5 +1,5 @@
 # CREDIT: https://github.com/supabase/realtime/blob/main/lib/realtime/adapters/postgres/decoder.ex
-defmodule Domain.Events.Decoder do
+defmodule Domain.Replication.Decoder do
   @moduledoc """
   Functions for decoding different types of logical replication messages.
   """
@@ -148,7 +148,7 @@ defmodule Domain.Events.Decoder do
     Unsupported
   }
 
-  alias Domain.Events.OidDatabase
+  alias Domain.Replication.OidDatabase
 
   @doc """
   Parses logical replication messages from Postgres
@@ -156,7 +156,7 @@ defmodule Domain.Events.Decoder do
   ## Examples
 
       iex> decode_message(<<73, 0, 0, 96, 0, 78, 0, 2, 116, 0, 0, 0, 3, 98, 97, 122, 116, 0, 0, 0, 3, 53, 54, 48>>)
-      %Domain.Events.Decoder.Messages.Insert{relation_id: 24576, tuple_data: {"baz", "560"}}
+      %Domain.Replication.Decoder.Messages.Insert{relation_id: 24576, tuple_data: {"baz", "560"}}
 
   """
   def decode_message(message) when is_binary(message) do

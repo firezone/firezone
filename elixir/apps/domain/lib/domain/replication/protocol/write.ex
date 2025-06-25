@@ -1,4 +1,4 @@
-defmodule Domain.Events.Protocol.Write do
+defmodule Domain.Replication.Protocol.Write do
   @moduledoc """
   XLogData (B)
   Byte1('w')

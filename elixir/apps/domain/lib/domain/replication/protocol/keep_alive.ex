@@ -1,4 +1,4 @@
-defmodule Domain.Events.Protocol.KeepAlive do
+defmodule Domain.Replication.Protocol.KeepAlive do
   @moduledoc """
   Primary keepalive message (B)
   Byte1('k')
