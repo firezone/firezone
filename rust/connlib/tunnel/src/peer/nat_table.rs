@@ -8,14 +8,9 @@ use std::time::{Duration, Instant};
 
 /// The stateful NAT table converts a client's picked proxy ip for a domain name into the real IP for that IP
 /// it also picks a source port to keep track of the original proxy IP used.
-/// The NAT sessions, i.e. the mapping between (source_port, proxy_ip) to (source_port', real_ip) is kept for 60 seconds
-/// after no incoming traffic is received.
-///
 /// Note that for ICMP echo/reply the identity number is used as a stand in for the source port.
 ///
-/// Also, the proxy_ip and the real_ip version may not coincide, in that case a translation mechanism must be used (RFC6145)
-///
-/// This nat table doesn't perform any mangling just provides the converted port/ip for upper layers
+/// This nat table doesn't perform any mangling just provides the converted port/ip for upper layers.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
     pub(crate) table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
