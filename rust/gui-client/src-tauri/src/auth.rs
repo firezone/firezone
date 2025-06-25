@@ -403,6 +403,8 @@ mod tests {
             // In the middle of accessing one token, access another to make sure they don't interfere much
             let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
             entry.set_password(test_password_2).unwrap();
+
+            std::thread::sleep(std::time::Duration::from_secs(1));
             assert_eq!(entry.get_password().unwrap(), test_password_2);
         }
 
@@ -412,11 +414,16 @@ mod tests {
             let entry = keyring::Entry::new_with_target(name_2, "", "").unwrap();
             assert_eq!(entry.get_password().unwrap(), test_password_2);
             entry.delete_credential().unwrap();
+
+            std::thread::sleep(std::time::Duration::from_secs(1));
             assert!(entry.get_password().is_err());
         }
 
+        std::thread::sleep(std::time::Duration::from_secs(1));
         assert_eq!(entry.get_password().unwrap(), test_password_1);
         entry.delete_credential().unwrap();
+
+        std::thread::sleep(std::time::Duration::from_secs(1));
         assert!(entry.get_password().is_err());
     }
 
