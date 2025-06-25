@@ -10,6 +10,11 @@ export default function Headless({ os }: { os: OS }) {
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9638">
+          **BREAKING**: The `FIREZONE_ID` env variable is now required. The
+          Headless Client will no longer read the Firezone ID from disk. We
+          recommend setting it to a unique, static string.
+        </ChangeItem>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
