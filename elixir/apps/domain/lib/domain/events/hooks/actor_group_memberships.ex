@@ -6,7 +6,8 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
   def on_insert(%{"actor_id" => actor_id, "group_id" => group_id} = _data) do
     Task.start(fn ->
       :ok = PubSub.Actor.Memberships.broadcast(actor_id, {:create_membership, actor_id, group_id})
-      broadcast_access(:allow, actor_id, group_id)
+      # TODO: Fix this ASAP
+      # broadcast_access(:allow, actor_id, group_id)
     end)
 
     :ok
@@ -21,8 +22,9 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
       ) do
     Task.start(fn ->
       :ok = PubSub.Actor.Memberships.broadcast(actor_id, {:delete_membership, actor_id, group_id})
-      broadcast_access(:reject, actor_id, group_id)
-      {:ok, _flows} = Flows.expire_flows_for(account_id, actor_id, group_id)
+      # TODO: Fix this ASAP
+      # broadcast_access(:allow, actor_id, group_id)
+      # {:ok, _flows} = Flows.expire_flows_for(account_id, actor_id, group_id)
     end)
 
     :ok
