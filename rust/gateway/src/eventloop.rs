@@ -4,7 +4,7 @@ use boringtun::x25519::PublicKey;
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
 use firezone_bin_shared::TunDeviceManager;
-use firezone_telemetry::Telemetry;
+use firezone_telemetry::{Telemetry, analytics};
 
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
