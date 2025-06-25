@@ -65,11 +65,9 @@ defmodule Domain.Replication.Connection do
     quote bind_quoted: [opts: opts] do
       # Only these two are configurable
       @alert_threshold_ms Keyword.fetch!(opts, :alert_threshold_ms)
-      @publication_name Keyword.fetch!(opts, :publication_name)
 
       # Everything else uses defaults
       @status_log_interval :timer.minutes(5)
-      @replication_slot_name "#{@publication_name}_slot"
       @schema "public"
       @output_plugin "pgoutput"
       @proto_version 1
@@ -98,8 +96,8 @@ defmodule Domain.Replication.Connection do
 
       defstruct schema: @schema,
                 step: :disconnected,
-                publication_name: @publication_name,
-                replication_slot_name: @replication_slot_name,
+                publication_name: "",
+                replication_slot_name: "",
                 output_plugin: @output_plugin,
                 proto_version: @proto_version,
                 table_subscriptions: [],
@@ -243,7 +241,7 @@ defmodule Domain.Replication.Connection do
       end
 
       def handle_result([%Postgrex.Result{}], %__MODULE__{step: :start_replication_slot} = state) do
-        Logger.info("Starting replication slot #{state.replication_slot_name}",
+        Logger.info("#{__MODULE__}: Starting replication slot #{state.replication_slot_name}",
           state: inspect(state)
         )
 
