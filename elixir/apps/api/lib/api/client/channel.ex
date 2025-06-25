@@ -63,7 +63,7 @@ defmodule API.Client.Channel do
     end
   end
 
-  def init(socket) do
+  defp init(socket) do
     OpenTelemetry.Tracer.with_span "client.init" do
       {:ok, resources} =
         Resources.all_authorized_resources(socket.assigns.subject,
@@ -193,15 +193,25 @@ defmodule API.Client.Channel do
     end
   end
 
-  # This event is broadcasted when client or actor group was changed (eg. renamed, verified, etc.),
-  # so we just re-initialize the client the same way as after join to push the updates
-  def handle_info(:updated, socket) do
+  # This event is broadcasted when client was changed (eg. renamed, verified, etc.)
+  def handle_info({:updated, %Clients.Client{} = updated_client}, socket) do
     OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.updated" do
-      socket = assign(socket, client: Clients.fetch_client_by_id!(socket.assigns.client.id))
-      {:ok, socket} = init(socket)
+      client = socket.assigns.client
+      socket = assign(socket, client: updated_client)
+
+      socket =
+        if client.verified_at != updated_client.verified_at do
+          # Re-initialize since list of allowed_resources could have changed
+          {:ok, socket} = init(socket)
+
+          socket
+        else
+          socket
+        end
+
       {:noreply, socket}
     end
   end

@@ -35,6 +35,28 @@ defmodule Domain do
   end
 
   @doc """
+    Converts a map of string params to a schema struct with values casted.
+    This is useful for sending valid structs from the WAL consumers.
+  """
+  def struct_from_params(schema_module, params) do
+    schema_module.__schema__(:fields)
+    |> Enum.reduce(struct(schema_module), fn field, acc ->
+      case Map.get(params, to_string(field)) do
+        nil ->
+          acc
+
+        value ->
+          field_type = schema_module.__schema__(:type, field)
+
+          case Ecto.Type.cast(field_type, value) do
+            {:ok, casted_value} -> Map.put(acc, field, casted_value)
+            :error -> acc
+          end
+      end
+    end)
+  end
+
+  @doc """
   When used, dispatch to the appropriate schema/context/changeset/query/etc.
   """
   defmacro __using__(which) when is_atom(which) do
