@@ -316,12 +316,22 @@ defmodule Domain.Config.Definitions do
   @doc """
   Name of the replication slot used by Firezone.
   """
-  defconfig(:database_replication_slot_name, :string, default: "events_slot")
+  defconfig(:database_events_replication_slot_name, :string, default: "events_slot")
 
   @doc """
   Name of the publication used by Firezone.
   """
-  defconfig(:database_publication_name, :string, default: "events")
+  defconfig(:database_events_publication_name, :string, default: "events")
+
+  @doc """
+  Name of the replication slot used by Firezone.
+  """
+  defconfig(:database_change_logs_replication_slot_name, :string, default: "change_logs_slot")
+
+  @doc """
+  Name of the publication used by Firezone.
+  """
+  defconfig(:database_change_logs_publication_name, :string, default: "change_logs")
 
   @doc """
   SSL options for connecting to the PostgreSQL database.

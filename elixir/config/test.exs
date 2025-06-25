@@ -21,12 +21,16 @@ config :domain, Domain.Repo,
   queue_target: 1000
 
 config :domain, Domain.ChangeLogs.ReplicationConnection,
+  replication_slot_name: "test_change_logs_slot",
+  publication_name: "test_change_logs_publication",
   enabled: false,
   connection_opts: [
     database: "firezone_test#{partition_suffix}"
   ]
 
 config :domain, Domain.Events.ReplicationConnection,
+  replication_slot_name: "test_events_slot",
+  publication_name: "test_events_publication",
   enabled: false,
   connection_opts: [
     database: "firezone_test#{partition_suffix}"
