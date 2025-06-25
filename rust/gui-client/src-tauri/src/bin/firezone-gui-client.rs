@@ -11,6 +11,7 @@ use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
 use firezone_telemetry::Telemetry;
+use firezone_telemetry::analytics;
 use settings::AdvancedSettingsLegacy;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
