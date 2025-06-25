@@ -16,14 +16,15 @@ defmodule Domain.Replication.Connection do
 
         defmodule MyApp.ReplicationConnection do
           use Domain.Replication.Connection,
-            alert_threshold_ms: 30_000,
-            publication_name: "my_events"
+            warning_threshold_ms: 30_000,
+            error_threshold_ms: 60_000,
         end
 
     ## Options
 
-      * `:alert_threshold_ms` - How long to allow the WAL stream to lag before logging a warning
-      * `:publication_name` - Name of the PostgreSQL publication
+      * `:warning_threshold_ms`: How long to allow the WAL stream to lag before logging a warning
+      * `:error_threshold_ms`:   How long to allow the WAL stream to lag before logging an error and
+                                 bypassing side effect handlers.
   """
 
   defmacro __using__(opts \\ []) do
@@ -63,8 +64,8 @@ defmodule Domain.Replication.Connection do
   # Extract struct definition and constants
   defp struct_and_constants(opts) do
     quote bind_quoted: [opts: opts] do
-      # Only these two are configurable
-      @alert_threshold_ms Keyword.fetch!(opts, :alert_threshold_ms)
+      @warning_threshold_ms Keyword.fetch!(opts, :warning_threshold_ms)
+      @error_threshold_ms Keyword.fetch!(opts, :error_threshold_ms)
 
       # Everything else uses defaults
       @status_log_interval :timer.minutes(5)
@@ -117,7 +118,12 @@ defmodule Domain.Replication.Connection do
 
       @impl true
       def init(state) do
-        {:ok, Map.put(state, :lag_threshold_exceeded, false)}
+        state =
+          state
+          |> Map.put(:warning_threshold_exceeded?, false)
+          |> Map.put(:error_threshold_exceeded?, false)
+
+        {:ok, state}
       end
 
       @doc """
@@ -422,20 +428,35 @@ defmodule Domain.Replication.Connection do
       end
 
       defp handle_message(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
-        {op, table, _old_data, data} = transform(msg, state.relations)
-        :ok = on_insert(server_wal_end, table, data)
+        if state.error_threshold_exceeded? do
+          :ok
+        else
+          {op, table, _old_data, data} = transform(msg, state.relations)
+          :ok = on_insert(server_wal_end, table, data)
+        end
+
         {:noreply, [], state}
       end
 
       defp handle_message(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
-        {op, table, old_data, data} = transform(msg, state.relations)
-        :ok = on_update(server_wal_end, table, old_data, data)
+        if state.error_threshold_exceeded? do
+          :ok
+        else
+          {op, table, old_data, data} = transform(msg, state.relations)
+          :ok = on_update(server_wal_end, table, old_data, data)
+        end
+
         {:noreply, [], state}
       end
 
       defp handle_message(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
-        {op, table, old_data, _data} = transform(msg, state.relations)
-        :ok = on_delete(server_wal_end, table, old_data)
+        if state.error_threshold_exceeded? do
+          :ok
+        else
+          {op, table, old_data, _data} = transform(msg, state.relations)
+          :ok = on_delete(server_wal_end, table, old_data)
+        end
+
         {:noreply, [], state}
       end
     end
@@ -456,7 +477,8 @@ defmodule Domain.Replication.Connection do
         # Since we receive a commit for each operation and we process each operation
         # one-by-one, we can use the commit timestamp to check if we are lagging behind.
         lag_ms = DateTime.diff(commit_timestamp, DateTime.utc_now(), :millisecond)
-        send(self(), {:check_alert, lag_ms})
+        send(self(), {:check_warning_threshold, lag_ms})
+        send(self(), {:check_error_threshold, lag_ms})
 
         {:noreply, [], state}
       end
@@ -535,21 +557,49 @@ defmodule Domain.Replication.Connection do
   # Extract info handlers
   defp info_handlers(opts) do
     quote bind_quoted: [opts: opts] do
-      @alert_threshold_ms Keyword.fetch!(opts, :alert_threshold_ms)
-      @status_log_interval :timer.minutes(5)
-
       @impl true
-      # Log only once when crossing the threshold
-      def handle_info({:check_alert, lag_ms}, %{lag_threshold_exceeded: false} = state)
-          when lag_ms >= @alert_threshold_ms do
-        Logger.warning("#{__MODULE__}: Processing lag exceeds threshold", lag_ms: lag_ms)
-        {:noreply, %{state | lag_threshold_exceeded: true}}
+
+      def handle_info(
+            {:check_warning_threshold, lag_ms},
+            %{warning_threshold_exceeded?: false} = state
+          )
+          when lag_ms >= @warning_threshold_ms do
+        Logger.warning("#{__MODULE__}: Processing lag exceeds warning threshold", lag_ms: lag_ms)
+        {:noreply, %{state | warning_threshold_exceeded?: true}}
       end
 
-      def handle_info({:check_alert, lag_ms}, %{lag_threshold_exceeded: true} = state)
-          when lag_ms < @alert_threshold_ms do
-        Logger.info("#{__MODULE__}: Processing lag is back below threshold", lag_ms: lag_ms)
-        {:noreply, %{state | lag_threshold_exceeded: false}}
+      def handle_info(
+            {:check_warning_threshold, lag_ms},
+            %{warning_threshold_exceeded?: true} = state
+          )
+          when lag_ms < @warning_threshold_ms do
+        Logger.info("#{__MODULE__}: Processing lag is back below warning threshold",
+          lag_ms: lag_ms
+        )
+
+        {:noreply, %{state | warning_threshold_exceeded?: false}}
+      end
+
+      def handle_info(
+            {:check_error_threshold, lag_ms},
+            %{error_threshold_exceeded?: false} = state
+          )
+          when lag_ms >= @error_threshold_ms do
+        Logger.error(
+          "#{__MODULE__}: Processing lag exceeds error threshold; skipping side effects!",
+          lag_ms: lag_ms
+        )
+
+        {:noreply, %{state | error_threshold_exceeded?: true}}
+      end
+
+      def handle_info(
+            {:check_error_threshold, lag_ms},
+            %{error_threshold_exceeded?: true} = state
+          )
+          when lag_ms < @error_threshold_ms do
+        Logger.info("#{__MODULE__}: Processing lag is back below error threshold", lag_ms: lag_ms)
+        {:noreply, %{state | error_threshold_exceeded?: false}}
       end
 
       def handle_info(:interval_logger, state) do
