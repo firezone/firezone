@@ -8,14 +8,9 @@ use std::time::{Duration, Instant};
 
 /// The stateful NAT table converts a client's picked proxy ip for a domain name into the real IP for that IP
 /// it also picks a source port to keep track of the original proxy IP used.
-/// The NAT sessions, i.e. the mapping between (source_port, proxy_ip) to (source_port', real_ip) is kept for 60 seconds
-/// after no incoming traffic is received.
-///
 /// Note that for ICMP echo/reply the identity number is used as a stand in for the source port.
 ///
-/// Also, the proxy_ip and the real_ip version may not coincide, in that case a translation mechanism must be used (RFC6145)
-///
-/// This nat table doesn't perform any mangling just provides the converted port/ip for upper layers
+/// This nat table doesn't perform any mangling just provides the converted port/ip for upper layers.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
     pub(crate) table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
@@ -25,14 +20,22 @@ pub(crate) struct NatTable {
     expired: HashSet<(Protocol, IpAddr)>,
 }
 
-pub(crate) const TTL: Duration = Duration::from_secs(60);
+pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
+pub(crate) const UDP_TTL: Duration = Duration::from_secs(60 * 2);
+pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         for (outside, e) in self.last_seen.iter() {
-            if now.duration_since(*e) >= TTL {
+            let ttl = match outside.0 {
+                Protocol::Tcp(_) => TCP_TTL,
+                Protocol::Udp(_) => UDP_TTL,
+                Protocol::Icmp(_) => ICMP_TTL,
+            };
+
+            if now.duration_since(*e) >= ttl {
                 if let Some((inside, _)) = self.table.remove_by_right(outside) {
-                    tracing::debug!(?inside, ?outside, "NAT session expired");
+                    tracing::debug!(?inside, ?outside, ?ttl, "NAT session expired");
                     self.expired.insert(*outside);
                 }
             }
@@ -216,7 +219,7 @@ mod tests {
     fn translates_back_and_forth_packet(
         #[strategy(udp_or_tcp_or_icmp_packet())] packet: IpPacket,
         #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
-        #[strategy(0..120u64)] response_delay: u64,
+        #[strategy(0..15000u64)] response_delay: u64,
     ) {
         proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
 
@@ -246,8 +249,14 @@ mod tests {
             .translate_incoming(&response, sent_at + response_delay)
             .unwrap();
 
+        let ttl = match src {
+            Protocol::Tcp(_) => 7200,
+            Protocol::Udp(_) => 120,
+            Protocol::Icmp(_) => 120,
+        };
+
         // Assert
-        if response_delay >= Duration::from_secs(60) {
+        if response_delay >= Duration::from_secs(ttl) {
             assert_eq!(
                 translate_incoming,
                 TranslateIncomingResult::ExpiredNatSession
