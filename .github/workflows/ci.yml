@@ -306,7 +306,7 @@ jobs:
         with:
           project: firezone-staging
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
       - name: Start docker compose in the background
         run: |
           # We need to increase the log level to make sure that they don't hold off storm of packets

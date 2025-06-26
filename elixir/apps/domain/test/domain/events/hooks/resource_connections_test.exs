@@ -21,19 +21,16 @@ defmodule Domain.Events.Hooks.ResourceConnectionsTest do
   describe "delete/1" do
     test "returns :ok" do
       flow = Fixtures.Flows.create_flow()
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
 
-      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :lt
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
 
       assert :ok ==
                on_delete(%{"account_id" => flow.account_id, "resource_id" => flow.resource_id})
 
-      # TODO: WAL
-      # Remove this when flow removal is directly broadcasted
-      Process.sleep(100)
-
-      flow = Repo.reload(flow)
-
-      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :gt
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
   end
 end

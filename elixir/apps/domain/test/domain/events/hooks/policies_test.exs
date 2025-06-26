@@ -57,6 +57,8 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
     test "disable: broadcasts :disable_policy and :reject_access" do
       flow = Fixtures.Flows.create_flow()
+      flow_id = flow.id
+      client_id = flow.client_id
       policy_id = flow.policy_id
       account_id = flow.account_id
       actor_group_id = "group-456"
@@ -72,6 +74,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "disabled_at", "2023-10-01T00:00:00Z")
 
+      :ok = PubSub.Flow.subscribe(flow_id)
       :ok = PubSub.Policy.subscribe(policy_id)
       :ok = PubSub.Account.Policies.subscribe(account_id)
       :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
@@ -85,13 +88,13 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       # Remove this after direct broadcast
       Process.sleep(100)
 
-      flow = Repo.reload(flow)
-
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "soft-delete: broadcasts :delete_policy and :reject_access" do
       flow = Fixtures.Flows.create_flow()
+      flow_id = flow.id
+      client_id = flow.client_id
       policy_id = flow.policy_id
       account_id = flow.account_id
       actor_group_id = "group-456"
@@ -107,6 +110,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
+      :ok = PubSub.Flow.subscribe(flow_id)
       :ok = PubSub.Policy.subscribe(policy_id)
       :ok = PubSub.Account.Policies.subscribe(account_id)
       :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
@@ -120,13 +124,13 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       # Remove this after direct broadcast
       Process.sleep(100)
 
-      flow = Repo.reload(flow)
-
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "breaking update: broadcasts :delete_policy, :reject_access, :create_policy, :allow_access" do
       flow = Fixtures.Flows.create_flow()
+      flow_id = flow.id
+      client_id = flow.client_id
       policy_id = flow.policy_id
       account_id = flow.account_id
       actor_group_id = "group-456"
@@ -142,11 +146,16 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "resource_id", "new-resource-123")
 
+      :ok = PubSub.Flow.subscribe(flow_id)
       :ok = PubSub.Policy.subscribe(policy_id)
       :ok = PubSub.Account.Policies.subscribe(account_id)
       :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
 
       assert :ok == on_update(old_data, data)
+
+      # TODO: WAL
+      # Remove this when side effects are directly broadcasted
+      Process.sleep(100)
 
       assert_receive {:delete_policy, ^policy_id}
       assert_receive {:delete_policy, ^policy_id}
@@ -160,13 +169,13 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       # Remove this after direct broadcast
       Process.sleep(100)
 
-      flow = Repo.reload(flow)
-
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "breaking update: disabled policy has no side-effects" do
       flow = Fixtures.Flows.create_flow()
+      flow_id = flow.id
+      client_id = flow.client_id
       policy_id = flow.policy_id
       account_id = flow.account_id
       actor_group_id = "group-456"
@@ -197,9 +206,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       # Remove this after direct broadcast
       Process.sleep(100)
 
-      flow = Repo.reload(flow)
-
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :gt
+      refute_receive {:expire_flow, ^flow_id, ^client_id, "new-resource-123"}
     end
 
     test "non-breaking-update: broadcasts :update_policy" do
@@ -233,6 +240,8 @@ defmodule Domain.Events.Hooks.PoliciesTest do
   describe "delete/1" do
     test "broadcasts :delete_policy and :reject_access" do
       flow = Fixtures.Flows.create_flow()
+      flow_id = flow.id
+      client_id = flow.client_id
       policy_id = flow.policy_id
       account_id = flow.account_id
       actor_group_id = "group-456"
@@ -248,6 +257,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
+      :ok = PubSub.Flow.subscribe(flow_id)
       :ok = PubSub.Policy.subscribe(policy_id)
       :ok = PubSub.Account.Policies.subscribe(account_id)
       :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
@@ -261,9 +271,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       # Remove this after direct broadcast
       Process.sleep(100)
 
-      flow = Repo.reload(flow)
-
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
   end
 end

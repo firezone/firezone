@@ -5,10 +5,6 @@ defmodule Domain.Flows.Flow.Query do
     from(flows in Domain.Flows.Flow, as: :flows)
   end
 
-  def not_expired(queryable \\ all()) do
-    where(queryable, [flows: flows], flows.expires_at > fragment("timezone('UTC', NOW())"))
-  end
-
   def by_id(queryable, id) do
     where(queryable, [flows: flows], flows.id == ^id)
   end
@@ -61,17 +57,6 @@ defmodule Domain.Flows.Flow.Query do
     where(queryable, [flows: flows], flows.gateway_id == ^gateway_id)
   end
 
-  def expire(queryable) do
-    queryable
-    |> not_expired()
-    |> Ecto.Query.select([flows: flows], flows)
-    |> Ecto.Query.update([flows: flows],
-      set: [
-        expires_at: fragment("LEAST(?, timezone('UTC', NOW()))", flows.expires_at)
-      ]
-    )
-  end
-
   def with_joined_policy(queryable) do
     with_named_binding(queryable, :policy, fn queryable, binding ->
       join(queryable, :inner, [flows: flows], policy in assoc(flows, ^binding), as: ^binding)
@@ -100,27 +85,4 @@ defmodule Domain.Flows.Flow.Query do
       {:flows, :desc, :inserted_at},
       {:flows, :asc, :id}
     ]
-
-  @impl Domain.Repo.Query
-  def filters,
-    do: [
-      %Domain.Repo.Filter{
-        name: :expiration,
-        title: "Expired",
-        type: :string,
-        values: [
-          {"Expired", "expired"},
-          {"Not Expired", "not_expired"}
-        ],
-        fun: &filter_by_expired/2
-      }
-    ]
-
-  def filter_by_expired(queryable, "expired") do
-    {queryable, dynamic([flows: flows], flows.expires_at < fragment("timezone('UTC', NOW())"))}
-  end
-
-  def filter_by_expired(queryable, "not_expired") do
-    {queryable, dynamic([flows: flows], flows.expires_at >= fragment("timezone('UTC', NOW())"))}
-  end
 end

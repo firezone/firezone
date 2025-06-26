@@ -82,8 +82,7 @@ defmodule Domain.Fixtures.Flows do
       account_id: account.id,
       client_remote_ip: client.last_seen_remote_ip,
       client_user_agent: client.last_seen_user_agent,
-      gateway_remote_ip: gateway.last_seen_remote_ip,
-      expires_at: subject.expires_at
+      gateway_remote_ip: gateway.last_seen_remote_ip
     })
     |> Repo.insert!()
   end

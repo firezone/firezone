@@ -39,7 +39,7 @@ defmodule Domain.Events.Hooks.Resources do
              old_filters != filters or
              old_ip_stack != ip_stack do
     # TODO: WAL
-    # Directly broadcast to subscribed pids to remove the flow
+    # Broadcast flow side effects directly
     Task.start(fn ->
       payload = {:delete_resource, resource_id}
       PubSub.Resource.broadcast(resource_id, payload)
@@ -49,7 +49,7 @@ defmodule Domain.Events.Hooks.Resources do
       PubSub.Resource.broadcast(resource_id, payload)
       PubSub.Account.Resources.broadcast(account_id, payload)
 
-      {:ok, _flows} = Flows.expire_flows_for_resource_id(account_id, resource_id)
+      :ok = Flows.expire_flows_for_resource_id(account_id, resource_id)
     end)
 
     :ok

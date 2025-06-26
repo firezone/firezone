@@ -68,6 +68,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource type changes", %{flow: flow, old_data: old_data} do
+      :ok = PubSub.Flow.subscribe(flow.id)
       :ok = PubSub.Resource.subscribe(flow.resource_id)
       :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
@@ -78,12 +79,12 @@ defmodule Domain.Events.Hooks.ResourcesTest do
       # TODO: WAL
       # Remove this after direct broadcast
       Process.sleep(100)
-      flow = Repo.reload(flow)
 
-      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :gt
-
+      flow_id = flow.id
+      client_id = flow.client_id
       resource_id = flow.resource_id
 
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:create_resource, ^resource_id}
@@ -91,6 +92,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource address changes", %{flow: flow, old_data: old_data} do
+      :ok = PubSub.Flow.subscribe(flow.id)
       :ok = PubSub.Resource.subscribe(flow.resource_id)
       :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
@@ -101,12 +103,12 @@ defmodule Domain.Events.Hooks.ResourcesTest do
       # TODO: WAL
       # Remove this after direct broadcast
       Process.sleep(100)
-      flow = Repo.reload(flow)
 
-      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :gt
-
+      flow_id = flow.id
+      client_id = flow.client_id
       resource_id = flow.resource_id
 
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:create_resource, ^resource_id}
@@ -114,6 +116,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource filters change", %{flow: flow, old_data: old_data} do
+      :ok = PubSub.Flow.subscribe(flow.id)
       :ok = PubSub.Resource.subscribe(flow.resource_id)
       :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
@@ -124,12 +127,12 @@ defmodule Domain.Events.Hooks.ResourcesTest do
       # TODO: WAL
       # Remove this after direct broadcast
       Process.sleep(100)
-      flow = Repo.reload(flow)
 
-      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :gt
-
+      flow_id = flow.id
+      client_id = flow.client_id
       resource_id = flow.resource_id
 
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:create_resource, ^resource_id}
@@ -137,6 +140,7 @@ defmodule Domain.Events.Hooks.ResourcesTest do
     end
 
     test "expires flows when resource ip_stack changes", %{flow: flow, old_data: old_data} do
+      :ok = PubSub.Flow.subscribe(flow.id)
       :ok = PubSub.Resource.subscribe(flow.resource_id)
       :ok = PubSub.Account.Resources.subscribe(flow.account_id)
 
@@ -147,12 +151,12 @@ defmodule Domain.Events.Hooks.ResourcesTest do
       # TODO: WAL
       # Remove this after direct broadcast
       Process.sleep(100)
-      flow = Repo.reload(flow)
 
-      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :gt
-
+      flow_id = flow.id
+      client_id = flow.client_id
       resource_id = flow.resource_id
 
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:delete_resource, ^resource_id}
       assert_receive {:create_resource, ^resource_id}
@@ -167,10 +171,15 @@ defmodule Domain.Events.Hooks.ResourcesTest do
 
       assert :ok == on_update(old_data, data)
 
-      assert DateTime.compare(DateTime.utc_now(), flow.expires_at) == :lt
+      # TODO: WAL
+      # Remove this after direct broadcast
+      Process.sleep(100)
 
+      flow_id = flow.id
+      client_id = flow.client_id
       resource_id = flow.resource_id
 
+      refute_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
       assert_receive {:update_resource, ^resource_id}
       assert_receive {:update_resource, ^resource_id}
       refute_receive {:delete_resource, ^resource_id}
