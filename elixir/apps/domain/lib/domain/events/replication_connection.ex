@@ -2,11 +2,11 @@ defmodule Domain.Events.ReplicationConnection do
   alias Domain.Events.Hooks
 
   use Domain.Replication.Connection,
-    # Allow up to 5 seconds of lag before alerting
-    warning_threshold_ms: 5_000,
+    # Allow up to 60 seconds of lag before alerting
+    warning_threshold_ms: 60 * 1_000,
 
-    # Allow up to 5 minutes of lag before bypassing hooks
-    error_threshold_ms: 300_000
+    # Allow up to 30 minutes of lag before bypassing hooks
+    error_threshold_ms: 30 * 60 * 1_000
 
   require Logger
 
