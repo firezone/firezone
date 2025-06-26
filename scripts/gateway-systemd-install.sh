@@ -67,7 +67,7 @@ ExecStartPre=/usr/local/bin/firezone-gateway-init
 ExecStart=/opt/firezone/bin/firezone-gateway
 
 # Restart on failure
-TimeoutStartSec=3s
+TimeoutStartSec=15s
 TimeoutStopSec=15s
 Restart=always
 RestartSec=7
