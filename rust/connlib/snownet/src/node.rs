@@ -140,9 +140,9 @@ pub struct Node<T, TId, RId> {
 pub enum Error {
     #[error("Unknown interface")]
     UnknownInterface,
-    #[error("Failed to decapsulate: {0:?}")] // TODO: Upstream an std::error::Error impl
+    #[error("Failed to decapsulate: {0}")]
     Decapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Failed to encapsulate: {0:?}")]
+    #[error("Failed to encapsulate: {0}")]
     Encapsulate(boringtun::noise::errors::WireGuardError),
     #[error("Packet has unknown format")]
     UnknownPacketFormat,
