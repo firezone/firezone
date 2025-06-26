@@ -337,7 +337,7 @@ defmodule Domain.Replication.ConnectionTest do
 
       # Simulate a commit timestamp that exceeds the threshold
       timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) + 10_000_000
+        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 10_000_000
 
       commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
 
@@ -365,7 +365,7 @@ defmodule Domain.Replication.ConnectionTest do
       end_lsn = <<0::32, 200::32>>
       # Simulate a commit timestamp that is within the threshold
       timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) + 1_000_000
+        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 1_000_000
 
       commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
 
@@ -497,7 +497,7 @@ defmodule Domain.Replication.ConnectionTest do
 
       # Simulate a commit timestamp that exceeds both thresholds (70 seconds lag)
       timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) + 70_000_000
+        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 70_000_000
 
       commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
 
@@ -534,7 +534,7 @@ defmodule Domain.Replication.ConnectionTest do
 
       # Simulate a commit timestamp with moderate lag (10 seconds)
       timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) + 10_000_000
+        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 10_000_000
 
       commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
 

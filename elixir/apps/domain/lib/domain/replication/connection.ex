@@ -476,7 +476,7 @@ defmodule Domain.Replication.Connection do
            ) do
         # Since we receive a commit for each operation and we process each operation
         # one-by-one, we can use the commit timestamp to check if we are lagging behind.
-        lag_ms = DateTime.diff(commit_timestamp, DateTime.utc_now(), :millisecond)
+        lag_ms = DateTime.diff(DateTime.utc_now(), commit_timestamp, :millisecond)
         send(self(), {:check_warning_threshold, lag_ms})
         send(self(), {:check_error_threshold, lag_ms})
 
