@@ -916,9 +916,9 @@ where
 
             return match control_flow {
                 ControlFlow::Continue(c) => ControlFlow::Continue((cid, c)),
-                ControlFlow::Break(b) => {
-                    ControlFlow::Break(b.with_context(|| format!("cid={cid}")))
-                }
+                ControlFlow::Break(b) => ControlFlow::Break(
+                    b.with_context(|| format!("cid={cid} length={}", packet.len())),
+                ),
             };
         }
 
