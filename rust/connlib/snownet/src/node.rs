@@ -3,6 +3,7 @@ use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::{channel_data_packet_buffer, earliest};
+use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
 use boringtun::x25519::PublicKey;
@@ -134,22 +135,6 @@ pub struct Node<T, TId, RId> {
 
     mode: T,
     rng: StdRng,
-}
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    #[error("Unknown interface")]
-    UnknownInterface,
-    #[error("Failed to decapsulate: {0}")]
-    Decapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Failed to encapsulate: {0}")]
-    Encapsulate(boringtun::noise::errors::WireGuardError),
-    #[error("Packet has unknown format")]
-    UnknownPacketFormat,
-    #[error("Not connected")]
-    NotConnected,
-    #[error("Invalid local address: {0}")]
-    BadLocalAddress(#[from] str0m::error::IceError),
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -337,7 +322,7 @@ where
     ///  └─────────┘      │  │         └────┘
     ///                   └──┘
     /// ```
-    pub fn add_local_host_candidate(&mut self, address: SocketAddr) -> Result<(), Error> {
+    pub fn add_local_host_candidate(&mut self, address: SocketAddr) -> Result<()> {
         self.add_local_as_host_candidate(address)?;
 
         Ok(())
@@ -410,7 +395,7 @@ where
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> Result<Option<(TId, IpPacket)>, Error> {
+    ) -> Result<Option<(TId, IpPacket)>> {
         self.add_local_as_host_candidate(local)?;
 
         let (from, packet, relayed) = match self.allocations_try_handle(from, local, packet, now) {
@@ -446,11 +431,11 @@ where
         connection: TId,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<Transmit>, Error> {
+    ) -> Result<Option<Transmit>> {
         let conn = self
             .connections
             .get_established_mut(&connection)
-            .ok_or(Error::NotConnected)?;
+            .with_context(|| format!("Unknown connection {connection}"))?;
 
         if self.mode.is_server() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -489,7 +474,9 @@ where
             }
             ConnectionState::Connected { peer_socket, .. } => peer_socket,
             ConnectionState::Idle { peer_socket } => peer_socket,
-            ConnectionState::Failed => return Err(Error::NotConnected),
+            ConnectionState::Failed => {
+                return Err(anyhow!("Connection {connection} failed"));
+            }
         };
 
         match *socket {
@@ -783,8 +770,9 @@ where
     ///
     /// Receiving traffic on a certain interface means we at least have a connection to a relay via this interface.
     /// Thus, it is also a viable interface to attempt a connection to a gateway.
-    fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<(), Error> {
-        let host_candidate = Candidate::host(local, Protocol::Udp)?;
+    fn add_local_as_host_candidate(&mut self, local: SocketAddr) -> Result<()> {
+        let host_candidate =
+            Candidate::host(local, Protocol::Udp).context("Failed to parse host candidate")?;
 
         if !self.shared_candidates.insert(host_candidate.clone()) {
             return Ok(());
@@ -868,7 +856,7 @@ where
         destination: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>> {
+    ) -> ControlFlow<Result<()>> {
         let Ok(message) = StunMessage::parse(packet) else {
             return ControlFlow::Continue(());
         };
@@ -899,7 +887,7 @@ where
         from: SocketAddr,
         packet: &[u8],
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, (TId, IpPacket)> {
+    ) -> ControlFlow<Result<()>, (TId, IpPacket)> {
         for (cid, conn) in self.connections.iter_established_mut() {
             if !conn.accepts(&from) {
                 continue;
@@ -939,7 +927,7 @@ where
             return ControlFlow::Break(Ok(()));
         }
 
-        ControlFlow::Break(Err(Error::UnknownPacketFormat))
+        ControlFlow::Break(Err(anyhow!("Packet has unknown format")))
     }
 
     fn allocations_drain_events(&mut self) {
@@ -2086,14 +2074,14 @@ where
         packet: IpPacket,
         buffer: &'b mut [u8],
         now: Instant,
-    ) -> Result<Option<&'b [u8]>, Error> {
+    ) -> Result<Option<&'b [u8]>> {
         let _guard = self.span.enter();
 
         self.state.on_outgoing(&mut self.agent, &packet, now);
 
         let len = match self.tunnel.encapsulate_at(packet.packet(), buffer, now) {
             TunnResult::Done => return Ok(None),
-            TunnResult::Err(e) => return Err(Error::Encapsulate(e)),
+            TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
             TunnResult::WriteToNetwork(packet) => packet.len(),
             TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
                 unreachable!("never returned from encapsulate")
@@ -2110,7 +2098,7 @@ where
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<(), Error>, IpPacket> {
+    ) -> ControlFlow<Result<()>, IpPacket> {
         let _guard = self.span.enter();
         let mut ip_packet = IpPacketBuf::new();
 
@@ -2119,7 +2107,7 @@ where
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
-            TunnResult::Err(e) => ControlFlow::Break(Err(Error::Decapsulate(e))),
+            TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
 
             // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.
             // I am guessing this was done for convenience reasons.
