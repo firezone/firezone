@@ -20,6 +20,7 @@ use bufferpool::BufferPool;
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
+use ip_packet::make::TcpFlags;
 use rand::SeedableRng;
 use rand::distributions::DistString;
 use sha2::Digest;
@@ -199,6 +200,7 @@ impl TunnelTest {
                     dst,
                     sport.0,
                     dport.0,
+                    TcpFlags::default(),
                     payload.to_be_bytes().to_vec(),
                 )
                 .unwrap();
