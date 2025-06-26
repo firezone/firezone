@@ -109,26 +109,42 @@ pub fn tcp_packet<IP>(
     daddr: IP,
     sport: u16,
     dport: u16,
+    flags: TcpFlags,
     payload: Vec<u8>,
 ) -> Result<IpPacket>
 where
     IP: Into<IpAddr>,
 {
+    let TcpFlags { rst } = flags;
+
     match (saddr.into(), daddr.into()) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            let packet =
+            let mut packet =
                 PacketBuilder::ipv4(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
+
+            if rst {
+                packet = packet.rst();
+            }
 
             build!(packet, payload)
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            let packet =
+            let mut packet =
                 PacketBuilder::ipv6(src.octets(), dst.octets(), 64).tcp(sport, dport, 0, 128);
+
+            if rst {
+                packet = packet.rst();
+            }
 
             build!(packet, payload)
         }
         _ => bail!(IpVersionMismatch),
     }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TcpFlags {
+    pub rst: bool,
 }
 
 pub fn udp_packet<IP>(

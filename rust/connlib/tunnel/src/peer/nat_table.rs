@@ -61,12 +61,23 @@ impl NatTable {
 
         let inside = (src, dst);
 
-        if let Some(outside) = self.table.get_by_left(&inside) {
+        if let Some(outside) = self.table.get_by_left(&inside).copied() {
             if outside.1 == outside_dst {
                 tracing::trace!(?inside, ?outside, "Translating outgoing packet");
 
-                self.last_seen.insert(*outside, now);
-                return Ok(*outside);
+                if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+                    tracing::debug!(
+                        ?inside,
+                        ?outside,
+                        "Witnessed outgoing TCP RST, removing NAT session"
+                    );
+
+                    self.table.remove_by_left(&inside);
+                    self.expired.insert(outside);
+                }
+
+                self.last_seen.insert(outside, now);
+                return Ok(outside);
             }
 
             tracing::trace!(?inside, ?outside, "Outgoing packet for expired translation");
@@ -84,6 +95,7 @@ impl NatTable {
 
         self.table.insert(inside, outside);
         self.last_seen.insert(outside, now);
+        self.expired.remove(&outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
 
@@ -118,7 +130,20 @@ impl NatTable {
 
         let outside = (packet.destination_protocol()?, packet.source());
 
-        if let Some((proto, src)) = self.translate_incoming_inner(&outside, now) {
+        if let Some(inside) = self.translate_incoming_inner(&outside, now) {
+            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+                tracing::debug!(
+                    ?inside,
+                    ?outside,
+                    "Witnessed incoming TCP RST, removing NAT session"
+                );
+
+                self.table.remove_by_right(&outside);
+                self.expired.insert(outside);
+            }
+
+            let (proto, src) = inside;
+
             return Ok(TranslateIncomingResult::Ok { proto, src });
         }
 
@@ -215,7 +240,7 @@ pub enum TranslateIncomingResult {
 #[cfg(all(test, feature = "proptest"))]
 mod tests {
     use super::*;
-    use ip_packet::{IpPacket, proptest::*};
+    use ip_packet::{IpPacket, make::TcpFlags, proptest::*};
     use proptest::prelude::*;
 
     #[test_strategy::proptest(ProptestConfig { max_local_rejects: 10_000, max_global_rejects: 10_000, ..ProptestConfig::default() })]
@@ -321,5 +346,52 @@ mod tests {
         });
 
         assert_eq!(responses, original_src_p_and_dst);
+    }
+
+    #[test_strategy::proptest]
+    fn outgoing_tcp_rst_removes_nat_mapping(
+        #[strategy(tcp_packet(Just(TcpFlags::default())))] req: IpPacket,
+        #[strategy(tcp_packet(Just(TcpFlags { rst: true })))] mut rst: IpPacket,
+        #[strategy(any::<IpAddr>())] outside_dst: IpAddr,
+    ) {
+        let _guard = firezone_logging::test("trace");
+
+        proptest::prop_assume!(req.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
+        proptest::prop_assume!(rst.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
+        rst.set_source_protocol(req.source_protocol().unwrap().value());
+        rst.set_destination_protocol(req.destination_protocol().unwrap().value());
+        rst.set_dst(req.destination()).unwrap();
+
+        let mut table = NatTable::default();
+
+        let outside = table
+            .translate_outgoing(&req, outside_dst, Instant::now())
+            .unwrap();
+
+        let mut response = req.clone();
+        response.set_destination_protocol(outside.0.value());
+        response.set_src(outside.1).unwrap();
+
+        match table.translate_incoming(&response, Instant::now()).unwrap() {
+            TranslateIncomingResult::Ok { .. } => {}
+            result @ (TranslateIncomingResult::NoNatSession
+            | TranslateIncomingResult::ExpiredNatSession
+            | TranslateIncomingResult::DestinationUnreachable(_)) => {
+                panic!("Wrong result: {result:?}")
+            }
+        };
+
+        table
+            .translate_outgoing(&rst, outside_dst, Instant::now())
+            .unwrap();
+
+        match table.translate_incoming(&response, Instant::now()).unwrap() {
+            TranslateIncomingResult::ExpiredNatSession => {}
+            result @ (TranslateIncomingResult::NoNatSession
+            | TranslateIncomingResult::Ok { .. }
+            | TranslateIncomingResult::DestinationUnreachable(_)) => {
+                panic!("Wrong result: {result:?}")
+            }
+        };
     }
 }
