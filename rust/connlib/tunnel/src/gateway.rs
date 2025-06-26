@@ -500,7 +500,7 @@ fn encrypt_packet(
 ) -> Result<Option<Transmit>> {
     let transmit = node
         .encapsulate(cid, packet, now)
-        .context("Failed to encapsulate packet")?;
+        .context("Failed to encapsulate")?;
 
     Ok(transmit)
 }
