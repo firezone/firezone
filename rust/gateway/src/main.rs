@@ -95,6 +95,14 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
 
+    tracing::info!(
+        arch = std::env::consts::ARCH,
+        os = std::env::consts::OS,
+        version = env!("CARGO_PKG_VERSION"),
+        system_uptime = firezone_bin_shared::uptime::get().map(tracing::field::debug),
+        "`gateway` started logging"
+    );
+
     tracing::debug!(?cli);
 
     let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
@@ -104,7 +112,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         telemetry
             .start(
                 cli.api_url.as_str(),
-                concat!("gateway@", env!("CARGO_PKG_VERSION")),
+                RELEASE,
                 firezone_telemetry::GATEWAY_DSN,
                 firezone_id.clone(),
             )
