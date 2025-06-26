@@ -158,6 +158,7 @@ struct Handler<'a> {
     tun_device: TunDeviceManager,
     dns_notifier: BoxStream<'static, Result<()>>,
     network_notifier: BoxStream<'static, Result<()>>,
+    telemetry_refresh: tokio::time::Interval,
 }
 
 #[derive(Default)]
@@ -245,6 +246,7 @@ enum Event {
     Terminate,
     NetworkChanged(Result<()>),
     DnsChanged(Result<()>),
+    RefreshTelemetry,
 }
 
 // Open to better names
@@ -293,6 +295,7 @@ impl<'a> Handler<'a> {
             tun_device,
             dns_notifier,
             network_notifier,
+            telemetry_refresh: tokio::time::interval(Duration::from_secs(60)),
         })
     }
 
@@ -395,6 +398,9 @@ impl<'a> Handler<'a> {
 
                     connlib.set_dns(resolvers);
                 }
+                Event::RefreshTelemetry => {
+                    self.telemetry.refresh_config();
+                }
             }
         };
 
@@ -437,6 +443,10 @@ impl<'a> Handler<'a> {
                     None => Event::CallbackChannelClosed,
                 });
             }
+        }
+
+        if self.telemetry_refresh.poll_tick(cx).is_ready() {
+            return Poll::Ready(Event::RefreshTelemetry);
         }
 
         Poll::Pending
