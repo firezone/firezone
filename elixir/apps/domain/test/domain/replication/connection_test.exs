@@ -331,19 +331,18 @@ defmodule Domain.Replication.ConnectionTest do
       server_wal_start = 123_456_789
       server_wal_end = 987_654_321
       server_system_clock = 1_234_567_890
-      flags = <<0>>
       lsn = <<0::32, 100::32>>
-      end_lsn = <<0::32, 200::32>>
+      xid = <<0::32>>
 
       # Simulate a commit timestamp that exceeds the threshold
       timestamp =
         DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 10_000_000
 
-      commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
+      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
 
       write_message =
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          commit_data::binary>>
+          begin_data::binary>>
 
       assert {:noreply, [], _state} =
                TestReplicationConnection.handle_data(write_message, state)
@@ -360,18 +359,18 @@ defmodule Domain.Replication.ConnectionTest do
       server_wal_start = 123_456_789
       server_wal_end = 987_654_321
       server_system_clock = 1_234_567_890
-      flags = <<0>>
       lsn = <<0::32, 100::32>>
-      end_lsn = <<0::32, 200::32>>
+      xid = <<0::32>>
+
       # Simulate a commit timestamp that is within the threshold
       timestamp =
         DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 1_000_000
 
-      commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
+      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
 
       write_message =
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          commit_data::binary>>
+          begin_data::binary>>
 
       assert {:noreply, [], _state} =
                TestReplicationConnection.handle_data(write_message, state)
@@ -481,7 +480,7 @@ defmodule Domain.Replication.ConnectionTest do
     end
   end
 
-  describe "commit message lag tracking with error threshold" do
+  describe "BEGIN message lag tracking with error threshold" do
     test "sends both check_warning_threshold and check_error_threshold messages" do
       state =
         %{mock_state() | step: :streaming}
@@ -491,19 +490,18 @@ defmodule Domain.Replication.ConnectionTest do
       server_wal_start = 123_456_789
       server_wal_end = 987_654_321
       server_system_clock = 1_234_567_890
-      flags = <<0>>
       lsn = <<0::32, 100::32>>
-      end_lsn = <<0::32, 200::32>>
+      xid = <<0::32>>
 
       # Simulate a commit timestamp that exceeds both thresholds (70 seconds lag)
       timestamp =
         DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 70_000_000
 
-      commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
+      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
 
       write_message =
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          commit_data::binary>>
+          begin_data::binary>>
 
       assert {:noreply, [], _state} =
                TestReplicationConnection.handle_data(write_message, state)
@@ -528,19 +526,18 @@ defmodule Domain.Replication.ConnectionTest do
       server_wal_start = 123_456_789
       server_wal_end = 987_654_321
       server_system_clock = 1_234_567_890
-      flags = <<0>>
       lsn = <<0::32, 100::32>>
-      end_lsn = <<0::32, 200::32>>
+      xid = <<0::32>>
 
       # Simulate a commit timestamp with moderate lag (10 seconds)
       timestamp =
         DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 10_000_000
 
-      commit_data = <<?C, flags::binary, lsn::binary, end_lsn::binary, timestamp::64>>
+      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
 
       write_message =
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          commit_data::binary>>
+          begin_data::binary>>
 
       assert {:noreply, [], _state} =
                TestReplicationConnection.handle_data(write_message, state)
