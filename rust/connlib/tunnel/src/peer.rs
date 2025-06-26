@@ -688,6 +688,7 @@ mod tests {
     use chrono::Utc;
     use connlib_model::{ClientId, ResourceId};
     use ip_network::{IpNetwork, Ipv4Network};
+    use ip_packet::make::TcpFlags;
 
     use super::ClientOnGateway;
 
@@ -727,6 +728,7 @@ mod tests {
             cidr_v4_resource().hosts().next().unwrap(),
             5401,
             80,
+            TcpFlags::default(),
             vec![0; 100],
         )
         .unwrap();
@@ -801,6 +803,7 @@ mod tests {
             gateway_tun_ipv4(),
             5401,
             80,
+            TcpFlags::default(),
             vec![0; 100],
         )
         .unwrap();
@@ -810,6 +813,7 @@ mod tests {
             client_tun_ipv4(),
             80,
             5401,
+            TcpFlags::default(),
             vec![0; 100],
         )
         .unwrap();
@@ -1188,7 +1192,7 @@ mod proptests {
         Filter, PortRange, ResourceDescription, ResourceDescriptionCidr,
     };
     use crate::proptest::*;
-    use ip_packet::make::{icmp_request_packet, tcp_packet, udp_packet};
+    use ip_packet::make::{TcpFlags, icmp_request_packet, tcp_packet, udp_packet};
     use itertools::Itertools as _;
     use proptest::{
         arbitrary::any,
@@ -1235,7 +1239,14 @@ mod proptests {
             };
 
             let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(src, *dest, sport, *dport, payload.clone()),
+                Protocol::Tcp { dport } => tcp_packet(
+                    src,
+                    *dest,
+                    sport,
+                    *dport,
+                    TcpFlags::default(),
+                    payload.clone(),
+                ),
                 Protocol::Udp { dport } => udp_packet(src, *dest, sport, *dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, *dest, 1, 0, &[]),
             }
@@ -1290,7 +1301,14 @@ mod proptests {
 
         for (_, protocol) in protocol_config {
             let packet = match protocol {
-                Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
+                Protocol::Tcp { dport } => tcp_packet(
+                    src,
+                    dest,
+                    sport,
+                    dport,
+                    TcpFlags::default(),
+                    payload.clone(),
+                ),
                 Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
                 Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
             }
@@ -1331,7 +1349,9 @@ mod proptests {
             gateway_tun(),
         );
         let packet = match protocol {
-            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
+            Protocol::Tcp { dport } => {
+                tcp_packet(src, dest, sport, dport, TcpFlags::default(), payload)
+            }
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
@@ -1387,14 +1407,23 @@ mod proptests {
         );
 
         let packet_allowed = match protocol_allowed {
-            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload.clone()),
+            Protocol::Tcp { dport } => tcp_packet(
+                src,
+                dest,
+                sport,
+                dport,
+                TcpFlags::default(),
+                payload.clone(),
+            ),
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload.clone()),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
         .unwrap();
 
         let packet_rejected = match protocol_removed {
-            Protocol::Tcp { dport } => tcp_packet(src, dest, sport, dport, payload),
+            Protocol::Tcp { dport } => {
+                tcp_packet(src, dest, sport, dport, TcpFlags::default(), payload)
+            }
             Protocol::Udp { dport } => udp_packet(src, dest, sport, dport, payload),
             Protocol::Icmp => icmp_request_packet(src, dest, 1, 0, &[]),
         }
