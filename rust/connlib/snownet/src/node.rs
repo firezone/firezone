@@ -250,7 +250,7 @@ where
             .get_established_mut(&cid)
             .is_some_and(|c| c.agent.local_credentials() == &local_creds)
         {
-            tracing::debug!("Already got a connection");
+            tracing::info!(?local_creds, "Already got a connection");
             return Ok(());
         }
 
