@@ -415,7 +415,7 @@ impl ClientState {
             packet.as_ref(),
             now,
         )
-        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate incoming packet: {}", err_with_src(e)))
+        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate: {e:#}"))
         .ok()??;
 
         if self.tcp_dns_client.accepts(&packet) {
@@ -547,7 +547,7 @@ impl ClientState {
         let transmit = self
             .node
             .encapsulate(gid, packet, now)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {}", err_with_src(e)))
+            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
         Some(transmit)
