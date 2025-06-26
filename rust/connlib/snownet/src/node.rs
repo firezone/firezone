@@ -451,7 +451,8 @@ where
 
         // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
         let Some(packet_len) = conn
-            .encapsulate(packet, &mut buffer[4..], now)?
+            .encapsulate(packet, &mut buffer[4..], now)
+            .with_context(|| format!("cid={connection}"))?
             .map(|p| p.len())
         // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
         else {
@@ -915,7 +916,9 @@ where
 
             return match control_flow {
                 ControlFlow::Continue(c) => ControlFlow::Continue((cid, c)),
-                ControlFlow::Break(b) => ControlFlow::Break(b),
+                ControlFlow::Break(b) => {
+                    ControlFlow::Break(b.with_context(|| format!("cid={cid}")))
+                }
             };
         }
 
