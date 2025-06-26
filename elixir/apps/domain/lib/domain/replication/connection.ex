@@ -17,7 +17,7 @@ defmodule Domain.Replication.Connection do
         defmodule MyApp.ReplicationConnection do
           use Domain.Replication.Connection,
             warning_threshold_ms: 30_000,
-            error_threshold_ms: 60_000
+            error_threshold_ms: 60 * 1_000
         end
 
     ## Options
