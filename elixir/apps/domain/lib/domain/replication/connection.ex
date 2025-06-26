@@ -17,7 +17,7 @@ defmodule Domain.Replication.Connection do
         defmodule MyApp.ReplicationConnection do
           use Domain.Replication.Connection,
             warning_threshold_ms: 30_000,
-            error_threshold_ms: 60_000,
+            error_threshold_ms: 60_000
         end
 
     ## Options
@@ -465,12 +465,8 @@ defmodule Domain.Replication.Connection do
   # Extract transaction and ignored message handlers
   defp transaction_handlers do
     quote do
-      defp handle_message(%Decoder.Messages.Begin{} = msg, server_wal_end, state) do
-        {:noreply, [], state}
-      end
-
       defp handle_message(
-             %Decoder.Messages.Commit{commit_timestamp: commit_timestamp} = msg,
+             %Decoder.Messages.Begin{commit_timestamp: commit_timestamp} = msg,
              _server_wal_end,
              state
            ) do
@@ -480,6 +476,14 @@ defmodule Domain.Replication.Connection do
         send(self(), {:check_warning_threshold, lag_ms})
         send(self(), {:check_error_threshold, lag_ms})
 
+        {:noreply, [], state}
+      end
+
+      defp handle_message(
+             %Decoder.Messages.Commit{commit_timestamp: commit_timestamp},
+             _server_wal_end,
+             state
+           ) do
         {:noreply, [], state}
       end
     end
