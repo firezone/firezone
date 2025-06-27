@@ -1578,12 +1578,6 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def feature_name(%{feature: :flow_activities} = assigns) do
-    ~H"""
-    See detailed Resource access logs
-    """
-  end
-
   def feature_name(%{feature: :policy_conditions} = assigns) do
     ~H"""
     Specify access-time conditions when creating policies

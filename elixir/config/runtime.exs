@@ -101,7 +101,6 @@ if config_env() == :prod do
   config :domain, :enabled_features,
     idp_sync: env_var_to_config!(:feature_idp_sync_enabled),
     sign_up: env_var_to_config!(:feature_sign_up_enabled),
-    flow_activities: env_var_to_config!(:feature_flow_activities_enabled),
     self_hosted_relays: env_var_to_config!(:feature_self_hosted_relays_enabled),
     policy_conditions: env_var_to_config!(:feature_policy_conditions_enabled),
     multi_site_resources: env_var_to_config!(:feature_multi_site_resources_enabled),

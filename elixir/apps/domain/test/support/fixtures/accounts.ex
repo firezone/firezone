@@ -18,7 +18,6 @@ defmodule Domain.Fixtures.Accounts do
         ]
       },
       features: %{
-        flow_activities: true,
         policy_conditions: true,
         multi_site_resources: true,
         traffic_filters: true,
