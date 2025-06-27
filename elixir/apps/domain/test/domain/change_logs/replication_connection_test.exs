@@ -140,6 +140,19 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "on_delete/2" do
+    test "ignores soft-deleted records" do
+      table = "resources"
+      old_data = %{"id" => Ecto.UUID.generate(), "deleted_at" => "#{DateTime.utc_now()}"}
+
+      initial_count = Repo.aggregate(ChangeLog, :count, :id)
+
+      assert :ok = on_delete(0, table, old_data)
+
+      # No record should be created for soft-deleted records
+      final_count = Repo.aggregate(ChangeLog, :count, :id)
+      assert final_count == initial_count
+    end
+
     test "ignores flows table - no record created" do
       table = "flows"
       old_data = %{"id" => 1, "name" => "deleted flow"}
