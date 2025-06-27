@@ -89,8 +89,7 @@ defmodule Web.AcceptanceCase do
   def assert_el(session, query, started_at \\ nil)
 
   def assert_el(session, %Query{} = query, started_at) do
-    now = :erlang.monotonic_time(:milli_seconds)
-    started_at = started_at || now
+    started_at = started_at || :erlang.monotonic_time(:milli_seconds)
 
     try do
       case execute_query(session, query) do
@@ -115,7 +114,7 @@ defmodule Web.AcceptanceCase do
         Wallaby.StaleReferenceError,
         Wallaby.QueryError
       ] ->
-        time_spent = now - started_at
+        time_spent = :erlang.monotonic_time(:milli_seconds) - started_at
         max_wait_seconds = fetch_default_wait_seconds!()
 
         if time_spent > :timer.seconds(max_wait_seconds) do
