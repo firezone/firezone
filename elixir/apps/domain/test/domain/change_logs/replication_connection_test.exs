@@ -54,10 +54,10 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
          %{"id" => Ecto.UUID.generate(), "name" => "test actor", "account_id" => account.id}}
       ]
 
-      for {table, data} <- test_cases do
+      for {{table, data}, idx} <- Enum.with_index(test_cases) do
         initial_count = Repo.aggregate(ChangeLog, :count, :id)
 
-        assert :ok = on_insert(0, table, data)
+        assert :ok = on_insert(idx, table, data)
 
         final_count = Repo.aggregate(ChangeLog, :count, :id)
         assert final_count == initial_count + 1
@@ -295,10 +295,10 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       assert :ok = on_insert(0, table, initial_data)
 
       # Update
-      assert :ok = on_update(0, table, initial_data, updated_data)
+      assert :ok = on_update(1, table, initial_data, updated_data)
 
       # Delete
-      assert :ok = on_delete(0, table, updated_data)
+      assert :ok = on_delete(2, table, updated_data)
 
       # Get the three most recent records in reverse chronological order
       logs =
@@ -350,8 +350,8 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       for data <- test_data_sets do
         assert :ok = on_insert(0, "flows", data)
-        assert :ok = on_update(0, "flows", data, data)
-        assert :ok = on_delete(0, "flows", data)
+        assert :ok = on_update(1, "flows", data, data)
+        assert :ok = on_delete(2, "flows", data)
       end
 
       # No records should have been created

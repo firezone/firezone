@@ -73,6 +73,28 @@ defmodule Domain.ChangeLogsTest do
       assert changeset.errors[:table] == {"can't be blank", [validation: :required]}
     end
 
+    test "prevents inserting duplicate lsn", %{account: account} do
+      attrs = %{
+        lsn: 1,
+        table: "resources",
+        op: :insert,
+        old_data: nil,
+        data: %{"account_id" => account.id, "key" => "value"},
+        vsn: 1
+      }
+
+      assert {:ok, _change_log} = create_change_log(attrs)
+
+      dupe_lsn_attrs = Map.put(attrs, :data, %{"account_id" => account.id, "key" => "new_value"})
+
+      assert {:error, changeset} = create_change_log(dupe_lsn_attrs)
+      assert changeset.valid? == false
+
+      assert changeset.errors[:lsn] ==
+               {"has already been taken",
+                [constraint: :unique, constraint_name: "change_logs_lsn_index"]}
+    end
+
     test "requires op field to be one of :insert, :update, :delete", %{account: account} do
       attrs = %{
         lsn: 1,
@@ -118,7 +140,7 @@ defmodule Domain.ChangeLogsTest do
 
       # Valid combination: :update with both old_data and data present
       attrs = %{
-        lsn: 1,
+        lsn: 2,
         table: "resources",
         op: :update,
         old_data: %{"account_id" => account.id, "key" => "old_value"},
@@ -130,7 +152,7 @@ defmodule Domain.ChangeLogsTest do
 
       # Valid combination: :delete with old_data present and data nil
       attrs = %{
-        lsn: 1,
+        lsn: 3,
         table: "resources",
         op: :delete,
         old_data: %{"account_id" => account.id, "key" => "old_value"},

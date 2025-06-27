@@ -55,8 +55,9 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
         :ok
 
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
-        if foreign_key_error?(errors) do
-          # Expected under normal operation when an account is deleted
+        if Enum.any?(errors, &should_skip_change_log?/1) do
+          # Expected under normal operation when an account is deleted or we are catching up on
+          # already-processed but not acknowledged WAL data.
           :ok
         else
           Logger.warning("Failed to create change log",
@@ -75,9 +76,15 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     end
   end
 
-  defp foreign_key_error?(errors) do
-    Enum.any?(errors, fn {field, {message, _}} ->
-      field == :account_id and message == "does not exist"
-    end)
+  defp should_skip_change_log?({:account_id, {"does not exist", _violations}}) do
+    true
+  end
+
+  defp should_skip_change_log?({:lsn, {"has already been taken", _violations}}) do
+    true
+  end
+
+  defp should_skip_change_log?(_error) do
+    false
   end
 end
