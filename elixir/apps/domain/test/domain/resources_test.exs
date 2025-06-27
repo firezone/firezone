@@ -61,12 +61,11 @@ defmodule Domain.ResourcesTest do
       assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
     end
 
-    test "returns deleted resources", %{account: account, subject: subject} do
-      {:ok, resource} =
-        Fixtures.Resources.create_resource(account: account)
-        |> delete_resource(subject)
+    test "does not return deleted resources", %{account: account, subject: subject} do
+      resource = Fixtures.Resources.create_resource(account: account)
+      delete_resource(resource, subject)
 
-      assert {:ok, _resource} = fetch_resource_by_id(resource.id, subject)
+      assert {:error, :not_found} = fetch_resource_by_id(resource.id, subject)
     end
 
     test "does not return resources in other accounts", %{subject: subject} do
@@ -162,14 +161,13 @@ defmodule Domain.ResourcesTest do
       assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
     end
 
-    test "returns deleted resources", %{account: account, subject: subject} do
-      {:ok, resource} =
-        Fixtures.Resources.create_resource(account: account)
-        |> delete_resource(subject)
+    test "does not return deleted resources", %{account: account, subject: subject} do
+      resource = Fixtures.Resources.create_resource(account: account)
+      delete_resource(resource, subject)
 
-      assert {:ok, _resource} = fetch_resource_by_id_or_persistent_id(resource.id, subject)
+      assert {:error, :not_found} = fetch_resource_by_id_or_persistent_id(resource.id, subject)
 
-      assert {:ok, _resource} =
+      assert {:error, :not_found} =
                fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject)
     end
 
@@ -318,9 +316,7 @@ defmodule Domain.ResourcesTest do
     end
 
     test "does not return deleted resources", %{account: account, actor: actor, subject: subject} do
-      {:ok, resource} =
-        Fixtures.Resources.create_resource(account: account)
-        |> delete_resource(subject)
+      resource = Fixtures.Resources.create_resource(account: account)
 
       actor_group = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
@@ -330,6 +326,8 @@ defmodule Domain.ResourcesTest do
         actor_group: actor_group,
         resource: resource
       )
+
+      delete_resource(resource, subject)
 
       assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
     end
@@ -1645,18 +1643,18 @@ defmodule Domain.ResourcesTest do
       %{resource: resource}
     end
 
-    test "returns error on state conflict", %{
+    test "returns error when no resource exists", %{
       resource: resource,
       subject: subject
     } do
-      assert {:ok, deleted} = delete_resource(resource, subject)
-      assert delete_resource(deleted, subject) == {:error, :not_found}
-      assert delete_resource(resource, subject) == {:error, :not_found}
+      assert :ok = delete_resource(resource, subject)
+      assert delete_resource(resource, subject) == {:error, "unable to delete"}
     end
 
     test "deletes resources", %{resource: resource, subject: subject} do
-      assert {:ok, deleted} = delete_resource(resource, subject)
-      assert deleted.deleted_at
+      assert :ok = delete_resource(resource, subject)
+
+      refute Repo.get(Resources.Resource, resource.id)
     end
 
     test "deletes policies that use this resource", %{
@@ -1667,10 +1665,10 @@ defmodule Domain.ResourcesTest do
       other_policy = Fixtures.Policies.create_policy(account: account)
       policy = Fixtures.Policies.create_policy(account: account, resource: resource)
 
-      assert {:ok, _resource} = delete_resource(resource, subject)
+      assert :ok = delete_resource(resource, subject)
 
-      refute is_nil(Repo.get_by(Domain.Policies.Policy, id: policy.id).deleted_at)
-      assert is_nil(Repo.get_by(Domain.Policies.Policy, id: other_policy.id).deleted_at)
+      assert is_nil(Repo.get(Domain.Policies.Policy, policy.id))
+      assert Repo.get(Domain.Policies.Policy, other_policy.id) == other_policy
     end
 
     test "deletes connections that use this resource", %{
@@ -1685,7 +1683,7 @@ defmodule Domain.ResourcesTest do
           connections: [%{gateway_group_id: group.id}]
         )
 
-      assert {:ok, _resource} = delete_resource(resource, subject)
+      assert :ok = delete_resource(resource, subject)
 
       assert Repo.aggregate(Resources.Connection.Query.by_gateway_group_id(group.id), :count) == 0
     end

@@ -498,7 +498,7 @@ defmodule Web.Sites.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
+    :ok = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 

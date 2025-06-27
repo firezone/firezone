@@ -1,7 +1,8 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Auth}
-  alias Domain.{Accounts, Gateways, Policies}
+  alias Domain.{Accounts, Gateways}
   alias Domain.Resources.{Authorizer, Resource, Connection}
+  require Logger
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
@@ -278,22 +279,23 @@ defmodule Domain.Resources do
       Resource.Query.not_deleted()
       |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update(Resource.Query,
-        with: fn resource ->
-          {_count, nil} =
-            Connection.Query.by_resource_id(resource.id)
-            |> Repo.delete_all()
-
-          Resource.Changeset.delete(resource)
-        end
-      )
+      |> Repo.delete_all()
       |> case do
-        {:ok, resource} ->
-          {:ok, _policies} = Policies.delete_policies_for(resource, subject)
-          {:ok, resource}
+        {0, nil} ->
+          {:error, "unable to delete"}
 
-        {:error, reason} ->
-          {:error, reason}
+        {1, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error deleting resource",
+            account_id: resource.account_id,
+            actor_id: subject.actor.id,
+            resource_id: resource.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error"}
       end
     end
   end

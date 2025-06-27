@@ -7,12 +7,15 @@ defmodule Domain.Actors.Actor do
 
     field :name, :string
 
+    # TODO: Remove `where` after `deleted_at` is removed from DB
     has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
 
+    # TODO: Remove `where` after `deleted_at` is removed from DB
     has_many :clients, Domain.Clients.Client,
       where: [deleted_at: nil],
       preload_order: [desc: :last_seen_at]
 
+    # TODO: Remove `where` after `deleted_at` is removed from DB
     has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
@@ -25,6 +28,8 @@ defmodule Domain.Actors.Actor do
     field :last_seen_at, :utc_datetime_usec, virtual: true
     field :last_synced_at, :utc_datetime_usec
     field :disabled_at, :utc_datetime_usec
+
+    # TODO: Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

@@ -470,7 +470,7 @@ defmodule Web.Clients.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _client} = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
+    :ok = Clients.delete_client(socket.assigns.client, socket.assigns.subject)
 
     socket =
       socket

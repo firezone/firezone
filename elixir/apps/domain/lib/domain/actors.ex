@@ -5,6 +5,7 @@ defmodule Domain.Actors do
   alias Domain.{Accounts, Auth, Tokens, Clients, Policies, Billing}
   alias Domain.Actors.{Authorizer, Actor, Group}
   require Ecto.Query
+  require Logger
 
   # Groups
 
@@ -233,13 +234,71 @@ defmodule Domain.Actors do
   end
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Group.Query.all()
+      |> Group.Query.by_id(group.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete"}
+
+        {1, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error deleting group",
+            account_id: group.account_id,
+            actor_id: subject.actor.id,
+            group_id: group.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error"}
+      end
+    end
+  end
+
+  def delete_group(%Group{}, %Auth.Subject{}) do
+    {:error, :synced_group}
+  end
+
+  def delete_groups_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
+      Group.Query.all()
+      |> Group.Query.by_provider_id(provider.id)
+      |> Group.Query.by_account_id(provider.account_id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete"}
+
+        {_n, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error deleting groups",
+            account_id: provider.account_id,
+            actor_id: subject.actor.id,
+            provider_id: provider.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error"}
+      end
+    end
+  end
+
+  # TODO: Remove this once the `deleted_at` field in the DB is gone
+  def soft_delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
     queryable =
       Group.Query.not_deleted()
       |> Group.Query.by_id(group.id)
 
-    case delete_groups(queryable, subject) do
+    case soft_delete_groups(queryable, subject) do
       {:ok, [group]} ->
-        {:ok, _policies} = Policies.delete_policies_for(group, subject)
+        {:ok, _policies} = Policies.soft_delete_policies_for(group, subject)
 
         # TODO: WAL
         # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
@@ -258,11 +317,13 @@ defmodule Domain.Actors do
     end
   end
 
-  def delete_group(%Group{}, %Auth.Subject{}) do
+  # TODO: Remove this once the `deleted_at` field in the DB is gone
+  def soft_delete_group(%Group{}, %Auth.Subject{}) do
     {:error, :synced_group}
   end
 
-  def delete_groups_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+  # TODO: Remove this once the `deleted_at` field in the DB is gone
+  def soft_delete_groups_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
     queryable =
       Group.Query.not_deleted()
       |> Group.Query.by_provider_id(provider.id)
@@ -274,13 +335,14 @@ defmodule Domain.Actors do
       Membership.Query.by_group_provider_id(provider.id)
       |> Repo.delete_all()
 
-    with {:ok, groups} <- delete_groups(queryable, subject) do
-      {:ok, _policies} = Policies.delete_policies_for(provider, subject)
+    with {:ok, groups} <- soft_delete_groups(queryable, subject) do
+      {:ok, _policies} = Policies.soft_delete_policies_for(provider, subject)
       {:ok, groups}
     end
   end
 
-  defp delete_groups(queryable, subject) do
+  # TODO: Remove this once the `deleted_at` field in the DB is gone
+  defp soft_delete_groups(queryable, subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       {_count, groups} =
         queryable
@@ -294,7 +356,8 @@ defmodule Domain.Actors do
 
   @doc false
   # used in sync workers
-  def delete_groups(queryable) do
+  # TODO: Remove this once the `deleted_at` field in the DB is gone
+  def soft_delete_groups(queryable) do
     {_count, groups} =
       queryable
       |> Group.Query.delete()
@@ -302,7 +365,7 @@ defmodule Domain.Actors do
 
     :ok =
       Enum.each(groups, fn group ->
-        {:ok, _policies} = Domain.Policies.delete_policies_for(group)
+        {:ok, _policies} = Domain.Policies.soft_delete_policies_for(group)
       end)
 
     # TODO: WAL
@@ -321,10 +384,11 @@ defmodule Domain.Actors do
   def group_managed?(%Group{}), do: false
 
   def group_editable?(%Group{} = group),
-    do: not group_deleted?(group) and not group_synced?(group) and not group_managed?(group)
+    do: not group_soft_deleted?(group) and not group_synced?(group) and not group_managed?(group)
 
-  def group_deleted?(%Group{deleted_at: nil}), do: false
-  def group_deleted?(%Group{}), do: true
+  # TODO: Remove this once the `deleted_at` field in the DB is gone
+  def group_soft_deleted?(%Group{deleted_at: nil}), do: false
+  def group_soft_deleted?(%Group{}), do: true
 
   # Actors
 
@@ -574,6 +638,36 @@ defmodule Domain.Actors do
   end
 
   def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
+         true <- actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
+      Actor.Query.all()
+      |> Actor.Query.by_id(actor.id)
+      |> Authorizer.for_subject(subject)
+      |> Repo.delete_all()
+      |> case do
+        {0, nil} ->
+          {:error, "unable to delete"}
+
+        {1, nil} ->
+          :ok
+
+        error ->
+          Logger.error("Unknown error deleting actor",
+            account_id: actor.account_id,
+            subject_actor_id: subject.actor.id,
+            actor_id: actor.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error"}
+      end
+    else
+      false ->
+        :cant_delete_the_last_admin
+    end
+  end
+
+  def soft_delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Actor.Query.not_deleted()
       |> Actor.Query.by_id(actor.id)
@@ -581,7 +675,7 @@ defmodule Domain.Actors do
       |> Repo.fetch_and_update(Actor.Query,
         with: fn actor ->
           if actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
-            :ok = Auth.delete_identities_for(actor, subject)
+            :ok = Auth.soft_delete_identities_for(actor, subject)
             :ok = Clients.delete_clients_for(actor, subject)
 
             # TODO: WAL
@@ -620,12 +714,14 @@ defmodule Domain.Actors do
   def actor_synced?(%Actor{last_synced_at: nil}), do: false
   def actor_synced?(%Actor{}), do: true
 
+  # TODO: Remove this once the `deleted_at` field in the DB is gone
   def actor_deleted?(%Actor{deleted_at: nil}), do: false
   def actor_deleted?(%Actor{}), do: true
 
   def actor_disabled?(%Actor{disabled_at: nil}), do: false
   def actor_disabled?(%Actor{}), do: true
 
+  # TODO: Update this once the `deleted_at` field in the DB is gone
   def actor_active?(%Actor{disabled_at: nil, deleted_at: nil}), do: true
   def actor_active?(%Actor{}), do: false
 
