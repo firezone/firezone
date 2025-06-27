@@ -234,8 +234,8 @@ where
         remote_creds: Credentials,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
-        let local_creds = IceCreds::from(local_creds);
-        let remote_creds = IceCreds::from(remote_creds);
+        let local_creds = local_creds.into();
+        let remote_creds = remote_creds.into();
 
         if self.connections.initial.contains_key(&cid) {
             debug_assert!(
@@ -254,12 +254,21 @@ where
             return Ok(());
         }
 
+        let existing = self.connections.established.remove(&cid);
+
+        if let Some(existing) = existing {
+            let current_local = existing.agent.local_credentials();
+            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, "Replacing existing connection");
+        } else {
+            tracing::info!(local = ?local_creds, remote = ?remote_creds, "Creating new connection");
+        }
+
         let selected_relay = self.sample_relay()?;
 
         let mut agent = new_agent();
         agent.set_controlling(self.mode.is_client());
-        agent.set_local_credentials(local_creds.clone());
-        agent.set_remote_credentials(remote_creds.clone());
+        agent.set_local_credentials(local_creds);
+        agent.set_remote_credentials(remote_creds);
 
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
@@ -273,13 +282,7 @@ where
             now,
         );
 
-        let existing = self.connections.established.insert(cid, connection);
-
-        if existing.is_some() {
-            tracing::info!(local = ?local_creds, remote = ?remote_creds, "Replaced existing connection");
-        } else {
-            tracing::info!(local = ?local_creds, remote = ?remote_creds, "Created new connection");
-        }
+        self.connections.established.insert(cid, connection);
 
         Ok(())
     }
