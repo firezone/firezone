@@ -253,8 +253,7 @@ struct Listener<'a> {
 #[windows_implement::implement(INetworkEvents)]
 struct Callback {
     tx: NotifySender,
-    firezone_network_profile_id: Option<GUID>,
-    ignored_network_profile_ids: Vec<GUID>,
+    ignored_networks: Vec<(GUID, String)>,
     network_states: Mutex<HashMap<GUID, NLM_CONNECTIVITY>>,
 }
 
@@ -301,10 +300,7 @@ impl<'a> Listener<'a> {
 
         let cb = Callback {
             tx: tx.clone(),
-            firezone_network_profile_id: get_network_id_of_firezone_adapter()
-                .inspect_err(|e| tracing::warn!("{e:#}"))
-                .ok(),
-            ignored_network_profile_ids: get_ignored_network_ids()
+            ignored_networks: get_ignored_networks()
                 .inspect_err(|e| {
                     tracing::warn!("Failed to compute list of ignored network IDs: {e:#}")
                 })
@@ -356,36 +352,7 @@ impl<'a> Listener<'a> {
     }
 }
 
-fn get_network_id_of_firezone_adapter() -> Result<GUID> {
-    let profiles = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
-        .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles")
-        .context("Failed to open registry key")?;
-
-    for key in profiles.enum_keys() {
-        let guid = key.context("Failed to enumerate key")?;
-
-        let profile_name = profiles
-            .open_subkey(&guid)
-            .with_context(|| format!("Failed to open key `{guid}`"))?
-            .get_value::<String, _>("ProfileName")
-            .context("Failed to get profile name")?;
-
-        if profile_name == "Firezone" {
-            let uuid = guid.trim_start_matches("{").trim_end_matches("}");
-            let uuid = uuid
-                .parse::<uuid::Uuid>()
-                .context("Failed to parse key as UUID")?;
-
-            tracing::debug!(%uuid, "Found `Firezone` network profile id");
-
-            return Ok(GUID::from_u128(uuid.as_u128()));
-        }
-    }
-
-    anyhow::bail!("Unable to find `Firezone` profile network GUID")
-}
-
-fn get_ignored_network_ids() -> Result<Vec<GUID>> {
+fn get_ignored_networks() -> Result<Vec<(GUID, String)>> {
     let profiles = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
         .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles")
         .context("Failed to open registry key")?;
@@ -399,7 +366,7 @@ fn get_ignored_network_ids() -> Result<Vec<GUID>> {
         243, // Mobile broadband
     ];
 
-    let mut ignored_ids = Vec::default();
+    let mut ignored_networks = Vec::default();
 
     for key in profiles.enum_keys() {
         let guid = key.context("Failed to enumerate key")?;
@@ -410,17 +377,24 @@ fn get_ignored_network_ids() -> Result<Vec<GUID>> {
             .get_value::<u32, _>("NameType")
             .context("Failed to get name type")?;
 
+        let profile_name = profiles
+            .open_subkey(&guid)
+            .with_context(|| format!("Failed to open key `{guid}`"))?
+            .get_value::<String, _>("ProfileName")
+            .context("Failed to get profile name")?;
+
         if !RELEVANT_NAME_TYPES.contains(&nametypes) {
             let uuid = guid.trim_start_matches("{").trim_end_matches("}");
             let uuid = uuid
                 .parse::<uuid::Uuid>()
                 .context("Failed to parse key as UUID")?;
+            let uuid = GUID::from_u128(uuid.as_u128());
 
-            ignored_ids.push(GUID::from_u128(uuid.as_u128()));
+            ignored_networks.push((uuid, profile_name));
         }
     }
 
-    Ok(ignored_ids)
+    Ok(ignored_networks)
 }
 
 // <https://github.com/microsoft/windows-rs/pull/3065>
@@ -438,21 +412,16 @@ impl INetworkEvents_Impl for Callback_Impl {
         networkid: &GUID,
         newconnectivity: NLM_CONNECTIVITY,
     ) -> WinResult<()> {
-        if self
-            .firezone_network_profile_id
-            .is_some_and(|firezone| networkid == &firezone)
-        {
-            tracing::debug!(?networkid, "Ignoring network change for `Firezone` adapter");
-            return Ok(());
-        }
-
-        if self.ignored_network_profile_ids.contains(networkid) {
-            tracing::debug!(
-                ?networkid,
-                ?newconnectivity,
-                "Ignoring network change from irrelevant network"
-            );
-            return Ok(());
+        for (id, name) in &self.ignored_networks {
+            if id == networkid {
+                tracing::debug!(
+                    ?networkid,
+                    %name,
+                    ?newconnectivity,
+                    "Ignoring network change from irrelevant network"
+                );
+                return Ok(());
+            }
         }
 
         let mut network_states = self
