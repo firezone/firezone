@@ -40,7 +40,7 @@ defmodule Web.Acceptance.AuthTest do
       |> visit(~p"/#{account}/actors")
       |> assert_el(Query.css("#user-menu-button"))
       |> click(Query.css("#user-menu-button"))
-      |> assert_el(Query.link("Sign out"))
+      |> assert_el(Query.link("Sign out", visible: true))
       |> click(Query.link("Sign out"))
       |> assert_el(Query.text("Sign in with username and password"))
       |> Auth.assert_unauthenticated()
