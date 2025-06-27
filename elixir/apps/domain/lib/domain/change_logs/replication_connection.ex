@@ -21,7 +21,13 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   end
 
   def on_delete(lsn, table, old_data) do
-    log(:delete, lsn, table, old_data, nil)
+    if is_nil(old_data["deleted_at"]) do
+      log(:delete, lsn, table, old_data, nil)
+    else
+      # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
+      # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
+      :ok
+    end
   end
 
   # Relay group tokens don't have account_ids
