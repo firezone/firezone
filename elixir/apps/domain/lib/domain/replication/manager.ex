@@ -31,6 +31,9 @@ defmodule Domain.Replication.Manager do
         {:noreply, %{state | retries: 0, connection_pid: pid}}
 
       {:error, {:already_started, pid}} ->
+        # This will allow our current node to attempt connections whenever any node's
+        # replication connection dies.
+        Process.link(pid)
         {:noreply, %{state | retries: 0, connection_pid: pid}}
 
       {:error, reason} ->
