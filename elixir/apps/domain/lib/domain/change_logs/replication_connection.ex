@@ -2,9 +2,9 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   alias Domain.ChangeLogs
 
   use Domain.Replication.Connection,
-    # Allow up to 30 seconds of processing lag before alerting - this should be less
-    # than or equal to the wal_sender_timeout setting, which is typically 60s.
-    warning_threshold_ms: 30 * 1_000,
+    # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
+    # deploys without alerting.
+    warning_threshold_ms: 5 * 60 * 1_000,
 
     # 1 month in ms - we never want to bypass changelog inserts
     error_threshold_ms: 30 * 24 * 60 * 60 * 1_000
