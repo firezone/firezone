@@ -250,8 +250,17 @@ where
             .get_established_mut(&cid)
             .is_some_and(|c| c.agent.local_credentials() == &local_creds)
         {
-            tracing::debug!("Already got a connection");
+            tracing::info!(local = ?local_creds, "Reusing existing connection");
             return Ok(());
+        }
+
+        let existing = self.connections.established.remove(&cid);
+
+        if let Some(existing) = existing {
+            let current_local = existing.agent.local_credentials();
+            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, "Replacing existing connection");
+        } else {
+            tracing::info!(local = ?local_creds, remote = ?remote_creds, "Creating new connection");
         }
 
         let selected_relay = self.sample_relay()?;
@@ -273,13 +282,7 @@ where
             now,
         );
 
-        let existing = self.connections.established.insert(cid, connection);
-
-        if existing.is_some() {
-            tracing::info!("Replaced existing connection");
-        } else {
-            tracing::info!("Created new connection");
-        }
+        self.connections.established.insert(cid, connection);
 
         Ok(())
     }
@@ -342,6 +345,8 @@ where
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection or socket has already been nominated");
             return;
         };
+
+        tracing::info!(?candidate, "Received candidate from remote");
 
         agent.add_remote_candidate(candidate.clone());
 
@@ -1221,6 +1226,8 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
         .collect::<Vec<_>>();
 
     for c in optimistic_candidates {
+        tracing::info!(candidate = ?c, "Adding optimistic candidate for remote");
+
         agent.add_remote_candidate(c);
     }
 }
@@ -1431,6 +1438,8 @@ fn add_local_candidate<TId>(
 {
     // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
     if candidate.kind() == CandidateKind::ServerReflexive {
+        tracing::info!(?candidate, "Signalling candidate to remote");
+
         pending_events.push_back(Event::NewIceCandidate {
             connection: id,
             candidate: candidate.to_sdp_string(),
@@ -1441,6 +1450,8 @@ fn add_local_candidate<TId>(
     let Some(candidate) = agent.add_local_candidate(candidate) else {
         return;
     };
+
+    tracing::info!(?candidate, "Signalling candidate to remote");
 
     pending_events.push_back(Event::NewIceCandidate {
         connection: id,
