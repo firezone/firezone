@@ -383,7 +383,7 @@ fn get_ignored_networks() -> Result<Vec<(GUID, String)>> {
             .get_value::<String, _>("ProfileName")
             .context("Failed to get profile name")?;
 
-        if !RELEVANT_NAME_TYPES.contains(&nametypes) {
+        if !RELEVANT_NAME_TYPES.contains(&nametype) {
             let uuid = guid.trim_start_matches("{").trim_end_matches("}");
             let uuid = uuid
                 .parse::<uuid::Uuid>()
