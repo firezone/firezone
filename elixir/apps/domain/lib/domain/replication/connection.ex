@@ -428,9 +428,7 @@ defmodule Domain.Replication.Connection do
       end
 
       defp handle_message(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
-        if state.error_threshold_exceeded? do
-          :ok
-        else
+        unless state.error_threshold_exceeded? do
           {op, table, _old_data, data} = transform(msg, state.relations)
           :ok = on_insert(server_wal_end, table, data)
         end
@@ -439,9 +437,7 @@ defmodule Domain.Replication.Connection do
       end
 
       defp handle_message(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
-        if state.error_threshold_exceeded? do
-          :ok
-        else
+        unless state.error_threshold_exceeded? do
           {op, table, old_data, data} = transform(msg, state.relations)
           :ok = on_update(server_wal_end, table, old_data, data)
         end
@@ -450,9 +446,7 @@ defmodule Domain.Replication.Connection do
       end
 
       defp handle_message(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
-        if state.error_threshold_exceeded? do
-          :ok
-        else
+        unless state.error_threshold_exceeded? do
           {op, table, old_data, _data} = transform(msg, state.relations)
           :ok = on_delete(server_wal_end, table, old_data)
         end
