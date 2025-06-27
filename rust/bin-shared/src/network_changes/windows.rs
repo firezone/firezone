@@ -398,7 +398,7 @@ impl INetworkEvents_Impl for Callback_Impl {
             .firezone_network_profile_id
             .is_some_and(|firezone| networkid == &firezone)
         {
-            tracing::debug!("Ignoring network change for `Firezone` adapter");
+            tracing::debug!(?networkid, "Ignoring network change for `Firezone` adapter");
             return Ok(());
         }
 
