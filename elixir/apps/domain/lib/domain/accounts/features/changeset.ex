@@ -3,7 +3,6 @@ defmodule Domain.Accounts.Features.Changeset do
   alias Domain.Accounts.Features
 
   @fields ~w[
-    flow_activities
     policy_conditions
     multi_site_resources
     traffic_filters

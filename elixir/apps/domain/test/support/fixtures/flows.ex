@@ -86,48 +86,4 @@ defmodule Domain.Fixtures.Flows do
     })
     |> Repo.insert!()
   end
-
-  def activity_attrs(attrs \\ %{}) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-    unique_ipv4 = :inet.ntoa(unique_ipv4())
-    {:ok, destination} = Domain.Types.ProtocolIPPort.cast("tcp://#{unique_ipv4}:80")
-
-    Enum.into(attrs, %{
-      window_started_at: DateTime.add(now, -1, :minute),
-      window_ended_at: now,
-      destination: destination,
-      connectivity_type: :relayed,
-      rx_bytes: 100,
-      tx_bytes: 200,
-      blocked_tx_bytes: 0
-    })
-  end
-
-  def create_activity(attrs) do
-    attrs = activity_attrs(attrs)
-
-    {account, attrs} =
-      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
-        if relation = attrs[:flow] do
-          Repo.get!(Domain.Accounts.Account, relation.account_id)
-        else
-          Fixtures.Accounts.create_account(assoc_attrs)
-        end
-      end)
-
-    {flow, attrs} =
-      pop_assoc_fixture(attrs, :flow, fn assoc_attrs ->
-        assoc_attrs
-        |> Enum.into(%{account: account})
-        |> create_flow()
-      end)
-
-    attrs =
-      attrs
-      |> Map.put(:flow_id, flow.id)
-      |> Map.put(:account_id, account.id)
-
-    struct(Flows.Activity, attrs)
-    |> Repo.insert!()
-  end
 end

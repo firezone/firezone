@@ -96,7 +96,6 @@ defmodule Domain.OpsTest do
       Fixtures.Actors.create_actor(account: account)
       Fixtures.Auth.create_identity(account: account)
       Fixtures.Clients.create_client(account: account)
-      Fixtures.Flows.create_activity(account: account)
       Fixtures.Gateways.create_gateway(account: account)
       Fixtures.Policies.create_policy(account: account)
       Fixtures.Relays.create_relay(account: account)

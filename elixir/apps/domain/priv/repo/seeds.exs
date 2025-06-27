@@ -47,7 +47,6 @@ defmodule Domain.Repo.Seeds do
       account
       |> Ecto.Changeset.change(
         features: %{
-          flow_activities: true,
           policy_conditions: true,
           multi_site_resources: true,
           traffic_filters: true,
@@ -1191,35 +1190,6 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, destination1} = Domain.Types.ProtocolIPPort.cast("tcp://142.250.217.142:443")
     {:ok, destination2} = Domain.Types.ProtocolIPPort.cast("udp://142.250.217.142:111")
-
-    random_integer = fn ->
-      :math.pow(10, 10)
-      |> round()
-      |> :rand.uniform()
-      |> floor()
-      |> Kernel.-(1)
-    end
-
-    activities =
-      for i <- 1..200 do
-        offset = i * 15
-        started_at = DateTime.add(started_at, offset, :minute)
-        ended_at = DateTime.add(started_at, 15, :minute)
-
-        %{
-          window_started_at: started_at,
-          window_ended_at: ended_at,
-          destination: Enum.random([destination1, destination2]),
-          connectivity_type: :direct,
-          rx_bytes: random_integer.(),
-          tx_bytes: random_integer.(),
-          blocked_tx_bytes: 0,
-          flow_id: flow.id,
-          account_id: account.id
-        }
-      end
-
-    {:ok, 200} = Flows.upsert_activities(activities)
   end
 end
 

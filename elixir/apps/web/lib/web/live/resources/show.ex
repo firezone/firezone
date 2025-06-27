@@ -2,7 +2,7 @@ defmodule Web.Resources.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Resources.Components
-  alias Domain.{Accounts, PubSub, Resources, Policies, Flows}
+  alias Domain.{PubSub, Resources, Policies, Flows}
 
   def mount(%{"id" => id} = params, _session, socket) do
     with {:ok, resource} <- fetch_resource(id, socket.assigns.subject),
@@ -16,7 +16,6 @@ defmodule Web.Resources.Show do
         assign(
           socket,
           page_title: "Resource #{resource.name}",
-          flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           resource: resource,
           actor_groups_peek: Map.fetch!(actor_groups_peek, resource.id),
           params: Map.take(params, ["site_id"])

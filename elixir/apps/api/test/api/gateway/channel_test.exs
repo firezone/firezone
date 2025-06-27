@@ -1189,58 +1189,6 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
-  describe "handle_in/3 metrics" do
-    test "inserts activities", %{
-      account: account,
-      subject: subject,
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      socket: socket
-    } do
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          subject: subject,
-          client: client,
-          resource: resource,
-          gateway: gateway
-        )
-
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-      one_minute_ago = DateTime.add(now, -1, :minute)
-
-      {:ok, destination} = Domain.Types.ProtocolIPPort.cast("tcp://127.0.0.1:80")
-
-      attrs = %{
-        "started_at" => DateTime.to_unix(one_minute_ago),
-        "ended_at" => DateTime.to_unix(now),
-        "metrics" => [
-          %{
-            "flow_id" => flow.id,
-            "destination" => destination,
-            "connectivity_type" => "direct",
-            "rx_bytes" => 100,
-            "tx_bytes" => 200,
-            "blocked_tx_bytes" => 0
-          }
-        ]
-      }
-
-      push_ref = push(socket, "metrics", attrs)
-      assert_reply push_ref, :ok
-
-      assert upserted_activity = Repo.one(Domain.Flows.Activity)
-      assert upserted_activity.window_started_at == one_minute_ago
-      assert upserted_activity.window_ended_at == now
-      assert upserted_activity.destination == destination
-      assert upserted_activity.rx_bytes == 100
-      assert upserted_activity.tx_bytes == 200
-      assert upserted_activity.flow_id == flow.id
-      assert upserted_activity.account_id == account.id
-    end
-  end
-
   # Debouncer tests
   describe "handle_info/3 :push_leave" do
     test "cancels leave if reconnecting with the same stamp secret" do
