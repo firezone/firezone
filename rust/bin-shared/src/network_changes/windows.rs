@@ -254,6 +254,7 @@ struct Listener<'a> {
 struct Callback {
     tx: NotifySender,
     firezone_network_profile_id: Option<GUID>,
+    ignored_network_profile_ids: Vec<GUID>,
     network_states: Mutex<HashMap<GUID, NLM_CONNECTIVITY>>,
 }
 
@@ -303,6 +304,11 @@ impl<'a> Listener<'a> {
             firezone_network_profile_id: get_network_id_of_firezone_adapter()
                 .inspect_err(|e| tracing::warn!("{e:#}"))
                 .ok(),
+            ignored_network_profile_ids: get_ignored_network_ids()
+                .inspect_err(|e| {
+                    tracing::warn!("Failed to compute list of ignored network IDs: {e:#}")
+                })
+                .unwrap_or_default(),
             network_states: Default::default(),
         };
 
@@ -379,6 +385,44 @@ fn get_network_id_of_firezone_adapter() -> Result<GUID> {
     anyhow::bail!("Unable to find `Firezone` profile network GUID")
 }
 
+fn get_ignored_network_ids() -> Result<Vec<GUID>> {
+    let profiles = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE)
+        .open_subkey(r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\NetworkList\Profiles")
+        .context("Failed to open registry key")?;
+
+    /// Types of networks we are interested in.
+    ///
+    /// Source: https://community.spiceworks.com/t/what-are-the-nametype-values-for-the-networklist-registry-keys/526112/6
+    const RELEVANT_NAME_TYPES: &[u32] = &[
+        6,   // Wired network
+        71,  // Wireless network
+        243, // Mobile broadband
+    ];
+
+    let mut ignored_ids = Vec::default();
+
+    for key in profiles.enum_keys() {
+        let guid = key.context("Failed to enumerate key")?;
+
+        let nametype = profiles
+            .open_subkey(&guid)
+            .with_context(|| format!("Failed to open key `{guid}`"))?
+            .get_value::<u32, _>("NameType")
+            .context("Failed to get name type")?;
+
+        if !RELEVANT_NAME_TYPES.contains(&nametypes) {
+            let uuid = guid.trim_start_matches("{").trim_end_matches("}");
+            let uuid = uuid
+                .parse::<uuid::Uuid>()
+                .context("Failed to parse key as UUID")?;
+
+            ignored_ids.push(GUID::from_u128(uuid.as_u128()));
+        }
+    }
+
+    Ok(ignored_ids)
+}
+
 // <https://github.com/microsoft/windows-rs/pull/3065>
 impl INetworkEvents_Impl for Callback_Impl {
     fn NetworkAdded(&self, _networkid: &GUID) -> WinResult<()> {
@@ -399,6 +443,15 @@ impl INetworkEvents_Impl for Callback_Impl {
             .is_some_and(|firezone| networkid == &firezone)
         {
             tracing::debug!(?networkid, "Ignoring network change for `Firezone` adapter");
+            return Ok(());
+        }
+
+        if self.ignored_network_profile_ids.contains(networkid) {
+            tracing::debug!(
+                ?networkid,
+                ?newconnectivity,
+                "Ignoring network change from irrelevant network"
+            );
             return Ok(());
         }
 
