@@ -2,7 +2,7 @@
 # When this is renamed, "PolicyAuthorizations Authorizer" makes no sense, remove this module
 defmodule Domain.Flows.Authorizer do
   use Domain.Auth.Authorizer
-  alias Domain.Flows.{Flow, Activity}
+  alias Domain.Flows.Flow
 
   def manage_flows_permission, do: build(Flow, :manage)
   def create_flows_permission, do: build(Flow, :create)
@@ -47,13 +47,6 @@ defmodule Domain.Flows.Authorizer do
         queryable
         |> Flow.Query.by_account_id(subject.account.id)
         |> Flow.Query.by_actor_id(subject.actor.id)
-    end
-  end
-
-  def for_subject(queryable, Activity, %Subject{} = subject) do
-    cond do
-      has_permission?(subject, manage_flows_permission()) ->
-        Activity.Query.by_account_id(queryable, subject.account.id)
     end
   end
 end

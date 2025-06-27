@@ -445,7 +445,6 @@ defmodule Domain.BillingTest do
         Domain.Accounts.update_account(account, %{
           metadata: %{stripe: %{customer_id: customer_id}},
           features: %{
-            flow_activities: nil,
             multi_site_resources: nil,
             traffic_filters: nil,
             self_hosted_relays: nil,
@@ -775,7 +774,6 @@ defmodule Domain.BillingTest do
             service_accounts_count: 10101
           },
           features: %{
-            flow_activities: true,
             traffic_filters: true
           }
         })
@@ -835,7 +833,6 @@ defmodule Domain.BillingTest do
              }
 
       assert account.features == %Domain.Accounts.Features{
-               flow_activities: nil,
                idp_sync: true,
                multi_site_resources: true,
                self_hosted_relays: true,
@@ -885,7 +882,6 @@ defmodule Domain.BillingTest do
             service_accounts_count: 10101
           },
           features: %{
-            flow_activities: true,
             traffic_filters: true
           }
         })
@@ -946,7 +942,6 @@ defmodule Domain.BillingTest do
              }
 
       assert account.features == %Domain.Accounts.Features{
-               flow_activities: nil,
                idp_sync: true,
                multi_site_resources: true,
                self_hosted_relays: false,

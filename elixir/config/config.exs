@@ -58,7 +58,6 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     auth_identities
     auth_providers
     clients
-    flow_activities
     gateway_groups
     gateways
     policies
@@ -93,7 +92,6 @@ config :domain, Domain.Events.ReplicationConnection,
     auth_identities
     auth_providers
     clients
-    flow_activities
     gateway_groups
     gateways
     policies
@@ -176,7 +174,6 @@ config :domain, :enabled_features,
   idp_sync: true,
   traffic_filters: true,
   sign_up: true,
-  flow_activities: true,
   self_hosted_relays: true,
   policy_conditions: true,
   multi_site_resources: true,

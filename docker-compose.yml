@@ -101,7 +101,6 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
       FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
@@ -174,7 +173,6 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
       FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
@@ -239,7 +237,6 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
       FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
@@ -311,7 +308,6 @@ services:
       # Seeds
       STATIC_SEEDS: "true"
       # Feature flags
-      FEATURE_FLOW_ACTIVITIES_ENABLED: "true"
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
       FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"

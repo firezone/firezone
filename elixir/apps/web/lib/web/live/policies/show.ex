@@ -1,7 +1,7 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Accounts, Policies, PubSub, Flows, Auth}
+  alias Domain.{Policies, PubSub, Flows, Auth}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
@@ -23,8 +23,7 @@ defmodule Web.Policies.Show do
         assign(socket,
           page_title: "Policy #{policy.id}",
           policy: policy,
-          providers: providers,
-          flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account)
+          providers: providers
         )
         |> assign_live_table("flows",
           query_module: Flows.Flow.Query,

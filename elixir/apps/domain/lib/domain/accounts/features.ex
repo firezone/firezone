@@ -3,7 +3,6 @@ defmodule Domain.Accounts.Features do
 
   @primary_key false
   embedded_schema do
-    field :flow_activities, :boolean
     field :policy_conditions, :boolean
     field :multi_site_resources, :boolean
     field :traffic_filters, :boolean

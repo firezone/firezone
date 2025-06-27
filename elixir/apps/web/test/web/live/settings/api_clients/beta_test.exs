@@ -68,7 +68,6 @@ defmodule Web.Live.Settings.ApiClients.BetaTest do
       features: %{
         rest_api: false,
         traffic_filters: true,
-        flow_activities: true,
         policy_conditions: true,
         multi_site_resources: true,
         idp_sync: true

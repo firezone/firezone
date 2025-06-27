@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Gateways, PubSub, Resources, Relays, Flows}
+  alias Domain.{Clients, Gateways, PubSub, Resources, Relays}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -645,52 +645,6 @@ defmodule API.Gateway.Channel do
         end)
 
       {:noreply, socket}
-    end
-  end
-
-  def handle_in(
-        "metrics",
-        %{
-          "started_at" => started_at,
-          "ended_at" => ended_at,
-          "metrics" => metrics
-        },
-        socket
-      ) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "gateway.metrics" do
-      window_started_at = DateTime.from_unix!(started_at, :second)
-      window_ended_at = DateTime.from_unix!(ended_at, :second)
-
-      activities =
-        Enum.map(metrics, fn metric ->
-          %{
-            "flow_id" => flow_id,
-            "destination" => destination,
-            "connectivity_type" => connectivity_type,
-            "rx_bytes" => rx_bytes,
-            "tx_bytes" => tx_bytes,
-            "blocked_tx_bytes" => blocked_tx_bytes
-          } = metric
-
-          %{
-            flow_id: flow_id,
-            account_id: socket.assigns.gateway.account_id,
-            window_started_at: window_started_at,
-            window_ended_at: window_ended_at,
-            connectivity_type: String.to_existing_atom(connectivity_type),
-            destination: destination,
-            rx_bytes: rx_bytes,
-            tx_bytes: tx_bytes,
-            blocked_tx_bytes: blocked_tx_bytes
-          }
-        end)
-
-      {:ok, _num} = Flows.upsert_activities(activities)
-
-      {:reply, :ok, socket}
     end
   end
 

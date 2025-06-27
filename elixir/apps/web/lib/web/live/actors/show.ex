@@ -2,7 +2,7 @@ defmodule Web.Actors.Show do
   use Web, :live_view
   import Web.Actors.Components
   import Web.Clients.Components
-  alias Domain.{Accounts, Auth, Tokens, Flows, Clients}
+  alias Domain.{Auth, Tokens, Flows, Clients}
   alias Domain.Actors
 
   def mount(%{"id" => id}, _session, socket) do
@@ -32,7 +32,6 @@ defmodule Web.Actors.Show do
         |> assign(
           available_providers: available_providers,
           page_title: "Actor #{actor.name}",
-          flow_activities_enabled?: Accounts.flow_activities_enabled?(socket.assigns.account),
           actor: actor
         )
         |> assign_live_table("identities",

@@ -1,7 +1,7 @@
 defmodule Domain.Flows do
   alias Domain.Repo
-  alias Domain.{Auth, Accounts, Actors, Clients, Gateways, Resources, Policies, Tokens}
-  alias Domain.Flows.{Authorizer, Flow, Activity}
+  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies, Tokens}
+  alias Domain.Flows.{Authorizer, Flow}
   require Ecto.Query
   require Logger
 
@@ -122,43 +122,6 @@ defmodule Domain.Flows do
       queryable
       |> Authorizer.for_subject(Flow, subject)
       |> Repo.list(Flow.Query, opts)
-    end
-  end
-
-  def upsert_activities(activities) do
-    {num, _} = Repo.insert_all(Activity, activities, on_conflict: :nothing)
-    {:ok, num}
-  end
-
-  def fetch_last_activity_for(%Flow{} = flow, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
-      Activity.Query.all()
-      |> Activity.Query.by_flow_id(flow.id)
-      |> Activity.Query.first()
-      |> Ecto.Query.order_by([activities: activities], desc: activities.window_ended_at)
-      |> Repo.fetch(Activity.Query, opts)
-    end
-  end
-
-  def list_flow_activities_for(assoc, subject, opts \\ [])
-
-  def list_flow_activities_for(%Flow{} = flow, %Auth.Subject{} = subject, opts) do
-    Activity.Query.all()
-    |> Activity.Query.by_flow_id(flow.id)
-    |> list_activities(subject, opts)
-  end
-
-  def list_flow_activities_for(%Accounts.Account{} = account, %Auth.Subject{} = subject, opts) do
-    Activity.Query.all()
-    |> Activity.Query.by_account_id(account.id)
-    |> list_activities(subject, opts)
-  end
-
-  defp list_activities(queryable, subject, opts) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_flows_permission()) do
-      queryable
-      |> Authorizer.for_subject(Activity, subject)
-      |> Repo.list(Activity.Query, opts)
     end
   end
 
