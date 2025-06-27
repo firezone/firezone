@@ -1531,12 +1531,15 @@ defmodule Domain.ResourcesTest do
       subject: subject
     } do
       flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+
+      :ok = Domain.PubSub.Flow.subscribe(flow_id)
 
       attrs = %{"name" => "foo"}
       assert {:ok, _resource} = update_resource(resource, attrs, subject)
-
-      flow = Repo.reload(flow)
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :gt
+      refute_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "allows to update connections", %{account: account, resource: resource, subject: subject} do
@@ -1551,6 +1554,11 @@ defmodule Domain.ResourcesTest do
       gateway2 = Fixtures.Gateways.create_gateway(account: account)
 
       flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+
+      :ok = Domain.PubSub.Flow.subscribe(flow_id)
 
       attrs = %{
         "connections" => [
@@ -1575,11 +1583,7 @@ defmodule Domain.ResourcesTest do
         "resource_id" => resource.id
       })
 
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-      flow = Repo.reload(flow)
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "does not allow to remove all connections", %{resource: resource, subject: subject} do

@@ -120,7 +120,7 @@ jobs:
         with:
           project: firezone-staging
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed'
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Start docker compose in the background
         run: |
           set -xe

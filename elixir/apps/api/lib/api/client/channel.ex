@@ -643,7 +643,7 @@ defmodule API.Client.Channel do
            OpenTelemetry.Tracer.set_attribute(:gateways_count, length(gateways)),
            gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids),
            OpenTelemetry.Tracer.set_attribute(:gateway_id, gateway.id),
-           {:ok, resource, flow} <-
+           {:ok, resource, flow, expires_at} <-
              Flows.authorize_flow(
                socket.assigns.client,
                gateway,
@@ -665,7 +665,7 @@ defmodule API.Client.Channel do
                client_id: socket.assigns.client.id,
                resource_id: resource.id,
                flow_id: flow.id,
-               authorization_expires_at: flow.expires_at,
+               authorization_expires_at: expires_at,
                ice_credentials: ice_credentials,
                preshared_key: preshared_key
              }, {opentelemetry_ctx, opentelemetry_span_ctx}}
@@ -789,7 +789,7 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.reuse_connection", attributes: attrs do
       with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-           {:ok, resource, flow} <-
+           {:ok, resource, flow, _expires_at} <-
              Flows.authorize_flow(
                socket.assigns.client,
                gateway,
@@ -851,7 +851,7 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.request_connection", attributes: ctx_attrs do
       with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-           {:ok, resource, flow} <-
+           {:ok, resource, flow, _expires_at} <-
              Flows.authorize_flow(
                socket.assigns.client,
                gateway,

@@ -15,7 +15,6 @@ defmodule Domain.Flows.Flow do
 
     field :gateway_remote_ip, Domain.Types.IP
 
-    field :expires_at, :utc_datetime_usec
     timestamps(updated_at: false)
   end
 end

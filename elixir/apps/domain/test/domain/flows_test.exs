@@ -76,7 +76,7 @@ defmodule Domain.FlowsTest do
       policy: policy,
       subject: subject
     } do
-      assert {:ok, fetched_resource, _flow} =
+      assert {:ok, fetched_resource, _flow, _expires_at} =
                authorize_flow(client, gateway, resource.id, subject)
 
       assert fetched_resource.id == resource.id
@@ -198,11 +198,11 @@ defmodule Domain.FlowsTest do
         ]
       )
 
-      assert {:ok, _fetched_resource, flow} =
+      assert {:ok, _fetched_resource, flow, expires_at} =
                authorize_flow(client, gateway, resource.id, subject)
 
       assert flow.policy_id == policy.id
-      assert DateTime.diff(flow.expires_at, DateTime.new!(date, midnight)) < 5
+      assert DateTime.diff(expires_at, DateTime.new!(date, midnight)) < 5
     end
 
     test "creates a flow when all conditions for at least one of the policies are satisfied", %{
@@ -237,10 +237,11 @@ defmodule Domain.FlowsTest do
         ]
       )
 
-      assert {:ok, _fetched_resource, flow} =
+      assert {:ok, _fetched_resource, flow, expires_at} =
                authorize_flow(client, gateway, resource.id, subject)
 
-      assert flow.expires_at == subject.expires_at
+      assert flow.resource_id == resource.id
+      assert expires_at == subject.expires_at
     end
 
     test "creates a network flow for users", %{
@@ -256,7 +257,7 @@ defmodule Domain.FlowsTest do
 
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
-      assert {:ok, _fetched_resource, %Flows.Flow{} = flow} =
+      assert {:ok, _fetched_resource, %Flows.Flow{} = flow, expires_at} =
                authorize_flow(client, gateway, resource.id, subject)
 
       assert flow.policy_id == policy.id
@@ -267,7 +268,7 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
-      assert flow.expires_at == subject.expires_at
+      assert expires_at == subject.expires_at
     end
 
     test "creates a network flow for service accounts", %{
@@ -285,7 +286,7 @@ defmodule Domain.FlowsTest do
 
       client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
 
-      assert {:ok, _fetched_resource, %Flows.Flow{} = flow} =
+      assert {:ok, _fetched_resource, %Flows.Flow{} = flow, expires_at} =
                authorize_flow(client, gateway, resource.id, subject)
 
       assert flow.policy_id == policy.id
@@ -296,7 +297,7 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
-      assert flow.expires_at == subject.expires_at
+      assert expires_at == subject.expires_at
     end
 
     test "does not return authorized access to deleted resources", %{
@@ -375,7 +376,7 @@ defmodule Domain.FlowsTest do
       resource: resource,
       subject: subject
     } do
-      assert {:ok, resource, _flow} =
+      assert {:ok, resource, _flow, _expires_at} =
                authorize_flow(client, gateway, resource.id, subject, preload: :connections)
 
       assert Ecto.assoc_loaded?(resource.connections)
@@ -929,27 +930,36 @@ defmodule Domain.FlowsTest do
       flow: flow,
       actor_group: actor_group
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(actor_group)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(actor_group)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for client identity", %{
       flow: flow,
       identity: identity
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(identity)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(identity)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for client", %{
       flow: flow,
       client: client
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(client)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(client)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
   end
 
@@ -982,11 +992,13 @@ defmodule Domain.FlowsTest do
       actor: actor,
       policy: policy
     } do
-      assert {:ok, [expired_flow]} =
-               expire_flows_for(actor.account_id, actor.id, policy.actor_group_id)
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
 
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      assert :ok = expire_flows_for(actor.account_id, actor.id, policy.actor_group_id)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for actor", %{
@@ -994,18 +1006,24 @@ defmodule Domain.FlowsTest do
       actor: actor,
       subject: subject
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(actor, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(actor, subject)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for policy", %{
       flow: flow,
       policy: policy
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for_policy_id(policy.account_id, policy.id)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for_policy_id(policy.account_id, policy.id)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for resource", %{
@@ -1013,9 +1031,12 @@ defmodule Domain.FlowsTest do
       resource: resource,
       subject: subject
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(resource, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(resource, subject)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for policy actor group", %{
@@ -1023,9 +1044,12 @@ defmodule Domain.FlowsTest do
       actor_group: actor_group,
       subject: subject
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(actor_group, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(actor_group, subject)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for client identity", %{
@@ -1033,9 +1057,12 @@ defmodule Domain.FlowsTest do
       identity: identity,
       subject: subject
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(identity, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(identity, subject)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "expires flows for client identity provider", %{
@@ -1043,20 +1070,12 @@ defmodule Domain.FlowsTest do
       provider: provider,
       subject: subject
     } do
-      assert {:ok, [expired_flow]} = expire_flows_for(provider, subject)
-      assert DateTime.diff(expired_flow.expires_at, DateTime.utc_now()) <= 1
-      assert expired_flow.id == flow.id
-    end
-
-    test "updates flow expiration expires_at", %{
-      flow: flow,
-      actor: actor,
-      subject: subject
-    } do
-      assert {:ok, [_expired_flow]} = expire_flows_for(actor, subject)
-
-      flow = Repo.reload(flow)
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert :ok = expire_flows_for(provider, subject)
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "returns error when subject has no permission to expire flows", %{
@@ -1077,16 +1096,16 @@ defmodule Domain.FlowsTest do
       actor_group: actor_group,
       subject: subject
     } do
-      assert {:ok, [_expired_flow]} = expire_flows_for(resource, subject)
-      assert {:ok, []} = expire_flows_for(actor_group, subject)
-      assert {:ok, []} = expire_flows_for(resource, subject)
+      assert :ok = expire_flows_for(resource, subject)
+      assert :ok = expire_flows_for(actor_group, subject)
+      assert :ok = expire_flows_for(resource, subject)
     end
 
     test "does not expire flows outside of account", %{
       resource: resource
     } do
       subject = Fixtures.Auth.create_subject()
-      assert {:ok, []} = expire_flows_for(resource, subject)
+      assert :ok = expire_flows_for(resource, subject)
     end
   end
 end

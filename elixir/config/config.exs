@@ -59,7 +59,6 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     auth_providers
     clients
     flow_activities
-    flows
     gateway_groups
     gateways
     policies
@@ -95,7 +94,6 @@ config :domain, Domain.Events.ReplicationConnection,
     auth_providers
     clients
     flow_activities
-    flows
     gateway_groups
     gateways
     policies

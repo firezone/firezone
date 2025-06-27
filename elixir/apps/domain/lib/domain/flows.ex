@@ -43,12 +43,13 @@ defmodule Domain.Flows do
           account_id: account_id,
           client_remote_ip: client_remote_ip,
           client_user_agent: client_user_agent,
-          gateway_remote_ip: gateway_remote_ip,
-          expires_at: conformation_expires_at || expires_at
+          gateway_remote_ip: gateway_remote_ip
         })
         |> Repo.insert!()
 
-      {:ok, resource, flow}
+      expires_at = conformation_expires_at || expires_at
+
+      {:ok, resource, flow, expires_at}
     end
   end
 
@@ -250,11 +251,32 @@ defmodule Domain.Flows do
   end
 
   defp expire_flows(queryable) do
-    {_count, flows} =
-      queryable
-      |> Flow.Query.expire()
-      |> Repo.update_all([])
+    {:ok, :ok} =
+      Repo.transaction(fn ->
+        queryable
+        |> Repo.stream()
+        |> Stream.chunk_every(100)
+        |> Enum.each(fn chunk ->
+          Enum.each(chunk, &broadcast_flow_expiration/1)
+        end)
+      end)
 
-    {:ok, flows}
+    :ok
+  end
+
+  defp broadcast_flow_expiration(flow) do
+    case Domain.PubSub.Flow.broadcast(
+           flow.id,
+           {:expire_flow, flow.id, flow.client_id, flow.resource_id}
+         ) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Failed to broadcast flow expiration",
+          reason: inspect(reason),
+          flow_id: flow.id
+        )
+    end
   end
 end

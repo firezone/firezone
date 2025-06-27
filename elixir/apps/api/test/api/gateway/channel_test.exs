@@ -224,7 +224,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      {:ok, [_flow]} = Domain.Flows.expire_flows_for(resource, subject)
+      assert :ok = Domain.Flows.expire_flows_for(resource, subject)
 
       send(socket.channel_pid, {:expire_flow, flow.id, client.id, resource.id})
 
@@ -647,7 +647,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "request_connection", %{}
 
-      {:ok, [_flow]} = Domain.Flows.expire_flows_for(resource, subject)
+      assert :ok = Domain.Flows.expire_flows_for(resource, subject)
 
       send(socket.channel_pid, {:expire_flow, flow.id, client.id, resource.id})
 
@@ -878,7 +878,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "authorize_flow", %{}
 
-      {:ok, [_flow]} = Domain.Flows.expire_flows_for(resource, subject)
+      assert :ok = Domain.Flows.expire_flows_for(resource, subject)
 
       send(socket.channel_pid, {:expire_flow, flow.id, client.id, resource.id})
 

@@ -19,7 +19,6 @@ defmodule Domain.Events.ReplicationConnection do
     "auth_providers" => Hooks.AuthProviders,
     "clients" => Hooks.Clients,
     "flow_activities" => Hooks.FlowActivities,
-    "flows" => Hooks.Flows,
     "gateway_groups" => Hooks.GatewayGroups,
     "gateways" => Hooks.Gateways,
     "policies" => Hooks.Policies,

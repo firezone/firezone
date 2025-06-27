@@ -22,7 +22,10 @@ defmodule Domain.Events.Hooks.ActorGroupMemberships do
     Task.start(fn ->
       :ok = PubSub.Actor.Memberships.broadcast(actor_id, {:delete_membership, actor_id, group_id})
       broadcast_access(:reject, actor_id, group_id)
-      {:ok, _flows} = Flows.expire_flows_for(account_id, actor_id, group_id)
+
+      # TODO: WAL
+      # Broadcast flow side effects directly
+      :ok = Flows.expire_flows_for(account_id, actor_id, group_id)
     end)
 
     :ok

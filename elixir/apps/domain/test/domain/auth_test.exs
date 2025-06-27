@@ -1062,16 +1062,21 @@ defmodule Domain.AuthTest do
     } do
       client = Fixtures.Clients.create_client(account: account, identity: identity)
 
-      Fixtures.Flows.create_flow(
-        account: account,
-        subject: subject,
-        client: client
-      )
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client
+        )
+
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+
+      flow_id = flow.id
+      client_id = client.id
+      resource_id = flow.resource_id
 
       assert {:ok, _provider} = disable_provider(provider, subject)
-
-      expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "returns error when trying to disable the last provider", %{
@@ -1282,16 +1287,21 @@ defmodule Domain.AuthTest do
     } do
       client = Fixtures.Clients.create_client(account: account, identity: identity)
 
-      Fixtures.Flows.create_flow(
-        account: account,
-        subject: subject,
-        client: client
-      )
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client
+        )
+
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+
+      flow_id = flow.id
+      client_id = client.id
+      resource_id = flow.resource_id
 
       assert {:ok, _provider} = delete_provider(provider, subject)
-
-      expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "returns error when trying to delete the last provider", %{
@@ -1882,6 +1892,8 @@ defmodule Domain.AuthTest do
           token_id: deleted_identity_token.id
         )
 
+      :ok = Domain.PubSub.Flow.subscribe(deleted_identity_flow.id)
+
       for n <- 1..4 do
         Fixtures.Auth.create_identity(
           account: account,
@@ -1948,8 +1960,10 @@ defmodule Domain.AuthTest do
       assert deleted_identity_token.deleted_at
 
       # Expires flows for signed out user
-      reloaded_flow = Repo.reload(deleted_identity_flow)
-      assert DateTime.compare(reloaded_flow.expires_at, DateTime.utc_now()) == :lt
+      flow_id = deleted_identity_flow.id
+      client_id = deleted_identity_flow.client_id
+      resource_id = deleted_identity_flow.resource_id
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "circuit breaker prevents mass deletions of identities", %{
@@ -2783,18 +2797,23 @@ defmodule Domain.AuthTest do
     } do
       client = Fixtures.Clients.create_client(account: account, identity: identity)
 
-      Fixtures.Flows.create_flow(
-        account: account,
-        identity: identity,
-        actor: actor,
-        subject: subject,
-        client: client
-      )
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          identity: identity,
+          actor: actor,
+          subject: subject,
+          client: client
+        )
+
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
 
       assert delete_identities_for(actor, subject) == :ok
-
-      expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "does not remove identities that belong to another actor", %{
