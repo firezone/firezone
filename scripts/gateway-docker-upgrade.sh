@@ -39,7 +39,7 @@ for RUNNING_CONTAINER in $CURRENTLY_RUNNING; do
         else
             # Generate a new FIREZONE_ID if not found
             if ! grep -q "^FIREZONE_ID=" variables.env; then
-                echo "FIREZONE_ID=$(head -c 32 /dev/urandom | sha256)" >>variables.env
+                echo "FIREZONE_ID=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)" >>variables.env
             fi
         fi
 
