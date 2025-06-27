@@ -343,6 +343,8 @@ where
             return;
         };
 
+        tracing::info!(?candidate, "Received candidate from remote");
+
         agent.add_remote_candidate(candidate.clone());
 
         generate_optimistic_candidates(agent);
@@ -1221,6 +1223,8 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
         .collect::<Vec<_>>();
 
     for c in optimistic_candidates {
+        tracing::info!(candidate = ?c, "Adding optimistic candidate for remote");
+
         agent.add_remote_candidate(c);
     }
 }
