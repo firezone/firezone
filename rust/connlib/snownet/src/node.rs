@@ -234,8 +234,8 @@ where
         remote_creds: Credentials,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
-        let local_creds = local_creds.into();
-        let remote_creds = remote_creds.into();
+        let local_creds = IceCreds::from(local_creds);
+        let remote_creds = IceCreds::from(remote_creds);
 
         if self.connections.initial.contains_key(&cid) {
             debug_assert!(
@@ -250,7 +250,7 @@ where
             .get_established_mut(&cid)
             .is_some_and(|c| c.agent.local_credentials() == &local_creds)
         {
-            tracing::debug!("Already got a connection");
+            tracing::info!(local = ?local_creds, "Reusing existing connection");
             return Ok(());
         }
 
@@ -258,8 +258,8 @@ where
 
         let mut agent = new_agent();
         agent.set_controlling(self.mode.is_client());
-        agent.set_local_credentials(local_creds);
-        agent.set_remote_credentials(remote_creds);
+        agent.set_local_credentials(local_creds.clone());
+        agent.set_remote_credentials(remote_creds.clone());
 
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
@@ -276,9 +276,9 @@ where
         let existing = self.connections.established.insert(cid, connection);
 
         if existing.is_some() {
-            tracing::info!("Replaced existing connection");
+            tracing::info!(local = ?local_creds, remote = ?remote_creds, "Replaced existing connection");
         } else {
-            tracing::info!("Created new connection");
+            tracing::info!(local = ?local_creds, remote = ?remote_creds, "Created new connection");
         }
 
         Ok(())
@@ -1431,6 +1431,8 @@ fn add_local_candidate<TId>(
 {
     // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
     if candidate.kind() == CandidateKind::ServerReflexive {
+        tracing::info!(?candidate, "Signalling candidate to remote");
+
         pending_events.push_back(Event::NewIceCandidate {
             connection: id,
             candidate: candidate.to_sdp_string(),
@@ -1441,6 +1443,8 @@ fn add_local_candidate<TId>(
     let Some(candidate) = agent.add_local_candidate(candidate) else {
         return;
     };
+
+    tracing::info!(?candidate, "Signalling candidate to remote");
 
     pending_events.push_back(Event::NewIceCandidate {
         connection: id,
