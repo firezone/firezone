@@ -1248,12 +1248,12 @@ defmodule Domain.ActorsTest do
         "group_id" => group2.id
       })
 
-      # TODO: WAL
-      # Remove this when direct broadcast is implemented
-      Process.sleep(100)
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
 
-      flow = Repo.reload(flow)
-      assert DateTime.compare(flow.expires_at, DateTime.utc_now()) == :lt
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "deletes memberships of removed groups", %{
@@ -3043,16 +3043,21 @@ defmodule Domain.ActorsTest do
       subject = Fixtures.Auth.create_subject(identity: identity)
       client = Fixtures.Clients.create_client(account: account, identity: identity)
 
-      Fixtures.Flows.create_flow(
-        account: account,
-        subject: subject,
-        client: client
-      )
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client
+        )
+
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
 
       assert {:ok, _actor} = disable_actor(actor, subject)
 
-      expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "returns error when trying to disable the last admin actor" do
@@ -3287,16 +3292,21 @@ defmodule Domain.ActorsTest do
     } do
       client = Fixtures.Clients.create_client(account: account, identity: identity)
 
-      Fixtures.Flows.create_flow(
-        account: account,
-        subject: subject,
-        client: client
-      )
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client
+        )
+
+      :ok = Domain.PubSub.Flow.subscribe(flow.id)
 
       assert {:ok, _actor} = delete_actor(actor, subject)
 
-      expires_at = Repo.one(Domain.Flows.Flow).expires_at
-      assert DateTime.diff(expires_at, DateTime.utc_now()) <= 1
+      flow_id = flow.id
+      client_id = flow.client_id
+      resource_id = flow.resource_id
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "returns error when trying to delete the last admin actor", %{

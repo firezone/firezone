@@ -34,13 +34,6 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     :ok
   end
 
-  defp log(_op, _lsn, "flows", _old_data, _data) do
-    # TODO: WAL
-    # Flows are not logged to the change log as they are used only to trigger side effects which
-    # will be removed. Remove the flows table publication when that happens.
-    :ok
-  end
-
   defp log(op, lsn, table, old_data, data) do
     attrs = %{
       op: op,

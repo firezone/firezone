@@ -1,3 +1,5 @@
+# TODO: Flows -> PolicyAuthorizations
+# When this is renamed, "PolicyAuthorizations Authorizer" makes no sense, remove this module
 defmodule Domain.Flows.Authorizer do
   use Domain.Auth.Authorizer
   alias Domain.Flows.{Flow, Activity}

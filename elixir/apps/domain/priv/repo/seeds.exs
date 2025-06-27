@@ -1176,7 +1176,7 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    {:ok, _resource, flow} =
+    {:ok, _resource, flow, _expires_at} =
       Flows.authorize_flow(
         user_iphone,
         gateway1,

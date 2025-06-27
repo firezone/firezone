@@ -212,8 +212,10 @@ defmodule Domain.Clients do
         preload: [:online?]
       )
       |> case do
+        # TODO: WAL
+        # Broadcast flow side effects directly
         {:ok, client} ->
-          {:ok, _flows} = Flows.expire_flows_for(client)
+          :ok = Flows.expire_flows_for(client)
           {:ok, client}
 
         {:error, reason} ->
