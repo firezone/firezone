@@ -629,6 +629,8 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: org_unit)
 
+      :ok = PubSub.Flow.subscribe(deleted_group_flow.id)
+      :ok = PubSub.Flow.subscribe(deleted_identity_flow.id)
       :ok = PubSub.Actor.Memberships.subscribe(actor.id)
       :ok = PubSub.Actor.Memberships.subscribe(other_actor.id)
       :ok = PubSub.Actor.Memberships.subscribe(deleted_membership.actor_id)
@@ -752,12 +754,16 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       Process.sleep(100)
 
       # Deleted policies expire all flows authorized by them
-      deleted_group_flow = Repo.reload(deleted_group_flow)
-      assert DateTime.compare(deleted_group_flow.expires_at, DateTime.utc_now()) == :lt
+      flow_id = deleted_group_flow.id
+      client_id = deleted_group_flow.client_id
+      resource_id = deleted_group_flow.resource_id
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
 
       # Expires flows for signed out user
-      deleted_identity_flow = Repo.reload(deleted_identity_flow)
-      assert DateTime.compare(deleted_identity_flow.expires_at, DateTime.utc_now()) == :lt
+      flow_id = deleted_identity_flow.id
+      client_id = deleted_identity_flow.client_id
+      resource_id = deleted_identity_flow.resource_id
+      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
 
       # Should not do anything else
       refute_received {:allow_access, _policy_id, _group_id, _resource_id}

@@ -319,11 +319,6 @@ defmodule Web.Clients.Show do
             <br />
             <code class="text-xs">{flow.gateway_remote_ip}</code>
           </:col>
-          <:col :let={flow} :if={@flow_activities_enabled?} label="activity">
-            <.link navigate={~p"/#{@account}/flows/#{flow.id}"} class={[link_style()]}>
-              Show
-            </.link>
-          </:col>
           <:empty>
             <div class="text-center text-neutral-500 p-4">No activity to display.</div>
           </:empty>
