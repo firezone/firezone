@@ -7,9 +7,8 @@ defmodule Domain.Replication.Manager do
   require Logger
 
   @retry_interval :timer.seconds(30)
-
   # Should be enough to gracefully handle transient network issues and DB restarts,
-  # but not too long to avoid broadcasting needed events.
+  # but not too long to avoid consuming WAL data.
   @max_retries 10
 
   def start_link(connection_module, opts) do
@@ -18,9 +17,9 @@ defmodule Domain.Replication.Manager do
 
   @impl true
   def init(connection_module) do
+    Process.flag(:trap_exit, true)
     send(self(), {:connect, connection_module})
-
-    {:ok, %{retries: 0}}
+    {:ok, %{retries: 0, connection_pid: nil, connection_module: connection_module}}
   end
 
   @impl true
@@ -28,13 +27,14 @@ defmodule Domain.Replication.Manager do
     Process.send_after(self(), {:connect, connection_module}, @retry_interval)
 
     case connection_module.start_link(replication_child_spec(connection_module)) do
-      {:ok, _pid} ->
-        # Our process won
-        {:noreply, %{state | retries: 0}}
+      {:ok, pid} ->
+        {:noreply, %{state | retries: 0, connection_pid: pid}}
 
-      {:error, {:already_started, _pid}} ->
-        # Another process already started the connection
-        {:noreply, %{state | retries: 0}}
+      {:error, {:already_started, pid}} ->
+        # This will allow our current node to attempt connections whenever any node's
+        # replication connection dies.
+        Process.link(pid)
+        {:noreply, %{state | retries: 0, connection_pid: pid}}
 
       {:error, reason} ->
         if retries < @max_retries do
@@ -44,17 +44,30 @@ defmodule Domain.Replication.Manager do
             reason: inspect(reason)
           )
 
-          {:noreply, %{state | retries: retries + 1}}
+          {:noreply, %{state | retries: retries + 1, connection_pid: nil}}
         else
           Logger.error(
             "Failed to start replication connection #{connection_module} after #{@max_retries} attempts, giving up!",
             reason: inspect(reason)
           )
 
-          # Let the supervisor restart us
-          {:stop, :normal, state}
+          {:noreply, %{state | retries: -1, connection_pid: nil}}
         end
     end
+  end
+
+  def handle_info({:EXIT, pid, _reason}, %{connection_pid: pid} = state) do
+    Logger.warning("Replication connection died, restarting immediately",
+      died_pid: inspect(pid),
+      died_node: node(pid)
+    )
+
+    send(self(), {:connect, state.connection_module})
+    {:noreply, %{state | connection_pid: nil, retries: 0}}
+  end
+
+  def handle_info({:EXIT, _other_pid, _reason}, state) do
+    {:noreply, state}
   end
 
   def replication_child_spec(connection_module) do
