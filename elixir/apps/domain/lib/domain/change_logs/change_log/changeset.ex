@@ -11,6 +11,7 @@ defmodule Domain.ChangeLogs.ChangeLog.Changeset do
     |> validate_same_account()
     |> put_account_id()
     |> validate_required([:account_id, :lsn, :table, :op, :vsn])
+    |> unique_constraint(:lsn)
     |> foreign_key_constraint(:account_id, name: :change_logs_account_id_fkey)
   end
 

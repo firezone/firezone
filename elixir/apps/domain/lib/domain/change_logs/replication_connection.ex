@@ -56,8 +56,9 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
         :ok
 
       {:error, %Ecto.Changeset{errors: errors} = changeset} ->
-        if foreign_key_error?(errors) do
-          # Expected under normal operation when an account is deleted
+        # Expected under normal operation when an account is deleted or we are catching up on
+        # already-processed but not acknowledged WAL data.
+        if foreign_key_error?(errors) or dupe_lsn_error?(errors) do
           :ok
         else
           Logger.warning("Failed to create change log",
@@ -77,8 +78,14 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   end
 
   defp foreign_key_error?(errors) do
-    Enum.any?(errors, fn {field, {message, _}} ->
+    Enum.all?(errors, fn {field, {message, _violations}} ->
       field == :account_id and message == "does not exist"
+    end)
+  end
+
+  defp dupe_lsn_error?(errors) do
+    Enum.all?(errors, fn {field, {message, _violations}} ->
+      field == :lsn and message == "has already been taken"
     end)
   end
 end
