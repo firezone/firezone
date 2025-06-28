@@ -415,7 +415,7 @@ defmodule Domain.Replication.Connection do
                name: name,
                columns: columns
              },
-             _server_wal_end,
+             server_wal_end,
              state
            ) do
         relation = %{
@@ -424,7 +424,7 @@ defmodule Domain.Replication.Connection do
           columns: columns
         }
 
-        {:noreply, [], %{state | relations: Map.put(state.relations, id, relation)}}
+        {:noreply, ack(server_wal_end), %{state | relations: Map.put(state.relations, id, relation)}}
       end
 
       defp handle_message(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
@@ -433,7 +433,7 @@ defmodule Domain.Replication.Connection do
           :ok = on_insert(server_wal_end, table, data)
         end
 
-        {:noreply, [], state}
+        {:noreply, ack(server_wal_end), state}
       end
 
       defp handle_message(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
@@ -442,7 +442,7 @@ defmodule Domain.Replication.Connection do
           :ok = on_update(server_wal_end, table, old_data, data)
         end
 
-        {:noreply, [], state}
+        {:noreply, ack(server_wal_end), state}
       end
 
       defp handle_message(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
@@ -451,7 +451,12 @@ defmodule Domain.Replication.Connection do
           :ok = on_delete(server_wal_end, table, old_data)
         end
 
-        {:noreply, [], state}
+        {:noreply, ack(server_wal_end), state}
+      end
+
+      defp ack(server_wal_end) do
+        wal_end = server_wal_end + 1
+        standby_status(wal_end, wal_end, wal_end, :now)
       end
     end
   end
@@ -461,7 +466,7 @@ defmodule Domain.Replication.Connection do
     quote do
       defp handle_message(
              %Decoder.Messages.Begin{commit_timestamp: commit_timestamp} = msg,
-             _server_wal_end,
+             server_wal_end,
              state
            ) do
         # Since we receive a commit for each operation and we process each operation
@@ -470,15 +475,15 @@ defmodule Domain.Replication.Connection do
         send(self(), {:check_warning_threshold, lag_ms})
         send(self(), {:check_error_threshold, lag_ms})
 
-        {:noreply, [], state}
+        {:noreply, ack(server_wal_end), state}
       end
 
       defp handle_message(
              %Decoder.Messages.Commit{commit_timestamp: commit_timestamp},
-             _server_wal_end,
+             server_wal_end,
              state
            ) do
-        {:noreply, [], state}
+        {:noreply, ack(server_wal_end), state}
       end
     end
   end
@@ -487,25 +492,25 @@ defmodule Domain.Replication.Connection do
   defp ignored_message_handlers do
     quote do
       # These messages are not relevant for our use case, so we ignore them.
-      defp handle_message(%Decoder.Messages.Origin{}, _server_wal_end, state) do
-        {:noreply, [], state}
+      defp handle_message(%Decoder.Messages.Origin{}, server_wal_end, state) do
+        {:noreply, ack(server_wal_end), state}
       end
 
-      defp handle_message(%Decoder.Messages.Truncate{}, _server_wal_end, state) do
-        {:noreply, [], state}
+      defp handle_message(%Decoder.Messages.Truncate{}, server_wal_end, state) do
+        {:noreply, ack(server_wal_end), state}
       end
 
-      defp handle_message(%Decoder.Messages.Type{}, _server_wal_end, state) do
-        {:noreply, [], state}
+      defp handle_message(%Decoder.Messages.Type{}, server_wal_end, state) do
+        {:noreply, ack(server_wal_end), state}
       end
 
-      defp handle_message(%Decoder.Messages.Unsupported{data: data}, _server_wal_end, state) do
+      defp handle_message(%Decoder.Messages.Unsupported{data: data}, server_wal_end, state) do
         Logger.warning("#{__MODULE__}: Unsupported message received",
           data: inspect(data),
           counter: state.counter
         )
 
-        {:noreply, [], state}
+        {:noreply, ack(server_wal_end), state}
       end
     end
   end

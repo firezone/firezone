@@ -312,8 +312,14 @@ defmodule Domain.Replication.ConnectionTest do
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64, message::binary>>
 
       new_state = %{state | counter: state.counter + 1}
+      expected_wal_end = server_wal_end + 1
 
-      assert {:noreply, [], ^new_state} = TestReplicationConnection.handle_data(write_data, state)
+      assert {:noreply, [ack_message], ^new_state} =
+               TestReplicationConnection.handle_data(write_data, state)
+
+      # Validate the acknowledgment structure without pinning the timestamp
+      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
+               _timestamp::64, 1::8>> = ack_message
     end
 
     test "handle_data handles unknown message" do
@@ -344,8 +350,14 @@ defmodule Domain.Replication.ConnectionTest do
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
           begin_data::binary>>
 
-      assert {:noreply, [], _state} =
+      expected_wal_end = server_wal_end + 1
+
+      assert {:noreply, [ack_message], _state} =
                TestReplicationConnection.handle_data(write_message, state)
+
+      # Validate acknowledgment structure
+      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
+               _timestamp::64, 1::8>> = ack_message
 
       assert_receive({:check_warning_threshold, lag_ms})
       assert lag_ms > 5_000
@@ -372,8 +384,14 @@ defmodule Domain.Replication.ConnectionTest do
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
           begin_data::binary>>
 
-      assert {:noreply, [], _state} =
+      expected_wal_end = server_wal_end + 1
+
+      assert {:noreply, [ack_message], _state} =
                TestReplicationConnection.handle_data(write_message, state)
+
+      # Validate acknowledgment structure
+      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
+               _timestamp::64, 1::8>> = ack_message
 
       assert_receive({:check_warning_threshold, lag_ms})
       assert lag_ms < 5_000
@@ -503,8 +521,14 @@ defmodule Domain.Replication.ConnectionTest do
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
           begin_data::binary>>
 
-      assert {:noreply, [], _state} =
+      expected_wal_end = server_wal_end + 1
+
+      assert {:noreply, [ack_message], _state} =
                TestReplicationConnection.handle_data(write_message, state)
+
+      # Validate acknowledgment structure
+      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
+               _timestamp::64, 1::8>> = ack_message
 
       # Should receive both threshold check messages
       assert_receive {:check_warning_threshold, warning_lag_ms}
@@ -539,8 +563,14 @@ defmodule Domain.Replication.ConnectionTest do
         <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
           begin_data::binary>>
 
-      assert {:noreply, [], _state} =
+      expected_wal_end = server_wal_end + 1
+
+      assert {:noreply, [ack_message], _state} =
                TestReplicationConnection.handle_data(write_message, state)
+
+      # Validate acknowledgment structure
+      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
+               _timestamp::64, 1::8>> = ack_message
 
       # Should receive both threshold check messages
       assert_receive {:check_warning_threshold, warning_lag_ms}
