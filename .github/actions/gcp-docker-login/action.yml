@@ -34,8 +34,14 @@ runs:
     - name: Setup registry mirror
       shell: bash
       run: |
+        # Create daemon.json if it doesn't exist
+        if [ ! -f /etc/docker/daemon.json ]; then
+          echo '{}' | sudo tee /etc/docker/daemon.json > /dev/null
+        fi
+
+        # Add or update registry-mirrors configuration
         echo "$(jq '. += { "registry-mirrors": ["https://mirror.gcr.io"] }' /etc/docker/daemon.json)" > new_daemon.json
-        sudo mv -f new_daemon.json /etc/docker/daemon.json
+        sudo mv new_daemon.json /etc/docker/daemon.json
         sudo service docker restart
 
     - name: Print docker system info
