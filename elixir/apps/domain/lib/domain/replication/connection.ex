@@ -424,7 +424,8 @@ defmodule Domain.Replication.Connection do
           columns: columns
         }
 
-        {:noreply, ack(server_wal_end), %{state | relations: Map.put(state.relations, id, relation)}}
+        {:noreply, ack(server_wal_end),
+         %{state | relations: Map.put(state.relations, id, relation)}}
       end
 
       defp handle_message(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
