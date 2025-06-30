@@ -81,3 +81,5 @@ runs:
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
+      env:
+        SCCACHE_CONF: ".github/actions/setup-rust/sccache.toml"
