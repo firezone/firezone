@@ -1175,21 +1175,13 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    {:ok, _resource, flow, _expires_at} =
+    {:ok, _resource, _flow, _expires_at} =
       Flows.authorize_flow(
         user_iphone,
         gateway1,
         cidr_resource.id,
         unprivileged_subject
       )
-
-    started_at =
-      DateTime.utc_now()
-      |> DateTime.truncate(:second)
-      |> DateTime.add(5, :minute)
-
-    {:ok, destination1} = Domain.Types.ProtocolIPPort.cast("tcp://142.250.217.142:443")
-    {:ok, destination2} = Domain.Types.ProtocolIPPort.cast("udp://142.250.217.142:111")
   end
 end
 
