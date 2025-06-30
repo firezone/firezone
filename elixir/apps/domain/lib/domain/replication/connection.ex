@@ -16,6 +16,7 @@ defmodule Domain.Replication.Connection do
 
         defmodule MyApp.ReplicationConnection do
           use Domain.Replication.Connection,
+            status_log_interval_s: 60,
             warning_threshold_ms: 30_000,
             error_threshold_ms: 60 * 1_000
         end
@@ -66,9 +67,9 @@ defmodule Domain.Replication.Connection do
     quote bind_quoted: [opts: opts] do
       @warning_threshold_ms Keyword.fetch!(opts, :warning_threshold_ms)
       @error_threshold_ms Keyword.fetch!(opts, :error_threshold_ms)
+      @status_log_interval :timer.seconds(Keyword.get(opts, :status_log_interval_s, 60))
 
       # Everything else uses defaults
-      @status_log_interval :timer.minutes(5)
       @schema "public"
       @output_plugin "pgoutput"
       @proto_version 1
