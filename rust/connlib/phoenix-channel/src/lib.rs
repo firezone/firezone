@@ -462,46 +462,47 @@ where
                 },
             };
 
-            // Priority 1: Keep local buffers small and send pending messages.
+            // Priority 1: Ensure we are fully flushed.
+            if let Err(e) = std::task::ready!(stream.poll_flush_unpin(cx)) {
+                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                continue;
+            }
+
+            // Priority 2: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    // Process join messages before other messages.
-                    // Only process other messages if no room joins are pending.
-                    let next_message = self.pending_joins.pop_front().or_else(|| {
-                        if self.pending_join_requests.is_empty() {
-                            return None;
-                        }
-
-                        self.pending_messages.pop_front()
-                    });
-
-                    if let Some(message) = next_message {
-                        match stream.start_send_unpin(Message::Text(message.clone())) {
+                    if let Some(join) = self.pending_joins.pop_front() {
+                        match stream.start_send_unpin(Message::Text(join.clone())) {
                             Ok(()) => {
-                                tracing::trace!(target: "wire::api::send", %message);
+                                tracing::trace!(target: "wire::api::send", %join);
 
-                                self.heartbeat.reset(); // Sending any message means we can postpone the heartbeat by another interval.
-
-                                match stream.poll_flush_unpin(cx) {
-                                    Poll::Ready(Ok(())) => {
-                                        tracing::trace!("Flushed websocket");
-                                    }
-                                    Poll::Ready(Err(e)) => {
-                                        self.reconnect_on_transient_error(
-                                            InternalError::WebSocket(e),
-                                        );
-                                        continue;
-                                    }
-                                    Poll::Pending => {}
-                                }
+                                self.heartbeat.reset()
                             }
                             Err(e) => {
-                                self.pending_messages.push_front(message);
+                                self.pending_joins.push_front(join);
                                 self.reconnect_on_transient_error(InternalError::WebSocket(e));
                             }
                         }
 
                         continue;
+                    }
+
+                    if self.pending_join_requests.is_empty() {
+                        if let Some(msg) = self.pending_messages.pop_front() {
+                            match stream.start_send_unpin(Message::Text(msg.clone())) {
+                                Ok(()) => {
+                                    tracing::trace!(target: "wire::api::send", %msg);
+
+                                    self.heartbeat.reset()
+                                }
+                                Err(e) => {
+                                    self.pending_messages.push_front(msg);
+                                    self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                }
+                            }
+
+                            continue;
+                        }
                     }
                 }
                 Poll::Ready(Err(e)) => {
@@ -511,7 +512,7 @@ where
                 Poll::Pending => {}
             }
 
-            // Priority 2: Handle incoming messages.
+            // Priority 3: Handle incoming messages.
             match stream.poll_next_unpin(cx) {
                 Poll::Ready(Some(Ok(message))) => {
                     let Ok(message) = message.into_text() else {
@@ -561,6 +562,13 @@ where
                             }));
                         }
                         (Payload::Reply(Reply::Ok(OkReply::Message(reply))), Some(req_id)) => {
+                            return Poll::Ready(Ok(Event::SuccessResponse {
+                                topic: message.topic,
+                                req_id,
+                                res: reply,
+                            }));
+                        }
+                        (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
                             if self.pending_join_requests.remove(&req_id) {
                                 tracing::info!("Joined {} room on portal", message.topic);
 
@@ -570,13 +578,6 @@ where
                                 }));
                             }
 
-                            return Poll::Ready(Ok(Event::SuccessResponse {
-                                topic: message.topic,
-                                req_id,
-                                res: reply,
-                            }));
-                        }
-                        (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
                             tracing::trace!("Received empty reply for request {req_id:?}");
 
                             continue;
@@ -614,7 +615,7 @@ where
                 Poll::Pending => {}
             }
 
-            // Priority 3: Handle heartbeats.
+            // Priority 4: Handle heartbeats.
             match self.heartbeat.poll_tick(cx) {
                 Poll::Ready(_) => {
                     self.send("phoenix", EgressControlMessage::<()>::Heartbeat(Empty {}));
