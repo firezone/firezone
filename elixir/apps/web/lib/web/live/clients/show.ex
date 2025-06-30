@@ -148,7 +148,7 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>User agent</:label>
             <:value>
-              {@client.last_seen_user_agent}
+              {URI.decode(@client.last_seen_user_agent)}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
