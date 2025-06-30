@@ -6,6 +6,7 @@ mod login_url;
 use std::collections::{HashSet, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::Arc;
+use std::task::ready;
 use std::time::Duration;
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
@@ -465,43 +466,30 @@ where
             // Priority 1: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    // Process join messages before other messages.
-                    // Only process other messages if no room joins are pending.
-                    let next_message = self.pending_joins.pop_front().or_else(|| {
-                        if !self.pending_join_requests.is_empty() {
-                            return None;
+                    if let Some(join) = self.pending_joins.pop_front() {
+                        match send_message(join.clone(), stream, cx) {
+                            Poll::Ready(Ok(())) => continue,
+                            Poll::Ready(Err(e)) => {
+                                self.pending_joins.push_front(join);
+                                self.reconnect_on_transient_error(e);
+                                continue;
+                            }
+                            Poll::Pending => {}
                         }
+                    }
 
-                        self.pending_messages.pop_front()
-                    });
-
-                    if let Some(message) = next_message {
-                        match stream.start_send_unpin(Message::Text(message.clone())) {
-                            Ok(()) => {
-                                tracing::trace!(target: "wire::api::send", %message);
-
-                                self.heartbeat.reset(); // Sending any message means we can postpone the heartbeat by another interval.
-
-                                match stream.poll_flush_unpin(cx) {
-                                    Poll::Ready(Ok(())) => {
-                                        tracing::trace!("Flushed websocket");
-                                    }
-                                    Poll::Ready(Err(e)) => {
-                                        self.reconnect_on_transient_error(
-                                            InternalError::WebSocket(e),
-                                        );
-                                        continue;
-                                    }
-                                    Poll::Pending => {}
+                    if self.pending_join_requests.is_empty() {
+                        if let Some(msg) = self.pending_messages.pop_front() {
+                            match send_message(msg.clone(), stream, cx) {
+                                Poll::Ready(Ok(())) => continue,
+                                Poll::Ready(Err(e)) => {
+                                    self.pending_messages.push_front(msg);
+                                    self.reconnect_on_transient_error(e);
+                                    continue;
                                 }
-                            }
-                            Err(e) => {
-                                self.pending_messages.push_front(message);
-                                self.reconnect_on_transient_error(InternalError::WebSocket(e));
+                                Poll::Pending => {}
                             }
                         }
-
-                        continue;
                     }
                 }
                 Poll::Ready(Err(e)) => {
@@ -672,6 +660,28 @@ where
             .0
             .to_owned()
     }
+}
+
+fn send_message(
+    message: String,
+    stream: &mut WebSocketStream<MaybeTlsStream<TcpStream>>,
+    cx: &mut Context,
+) -> Poll<Result<(), InternalError>> {
+    stream
+        .start_send_unpin(Message::Text(message.clone()))
+        .map_err(InternalError::WebSocket)?;
+
+    tracing::trace!(target: "wire::api::send", %message);
+
+    ready!(
+        stream
+            .poll_flush_unpin(cx)
+            .map_err(InternalError::WebSocket)
+    )?;
+
+    tracing::trace!("Flushed websocket");
+
+    Poll::Ready(Ok(()))
 }
 
 #[derive(Debug)]
