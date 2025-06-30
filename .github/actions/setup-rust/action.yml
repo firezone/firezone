@@ -45,8 +45,6 @@ runs:
         echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
       shell: bash
     - uses: mozilla-actions/sccache-action@2e7f9ec7921547d4b46598398ca573513895d0bd # v0.0.4
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust/sccache.toml"
     - run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
 
@@ -83,3 +81,5 @@ runs:
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
       shell: bash
+      env:
+        SCCACHE_CONF: ".github/actions/setup-rust/sccache.toml"
