@@ -18,6 +18,10 @@ if config_env() == :prod do
            {:ssl_opts, env_var_to_config!(:database_ssl_opts)},
            {:parameters, env_var_to_config!(:database_parameters)}
          ] ++
+           if(env_var_to_config(:background_jobs_enabled),
+             do: [{:queue_target, 5_000}],
+             else: []
+           ) ++
            if(env_var_to_config(:database_password),
              do: [{:password, env_var_to_config!(:database_password)}],
              else: []
