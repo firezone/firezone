@@ -60,7 +60,7 @@ defmodule Domain.Replication.Manager do
         {:EXIT, pid, _reason},
         %{connection_module: connection_module, connection_pid: pid} = state
       ) do
-    Logger.warning("#{connection_module}: Replication connection died, restarting immediately",
+    Logger.info("#{connection_module}: Replication connection died, restarting immediately",
       died_pid: inspect(pid),
       died_node: node(pid)
     )
