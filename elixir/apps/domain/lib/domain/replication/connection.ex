@@ -15,17 +15,8 @@ defmodule Domain.Replication.Connection do
     ## Usage
 
         defmodule MyApp.ReplicationConnection do
-          use Domain.Replication.Connection,
-            status_log_interval_s: 60,
-            warning_threshold_ms: 30_000,
-            error_threshold_ms: 60 * 1_000
+          use Domain.Replication.Connection
         end
-
-    ## Options
-
-      * `:warning_threshold_ms`: How long to allow the WAL stream to lag before logging a warning
-      * `:error_threshold_ms`:   How long to allow the WAL stream to lag before logging an error and
-                                 bypassing side effect handlers.
   """
 
   defmacro __using__(opts \\ []) do
@@ -65,10 +56,6 @@ defmodule Domain.Replication.Connection do
   # Extract struct definition and constants
   defp struct_and_constants(opts) do
     quote bind_quoted: [opts: opts] do
-      @warning_threshold_ms Keyword.fetch!(opts, :warning_threshold_ms)
-      @error_threshold_ms Keyword.fetch!(opts, :error_threshold_ms)
-      @status_log_interval :timer.seconds(Keyword.get(opts, :status_log_interval_s, 60))
-
       # Everything else uses defaults
       @schema "public"
       @output_plugin "pgoutput"
@@ -93,7 +80,16 @@ defmodule Domain.Replication.Connection do
               table_subscriptions: list(),
               relations: map(),
               counter: integer(),
-              tables_to_remove: MapSet.t()
+              tables_to_remove: MapSet.t(),
+              flush_interval: integer(),
+              flush_buffer: list(),
+              last_flushed_lsn: integer(),
+              warning_threshold_exceeded?: boolean(),
+              error_threshold_exceeded?: boolean(),
+              flush_buffer_size: integer(),
+              status_log_interval: integer(),
+              warning_threshold: integer(),
+              error_threshold: integer()
             }
 
       defstruct schema: @schema,
@@ -105,7 +101,16 @@ defmodule Domain.Replication.Connection do
                 table_subscriptions: [],
                 relations: %{},
                 counter: 0,
-                tables_to_remove: MapSet.new()
+                tables_to_remove: MapSet.new(),
+                flush_interval: 0,
+                flush_buffer: [],
+                last_flushed_lsn: 0,
+                warning_threshold_exceeded?: false,
+                error_threshold_exceeded?: false,
+                flush_buffer_size: 0,
+                status_log_interval: :timer.minutes(1),
+                warning_threshold: :timer.seconds(30),
+                error_threshold: :timer.seconds(60)
     end
   end
 
@@ -119,10 +124,9 @@ defmodule Domain.Replication.Connection do
 
       @impl true
       def init(state) do
-        state =
-          state
-          |> Map.put(:warning_threshold_exceeded?, false)
-          |> Map.put(:error_threshold_exceeded?, false)
+        if state.flush_interval > 0 do
+          Process.send_after(self(), :flush, state.flush_interval)
+        end
 
         {:ok, state}
       end
@@ -365,7 +369,14 @@ defmodule Domain.Replication.Connection do
       def handle_data(data, state) when is_keep_alive(data) do
         %KeepAlive{reply: reply, wal_end: wal_end} = parse(data)
 
-        wal_end = wal_end + 1
+        wal_end =
+          if state.flush_interval > 0 do
+            # If we are flushing, we use the tracked last_flushed_lsn
+            state.last_flushed_lsn + 1
+          else
+            # Otherwise, we assume to be current with the server
+            wal_end + 1
+          end
 
         message =
           case reply do
@@ -392,7 +403,7 @@ defmodule Domain.Replication.Connection do
           state: inspect(state)
         )
 
-        {:noreply, [], state}
+        {:noreply, state}
       end
     end
   end
@@ -425,40 +436,64 @@ defmodule Domain.Replication.Connection do
           columns: columns
         }
 
-        {:noreply, ack(server_wal_end),
-         %{state | relations: Map.put(state.relations, id, relation)}}
+        {:noreply, %{state | relations: Map.put(state.relations, id, relation)}}
       end
 
       defp handle_message(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
-        unless state.error_threshold_exceeded? do
+        if state.error_threshold_exceeded? do
+          {:noreply, state}
+        else
           {op, table, _old_data, data} = transform(msg, state.relations)
-          :ok = on_insert(server_wal_end, table, data)
-        end
 
-        {:noreply, ack(server_wal_end), state}
+          state = on_insert(server_wal_end, table, data, state)
+
+          state =
+            if length(state.flush_buffer) >= state.flush_buffer_size do
+              on_flush(state)
+            else
+              state
+            end
+
+          {:noreply, state}
+        end
       end
 
       defp handle_message(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
-        unless state.error_threshold_exceeded? do
+        if state.error_threshold_exceeded? do
+          {:noreply, state}
+        else
           {op, table, old_data, data} = transform(msg, state.relations)
-          :ok = on_update(server_wal_end, table, old_data, data)
-        end
 
-        {:noreply, ack(server_wal_end), state}
+          state = on_update(server_wal_end, table, old_data, data, state)
+
+          state =
+            if length(state.flush_buffer) >= state.flush_buffer_size do
+              on_flush(state)
+            else
+              state
+            end
+
+          {:noreply, state}
+        end
       end
 
       defp handle_message(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
-        unless state.error_threshold_exceeded? do
+        if state.error_threshold_exceeded? do
+          {:noreply, state}
+        else
           {op, table, old_data, _data} = transform(msg, state.relations)
-          :ok = on_delete(server_wal_end, table, old_data)
+
+          state = on_delete(server_wal_end, table, old_data, state)
+
+          state =
+            if length(state.flush_buffer) >= state.flush_buffer_size do
+              on_flush(state)
+            else
+              state
+            end
+
+          {:noreply, state}
         end
-
-        {:noreply, ack(server_wal_end), state}
-      end
-
-      defp ack(server_wal_end) do
-        wal_end = server_wal_end + 1
-        standby_status(wal_end, wal_end, wal_end, :now)
       end
     end
   end
@@ -477,7 +512,7 @@ defmodule Domain.Replication.Connection do
         send(self(), {:check_warning_threshold, lag_ms})
         send(self(), {:check_error_threshold, lag_ms})
 
-        {:noreply, ack(server_wal_end), state}
+        {:noreply, state}
       end
 
       defp handle_message(
@@ -485,7 +520,7 @@ defmodule Domain.Replication.Connection do
              server_wal_end,
              state
            ) do
-        {:noreply, ack(server_wal_end), state}
+        {:noreply, state}
       end
     end
   end
@@ -495,15 +530,15 @@ defmodule Domain.Replication.Connection do
     quote do
       # These messages are not relevant for our use case, so we ignore them.
       defp handle_message(%Decoder.Messages.Origin{}, server_wal_end, state) do
-        {:noreply, ack(server_wal_end), state}
+        {:noreply, state}
       end
 
       defp handle_message(%Decoder.Messages.Truncate{}, server_wal_end, state) do
-        {:noreply, ack(server_wal_end), state}
+        {:noreply, state}
       end
 
       defp handle_message(%Decoder.Messages.Type{}, server_wal_end, state) do
-        {:noreply, ack(server_wal_end), state}
+        {:noreply, state}
       end
 
       defp handle_message(%Decoder.Messages.Unsupported{data: data}, server_wal_end, state) do
@@ -512,7 +547,7 @@ defmodule Domain.Replication.Connection do
           counter: state.counter
         )
 
-        {:noreply, ack(server_wal_end), state}
+        {:noreply, state}
       end
     end
   end
@@ -566,18 +601,18 @@ defmodule Domain.Replication.Connection do
 
       def handle_info(
             {:check_warning_threshold, lag_ms},
-            %{warning_threshold_exceeded?: false} = state
+            %{warning_threshold_exceeded?: false, warning_threshold: warning_threshold} = state
           )
-          when lag_ms >= @warning_threshold_ms do
+          when lag_ms >= warning_threshold do
         Logger.warning("#{__MODULE__}: Processing lag exceeds warning threshold", lag_ms: lag_ms)
         {:noreply, %{state | warning_threshold_exceeded?: true}}
       end
 
       def handle_info(
             {:check_warning_threshold, lag_ms},
-            %{warning_threshold_exceeded?: true} = state
+            %{warning_threshold_exceeded?: true, warning_threshold: warning_threshold} = state
           )
-          when lag_ms < @warning_threshold_ms do
+          when lag_ms < warning_threshold do
         Logger.info("#{__MODULE__}: Processing lag is back below warning threshold",
           lag_ms: lag_ms
         )
@@ -587,9 +622,9 @@ defmodule Domain.Replication.Connection do
 
       def handle_info(
             {:check_error_threshold, lag_ms},
-            %{error_threshold_exceeded?: false} = state
+            %{error_threshold_exceeded?: false, error_threshold: error_threshold} = state
           )
-          when lag_ms >= @error_threshold_ms do
+          when lag_ms >= error_threshold do
         Logger.error(
           "#{__MODULE__}: Processing lag exceeds error threshold; skipping side effects!",
           lag_ms: lag_ms
@@ -600,9 +635,9 @@ defmodule Domain.Replication.Connection do
 
       def handle_info(
             {:check_error_threshold, lag_ms},
-            %{error_threshold_exceeded?: true} = state
+            %{error_threshold_exceeded?: true, error_threshold: error_threshold} = state
           )
-          when lag_ms < @error_threshold_ms do
+          when lag_ms < error_threshold do
         Logger.info("#{__MODULE__}: Processing lag is back below error threshold", lag_ms: lag_ms)
         {:noreply, %{state | error_threshold_exceeded?: false}}
       end
@@ -612,9 +647,15 @@ defmodule Domain.Replication.Connection do
           "#{__MODULE__}: Processed #{state.counter} write messages from the WAL stream"
         )
 
-        Process.send_after(self(), :interval_logger, @status_log_interval)
+        Process.send_after(self(), :interval_logger, state.status_log_interval)
 
         {:noreply, state}
+      end
+
+      def handle_info(:flush, state) do
+        Process.send_after(self(), :flush, state.flush_interval)
+
+        {:noreply, on_flush(state)}
       end
 
       def handle_info(:shutdown, _), do: {:disconnect, :normal}
@@ -628,11 +669,12 @@ defmodule Domain.Replication.Connection do
   defp default_callbacks do
     quote do
       # Default implementations for required callbacks - modules using this should implement these
-      def on_insert(_lsn, _table, _data), do: :ok
-      def on_update(_lsn, _table, _old_data, _data), do: :ok
-      def on_delete(_lsn, _table, _old_data), do: :ok
+      def on_insert(_lsn, _table, _data, state), do: state
+      def on_update(_lsn, _table, _old_data, _data, state), do: state
+      def on_delete(_lsn, _table, _old_data, state), do: state
+      def on_flush(state), do: state
 
-      defoverridable on_insert: 3, on_update: 4, on_delete: 3
+      defoverridable on_insert: 4, on_update: 5, on_delete: 4, on_flush: 1
     end
   end
 end

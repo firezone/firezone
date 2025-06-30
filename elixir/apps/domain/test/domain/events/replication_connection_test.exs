@@ -19,7 +19,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          assert :ok = on_insert(0, table, data)
+          assert %{} = on_insert(0, table, data, %{})
         end)
 
       assert log_output =~ "No hook defined for insert on table unknown_table"
@@ -33,9 +33,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
         # The actual hook call might fail if the hook modules aren't available,
         # but we can test that our routing logic works
         try do
-          result = on_insert(0, table, data)
-          # Should either succeed or fail gracefully
-          assert result in [:ok, :error] or match?({:error, _}, result)
+          assert %{} = on_insert(0, table, data, %{})
         rescue
           # Depending on the shape of the data we might get a function clause error. This is ok,
           # as we are testing the routing logic, not the actual hook implementations.
@@ -50,7 +48,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
         log_output =
           capture_log(fn ->
             try do
-              on_insert(0, table, %{"id" => Ecto.UUID.generate()})
+              on_insert(0, table, %{"id" => Ecto.UUID.generate()}, %{})
             rescue
               FunctionClauseError ->
                 # Shape of the data might not match the expected one, which is fine
@@ -71,7 +69,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          assert :ok = on_update(0, table, old_data, data)
+          assert %{} = on_update(0, table, old_data, data, %{})
         end)
 
       assert log_output =~ "No hook defined for update on table unknown_table"
@@ -84,8 +82,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       for table <- tables do
         try do
-          result = on_update(0, table, old_data, data)
-          assert result in [:ok, :error] or match?({:error, _}, result)
+          assert %{} = on_update(0, table, old_data, data, %{})
         rescue
           FunctionClauseError ->
             # Shape of the data might not match the expected one, which is fine
@@ -102,7 +99,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          assert :ok = on_delete(0, table, old_data)
+          assert %{} = on_delete(0, table, old_data, %{})
         end)
 
       assert log_output =~ "No hook defined for delete on table unknown_table"
@@ -114,7 +111,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       for table <- tables do
         try do
-          assert :ok = on_delete(0, table, old_data)
+          assert %{} = on_delete(0, table, old_data, %{})
         rescue
           # Shape of the data might not match the expected one, which is fine
           FunctionClauseError -> :ok
@@ -127,7 +124,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
     test "log_warning generates correct message format" do
       log_output =
         capture_log(fn ->
-          assert :ok = on_insert(0, "test_table_insert", %{})
+          assert %{} = on_insert(0, "test_table_insert", %{}, %{})
         end)
 
       assert log_output =~ "No hook defined for insert on table test_table_insert"
@@ -135,7 +132,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          assert :ok = on_update(0, "test_table_update", %{}, %{})
+          assert %{} = on_update(0, "test_table_update", %{}, %{}, %{})
         end)
 
       assert log_output =~ "No hook defined for update on table test_table_update"
@@ -143,7 +140,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       log_output =
         capture_log(fn ->
-          assert :ok = on_delete(0, "test_table_delete", %{})
+          assert %{} = on_delete(0, "test_table_delete", %{}, %{})
         end)
 
       assert log_output =~ "No hook defined for delete on table test_table_delete"

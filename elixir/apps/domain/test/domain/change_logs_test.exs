@@ -2,7 +2,7 @@ defmodule Domain.ChangeLogsTest do
   use Domain.DataCase, async: true
   import Domain.ChangeLogs
 
-  describe "create/1" do
+  describe "bulk_insert/1" do
     setup do
       account = Fixtures.Accounts.create_account()
 
@@ -19,15 +19,11 @@ defmodule Domain.ChangeLogsTest do
         vsn: 1
       }
 
-      assert {:ok, %Domain.ChangeLogs.ChangeLog{} = change_log} = create_change_log(attrs)
-
-      assert change_log.account_id == account.id
-      assert change_log.op == :insert
-      assert change_log.old_data == nil
-      assert change_log.data == %{"account_id" => account.id, "key" => "value"}
+      assert {1, [change_log]} = bulk_insert([attrs])
+      assert change_log.lsn == 1
     end
 
-    test "uses the 'id' field accounts table updates", %{account: account} do
+    test "uses the 'id' field for accounts table updates", %{account: account} do
       attrs = %{
         lsn: 1,
         table: "accounts",
@@ -37,12 +33,8 @@ defmodule Domain.ChangeLogsTest do
         vsn: 1
       }
 
-      assert {:ok, %Domain.ChangeLogs.ChangeLog{} = change_log} = create_change_log(attrs)
-
-      assert change_log.account_id == account.id
-      assert change_log.op == :update
-      assert change_log.old_data == %{"id" => account.id, "name" => "Old Name"}
-      assert change_log.data == %{"id" => account.id, "name" => "New Name"}
+      assert {1, [change_log]} = bulk_insert([attrs])
+      assert change_log.lsn == 1
     end
 
     test "requires vsn field", %{account: account} do
@@ -54,13 +46,14 @@ defmodule Domain.ChangeLogsTest do
         data: %{"account_id" => account.id, "key" => "value"}
       }
 
-      assert {:error, changeset} = create_change_log(attrs)
-      assert changeset.valid? == false
-      assert changeset.errors[:vsn] == {"can't be blank", [validation: :required]}
+      assert_raise(Postgrex.Error, ~r/23502/, fn ->
+        bulk_insert([attrs])
+      end)
     end
 
     test "requires table field", %{account: account} do
       attrs = %{
+        account_id: Ecto.UUID.generate(),
         lsn: 1,
         op: :insert,
         old_data: nil,
@@ -68,13 +61,14 @@ defmodule Domain.ChangeLogsTest do
         vsn: 1
       }
 
-      assert {:error, changeset} = create_change_log(attrs)
-      assert changeset.valid? == false
-      assert changeset.errors[:table] == {"can't be blank", [validation: :required]}
+      assert_raise(Postgrex.Error, ~r/23502/, fn ->
+        bulk_insert([attrs])
+      end)
     end
 
-    test "prevents inserting duplicate lsn", %{account: account} do
+    test "skips duplicate lsn", %{account: account} do
       attrs = %{
+        account_id: account.id,
         lsn: 1,
         table: "resources",
         op: :insert,
@@ -83,116 +77,35 @@ defmodule Domain.ChangeLogsTest do
         vsn: 1
       }
 
-      assert {:ok, _change_log} = create_change_log(attrs)
+      assert {1, [_change_log]} = bulk_insert([attrs])
 
       dupe_lsn_attrs = Map.put(attrs, :data, %{"account_id" => account.id, "key" => "new_value"})
 
-      assert {:error, changeset} = create_change_log(dupe_lsn_attrs)
-      assert changeset.valid? == false
-
-      assert changeset.errors[:lsn] ==
-               {"has already been taken",
-                [constraint: :unique, constraint_name: "change_logs_lsn_index"]}
+      assert {0, []} = bulk_insert([dupe_lsn_attrs])
     end
 
-    test "requires op field to be one of :insert, :update, :delete", %{account: account} do
-      attrs = %{
-        lsn: 1,
-        table: "resources",
-        op: :invalid_op,
-        old_data: nil,
-        data: %{"account_id" => account.id, "key" => "value"},
-        vsn: 1
-      }
+    test "filters out data with empty account_id" do
+      attrs = [
+        %{
+          lsn: 1,
+          table: "resources",
+          op: :insert,
+          old_data: nil,
+          data: %{"key" => "value"},
+          vsn: 1
+        },
+        %{
+          lsn: 2,
+          table: "resources",
+          op: :insert,
+          old_data: nil,
+          data: %{"key" => "value", "account_id" => Ecto.UUID.generate()},
+          vsn: 1
+        }
+      ]
 
-      assert {:error, changeset} = create_change_log(attrs)
-      assert changeset.valid? == false
-      assert {"is invalid", errors} = changeset.errors[:op]
-      assert {:validation, :inclusion} in errors
-    end
-
-    test "requires correct combination of operation and data", %{account: account} do
-      # Invalid combination: :insert with old_data present
-      attrs = %{
-        lsn: 1,
-        table: "resources",
-        op: :insert,
-        old_data: %{"account_id" => account.id, "key" => "old_value"},
-        data: %{"account_id" => account.id, "key" => "new_value"},
-        vsn: 1
-      }
-
-      assert {:error, changeset} = create_change_log(attrs)
-      assert changeset.valid? == false
-      assert changeset.errors[:base] == {"Invalid combination of operation and data", []}
-
-      # Valid combination: :insert with old_data nil and data present
-      attrs = %{
-        lsn: 1,
-        table: "resources",
-        op: :insert,
-        old_data: nil,
-        data: %{"account_id" => account.id, "key" => "new_value"},
-        vsn: 1
-      }
-
-      assert {:ok, _change_log} = create_change_log(attrs)
-
-      # Valid combination: :update with both old_data and data present
-      attrs = %{
-        lsn: 2,
-        table: "resources",
-        op: :update,
-        old_data: %{"account_id" => account.id, "key" => "old_value"},
-        data: %{"account_id" => account.id, "key" => "new_value"},
-        vsn: 1
-      }
-
-      assert {:ok, _change_log} = create_change_log(attrs)
-
-      # Valid combination: :delete with old_data present and data nil
-      attrs = %{
-        lsn: 3,
-        table: "resources",
-        op: :delete,
-        old_data: %{"account_id" => account.id, "key" => "old_value"},
-        data: nil,
-        vsn: 1
-      }
-
-      assert {:ok, _change_log} = create_change_log(attrs)
-    end
-
-    test "requires account_id to be populated from old_data or data" do
-      attrs = %{
-        lsn: 1,
-        table: "resources",
-        op: :insert,
-        old_data: nil,
-        data: %{"key" => "value"},
-        vsn: 1
-      }
-
-      assert {:error, changeset} = create_change_log(attrs)
-      assert changeset.valid? == false
-      assert changeset.errors[:account_id] == {"can't be blank", [validation: :required]}
-    end
-
-    test "requires old_data[\"account_id\"] and data[\"account_id\"] to match", %{
-      account: account
-    } do
-      attrs = %{
-        lsn: 1,
-        table: "resources",
-        op: :update,
-        old_data: %{"account_id" => account.id, "key" => "old_value"},
-        data: %{"account_id" => "different_account_id", "key" => "new_value"},
-        vsn: 1
-      }
-
-      assert {:error, changeset} = create_change_log(attrs)
-      assert changeset.valid? == false
-      assert changeset.errors[:base] == {"Account ID cannot be changed", []}
+      assert {1, [change_log]} = bulk_insert(attrs)
+      assert change_log.lsn == 2
     end
   end
 end

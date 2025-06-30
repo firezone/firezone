@@ -1,90 +1,112 @@
 defmodule Domain.ChangeLogs.ReplicationConnection do
+  use Domain.Replication.Connection
   alias Domain.ChangeLogs
-
-  use Domain.Replication.Connection,
-    # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
-    # deploys without alerting.
-    warning_threshold_ms: 5 * 60 * 1_000,
-
-    # 1 month in ms - we never want to bypass changelog inserts
-    error_threshold_ms: 30 * 24 * 60 * 60 * 1_000
 
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
-  def on_insert(lsn, table, data) do
-    log(:insert, lsn, table, nil, data)
-  end
-
-  def on_update(lsn, table, old_data, data) do
-    log(:update, lsn, table, old_data, data)
-  end
-
-  def on_delete(lsn, table, old_data) do
-    if is_nil(old_data["deleted_at"]) do
-      log(:delete, lsn, table, old_data, nil)
-    else
-      # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
-      # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
-      :ok
-    end
-  end
-
-  # Relay group tokens don't have account_ids
-
-  defp log(_op, _lsn, "tokens", %{"type" => "relay_group"}, _data) do
-    :ok
-  end
-
-  defp log(_op, _lsn, "tokens", _old_data, %{"type" => "relay_group"}) do
-    :ok
-  end
-
-  defp log(op, lsn, table, old_data, data) do
+  def on_insert(lsn, table, data, state) do
     attrs = %{
-      op: op,
       lsn: lsn,
       table: table,
-      old_data: old_data,
+      op: :insert,
       data: data,
+      old_data: nil,
       vsn: @vsn
     }
 
-    case ChangeLogs.create_change_log(attrs) do
-      {:ok, _change_log} ->
-        :ok
+    %{state | flush_buffer: [attrs | state.flush_buffer]}
+  end
 
-      {:error, %Ecto.Changeset{errors: errors} = changeset} ->
-        if Enum.any?(errors, &should_skip_change_log?/1) do
-          # Expected under normal operation when an account is deleted or we are catching up on
-          # already-processed but not acknowledged WAL data.
-          :ok
-        else
-          Logger.warning("Failed to create change log",
-            errors: inspect(changeset.errors),
-            table: table,
-            op: op,
-            lsn: lsn,
-            vsn: @vsn
-          )
+  def on_update(lsn, table, old_data, data, state) do
+    attrs = %{
+      lsn: lsn,
+      table: table,
+      op: :update,
+      data: data,
+      old_data: old_data,
+      vsn: @vsn
+    }
 
-          # TODO: WAL
-          # Don't ignore failures to insert change logs. Improve this after we have some
-          # operational experience with the data flowing in here.
-          :ok
-        end
+    %{state | flush_buffer: [attrs | state.flush_buffer]}
+  end
+
+  def on_delete(lsn, table, old_data, state) do
+    # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
+    # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
+    if is_nil(old_data["deleted_at"]) do
+      attrs = %{
+        lsn: lsn,
+        table: table,
+        op: :delete,
+        data: nil,
+        old_data: old_data,
+        vsn: @vsn
+      }
+
+      %{state | flush_buffer: [attrs | state.flush_buffer]}
+    else
+      state
     end
   end
 
-  defp should_skip_change_log?({:account_id, {"does not exist", _violations}}) do
-    true
+  def on_flush(%{flush_buffer: []} = state), do: state
+
+  def on_flush(state) do
+    {count, change_logs} = ChangeLogs.bulk_insert(state.flush_buffer)
+
+    if count < length(state.flush_buffer) do
+      Logger.info("Failed to insert some change logs",
+        attempted: length(state.flush_buffer),
+        successful: count,
+        successful_lsns: Enum.map(change_logs, & &1.lsn)
+      )
+    else
+      Logger.debug("Inserted change logs",
+        count: count,
+        successful_lsns: Enum.map(change_logs, & &1.lsn)
+      )
+    end
+
+    last_flushed_lsn = last_flushed_lsn(state.flush_buffer, change_logs)
+
+    %{
+      state
+      | flush_buffer: [],
+        last_flushed_lsn: last_flushed_lsn
+    }
+  rescue
+    Postgrex.Error ->
+      Logger.warning("Failed to insert change logs",
+        attempted: length(state.flush_buffer)
+      )
+
+      %{state | flush_buffer: []}
   end
 
-  defp should_skip_change_log?({:lsn, {"has already been taken", _violations}}) do
-    true
-  end
+  # Get the last LSN that was successfully flushed.
+  defp last_flushed_lsn(buffer, successful) do
+    buffer_lsns = Enum.map(buffer, & &1.lsn)
+    successful_lsns = Enum.map(successful, & &1.lsn)
 
-  defp should_skip_change_log?(_error) do
-    false
+    diff_lsns = buffer_lsns -- successful_lsns
+
+    if diff_lsns == [] do
+      buffer_lsns |> Enum.sort() |> List.last()
+    else
+      first_missing = diff_lsns |> Enum.sort() |> List.first()
+
+      last_successful_index =
+        (buffer_lsns |> Enum.sort() |> Enum.find_index(&(&1 == first_missing))) - 1
+
+      last_successful_index =
+        if last_successful_index < 0 do
+          0
+        else
+          last_successful_index
+        end
+
+      Enum.at(buffer_lsns, last_successful_index)
+    end
   end
 end
