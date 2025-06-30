@@ -240,7 +240,6 @@ skip = [
   "hermit-abi",
   "indexmap",
   "itertools",
-  "itoa",
   "libloading",
   "linux-raw-sys",
   "nix",
