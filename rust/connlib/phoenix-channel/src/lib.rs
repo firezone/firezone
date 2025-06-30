@@ -472,7 +472,7 @@ where
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
                     if let Some(join) = self.pending_joins.pop_front() {
-                        match stream.start_send_unpin(Message::Text(join.clone())) {
+                        match stream.start_send_unpin(Message::Text(join.clone().into())) {
                             Ok(()) => {
                                 tracing::trace!(target: "wire::api::send", %join);
 
@@ -489,7 +489,7 @@ where
 
                     if self.pending_join_requests.is_empty() {
                         if let Some(msg) = self.pending_messages.pop_front() {
-                            match stream.start_send_unpin(Message::Text(msg.clone())) {
+                            match stream.start_send_unpin(Message::Text(msg.clone().into())) {
                                 Ok(()) => {
                                     tracing::trace!(target: "wire::api::send", %msg);
 
