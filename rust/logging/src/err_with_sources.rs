@@ -15,7 +15,7 @@ impl fmt::Display for ErrorWithSources<'_> {
         write!(f, "{}", self.e)?;
 
         for cause in anyhow::Chain::new(self.e).skip(1) {
-            write!(f, ": {}", cause)?;
+            write!(f, ": {cause}")?;
         }
 
         Ok(())

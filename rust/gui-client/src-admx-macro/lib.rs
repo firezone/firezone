@@ -49,8 +49,7 @@ fn try_admx(attr: TokenStream, item: TokenStream) -> syn::Result<proc_macro2::To
                     Err(syn::Error::new(
                         span,
                         format!(
-                            "No supported type element found for policy '{}'",
-                            value_name
+                            "No supported type element found for policy '{value_name}'"
                         ),
                     ))
                 })?;

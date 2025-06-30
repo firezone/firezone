@@ -80,7 +80,7 @@ impl MessageIntegrityExt for MessageIntegrity {
         let password = generate_password(relay_secret, expired, salt);
 
         self.check_long_term_credential(
-            &Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
+            &Username::new(format!("{expiry_unix_timestamp}:{salt}"))
                 .map_err(|_| Error::InvalidUsername)?,
             &FIREZONE,
             &password,
@@ -109,7 +109,7 @@ impl AuthenticatedMessage {
         let (expiry_unix_timestamp, salt) = split_username(username)?;
         let expired = systemtime_from_unix(expiry_unix_timestamp);
 
-        let username = Username::new(format!("{}:{}", expiry_unix_timestamp, salt))
+        let username = Username::new(format!("{expiry_unix_timestamp}:{salt}"))
             .map_err(|_| Error::InvalidUsername)?;
         let password = generate_password(relay_secret, expired, salt);
 

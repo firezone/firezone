@@ -35,7 +35,7 @@ pub fn logs() -> Option<PathBuf> {
 /// Runtime directory for temporary files
 pub fn runtime() -> Option<PathBuf> {
     let user = std::env::var("USER").ok()?;
-    Some(PathBuf::from("/tmp").join(format!("{}-{}", BUNDLE_ID, user)))
+    Some(PathBuf::from("/tmp").join(format!("{BUNDLE_ID}-{user}")))
 }
 
 /// User session data directory
