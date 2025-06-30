@@ -562,6 +562,13 @@ where
                             }));
                         }
                         (Payload::Reply(Reply::Ok(OkReply::Message(reply))), Some(req_id)) => {
+                            return Poll::Ready(Ok(Event::SuccessResponse {
+                                topic: message.topic,
+                                req_id,
+                                res: reply,
+                            }));
+                        }
+                        (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
                             if self.pending_join_requests.remove(&req_id) {
                                 tracing::info!("Joined {} room on portal", message.topic);
 
@@ -571,13 +578,6 @@ where
                                 }));
                             }
 
-                            return Poll::Ready(Ok(Event::SuccessResponse {
-                                topic: message.topic,
-                                req_id,
-                                res: reply,
-                            }));
-                        }
-                        (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
                             tracing::trace!("Received empty reply for request {req_id:?}");
 
                             continue;
