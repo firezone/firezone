@@ -37,7 +37,7 @@ async fn client_does_not_pipeline_messages() {
                         }
 
                         ws.send(Message::text(
-                            r#"{"event":"phx_reply","ref":1,"topic":"client","payload":{"status":"ok","response":null}}"#,
+                            r#"{"event":"phx_reply","ref":1,"topic":"client","payload":{"status":"ok","response":{}}}"#,
                         )).await.unwrap();
                     }
                     r#"{"topic":"test","event":"bar","ref":0}"# => {
