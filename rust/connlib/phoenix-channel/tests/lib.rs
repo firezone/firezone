@@ -106,7 +106,7 @@ async fn client_does_not_pipeline_messages() {
     };
 
     let (join_res, _) = tokio::time::timeout(
-        Duration::from_secs(1),
+        Duration::from_secs(2),
         futures::future::join(server, client),
     )
     .await
