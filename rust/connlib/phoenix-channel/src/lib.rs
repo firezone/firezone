@@ -824,7 +824,7 @@ fn make_request(url: Url, host: String, user_agent: String) -> Request {
     OsRng.fill_bytes(&mut r);
     let key = base64::engine::general_purpose::STANDARD.encode(r);
 
-    let user_agent = user_agent.replace(|c| !c.is_ascii(), "");
+    let user_agent = user_agent.replace(|c: char| !c.is_ascii(), "");
 
     Request::builder()
         .method("GET")
