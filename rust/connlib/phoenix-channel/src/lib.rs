@@ -468,7 +468,7 @@ where
                     // Process join messages before other messages.
                     // Only process other messages if no room joins are pending.
                     let next_message = self.pending_joins.pop_front().or_else(|| {
-                        if self.pending_join_requests.is_empty() {
+                        if !self.pending_join_requests.is_empty() {
                             return None;
                         }
 
