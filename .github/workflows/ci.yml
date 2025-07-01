@@ -92,6 +92,9 @@ jobs:
           if grep -q '^rust/gui-client/' changed_files.txt; then
             jobs="${jobs},tauri"
           fi
+          if grep -q '^rust/tests/gui-smoke-test/' changed_files.txt; then
+            jobs="${jobs},tauri"
+          fi
           if grep -q '^elixir/' changed_files.txt; then
             jobs="${jobs},elixir,codeql,build-artifacts"
           fi
