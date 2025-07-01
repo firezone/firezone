@@ -42,7 +42,7 @@ fn main() -> Result<()> {
 
     // Run normal smoke test
     let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
-    wait_firezone_id();
+    std::thread::sleep(Duration::from_millis(500)); // Wait for tunnel service to boot to write firezone-id.json
 
     let mut gui = app
         .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
@@ -81,14 +81,6 @@ fn manual_tests(app: &App) -> Result<()> {
     ipc_service.wait()?.fz_exit_ok().context("Tunnel service")?;
 
     Ok(())
-}
-
-fn wait_firezone_id() {
-    let path = firezone_id_path();
-
-    while !std::fs::exists(path).is_ok_and(|exists| exists) {
-        std::thread::sleep(Duration::from_millis(100));
-    }
 }
 
 struct App {
@@ -245,14 +237,4 @@ fn tunnel_path() -> PathBuf {
 
 fn syms_path() -> PathBuf {
     gui_path().with_extension("syms")
-}
-
-#[cfg(target_os = "linux")]
-fn firezone_id_path() -> &'static Path {
-    Path::new("/var/lib/dev.firezone.client/config/firezone-id.json")
-}
-
-#[cfg(target_os = "windows")]
-fn firezone_id_path() -> &'static Path {
-    Path::new("C:\\ProgramData\\dev.firezone.client\\firezone-id.json")
 }
