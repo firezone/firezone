@@ -19,6 +19,9 @@ permissions:
 
 jobs:
   update-release-draft:
+    permissions:
+      contents: write # for updating the release draft
+      id-token: write
     name: update-release-draft
     runs-on: ubuntu-22.04-xlarge
     env:
