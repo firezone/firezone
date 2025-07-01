@@ -7,7 +7,7 @@ export async function GET(_req: NextRequest) {
     // mark:current-apple-version
     apple: "1.5.3",
     // mark:current-android-version
-    android: "1.5.1",
+    android: "1.5.2",
     // mark:current-gui-version
     gui: "1.5.4",
     // mark:current-headless-version
