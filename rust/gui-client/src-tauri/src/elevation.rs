@@ -2,9 +2,8 @@ pub use platform::gui_check;
 
 #[cfg(target_os = "linux")]
 mod platform {
+    use crate::FIREZONE_CLIENT_GROUP;
     use anyhow::{Context as _, Result};
-
-    const FIREZONE_GROUP: &str = "firezone-client";
 
     /// Returns true if all permissions are correct for the GUI to run
     ///
@@ -17,7 +16,7 @@ mod platform {
             return Ok(false);
         }
 
-        let fz_gid = firezone_group()?.gid;
+        let fz_gid = crate::firezone_client_group()?.gid;
         let groups = nix::unistd::getgroups().context("Unable to read groups of current user")?;
         if !groups.contains(&fz_gid) {
             return Err(Error::UserNotInFirezoneGroup);
@@ -26,16 +25,9 @@ mod platform {
         Ok(true)
     }
 
-    fn firezone_group() -> Result<nix::unistd::Group> {
-        let group = nix::unistd::Group::from_name(FIREZONE_GROUP)
-            .context("can't get group by name")?
-            .with_context(|| format!("`{FIREZONE_GROUP}` group must exist on the system"))?;
-        Ok(group)
-    }
-
     #[derive(Debug, thiserror::Error)]
     pub enum Error {
-        #[error("User is not part of {FIREZONE_GROUP} group")]
+        #[error("User is not part of {FIREZONE_CLIENT_GROUP} group")]
         UserNotInFirezoneGroup,
         #[error(transparent)]
         Other(#[from] anyhow::Error),
@@ -45,7 +37,7 @@ mod platform {
         pub fn user_friendly_msg(&self) -> String {
             match self {
                 Error::UserNotInFirezoneGroup => format!(
-                    "You are not a member of the group `{FIREZONE_GROUP}`. Try `sudo usermod -aG {FIREZONE_GROUP} $USER` and then reboot"
+                    "You are not a member of the group `{FIREZONE_CLIENT_GROUP}`. Try `sudo usermod -aG {FIREZONE_CLIENT_GROUP} $USER` and then reboot"
                 ),
                 Error::Other(e) => format!("Failed to determine group ownership: {e:#}"),
             }
