@@ -20,7 +20,8 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.2" date={new Date("2025-06-30")}>
         <ChangeItem pull="9621">
           Fixes an issue where the VPN permission screen wouldn't dismiss after
           granting the VPN permission.
@@ -29,7 +30,7 @@ export default function Android() {
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.1" date={new Date("2025-06-04")}>
         <ChangeItem pull="9394">
           Fixes a minor issue that would cause background service panic when
