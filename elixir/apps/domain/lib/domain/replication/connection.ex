@@ -82,7 +82,7 @@ defmodule Domain.Replication.Connection do
               counter: integer(),
               tables_to_remove: MapSet.t(),
               flush_interval: integer(),
-              flush_buffer: list(),
+              flush_buffer: map(),
               last_flushed_lsn: integer(),
               warning_threshold_exceeded?: boolean(),
               error_threshold_exceeded?: boolean(),
@@ -103,7 +103,7 @@ defmodule Domain.Replication.Connection do
                 counter: 0,
                 tables_to_remove: MapSet.new(),
                 flush_interval: 0,
-                flush_buffer: [],
+                flush_buffer: %{},
                 last_flushed_lsn: 0,
                 warning_threshold_exceeded?: false,
                 error_threshold_exceeded?: false,
@@ -393,7 +393,7 @@ defmodule Domain.Replication.Connection do
 
           message
           |> decode_message()
-          |> handle_message(server_wal_end, %{state | counter: state.counter + 1})
+          |> handle_write(server_wal_end, %{state | counter: state.counter + 1})
         end
       end
 
@@ -413,14 +413,15 @@ defmodule Domain.Replication.Connection do
     quote do
       # Handles messages received:
       #
-      #   1. Insert/Update/Delete/Begin/Commit - send to appropriate hook
-      #   2. Relation messages - store the relation data in our state so we can use it later
+      #   1. Insert/Update/Delete - send to on_write/5
+      #   2. Begin - check how far we are lagging behind
+      #   3. Relation messages - store the relation data in our state so we can use it later
       #      to associate column names etc with the data we receive. In practice, we'll always
       #      see a Relation message before we see any data for that relation.
-      #   3. Origin/Truncate/Type - we ignore these messages for now
-      #   4. Graceful shutdown - we respond with {:disconnect, :normal} to
+      #   4. Origin/Truncate/Type - we ignore these messages for now
+      #   5. Graceful shutdown - we respond with {:disconnect, :normal} to
       #      indicate that we are shutting down gracefully and prevent auto reconnecting.
-      defp handle_message(
+      defp handle_write(
              %Decoder.Messages.Relation{
                id: id,
                namespace: namespace,
@@ -439,87 +440,53 @@ defmodule Domain.Replication.Connection do
         {:noreply, %{state | relations: Map.put(state.relations, id, relation)}}
       end
 
-      defp handle_message(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
-        if state.error_threshold_exceeded? do
-          {:noreply, state}
-        else
-          {op, table, _old_data, data} = transform(msg, state.relations)
-
-          state = on_insert(server_wal_end, table, data, state)
-
-          state =
-            if length(state.flush_buffer) >= state.flush_buffer_size do
-              on_flush(state)
-            else
-              state
-            end
-
-          {:noreply, state}
-        end
+      defp handle_write(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
+        process_write(msg, server_wal_end, state)
       end
 
-      defp handle_message(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
-        if state.error_threshold_exceeded? do
-          {:noreply, state}
-        else
-          {op, table, old_data, data} = transform(msg, state.relations)
-
-          state = on_update(server_wal_end, table, old_data, data, state)
-
-          state =
-            if length(state.flush_buffer) >= state.flush_buffer_size do
-              on_flush(state)
-            else
-              state
-            end
-
-          {:noreply, state}
-        end
+      defp handle_write(%Decoder.Messages.Update{} = msg, server_wal_end, state) do
+        process_write(msg, server_wal_end, state)
       end
 
-      defp handle_message(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
-        if state.error_threshold_exceeded? do
-          {:noreply, state}
-        else
-          {op, table, old_data, _data} = transform(msg, state.relations)
-
-          state = on_delete(server_wal_end, table, old_data, state)
-
-          state =
-            if length(state.flush_buffer) >= state.flush_buffer_size do
-              on_flush(state)
-            else
-              state
-            end
-
-          {:noreply, state}
-        end
+      defp handle_write(%Decoder.Messages.Delete{} = msg, server_wal_end, state) do
+        process_write(msg, server_wal_end, state)
       end
+
+      defp process_write(_msg, _server_wal_end, %{error_threshold_exceeded?: true} = state) do
+        {:noreply, state}
+      end
+
+      defp process_write(msg, server_wal_end, state) do
+        {op, table, old_data, data} = transform(msg, state.relations)
+
+        state
+        |> on_write(server_wal_end, op, table, old_data, data)
+        |> maybe_flush()
+        |> then(&{:noreply, &1})
+      end
+
+      defp maybe_flush(%{flush_buffer: buffer, flush_buffer_size: size} = state)
+           when map_size(buffer) >= size do
+        on_flush(state)
+      end
+
+      defp maybe_flush(state), do: state
     end
   end
 
   # Extract transaction and ignored message handlers
   defp transaction_handlers do
     quote do
-      defp handle_message(
+      defp handle_write(
              %Decoder.Messages.Begin{commit_timestamp: commit_timestamp} = msg,
              server_wal_end,
              state
            ) do
-        # Since we receive a commit for each operation and we process each operation
-        # one-by-one, we can use the commit timestamp to check if we are lagging behind.
+        # We can use the commit timestamp to check how far we are lagging behind
         lag_ms = DateTime.diff(DateTime.utc_now(), commit_timestamp, :millisecond)
         send(self(), {:check_warning_threshold, lag_ms})
         send(self(), {:check_error_threshold, lag_ms})
 
-        {:noreply, state}
-      end
-
-      defp handle_message(
-             %Decoder.Messages.Commit{commit_timestamp: commit_timestamp},
-             server_wal_end,
-             state
-           ) do
         {:noreply, state}
       end
     end
@@ -529,19 +496,24 @@ defmodule Domain.Replication.Connection do
   defp ignored_message_handlers do
     quote do
       # These messages are not relevant for our use case, so we ignore them.
-      defp handle_message(%Decoder.Messages.Origin{}, server_wal_end, state) do
+
+      defp handle_write(%Decoder.Messages.Commit{}, _server_wal_end, state) do
         {:noreply, state}
       end
 
-      defp handle_message(%Decoder.Messages.Truncate{}, server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Origin{}, _server_wal_end, state) do
         {:noreply, state}
       end
 
-      defp handle_message(%Decoder.Messages.Type{}, server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Truncate{}, _server_wal_end, state) do
         {:noreply, state}
       end
 
-      defp handle_message(%Decoder.Messages.Unsupported{data: data}, server_wal_end, state) do
+      defp handle_write(%Decoder.Messages.Type{}, _server_wal_end, state) do
+        {:noreply, state}
+      end
+
+      defp handle_write(%Decoder.Messages.Unsupported{data: data}, _server_wal_end, state) do
         Logger.warning("#{__MODULE__}: Unsupported message received",
           data: inspect(data),
           counter: state.counter
@@ -594,7 +566,6 @@ defmodule Domain.Replication.Connection do
     end
   end
 
-  # Extract info handlers
   defp info_handlers(opts) do
     quote bind_quoted: [opts: opts] do
       @impl true
@@ -669,12 +640,10 @@ defmodule Domain.Replication.Connection do
   defp default_callbacks do
     quote do
       # Default implementations for required callbacks - modules using this should implement these
-      def on_insert(_lsn, _table, _data, state), do: state
-      def on_update(_lsn, _table, _old_data, _data, state), do: state
-      def on_delete(_lsn, _table, _old_data, state), do: state
+      def on_write(state, _lsn, _op, _table, _old_data, _data), do: state
       def on_flush(state), do: state
 
-      defoverridable on_insert: 4, on_update: 5, on_delete: 4, on_flush: 1
+      defoverridable on_write: 6, on_flush: 1
     end
   end
 end

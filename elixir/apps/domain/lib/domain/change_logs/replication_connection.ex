@@ -5,108 +5,83 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
-  def on_insert(lsn, table, data, state) do
-    attrs = %{
+  # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
+  # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
+  def on_write(state, _lsn, :delete, _table, %{"deleted_at" => deleted_at}, _data)
+      when not is_nil(deleted_at) do
+    state
+  end
+
+  # Ignore account inserts and deletes
+  def on_write(state, _lsn, :delete, "accounts", _old_data, _data), do: state
+  def on_write(state, _lsn, :insert, "accounts", _old_data, _data), do: state
+
+  # Ignore token writes for relay_groups since these are not expected to have an account_id
+  def on_write(state, _lsn, _op, "tokens", %{"type" => "relay_group"}, _data), do: state
+  def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay_group"}), do: state
+
+  # Handle account updates
+  def on_write(state, lsn, :update, "accounts", old_data, %{"id" => account_id} = data) do
+    buffer(state, lsn, :update, "accounts", account_id, old_data, data)
+  end
+
+  # Handle other writes where an account_id is present
+  def on_write(state, lsn, op, table, old_data, %{"account_id" => account_id} = data)
+      when not is_nil(account_id) do
+    buffer(state, lsn, op, table, account_id, old_data, data)
+  end
+
+  def on_write(state, lsn, op, table, %{"account_id" => account_id} = old_data, data)
+      when not is_nil(account_id) do
+    buffer(state, lsn, op, table, account_id, old_data, data)
+  end
+
+  # If we get here, raise the alarm as it means we encountered a change we didn't expect.
+  def on_write(state, lsn, op, table, _old_data, _data) do
+    Logger.error(
+      "Unexpected write operation!",
       lsn: lsn,
-      table: table,
-      op: :insert,
-      data: data,
-      old_data: nil,
-      vsn: @vsn
-    }
+      op: op,
+      table: table
+    )
 
-    %{state | flush_buffer: [attrs | state.flush_buffer]}
+    state
   end
 
-  def on_update(lsn, table, old_data, data, state) do
-    attrs = %{
-      lsn: lsn,
-      table: table,
-      op: :update,
-      data: data,
-      old_data: old_data,
-      vsn: @vsn
-    }
-
-    %{state | flush_buffer: [attrs | state.flush_buffer]}
-  end
-
-  def on_delete(lsn, table, old_data, state) do
-    # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
-    # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
-    if is_nil(old_data["deleted_at"]) do
-      attrs = %{
-        lsn: lsn,
-        table: table,
-        op: :delete,
-        data: nil,
-        old_data: old_data,
-        vsn: @vsn
-      }
-
-      %{state | flush_buffer: [attrs | state.flush_buffer]}
-    else
-      state
-    end
-  end
-
-  def on_flush(%{flush_buffer: []} = state), do: state
+  def on_flush(%{flush_buffer: flush_buffer} = state) when map_size(flush_buffer) == 0, do: state
 
   def on_flush(state) do
-    {count, change_logs} = ChangeLogs.bulk_insert(state.flush_buffer)
+    to_insert = Map.values(state.flush_buffer)
+    attempted_count = Enum.count(state.flush_buffer)
 
-    if count < length(state.flush_buffer) do
-      Logger.info("Failed to insert some change logs",
-        attempted: length(state.flush_buffer),
-        successful: count,
-        successful_lsns: Enum.map(change_logs, & &1.lsn)
-      )
-    else
-      Logger.debug("Inserted change logs",
-        count: count,
-        successful_lsns: Enum.map(change_logs, & &1.lsn)
-      )
-    end
+    {successful_count, _change_logs} = ChangeLogs.bulk_insert(to_insert)
 
-    last_flushed_lsn = last_flushed_lsn(state.flush_buffer, change_logs)
+    Logger.info("Flushed #{successful_count}/#{attempted_count} change logs")
 
-    %{
-      state
-      | flush_buffer: [],
-        last_flushed_lsn: last_flushed_lsn
-    }
-  rescue
-    Postgrex.Error ->
-      Logger.warning("Failed to insert change logs",
-        attempted: length(state.flush_buffer)
-      )
+    # We always advance the LSN to the highest LSN in the flush buffer because
+    # LSN conflicts just mean the data is already inserted, and other insert_all
+    # issues like a missing account_id will raise an exception.
+    last_lsn =
+      state.flush_buffer
+      |> Map.keys()
+      |> Enum.max()
 
-      %{state | flush_buffer: []}
+    %{state | flush_buffer: %{}, last_flushed_lsn: last_lsn}
   end
 
-  # Get the last LSN that was successfully flushed.
-  defp last_flushed_lsn(buffer, successful) do
-    buffer_lsns = Enum.map(buffer, & &1.lsn)
-    successful_lsns = Enum.map(successful, & &1.lsn)
+  defp buffer(state, lsn, op, table, account_id, old_data, data) do
+    flush_buffer =
+      state.flush_buffer
+      |> Map.put_new(lsn, %{
+        lsn: lsn,
+        op: op,
+        table: table,
+        account_id: account_id,
+        old_data: old_data,
+        data: data,
+        vsn: @vsn
+      })
 
-    diff_lsns = buffer_lsns -- successful_lsns
-
-    if diff_lsns == [] do
-      buffer_lsns |> Enum.sort() |> List.last()
-    else
-      first_missing = diff_lsns |> Enum.sort() |> List.first()
-
-      last_successful_index =
-        (buffer_lsns |> Enum.sort() |> Enum.find_index(&(&1 == first_missing))) - 1
-
-      last_successful_index =
-        if last_successful_index < 0 do
-          0
-        else
-          last_successful_index
-        end
-
-      Enum.at(buffer_lsns, last_successful_index)
-    end
+    %{state | flush_buffer: flush_buffer}
   end
 end
