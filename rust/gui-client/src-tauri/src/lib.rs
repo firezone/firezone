@@ -20,3 +20,16 @@ pub mod settings;
 /// Tunnel service and GUI client are always bundled into a single release.
 /// Hence, we have a single constant for Tunnel service and GUI client.
 pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
+
+pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
+
+#[cfg(target_os = "linux")]
+pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {
+    use anyhow::Context as _;
+
+    let group = nix::unistd::Group::from_name(FIREZONE_CLIENT_GROUP)
+        .context("can't get group by name")?
+        .with_context(|| format!("`{FIREZONE_CLIENT_GROUP}` group must exist on the system"))?;
+
+    Ok(group)
+}
