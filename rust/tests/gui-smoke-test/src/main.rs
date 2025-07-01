@@ -86,7 +86,7 @@ fn manual_tests(app: &App) -> Result<()> {
 fn wait_firezone_id() {
     let path = firezone_id_path();
 
-    while !std::fs::exists(path).unwrap() {
+    while !std::fs::exists(path).is_ok_and(|exists| exists) {
         std::thread::sleep(Duration::from_millis(100));
     }
 }
