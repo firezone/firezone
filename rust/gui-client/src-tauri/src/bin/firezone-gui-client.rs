@@ -18,8 +18,8 @@ use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::EnvFilter;
 
 fn main() -> ExitCode {
-    let bootstrap_log_guard =
-        firezone_logging::setup_bootstrap().expect("Failed to setup bootstrap logger");
+    let mut bootstrap_log_guard =
+        Some(firezone_logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
     // Mitigates a bug in Ubuntu 22.04 - Under Wayland, some features of the window decorations like minimizing, closing the windows, etc., doesn't work unless you double-click the titlebar first.
     // SAFETY: No other thread is running yet
@@ -30,7 +30,7 @@ fn main() -> ExitCode {
     let mut telemetry = Telemetry::default();
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
-    match try_main(&rt, bootstrap_log_guard, &mut telemetry) {
+    match try_main(&rt, &mut bootstrap_log_guard, &mut telemetry) {
         Ok(()) => {
             rt.block_on(telemetry.stop());
 
@@ -48,7 +48,7 @@ fn main() -> ExitCode {
 
 fn try_main(
     rt: &Runtime,
-    bootstrap_log_guard: DefaultGuard,
+    bootstrap_log_guard: &mut Option<DefaultGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
     let cli = Cli::parse();
@@ -105,7 +105,7 @@ fn try_main(
         .or(mdm_settings.log_filter.clone())
         .unwrap_or_else(|| advanced_settings.log_filter.clone());
 
-    drop(bootstrap_log_guard);
+    drop(bootstrap_log_guard.take());
 
     let logging::Handles {
         logger: _logger,
