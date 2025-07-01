@@ -139,6 +139,8 @@ jobs:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
       - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
         run: |
+          set -x
+
           # Extract version from release name
           version=${{ inputs.release_name || github.event.release.name }}
           version=${version#${{ matrix.component }}-}
