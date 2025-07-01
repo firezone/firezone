@@ -303,7 +303,14 @@ fn event_rate_limiter(timeout: Duration) -> BeforeCallback<Event<'static>> {
     reason = "We need to match Sentry's config signature."
 )]
 fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
-    const IGNORED_ATTRS: &[&str] = &["os.", "sentry.", "tracing.", "server.", "user."];
+    const IGNORED_ATTRS: &[&str] = &[
+        "os.",
+        "sentry.",
+        "tracing.",
+        "server.",
+        "user.",
+        "parent_span_id",
+    ];
 
     for (key, attribute) in &log.attributes {
         let LogAttribute(serde_json::Value::String(attr_string)) = &attribute else {
