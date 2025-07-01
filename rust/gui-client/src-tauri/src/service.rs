@@ -107,6 +107,23 @@ async fn ipc_listen(
     // This also gives the GUI a safe place to put the log filter config
     let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
 
+    // Fix up the group of the device ID file and directory so the GUI client can access it.
+    #[cfg(target_os = "linux")]
+    {
+        let path = device_id::path().context("Failed to access device ID path")?;
+        let group_id = crate::firezone_client_group()
+            .context("Failed to get `firezone-client` group")?
+            .gid
+            .as_raw();
+
+        std::os::unix::fs::chown(&path, None, Some(group_id))
+            .with_context(|| format!("Failed to change ownership of '{}'", path.display()))?;
+
+        let dir = path.parent().context("No parent path")?;
+        std::os::unix::fs::chown(dir, None, Some(group_id))
+            .with_context(|| format!("Failed to change ownership of '{}'", dir.display()))?;
+    }
+
     let mut server = ipc::Server::new(SocketId::Tunnel)?;
     let mut dns_controller = DnsController { dns_control_method };
     loop {
