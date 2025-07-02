@@ -79,5 +79,55 @@ defmodule Domain.ChangeLogsTest do
                      bulk_insert([attrs])
                    end
     end
+
+    test "enforces data constraints based on operation type", %{account: account} do
+      # Invalid insert (has old_data)
+      assert_raise Postgrex.Error, ~r/valid_data_for_operation/, fn ->
+        bulk_insert([
+          %{
+            account_id: account.id,
+            lsn: 1,
+            table: "resources",
+            op: :insert,
+            # Should be null for insert
+            old_data: %{"id" => "123"},
+            data: %{"id" => "123"},
+            vsn: 1
+          }
+        ])
+      end
+
+      # Invalid update (missing old_data)
+      assert_raise Postgrex.Error, ~r/valid_data_for_operation/, fn ->
+        bulk_insert([
+          %{
+            account_id: account.id,
+            lsn: 2,
+            table: "resources",
+            op: :update,
+            # Should not be null for update
+            old_data: nil,
+            data: %{"id" => "123"},
+            vsn: 1
+          }
+        ])
+      end
+
+      # Invalid delete (has data)
+      assert_raise Postgrex.Error, ~r/valid_data_for_operation/, fn ->
+        bulk_insert([
+          %{
+            account_id: account.id,
+            lsn: 3,
+            table: "resources",
+            op: :delete,
+            old_data: %{"id" => "123"},
+            # Should be null for delete
+            data: %{"id" => "123"},
+            vsn: 1
+          }
+        ])
+      end
+    end
   end
 end
