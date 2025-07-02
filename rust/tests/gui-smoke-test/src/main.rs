@@ -7,6 +7,7 @@ use clap::Parser;
 use std::{
     ffi::OsStr,
     path::{Path, PathBuf},
+    time::Duration,
 };
 use subprocess::Exec;
 
@@ -41,6 +42,8 @@ fn main() -> Result<()> {
 
     // Run normal smoke test
     let mut ipc_service = tunnel_service_command().arg("run-smoke-test").popen()?;
+    std::thread::sleep(Duration::from_millis(500)); // Wait for tunnel service to boot to write firezone-id.json
+
     let mut gui = app
         .gui_command(&["smoke-test"])? // Disable deep links because they don't work in the headless CI environment
         .popen()?;
