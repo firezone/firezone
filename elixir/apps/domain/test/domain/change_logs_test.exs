@@ -5,65 +5,7 @@ defmodule Domain.ChangeLogsTest do
   describe "bulk_insert/1" do
     setup do
       account = Fixtures.Accounts.create_account()
-
       %{account: account}
-    end
-
-    test "inserts a change_log for an account", %{account: account} do
-      attrs = %{
-        lsn: 1,
-        table: "resources",
-        op: :insert,
-        old_data: nil,
-        data: %{"account_id" => account.id, "key" => "value"},
-        vsn: 1
-      }
-
-      assert {1, [change_log]} = bulk_insert([attrs])
-      assert change_log.lsn == 1
-    end
-
-    test "uses the 'id' field for accounts table updates", %{account: account} do
-      attrs = %{
-        lsn: 1,
-        table: "accounts",
-        op: :update,
-        old_data: %{"id" => account.id, "name" => "Old Name"},
-        data: %{"id" => account.id, "name" => "New Name"},
-        vsn: 1
-      }
-
-      assert {1, [change_log]} = bulk_insert([attrs])
-      assert change_log.lsn == 1
-    end
-
-    test "requires vsn field", %{account: account} do
-      attrs = %{
-        lsn: 1,
-        table: "resources",
-        op: :insert,
-        old_data: nil,
-        data: %{"account_id" => account.id, "key" => "value"}
-      }
-
-      assert_raise(Postgrex.Error, ~r/23502/, fn ->
-        bulk_insert([attrs])
-      end)
-    end
-
-    test "requires table field", %{account: account} do
-      attrs = %{
-        account_id: Ecto.UUID.generate(),
-        lsn: 1,
-        op: :insert,
-        old_data: nil,
-        data: %{"account_id" => account.id, "key" => "value"},
-        vsn: 1
-      }
-
-      assert_raise(Postgrex.Error, ~r/23502/, fn ->
-        bulk_insert([attrs])
-      end)
     end
 
     test "skips duplicate lsn", %{account: account} do
@@ -77,35 +19,65 @@ defmodule Domain.ChangeLogsTest do
         vsn: 1
       }
 
-      assert {1, [_change_log]} = bulk_insert([attrs])
+      assert {1, nil} = bulk_insert([attrs])
 
+      # Try to insert with same LSN but different data
       dupe_lsn_attrs = Map.put(attrs, :data, %{"account_id" => account.id, "key" => "new_value"})
-
-      assert {0, []} = bulk_insert([dupe_lsn_attrs])
+      assert {0, nil} = bulk_insert([dupe_lsn_attrs])
     end
 
-    test "filters out data with empty account_id" do
-      attrs = [
-        %{
-          lsn: 1,
-          table: "resources",
-          op: :insert,
-          old_data: nil,
-          data: %{"key" => "value"},
-          vsn: 1
-        },
-        %{
-          lsn: 2,
-          table: "resources",
-          op: :insert,
-          old_data: nil,
-          data: %{"key" => "value", "account_id" => Ecto.UUID.generate()},
-          vsn: 1
-        }
-      ]
+    test "raises not null constraint when account_id is missing" do
+      attrs = %{
+        # account_id is missing
+        lsn: 1,
+        table: "resources",
+        op: :insert,
+        old_data: nil,
+        data: %{"key" => "value"},
+        vsn: 1
+      }
 
-      assert {1, [change_log]} = bulk_insert(attrs)
-      assert change_log.lsn == 2
+      assert_raise Postgrex.Error,
+                   ~r/null value in column "account_id".*violates not-null constraint/,
+                   fn ->
+                     bulk_insert([attrs])
+                   end
+    end
+
+    test "raises not null constraint when table is missing", %{account: account} do
+      attrs = %{
+        account_id: account.id,
+        lsn: 1,
+        # table is missing
+        op: :insert,
+        old_data: nil,
+        data: %{"key" => "value"},
+        vsn: 1
+      }
+
+      assert_raise Postgrex.Error,
+                   ~r/null value in column "table".*violates not-null constraint/,
+                   fn ->
+                     bulk_insert([attrs])
+                   end
+    end
+
+    test "raises not null constraint when op is missing", %{account: account} do
+      attrs = %{
+        account_id: account.id,
+        lsn: 1,
+        table: "resources",
+        # op is missing
+        old_data: nil,
+        data: %{"key" => "value"},
+        vsn: 1
+      }
+
+      assert_raise Postgrex.Error,
+                   ~r/null value in column "op".*violates not-null constraint/,
+                   fn ->
+                     bulk_insert([attrs])
+                   end
     end
   end
 end
