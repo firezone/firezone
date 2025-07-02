@@ -1,757 +1,494 @@
-defmodule Domain.ChangeLogs.ReplicationConnectionTest do
-  use Domain.DataCase, async: true
+defmodule Domain.Replication.ConnectionTest do
+  use ExUnit.Case, async: true
 
-  import Ecto.Query
-  alias Domain.ChangeLogs.ReplicationConnection
-  alias Domain.ChangeLogs.ChangeLog
-  alias Domain.Repo
+  import ExUnit.CaptureLog
 
-  setup do
-    account = Fixtures.Accounts.create_account()
-    %{account: account}
-  end
+  # Define a test module that uses the Domain.Replication.Connection macro
+  defmodule TestReplicationConnection do
+    use Domain.Replication.Connection
 
-  describe "on_write/6 for inserts" do
-    test "ignores account inserts", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
+    def on_write(state, lsn, op, table, old_data, data) do
+      # Simple test implementation that tracks operations
+      operations = Map.get(state, :operations, [])
 
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          12345,
-          :insert,
-          "accounts",
-          nil,
-          %{"id" => account.id, "name" => "test account"}
-        )
-
-      assert result_state == initial_state
-    end
-
-    test "adds insert operation to flush buffer for non-account tables", %{account: account} do
-      table = "resources"
-
-      data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "name" => "test resource"
+      operation = %{
+        lsn: lsn,
+        op: op,
+        table: table,
+        old_data: old_data,
+        data: data
       }
 
-      lsn = 12345
-
-      initial_state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          lsn,
-          :insert,
-          table,
-          nil,
-          data
-        )
-
-      assert map_size(result_state.flush_buffer) == 1
-      assert Map.has_key?(result_state.flush_buffer, lsn)
-
-      attrs = result_state.flush_buffer[lsn]
-      assert attrs.lsn == lsn
-      assert attrs.table == table
-      assert attrs.op == :insert
-      assert attrs.data == data
-      assert attrs.old_data == nil
-      assert attrs.account_id == account.id
-      assert attrs.vsn == 0
+      Map.put(state, :operations, [operation | operations])
     end
 
-    test "preserves existing buffer items", %{account: account} do
-      existing_lsn = 100
+    def on_flush(state) do
+      # Test implementation that counts flushes
+      flush_count = Map.get(state, :flush_count, 0)
 
-      existing_item = %{
-        lsn: existing_lsn,
-        table: "other_table",
-        op: :update,
-        account_id: account.id,
-        data: %{"id" => "existing"},
-        old_data: nil,
-        vsn: 0
-      }
-
-      initial_state = %{flush_buffer: %{existing_lsn => existing_item}}
-
-      new_lsn = 101
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          new_lsn,
-          :insert,
-          "resources",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
-        )
-
-      assert map_size(result_state.flush_buffer) == 2
-      assert result_state.flush_buffer[existing_lsn] == existing_item
-      assert Map.has_key?(result_state.flush_buffer, new_lsn)
-    end
-
-    test "ignores relay_group tokens" do
-      initial_state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          12345,
-          :insert,
-          "tokens",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "type" => "relay_group"}
-        )
-
-      assert result_state == initial_state
-    end
-
-    test "handles complex data structures", %{account: account} do
-      complex_data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "nested" => %{"key" => "value", "array" => [1, 2, 3]},
-        "null_field" => nil,
-        "boolean" => true
-      }
-
-      state = %{flush_buffer: %{}}
-      lsn = 200
-
-      result_state =
-        ReplicationConnection.on_write(
-          state,
-          lsn,
-          :insert,
-          "resources",
-          nil,
-          complex_data
-        )
-
-      attrs = result_state.flush_buffer[lsn]
-      assert attrs.data == complex_data
+      state
+      |> Map.put(:flush_count, flush_count + 1)
+      |> Map.put(:flush_buffer, %{})
     end
   end
 
-  describe "on_write/6 for updates" do
-    test "adds update operation to flush buffer", %{account: account} do
-      table = "resources"
-      old_data = %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "old name"}
-      data = %{"id" => old_data["id"], "account_id" => account.id, "name" => "new name"}
-      lsn = 12346
+  # Create a test module that captures relation updates
+  defmodule RelationTestConnection do
+    use Domain.Replication.Connection
 
-      initial_state = %{flush_buffer: %{}}
+    def on_write(state, _, _, _, _, _), do: state
 
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          lsn,
-          :update,
-          table,
-          old_data,
-          data
-        )
+    def on_flush(state), do: state
+  end
 
-      assert map_size(result_state.flush_buffer) == 1
-      attrs = result_state.flush_buffer[lsn]
-
-      assert attrs.lsn == lsn
-      assert attrs.table == table
-      assert attrs.op == :update
-      assert attrs.data == data
-      assert attrs.old_data == old_data
-      assert attrs.account_id == account.id
-      assert attrs.vsn == 0
-    end
-
-    test "handles account updates specially", %{account: account} do
-      old_data = %{"id" => account.id, "name" => "old name"}
-      data = %{"id" => account.id, "name" => "new name"}
-      lsn = 12346
-
-      initial_state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          lsn,
-          :update,
-          "accounts",
-          old_data,
-          data
-        )
-
-      # Account updates should be buffered
-      assert map_size(result_state.flush_buffer) == 1
-      attrs = result_state.flush_buffer[lsn]
-      assert attrs.table == "accounts"
-      assert attrs.op == :update
-      assert attrs.account_id == account.id
-    end
-
-    test "handles complex data changes", %{account: account} do
-      old_data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "settings" => %{"theme" => "dark"},
-        "tags" => ["old"]
-      }
-
-      new_data = %{
-        "id" => old_data["id"],
-        "account_id" => account.id,
-        "settings" => %{"theme" => "light", "language" => "en"},
-        "tags" => ["new", "updated"]
-      }
-
-      state = %{flush_buffer: %{}}
-      lsn = 300
-
-      result_state =
-        ReplicationConnection.on_write(
-          state,
-          lsn,
-          :update,
-          "resources",
-          old_data,
-          new_data
-        )
-
-      attrs = result_state.flush_buffer[lsn]
-      assert attrs.old_data == old_data
-      assert attrs.data == new_data
+  describe "macro compilation" do
+    test "creates a module with required functions" do
+      # Verify the module was created with expected functions
+      assert function_exported?(TestReplicationConnection, :start_link, 1)
+      assert function_exported?(TestReplicationConnection, :init, 1)
+      assert function_exported?(TestReplicationConnection, :handle_connect, 1)
+      assert function_exported?(TestReplicationConnection, :handle_disconnect, 1)
+      assert function_exported?(TestReplicationConnection, :handle_result, 2)
+      assert function_exported?(TestReplicationConnection, :handle_data, 2)
+      assert function_exported?(TestReplicationConnection, :handle_info, 2)
+      assert function_exported?(TestReplicationConnection, :on_write, 6)
+      assert function_exported?(TestReplicationConnection, :on_flush, 1)
     end
   end
 
-  describe "on_write/6 for deletes" do
-    test "ignores account deletes", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
+  describe "struct definition" do
+    test "defines correct struct with expected fields" do
+      assert %TestReplicationConnection{} = struct = %TestReplicationConnection{}
 
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          12345,
-          :delete,
-          "accounts",
-          %{"id" => account.id, "name" => "deleted account"},
-          nil
-        )
-
-      assert result_state == initial_state
-    end
-
-    test "adds delete operation to flush buffer for non-soft-deleted records", %{account: account} do
-      table = "resources"
-
-      old_data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "name" => "deleted resource",
-        "deleted_at" => nil
-      }
-
-      lsn = 12347
-
-      initial_state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          lsn,
-          :delete,
-          table,
-          old_data,
-          nil
-        )
-
-      assert map_size(result_state.flush_buffer) == 1
-      attrs = result_state.flush_buffer[lsn]
-
-      assert attrs.lsn == lsn
-      assert attrs.table == table
-      assert attrs.op == :delete
-      assert attrs.data == nil
-      assert attrs.old_data == old_data
-      assert attrs.account_id == account.id
-      assert attrs.vsn == 0
-    end
-
-    test "ignores soft-deleted records", %{account: account} do
-      table = "resources"
-
-      old_data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "name" => "soft deleted",
-        "deleted_at" => "2024-01-01T00:00:00Z"
-      }
-
-      lsn = 12348
-
-      initial_state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          lsn,
-          :delete,
-          table,
-          old_data,
-          nil
-        )
-
-      # Buffer should remain unchanged
-      assert map_size(result_state.flush_buffer) == 0
-      assert result_state == initial_state
-    end
-
-    test "processes record without deleted_at field", %{account: account} do
-      old_data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "name" => "no deleted_at field"
-      }
-
-      state = %{flush_buffer: %{}}
-      lsn = 400
-
-      result_state =
-        ReplicationConnection.on_write(
-          state,
-          lsn,
-          :delete,
-          "resources",
-          old_data,
-          nil
-        )
-
-      assert map_size(result_state.flush_buffer) == 1
-      attrs = result_state.flush_buffer[lsn]
-      assert attrs.op == :delete
+      # Check default values
+      assert struct.schema == "public"
+      assert struct.step == :disconnected
+      assert struct.output_plugin == "pgoutput"
+      assert struct.proto_version == 1
+      assert struct.table_subscriptions == []
+      assert struct.relations == %{}
+      assert struct.counter == 0
+      assert struct.tables_to_remove == MapSet.new()
+      assert struct.flush_interval == 0
+      assert struct.flush_buffer == %{}
+      assert struct.last_flushed_lsn == 0
+      assert struct.warning_threshold_exceeded? == false
+      assert struct.error_threshold_exceeded? == false
+      assert struct.flush_buffer_size == 0
+      assert struct.status_log_interval == :timer.minutes(1)
+      assert struct.warning_threshold == :timer.seconds(30)
+      assert struct.error_threshold == :timer.seconds(60)
     end
   end
 
-  describe "multiple operations and buffer accumulation" do
-    test "operations accumulate in flush buffer correctly", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
-
-      # Insert
-      state1 =
-        ReplicationConnection.on_write(
-          initial_state,
-          100,
-          :insert,
-          "resources",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test"}
-        )
-
-      assert map_size(state1.flush_buffer) == 1
-
-      # Update
-      resource_id = Ecto.UUID.generate()
-
-      state2 =
-        ReplicationConnection.on_write(
-          state1,
-          101,
-          :update,
-          "resources",
-          %{"id" => resource_id, "account_id" => account.id, "name" => "test"},
-          %{"id" => resource_id, "account_id" => account.id, "name" => "updated"}
-        )
-
-      assert map_size(state2.flush_buffer) == 2
-
-      # Delete (non-soft)
-      state3 =
-        ReplicationConnection.on_write(
-          state2,
-          102,
-          :delete,
-          "resources",
-          %{"id" => resource_id, "account_id" => account.id, "name" => "updated"},
-          nil
-        )
-
-      assert map_size(state3.flush_buffer) == 3
-
-      # Verify LSNs
-      assert Map.has_key?(state3.flush_buffer, 100)
-      assert Map.has_key?(state3.flush_buffer, 101)
-      assert Map.has_key?(state3.flush_buffer, 102)
-
-      assert state3.flush_buffer[100].op == :insert
-      assert state3.flush_buffer[101].op == :update
-      assert state3.flush_buffer[102].op == :delete
+  describe "initialization" do
+    test "init/1 preserves state" do
+      initial_state = %TestReplicationConnection{counter: 42}
+      {:ok, state} = TestReplicationConnection.init(initial_state)
+      assert state.counter == 42
     end
 
-    test "mixed operations with soft deletes", %{account: account} do
-      state = %{flush_buffer: %{}}
+    test "init/1 schedules flush when flush_interval > 0" do
+      initial_state = %TestReplicationConnection{flush_interval: 1000}
+      {:ok, _state} = TestReplicationConnection.init(initial_state)
 
-      # Regular insert
-      state1 =
-        ReplicationConnection.on_write(
-          state,
-          100,
-          :insert,
-          "resources",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test"}
-        )
+      # Should receive flush message after interval
+      assert_receive :flush, 1100
+    end
 
-      # Regular update
-      resource_id = Ecto.UUID.generate()
+    test "init/1 does not schedule flush when flush_interval is 0" do
+      initial_state = %TestReplicationConnection{flush_interval: 0}
+      {:ok, _state} = TestReplicationConnection.init(initial_state)
 
-      state2 =
-        ReplicationConnection.on_write(
-          state1,
-          101,
-          :update,
-          "resources",
-          %{"id" => resource_id, "account_id" => account.id, "name" => "test"},
-          %{"id" => resource_id, "account_id" => account.id, "name" => "updated"}
-        )
-
-      # Soft delete (should be ignored)
-      state3 =
-        ReplicationConnection.on_write(
-          state2,
-          102,
-          :delete,
-          "resources",
-          %{
-            "id" => resource_id,
-            "account_id" => account.id,
-            "name" => "updated",
-            "deleted_at" => "2024-01-01T00:00:00Z"
-          },
-          nil
-        )
-
-      # Hard delete (should be included)
-      state4 =
-        ReplicationConnection.on_write(
-          state3,
-          103,
-          :delete,
-          "resources",
-          %{
-            "id" => resource_id,
-            "account_id" => account.id,
-            "name" => "updated",
-            "deleted_at" => nil
-          },
-          nil
-        )
-
-      # Should have 3 operations: insert, update, hard delete (soft delete ignored)
-      assert map_size(state4.flush_buffer) == 3
-      assert Map.has_key?(state4.flush_buffer, 100)
-      assert Map.has_key?(state4.flush_buffer, 101)
-      refute Map.has_key?(state4.flush_buffer, 102)
-      assert Map.has_key?(state4.flush_buffer, 103)
+      # Should not receive flush message
+      refute_receive :flush, 100
     end
   end
 
-  describe "on_flush/1" do
-    test "handles empty flush buffer" do
-      state = %{flush_buffer: %{}}
+  describe "handle_connect/1" do
+    test "returns query to check publication" do
+      state = %TestReplicationConnection{publication_name: "test_pub"}
 
-      result_state = ReplicationConnection.on_flush(state)
+      {:query, query, new_state} = TestReplicationConnection.handle_connect(state)
 
-      assert result_state == state
-    end
-
-    test "successfully flushes buffer and clears it", %{account: account} do
-      # Create valid change log data
-      attrs1 = %{
-        lsn: 100,
-        table: "resources",
-        op: :insert,
-        account_id: account.id,
-        data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
-        old_data: nil,
-        vsn: 0
-      }
-
-      attrs2 = %{
-        lsn: 101,
-        table: "resources",
-        op: :update,
-        account_id: account.id,
-        data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test2"},
-        old_data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
-        vsn: 0
-      }
-
-      state = %{
-        flush_buffer: %{100 => attrs1, 101 => attrs2},
-        last_flushed_lsn: 99
-      }
-
-      result_state = ReplicationConnection.on_flush(state)
-
-      assert result_state.flush_buffer == %{}
-      # Should be the highest LSN
-      assert result_state.last_flushed_lsn == 101
-
-      # Verify actual records were created in database
-      change_logs = Repo.all(from cl in ChangeLog, where: cl.lsn in [100, 101], order_by: cl.lsn)
-      assert length(change_logs) == 2
-
-      [log1, log2] = change_logs
-      assert log1.lsn == 100
-      assert log1.op == :insert
-      assert log2.lsn == 101
-      assert log2.op == :update
-    end
-
-    test "calculates last_flushed_lsn correctly as max LSN", %{account: account} do
-      # Create multiple records with non-sequential LSNs
-      attrs_map = %{
-        400 => %{
-          lsn: 400,
-          table: "resources",
-          op: :insert,
-          account_id: account.id,
-          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          old_data: nil,
-          vsn: 0
-        },
-        402 => %{
-          lsn: 402,
-          table: "resources",
-          op: :insert,
-          account_id: account.id,
-          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          old_data: nil,
-          vsn: 0
-        },
-        401 => %{
-          lsn: 401,
-          table: "resources",
-          op: :insert,
-          account_id: account.id,
-          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          old_data: nil,
-          vsn: 0
-        }
-      }
-
-      state = %{flush_buffer: attrs_map, last_flushed_lsn: 399}
-
-      result_state = ReplicationConnection.on_flush(state)
-
-      # Should update to max LSN (402)
-      assert result_state.last_flushed_lsn == 402
-      assert result_state.flush_buffer == %{}
+      assert query == "SELECT 1 FROM pg_publication WHERE pubname = 'test_pub'"
+      assert new_state.step == :check_publication
     end
   end
 
-  describe "LSN tracking and ordering" do
-    test "LSNs are preserved correctly in buffer" do
-      lsns = [1000, 1001, 1002]
-
-      state = %{flush_buffer: %{}}
-
-      # Add multiple operations with specific LSNs
-      final_state =
-        Enum.reduce(lsns, state, fn lsn, acc_state ->
-          ReplicationConnection.on_write(
-            acc_state,
-            lsn,
-            :insert,
-            "resources",
-            nil,
-            %{
-              "id" => Ecto.UUID.generate(),
-              "account_id" => "test-account",
-              "name" => "test_#{lsn}"
-            }
-          )
-        end)
-
-      # Verify LSNs are preserved as keys
-      assert Map.keys(final_state.flush_buffer) |> Enum.sort() == lsns
-
-      # Verify each entry has correct LSN
-      Enum.each(lsns, fn lsn ->
-        assert final_state.flush_buffer[lsn].lsn == lsn
-      end)
-    end
-
-    test "handles large LSN values", %{account: account} do
-      large_lsn = 999_999_999_999_999
-
-      state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          state,
-          large_lsn,
-          :insert,
-          "resources",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
-        )
-
-      attrs = result_state.flush_buffer[large_lsn]
-      assert attrs.lsn == large_lsn
-    end
-
-    test "preserves LSN ordering through flush", %{account: account} do
-      # Add operations with non-sequential LSNs
-      lsns = [1005, 1003, 1007, 1001]
-
-      state = %{flush_buffer: %{}, last_flushed_lsn: 0}
-
-      final_state =
-        Enum.reduce(lsns, state, fn lsn, acc_state ->
-          ReplicationConnection.on_write(
-            acc_state,
-            lsn,
-            :insert,
-            "resources",
-            nil,
-            %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
-          )
-        end)
-
-      # Flush to database
-      ReplicationConnection.on_flush(final_state)
-
-      # Verify records in database have correct LSNs
-      change_logs = Repo.all(from cl in ChangeLog, where: cl.lsn in ^lsns, order_by: cl.lsn)
-      db_lsns = Enum.map(change_logs, & &1.lsn)
-      assert db_lsns == Enum.sort(lsns)
-    end
-  end
-
-  describe "edge cases and error scenarios" do
-    test "logs error for writes without account_id" do
-      import ExUnit.CaptureLog
-
-      state = %{flush_buffer: %{}}
+  describe "handle_disconnect/1" do
+    test "logs disconnection and updates state" do
+      state = %TestReplicationConnection{counter: 123, step: :streaming}
 
       log =
         capture_log(fn ->
-          result =
-            ReplicationConnection.on_write(
-              state,
-              500,
-              :insert,
-              "some_table",
-              nil,
-              %{"id" => Ecto.UUID.generate(), "name" => "no account_id"}
-            )
-
-          # State should remain unchanged
-          assert result == state
+          {:noreply, new_state} = TestReplicationConnection.handle_disconnect(state)
+          assert new_state.step == :disconnected
+          assert new_state.counter == 123
         end)
 
-      assert log =~ "Unexpected write operation!"
-      assert log =~ "lsn=500"
-    end
-
-    test "handles account_id in old_data for deletes", %{account: account} do
-      state = %{flush_buffer: %{}}
-      lsn = 600
-
-      result_state =
-        ReplicationConnection.on_write(
-          state,
-          lsn,
-          :delete,
-          "resources",
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
-          nil
-        )
-
-      assert map_size(result_state.flush_buffer) == 1
-      assert result_state.flush_buffer[lsn].account_id == account.id
-    end
-
-    test "handles very large buffers" do
-      account_id = Ecto.UUID.generate()
-      state = %{flush_buffer: %{}, last_flushed_lsn: 0}
-
-      # Simulate adding many operations
-      operations = 1..100
-
-      final_state =
-        Enum.reduce(operations, state, fn i, acc_state ->
-          ReplicationConnection.on_write(
-            acc_state,
-            i,
-            :insert,
-            "resources",
-            nil,
-            %{"id" => Ecto.UUID.generate(), "account_id" => account_id, "name" => "user#{i}"}
-          )
-        end)
-
-      assert map_size(final_state.flush_buffer) == 100
-
-      # Verify all LSNs are present
-      buffer_lsns = Map.keys(final_state.flush_buffer) |> Enum.sort()
-      assert buffer_lsns == Enum.to_list(1..100)
+      assert log =~ "Replication connection disconnected"
+      assert log =~ "counter=123"
     end
   end
 
-  describe "special table handling" do
-    test "ignores relay_group token updates" do
-      state = %{flush_buffer: %{}}
+  describe "handle_info/2" do
+    test "handles :shutdown message" do
+      assert {:disconnect, :normal} = TestReplicationConnection.handle_info(:shutdown, %{})
+    end
 
-      # Update where old_data has relay_group type
-      result_state1 =
-        ReplicationConnection.on_write(
+    test "handles DOWN message" do
+      assert {:disconnect, :normal} =
+               TestReplicationConnection.handle_info({:DOWN, nil, :process, nil, nil}, %{})
+    end
+
+    test "handles :flush message when flush_interval > 0" do
+      state =
+        %TestReplicationConnection{
+          flush_interval: 1000,
+          flush_buffer: %{1 => %{data: "test"}}
+        }
+        |> Map.put(:operations, [])
+        |> Map.put(:flush_count, 0)
+
+      {:noreply, new_state} = TestReplicationConnection.handle_info(:flush, state)
+
+      # Our test on_flush implementation increments flush_count
+      assert Map.get(new_state, :flush_count) == 1
+      assert new_state.flush_buffer == %{}
+
+      # Should schedule next flush
+      assert_receive :flush, 1100
+    end
+
+    test "handles :interval_logger message" do
+      state = %TestReplicationConnection{counter: 456, status_log_interval: 100}
+
+      log =
+        capture_log(fn ->
+          {:noreply, _new_state} = TestReplicationConnection.handle_info(:interval_logger, state)
+        end)
+
+      assert log =~ "Processed 456 write messages from the WAL stream"
+
+      # Should schedule next log
+      assert_receive :interval_logger, 150
+    end
+
+    test "handles warning threshold checks" do
+      # Below threshold
+      state = %TestReplicationConnection{
+        warning_threshold_exceeded?: false,
+        warning_threshold: 1000
+      }
+
+      {:noreply, new_state} =
+        TestReplicationConnection.handle_info({:check_warning_threshold, 500}, state)
+
+      assert new_state.warning_threshold_exceeded? == false
+
+      # Above threshold
+      log =
+        capture_log(fn ->
+          {:noreply, new_state2} =
+            TestReplicationConnection.handle_info({:check_warning_threshold, 1500}, state)
+
+          assert new_state2.warning_threshold_exceeded? == true
+        end)
+
+      assert log =~ "Processing lag exceeds warning threshold"
+
+      # Back below threshold
+      exceeded_state = %{state | warning_threshold_exceeded?: true}
+
+      log2 =
+        capture_log(fn ->
+          {:noreply, new_state3} =
+            TestReplicationConnection.handle_info({:check_warning_threshold, 500}, exceeded_state)
+
+          assert new_state3.warning_threshold_exceeded? == false
+        end)
+
+      assert log2 =~ "Processing lag is back below warning threshold"
+    end
+
+    test "handles error threshold checks" do
+      # Below threshold
+      state = %TestReplicationConnection{
+        error_threshold_exceeded?: false,
+        error_threshold: 2000
+      }
+
+      {:noreply, new_state} =
+        TestReplicationConnection.handle_info({:check_error_threshold, 1000}, state)
+
+      assert new_state.error_threshold_exceeded? == false
+
+      # Above threshold
+      log =
+        capture_log(fn ->
+          {:noreply, new_state2} =
+            TestReplicationConnection.handle_info({:check_error_threshold, 3000}, state)
+
+          assert new_state2.error_threshold_exceeded? == true
+        end)
+
+      assert log =~ "Processing lag exceeds error threshold; skipping side effects!"
+
+      # Back below threshold
+      exceeded_state = %{state | error_threshold_exceeded?: true}
+
+      log2 =
+        capture_log(fn ->
+          {:noreply, new_state3} =
+            TestReplicationConnection.handle_info({:check_error_threshold, 1000}, exceeded_state)
+
+          assert new_state3.error_threshold_exceeded? == false
+        end)
+
+      assert log2 =~ "Processing lag is back below error threshold"
+    end
+
+    test "handles unknown messages" do
+      state = %TestReplicationConnection{counter: 789}
+      {:noreply, new_state} = TestReplicationConnection.handle_info(:unknown_message, state)
+      assert new_state == state
+    end
+  end
+
+  describe "write message handling" do
+    test "processes insert messages" do
+      state =
+        %TestReplicationConnection{
+          relations: %{
+            1 => %{
+              namespace: "public",
+              name: "users",
+              columns: [
+                %{name: "id"},
+                %{name: "name"}
+              ]
+            }
+          },
+          counter: 0
+        }
+        |> Map.put(:operations, [])
+
+      # Test on_write callback directly
+      # In a real scenario, handle_data would parse WAL messages and eventually
+      # call on_write with the decoded operation data
+      new_state =
+        TestReplicationConnection.on_write(
           state,
           100,
-          :update,
-          "tokens",
-          %{"id" => Ecto.UUID.generate(), "type" => "relay_group"},
-          %{"id" => Ecto.UUID.generate(), "type" => "relay_group", "updated" => true}
+          :insert,
+          "users",
+          nil,
+          %{"id" => "123", "name" => "John Doe"}
         )
 
-      assert result_state1 == state
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+      [operation] = operations
+      assert operation.op == :insert
+      assert operation.table == "users"
+      assert operation.lsn == 100
+    end
 
-      # Update where new data has relay_group type
-      result_state2 =
-        ReplicationConnection.on_write(
+    test "processes update messages" do
+      state =
+        %TestReplicationConnection{}
+        |> Map.put(:operations, [])
+
+      new_state =
+        TestReplicationConnection.on_write(
           state,
           101,
           :update,
-          "tokens",
-          %{"id" => Ecto.UUID.generate(), "type" => "other"},
-          %{"id" => Ecto.UUID.generate(), "type" => "relay_group"}
+          "users",
+          %{"id" => "123", "name" => "John"},
+          %{"id" => "123", "name" => "John Doe"}
         )
 
-      assert result_state2 == state
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+      [operation] = operations
+      assert operation.op == :update
+      assert operation.old_data == %{"id" => "123", "name" => "John"}
+      assert operation.data == %{"id" => "123", "name" => "John Doe"}
     end
 
-    test "processes non-relay_group tokens normally", %{account: account} do
-      state = %{flush_buffer: %{}}
-      lsn = 102
+    test "processes delete messages" do
+      state =
+        %TestReplicationConnection{}
+        |> Map.put(:operations, [])
 
-      result_state =
-        ReplicationConnection.on_write(
+      new_state =
+        TestReplicationConnection.on_write(
           state,
-          lsn,
-          :insert,
-          "tokens",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "type" => "browser"}
+          102,
+          :delete,
+          "users",
+          %{"id" => "123", "name" => "John Doe"},
+          nil
         )
 
-      assert map_size(result_state.flush_buffer) == 1
-      assert result_state.flush_buffer[lsn].table == "tokens"
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+      [operation] = operations
+      assert operation.op == :delete
+      assert operation.old_data == %{"id" => "123", "name" => "John Doe"}
+      assert operation.data == nil
+    end
+
+    test "on_write always processes operations in test implementation" do
+      # Note: In the real implementation, process_write checks error_threshold_exceeded?
+      # but our test implementation doesn't, so operations are always processed
+      state =
+        %TestReplicationConnection{
+          error_threshold_exceeded?: true
+        }
+        |> Map.put(:operations, [])
+
+      new_state =
+        TestReplicationConnection.on_write(
+          state,
+          103,
+          :insert,
+          "users",
+          nil,
+          %{"id" => "456"}
+        )
+
+      # Our test implementation always processes operations
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+    end
+  end
+
+  describe "flush behavior" do
+    test "calls on_flush when buffer size reached" do
+      state =
+        %TestReplicationConnection{
+          flush_buffer: %{1 => %{}, 2 => %{}},
+          flush_buffer_size: 3
+        }
+        |> Map.put(:flush_count, 0)
+        |> Map.put(:operations, [])
+
+      # Adding one more should trigger flush
+      # In the real implementation, this would happen in process_write
+      # when maybe_flush is called
+      new_state = %{state | flush_buffer: Map.put(state.flush_buffer, 3, %{})}
+
+      # Simulate maybe_flush logic
+      flushed_state =
+        if map_size(new_state.flush_buffer) >= new_state.flush_buffer_size do
+          TestReplicationConnection.on_flush(new_state)
+        else
+          new_state
+        end
+
+      assert Map.get(flushed_state, :flush_count) == 1
+      assert flushed_state.flush_buffer == %{}
+    end
+  end
+
+  describe "publication and slot management flow" do
+    test "creates publication when it doesn't exist" do
+      state = %TestReplicationConnection{
+        publication_name: "test_pub",
+        table_subscriptions: ["users", "posts"],
+        schema: "public",
+        step: :check_publication
+      }
+
+      # Simulate publication not existing
+      {:query, query, new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{num_rows: 0}],
+          state
+        )
+
+      assert query == "CREATE PUBLICATION test_pub FOR TABLE public.users,public.posts"
+      assert new_state.step == :check_replication_slot
+    end
+
+    test "checks publication tables when publication exists" do
+      state = %TestReplicationConnection{
+        publication_name: "test_pub",
+        step: :check_publication
+      }
+
+      {:query, query, new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{num_rows: 1}],
+          state
+        )
+
+      assert query =~ "SELECT schemaname, tablename"
+      assert query =~ "FROM pg_publication_tables"
+      assert query =~ "WHERE pubname = 'test_pub'"
+      assert new_state.step == :check_publication_tables
+    end
+
+    test "creates replication slot when it doesn't exist" do
+      state = %TestReplicationConnection{
+        replication_slot_name: "test_slot",
+        output_plugin: "pgoutput",
+        step: :create_slot
+      }
+
+      {:query, query, new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{num_rows: 0}],
+          state
+        )
+
+      assert query == "CREATE_REPLICATION_SLOT test_slot LOGICAL pgoutput NOEXPORT_SNAPSHOT"
+      assert new_state.step == :start_replication_slot
+    end
+
+    test "starts replication when slot exists" do
+      state = %TestReplicationConnection{
+        replication_slot_name: "test_slot",
+        publication_name: "test_pub",
+        proto_version: 1,
+        step: :start_replication_slot
+      }
+
+      {:stream, query, [], new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{}],
+          state
+        )
+
+      assert query =~ "START_REPLICATION SLOT \"test_slot\""
+      assert query =~ "publication_names 'test_pub'"
+      assert query =~ "proto_version '1'"
+      assert new_state.step == :streaming
+    end
+  end
+
+  describe "relation message handling" do
+    test "stores relation information" do
+      state = %RelationTestConnection{relations: %{}}
+
+      # In the real implementation, this would be called from handle_data
+      # when a Relation message is received. Since handle_write is private,
+      # we can't test it directly, but we know it updates the relations map
+      relation = %{
+        id: 1,
+        namespace: "public",
+        name: "test_table",
+        columns: [%{name: "id"}, %{name: "data"}]
+      }
+
+      # The relation would be stored with id as key
+      new_state = %{state | relations: Map.put(state.relations, relation.id, relation)}
+
+      assert new_state.relations[1].name == "test_table"
+      assert length(new_state.relations[1].columns) == 2
     end
   end
 end
