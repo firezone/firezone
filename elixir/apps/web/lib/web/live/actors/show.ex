@@ -744,7 +744,7 @@ defmodule Web.Actors.Show do
           socket
           |> put_flash(
             :error,
-            "Unknown error while sending welcome email. We're looking in to it."
+            "Unknown error while sending welcome email. We're looking into it."
           )
 
         {:noreply, socket}
