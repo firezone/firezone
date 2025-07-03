@@ -4,7 +4,7 @@ defmodule Web.Policies.Index do
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
-      :ok = PubSub.Account.Policies.subscribe(socket.assigns.account.id)
+      :ok = PubSub.Account.subscribe(socket.assigns.account.id)
     end
 
     socket =
@@ -123,7 +123,15 @@ defmodule Web.Policies.Index do
       when event in ["paginate", "order_by", "filter", "reload"],
       do: handle_live_table_event(event, params, socket)
 
-  def handle_info({_action, _policy_id}, socket) do
+  def handle_info({_action, %Policies.Policy{}, %Policies.Policy{}}, socket) do
     {:noreply, assign(socket, stale: true)}
+  end
+
+  def handle_info({_action, %Policies.Policy{}}, socket) do
+    {:noreply, assign(socket, stale: true)}
+  end
+
+  def handle_info(_, socket) do
+    {:noreply, socket}
   end
 end

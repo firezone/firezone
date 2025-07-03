@@ -108,6 +108,11 @@ defmodule Domain.Policies.Policy.Query do
     end)
   end
 
+  def with_preloaded_resource_gateway_group(queryable) do
+    queryable
+    |> preload(resource: :gateway_group)
+  end
+
   # Pagination
 
   @impl Domain.Repo.Query

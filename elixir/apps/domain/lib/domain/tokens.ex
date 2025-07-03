@@ -183,10 +183,6 @@ defmodule Domain.Tokens do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      # TODO: WAL
-      # Broadcast flow side effects directly
-      :ok = Domain.Flows.expire_flows_for(token, subject)
-
       Token.Query.not_deleted()
       |> Token.Query.by_id(token.id)
       |> Authorizer.for_subject(subject)
@@ -203,23 +199,9 @@ defmodule Domain.Tokens do
     |> Token.Query.by_id(subject.token_id)
     |> Authorizer.for_subject(subject)
     |> delete_tokens()
-    |> case do
-      {:ok, [token]} ->
-        # TODO: WAL
-        # Broadcast flow side effects directly
-        :ok = Domain.Flows.expire_flows_for(token, subject)
-        {:ok, token}
-
-      {:ok, []} ->
-        {:ok, []}
-    end
   end
 
   def delete_tokens_for(%Auth.Identity{} = identity) do
-    # TODO: WAL
-    # Broadcast flow side effects directly
-    :ok = Domain.Flows.expire_flows_for(identity)
-
     Token.Query.not_deleted()
     |> Token.Query.by_identity_id(identity.id)
     |> delete_tokens()
@@ -227,10 +209,6 @@ defmodule Domain.Tokens do
 
   def delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      # TODO: WAL
-      # Broadcast flow side effects directly
-      :ok = Domain.Flows.expire_flows_for(actor, subject)
-
       Token.Query.not_deleted()
       |> Token.Query.by_actor_id(actor.id)
       |> Authorizer.for_subject(subject)
@@ -240,10 +218,6 @@ defmodule Domain.Tokens do
 
   def delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      # TODO: WAL
-      # Broadcast flow side effects directly
-      :ok = Domain.Flows.expire_flows_for(identity, subject)
-
       Token.Query.not_deleted()
       |> Token.Query.by_identity_id(identity.id)
       |> Authorizer.for_subject(subject)
@@ -253,10 +227,6 @@ defmodule Domain.Tokens do
 
   def delete_tokens_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      # TODO: WAL
-      # Broadcast flow side effects directly
-      :ok = Domain.Flows.expire_flows_for(provider, subject)
-
       Token.Query.not_deleted()
       |> Token.Query.by_provider_id(provider.id)
       |> Authorizer.for_subject(subject)

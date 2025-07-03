@@ -1,6 +1,8 @@
 defmodule API.Client.Views.Relay do
   alias Domain.Relays
 
+  # TODO: Refactor
+  # All Relays are :turn
   def render_many(relays, expires_at, stun_or_turn \\ :turn) do
     Enum.flat_map(relays, &render(&1, expires_at, stun_or_turn))
   end
@@ -13,6 +15,8 @@ defmodule API.Client.Views.Relay do
     |> List.flatten()
   end
 
+  # TODO: Refactor
+  # All relays have both IPv4 and IPv6 addresses
   defp maybe_render(%Relays.Relay{}, _expires_at, nil, _stun_or_turn), do: []
 
   # STUN returns the reflective candidates to the peer and is used for hole-punching;

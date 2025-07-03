@@ -5,12 +5,7 @@ defmodule Domain.Events.ReplicationConnection do
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
     "actor_group_memberships" => Hooks.ActorGroupMemberships,
-    "actor_groups" => Hooks.ActorGroups,
-    "actors" => Hooks.Actors,
-    "auth_identities" => Hooks.AuthIdentities,
-    "auth_providers" => Hooks.AuthProviders,
     "clients" => Hooks.Clients,
-    "gateway_groups" => Hooks.GatewayGroups,
     "gateways" => Hooks.Gateways,
     "policies" => Hooks.Policies,
     "resource_connections" => Hooks.ResourceConnections,

@@ -1,6 +1,6 @@
 defmodule Domain.Events.Hooks.Tokens do
   @behaviour Domain.Events.Hooks
-  alias Domain.PubSub
+  alias Domain.{PubSub, Tokens}
 
   @impl true
   def on_insert(_data), do: :ok
@@ -12,7 +12,7 @@ defmodule Domain.Events.Hooks.Tokens do
 
   def on_update(_old_data, %{"type" => "email"}), do: :ok
 
-  # Soft-delete
+  # Soft-delete - process as delete
   def on_update(%{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
       when not is_nil(deleted_at) do
     on_delete(old_data)
@@ -22,7 +22,8 @@ defmodule Domain.Events.Hooks.Tokens do
   def on_update(_old_data, _new_data), do: :ok
 
   @impl true
-  def on_delete(%{"id" => token_id}) do
-    PubSub.Token.disconnect(token_id)
+  def on_delete(old_data) do
+    token = Domain.struct_from_params(Tokens.Token, old_data)
+    PubSub.Account.broadcast(token.account_id, {:deleted, token})
   end
 end

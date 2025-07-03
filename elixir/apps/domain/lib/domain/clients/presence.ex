@@ -9,8 +9,7 @@ defmodule Domain.Clients.Presence do
   def connect(%Client{} = client) do
     with {:ok, _} <- __MODULE__.Account.track(client.account_id, client.id),
          {:ok, _} <- __MODULE__.Actor.track(client.actor_id, client.id) do
-      :ok = PubSub.Client.subscribe(client.id)
-      :ok = PubSub.Account.Clients.subscribe(client.account_id)
+      :ok
     end
   end
 
