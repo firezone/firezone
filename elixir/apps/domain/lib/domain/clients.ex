@@ -1,7 +1,7 @@
 defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth}
-  alias Domain.{Accounts, Actors, Flows}
+  alias Domain.{Accounts, Actors}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
 
@@ -211,16 +211,6 @@ defmodule Domain.Clients do
         with: &Client.Changeset.remove_verification(&1),
         preload: [:online?]
       )
-      |> case do
-        # TODO: WAL
-        # Broadcast flow side effects directly
-        {:ok, client} ->
-          :ok = Flows.expire_flows_for(client)
-          {:ok, client}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
     end
   end
 

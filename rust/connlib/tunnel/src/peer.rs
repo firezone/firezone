@@ -221,8 +221,8 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
-    // Note: we only allow updating filters and names
-    // but names updates have no effect on the gateway
+    // TODO: Handle resource type / address / ip_stack changes here, like we do for the client.
+    // Currently the portal does this for us by sending a delete and the an add.
     pub(crate) fn update_resource(&mut self, new_description: &ResourceDescription) {
         let Some(resource) = self.resources.get_mut(&new_description.id()) else {
             return;
