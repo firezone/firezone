@@ -4,6 +4,7 @@ defmodule Web.Actors.Show do
   import Web.Clients.Components
   alias Domain.{Auth, Tokens, Flows, Clients}
   alias Domain.Actors
+  require Logger
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
@@ -727,6 +728,23 @@ defmodule Web.Actors.Show do
           |> put_flash(
             :error,
             "You sent too many welcome emails to this address. Please try again later."
+          )
+
+        {:noreply, socket}
+
+      {:error, reason} ->
+        Logger.error("Unknown error while sending welcome email",
+          account_id: socket.assigns.account.id,
+          subject_actor_id: socket.assigns.subject.actor.id,
+          identity_id: identity.id,
+          reason: inspect(reason)
+        )
+
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "Unknown error while sending welcome email. We're looking into it."
           )
 
         {:noreply, socket}
