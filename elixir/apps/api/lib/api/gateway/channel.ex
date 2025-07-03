@@ -1,10 +1,12 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Gateways, PubSub, Resources, Relays}
+  alias Domain.{Clients, Flows, Gateways, Policies, PubSub, Resources, Relays, Tokens}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
+
+  @prune_flow_cache_every :timer.minutes(1)
 
   @impl true
   def join("gateway", _payload, socket) do
@@ -36,7 +38,11 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
+      # Track gateway's presence
       :ok = Gateways.Presence.connect(socket.assigns.gateway)
+
+      # Subscribe to all account updates
+      :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)
 
       # Return all connected relays for the account
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
@@ -65,8 +71,32 @@ defmodule API.Gateway.Channel do
       # Cache new stamp secrets
       socket = Debouncer.cache_stamp_secrets(socket, relays)
 
-      {:noreply, socket}
+      # Hydrate flow cache so that we properly respond to relevant messages in order to push reject_access.
+      # We use raw bytes and integer timestamps here for better memory efficiency.
+      # Structure: %{{token_id_bytes, policy_id_bytes, client_id_bytes, resource_id_bytes} => inserted_at_integer}
+      flow_cache =
+        Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
+        |> Map.new()
+
+      Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
+
+      {:noreply, assign(socket, flow_cache: flow_cache)}
     end
+  end
+
+  def handle_info(:prune_flow_cache, socket) do
+    Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
+
+    cutoff = DateTime.utc_now() |> DateTime.add(-14, :day) |> DateTime.to_unix(:second)
+
+    flow_cache =
+      Map.filter(socket.assigns.flow_cache, fn {_key, inserted_at} ->
+        inserted_at > cutoff
+      end)
+
+    # We don't need to push reject_access - the gateway uses its own timer to expire flows
+
+    {:noreply, assign(socket, flow_cache: flow_cache)}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the gateway
@@ -86,21 +116,159 @@ defmodule API.Gateway.Channel do
   ##### Reacting to domain events ####
   ####################################
 
-  # Resource create message is a no-op for the Gateway as the Resource
-  # details will be sent to the Gateway on an :authorize_flow message
-  def handle_info({:create_resource, _resource_id}, socket) do
-    {:noreply, socket}
+  # CLIENTS
+
+  # Expire flows for this client because verified_at can change allowed resources
+  def handle_info(
+        {:updated, %Clients.Client{verified_at: old_verified_at},
+         %Clients.Client{verified_at: verified_at, id: client_id}},
+        socket
+      )
+      when old_verified_at != verified_at do
+    flow_cache = socket.assigns.flow_cache
+
+    # Convert to bytes representation for comparison with our cache
+    client_id_bytes = Ecto.UUID.dump!(client_id)
+
+    # Find all flows for this client
+    affected_flows =
+      Map.filter(flow_cache, fn {{_, _, c_id_bytes, _}, _} ->
+        c_id_bytes == client_id_bytes
+      end)
+
+    case affected_flows do
+      flows when map_size(flows) == 0 ->
+        {:noreply, socket}
+
+      affected_flows ->
+        # Send reject_access for each affected client/resource pair
+        affected_flows
+        |> Map.keys()
+        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
+          {client_id_bytes, resource_id_bytes}
+        end)
+        |> Enum.uniq()
+        |> Enum.each(fn {_, resource_id_bytes} ->
+          push(socket, "reject_access", %{
+            client_id: client_id,
+            resource_id: Ecto.UUID.cast!(resource_id_bytes)
+          })
+        end)
+
+        # Remove affected flows from cache
+        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
+
+        {:noreply, assign(socket, flow_cache: updated_cache)}
+    end
   end
 
-  # Resource is updated, eg. traffic filters are changed
-  def handle_info({:update_resource, resource_id}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+  # POLICIES
 
-    OpenTelemetry.Tracer.with_span "gateway.resource_updated",
-      attributes: %{resource_id: resource_id} do
-      resource = Resources.fetch_resource_by_id!(resource_id)
+  def handle_info({:deleted, %Policies.Policy{id: policy_id}}, socket) do
+    flow_cache = socket.assigns.flow_cache
 
+    # Convert to bytes representation for comparison with our cache
+    policy_id_bytes = Ecto.UUID.dump!(policy_id)
+
+    # Find all flows for this policy
+    affected_flows =
+      Map.filter(flow_cache, fn {{_, p_id_bytes, _, _}, _} ->
+        p_id_bytes == policy_id_bytes
+      end)
+
+    case affected_flows do
+      flows when map_size(flows) == 0 ->
+        {:noreply, socket}
+
+      affected_flows ->
+        # Send reject_access for each affected client/resource pair
+        affected_flows
+        |> Map.keys()
+        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
+          {client_id_bytes, resource_id_bytes}
+        end)
+        |> Enum.uniq()
+        |> Enum.each(fn {client_id_bytes, resource_id_bytes} ->
+          push(socket, "reject_access", %{
+            client_id: Ecto.UUID.cast!(client_id_bytes),
+            resource_id: Ecto.UUID.cast!(resource_id_bytes)
+          })
+        end)
+
+        # Remove affected flows from cache
+        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
+
+        {:noreply, assign(socket, flow_cache: updated_cache)}
+    end
+  end
+
+  # RESOURCES
+
+  # The gateway can process traffic filter changes, but not any other type of addressability change.
+  # So we send resource_updated for the former, and reject_access for the latter.
+  # The client will re-authorize the flow if the resource addressability changes.
+  def handle_info(
+        {:updated,
+         %Resources.Resource{ip_stack: old_ip_stack, address: old_address, type: old_type},
+         %Resources.Resource{ip_stack: ip_stack, address: address, type: type, id: resource_id}},
+        socket
+      )
+      when old_ip_stack != ip_stack or old_address != address or old_type != type do
+    flow_cache = socket.assigns.flow_cache
+
+    # Convert to bytes representation for comparison with our cache
+    resource_id_bytes = Ecto.UUID.dump!(resource_id)
+
+    # Find all flows for this resource
+    affected_flows =
+      Map.filter(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
+        res_id_bytes == resource_id_bytes
+      end)
+
+    case affected_flows do
+      flows when map_size(flows) == 0 ->
+        {:noreply, socket}
+
+      affected_flows ->
+        # Send reject_access for each affected client/resource pair
+        affected_flows
+        |> Map.keys()
+        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
+          {client_id_bytes, resource_id_bytes}
+        end)
+        |> Enum.uniq()
+        |> Enum.each(fn {client_id_bytes, _} ->
+          push(socket, "reject_access", %{
+            client_id: Ecto.UUID.cast!(client_id_bytes),
+            resource_id: resource_id
+          })
+        end)
+
+        # Remove affected flows from cache
+        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
+
+        {:noreply, assign(socket, flow_cache: updated_cache)}
+    end
+  end
+
+  def handle_info(
+        {:updated, %Resources.Resource{filters: old_filters},
+         %Resources.Resource{filters: filters} = resource},
+        socket
+      )
+      when old_filters != filters do
+    flow_cache = socket.assigns.flow_cache
+
+    # Convert to bytes representation for comparison with our cache
+    resource_id_bytes = Ecto.UUID.dump!(resource.id)
+
+    # Check if any flows exist for this resource
+    has_flows? =
+      Enum.any?(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
+        res_id_bytes == resource_id_bytes
+      end)
+
+    if has_flows? do
       case API.Client.Channel.map_or_drop_compatible_resource(
              resource,
              socket.assigns.gateway.last_seen_version
@@ -111,45 +279,136 @@ defmodule API.Gateway.Channel do
         :drop ->
           Logger.debug("Resource is not compatible with the gateway version",
             gateway_id: socket.assigns.gateway.id,
-            resource_id: resource_id
+            resource_id: resource.id
           )
       end
-
-      {:noreply, socket}
     end
-  end
 
-  # This event is ignored because we will receive a reject_access message from
-  # the Flows which will trigger a reject_access event
-  def handle_info({:delete_resource, resource_id}, socket) do
-    :ok = PubSub.Resource.unsubscribe(resource_id)
     {:noreply, socket}
   end
 
-  # Flows context broadcasts this message when flow is expired,
-  # which happens when policy, resource, actor, group, identity or provider were
-  # disabled or deleted
-  def handle_info({:expire_flow, flow_id, client_id, resource_id}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
+  # RESOURCE_CONNECTIONS
 
-    OpenTelemetry.Tracer.with_span "gateway.reject_access",
-      attributes: %{
-        flow_id: flow_id,
-        client_id: client_id,
-        resource_id: resource_id
-      } do
-      :ok = PubSub.Flow.unsubscribe(flow_id)
+  def handle_info({:deleted, %Resources.Connection{resource_id: resource_id}}, socket) do
+    flow_cache = socket.assigns.flow_cache
 
-      push(socket, "reject_access", %{
-        flow_id: flow_id,
-        client_id: client_id,
-        resource_id: resource_id
-      })
+    # Convert to bytes representation for comparison with our cache
+    resource_id_bytes = Ecto.UUID.dump!(resource_id)
 
-      {:noreply, socket}
+    # Find all flows for this resource
+    affected_flows =
+      Map.filter(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
+        res_id_bytes == resource_id_bytes
+      end)
+
+    case affected_flows do
+      flows when map_size(flows) == 0 ->
+        {:noreply, socket}
+
+      affected_flows ->
+        # Send reject_access for each affected client/resource pair
+        affected_flows
+        |> Map.keys()
+        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
+          {client_id_bytes, resource_id_bytes}
+        end)
+        |> Enum.uniq()
+        |> Enum.each(fn {client_id_bytes, _} ->
+          push(socket, "reject_access", %{
+            client_id: Ecto.UUID.cast!(client_id_bytes),
+            resource_id: resource_id
+          })
+        end)
+
+        # Remove affected flows from cache
+        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
+
+        {:noreply, assign(socket, flow_cache: updated_cache)}
     end
   end
+
+  # TOKENS
+
+  # Our gateway token was deleted
+  def handle_info({:deleted, %Tokens.Token{type: :gateway_group, id: id}}, socket)
+      when id == socket.assigns.subject.token_id do
+    push(socket, "disconnect", %{"reason" => "token_expired"})
+    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+    {:stop, :shutdown, socket}
+  end
+
+  # A client's token was deleted, remove all flows for that token
+  def handle_info({:deleted, %Tokens.Token{type: :client, id: token_id}}, socket) do
+    flow_cache = socket.assigns.flow_cache
+    token_id_bytes = Ecto.UUID.dump!(token_id)
+
+    # Find all flows for this token
+    affected_flows =
+      Map.filter(flow_cache, fn {{t_id_bytes, _, _, _}, _} ->
+        t_id_bytes == token_id_bytes
+      end)
+
+    case affected_flows do
+      flows when map_size(flows) == 0 ->
+        {:noreply, socket}
+
+      affected_flows ->
+        # Send reject_access for each affected client/resource pair
+        affected_flows
+        |> Map.keys()
+        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
+          {client_id_bytes, resource_id_bytes}
+        end)
+        |> Enum.uniq()
+        |> Enum.each(fn {client_id_bytes, resource_id_bytes} ->
+          push(socket, "reject_access", %{
+            client_id: Ecto.UUID.cast!(client_id_bytes),
+            resource_id: Ecto.UUID.cast!(resource_id_bytes)
+          })
+        end)
+
+        # Remove affected flows from cache
+        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
+
+        {:noreply, assign(socket, flow_cache: updated_cache)}
+    end
+  end
+
+  # Client channel pid broadcasts this whenever a membership is deleted that affects its access.
+  def handle_info({:expire_flow, client_id, resource_id}, socket) do
+    flow_cache = socket.assigns.flow_cache
+
+    # Convert to bytes representation for comparison with our cache
+    client_id_bytes = Ecto.UUID.dump!(client_id)
+    resource_id_bytes = Ecto.UUID.dump!(resource_id)
+
+    # Find all flows for this client/resource pair
+    affected_flows =
+      Map.filter(flow_cache, fn {{_, _, c_id_bytes, res_id_bytes}, _} ->
+        c_id_bytes == client_id_bytes and res_id_bytes == resource_id_bytes
+      end)
+
+    case affected_flows do
+      flows when map_size(flows) == 0 ->
+        {:noreply, socket}
+
+      affected_flows ->
+        # We only need a single reject_access message for this pair
+        push(socket, "reject_access", %{
+          client_id: client_id,
+          resource_id: resource_id
+        })
+
+        # Remove affected flows from cache
+        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
+
+        {:noreply, assign(socket, flow_cache: updated_cache)}
+    end
+  end
+
+  ####################################
+  #### Reacting to relay presence ####
+  ####################################
 
   @impl true
   def handle_info(
@@ -266,9 +525,11 @@ defmodule API.Gateway.Channel do
   ##############################################################
 
   def handle_info(
-        {:ice_candidates, client_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
+        {{:ice_candidates, gateway_id}, client_id, candidates,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        %{assigns: %{gateway: %{id: id}}} = socket
+      )
+      when gateway_id == id do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
@@ -287,10 +548,11 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info(
-        {:invalidate_ice_candidates, client_id, candidates,
+        {{:invalidate_ice_candidates, gateway_id}, client_id, candidates,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
+        %{assigns: %{gateway: %{id: id}}} = socket
+      )
+      when gateway_id == id do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
@@ -309,38 +571,31 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info(
-        {:authorize_flow, {channel_pid, socket_ref}, payload,
+        {{:authorize_flow, gateway_id}, {channel_pid, socket_ref}, payload,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
+        %{assigns: %{gateway: %{id: id}}} = socket
+      )
+      when gateway_id == id do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     %{
-      client_id: client_id,
-      resource_id: resource_id,
+      client: client,
+      resource: resource,
       flow_id: flow_id,
+      token_id: token_id,
+      policy_id: policy_id,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
       preshared_key: preshared_key
     } = payload
 
     OpenTelemetry.Tracer.with_span "gateway.authorize_flow" do
-      :ok = PubSub.Flow.subscribe(flow_id)
-
       Logger.debug("Gateway authorizes a new network flow",
         flow_id: flow_id,
-        client_id: client_id,
-        resource_id: resource_id
+        client_id: client.id,
+        resource_id: resource.id
       )
-
-      client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
-      resource = Resources.fetch_resource_by_id!(resource_id)
-
-      # TODO: WAL
-      # Why are we unsubscribing and subscribing again?
-      :ok = PubSub.Resource.unsubscribe(resource_id)
-      :ok = PubSub.Resource.subscribe(resource_id)
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
 
@@ -348,11 +603,24 @@ defmodule API.Gateway.Channel do
         encode_ref(socket, {
           channel_pid,
           socket_ref,
-          resource_id,
+          resource.id,
           preshared_key,
           ice_credentials,
           opentelemetry_headers
         })
+
+      inserted_at = DateTime.utc_now() |> DateTime.to_unix(:second)
+
+      # Convert to binary UUIDs and add to cache
+      cache_key = {
+        Ecto.UUID.dump!(token_id),
+        Ecto.UUID.dump!(policy_id),
+        Ecto.UUID.dump!(client.id),
+        Ecto.UUID.dump!(resource.id)
+      }
+
+      flow_cache = Map.put(socket.assigns.flow_cache, cache_key, inserted_at)
+      socket = assign(socket, flow_cache: flow_cache)
 
       push(socket, "authorize_flow", %{
         ref: ref,
@@ -362,13 +630,15 @@ defmodule API.Gateway.Channel do
         gateway_ice_credentials: ice_credentials.gateway,
         client: Views.Client.render(client, preshared_key),
         client_ice_credentials: ice_credentials.client,
-        expires_at:
-          if(authorization_expires_at, do: DateTime.to_unix(authorization_expires_at, :second))
+        # Gateway manages its own expiration
+        expires_at: if(authorization_expires_at,
+          do: DateTime.to_unix(authorization_expires_at, :second)
+        ),
       })
 
       Logger.debug("Awaiting gateway flow_authorized message",
-        client_id: client_id,
-        resource_id: resource_id,
+        client_id: client.id,
+        resource_id: resource.id,
         flow_id: flow_id
       )
 
@@ -378,17 +648,20 @@ defmodule API.Gateway.Channel do
 
   # DEPRECATED IN 1.4
   def handle_info(
-        {:allow_access, {channel_pid, socket_ref}, attrs,
+        {{:allow_access, gateway_id}, {channel_pid, socket_ref}, attrs,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
+        %{assigns: %{gateway: %{id: id}}} = socket
+      )
+      when gateway_id == id do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     %{
-      client_id: client_id,
-      resource_id: resource_id,
+      client: client,
+      resource: resource,
       flow_id: flow_id,
+      token_id: token_id,
+      policy_id: policy_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
@@ -396,126 +669,138 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.with_span "gateway.allow_access",
       attributes: %{
         flow_id: flow_id,
-        client_id: client_id,
-        resource_id: resource_id
+        client_id: client.id,
+        resource_id: resource.id
       } do
-      :ok = PubSub.Flow.subscribe(flow_id)
-
-      client = Clients.fetch_client_by_id!(client_id)
-      resource = Resources.fetch_resource_by_id!(resource_id)
-
       case API.Client.Channel.map_or_drop_compatible_resource(
              resource,
              socket.assigns.gateway.last_seen_version
            ) do
         {:cont, resource} ->
-          # TODO: WAL
-          # Why are we unsubscribing and subscribing again?
-          :ok = PubSub.Resource.unsubscribe(resource_id)
-          :ok = PubSub.Resource.subscribe(resource_id)
-
           opentelemetry_headers = :otel_propagator_text_map.inject([])
-          ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})
+          ref = encode_ref(socket, {channel_pid, socket_ref, resource.id, opentelemetry_headers})
+          expires_at = DateTime.to_unix(authorization_expires_at, :second)
+
+          # Convert to binary UUIDs and add to cache
+          cache_key = {
+            Ecto.UUID.dump!(token_id),
+            Ecto.UUID.dump!(policy_id),
+            Ecto.UUID.dump!(client.id),
+            Ecto.UUID.dump!(resource.id)
+          }
+
+          flow_cache = Map.put(socket.assigns.flow_cache, cache_key, expires_at)
+          socket = assign(socket, flow_cache: flow_cache)
 
           push(socket, "allow_access", %{
             ref: ref,
-            client_id: client_id,
-            flow_id: flow_id,
+            client_id: client.id,
             resource: Views.Resource.render(resource),
-            expires_at: DateTime.to_unix(authorization_expires_at, :second),
+            expires_at: expires_at,
             payload: payload,
             client_ipv4: client.ipv4,
             client_ipv6: client.ipv6
           })
 
           Logger.debug("Awaiting gateway connection_ready message",
-            client_id: client_id,
-            resource_id: resource_id,
+            client_id: client.id,
+            resource_id: resource.id,
             flow_id: flow_id
           )
+
+          {:noreply, socket}
 
         :drop ->
           Logger.debug("Resource is not compatible with the gateway version",
             gateway_id: socket.assigns.gateway.id,
-            client_id: client_id,
-            resource_id: resource_id,
+            client_id: client.id,
+            resource_id: resource.id,
             flow_id: flow_id
           )
-      end
 
-      {:noreply, socket}
+          {:noreply, socket}
+      end
     end
   end
 
   # DEPRECATED IN 1.4
   def handle_info(
-        {:request_connection, {channel_pid, socket_ref}, attrs,
+        {{:request_connection, gateway_id}, {channel_pid, socket_ref}, attrs,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
+        %{assigns: %{gateway: %{id: id}}} = socket
+      )
+      when gateway_id == id do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     %{
-      client_id: client_id,
-      resource_id: resource_id,
+      client: client,
+      resource: resource,
       flow_id: flow_id,
+      token_id: token_id,
+      policy_id: policy_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload,
       client_preshared_key: preshared_key
     } = attrs
 
     OpenTelemetry.Tracer.with_span "gateway.request_connection" do
-      :ok = PubSub.Flow.subscribe(flow_id)
-
       Logger.debug("Gateway received connection request message",
-        client_id: client_id,
-        resource_id: resource_id
+        client_id: client.id,
+        resource_id: resource.id
       )
-
-      client = Clients.fetch_client_by_id!(client_id, preload: [:actor])
-      resource = Resources.fetch_resource_by_id!(resource_id)
 
       case API.Client.Channel.map_or_drop_compatible_resource(
              resource,
              socket.assigns.gateway.last_seen_version
            ) do
         {:cont, resource} ->
-          # TODO: WAL
-          # Why are we unsubscribing and subscribing again?
-          :ok = PubSub.Resource.unsubscribe(resource_id)
-          :ok = PubSub.Resource.subscribe(resource_id)
-
           opentelemetry_headers = :otel_propagator_text_map.inject([])
-          ref = encode_ref(socket, {channel_pid, socket_ref, resource_id, opentelemetry_headers})
+          ref = encode_ref(socket, {channel_pid, socket_ref, resource.id, opentelemetry_headers})
+          expires_at = DateTime.to_unix(authorization_expires_at, :second)
+
+          # Convert to binary UUIDs and add to cache
+          cache_key = {
+            Ecto.UUID.dump!(token_id),
+            Ecto.UUID.dump!(policy_id),
+            Ecto.UUID.dump!(client.id),
+            Ecto.UUID.dump!(resource.id)
+          }
+
+          flow_cache = Map.put(socket.assigns.flow_cache, cache_key, expires_at)
+          socket = assign(socket, flow_cache: flow_cache)
 
           push(socket, "request_connection", %{
             ref: ref,
-            flow_id: flow_id,
             actor: Views.Actor.render(client.actor),
             resource: Views.Resource.render(resource),
             client: Views.Client.render(client, payload, preshared_key),
-            expires_at: DateTime.to_unix(authorization_expires_at, :second)
+            expires_at: expires_at
           })
 
           Logger.debug("Awaiting gateway connection_ready message",
-            client_id: client_id,
-            resource_id: resource_id,
+            client_id: client.id,
+            resource_id: resource.id,
             flow_id: flow_id
           )
+
+          {:noreply, socket}
 
         :drop ->
           Logger.debug("Resource is not compatible with the gateway version",
             gateway_id: socket.assigns.gateway.id,
-            client_id: client_id,
-            resource_id: resource_id,
+            client_id: client.id,
+            resource_id: resource.id,
             flow_id: flow_id
           )
-      end
 
-      {:noreply, socket}
+          {:noreply, socket}
+      end
     end
   end
+
+  # Catch-all for messages we don't handle
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
   def handle_in("flow_authorized", %{"ref" => signed_ref}, socket) do
@@ -624,9 +909,9 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          PubSub.Client.broadcast(
-            client_id,
-            {:ice_candidates, socket.assigns.gateway.id, candidates,
+          PubSub.Account.broadcast(
+            socket.assigns.gateway.account_id,
+            {{:ice_candidates, client_id}, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
         end)
@@ -649,9 +934,9 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(client_ids, fn client_id ->
-          PubSub.Client.broadcast(
-            client_id,
-            {:invalidate_ice_candidates, socket.assigns.gateway.id, candidates,
+          PubSub.Account.broadcast(
+            socket.assigns.gateway.account_id,
+            {{:invalidate_ice_candidates, client_id}, socket.assigns.gateway.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
         end)

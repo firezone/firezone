@@ -1,7 +1,20 @@
 defmodule API.Client.Channel do
   use API, :channel
   alias API.Client.Views
-  alias Domain.{Accounts, Clients, Actors, PubSub, Resources, Gateways, Relays, Policies, Flows}
+
+  alias Domain.{
+    Accounts,
+    Clients,
+    Actors,
+    PubSub,
+    Resources,
+    Gateways,
+    Relays,
+    Policies,
+    Flows,
+    Tokens
+  }
+
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -63,50 +76,39 @@ defmodule API.Client.Channel do
     end
   end
 
-  defp init(socket) do
-    OpenTelemetry.Tracer.with_span "client.init" do
-      {:ok, resources} =
-        Resources.all_authorized_resources(socket.assigns.subject,
-          preload: [
-            :gateway_groups
-          ]
-        )
+  @impl true
 
-      # We pre-filter them before subscribing to events to avoid accidentally rendering them later
-      resources = Policies.pre_filter_non_conforming_resources(resources, socket.assigns.client)
+  # Called immediately after the client joins the channel
+  def handle_info({:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
+    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
+    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
-      # We subscribe for all resource events but only care about update events,
-      # where resource might be renamed which should be propagated to the UI.
-      :ok =
-        Enum.each(resources, fn resource ->
-          # TODO: WAL
-          # Why are we unsubscribing and subscribing again?
-          :ok = PubSub.Resource.unsubscribe(resource.id)
-          :ok = PubSub.Resource.subscribe(resource.id)
-        end)
-
-      # Subscribe for known gateway group names so that if they are updated - we can render change in the UI
-      :ok =
-        resources
-        |> Enum.flat_map(& &1.gateway_groups)
-        |> Enum.uniq()
-        |> Enum.each(fn gateway_group ->
-          # TODO: WAL
-          # Why are we unsubscribing and subscribing again?
-          :ok = PubSub.GatewayGroup.unsubscribe(gateway_group.id)
-          :ok = PubSub.GatewayGroup.subscribe(gateway_group.id)
-        end)
-
-      # Return all connected relays for the account
+    OpenTelemetry.Tracer.with_span "client.after_join" do
+      # RELAYS
       {:ok, relays} = select_relays(socket)
       :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
       :ok = maybe_subscribe_for_relays_presence(relays, socket)
+      socket = Debouncer.cache_stamp_secrets(socket, relays)
 
-      resources =
-        map_and_filter_compatible_resources(resources, socket.assigns.client.last_seen_version)
+      # Track client's presence
+      :ok = Clients.Presence.connect(socket.assigns.client)
+
+      # Subscribe to all account updates
+      :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
+
+      # Maintain a cache of all policies and group_ids that affect us
+      policies =
+        Policies.all_policies_for_actor!(socket.assigns.client.actor)
+        |> Map.new(fn policy -> {policy.id, policy} end)
+
+      group_ids =
+        Actors.all_actor_group_ids!(socket.assigns.client.actor)
+        |> MapSet.new()
+
+      socket = assign(socket, policies: policies, group_ids: group_ids)
 
       push(socket, "init", %{
-        resources: Views.Resource.render_many(resources),
+        resources: Views.Resource.render_many(get_resources(socket)),
         relays:
           Views.Relay.render_many(
             relays,
@@ -119,34 +121,6 @@ defmodule API.Client.Channel do
             | account: socket.assigns.subject.account
           })
       })
-
-      # Cache new stamp secrets
-      socket = Debouncer.cache_stamp_secrets(socket, relays)
-
-      {:ok, socket}
-    end
-  end
-
-  @impl true
-  def handle_info({:after_join, {opentelemetry_ctx, opentelemetry_span_ctx}}, socket) do
-    OpenTelemetry.Ctx.attach(opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.after_join" do
-      :ok = Clients.Presence.connect(socket.assigns.client)
-
-      # Subscribe for account config updates
-      :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
-
-      # We subscribe for membership updates for all actor groups the client is a member of,
-      :ok = PubSub.Actor.Memberships.subscribe(socket.assigns.subject.actor.id)
-
-      # We subscribe for policy access events for the actor and the groups the client is a member of,
-      actor_group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)
-      :ok = Enum.each(actor_group_ids, &PubSub.ActorGroup.Policies.subscribe/1)
-      :ok = PubSub.Actor.Policies.subscribe(socket.assigns.subject.actor.id)
-
-      {:ok, socket} = init(socket)
 
       {:noreply, socket}
     end
@@ -161,257 +135,303 @@ defmodule API.Client.Channel do
   ##### Reacting to domain events ####
   ####################################
 
-  # This message is sent using Clients.broadcast_to_client/1 eg. when the client is deleted
-  def handle_info("disconnect", socket) do
-    OpenTelemetry.Tracer.with_span "client.disconnect" do
-      push(socket, "disconnect", %{reason: :token_expired})
-      send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-      {:stop, :shutdown, socket}
-    end
-  end
+  # ACCOUNTS
 
-  # This event is broadcasted from the Accounts context whenever the account config is changed
-  def handle_info(:config_changed, socket) do
-    account = Accounts.fetch_account_by_id!(socket.assigns.client.account_id)
+  def handle_info(
+        {:updated, %Accounts.Account{config: old_config},
+         %Accounts.Account{config: config} = account},
+        socket
+      )
+      when old_config != config do
+    socket = assign(socket, client: %{socket.assigns.client | account: account})
 
     :ok =
       push(socket, "config_changed", %{
-        interface:
-          Views.Interface.render(%{
-            socket.assigns.client
-            | account: account
-          })
+        interface: Views.Interface.render(socket.assigns.client)
       })
 
     {:noreply, socket}
   end
 
+  def handle_info({:deleted, %Accounts.Account{}}, socket) do
+    disconnect(socket)
+  end
+
+  # ACTOR_GROUP_MEMBERSHIPS
+
+  def handle_info(
+        {:created, %Actors.Membership{actor_id: actor_id, group_id: group_id}},
+        %{assigns: %{client: %{actor: %{id: id}}}} = socket
+      )
+      when id == actor_id do
+    # 1. Get existing resources
+    existing_resources = get_resources(socket)
+
+    # 2. Update our state
+    new_policies =
+      Policies.all_policies_for_actor_group_id!(socket.assigns.client.account_id, group_id)
+      |> Enum.map(fn policy -> {policy.id, policy} end)
+      |> Map.new()
+
+    socket =
+      socket
+      |> assign(policies: Map.merge(socket.assigns.policies, new_policies))
+      |> assign(group_ids: MapSet.put(socket.assigns.group_ids, group_id))
+
+    # 3. Get new resources
+    new_resources = get_resources(socket) -- existing_resources
+
+    # 4. Push new resources to the client
+    for resource <- new_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(
+        {:deleted, %Actors.Membership{actor_id: actor_id, group_id: group_id}},
+        %{assigns: %{client: %{actor: %{id: id}}}} = socket
+      )
+      when id == actor_id do
+    # 1. Get existing resources
+    existing_resources = get_resources(socket)
+
+    # 2. Update our state
+    policies =
+      socket.assigns.policies
+      |> Map.filter(fn {_id, policy} ->
+        policy.actor_group_id != group_id
+      end)
+
+    group_ids =
+      socket.assigns.group_ids
+      |> MapSet.delete(group_id)
+
+    socket =
+      socket
+      |> assign(group_ids: group_ids)
+      |> assign(policies: policies)
+
+    # 3. Get any resources we no longer have access to
+    deleted_resources = existing_resources -- get_resources(socket)
+
+    for resource <- deleted_resources do
+      # 4. Push deleted resources to the client
+      push(socket, "resource_deleted", resource.id)
+
+      # 5. Tell the gateway to expire relevant flows
+      payload = {:expire_flow, socket.assigns.client.id, resource.id}
+      :ok = PubSub.Account.broadcast(socket.assigns.client.account_id, payload)
+    end
+
+    {:noreply, socket}
+  end
+
+  # CLIENTS
+
+  def handle_info(
+        {:updated, %Clients.Client{verified_at: old_verified_at},
+         %Clients.Client{id: client_id, verified_at: verified_at}} = client,
+        %{assigns: %{client: %{id: id}}} = socket
+      )
+      when old_verified_at != verified_at and id == client_id do
+    # changes in client verification can affect the list of allowed resources - resend init
+    client = Map.merge(socket.assigns.client, client)
+    socket = assign(socket, client: client)
+
+    resources = get_resources(socket)
+
+    push(socket, "init", %{
+      resources: Views.Resource.render_many(resources),
+      relays: Views.Relay.render_many(socket.assigns.relays, socket.assigns.subject.expires_at),
+      interface: Views.Interface.render(client)
+    })
+
+    {:noreply, socket}
+  end
+
+  def handle_info(
+        {:deleted, %Clients.Client{id: client_id}},
+        %{assigns: %{client: %{id: id}}} = socket
+      )
+      when id == client_id do
+    disconnect(socket)
+  end
+
+  # POLICIES
+
+  def handle_info({:created, %Policies.Policy{} = policy}, socket) do
+    # check if this policy affects us
+    if MapSet.member?(socket.assigns.group_ids, policy.actor_group_id) do
+      # 1. Get existing resources
+      existing_resources = get_resources(socket)
+      # 2. Update our state
+      socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
+
+      # 3. Get new resources
+      new_resources = get_resources(socket)
+
+      # 4. Push new resource to the client
+      if [resource] = new_resources -- existing_resources do
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info({:deleted, %Policies.Policy{} = policy}, socket) do
+    # check if this policy affects us
+    if MapSet.member?(socket.assigns.group_ids, policy.actor_group_id) do
+      # 1. Get existing resources
+      existing_resources = get_resources(socket)
+
+      # 2. Update our state
+      socket = assign(socket, policies: Map.delete(socket.assigns.policies, policy.id))
+      new_resources = get_resources(socket)
+
+      # 3. Push deleted resource to the client
+      if [resource] = existing_resources -- new_resources do
+        push(socket, "resource_deleted", resource.id)
+      end
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # RESOURCE_CONNECTIONS
+
+  # Connlib doesn't explicitly handle site switching, so we need to handle these by replacing
+  # the resource. When a resource "moves" sites, Ecto will update the resource_connections by
+  # deleting and then recreating them, so can simply react to these by deleting and creating
+  # the resource.
+
+  def handle_info(
+        {:created,
+         %Resources.Connection{resource_id: resource_id, gateway_group_id: gateway_group_id}},
+        socket
+      ) do
+    # 1. check if this affects us
+    if resource = Enum.find(get_resources(socket), &(&1.id == resource_id)) do
+      # 2. broadcasted structs have no associations - fetch the gateway_group to hydrate the site name
+      {:ok, gateway_group} = Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject)
+
+      # 3. update our state
+      # TODO: If multi-site resources ever ships, we'll need to handle that here
+      resource = %{resource | gateway_groups: [gateway_group]}
+
+      policies =
+        Map.new(socket.assigns.policies, fn {id, policy} ->
+          if policy.resource.id == resource.id do
+            {id, %{policy | resource: resource}}
+          else
+            {id, policy}
+          end
+        end)
+
+      socket = assign(socket, policies: policies)
+
+      # 4. push
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Resource connection is a required field on resources, so a delete will always be followed by a create.
+  # This means connlib *should* never see a resource with no sites (gateway_groups).
+
+  def handle_info({:deleted, %Resources.Connection{resource_id: resource_id}}, socket) do
+    # 1. check if this affects us
+    if resource = Enum.find(get_resources(socket), &(&1.id == resource_id)) do
+      # 2. update our state
+      # TODO: If multi-site resources ever ships, we'll need to handle that here
+      resource = %{resource | gateway_groups: []}
+
+      policies =
+        Map.new(socket.assigns.policies, fn {id, policy} ->
+          if policy.resource.id == resource.id do
+            {id, %{policy | resource: %{resource | gateway_groups: []}}}
+          else
+            {id, policy}
+          end
+        end)
+
+      socket = assign(socket, policies: policies)
+
+      # 3. push
+      push(socket, "resource_deleted", resource.id)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # RESOURCES
+
+  # TODO: Keep resources in socket to do fast lookups
+  def handle_info(
+        {:updated, %Resources.Resource{}, %Resources.Resource{id: id} = updated_resource},
+        socket
+      ) do
+    # 1. check if we need to act
+    if resource = Enum.find(get_resources(socket), &(&1.id == id)) do
+      # 2. use preloaded gateway_group
+      resource = %{updated_resource | gateway_groups: resource.gateway_groups}
+
+      policies =
+        Map.new(socket.assigns.policies, fn {id, policy} ->
+          if policy.resource.id == resource.id do
+            {id, %{policy | resource: resource}}
+          else
+            {id, policy}
+          end
+        end)
+
+      socket = assign(socket, policies: policies)
+
+      # 3. push - connlib handles addressability changes
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # TOKENS
+
+  def handle_info(
+        {:deleted, %Tokens.Token{type: :client, id: id}},
+        %{assigns: %{subject: %{token_id: token_id}}} = socket
+      )
+      when id == token_id do
+    disconnect(socket)
+  end
+
+  ####################################
+  ##### Reacting to timed events #####
+  ####################################
+
   # Message is scheduled by schedule_expiration/1 on topic join to be sent
   # when the client token/subject expires
   def handle_info(:token_expired, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.token_expired" do
-      push(socket, "disconnect", %{reason: :token_expired})
-      {:stop, {:shutdown, :token_expired}, socket}
-    end
+    push(socket, "disconnect", %{reason: :token_expired})
+    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+    {:stop, :shutdown, socket}
   end
 
-  # This event is broadcasted when client was changed (eg. renamed, verified, etc.)
-  def handle_info({:updated, %Clients.Client{} = updated_client}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.updated" do
-      client = socket.assigns.client
-      socket = assign(socket, client: updated_client)
-
-      socket =
-        if client.verified_at != updated_client.verified_at do
-          # Re-initialize since list of allowed_resources could have changed
-          {:ok, socket} = init(socket)
-
-          socket
-        else
-          socket
-        end
-
-      {:noreply, socket}
-    end
-  end
-
-  # Resource is created
-  def handle_info({:create_resource, resource_id}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.resource_created",
-      attributes: %{resource_id: resource_id} do
-      with {:ok, resource} <-
-             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
-               preload: [:gateway_groups]
-             ),
-           true <-
-             Policies.client_conforms_any_on_connect?(
-               socket.assigns.client,
-               resource.authorized_by_policies
-             ) do
-        case map_or_drop_compatible_resource(
-               resource,
-               socket.assigns.client.last_seen_version
-             ) do
-          {:cont, resource} ->
-            push(
-              socket,
-              "resource_created_or_updated",
-              Views.Resource.render(resource)
-            )
-
-          :drop ->
-            :ok
-        end
-      else
-        {:error, _reason} ->
-          :ok
-
-        false ->
-          :ok
-      end
-
-      {:noreply, socket}
-    end
-  end
-
-  # Resource is updated, eg. renamed. We don't care about other changes
-  # as the access is dictated by the policy events
-  def handle_info({:update_resource, resource_id}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.resource_updated",
-      attributes: %{resource_id: resource_id} do
-      with {:ok, resource} <-
-             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
-               preload: [:gateway_groups]
-             ),
-           true <-
-             Policies.client_conforms_any_on_connect?(
-               socket.assigns.client,
-               resource.authorized_by_policies
-             ) do
-        case map_or_drop_compatible_resource(
-               resource,
-               socket.assigns.client.last_seen_version
-             ) do
-          {:cont, resource} ->
-            push(
-              socket,
-              "resource_created_or_updated",
-              Views.Resource.render(resource)
-            )
-
-          :drop ->
-            :ok
-        end
-      else
-        {:error, _reason} ->
-          :ok
-
-        false ->
-          :ok
-      end
-
-      {:noreply, socket}
-    end
-  end
-
-  # This event is ignored because we will receive a reject_access message from
-  # the Policies which will trigger a resource_deleted event
-  def handle_info({:delete_resource, _resource_id}, socket) do
-    {:noreply, socket}
-  end
-
-  # Those events are broadcasted by Actors whenever a membership is created or deleted
-  def handle_info({:create_membership, _actor_id, group_id}, socket) do
-    :ok = PubSub.ActorGroup.Policies.subscribe(group_id)
-    {:noreply, socket}
-  end
-
-  def handle_info({:delete_membership, _actor_id, group_id}, socket) do
-    :ok = PubSub.ActorGroup.Policies.unsubscribe(group_id)
-    {:noreply, socket}
-  end
-
-  # This message is received when there is a policy created or enabled
-  # allowing access to a resource by a client actor group
-  def handle_info({:allow_access, policy_id, actor_group_id, resource_id}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.allow_access",
-      attributes: %{
-        policy_id: policy_id,
-        actor_group_id: actor_group_id,
-        resource_id: resource_id
-      } do
-      # TODO: WAL
-      # Why are we unsubscribing and subscribing again?
-      :ok = PubSub.Resource.unsubscribe(resource_id)
-      :ok = PubSub.Resource.subscribe(resource_id)
-
-      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
-             preload: [:gateway_groups]
-           ) do
-        {:ok, resource} ->
-          case map_or_drop_compatible_resource(
-                 resource,
-                 socket.assigns.client.last_seen_version
-               ) do
-            {:cont, resource} ->
-              push(
-                socket,
-                "resource_created_or_updated",
-                Views.Resource.render(resource)
-              )
-
-            :drop ->
-              :ok
-          end
-
-        {:error, _reason} ->
-          :ok
-      end
-
-      {:noreply, socket}
-    end
-  end
-
-  # This message is received when the policy
-  # allowing access to a resource by a client actor group is deleted
-  def handle_info({:reject_access, policy_id, actor_group_id, resource_id}, socket) do
-    OpenTelemetry.Ctx.attach(socket.assigns.opentelemetry_ctx)
-    OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
-
-    OpenTelemetry.Tracer.with_span "client.reject_access",
-      attributes: %{
-        policy_id: policy_id,
-        actor_group_id: actor_group_id,
-        resource_id: resource_id
-      } do
-      :ok = PubSub.Resource.unsubscribe(resource_id)
-
-      # We potentially can re-create the flow but this will require keep tracking of client connections to gateways,
-      # which is not worth it as this case should be pretty rare. Instead we just tell client to remove it
-      # and the recreate it right away if there is another allowing access to it.
-      push(socket, "resource_deleted", resource_id)
-
-      case Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject,
-             preload: [:gateway_groups]
-           ) do
-        {:ok, resource} ->
-          case map_or_drop_compatible_resource(
-                 resource,
-                 socket.assigns.client.last_seen_version
-               ) do
-            {:cont, resource} ->
-              push(
-                socket,
-                "resource_created_or_updated",
-                Views.Resource.render(resource)
-              )
-
-            :drop ->
-              :ok
-          end
-
-        {:error, _reason} ->
-          :ok
-      end
-
-      {:noreply, socket}
-    end
-  end
+  ####################################
+  #### Reacting to relay presence ####
+  ####################################
 
   def handle_info(
         %Phoenix.Socket.Broadcast{
@@ -524,9 +544,11 @@ defmodule API.Client.Channel do
 
   # This the list of ICE candidates gathered by the gateway and relayed to the client
   def handle_info(
-        {:ice_candidates, gateway_id, candidates, {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
+        {{:ice_candidates, client_id}, gateway_id, candidates,
+         {opentelemetry_ctx, opentelemetry_span_ctx}},
+        %{assigns: %{client: %{id: id}}} = socket
+      )
+      when client_id == id do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
@@ -545,10 +567,11 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(
-        {:invalidate_ice_candidates, gateway_id, candidates,
+        {{:invalidate_ice_candidates, client_id}, gateway_id, candidates,
          {opentelemetry_ctx, opentelemetry_span_ctx}},
-        socket
-      ) do
+        %{assigns: %{client: %{id: id}}} = socket
+      )
+      when client_id == id do
     OpenTelemetry.Ctx.attach(opentelemetry_ctx)
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
@@ -622,6 +645,9 @@ defmodule API.Client.Channel do
     end
   end
 
+  # Catch-all for messages we don't handle
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   ####################################
   ##### Client-initiated actions #####
   ####################################
@@ -673,13 +699,15 @@ defmodule API.Client.Channel do
         ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
 
         :ok =
-          PubSub.Gateway.broadcast(
-            gateway.id,
-            {:authorize_flow, {self(), socket_ref(socket)},
+          PubSub.Account.broadcast(
+            socket.assigns.client.account_id,
+            {{:authorize_flow, gateway.id}, {self(), socket_ref(socket)},
              %{
-               client_id: socket.assigns.client.id,
-               resource_id: resource.id,
+               client: socket.assigns.client,
+               resource: resource,
                flow_id: flow.id,
+               token_id: flow.token_id,
+               policy_id: flow.policy_id,
                authorization_expires_at: expires_at,
                ice_credentials: ice_credentials,
                preshared_key: preshared_key
@@ -816,13 +844,15 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          PubSub.Gateway.broadcast(
-            gateway.id,
-            {:allow_access, {self(), socket_ref(socket)},
+          PubSub.Account.broadcast(
+            socket.assigns.client.account_id,
+            {{:allow_access, gateway.id}, {self(), socket_ref(socket)},
              %{
-               client_id: socket.assigns.client.id,
-               resource_id: resource.id,
+               client: socket.assigns.client,
+               resource: resource,
                flow_id: flow.id,
+               token_id: flow.token_id,
+               policy_id: flow.policy_id,
                authorization_expires_at: socket.assigns.subject.expires_at,
                client_payload: payload
              }, {opentelemetry_ctx, opentelemetry_span_ctx}}
@@ -878,13 +908,15 @@ defmodule API.Client.Channel do
         opentelemetry_span_ctx = OpenTelemetry.Tracer.current_span_ctx()
 
         :ok =
-          PubSub.Gateway.broadcast(
-            gateway.id,
-            {:request_connection, {self(), socket_ref(socket)},
+          PubSub.Account.broadcast(
+            socket.assigns.client.account_id,
+            {{:request_connection, gateway.id}, {self(), socket_ref(socket)},
              %{
-               client_id: socket.assigns.client.id,
-               resource_id: resource.id,
+               client: socket.assigns.client,
+               resource: resource,
                flow_id: flow.id,
+               token_id: flow.token_id,
+               policy_id: flow.policy_id,
                authorization_expires_at: socket.assigns.subject.expires_at,
                client_payload: client_payload,
                client_preshared_key: preshared_key
@@ -925,9 +957,9 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(gateway_ids, fn gateway_id ->
-          PubSub.Gateway.broadcast(
-            gateway_id,
-            {:ice_candidates, socket.assigns.client.id, candidates,
+          PubSub.Account.broadcast(
+            socket.assigns.client.account_id,
+            {{:ice_candidates, gateway_id}, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
         end)
@@ -950,9 +982,9 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(gateway_ids, fn gateway_id ->
-          PubSub.Gateway.broadcast(
-            gateway_id,
-            {:invalidate_ice_candidates, socket.assigns.client.id, candidates,
+          PubSub.Account.broadcast(
+            socket.assigns.client.account_id,
+            {{:invalidate_ice_candidates, gateway_id}, socket.assigns.client.id, candidates,
              {opentelemetry_ctx, opentelemetry_span_ctx}}
           )
         end)
@@ -1119,5 +1151,19 @@ defmodule API.Client.Channel do
       client: %{username: client_username, password: client_password},
       gateway: %{username: gateway_username, password: gateway_password}
     }
+  end
+
+  defp disconnect(socket) do
+    push(socket, "disconnect", %{reason: :token_expired})
+    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+    {:stop, :shutdown, socket}
+  end
+
+  defp get_resources(socket) do
+    socket.assigns.policies
+    |> Enum.map(& &1.resource)
+    |> Enum.uniq()
+    |> Policies.pre_filter_non_conforming_resources(socket.assigns.client)
+    |> map_and_filter_compatible_resources(socket.assigns.client.last_seen_version)
   end
 end

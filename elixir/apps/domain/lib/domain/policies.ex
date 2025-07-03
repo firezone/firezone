@@ -58,6 +58,22 @@ defmodule Domain.Policies do
     end
   end
 
+  def all_policies_for_actor!(%Actors.Actor{} = actor) do
+    Policy.Query.not_disabled()
+    |> Policy.Query.by_account_id(actor.account_id)
+    |> Policy.Query.by_actor_id(actor.id)
+    |> Policy.Query.with_preloaded_resource_gateway_group()
+    |> Repo.all()
+  end
+
+  def all_policies_for_actor_group_id!(account_id, actor_group_id) do
+    Policy.Query.not_disabled()
+    |> Policy.Query.by_account_id(account_id)
+    |> Policy.Query.by_actor_group_id(actor_group_id)
+    |> Policy.Query.with_preloaded_resource_gateway_group()
+    |> Repo.all()
+  end
+
   def new_policy(attrs, %Auth.Subject{} = subject) do
     Policy.Changeset.create(attrs, subject)
   end

@@ -1,6 +1,6 @@
 defmodule Domain.Flows do
   alias Domain.Repo
-  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies, Tokens}
+  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies}
   alias Domain.Flows.{Authorizer, Flow}
   require Ecto.Query
   require Logger
@@ -89,6 +89,14 @@ defmodule Domain.Flows do
     end
   end
 
+  def all_gateway_flows_for_cache!(%Gateways.Gateway{} = gateway) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(gateway.account_id)
+    |> Flow.Query.by_gateway_id(gateway.id)
+    |> Flow.Query.for_cache()
+    |> Repo.all()
+  end
+
   def list_flows_for(assoc, subject, opts \\ [])
 
   def list_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject, opts) do
@@ -126,124 +134,6 @@ defmodule Domain.Flows do
       queryable
       |> Authorizer.for_subject(Flow, subject)
       |> Repo.list(Flow.Query, opts)
-    end
-  end
-
-  # TODO: WAL
-  # Remove all of the indexes used for these after flow expiration is moved to state
-  # broadcasts
-
-  def expire_flows_for(%Auth.Identity{} = identity) do
-    Flow.Query.all()
-    |> Flow.Query.by_identity_id(identity.id)
-    |> expire_flows()
-  end
-
-  def expire_flows_for(%Clients.Client{} = client) do
-    Flow.Query.all()
-    |> Flow.Query.by_client_id(client.id)
-    |> expire_flows()
-  end
-
-  def expire_flows_for(%Actors.Group{} = actor_group) do
-    Flow.Query.all()
-    |> Flow.Query.by_policy_actor_group_id(actor_group.id)
-    |> expire_flows()
-  end
-
-  def expire_flows_for(%Tokens.Token{} = token, %Auth.Subject{} = subject) do
-    Flow.Query.all()
-    |> Flow.Query.by_token_id(token.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    Flow.Query.all()
-    |> Flow.Query.by_actor_id(actor.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
-    Flow.Query.all()
-    |> Flow.Query.by_identity_id(identity.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
-    Flow.Query.all()
-    |> Flow.Query.by_resource_id(resource.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
-    Flow.Query.all()
-    |> Flow.Query.by_policy_actor_group_id(actor_group.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    Flow.Query.all()
-    |> Flow.Query.by_identity_provider_id(provider.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(account_id, actor_id, group_id) do
-    Flow.Query.all()
-    |> Flow.Query.by_account_id(account_id)
-    |> Flow.Query.by_actor_id(actor_id)
-    |> Flow.Query.by_policy_actor_group_id(group_id)
-    |> expire_flows()
-  end
-
-  def expire_flows_for_resource_id(account_id, resource_id) do
-    Flow.Query.all()
-    |> Flow.Query.by_account_id(account_id)
-    |> Flow.Query.by_resource_id(resource_id)
-    |> expire_flows()
-  end
-
-  def expire_flows_for_policy_id(account_id, policy_id) do
-    Flow.Query.all()
-    |> Flow.Query.by_account_id(account_id)
-    |> Flow.Query.by_policy_id(policy_id)
-    |> expire_flows()
-  end
-
-  defp expire_flows(queryable, subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
-      queryable
-      |> Authorizer.for_subject(Flow, subject)
-      |> expire_flows()
-    end
-  end
-
-  defp expire_flows(queryable) do
-    {:ok, :ok} =
-      Repo.transaction(fn ->
-        queryable
-        |> Repo.stream()
-        |> Stream.chunk_every(100)
-        |> Enum.each(fn chunk ->
-          Enum.each(chunk, &broadcast_flow_expiration/1)
-        end)
-      end)
-
-    :ok
-  end
-
-  defp broadcast_flow_expiration(flow) do
-    case Domain.PubSub.Flow.broadcast(
-           flow.id,
-           {:expire_flow, flow.id, flow.client_id, flow.resource_id}
-         ) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.error("Failed to broadcast flow expiration",
-          reason: inspect(reason),
-          flow_id: flow.id
-        )
     end
   end
 end

@@ -16,7 +16,7 @@ defmodule Web.Policies.Show do
       providers = Auth.all_active_providers_for_account!(socket.assigns.account)
 
       if connected?(socket) do
-        :ok = PubSub.Policy.subscribe(policy.id)
+        :ok = PubSub.Account.subscribe(policy.account_id)
       end
 
       socket =
@@ -302,7 +302,12 @@ defmodule Web.Policies.Show do
     """
   end
 
-  def handle_info({_action, _policy_id}, socket) do
+  # TODO: Do we really want to update the view in place?
+  def handle_info(
+        {_action, _old_policy, %Policies.Policy{id: policy_id}},
+        %{assigns: %{policy: %{id: id}}} = socket
+      )
+      when policy_id == id do
     {:ok, policy} =
       Policies.fetch_policy_by_id_or_persistent_id(
         socket.assigns.policy.id,
@@ -316,6 +321,10 @@ defmodule Web.Policies.Show do
       )
 
     {:noreply, assign(socket, policy: policy)}
+  end
+
+  def handle_info(_, socket) do
+    {:noreply, socket}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
