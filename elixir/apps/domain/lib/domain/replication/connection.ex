@@ -92,25 +92,44 @@ defmodule Domain.Replication.Connection do
               error_threshold: integer()
             }
 
-      defstruct schema: @schema,
-                step: :disconnected,
-                publication_name: nil,
-                replication_slot_name: nil,
-                output_plugin: @output_plugin,
-                proto_version: @proto_version,
-                table_subscriptions: [],
-                relations: %{},
-                counter: 0,
-                tables_to_remove: MapSet.new(),
-                flush_interval: 0,
-                flush_buffer: %{},
-                last_flushed_lsn: 0,
-                warning_threshold_exceeded?: false,
-                error_threshold_exceeded?: false,
-                flush_buffer_size: 0,
-                status_log_interval: :timer.minutes(1),
-                warning_threshold: :timer.seconds(30),
-                error_threshold: :timer.seconds(60)
+      defstruct(
+        # schema to use for the publication
+        schema: @schema,
+        # starting step
+        step: :disconnected,
+        # publication name to check/create
+        publication_name: nil,
+        # replication slot name to check/create
+        replication_slot_name: nil,
+        # output plugin to use for logical replication
+        output_plugin: @output_plugin,
+        # protocol version to use for logical replication
+        proto_version: @proto_version,
+        # tables we want to subscribe to in the publication
+        table_subscriptions: [],
+        # relations we have seen so far
+        relations: %{},
+        # counter for the number of messages processed
+        counter: 0,
+        # calculated tables to remove from the publication
+        tables_to_remove: MapSet.new(),
+        # flush interval in milliseconds, set to 0 to use immediate processing
+        flush_interval: 0,
+        # buffer for data to flush
+        flush_buffer: %{},
+        # last flushed LSN, used to track progress while flushing
+        last_flushed_lsn: 0,
+        # flags to track if we have exceeded warning/error thresholds
+        warning_threshold_exceeded?: false,
+        error_threshold_exceeded?: false,
+        # size of the flush buffer, used to determine when to flush
+        flush_buffer_size: 0,
+        # interval for logging status updates
+        status_log_interval: :timer.minutes(1),
+        # thresholds for warning and error logging
+        warning_threshold: :timer.seconds(30),
+        error_threshold: :timer.seconds(60)
+      )
     end
   end
 
