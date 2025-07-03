@@ -1,10 +1,10 @@
-defmodule Domain.Release do
-  require Logger
+defmodule Domain.Release 
+   Logger
 
   @otp_app :domain
   @repos Application.compile_env!(@otp_app, :ecto_repos)
 
-  def migrate(opts \\ []) do
+   migrate(opts \\ []) 
     IO.puts("Starting sentry app..")
     {:ok, _} = Application.ensure_all_started(:sentry)
 
@@ -19,12 +19,12 @@ defmodule Domain.Release do
         )
       )
 
-    for repo <- @repos do
+     repo <- @repos 
       {:ok, _, _} = do_migration(repo, manual)
-    end
-  end
+    
+  
 
-  def seed(directory \\ seed_script_path(@otp_app)) do
+   seed(directory \\ seed_script_path(@otp_app)) 
     IO.puts("Starting #{@otp_app} app..")
     {:ok, _} = Application.ensure_all_started(@otp_app)
 
@@ -36,66 +36,64 @@ defmodule Domain.Release do
     |> Enum.each(fn path ->
       IO.puts("Requiring #{path}..")
       Code.require_file(path)
-    end)
-  end
+    )
+  
 
   defp seed_script_path(app), do: priv_dir(app, ["repo"])
 
-  defp priv_dir(app, path) when is_list(path) do
-    case :code.priv_dir(app) do
-      priv_path when is_list(priv_path) or is_binary(priv_path) ->
+  defp priv_dir(app, path)      is_list(path) 
+         :code.priv_dir(app) 
+      priv_path      is_list(priv_path)    is_binary(priv_path) ->
         Path.join([priv_path] ++ path)
 
       {:error, :bad_name} ->
-        raise ArgumentError, "unknown application: #{inspect(app)}"
-    end
-  end
+              ArgumentError, "unknown application: #{inspect(app)}"
 
-  defp do_migration(repo, manual) do
+     
+
+  defp do_migration(repo, manual) 
     default_path = priv_dir(@otp_app, ["repo", "migrations"])
     manual_path = priv_dir(@otp_app, ["repo", "manual_migrations"])
 
     paths =
-      if manual do
+         manual 
         [
           default_path,
           manual_path
         ]
-      else
+      
         [
           default_path
         ]
-      end
+      
 
     Ecto.Migrator.with_repo(repo, fn repo ->
-      Ecto.Migrator.run(repo, paths, :up, all: true)
+      Ecto.Migrator.run(repo, paths, :up, all:     )
 
-      unless manual do
+            manual 
         check_pending_manual_migrations(@otp_app, repo)
-      end
-    end)
-  end
+      
+       )
+  
 
-  defp check_pending_manual_migrations(app, repo) do
+  defp check_pending_manual_migrations(app, repo) 
     manual_path = priv_dir(app, ["repo", "manual_migrations"])
 
-    if File.dir?(manual_path) do
+       File.dir?(manual_path) 
       # Get all migrations from the manual directory
-      case Ecto.Migrator.migrations(repo, manual_path) do
+           Ecto.Migrator.migrations(repo, manual_path) 
         [] ->
           :ok
 
         migrations ->
           # Count pending migrations (status = :down)
-          Enum.count(migrations, fn {status, _, _} -> status == :down end)
+          Enum.count(migrations, fn {status, _, _} -> status == :down    )
           |> maybe_log_error()
-      end
-    end
-  end
+      
 
-  defp maybe_log_error(0), do: nil
+  defp maybe_log_error(0), do: 
 
-  defp maybe_log_error(pending) do
+  defp maybe_log_error(pending) 
     error = """
       #{pending} pending manual migration(s) were not run because run_manual_migrations is false.
       Run the following command from an IEx shell when you're ready to execute them:
@@ -109,8 +107,8 @@ defmodule Domain.Release do
     # a message and wait for it to send.
     Task.start(fn ->
       Sentry.capture_message(error)
-    end)
+       )
 
     Process.sleep(1_000)
-  end
-end
+  
+
