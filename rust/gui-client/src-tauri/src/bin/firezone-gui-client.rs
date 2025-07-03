@@ -11,7 +11,6 @@ use clap::{Args, Parser};
 use controller::Failure;
 use firezone_gui_client::{controller, deep_link, elevation, gui, logging, settings};
 use firezone_telemetry::Telemetry;
-use firezone_telemetry::analytics;
 use settings::AdvancedSettingsLegacy;
 use tokio::runtime::Runtime;
 use tracing::subscriber::DefaultGuard;
@@ -81,12 +80,6 @@ fn try_main(
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
     let id = firezone_bin_shared::device_id::get().context("Failed to get device ID")?;
-    analytics::identify(
-        id.id.clone(),
-        api_url.clone(),
-        firezone_gui_client::RELEASE.to_owned(),
-        None,
-    );
 
     rt.block_on(telemetry.start(
         &api_url,
