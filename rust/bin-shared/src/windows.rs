@@ -251,7 +251,10 @@ fn get_best_non_tunnel_route(dst: IpAddr) -> io::Result<Route> {
         .filter(|adapter| is_up(adapter))
         .filter_map(|adapter| find_best_route_for_luid(&adapter.Luid, dst).ok())
         .min()
-        .ok_or(io::Error::other("No route to host"))?;
+        .ok_or(io::Error::new(
+            io::ErrorKind::HostUnreachable,
+            "No route to host",
+        ))?;
 
     tracing::debug!(src = %route.addr, %dst, "Resolved best route outside of tunnel interface");
 
