@@ -81,12 +81,14 @@ fn try_main(
     // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
     let id = firezone_bin_shared::device_id::get().context("Failed to get device ID")?;
 
-    rt.block_on(telemetry.start(
-        &api_url,
-        firezone_gui_client::RELEASE,
-        firezone_telemetry::GUI_DSN,
-        id.id,
-    ));
+    if cli.is_telemetry_allowed() {
+        rt.block_on(telemetry.start(
+            &api_url,
+            firezone_gui_client::RELEASE,
+            firezone_telemetry::GUI_DSN,
+            id.id,
+        ));
+    }
 
     // Don't fix the log filter for smoke tests because we can't show a dialog there.
     if !config.smoke_test {
@@ -277,6 +279,15 @@ struct Cli {
     /// For headless CI, disable the elevation check.
     #[arg(long, hide = true)]
     no_elevation_check: bool,
+
+    /// Disable sentry.io crash-reporting agent.
+    #[arg(
+        long,
+        env = "FIREZONE_NO_TELEMETRY",
+        default_value_t = false,
+        hide = true
+    )]
+    no_telemetry: bool,
 }
 
 impl Cli {
@@ -294,6 +305,10 @@ impl Cli {
 
     fn check_elevation(&self) -> bool {
         !self.no_elevation_check
+    }
+
+    fn is_telemetry_allowed(&self) -> bool {
+        !self.no_telemetry
     }
 }
 

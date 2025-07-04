@@ -576,14 +576,25 @@ impl<'a> Handler<'a> {
                 release,
                 account_slug,
             } => {
-                self.telemetry
-                    .start(
-                        &environment,
-                        &release,
-                        firezone_telemetry::GUI_DSN,
-                        self.device_id.id.clone(),
-                    )
-                    .await;
+                // This is a bit hacky.
+                // It would be cleaner to pass it down from the `Cli` struct.
+                // However, the service can be run in many different ways and adapting all of those
+                // is cumbersome.
+                // Disabling telemetry for the service is mostly useful for our own testing and therefore
+                // doesn't need to be exposed publicly anyway.
+                let is_telemetry_allowed =
+                    std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
+
+                if is_telemetry_allowed {
+                    self.telemetry
+                        .start(
+                            &environment,
+                            &release,
+                            firezone_telemetry::GUI_DSN,
+                            self.device_id.id.clone(),
+                        )
+                        .await
+                }
 
                 if let Some(account_slug) = account_slug {
                     Telemetry::set_account_slug(account_slug.clone());
