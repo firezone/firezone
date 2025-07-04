@@ -67,10 +67,6 @@ if config_env() == :prod do
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
 
-  config :domain, Domain.Gateways,
-    gateway_ipv4_masquerade: env_var_to_config!(:gateway_ipv4_masquerade),
-    gateway_ipv6_masquerade: env_var_to_config!(:gateway_ipv6_masquerade)
-
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
 
