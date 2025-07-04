@@ -110,11 +110,6 @@ defmodule Domain.Config.Definitions do
        [
          :auth_provider_adapters
        ]},
-      {"Gateways",
-       [
-         :gateway_ipv4_masquerade,
-         :gateway_ipv6_masquerade
-       ]},
       {"Outbound Emails",
        [
          :outbound_email_from,
@@ -565,13 +560,6 @@ defmodule Domain.Config.Definitions do
     default: %{},
     dump: &Dumper.keyword/1
   )
-
-  ##############################################
-  ## Gateways
-  ##############################################
-
-  defconfig(:gateway_ipv4_masquerade, :boolean, default: true)
-  defconfig(:gateway_ipv6_masquerade, :boolean, default: true)
 
   ##############################################
   ## HTTP Client Settings

@@ -38,10 +38,6 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
       :ok = Gateways.Presence.connect(socket.assigns.gateway)
 
-      config = Domain.Config.fetch_env!(:domain, Domain.Gateways)
-      ipv4_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv4_masquerade)
-      ipv6_masquerade_enabled? = Keyword.fetch!(config, :gateway_ipv6_masquerade)
-
       # Return all connected relays for the account
       relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
       {:ok, relays} = select_relays(socket)
@@ -54,9 +50,10 @@ defmodule API.Gateway.Channel do
         account_slug: account.slug,
         interface: Views.Interface.render(socket.assigns.gateway),
         relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
+        # These aren't used but needed for API compatibility
         config: %{
-          ipv4_masquerade_enabled: ipv4_masquerade_enabled?,
-          ipv6_masquerade_enabled: ipv6_masquerade_enabled?
+          ipv4_masquerade_enabled: true,
+          ipv6_masquerade_enabled: true
         }
       })
 
