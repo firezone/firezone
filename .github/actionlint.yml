@@ -11,6 +11,7 @@ self-hosted-runner:
     - ubuntu-24.04-xlarge
     - ubuntu-24.04-xlarge,
     - ubuntu-latest-xlarge
+    - windows-2022-arm-xlarge
     - windows-2022-xlarge
     - windows-2022-xlarge,
     - windows-2025-xlarge
