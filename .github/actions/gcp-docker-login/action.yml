@@ -7,7 +7,29 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - id: auth
+    - id: auth1
+      uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+      continue-on-error: true
+      with:
+        token_format: access_token
+        workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+        service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+        export_environment_variables: true
+        create_credentials_file: true
+
+    - id: auth2
+      if: ${{ steps.auth1.conclusion == 'failure' }}
+      uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+      continue-on-error: true
+      with:
+        token_format: access_token
+        workload_identity_provider: "projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/providers/github-actions"
+        service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
+        export_environment_variables: true
+        create_credentials_file: true
+
+    - id: auth3
+      if: ${{ steps.auth2.conclusion == 'failure' }}
       uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
       with:
         token_format: access_token
@@ -22,7 +44,7 @@ runs:
       with:
         registry: "us-east1-docker.pkg.dev"
         username: oauth2accesstoken
-        password: ${{ steps.auth.outputs.access_token }}
+        password: ${{ steps.auth3.outputs.access_token || steps.auth2.outputs.access_token || steps.auth1.outputs.access_token }}
 
     # DockerHub has stupid rate limits (see https://www.docker.com/increase-rate-limits/)
     # Use Google's public mirror instead: https://cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images
