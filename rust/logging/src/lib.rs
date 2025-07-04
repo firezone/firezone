@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use event_message_contains_filter::EventMessageContains;
+use firezone_telemetry::feature_flags;
 use sentry_tracing::EventFilter;
 use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
@@ -205,10 +206,18 @@ where
     use tracing::Level;
 
     sentry_tracing::layer()
-        .event_filter(move |md| match *md.level() {
-            Level::ERROR | Level::WARN => EventFilter::Event | EventFilter::Breadcrumb | EventFilter::Log,
-            Level::INFO | Level::DEBUG => EventFilter::Breadcrumb | EventFilter::Log,
-            _ => EventFilter::Ignore,
+        .event_filter(move |md| {
+            let mut event_filter = match *md.level() {
+                Level::ERROR | Level::WARN => EventFilter::Event | EventFilter::Breadcrumb,
+                Level::INFO | Level::DEBUG => EventFilter::Breadcrumb,
+                _ => return EventFilter::Ignore,
+            };
+
+            if feature_flags::stream_logs() {
+                event_filter |= EventFilter::Log
+            }
+
+            event_filter
         })
         .span_filter(|md| {
             matches!(

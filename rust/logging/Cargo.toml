@@ -9,6 +9,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+firezone-telemetry = { workspace = true }
 nu-ansi-term = { workspace = true }
 output_vt100 = { workspace = true }
 parking_lot = { workspace = true }

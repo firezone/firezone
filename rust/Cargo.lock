@@ -2511,6 +2511,7 @@ name = "firezone-logging"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "firezone-telemetry",
  "nu-ansi-term 0.50.1",
  "output_vt100",
  "parking_lot",
