@@ -3,7 +3,7 @@ description: "Login to the GCP docker registry"
 outputs:
   registry:
     description: "The full name of the registry we logged into"
-    value: ${{ format('us-east1-docker.pkg.dev/{0}', inputs.project) }}
+    value: ${{ format('us-east1-docker.pkg.dev/firezone-staging') }}
 runs:
   using: "composite"
   steps:
