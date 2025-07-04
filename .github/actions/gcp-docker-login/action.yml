@@ -15,7 +15,9 @@ runs:
         service_account: "github-actions@github-iam-387915.iam.gserviceaccount.com"
         export_environment_variables: true
         create_credentials_file: true
+
     - name: Login to Google Artifact Registry
+      if: ${{ runner.os == 'Linux' }}
       uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3.4.0
       with:
         registry: "us-east1-docker.pkg.dev"
@@ -25,6 +27,7 @@ runs:
     # DockerHub has stupid rate limits (see https://www.docker.com/increase-rate-limits/)
     # Use Google's public mirror instead: https://cloud.google.com/artifact-registry/docs/pull-cached-dockerhub-images
     - name: Setup registry mirror
+      if: ${{ runner.os == 'Linux' }}
       shell: bash
       run: |
         # Create daemon.json if it doesn't exist
@@ -38,5 +41,6 @@ runs:
         sudo service docker restart
 
     - name: Print docker system info
+      if: ${{ runner.os == 'Linux' }}
       shell: bash
       run: docker system info
