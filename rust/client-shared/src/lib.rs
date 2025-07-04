@@ -27,11 +27,12 @@ const PHOENIX_TOPIC: &str = "client";
 ///
 /// A session is created using [`Session::connect`].
 /// To stop the session, simply drop this struct.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Session {
     channel: UnboundedSender<Command>,
 }
 
+#[derive(Debug)]
 pub struct EventStream {
     channel: Receiver<Event>,
 }

@@ -178,7 +178,7 @@ struct Handler<'a> {
     telemetry_refresh: tokio::time::Interval,
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 enum Session {
     /// We've launched `connlib` but haven't heard back from it yet.
     Creating {
@@ -600,13 +600,13 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    /// Connects connlib
-    ///
-    /// Panics if there's no Tokio runtime or if connlib is already connected.
     fn try_connect(&mut self, api_url: &str, token: SecretString) -> Result<Session> {
         let started_at = Instant::now();
 
-        assert!(self.session.is_none());
+        if !self.session.is_none() {
+            tracing::warn!(session = ?self.session, "Connecting despite existing session");
+        }
+
         let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
 
         let url = LoginUrl::client(
