@@ -184,8 +184,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 
     let eventloop = future::poll_fn({
-        let mut eventloop =
-            Eventloop::new(tunnel, portal, tun_device_manager, firezone_id, telemetry);
+        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager, firezone_id);
 
         move |cx| eventloop.poll(cx)
     });

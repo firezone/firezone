@@ -146,9 +146,7 @@ impl Telemetry {
 
         // Important: Evaluate feature flags before checking `stream_logs` to avoid hitting the default.
         feature_flags::evaluate_now(firezone_id.clone(), environment).await;
-        let enable_logs = feature_flags::stream_logs();
-
-        tracing::info!(%environment, %enable_logs, "Starting telemetry");
+        tracing::info!(%environment, "Starting telemetry");
 
         let inner = sentry::init((
             dsn.0,
@@ -158,7 +156,7 @@ impl Telemetry {
                 release: Some(release.to_owned().into()),
                 max_breadcrumbs: 500,
                 before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
-                enable_logs,
+                enable_logs: true,
                 before_send_log: Some(Arc::new(append_tracing_fields_to_message)),
                 ..Default::default()
             },
@@ -182,32 +180,6 @@ impl Telemetry {
         });
         self.inner.replace(inner);
         sentry::start_session();
-    }
-
-    /// Refreshes the telemetry config.
-    ///
-    /// Looks at the current values of the relevant feature flags and re-initializes the client in case they changed.
-    pub fn refresh_config(&mut self) {
-        let Some(client) = self.inner.as_ref() else {
-            tracing::debug!("Cannot refresh config: no client");
-            return;
-        };
-
-        let enable_logs = feature_flags::stream_logs();
-
-        if client.options().enable_logs == enable_logs {
-            tracing::debug!("Config is up-to-date");
-            return;
-        }
-
-        let options = client.options().clone();
-
-        tracing::info!(%enable_logs, "Re-initializing telemetry");
-
-        self.inner.replace(sentry::init(sentry::ClientOptions {
-            enable_logs,
-            ..options
-        }));
     }
 
     /// Flushes events to sentry.io and drops the guard
