@@ -1,6 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{borrow::Cow, fmt, str::FromStr, sync::Arc, time::Duration};
+use std::{borrow::Cow, collections::BTreeMap, fmt, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
 use sentry::{
@@ -173,10 +173,7 @@ impl Telemetry {
                 scope.set_context("os", ctx);
             }
 
-            scope.set_user(Some(User {
-                id: Some(firezone_id),
-                ..User::default()
-            }));
+            scope.set_user(Some(compute_user(firezone_id)));
         });
         self.inner.replace(inner);
         sentry::start_session();
@@ -216,31 +213,31 @@ impl Telemetry {
             user.other.insert("account_slug".to_owned(), slug.into());
         });
     }
+}
 
-    pub fn set_firezone_id(id: String) {
-        update_user({
-            let id = id.clone();
-            move |user| {
-                user.id = Some(id.clone());
+/// Computes the [`User`] scope based on the contents of `firezone_id`.
+///
+/// If `firezone_id` looks like a UUID, we hash and hex-encode it.
+/// This will align the ID with what we see in the portal.
+///
+/// If it is not a UUID, it is already from a newer installation of Firezone
+/// where the ID is sent as-is.
+///
+/// As a result, this will allow us to always filter the user by the hex-encoded ID.
+fn compute_user(firezone_id: String) -> User {
+    if uuid::Uuid::from_str(&firezone_id).is_ok() {
+        let encoded_id = hex::encode(sha2::Sha256::digest(firezone_id));
 
-                if uuid::Uuid::from_str(&id).is_ok() {
-                    user.other.insert(
-                        "external_id".to_owned(),
-                        serde_json::Value::String(hex::encode(sha2::Sha256::digest(&id))),
-                    );
-                }
-            }
-        });
-
-        let Some(client) = sentry::Hub::main().client() else {
-            return;
+        return User {
+            id: Some(encoded_id.clone()),
+            other: BTreeMap::from([("uuid".to_owned(), serde_json::Value::String(encoded_id))]),
+            ..User::default()
         };
+    }
 
-        let Some(env) = client.options().environment.as_ref() else {
-            return; // Nothing to do if we don't have an environment set.
-        };
-
-        feature_flags::reevaluate(id, env);
+    User {
+        id: Some(firezone_id),
+        ..User::default()
     }
 }
 

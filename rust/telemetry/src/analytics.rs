@@ -6,7 +6,13 @@ use sha2::Digest as _;
 
 use crate::{Env, posthog::RUNTIME};
 
-pub fn new_session(distinct_id: String, api_url: String) {
+pub fn new_session(maybe_legacy_id: String, api_url: String) {
+    let distinct_id = if uuid::Uuid::from_str(&maybe_legacy_id).is_ok() {
+        hex::encode(sha2::Sha256::digest(&maybe_legacy_id))
+    } else {
+        maybe_legacy_id
+    };
+
     RUNTIME.spawn(async move {
         if let Err(e) = capture(
             "new_session",
@@ -23,11 +29,19 @@ pub fn new_session(distinct_id: String, api_url: String) {
 
 /// Associate several properties with a particular "distinct_id" in PostHog.
 pub fn identify(
-    distinct_id: String,
+    maybe_legacy_id: String,
     api_url: String,
     release: String,
     account_slug: Option<String>,
 ) {
+    let is_legacy_id = uuid::Uuid::from_str(&maybe_legacy_id).is_ok();
+
+    let distinct_id = if is_legacy_id {
+        hex::encode(sha2::Sha256::digest(&maybe_legacy_id))
+    } else {
+        maybe_legacy_id.clone()
+    };
+
     RUNTIME.spawn({
         let distinct_id = distinct_id.clone();
         let api_url = api_url.clone();
@@ -53,14 +67,14 @@ pub fn identify(
     });
 
     // Create an alias ID for the user so we can also find them under the "external ID" used in the portal.
-    if uuid::Uuid::from_str(&distinct_id).is_ok() {
+    if is_legacy_id {
         RUNTIME.spawn(async move {
             if let Err(e) = capture(
                 "$create_alias",
                 distinct_id.clone(),
                 api_url,
                 CreateAliasProperties {
-                    alias: hex::encode(sha2::Sha256::digest(&distinct_id)),
+                    alias: maybe_legacy_id,
                     distinct_id,
                 },
             )

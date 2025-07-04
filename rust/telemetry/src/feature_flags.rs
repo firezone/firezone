@@ -1,4 +1,5 @@
 use std::{
+    str::FromStr as _,
     sync::{
         LazyLock,
         atomic::{AtomicBool, Ordering},
@@ -8,6 +9,7 @@ use std::{
 
 use anyhow::{Context as _, Result, bail};
 use serde::{Deserialize, Serialize};
+use sha2::Digest as _;
 
 use crate::{
     Env,
@@ -88,7 +90,13 @@ pub(crate) async fn reeval_timer() {
     }
 }
 
-async fn decide(distinct_id: String, api_key: String) -> Result<FeatureFlagsResponse> {
+async fn decide(maybe_legacy_id: String, api_key: String) -> Result<FeatureFlagsResponse> {
+    let distinct_id = if uuid::Uuid::from_str(&maybe_legacy_id).is_ok() {
+        hex::encode(sha2::Sha256::digest(&maybe_legacy_id))
+    } else {
+        maybe_legacy_id
+    };
+
     let response = reqwest::ClientBuilder::new()
         .connection_verbose(true)
         .build()?
