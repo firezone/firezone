@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-24.11";
+    nixpkgs.url = "nixpkgs";
     nixpkgs-unstable.url = "github:nixos/nixpkgs/nixos-unstable";
   };
 
@@ -29,8 +29,7 @@
         openssl_3
         glib
         gtk3
-        libsoup
-        webkitgtk
+        libsoup_3
         librsvg
         zenity
         desktop-file-utils
