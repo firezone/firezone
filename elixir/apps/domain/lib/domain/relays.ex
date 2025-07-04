@@ -104,6 +104,7 @@ defmodule Domain.Relays do
 
           Group.Changeset.delete(group)
         end,
+        # TODO: WAL
         after_commit: &disconnect_relays_in_group/1
       )
     end
@@ -305,6 +306,7 @@ defmodule Domain.Relays do
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Relay.Query,
         with: &Relay.Changeset.delete/1,
+        # TODO: WAL
         after_commit: &disconnect_relay/1
       )
     end
@@ -357,6 +359,9 @@ defmodule Domain.Relays do
 
   ### Presence
 
+  # TODO: WAL
+  # Move these to Presence module
+
   defp presence_topic(relay_or_id),
     do: "presences:#{relay_topic(relay_or_id)}"
 
@@ -376,6 +381,9 @@ defmodule Domain.Relays do
     do: "presences:#{group_topic(group_or_id)}"
 
   ### PubSub
+
+  # TODO: WAL
+  # Move these to PubSub module
 
   defp relay_topic(%Relay{} = relay), do: relay_topic(relay.id)
   defp relay_topic(relay_id), do: "relays:#{relay_id}"
