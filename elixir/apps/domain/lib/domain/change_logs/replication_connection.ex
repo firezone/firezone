@@ -12,17 +12,13 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
     state
   end
 
-  # Ignore account inserts and deletes
-  def on_write(state, _lsn, :delete, "accounts", _old_data, _data), do: state
-  def on_write(state, _lsn, :insert, "accounts", _old_data, _data), do: state
-
   # Ignore token writes for relay_groups since these are not expected to have an account_id
   def on_write(state, _lsn, _op, "tokens", %{"type" => "relay_group"}, _data), do: state
   def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay_group"}), do: state
 
-  # Handle account updates
-  def on_write(state, lsn, :update, "accounts", old_data, %{"id" => account_id} = data) do
-    buffer(state, lsn, :update, "accounts", account_id, old_data, data)
+  # Handle accounts specially
+  def on_write(state, lsn, op, "accounts", old_data, %{"id" => account_id} = data) do
+    buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
 
   # Handle other writes where an account_id is present
