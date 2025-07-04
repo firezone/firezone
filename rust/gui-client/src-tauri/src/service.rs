@@ -582,10 +582,10 @@ impl<'a> Handler<'a> {
                 // is cumbersome.
                 // Disabling telemetry for the service is mostly useful for our own testing and therefore
                 // doesn't need to be exposed publicly anyway.
-                let is_telemetry_allowed =
+                let no_telemetry =
                     std::env::var("FIREZONE_NO_TELEMETRY").is_ok_and(|s| s == "true");
 
-                if is_telemetry_allowed {
+                if !no_telemetry {
                     self.telemetry
                         .start(
                             &environment,
