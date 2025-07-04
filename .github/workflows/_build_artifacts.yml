@@ -78,8 +78,6 @@ jobs:
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
       - uses: ./.github/actions/gcp-docker-login
         id: login
-        with:
-          project: firezone-staging
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -267,8 +265,6 @@ jobs:
           ref: ${{ inputs.sha }}
       - uses: ./.github/actions/gcp-docker-login
         id: login
-        with:
-          project: firezone-staging
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
@@ -428,8 +424,6 @@ jobs:
           ref: ${{ inputs.sha }}
       - uses: ./.github/actions/gcp-docker-login
         id: login
-        with:
-          project: firezone-staging
       - name: Download digests
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
