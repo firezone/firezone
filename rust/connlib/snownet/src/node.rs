@@ -1535,6 +1535,16 @@ impl From<Credentials> for str0m::IceCreds {
     }
 }
 
+#[cfg(test)]
+impl From<str0m::IceCreds> for Credentials {
+    fn from(value: str0m::IceCreds) -> Self {
+        Credentials {
+            username: value.ufrag,
+            password: value.pass,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
@@ -2363,6 +2373,57 @@ mod tests {
         apply_idle_stun_timings(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
+    }
+
+    #[test]
+    fn missing_local_candidates_are_not_an_immediate_ice_timeout() {
+        let _guard = firezone_logging::test("trace");
+
+        let now = Instant::now();
+
+        // Create a new client-node
+        let mut node = ClientNode::<u32, u32>::new([0u8; 32], now);
+        node.update_relays(
+            BTreeSet::default(),
+            &BTreeSet::from([(
+                1,
+                RelaySocket::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478)),
+                String::new(),
+                String::new(),
+                String::new(),
+            )]),
+            now,
+        );
+
+        // Add a new connection.
+        node.upsert_connection(
+            1,
+            PublicKey::from([1; 32]),
+            Secret::new([2; 32]),
+            IceCreds::new().into(),
+            IceCreds::new().into(),
+            now,
+        )
+        .unwrap();
+
+        // Remote is quicker in sending us a candidate than we are in discovering our local ones.
+        node.add_remote_candidate(
+            1,
+            String::from("candidate:fffeff64909ff03727e08ec0 1 udp 1694498559 1.1.1.1 52625 typ srflx raddr 0.0.0.0 rport 0"),
+            now,
+        );
+        // Spend a bit of time.
+        node.handle_timeout(now + Duration::from_millis(100));
+
+        // Should not immediately ICE timeout
+        let events = iter::from_fn(|| node.poll_event()).collect::<Vec<_>>();
+        assert!(!events.contains(&Event::ConnectionFailed(1)));
+
+        // After ~2s though, we give up.
+        node.handle_timeout(now + Duration::from_millis(2100));
+
+        let events = iter::from_fn(|| node.poll_event()).collect::<Vec<_>>();
+        assert!(events.contains(&Event::ConnectionFailed(1)));
     }
 
     #[test]
