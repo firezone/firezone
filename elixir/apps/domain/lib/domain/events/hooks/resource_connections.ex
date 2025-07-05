@@ -3,7 +3,10 @@ defmodule Domain.Events.Hooks.ResourceConnections do
   alias Domain.{Resources, PubSub}
 
   @impl true
-  def on_insert(_data), do: :ok
+  def on_insert(data) do
+    connection = Domain.struct_from_params(Resources.Connection, data)
+    PubSub.Account.broadcast(connection.account_id, {:created, connection})
+  end
 
   @impl true
   def on_update(_old_data, _data), do: :ok
