@@ -10,9 +10,14 @@ pub struct ChannelData<'a> {
 }
 
 impl<'a> ChannelData<'a> {
+    /// # SAFETY
+    ///
+    /// You must not create multiple [`ChannelData`] structs at same time.
     #[inline(always)]
-    pub fn parse(ctx: &'a XdpContext, ip_header_length: usize) -> Result<Self, Error> {
-        let hdr = ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + ip_header_length + UdpHdr::LEN)?;
+    pub unsafe fn parse(ctx: &'a XdpContext, ip_header_length: usize) -> Result<Self, Error> {
+        // Safety: We are forwarding the constraint.
+        let hdr =
+            unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + ip_header_length + UdpHdr::LEN) }?;
 
         if !(0x4000..0x4FFF).contains(&u16::from_be_bytes(hdr.number)) {
             return Err(Error::NotAChannelDataMessage);

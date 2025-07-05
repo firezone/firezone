@@ -15,10 +15,14 @@ pub struct Eth<'a> {
 }
 
 impl<'a> Eth<'a> {
+    /// # SAFETY
+    ///
+    /// You must not create multiple [`Eth`] structs at same time.
     #[inline(always)]
-    pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
+    pub unsafe fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         Ok(Self {
-            inner: ref_mut_at::<EthHdr>(ctx, 0)?,
+            // Safety: We are forwarding the constraint.
+            inner: unsafe { ref_mut_at::<EthHdr>(ctx, 0) }?,
             ctx,
         })
     }
