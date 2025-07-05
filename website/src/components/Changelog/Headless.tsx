@@ -9,12 +9,13 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.1" date={new Date("2025-07-04")}>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.0" date={new Date("2025-06-05")}>
         <ChangeItem pull="9300">
           Uses the new IP stack setting for DNS resources, which allows DNS

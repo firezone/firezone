@@ -175,8 +175,8 @@ function gui() {
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function headless() {
-    current_headless_client_version="1.5.0"
-    next_headless_client_version="1.5.1"
+    current_headless_client_version="1.5.1"
+    next_headless_client_version="1.5.2"
 
     update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_client_version}"'/g;}' {} \;
