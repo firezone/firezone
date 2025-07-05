@@ -2,7 +2,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::stats::{ConnectionStats, NodeStats};
-use crate::utils::{channel_data_packet_buffer, earliest};
+use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
@@ -23,11 +23,11 @@ use sha2::Digest;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
-use std::mem;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
+use std::{iter, mem};
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
@@ -39,6 +39,9 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Grace-period for when we will act on an ICE disconnect.
+const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// How long we will at most wait for an [`Answer`] from the remote.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
@@ -538,19 +541,15 @@ where
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let mut connection_timeout = None;
-
-        for (_, c) in self.connections.iter_initial_mut() {
-            connection_timeout = earliest(connection_timeout, c.poll_timeout());
-        }
-        for (_, c) in self.connections.iter_established_mut() {
-            connection_timeout = earliest(connection_timeout, c.poll_timeout());
-        }
-        for a in self.allocations.values_mut() {
-            connection_timeout = earliest(connection_timeout, a.poll_timeout());
-        }
-
-        earliest(connection_timeout, self.next_rate_limiter_reset)
+        iter::empty()
+            .chain(self.connections.poll_timeout())
+            .chain(
+                self.allocations
+                    .values_mut()
+                    .filter_map(|a| a.poll_timeout()),
+            )
+            .chain(self.next_rate_limiter_reset)
+            .min()
     }
 
     /// Advances time within the [`Node`].
@@ -766,6 +765,7 @@ where
                 relay: Some(relay),
                 buffered: AllocRingBuffer::new(128),
             },
+            disconnected_at: None,
             possible_sockets: BTreeSet::default(),
             span: info_span!(parent: tracing::Span::none(), "connection", %cid),
             buffer_pool: self.buffer_pool.clone(),
@@ -1426,6 +1426,17 @@ where
     fn all_idle(&self) -> bool {
         self.established.values().all(|c| c.is_idle())
     }
+
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        iter::empty()
+            .chain(self.initial.values_mut().filter_map(|c| c.poll_timeout()))
+            .chain(
+                self.established
+                    .values_mut()
+                    .filter_map(|c| c.poll_timeout()),
+            )
+            .min()
+    }
 }
 
 fn add_local_candidate<TId>(
@@ -1529,6 +1540,16 @@ impl From<Credentials> for str0m::IceCreds {
     }
 }
 
+#[cfg(test)]
+impl From<str0m::IceCreds> for Credentials {
+    fn from(value: str0m::IceCreds) -> Self {
+        Credentials {
+            username: value.ufrag,
+            password: value.pass,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
@@ -1613,10 +1634,10 @@ impl<RId> InitialConnection<RId> {
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
-        earliest(
-            self.agent.poll_timeout(),
-            Some(self.no_answer_received_timeout()),
-        )
+        iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(Some(self.no_answer_received_timeout()))
+            .min()
     }
 
     fn no_answer_received_timeout(&self) -> Instant {
@@ -1637,6 +1658,7 @@ struct Connection<RId> {
     next_wg_timer_update: Instant,
 
     state: ConnectionState<RId>,
+    disconnected_at: Option<Instant>,
 
     /// Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: BTreeSet<SocketAddr>,
@@ -1833,15 +1855,13 @@ where
 
     #[must_use]
     fn poll_timeout(&mut self) -> Option<Instant> {
-        let agent_timeout = self.agent.poll_timeout();
-        let next_wg_timer = Some(self.next_wg_timer_update);
-        let candidate_timeout = self.candidate_timeout();
-        let idle_timeout = self.state.poll_timeout();
-
-        earliest(
-            idle_timeout,
-            earliest(agent_timeout, earliest(next_wg_timer, candidate_timeout)),
-        )
+        iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(Some(self.next_wg_timer_update))
+            .chain(self.candidate_timeout())
+            .chain(self.disconnect_timeout())
+            .chain(self.state.poll_timeout())
+            .min()
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
@@ -1850,6 +1870,12 @@ where
         }
 
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
+    }
+
+    fn disconnect_timeout(&self) -> Option<Instant> {
+        let disconnected_at = self.disconnected_at?;
+
+        Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -1875,6 +1901,15 @@ where
             return;
         }
 
+        if self
+            .disconnect_timeout()
+            .is_some_and(|timeout| now >= timeout)
+        {
+            tracing::info!("Connection failed (ICE timeout)");
+            self.state = ConnectionState::Failed;
+            return;
+        }
+
         self.handle_tunnel_timeout(now, allocations, transmits);
 
         // If this was a scheduled update, hop to the next interval.
@@ -1895,8 +1930,20 @@ where
                     self.possible_sockets.insert(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::info!("Connection failed (ICE timeout)");
-                    self.state = ConnectionState::Failed;
+                    tracing::debug!(grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
+
+                    self.disconnected_at = Some(now);
+                }
+                IceAgentEvent::IceConnectionStateChange(
+                    IceConnectionState::Checking | IceConnectionState::Connected,
+                ) => {
+                    let existing = self.disconnected_at.take();
+
+                    if let Some(disconnected_at) = existing {
+                        let offline = now.duration_since(disconnected_at);
+
+                        tracing::debug!(?offline, "ICE agent reconnected");
+                    }
                 }
                 IceAgentEvent::NominatedSend {
                     destination,
@@ -2360,6 +2407,57 @@ mod tests {
         apply_idle_stun_timings(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
+    }
+
+    #[test]
+    fn missing_local_candidates_are_not_an_immediate_ice_timeout() {
+        let _guard = firezone_logging::test("trace");
+
+        let now = Instant::now();
+
+        // Create a new client-node
+        let mut node = ClientNode::<u32, u32>::new([0u8; 32], now);
+        node.update_relays(
+            BTreeSet::default(),
+            &BTreeSet::from([(
+                1,
+                RelaySocket::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478)),
+                String::new(),
+                String::new(),
+                String::new(),
+            )]),
+            now,
+        );
+
+        // Add a new connection.
+        node.upsert_connection(
+            1,
+            PublicKey::from([1; 32]),
+            Secret::new([2; 32]),
+            IceCreds::new().into(),
+            IceCreds::new().into(),
+            now,
+        )
+        .unwrap();
+
+        // Remote is quicker in sending us a candidate than we are in discovering our local ones.
+        node.add_remote_candidate(
+            1,
+            String::from("candidate:fffeff64909ff03727e08ec0 1 udp 1694498559 1.1.1.1 52625 typ srflx raddr 0.0.0.0 rport 0"),
+            now,
+        );
+        // Spend a bit of time.
+        node.handle_timeout(now + Duration::from_millis(100));
+
+        // Should not immediately ICE timeout
+        let events = iter::from_fn(|| node.poll_event()).collect::<Vec<_>>();
+        assert!(!events.contains(&Event::ConnectionFailed(1)));
+
+        // After ~2s though, we give up.
+        node.handle_timeout(now + Duration::from_millis(2100));
+
+        let events = iter::from_fn(|| node.poll_event()).collect::<Vec<_>>();
+        assert!(events.contains(&Event::ConnectionFailed(1)));
     }
 
     #[test]
