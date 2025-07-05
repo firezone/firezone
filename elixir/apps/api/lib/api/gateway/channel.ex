@@ -631,9 +631,10 @@ defmodule API.Gateway.Channel do
         client: Views.Client.render(client, preshared_key),
         client_ice_credentials: ice_credentials.client,
         # Gateway manages its own expiration
-        expires_at: if(authorization_expires_at,
-          do: DateTime.to_unix(authorization_expires_at, :second)
-        ),
+        expires_at:
+          if(authorization_expires_at,
+            do: DateTime.to_unix(authorization_expires_at, :second)
+          )
       })
 
       Logger.debug("Awaiting gateway flow_authorized message",

@@ -98,11 +98,11 @@ defmodule API.Client.Channel do
 
       # Maintain a cache of all policies and group_ids that affect us
       policies =
-        Policies.all_policies_for_actor!(socket.assigns.client.actor)
+        Policies.all_policies_for_actor!(socket.assigns.subject.actor)
         |> Map.new(fn policy -> {policy.id, policy} end)
 
       group_ids =
-        Actors.all_actor_group_ids!(socket.assigns.client.actor)
+        Actors.all_actor_group_ids!(socket.assigns.subject.actor)
         |> MapSet.new()
 
       socket = assign(socket, policies: policies, group_ids: group_ids)
@@ -161,7 +161,7 @@ defmodule API.Client.Channel do
 
   def handle_info(
         {:created, %Actors.Membership{actor_id: actor_id, group_id: group_id}},
-        %{assigns: %{client: %{actor: %{id: id}}}} = socket
+        %{assigns: %{client: %{actor_id: id}}} = socket
       )
       when id == actor_id do
     # 1. Get existing resources
@@ -191,7 +191,7 @@ defmodule API.Client.Channel do
 
   def handle_info(
         {:deleted, %Actors.Membership{actor_id: actor_id, group_id: group_id}},
-        %{assigns: %{client: %{actor: %{id: id}}}} = socket
+        %{assigns: %{client: %{actor_id: id}}} = socket
       )
       when id == actor_id do
     # 1. Get existing resources
@@ -263,23 +263,31 @@ defmodule API.Client.Channel do
 
   def handle_info({:created, %Policies.Policy{} = policy}, socket) do
     # check if this policy affects us
-    if MapSet.member?(socket.assigns.group_ids, policy.actor_group_id) do
-      # 1. Get existing resources
+    with true <- MapSet.member?(socket.assigns.group_ids, policy.actor_group_id),
+         # Hydrate resource
+         {:ok, resource} <-
+           Resources.fetch_resource_by_id(policy.resource_id, socket.assigns.subject,
+             preload: :gateway_groups
+           ) do
+      policy = %{policy | resource: resource}
+
+      # Get existing resources
       existing_resources = get_resources(socket)
-      # 2. Update our state
+
+      # Update our state
       socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
 
-      # 3. Get new resources
-      new_resources = get_resources(socket)
+      # Get new resources
+      new_resources = get_resources(socket) -- existing_resources
 
-      # 4. Push new resource to the client
-      if [resource] = new_resources -- existing_resources do
+      if [resource] = new_resources do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
 
       {:noreply, socket}
     else
-      {:noreply, socket}
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -1159,11 +1167,15 @@ defmodule API.Client.Channel do
     {:stop, :shutdown, socket}
   end
 
+  # TODO: policy conditions evaluation does not seem to be working
   defp get_resources(socket) do
+    client = socket.assigns.client
+
     socket.assigns.policies
+    |> Enum.map(fn {_id, policy} -> policy end)
+    |> Policies.filter_by_conforming_policies_for_client(client)
     |> Enum.map(& &1.resource)
     |> Enum.uniq()
-    |> Policies.pre_filter_non_conforming_resources(socket.assigns.client)
-    |> map_and_filter_compatible_resources(socket.assigns.client.last_seen_version)
+    |> map_and_filter_compatible_resources(client.last_seen_version)
   end
 end

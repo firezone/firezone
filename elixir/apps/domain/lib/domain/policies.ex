@@ -62,7 +62,7 @@ defmodule Domain.Policies do
     Policy.Query.not_disabled()
     |> Policy.Query.by_account_id(actor.account_id)
     |> Policy.Query.by_actor_id(actor.id)
-    |> Policy.Query.with_preloaded_resource_gateway_group()
+    |> Policy.Query.with_preloaded_resource_gateway_groups()
     |> Repo.all()
   end
 
@@ -70,7 +70,7 @@ defmodule Domain.Policies do
     Policy.Query.not_disabled()
     |> Policy.Query.by_account_id(account_id)
     |> Policy.Query.by_actor_group_id(actor_group_id)
-    |> Policy.Query.with_preloaded_resource_gateway_group()
+    |> Policy.Query.with_preloaded_resource_gateway_groups()
     |> Repo.all()
   end
 
@@ -177,18 +177,8 @@ defmodule Domain.Policies do
     {:ok, policies}
   end
 
-  def pre_filter_non_conforming_resources(resources, %Clients.Client{} = client) do
-    resources
-    |> Enum.flat_map(fn resource ->
-      case client_conforms_any_on_connect?(client, resource.authorized_by_policies) do
-        true -> [resource]
-        false -> []
-      end
-    end)
-  end
-
-  def client_conforms_any_on_connect?(%Clients.Client{} = client, policies) do
-    Enum.any?(policies, fn policy ->
+  def filter_by_conforming_policies_for_client(policies, %Clients.Client{} = client) do
+    Enum.filter(policies, fn policy ->
       policy.conditions
       |> Enum.filter(&Condition.Evaluator.evaluable_on_connect?/1)
       |> Condition.Evaluator.ensure_conforms(client)

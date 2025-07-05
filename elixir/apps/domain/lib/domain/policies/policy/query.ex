@@ -108,9 +108,9 @@ defmodule Domain.Policies.Policy.Query do
     end)
   end
 
-  def with_preloaded_resource_gateway_group(queryable) do
+  def with_preloaded_resource_gateway_groups(queryable) do
     queryable
-    |> preload(resource: :gateway_group)
+    |> preload(resource: :gateway_groups)
   end
 
   # Pagination
