@@ -1930,12 +1930,20 @@ where
                     self.possible_sockets.insert(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
+                    tracing::debug!(grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
+
                     self.disconnected_at = Some(now);
                 }
                 IceAgentEvent::IceConnectionStateChange(
                     IceConnectionState::Checking | IceConnectionState::Connected,
                 ) => {
-                    self.disconnected_at = None;
+                    let existing = self.disconnected_at.take();
+
+                    if let Some(disconnected_at) = existing {
+                        let offline = now.duration_since(disconnected_at);
+
+                        tracing::debug!(?offline, "ICE agent reconnected");
+                    }
                 }
                 IceAgentEvent::NominatedSend {
                     destination,
