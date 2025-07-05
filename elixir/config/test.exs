@@ -107,7 +107,8 @@ config :api,
 ###############################
 config :domain, Domain.Mailer, adapter: Domain.Mailer.TestAdapter
 
-config :logger, level: :warning
+# Allow asserting on info logs and higher
+config :logger, level: :info
 
 config :argon2_elixir, t_cost: 1, m_cost: 8
 

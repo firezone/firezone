@@ -64,7 +64,19 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     resource_connections
     resources
     tokens
-  ]
+  ],
+  # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
+  # deploys without alerting.
+  warning_threshold: :timer.minutes(5),
+
+  # We almost never want to bypass changelog inserts
+  error_threshold: :timer.hours(30 * 24),
+
+  # Flush change logs data at least every 30 seconds
+  flush_interval: :timer.seconds(30),
+
+  # We want to flush at most 500 change logs at a time
+  flush_buffer_size: 500
 
 config :domain, Domain.Events.ReplicationConnection,
   replication_slot_name: "events_slot",
@@ -98,7 +110,16 @@ config :domain, Domain.Events.ReplicationConnection,
     resource_connections
     resources
     tokens
-  ]
+  ],
+  # Allow up to 60 seconds of lag before alerting
+  warning_threshold: :timer.seconds(60),
+
+  # Allow up to 30 minutes of lag before bypassing hooks
+  error_threshold: :timer.minutes(30),
+
+  # Disable flush
+  flush_interval: 0,
+  flush_buffer_size: 0
 
 config :domain, Domain.Tokens,
   key_base: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2",
