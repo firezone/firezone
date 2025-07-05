@@ -25,7 +25,22 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
           %{"id" => account.id, "name" => "test account"}
         )
 
-      assert result_state == initial_state
+      assert result_state == %{
+               flush_buffer: %{
+                 12345 => %{
+                   data: %{
+                     "id" => account.id,
+                     "name" => "test account"
+                   },
+                   table: "accounts",
+                   vsn: 0,
+                   op: :insert,
+                   account_id: account.id,
+                   lsn: 12345,
+                   old_data: nil
+                 }
+               }
+             }
     end
 
     test "adds insert operation to flush buffer for non-account tables", %{account: account} do
