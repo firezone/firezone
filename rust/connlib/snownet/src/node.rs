@@ -40,6 +40,9 @@ const HANDSHAKE_RATE_LIMIT: u64 = 100;
 /// How long we will at most wait for a candidate from the remote.
 const CANDIDATE_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// Grace-period for when we will act on an ICE disconnect.
+const DISCONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+
 /// How long we will at most wait for an [`Answer`] from the remote.
 pub const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -762,6 +765,7 @@ where
                 relay: Some(relay),
                 buffered: AllocRingBuffer::new(128),
             },
+            disconnected_at: None,
             possible_sockets: BTreeSet::default(),
             span: info_span!(parent: tracing::Span::none(), "connection", %cid),
             buffer_pool: self.buffer_pool.clone(),
@@ -1422,6 +1426,7 @@ where
     fn all_idle(&self) -> bool {
         self.established.values().all(|c| c.is_idle())
     }
+
     fn poll_timeout(&mut self) -> Option<Instant> {
         iter::empty()
             .chain(self.initial.values_mut().filter_map(|c| c.poll_timeout()))
@@ -1653,6 +1658,7 @@ struct Connection<RId> {
     next_wg_timer_update: Instant,
 
     state: ConnectionState<RId>,
+    disconnected_at: Option<Instant>,
 
     /// Socket addresses from which we might receive data (even before we are connected).
     possible_sockets: BTreeSet<SocketAddr>,
@@ -1853,6 +1859,7 @@ where
             .chain(self.agent.poll_timeout())
             .chain(Some(self.next_wg_timer_update))
             .chain(self.candidate_timeout())
+            .chain(self.disconnect_timeout())
             .chain(self.state.poll_timeout())
             .min()
     }
@@ -1863,6 +1870,12 @@ where
         }
 
         Some(self.signalling_completed_at + CANDIDATE_TIMEOUT)
+    }
+
+    fn disconnect_timeout(&self) -> Option<Instant> {
+        let disconnected_at = self.disconnected_at?;
+
+        Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -1888,6 +1901,15 @@ where
             return;
         }
 
+        if self
+            .disconnect_timeout()
+            .is_some_and(|timeout| now >= timeout)
+        {
+            tracing::info!("Connection failed (ICE timeout)");
+            self.state = ConnectionState::Failed;
+            return;
+        }
+
         self.handle_tunnel_timeout(now, allocations, transmits);
 
         // If this was a scheduled update, hop to the next interval.
@@ -1908,8 +1930,12 @@ where
                     self.possible_sockets.insert(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::info!("Connection failed (ICE timeout)");
-                    self.state = ConnectionState::Failed;
+                    self.disconnected_at = Some(now);
+                }
+                IceAgentEvent::IceConnectionStateChange(
+                    IceConnectionState::Checking | IceConnectionState::Connected,
+                ) => {
+                    self.disconnected_at = None;
                 }
                 IceAgentEvent::NominatedSend {
                     destination,
