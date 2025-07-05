@@ -2,7 +2,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::candidate_set::CandidateSet;
 use crate::index::IndexLfsr;
 use crate::stats::{ConnectionStats, NodeStats};
-use crate::utils::{channel_data_packet_buffer, earliest};
+use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{Tunn, TunnResult};
@@ -23,11 +23,11 @@ use sha2::Digest;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
-use std::mem;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
+use std::{iter, mem};
 use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
@@ -538,19 +538,15 @@ where
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let mut connection_timeout = None;
-
-        for (_, c) in self.connections.iter_initial_mut() {
-            connection_timeout = earliest(connection_timeout, c.poll_timeout());
-        }
-        for (_, c) in self.connections.iter_established_mut() {
-            connection_timeout = earliest(connection_timeout, c.poll_timeout());
-        }
-        for a in self.allocations.values_mut() {
-            connection_timeout = earliest(connection_timeout, a.poll_timeout());
-        }
-
-        earliest(connection_timeout, self.next_rate_limiter_reset)
+        iter::empty()
+            .chain(self.connections.poll_timeout())
+            .chain(
+                self.allocations
+                    .values_mut()
+                    .filter_map(|a| a.poll_timeout()),
+            )
+            .chain(self.next_rate_limiter_reset)
+            .min()
     }
 
     /// Advances time within the [`Node`].
@@ -1426,6 +1422,16 @@ where
     fn all_idle(&self) -> bool {
         self.established.values().all(|c| c.is_idle())
     }
+    fn poll_timeout(&mut self) -> Option<Instant> {
+        iter::empty()
+            .chain(self.initial.values_mut().filter_map(|c| c.poll_timeout()))
+            .chain(
+                self.established
+                    .values_mut()
+                    .filter_map(|c| c.poll_timeout()),
+            )
+            .min()
+    }
 }
 
 fn add_local_candidate<TId>(
@@ -1613,10 +1619,10 @@ impl<RId> InitialConnection<RId> {
     }
 
     fn poll_timeout(&mut self) -> Option<Instant> {
-        earliest(
-            self.agent.poll_timeout(),
-            Some(self.no_answer_received_timeout()),
-        )
+        iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(Some(self.no_answer_received_timeout()))
+            .min()
     }
 
     fn no_answer_received_timeout(&self) -> Instant {
@@ -1833,15 +1839,12 @@ where
 
     #[must_use]
     fn poll_timeout(&mut self) -> Option<Instant> {
-        let agent_timeout = self.agent.poll_timeout();
-        let next_wg_timer = Some(self.next_wg_timer_update);
-        let candidate_timeout = self.candidate_timeout();
-        let idle_timeout = self.state.poll_timeout();
-
-        earliest(
-            idle_timeout,
-            earliest(agent_timeout, earliest(next_wg_timer, candidate_timeout)),
-        )
+        iter::empty()
+            .chain(self.agent.poll_timeout())
+            .chain(Some(self.next_wg_timer_update))
+            .chain(self.candidate_timeout())
+            .chain(self.state.poll_timeout())
+            .min()
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {
