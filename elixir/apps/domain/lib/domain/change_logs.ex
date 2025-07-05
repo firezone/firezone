@@ -2,9 +2,11 @@ defmodule Domain.ChangeLogs do
   alias Domain.ChangeLogs.ChangeLog
   alias Domain.Repo
 
-  def create_change_log(attrs) do
-    attrs
-    |> ChangeLog.Changeset.changeset()
-    |> Repo.insert()
+  def bulk_insert(list_of_attrs) do
+    ChangeLog
+    |> Repo.insert_all(list_of_attrs,
+      on_conflict: :nothing,
+      conflict_target: [:lsn]
+    )
   end
 end

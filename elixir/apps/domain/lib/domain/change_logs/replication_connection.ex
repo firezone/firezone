@@ -1,90 +1,83 @@
 defmodule Domain.ChangeLogs.ReplicationConnection do
+  use Domain.Replication.Connection
   alias Domain.ChangeLogs
-
-  use Domain.Replication.Connection,
-    # Allow up to 5 minutes of processing lag before alerting. This needs to be able to survive
-    # deploys without alerting.
-    warning_threshold_ms: 5 * 60 * 1_000,
-
-    # 1 month in ms - we never want to bypass changelog inserts
-    error_threshold_ms: 30 * 24 * 60 * 60 * 1_000
 
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
-  def on_insert(lsn, table, data) do
-    log(:insert, lsn, table, nil, data)
+  # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
+  # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
+  def on_write(state, _lsn, :delete, _table, %{"deleted_at" => deleted_at}, _data)
+      when not is_nil(deleted_at) do
+    state
   end
 
-  def on_update(lsn, table, old_data, data) do
-    log(:update, lsn, table, old_data, data)
+  # Ignore token writes for relay_groups since these are not expected to have an account_id
+  def on_write(state, _lsn, _op, "tokens", %{"type" => "relay_group"}, _data), do: state
+  def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay_group"}), do: state
+
+  # Handle accounts specially
+  def on_write(state, lsn, op, "accounts", old_data, %{"id" => account_id} = data) do
+    buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
 
-  def on_delete(lsn, table, old_data) do
-    if is_nil(old_data["deleted_at"]) do
-      log(:delete, lsn, table, old_data, nil)
-    else
-      # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
-      # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
-      :ok
-    end
+  # Handle other writes where an account_id is present
+  def on_write(state, lsn, op, table, old_data, %{"account_id" => account_id} = data)
+      when not is_nil(account_id) do
+    buffer(state, lsn, op, table, account_id, old_data, data)
   end
 
-  # Relay group tokens don't have account_ids
-
-  defp log(_op, _lsn, "tokens", %{"type" => "relay_group"}, _data) do
-    :ok
+  def on_write(state, lsn, op, table, %{"account_id" => account_id} = old_data, data)
+      when not is_nil(account_id) do
+    buffer(state, lsn, op, table, account_id, old_data, data)
   end
 
-  defp log(_op, _lsn, "tokens", _old_data, %{"type" => "relay_group"}) do
-    :ok
-  end
-
-  defp log(op, lsn, table, old_data, data) do
-    attrs = %{
-      op: op,
+  # If we get here, raise the alarm as it means we encountered a change we didn't expect.
+  def on_write(state, lsn, op, table, _old_data, _data) do
+    Logger.error(
+      "Unexpected write operation!",
       lsn: lsn,
-      table: table,
-      old_data: old_data,
-      data: data,
-      vsn: @vsn
-    }
+      op: op,
+      table: table
+    )
 
-    case ChangeLogs.create_change_log(attrs) do
-      {:ok, _change_log} ->
-        :ok
-
-      {:error, %Ecto.Changeset{errors: errors} = changeset} ->
-        if Enum.any?(errors, &should_skip_change_log?/1) do
-          # Expected under normal operation when an account is deleted or we are catching up on
-          # already-processed but not acknowledged WAL data.
-          :ok
-        else
-          Logger.warning("Failed to create change log",
-            errors: inspect(changeset.errors),
-            table: table,
-            op: op,
-            lsn: lsn,
-            vsn: @vsn
-          )
-
-          # TODO: WAL
-          # Don't ignore failures to insert change logs. Improve this after we have some
-          # operational experience with the data flowing in here.
-          :ok
-        end
-    end
+    state
   end
 
-  defp should_skip_change_log?({:account_id, {"does not exist", _violations}}) do
-    true
+  def on_flush(%{flush_buffer: flush_buffer} = state) when map_size(flush_buffer) == 0, do: state
+
+  def on_flush(state) do
+    to_insert = Map.values(state.flush_buffer)
+    attempted_count = Enum.count(state.flush_buffer)
+
+    {successful_count, _change_logs} = ChangeLogs.bulk_insert(to_insert)
+
+    Logger.info("Flushed #{successful_count}/#{attempted_count} change logs")
+
+    # We always advance the LSN to the highest LSN in the flush buffer because
+    # LSN conflicts just mean the data is already inserted, and other insert_all
+    # issues like a missing account_id will raise an exception.
+    last_lsn =
+      state.flush_buffer
+      |> Map.keys()
+      |> Enum.max()
+
+    %{state | flush_buffer: %{}, last_flushed_lsn: last_lsn}
   end
 
-  defp should_skip_change_log?({:lsn, {"has already been taken", _violations}}) do
-    true
-  end
+  defp buffer(state, lsn, op, table, account_id, old_data, data) do
+    flush_buffer =
+      state.flush_buffer
+      |> Map.put_new(lsn, %{
+        lsn: lsn,
+        op: op,
+        table: table,
+        account_id: account_id,
+        old_data: old_data,
+        data: data,
+        vsn: @vsn
+      })
 
-  defp should_skip_change_log?(_error) do
-    false
+    %{state | flush_buffer: flush_buffer}
   end
 end

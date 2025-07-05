@@ -1,9 +1,8 @@
 defmodule Domain.ChangeLogs.ReplicationConnectionTest do
   use Domain.DataCase, async: true
 
-  import ExUnit.CaptureLog
   import Ecto.Query
-  import Domain.ChangeLogs.ReplicationConnection
+  alias Domain.ChangeLogs.ReplicationConnection
   alias Domain.ChangeLogs.ChangeLog
   alias Domain.Repo
 
@@ -12,351 +11,762 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
     %{account: account}
   end
 
-  describe "on_insert/2" do
-    test "ignores flows table - no record created" do
-      table = "flows"
-      data = %{"id" => 1, "name" => "test flow"}
+  describe "on_write/6 for inserts" do
+    test "ignores account inserts", %{account: account} do
+      initial_state = %{flush_buffer: %{}}
 
-      initial_count = Repo.aggregate(ChangeLog, :count, :id)
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          12345,
+          :insert,
+          "accounts",
+          nil,
+          %{"id" => account.id, "name" => "test account"}
+        )
 
-      assert :ok = on_insert(0, table, data)
-
-      # No record should be created for flows
-      final_count = Repo.aggregate(ChangeLog, :count, :id)
-      assert final_count == initial_count
+      assert result_state == %{
+               flush_buffer: %{
+                 12345 => %{
+                   data: %{
+                     "id" => account.id,
+                     "name" => "test account"
+                   },
+                   table: "accounts",
+                   vsn: 0,
+                   op: :insert,
+                   account_id: account.id,
+                   lsn: 12345,
+                   old_data: nil
+                 }
+               }
+             }
     end
 
-    test "creates change log record for non-flows tables", %{account: account} do
-      table = "accounts"
-      data = %{"id" => account.id, "name" => "test account"}
+    test "adds insert operation to flush buffer for non-account tables", %{account: account} do
+      table = "resources"
 
-      assert :ok = on_insert(0, table, data)
+      data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "name" => "test resource"
+      }
 
-      # Verify the record was created
-      change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
+      lsn = 12345
 
-      assert change_log.op == :insert
-      assert change_log.table == table
-      assert change_log.old_data == nil
-      assert change_log.data == data
-      assert change_log.vsn == 0
-      assert change_log.account_id == account.id
+      initial_state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          lsn,
+          :insert,
+          table,
+          nil,
+          data
+        )
+
+      assert map_size(result_state.flush_buffer) == 1
+      assert Map.has_key?(result_state.flush_buffer, lsn)
+
+      attrs = result_state.flush_buffer[lsn]
+      assert attrs.lsn == lsn
+      assert attrs.table == table
+      assert attrs.op == :insert
+      assert attrs.data == data
+      assert attrs.old_data == nil
+      assert attrs.account_id == account.id
+      assert attrs.vsn == 0
     end
 
-    test "creates records for different table types", %{account: account} do
-      test_cases = [
-        {"accounts", %{"id" => account.id, "name" => "test account"}},
-        {"resources",
-         %{"id" => Ecto.UUID.generate(), "name" => "test resource", "account_id" => account.id}},
-        {"policies",
-         %{"id" => Ecto.UUID.generate(), "name" => "test policy", "account_id" => account.id}},
-        {"actors",
-         %{"id" => Ecto.UUID.generate(), "name" => "test actor", "account_id" => account.id}}
-      ]
+    test "preserves existing buffer items", %{account: account} do
+      existing_lsn = 100
 
-      for {{table, data}, idx} <- Enum.with_index(test_cases) do
-        initial_count = Repo.aggregate(ChangeLog, :count, :id)
+      existing_item = %{
+        lsn: existing_lsn,
+        table: "other_table",
+        op: :update,
+        account_id: account.id,
+        data: %{"id" => "existing"},
+        old_data: nil,
+        vsn: 0
+      }
 
-        assert :ok = on_insert(idx, table, data)
+      initial_state = %{flush_buffer: %{existing_lsn => existing_item}}
 
-        final_count = Repo.aggregate(ChangeLog, :count, :id)
-        assert final_count == initial_count + 1
+      new_lsn = 101
 
-        change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          new_lsn,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
+        )
 
-        assert change_log.op == :insert
-        assert change_log.table == table
-        assert change_log.old_data == nil
-        assert change_log.data == data
-        assert change_log.vsn == 0
-        assert change_log.account_id == account.id
-      end
-    end
-  end
-
-  describe "on_update/3" do
-    test "ignores flows table - no record created" do
-      table = "flows"
-      old_data = %{"id" => 1, "name" => "old flow"}
-      data = %{"id" => 1, "name" => "new flow"}
-
-      initial_count = Repo.aggregate(ChangeLog, :count, :id)
-
-      assert :ok = on_update(0, table, old_data, data)
-
-      # No record should be created for flows
-      final_count = Repo.aggregate(ChangeLog, :count, :id)
-      assert final_count == initial_count
+      assert map_size(result_state.flush_buffer) == 2
+      assert result_state.flush_buffer[existing_lsn] == existing_item
+      assert Map.has_key?(result_state.flush_buffer, new_lsn)
     end
 
-    test "creates change log record for non-flows tables", %{account: account} do
-      table = "accounts"
-      old_data = %{"id" => account.id, "name" => "old name"}
-      data = %{"id" => account.id, "name" => "new name"}
+    test "ignores relay_group tokens" do
+      initial_state = %{flush_buffer: %{}}
 
-      assert :ok = on_update(0, table, old_data, data)
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          12345,
+          :insert,
+          "tokens",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "type" => "relay_group"}
+        )
 
-      # Verify the record was created
-      change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
-
-      assert change_log.op == :update
-      assert change_log.table == table
-      assert change_log.old_data == old_data
-      assert change_log.data == data
-      assert change_log.vsn == 0
-      assert change_log.account_id == account.id
+      assert result_state == initial_state
     end
 
     test "handles complex data structures", %{account: account} do
-      table = "resources"
-      resource_id = Ecto.UUID.generate()
-
-      old_data = %{
-        "id" => resource_id,
-        "name" => "old name",
-        "account_id" => account.id,
-        "settings" => %{"theme" => "dark", "notifications" => true}
-      }
-
-      data = %{
-        "id" => resource_id,
-        "name" => "new name",
-        "account_id" => account.id,
-        "settings" => %{"theme" => "light", "notifications" => false},
-        "tags" => ["updated", "important"]
-      }
-
-      assert :ok = on_update(0, table, old_data, data)
-
-      change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
-
-      assert change_log.op == :update
-      assert change_log.table == table
-      assert change_log.old_data == old_data
-      assert change_log.data == data
-      assert change_log.vsn == 0
-      assert change_log.account_id == account.id
-    end
-  end
-
-  describe "on_delete/2" do
-    test "ignores soft-deleted records" do
-      table = "resources"
-      old_data = %{"id" => Ecto.UUID.generate(), "deleted_at" => "#{DateTime.utc_now()}"}
-
-      initial_count = Repo.aggregate(ChangeLog, :count, :id)
-
-      assert :ok = on_delete(0, table, old_data)
-
-      # No record should be created for soft-deleted records
-      final_count = Repo.aggregate(ChangeLog, :count, :id)
-      assert final_count == initial_count
-    end
-
-    test "ignores flows table - no record created" do
-      table = "flows"
-      old_data = %{"id" => 1, "name" => "deleted flow"}
-
-      initial_count = Repo.aggregate(ChangeLog, :count, :id)
-
-      assert :ok = on_delete(0, table, old_data)
-
-      # No record should be created for flows
-      final_count = Repo.aggregate(ChangeLog, :count, :id)
-      assert final_count == initial_count
-    end
-
-    test "creates change log record for non-flows tables", %{account: account} do
-      table = "accounts"
-      old_data = %{"id" => account.id, "name" => "deleted account"}
-
-      assert :ok = on_delete(0, table, old_data)
-
-      # Verify the record was created
-      change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
-
-      assert change_log.op == :delete
-      assert change_log.table == table
-      assert change_log.old_data == old_data
-      assert change_log.data == nil
-      assert change_log.vsn == 0
-      assert change_log.account_id == account.id
-    end
-
-    test "handles various data types in old_data", %{account: account} do
-      table = "resources"
-      resource_id = Ecto.UUID.generate()
-
-      old_data = %{
-        "id" => resource_id,
-        "name" => "complex resource",
-        "account_id" => account.id,
-        "metadata" => %{
-          "created_by" => "system",
-          "permissions" => ["read", "write"],
-          "config" => %{"timeout" => 30, "retries" => 3}
-        },
-        "active" => true,
-        "count" => 42
-      }
-
-      assert :ok = on_delete(0, table, old_data)
-
-      change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
-
-      assert change_log.op == :delete
-      assert change_log.table == table
-      assert change_log.old_data == old_data
-      assert change_log.data == nil
-      assert change_log.vsn == 0
-      assert change_log.account_id == account.id
-    end
-  end
-
-  describe "error handling" do
-    test "handles foreign key errors gracefully" do
-      # Create a change log entry that references a non-existent account
-      table = "resources"
-      # Non-existent account_id
-      data = %{"id" => Ecto.UUID.generate(), "account_id" => Ecto.UUID.generate()}
-
-      initial_count = Repo.aggregate(ChangeLog, :count, :id)
-
-      # Should return :ok even if foreign key constraint fails
-      assert :ok = on_insert(0, table, data)
-
-      # No record should be created due to foreign key error
-      final_count = Repo.aggregate(ChangeLog, :count, :id)
-      assert final_count == initial_count
-    end
-
-    test "logs and handles non-foreign-key validation errors gracefully", %{account: account} do
-      # Test with invalid data that would cause validation errors (not foreign key)
-      table = "accounts"
-      # Missing required fields but valid FK
-      data = %{"account_id" => account.id}
-
-      initial_count = Repo.aggregate(ChangeLog, :count, :id)
-
-      log_output =
-        capture_log(fn ->
-          assert :ok = on_insert(0, table, data)
-        end)
-
-      # Should log the error
-      assert log_output =~ "Failed to create change log"
-
-      # No record should be created
-      final_count = Repo.aggregate(ChangeLog, :count, :id)
-      assert final_count == initial_count
-    end
-  end
-
-  describe "data integrity" do
-    test "preserves exact data structures", %{account: account} do
-      table = "policies"
-      policy_id = Ecto.UUID.generate()
-
-      # Test with various data types
       complex_data = %{
-        "id" => policy_id,
+        "id" => Ecto.UUID.generate(),
         "account_id" => account.id,
-        "string_field" => "test string",
-        "integer_field" => 42,
-        "boolean_field" => true,
+        "nested" => %{"key" => "value", "array" => [1, 2, 3]},
         "null_field" => nil,
-        "array_field" => [1, "two", %{"three" => 3}],
-        "nested_object" => %{
-          "level1" => %{
-            "level2" => %{
-              "deep_value" => "preserved"
-            }
-          }
+        "boolean" => true
+      }
+
+      state = %{flush_buffer: %{}}
+      lsn = 200
+
+      result_state =
+        ReplicationConnection.on_write(
+          state,
+          lsn,
+          :insert,
+          "resources",
+          nil,
+          complex_data
+        )
+
+      attrs = result_state.flush_buffer[lsn]
+      assert attrs.data == complex_data
+    end
+  end
+
+  describe "on_write/6 for updates" do
+    test "adds update operation to flush buffer", %{account: account} do
+      table = "resources"
+      old_data = %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "old name"}
+      data = %{"id" => old_data["id"], "account_id" => account.id, "name" => "new name"}
+      lsn = 12346
+
+      initial_state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          lsn,
+          :update,
+          table,
+          old_data,
+          data
+        )
+
+      assert map_size(result_state.flush_buffer) == 1
+      attrs = result_state.flush_buffer[lsn]
+
+      assert attrs.lsn == lsn
+      assert attrs.table == table
+      assert attrs.op == :update
+      assert attrs.data == data
+      assert attrs.old_data == old_data
+      assert attrs.account_id == account.id
+      assert attrs.vsn == 0
+    end
+
+    test "handles account updates specially", %{account: account} do
+      old_data = %{"id" => account.id, "name" => "old name"}
+      data = %{"id" => account.id, "name" => "new name"}
+      lsn = 12346
+
+      initial_state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          lsn,
+          :update,
+          "accounts",
+          old_data,
+          data
+        )
+
+      # Account updates should be buffered
+      assert map_size(result_state.flush_buffer) == 1
+      attrs = result_state.flush_buffer[lsn]
+      assert attrs.table == "accounts"
+      assert attrs.op == :update
+      assert attrs.account_id == account.id
+    end
+
+    test "handles complex data changes", %{account: account} do
+      old_data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "settings" => %{"theme" => "dark"},
+        "tags" => ["old"]
+      }
+
+      new_data = %{
+        "id" => old_data["id"],
+        "account_id" => account.id,
+        "settings" => %{"theme" => "light", "language" => "en"},
+        "tags" => ["new", "updated"]
+      }
+
+      state = %{flush_buffer: %{}}
+      lsn = 300
+
+      result_state =
+        ReplicationConnection.on_write(
+          state,
+          lsn,
+          :update,
+          "resources",
+          old_data,
+          new_data
+        )
+
+      attrs = result_state.flush_buffer[lsn]
+      assert attrs.old_data == old_data
+      assert attrs.data == new_data
+    end
+  end
+
+  describe "on_write/6 for deletes" do
+    test "ignores account deletes", %{account: account} do
+      initial_state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          12345,
+          :delete,
+          "accounts",
+          %{"id" => account.id, "name" => "deleted account"},
+          nil
+        )
+
+      assert result_state == initial_state
+    end
+
+    test "adds delete operation to flush buffer for non-soft-deleted records", %{account: account} do
+      table = "resources"
+
+      old_data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "name" => "deleted resource",
+        "deleted_at" => nil
+      }
+
+      lsn = 12347
+
+      initial_state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          lsn,
+          :delete,
+          table,
+          old_data,
+          nil
+        )
+
+      assert map_size(result_state.flush_buffer) == 1
+      attrs = result_state.flush_buffer[lsn]
+
+      assert attrs.lsn == lsn
+      assert attrs.table == table
+      assert attrs.op == :delete
+      assert attrs.data == nil
+      assert attrs.old_data == old_data
+      assert attrs.account_id == account.id
+      assert attrs.vsn == 0
+    end
+
+    test "ignores soft-deleted records", %{account: account} do
+      table = "resources"
+
+      old_data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "name" => "soft deleted",
+        "deleted_at" => "2024-01-01T00:00:00Z"
+      }
+
+      lsn = 12348
+
+      initial_state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_write(
+          initial_state,
+          lsn,
+          :delete,
+          table,
+          old_data,
+          nil
+        )
+
+      # Buffer should remain unchanged
+      assert map_size(result_state.flush_buffer) == 0
+      assert result_state == initial_state
+    end
+
+    test "processes record without deleted_at field", %{account: account} do
+      old_data = %{
+        "id" => Ecto.UUID.generate(),
+        "account_id" => account.id,
+        "name" => "no deleted_at field"
+      }
+
+      state = %{flush_buffer: %{}}
+      lsn = 400
+
+      result_state =
+        ReplicationConnection.on_write(
+          state,
+          lsn,
+          :delete,
+          "resources",
+          old_data,
+          nil
+        )
+
+      assert map_size(result_state.flush_buffer) == 1
+      attrs = result_state.flush_buffer[lsn]
+      assert attrs.op == :delete
+    end
+  end
+
+  describe "multiple operations and buffer accumulation" do
+    test "operations accumulate in flush buffer correctly", %{account: account} do
+      initial_state = %{flush_buffer: %{}}
+
+      # Insert
+      state1 =
+        ReplicationConnection.on_write(
+          initial_state,
+          100,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test"}
+        )
+
+      assert map_size(state1.flush_buffer) == 1
+
+      # Update
+      resource_id = Ecto.UUID.generate()
+
+      state2 =
+        ReplicationConnection.on_write(
+          state1,
+          101,
+          :update,
+          "resources",
+          %{"id" => resource_id, "account_id" => account.id, "name" => "test"},
+          %{"id" => resource_id, "account_id" => account.id, "name" => "updated"}
+        )
+
+      assert map_size(state2.flush_buffer) == 2
+
+      # Delete (non-soft)
+      state3 =
+        ReplicationConnection.on_write(
+          state2,
+          102,
+          :delete,
+          "resources",
+          %{"id" => resource_id, "account_id" => account.id, "name" => "updated"},
+          nil
+        )
+
+      assert map_size(state3.flush_buffer) == 3
+
+      # Verify LSNs
+      assert Map.has_key?(state3.flush_buffer, 100)
+      assert Map.has_key?(state3.flush_buffer, 101)
+      assert Map.has_key?(state3.flush_buffer, 102)
+
+      assert state3.flush_buffer[100].op == :insert
+      assert state3.flush_buffer[101].op == :update
+      assert state3.flush_buffer[102].op == :delete
+    end
+
+    test "mixed operations with soft deletes", %{account: account} do
+      state = %{flush_buffer: %{}}
+
+      # Regular insert
+      state1 =
+        ReplicationConnection.on_write(
+          state,
+          100,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test"}
+        )
+
+      # Regular update
+      resource_id = Ecto.UUID.generate()
+
+      state2 =
+        ReplicationConnection.on_write(
+          state1,
+          101,
+          :update,
+          "resources",
+          %{"id" => resource_id, "account_id" => account.id, "name" => "test"},
+          %{"id" => resource_id, "account_id" => account.id, "name" => "updated"}
+        )
+
+      # Soft delete (should be ignored)
+      state3 =
+        ReplicationConnection.on_write(
+          state2,
+          102,
+          :delete,
+          "resources",
+          %{
+            "id" => resource_id,
+            "account_id" => account.id,
+            "name" => "updated",
+            "deleted_at" => "2024-01-01T00:00:00Z"
+          },
+          nil
+        )
+
+      # Hard delete (should be included)
+      state4 =
+        ReplicationConnection.on_write(
+          state3,
+          103,
+          :delete,
+          "resources",
+          %{
+            "id" => resource_id,
+            "account_id" => account.id,
+            "name" => "updated",
+            "deleted_at" => nil
+          },
+          nil
+        )
+
+      # Should have 3 operations: insert, update, hard delete (soft delete ignored)
+      assert map_size(state4.flush_buffer) == 3
+      assert Map.has_key?(state4.flush_buffer, 100)
+      assert Map.has_key?(state4.flush_buffer, 101)
+      refute Map.has_key?(state4.flush_buffer, 102)
+      assert Map.has_key?(state4.flush_buffer, 103)
+    end
+  end
+
+  describe "on_flush/1" do
+    test "handles empty flush buffer" do
+      state = %{flush_buffer: %{}}
+
+      result_state = ReplicationConnection.on_flush(state)
+
+      assert result_state == state
+    end
+
+    test "successfully flushes buffer and clears it", %{account: account} do
+      # Create valid change log data
+      attrs1 = %{
+        lsn: 100,
+        table: "resources",
+        op: :insert,
+        account_id: account.id,
+        data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
+        old_data: nil,
+        vsn: 0
+      }
+
+      attrs2 = %{
+        lsn: 101,
+        table: "resources",
+        op: :update,
+        account_id: account.id,
+        data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test2"},
+        old_data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test1"},
+        vsn: 0
+      }
+
+      state = %{
+        flush_buffer: %{100 => attrs1, 101 => attrs2},
+        last_flushed_lsn: 99
+      }
+
+      result_state = ReplicationConnection.on_flush(state)
+
+      assert result_state.flush_buffer == %{}
+      # Should be the highest LSN
+      assert result_state.last_flushed_lsn == 101
+
+      # Verify actual records were created in database
+      change_logs = Repo.all(from cl in ChangeLog, where: cl.lsn in [100, 101], order_by: cl.lsn)
+      assert length(change_logs) == 2
+
+      [log1, log2] = change_logs
+      assert log1.lsn == 100
+      assert log1.op == :insert
+      assert log2.lsn == 101
+      assert log2.op == :update
+    end
+
+    test "calculates last_flushed_lsn correctly as max LSN", %{account: account} do
+      # Create multiple records with non-sequential LSNs
+      attrs_map = %{
+        400 => %{
+          lsn: 400,
+          table: "resources",
+          op: :insert,
+          account_id: account.id,
+          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+          old_data: nil,
+          vsn: 0
+        },
+        402 => %{
+          lsn: 402,
+          table: "resources",
+          op: :insert,
+          account_id: account.id,
+          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+          old_data: nil,
+          vsn: 0
+        },
+        401 => %{
+          lsn: 401,
+          table: "resources",
+          op: :insert,
+          account_id: account.id,
+          data: %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+          old_data: nil,
+          vsn: 0
         }
       }
 
-      assert :ok = on_insert(0, table, complex_data)
+      state = %{flush_buffer: attrs_map, last_flushed_lsn: 399}
 
-      change_log = Repo.one!(from cl in ChangeLog, order_by: [desc: cl.inserted_at], limit: 1)
+      result_state = ReplicationConnection.on_flush(state)
 
-      # Data should be preserved exactly as provided
-      assert change_log.data == complex_data
-      assert change_log.op == :insert
-      assert change_log.table == table
-      assert change_log.account_id == account.id
-    end
-
-    test "tracks operation sequence correctly", %{account: account} do
-      table = "accounts"
-      initial_data = %{"id" => account.id, "name" => "initial"}
-      updated_data = %{"id" => account.id, "name" => "updated"}
-
-      # Insert
-      assert :ok = on_insert(0, table, initial_data)
-
-      # Update
-      assert :ok = on_update(1, table, initial_data, updated_data)
-
-      # Delete
-      assert :ok = on_delete(2, table, updated_data)
-
-      # Get the three most recent records in reverse chronological order
-      logs =
-        Repo.all(
-          from cl in ChangeLog,
-            where: cl.account_id == ^account.id,
-            order_by: [desc: cl.inserted_at],
-            limit: 3
-        )
-
-      # Should have 3 records (delete, update, insert in that order)
-      assert length(logs) >= 3
-      [delete_log, update_log, insert_log] = Enum.take(logs, 3)
-
-      # Verify sequence (most recent first)
-      assert delete_log.op == :delete
-      assert delete_log.old_data == updated_data
-      assert delete_log.data == nil
-      assert delete_log.account_id == account.id
-
-      assert update_log.op == :update
-      assert update_log.old_data == initial_data
-      assert update_log.data == updated_data
-      assert update_log.account_id == account.id
-
-      assert insert_log.op == :insert
-      assert insert_log.old_data == nil
-      assert insert_log.data == initial_data
-      assert insert_log.account_id == account.id
-
-      # All should have same version
-      assert insert_log.vsn == 0
-      assert update_log.vsn == 0
-      assert delete_log.vsn == 0
+      # Should update to max LSN (402)
+      assert result_state.last_flushed_lsn == 402
+      assert result_state.flush_buffer == %{}
     end
   end
 
-  describe "flows table comprehensive test" do
-    test "flows table never creates records regardless of operation or data" do
-      initial_count = Repo.aggregate(ChangeLog, :count, :id)
+  describe "LSN tracking and ordering" do
+    test "LSNs are preserved correctly in buffer" do
+      lsns = [1000, 1001, 1002]
 
-      # Test various data shapes and operations
-      test_data_sets = [
-        %{},
-        %{"id" => 1},
-        %{"complex" => %{"nested" => ["data", 1, true, nil]}},
-        nil
-      ]
+      state = %{flush_buffer: %{}}
 
-      for data <- test_data_sets do
-        assert :ok = on_insert(0, "flows", data)
-        assert :ok = on_update(1, "flows", data, data)
-        assert :ok = on_delete(2, "flows", data)
-      end
+      # Add multiple operations with specific LSNs
+      final_state =
+        Enum.reduce(lsns, state, fn lsn, acc_state ->
+          ReplicationConnection.on_write(
+            acc_state,
+            lsn,
+            :insert,
+            "resources",
+            nil,
+            %{
+              "id" => Ecto.UUID.generate(),
+              "account_id" => "test-account",
+              "name" => "test_#{lsn}"
+            }
+          )
+        end)
 
-      # No records should have been created
-      final_count = Repo.aggregate(ChangeLog, :count, :id)
-      assert final_count == initial_count
+      # Verify LSNs are preserved as keys
+      assert Map.keys(final_state.flush_buffer) |> Enum.sort() == lsns
+
+      # Verify each entry has correct LSN
+      Enum.each(lsns, fn lsn ->
+        assert final_state.flush_buffer[lsn].lsn == lsn
+      end)
+    end
+
+    test "handles large LSN values", %{account: account} do
+      large_lsn = 999_999_999_999_999
+
+      state = %{flush_buffer: %{}}
+
+      result_state =
+        ReplicationConnection.on_write(
+          state,
+          large_lsn,
+          :insert,
+          "resources",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
+        )
+
+      attrs = result_state.flush_buffer[large_lsn]
+      assert attrs.lsn == large_lsn
+    end
+
+    test "preserves LSN ordering through flush", %{account: account} do
+      # Add operations with non-sequential LSNs
+      lsns = [1005, 1003, 1007, 1001]
+
+      state = %{flush_buffer: %{}, last_flushed_lsn: 0}
+
+      final_state =
+        Enum.reduce(lsns, state, fn lsn, acc_state ->
+          ReplicationConnection.on_write(
+            acc_state,
+            lsn,
+            :insert,
+            "resources",
+            nil,
+            %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
+          )
+        end)
+
+      # Flush to database
+      ReplicationConnection.on_flush(final_state)
+
+      # Verify records in database have correct LSNs
+      change_logs = Repo.all(from cl in ChangeLog, where: cl.lsn in ^lsns, order_by: cl.lsn)
+      db_lsns = Enum.map(change_logs, & &1.lsn)
+      assert db_lsns == Enum.sort(lsns)
+    end
+  end
+
+  describe "edge cases and error scenarios" do
+    test "logs error for writes without account_id" do
+      import ExUnit.CaptureLog
+
+      state = %{flush_buffer: %{}}
+
+      log =
+        capture_log(fn ->
+          result =
+            ReplicationConnection.on_write(
+              state,
+              500,
+              :insert,
+              "some_table",
+              nil,
+              %{"id" => Ecto.UUID.generate(), "name" => "no account_id"}
+            )
+
+          # State should remain unchanged
+          assert result == state
+        end)
+
+      assert log =~ "Unexpected write operation!"
+      assert log =~ "lsn=500"
+    end
+
+    test "handles account_id in old_data for deletes", %{account: account} do
+      state = %{flush_buffer: %{}}
+      lsn = 600
+
+      result_state =
+        ReplicationConnection.on_write(
+          state,
+          lsn,
+          :delete,
+          "resources",
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id},
+          nil
+        )
+
+      assert map_size(result_state.flush_buffer) == 1
+      assert result_state.flush_buffer[lsn].account_id == account.id
+    end
+
+    test "handles very large buffers" do
+      account_id = Ecto.UUID.generate()
+      state = %{flush_buffer: %{}, last_flushed_lsn: 0}
+
+      # Simulate adding many operations
+      operations = 1..100
+
+      final_state =
+        Enum.reduce(operations, state, fn i, acc_state ->
+          ReplicationConnection.on_write(
+            acc_state,
+            i,
+            :insert,
+            "resources",
+            nil,
+            %{"id" => Ecto.UUID.generate(), "account_id" => account_id, "name" => "user#{i}"}
+          )
+        end)
+
+      assert map_size(final_state.flush_buffer) == 100
+
+      # Verify all LSNs are present
+      buffer_lsns = Map.keys(final_state.flush_buffer) |> Enum.sort()
+      assert buffer_lsns == Enum.to_list(1..100)
+    end
+  end
+
+  describe "special table handling" do
+    test "ignores relay_group token updates" do
+      state = %{flush_buffer: %{}}
+
+      # Update where old_data has relay_group type
+      result_state1 =
+        ReplicationConnection.on_write(
+          state,
+          100,
+          :update,
+          "tokens",
+          %{"id" => Ecto.UUID.generate(), "type" => "relay_group"},
+          %{"id" => Ecto.UUID.generate(), "type" => "relay_group", "updated" => true}
+        )
+
+      assert result_state1 == state
+
+      # Update where new data has relay_group type
+      result_state2 =
+        ReplicationConnection.on_write(
+          state,
+          101,
+          :update,
+          "tokens",
+          %{"id" => Ecto.UUID.generate(), "type" => "other"},
+          %{"id" => Ecto.UUID.generate(), "type" => "relay_group"}
+        )
+
+      assert result_state2 == state
+    end
+
+    test "processes non-relay_group tokens normally", %{account: account} do
+      state = %{flush_buffer: %{}}
+      lsn = 102
+
+      result_state =
+        ReplicationConnection.on_write(
+          state,
+          lsn,
+          :insert,
+          "tokens",
+          nil,
+          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "type" => "browser"}
+        )
+
+      assert map_size(result_state.flush_buffer) == 1
+      assert result_state.flush_buffer[lsn].table == "tokens"
     end
   end
 end

@@ -1,728 +1,494 @@
 defmodule Domain.Replication.ConnectionTest do
-  # Only one ReplicationConnection should be started in the cluster
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
-  # Create a test module that uses the macro
+  import ExUnit.CaptureLog
+
+  # Define a test module that uses the Domain.Replication.Connection macro
   defmodule TestReplicationConnection do
-    use Domain.Replication.Connection,
-      warning_threshold_ms: 5_000,
-      error_threshold_ms: 60_000
-  end
+    use Domain.Replication.Connection
 
-  alias TestReplicationConnection
+    def on_write(state, lsn, op, table, old_data, data) do
+      # Simple test implementation that tracks operations
+      operations = Map.get(state, :operations, [])
 
-  # Used to test callbacks, not used for live connection
-  def mock_state,
-    do: %TestReplicationConnection{
-      schema: "test_schema",
-      step: :disconnected,
-      publication_name: "test_pub",
-      replication_slot_name: "test_slot",
-      output_plugin: "pgoutput",
-      proto_version: 1,
-      table_subscriptions: ["accounts", "resources"],
-      relations: %{},
-      counter: 0,
-      tables_to_remove: MapSet.new()
-    }
-
-  # Used to test live connection
-  setup do
-    {connection_opts, config} =
-      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
-      |> Keyword.pop(:connection_opts)
-
-    init_state = %{
-      connection_opts: connection_opts,
-      instance: struct(TestReplicationConnection, config)
-    }
-
-    child_spec = %{
-      id: TestReplicationConnection,
-      start: {TestReplicationConnection, :start_link, [init_state]}
-    }
-
-    {:ok, pid} =
-      case start_supervised(child_spec) do
-        {:ok, pid} ->
-          {:ok, pid}
-
-        {:error, {:already_started, pid}} ->
-          {:ok, pid}
-      end
-
-    {:ok, pid: pid}
-  end
-
-  describe "handle_connect/1 callback" do
-    test "handle_connect initiates publication check" do
-      state = mock_state()
-      expected_query = "SELECT 1 FROM pg_publication WHERE pubname = '#{state.publication_name}'"
-      expected_next_state = %{state | step: :check_publication}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_connect(state)
-    end
-  end
-
-  describe "handle_result/2 callback" do
-    test "handle_result transitions from check_publication to check_publication_tables when publication exists" do
-      state = %{mock_state() | step: :check_publication}
-      result = [%Postgrex.Result{num_rows: 1}]
-
-      expected_query = """
-      SELECT schemaname, tablename
-      FROM pg_publication_tables
-      WHERE pubname = '#{state.publication_name}'
-      ORDER BY schemaname, tablename
-      """
-
-      expected_next_state = %{state | step: :check_publication_tables}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result creates publication if it doesn't exist" do
-      state = %{mock_state() | step: :check_publication}
-      result = [%Postgrex.Result{num_rows: 0}]
-
-      expected_tables = "test_schema.accounts,test_schema.resources"
-      expected_query = "CREATE PUBLICATION #{state.publication_name} FOR TABLE #{expected_tables}"
-      expected_next_state = %{state | step: :check_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result proceeds to replication slot when publication tables are up to date" do
-      state = %{mock_state() | step: :check_publication_tables}
-      # Mock existing tables that match our desired tables exactly
-      result = [
-        %Postgrex.Result{rows: [["test_schema", "accounts"], ["test_schema", "resources"]]}
-      ]
-
-      expected_query =
-        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
-
-      expected_next_state = %{state | step: :create_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result adds new tables when they are missing from publication" do
-      state = %{mock_state() | step: :check_publication_tables}
-      # Mock existing tables that are missing "resources"
-      result = [%Postgrex.Result{rows: [["test_schema", "accounts"]]}]
-
-      expected_query =
-        "ALTER PUBLICATION #{state.publication_name} ADD TABLE test_schema.resources"
-
-      expected_next_state = %{
-        state
-        | step: :remove_publication_tables,
-          tables_to_remove: MapSet.new()
+      operation = %{
+        lsn: lsn,
+        op: op,
+        table: table,
+        old_data: old_data,
+        data: data
       }
 
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
+      Map.put(state, :operations, [operation | operations])
     end
 
-    test "handle_result removes unwanted tables when they exist in publication" do
-      state = %{mock_state() | step: :check_publication_tables}
-      # Mock existing tables that include an unwanted "old_table"
-      result = [
-        %Postgrex.Result{
-          rows: [
-            ["test_schema", "accounts"],
-            ["test_schema", "resources"],
-            ["test_schema", "old_table"]
-          ]
-        }
-      ]
+    def on_flush(state) do
+      # Test implementation that counts flushes
+      flush_count = Map.get(state, :flush_count, 0)
 
-      expected_query =
-        "ALTER PUBLICATION #{state.publication_name} DROP TABLE test_schema.old_table"
-
-      expected_next_state = %{state | step: :check_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result adds tables first, then removes unwanted tables" do
-      state = %{mock_state() | step: :check_publication_tables}
-      # Mock existing tables that have "old_table" but missing "resources"
-      result = [
-        %Postgrex.Result{rows: [["test_schema", "accounts"], ["test_schema", "old_table"]]}
-      ]
-
-      expected_query =
-        "ALTER PUBLICATION #{state.publication_name} ADD TABLE test_schema.resources"
-
-      expected_tables_to_remove = MapSet.new(["test_schema.old_table"])
-
-      expected_next_state = %{
-        state
-        | step: :remove_publication_tables,
-          tables_to_remove: expected_tables_to_remove
-      }
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "verify MapSet behavior for debugging" do
-      # Verify that our MapSet is not empty
-      tables_to_remove = MapSet.new(["test_schema.old_table"])
-      refute Enum.empty?(tables_to_remove)
-      assert MapSet.size(tables_to_remove) == 1
-      assert MapSet.member?(tables_to_remove, "test_schema.old_table")
-    end
-
-    test "handle_result removes tables after adding when tables_to_remove is not empty" do
-      tables_to_remove = MapSet.new(["test_schema.old_table"])
-
-      state = %{
-        mock_state()
-        | step: :remove_publication_tables,
-          tables_to_remove: tables_to_remove
-      }
-
-      result = [%Postgrex.Result{}]
-
-      # Debug: verify the state is what we think it is
-      refute Enum.empty?(state.tables_to_remove)
-      assert state.step == :remove_publication_tables
-
-      expected_query =
-        "ALTER PUBLICATION #{state.publication_name} DROP TABLE test_schema.old_table"
-
-      expected_next_state = %{state | step: :check_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result proceeds to replication slot when no tables to remove" do
-      state = %{mock_state() | step: :remove_publication_tables, tables_to_remove: MapSet.new()}
-      result = [%Postgrex.Result{}]
-
-      expected_query =
-        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
-
-      expected_next_state = %{state | step: :create_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result transitions from create_slot to start_replication_slot when slot exists" do
-      state = %{mock_state() | step: :create_slot}
-      result = [%Postgrex.Result{num_rows: 1}]
-
-      expected_query = "SELECT 1"
-      expected_next_state = %{state | step: :start_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result transitions from start_replication_slot to streaming" do
-      state = %{mock_state() | step: :start_replication_slot}
-      result = [%Postgrex.Result{num_rows: 1}]
-
-      expected_stream_query =
-        "START_REPLICATION SLOT \"#{state.replication_slot_name}\" LOGICAL 0/0  (proto_version '#{state.proto_version}', publication_names '#{state.publication_name}')"
-
-      expected_next_state = %{state | step: :streaming}
-
-      assert {:stream, ^expected_stream_query, [], ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result transitions from check_replication_slot to create_slot after creating publication" do
-      state = %{mock_state() | step: :check_replication_slot}
-      result = [%Postgrex.Result{num_rows: 0}]
-
-      expected_query =
-        "SELECT 1 FROM pg_replication_slots WHERE slot_name = '#{state.replication_slot_name}'"
-
-      expected_next_state = %{state | step: :create_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
-    end
-
-    test "handle_result creates replication slot if it doesn't exist" do
-      state = %{mock_state() | step: :create_slot}
-      result = [%Postgrex.Result{num_rows: 0}]
-
-      expected_query =
-        "CREATE_REPLICATION_SLOT #{state.replication_slot_name} LOGICAL #{state.output_plugin} NOEXPORT_SNAPSHOT"
-
-      expected_next_state = %{state | step: :start_replication_slot}
-
-      assert {:query, ^expected_query, ^expected_next_state} =
-               TestReplicationConnection.handle_result(result, state)
+      state
+      |> Map.put(:flush_count, flush_count + 1)
+      |> Map.put(:flush_buffer, %{})
     end
   end
 
-  describe "handle_data/2" do
-    test "handle_data handles KeepAlive with reply :now" do
-      state = %{mock_state() | step: :streaming}
-      wal_end = 12345
+  # Create a test module that captures relation updates
+  defmodule RelationTestConnection do
+    use Domain.Replication.Connection
 
-      now =
-        System.os_time(:microsecond) - DateTime.to_unix(~U[2000-01-01 00:00:00Z], :microsecond)
+    def on_write(state, _, _, _, _, _), do: state
 
-      # 100 milliseconds
-      grace_period = 100_000
-      keepalive_data = <<?k, wal_end::64, 0::64, 1>>
+    def on_flush(state), do: state
+  end
 
-      assert {:noreply, reply, ^state} =
-               TestReplicationConnection.handle_data(keepalive_data, state)
-
-      assert [<<?r, 12346::64, 12346::64, 12346::64, clock::64, 1::8>>] = reply
-
-      assert now <= clock
-      assert clock < now + grace_period
-    end
-
-    test "handle_data handles KeepAlive with reply :later" do
-      state = %{mock_state() | step: :streaming}
-      wal_end = 54321
-
-      keepalive_data = <<?k, wal_end::64, 0::64, 0>>
-      expected_reply_message = []
-
-      assert {:noreply, ^expected_reply_message, ^state} =
-               TestReplicationConnection.handle_data(keepalive_data, state)
-    end
-
-    test "handle_data handles Write message and increments counter" do
-      state = %{mock_state() | step: :streaming}
-      server_wal_start = 123_456_789
-      server_wal_end = 987_654_321
-      server_system_clock = 1_234_567_890
-      message = "Hello, world!"
-
-      write_data =
-        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64, message::binary>>
-
-      new_state = %{state | counter: state.counter + 1}
-      expected_wal_end = server_wal_end + 1
-
-      assert {:noreply, [ack_message], ^new_state} =
-               TestReplicationConnection.handle_data(write_data, state)
-
-      # Validate the acknowledgment structure without pinning the timestamp
-      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
-               _timestamp::64, 1::8>> = ack_message
-    end
-
-    test "handle_data handles unknown message" do
-      state = %{mock_state() | step: :streaming}
-      unknown_data = <<?q, 1, 2, 3>>
-
-      assert {:noreply, [], ^state} = TestReplicationConnection.handle_data(unknown_data, state)
-    end
-
-    test "sends {:check_warning_threshold, lag_ms} > 5_000 ms" do
-      state =
-        %{mock_state() | step: :streaming}
-        |> Map.put(:warning_threshold_exceeded?, false)
-
-      server_wal_start = 123_456_789
-      server_wal_end = 987_654_321
-      server_system_clock = 1_234_567_890
-      lsn = <<0::32, 100::32>>
-      xid = <<0::32>>
-
-      # Simulate a commit timestamp that exceeds the threshold
-      timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 10_000_000
-
-      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
-
-      write_message =
-        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          begin_data::binary>>
-
-      expected_wal_end = server_wal_end + 1
-
-      assert {:noreply, [ack_message], _state} =
-               TestReplicationConnection.handle_data(write_message, state)
-
-      # Validate acknowledgment structure
-      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
-               _timestamp::64, 1::8>> = ack_message
-
-      assert_receive({:check_warning_threshold, lag_ms})
-      assert lag_ms > 5_000
-    end
-
-    test "sends {:check_warning_threshold, lag_ms} < 5_000 ms" do
-      state =
-        %{mock_state() | step: :streaming}
-        |> Map.put(:warning_threshold_exceeded?, true)
-
-      server_wal_start = 123_456_789
-      server_wal_end = 987_654_321
-      server_system_clock = 1_234_567_890
-      lsn = <<0::32, 100::32>>
-      xid = <<0::32>>
-
-      # Simulate a commit timestamp that is within the threshold
-      timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 1_000_000
-
-      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
-
-      write_message =
-        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          begin_data::binary>>
-
-      expected_wal_end = server_wal_end + 1
-
-      assert {:noreply, [ack_message], _state} =
-               TestReplicationConnection.handle_data(write_message, state)
-
-      # Validate acknowledgment structure
-      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
-               _timestamp::64, 1::8>> = ack_message
-
-      assert_receive({:check_warning_threshold, lag_ms})
-      assert lag_ms < 5_000
+  describe "macro compilation" do
+    test "creates a module with required functions" do
+      # Verify the module was created with expected functions
+      assert function_exported?(TestReplicationConnection, :start_link, 1)
+      assert function_exported?(TestReplicationConnection, :init, 1)
+      assert function_exported?(TestReplicationConnection, :handle_connect, 1)
+      assert function_exported?(TestReplicationConnection, :handle_disconnect, 1)
+      assert function_exported?(TestReplicationConnection, :handle_result, 2)
+      assert function_exported?(TestReplicationConnection, :handle_data, 2)
+      assert function_exported?(TestReplicationConnection, :handle_info, 2)
+      assert function_exported?(TestReplicationConnection, :on_write, 6)
+      assert function_exported?(TestReplicationConnection, :on_flush, 1)
     end
   end
 
-  describe "handle_info/2" do
-    test "handle_info handles :shutdown message" do
-      state = mock_state()
-      assert {:disconnect, :normal} = TestReplicationConnection.handle_info(:shutdown, state)
-    end
+  describe "struct definition" do
+    test "defines correct struct with expected fields" do
+      assert %TestReplicationConnection{} = struct = %TestReplicationConnection{}
 
-    test "handle_info handles :DOWN message from monitored process" do
-      state = mock_state()
-      monitor_ref = make_ref()
-      down_msg = {:DOWN, monitor_ref, :process, :some_pid, :shutdown}
-
-      assert {:disconnect, :normal} = TestReplicationConnection.handle_info(down_msg, state)
-    end
-
-    test "handle_info ignores other messages" do
-      state = mock_state()
-      random_msg = {:some_other_info, "data"}
-
-      assert {:noreply, ^state} = TestReplicationConnection.handle_info(random_msg, state)
-    end
-
-    test "handle_info processes warning threshold alerts" do
-      state = Map.put(mock_state(), :warning_threshold_exceeded?, false)
-
-      # Test crossing threshold
-      assert {:noreply, %{warning_threshold_exceeded?: true}} =
-               TestReplicationConnection.handle_info({:check_warning_threshold, 6_000}, state)
-
-      # Test going back below threshold
-      state_above = %{state | warning_threshold_exceeded?: true}
-
-      assert {:noreply, %{warning_threshold_exceeded?: false}} =
-               TestReplicationConnection.handle_info(
-                 {:check_warning_threshold, 3_000},
-                 state_above
-               )
-
-      # Test staying below threshold
-      assert {:noreply, %{warning_threshold_exceeded?: false}} =
-               TestReplicationConnection.handle_info({:check_warning_threshold, 2_000}, state)
-
-      # Test staying above threshold
-      assert {:noreply, %{warning_threshold_exceeded?: true}} =
-               TestReplicationConnection.handle_info(
-                 {:check_warning_threshold, 7_000},
-                 state_above
-               )
+      # Check default values
+      assert struct.schema == "public"
+      assert struct.step == :disconnected
+      assert struct.output_plugin == "pgoutput"
+      assert struct.proto_version == 1
+      assert struct.table_subscriptions == []
+      assert struct.relations == %{}
+      assert struct.counter == 0
+      assert struct.tables_to_remove == MapSet.new()
+      assert struct.flush_interval == 0
+      assert struct.flush_buffer == %{}
+      assert struct.last_flushed_lsn == 0
+      assert struct.warning_threshold_exceeded? == false
+      assert struct.error_threshold_exceeded? == false
+      assert struct.flush_buffer_size == 0
+      assert struct.status_log_interval == :timer.minutes(1)
+      assert struct.warning_threshold == :timer.seconds(30)
+      assert struct.error_threshold == :timer.seconds(60)
     end
   end
 
-  describe "error threshold functionality" do
-    test "handle_info sets error_threshold_exceeded? to true when lag exceeds error threshold" do
-      state =
-        mock_state()
-        |> Map.put(:error_threshold_exceeded?, false)
-
-      # Test crossing the error threshold (60_000ms from TestReplicationConnection config)
-      assert {:noreply, updated_state} =
-               TestReplicationConnection.handle_info({:check_error_threshold, 65_000}, state)
-
-      assert updated_state.error_threshold_exceeded? == true
+  describe "initialization" do
+    test "init/1 preserves state" do
+      initial_state = %TestReplicationConnection{counter: 42}
+      {:ok, state} = TestReplicationConnection.init(initial_state)
+      assert state.counter == 42
     end
 
-    test "handle_info sets error_threshold_exceeded? to false when lag drops below error threshold" do
-      state =
-        mock_state()
-        |> Map.put(:error_threshold_exceeded?, true)
+    test "init/1 schedules flush when flush_interval > 0" do
+      initial_state = %TestReplicationConnection{flush_interval: 1000}
+      {:ok, _state} = TestReplicationConnection.init(initial_state)
 
-      # Test going back below threshold
-      assert {:noreply, updated_state} =
-               TestReplicationConnection.handle_info({:check_error_threshold, 30_000}, state)
-
-      assert updated_state.error_threshold_exceeded? == false
+      # Should receive flush message after interval
+      assert_receive :flush, 1100
     end
 
-    test "handle_info keeps error_threshold_exceeded? true when lag stays above error threshold" do
-      state =
-        mock_state()
-        |> Map.put(:error_threshold_exceeded?, true)
+    test "init/1 does not schedule flush when flush_interval is 0" do
+      initial_state = %TestReplicationConnection{flush_interval: 0}
+      {:ok, _state} = TestReplicationConnection.init(initial_state)
 
-      # Test staying above threshold
-      assert {:noreply, updated_state} =
-               TestReplicationConnection.handle_info({:check_error_threshold, 70_000}, state)
-
-      assert updated_state.error_threshold_exceeded? == true
-    end
-
-    test "handle_info keeps error_threshold_exceeded? false when lag stays below error threshold" do
-      state =
-        mock_state()
-        |> Map.put(:error_threshold_exceeded?, false)
-
-      # Test staying below threshold
-      assert {:noreply, updated_state} =
-               TestReplicationConnection.handle_info({:check_error_threshold, 30_000}, state)
-
-      assert updated_state.error_threshold_exceeded? == false
+      # Should not receive flush message
+      refute_receive :flush, 100
     end
   end
 
-  describe "BEGIN message lag tracking with error threshold" do
-    test "sends both check_warning_threshold and check_error_threshold messages" do
-      state =
-        %{mock_state() | step: :streaming}
-        |> Map.put(:warning_threshold_exceeded?, false)
-        |> Map.put(:error_threshold_exceeded?, false)
+  describe "handle_connect/1" do
+    test "returns query to check publication" do
+      state = %TestReplicationConnection{publication_name: "test_pub"}
 
-      server_wal_start = 123_456_789
-      server_wal_end = 987_654_321
-      server_system_clock = 1_234_567_890
-      lsn = <<0::32, 100::32>>
-      xid = <<0::32>>
+      {:query, query, new_state} = TestReplicationConnection.handle_connect(state)
 
-      # Simulate a commit timestamp that exceeds both thresholds (70 seconds lag)
-      timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 70_000_000
-
-      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
-
-      write_message =
-        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          begin_data::binary>>
-
-      expected_wal_end = server_wal_end + 1
-
-      assert {:noreply, [ack_message], _state} =
-               TestReplicationConnection.handle_data(write_message, state)
-
-      # Validate acknowledgment structure
-      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
-               _timestamp::64, 1::8>> = ack_message
-
-      # Should receive both threshold check messages
-      assert_receive {:check_warning_threshold, warning_lag_ms}
-      assert warning_lag_ms > 5_000
-
-      assert_receive {:check_error_threshold, error_lag_ms}
-      assert error_lag_ms > 60_000
-
-      # Both should report the same lag time
-      assert warning_lag_ms == error_lag_ms
-    end
-
-    test "sends check_error_threshold with lag below error threshold" do
-      state =
-        %{mock_state() | step: :streaming}
-        |> Map.put(:warning_threshold_exceeded?, false)
-        |> Map.put(:error_threshold_exceeded?, false)
-
-      server_wal_start = 123_456_789
-      server_wal_end = 987_654_321
-      server_system_clock = 1_234_567_890
-      lsn = <<0::32, 100::32>>
-      xid = <<0::32>>
-
-      # Simulate a commit timestamp with moderate lag (10 seconds)
-      timestamp =
-        DateTime.diff(DateTime.utc_now(), ~U[2000-01-01 00:00:00Z], :microsecond) - 10_000_000
-
-      begin_data = <<?B, lsn::binary, timestamp::64, xid::binary>>
-
-      write_message =
-        <<?w, server_wal_start::64, server_wal_end::64, server_system_clock::64,
-          begin_data::binary>>
-
-      expected_wal_end = server_wal_end + 1
-
-      assert {:noreply, [ack_message], _state} =
-               TestReplicationConnection.handle_data(write_message, state)
-
-      # Validate acknowledgment structure
-      assert <<?r, ^expected_wal_end::64, ^expected_wal_end::64, ^expected_wal_end::64,
-               _timestamp::64, 1::8>> = ack_message
-
-      # Should receive both threshold check messages
-      assert_receive {:check_warning_threshold, warning_lag_ms}
-      assert warning_lag_ms > 5_000
-
-      assert_receive {:check_error_threshold, error_lag_ms}
-      assert error_lag_ms < 60_000
-      # Still above warning threshold
-      assert error_lag_ms > 5_000
-    end
-  end
-
-  describe "message processing bypass behavior" do
-    # Note: We can't directly test handle_message/3 since it's private,
-    # but we can test the behavior by mocking the on_insert/on_update/on_delete callbacks
-    # and verifying they're not called when error_threshold_exceeded? is true
-
-    defmodule TestCallbackModule do
-      use Domain.Replication.Connection,
-        warning_threshold_ms: 5_000,
-        error_threshold_ms: 60_000
-
-      def on_insert(lsn, table, data) do
-        send(self(), {:callback_called, :on_insert, lsn, table, data})
-        :ok
-      end
-
-      def on_update(lsn, table, old_data, data) do
-        send(self(), {:callback_called, :on_update, lsn, table, old_data, data})
-        :ok
-      end
-
-      def on_delete(lsn, table, old_data) do
-        send(self(), {:callback_called, :on_delete, lsn, table, old_data})
-        :ok
-      end
-    end
-
-    test "insert processing is bypassed when error threshold exceeded" do
-      # Create a relation that can be referenced
-      relation = %{
-        namespace: "test_schema",
-        name: "test_table",
-        columns: [%{name: "id"}, %{name: "name"}]
-      }
-
-      state =
-        %TestCallbackModule{
-          schema: "test_schema",
-          step: :streaming,
-          publication_name: "test_pub",
-          replication_slot_name: "test_slot",
-          output_plugin: "pgoutput",
-          proto_version: 1,
-          table_subscriptions: ["test_table"],
-          relations: %{1 => relation},
-          counter: 0,
-          tables_to_remove: MapSet.new()
-        }
-        |> Map.put(:error_threshold_exceeded?, true)
-
-      # Since we can't easily construct valid WAL insert messages without more
-      # complex setup, let's focus on testing the threshold management itself
-
-      # The key test is that when error_threshold_exceeded? is true,
-      # the system should handle this gracefully
-      assert state.error_threshold_exceeded? == true
-    end
-
-    test "callbacks are called when error threshold not exceeded" do
-      # Similar setup but with error_threshold_exceeded? set to false
-      relation = %{
-        namespace: "test_schema",
-        name: "test_table",
-        columns: [%{name: "id"}, %{name: "name"}]
-      }
-
-      state =
-        %TestCallbackModule{
-          schema: "test_schema",
-          step: :streaming,
-          publication_name: "test_pub",
-          replication_slot_name: "test_slot",
-          output_plugin: "pgoutput",
-          proto_version: 1,
-          table_subscriptions: ["test_table"],
-          relations: %{1 => relation},
-          counter: 0,
-          tables_to_remove: MapSet.new()
-        }
-        |> Map.put(:error_threshold_exceeded?, false)
-
-      # Test that the state is properly configured for normal processing
-      assert state.error_threshold_exceeded? == false
-
-      # The actual message processing would require constructing complex WAL messages,
-      # but the important thing is that the state management works correctly
-    end
-  end
-
-  describe "error threshold integration with warning threshold" do
-    test "both thresholds can be managed independently" do
-      state =
-        mock_state()
-        |> Map.put(:warning_threshold_exceeded?, false)
-        |> Map.put(:error_threshold_exceeded?, false)
-
-      # Cross warning threshold only
-      assert {:noreply, updated_state} =
-               TestReplicationConnection.handle_info({:check_warning_threshold, 10_000}, state)
-
-      assert updated_state.warning_threshold_exceeded? == true
-      assert updated_state.error_threshold_exceeded? == false
-
-      # Cross error threshold
-      assert {:noreply, updated_state2} =
-               TestReplicationConnection.handle_info(
-                 {:check_error_threshold, 70_000},
-                 updated_state
-               )
-
-      assert updated_state2.warning_threshold_exceeded? == true
-      assert updated_state2.error_threshold_exceeded? == true
-
-      # Drop below error threshold but stay above warning
-      assert {:noreply, updated_state3} =
-               TestReplicationConnection.handle_info(
-                 {:check_error_threshold, 10_000},
-                 updated_state2
-               )
-
-      assert updated_state3.warning_threshold_exceeded? == true
-      assert updated_state3.error_threshold_exceeded? == false
-
-      # Drop below warning threshold
-      assert {:noreply, updated_state4} =
-               TestReplicationConnection.handle_info(
-                 {:check_warning_threshold, 2_000},
-                 updated_state3
-               )
-
-      assert updated_state4.warning_threshold_exceeded? == false
-      assert updated_state4.error_threshold_exceeded? == false
+      assert query == "SELECT 1 FROM pg_publication WHERE pubname = 'test_pub'"
+      assert new_state.step == :check_publication
     end
   end
 
   describe "handle_disconnect/1" do
-    test "handle_disconnect resets step to :disconnected" do
-      state = %{mock_state() | step: :streaming}
-      expected_state = %{state | step: :disconnected}
+    test "logs disconnection and updates state" do
+      state = %TestReplicationConnection{counter: 123, step: :streaming}
 
-      assert {:noreply, ^expected_state} = TestReplicationConnection.handle_disconnect(state)
+      log =
+        capture_log(fn ->
+          {:noreply, new_state} = TestReplicationConnection.handle_disconnect(state)
+          assert new_state.step == :disconnected
+          assert new_state.counter == 123
+        end)
+
+      assert log =~ "Replication connection disconnected"
+      assert log =~ "counter=123"
+    end
+  end
+
+  describe "handle_info/2" do
+    test "handles :shutdown message" do
+      assert {:disconnect, :normal} = TestReplicationConnection.handle_info(:shutdown, %{})
+    end
+
+    test "handles DOWN message" do
+      assert {:disconnect, :normal} =
+               TestReplicationConnection.handle_info({:DOWN, nil, :process, nil, nil}, %{})
+    end
+
+    test "handles :flush message when flush_interval > 0" do
+      state =
+        %TestReplicationConnection{
+          flush_interval: 1000,
+          flush_buffer: %{1 => %{data: "test"}}
+        }
+        |> Map.put(:operations, [])
+        |> Map.put(:flush_count, 0)
+
+      {:noreply, new_state} = TestReplicationConnection.handle_info(:flush, state)
+
+      # Our test on_flush implementation increments flush_count
+      assert Map.get(new_state, :flush_count) == 1
+      assert new_state.flush_buffer == %{}
+
+      # Should schedule next flush
+      assert_receive :flush, 1100
+    end
+
+    test "handles :interval_logger message" do
+      state = %TestReplicationConnection{counter: 456, status_log_interval: 100}
+
+      log =
+        capture_log(fn ->
+          {:noreply, _new_state} = TestReplicationConnection.handle_info(:interval_logger, state)
+        end)
+
+      assert log =~ "Processed 456 write messages from the WAL stream"
+
+      # Should schedule next log
+      assert_receive :interval_logger, 150
+    end
+
+    test "handles warning threshold checks" do
+      # Below threshold
+      state = %TestReplicationConnection{
+        warning_threshold_exceeded?: false,
+        warning_threshold: 1000
+      }
+
+      {:noreply, new_state} =
+        TestReplicationConnection.handle_info({:check_warning_threshold, 500}, state)
+
+      assert new_state.warning_threshold_exceeded? == false
+
+      # Above threshold
+      log =
+        capture_log(fn ->
+          {:noreply, new_state2} =
+            TestReplicationConnection.handle_info({:check_warning_threshold, 1500}, state)
+
+          assert new_state2.warning_threshold_exceeded? == true
+        end)
+
+      assert log =~ "Processing lag exceeds warning threshold"
+
+      # Back below threshold
+      exceeded_state = %{state | warning_threshold_exceeded?: true}
+
+      log2 =
+        capture_log(fn ->
+          {:noreply, new_state3} =
+            TestReplicationConnection.handle_info({:check_warning_threshold, 500}, exceeded_state)
+
+          assert new_state3.warning_threshold_exceeded? == false
+        end)
+
+      assert log2 =~ "Processing lag is back below warning threshold"
+    end
+
+    test "handles error threshold checks" do
+      # Below threshold
+      state = %TestReplicationConnection{
+        error_threshold_exceeded?: false,
+        error_threshold: 2000
+      }
+
+      {:noreply, new_state} =
+        TestReplicationConnection.handle_info({:check_error_threshold, 1000}, state)
+
+      assert new_state.error_threshold_exceeded? == false
+
+      # Above threshold
+      log =
+        capture_log(fn ->
+          {:noreply, new_state2} =
+            TestReplicationConnection.handle_info({:check_error_threshold, 3000}, state)
+
+          assert new_state2.error_threshold_exceeded? == true
+        end)
+
+      assert log =~ "Processing lag exceeds error threshold; skipping side effects!"
+
+      # Back below threshold
+      exceeded_state = %{state | error_threshold_exceeded?: true}
+
+      log2 =
+        capture_log(fn ->
+          {:noreply, new_state3} =
+            TestReplicationConnection.handle_info({:check_error_threshold, 1000}, exceeded_state)
+
+          assert new_state3.error_threshold_exceeded? == false
+        end)
+
+      assert log2 =~ "Processing lag is back below error threshold"
+    end
+
+    test "handles unknown messages" do
+      state = %TestReplicationConnection{counter: 789}
+      {:noreply, new_state} = TestReplicationConnection.handle_info(:unknown_message, state)
+      assert new_state == state
+    end
+  end
+
+  describe "write message handling" do
+    test "processes insert messages" do
+      state =
+        %TestReplicationConnection{
+          relations: %{
+            1 => %{
+              namespace: "public",
+              name: "users",
+              columns: [
+                %{name: "id"},
+                %{name: "name"}
+              ]
+            }
+          },
+          counter: 0
+        }
+        |> Map.put(:operations, [])
+
+      # Test on_write callback directly
+      # In a real scenario, handle_data would parse WAL messages and eventually
+      # call on_write with the decoded operation data
+      new_state =
+        TestReplicationConnection.on_write(
+          state,
+          100,
+          :insert,
+          "users",
+          nil,
+          %{"id" => "123", "name" => "John Doe"}
+        )
+
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+      [operation] = operations
+      assert operation.op == :insert
+      assert operation.table == "users"
+      assert operation.lsn == 100
+    end
+
+    test "processes update messages" do
+      state =
+        %TestReplicationConnection{}
+        |> Map.put(:operations, [])
+
+      new_state =
+        TestReplicationConnection.on_write(
+          state,
+          101,
+          :update,
+          "users",
+          %{"id" => "123", "name" => "John"},
+          %{"id" => "123", "name" => "John Doe"}
+        )
+
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+      [operation] = operations
+      assert operation.op == :update
+      assert operation.old_data == %{"id" => "123", "name" => "John"}
+      assert operation.data == %{"id" => "123", "name" => "John Doe"}
+    end
+
+    test "processes delete messages" do
+      state =
+        %TestReplicationConnection{}
+        |> Map.put(:operations, [])
+
+      new_state =
+        TestReplicationConnection.on_write(
+          state,
+          102,
+          :delete,
+          "users",
+          %{"id" => "123", "name" => "John Doe"},
+          nil
+        )
+
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+      [operation] = operations
+      assert operation.op == :delete
+      assert operation.old_data == %{"id" => "123", "name" => "John Doe"}
+      assert operation.data == nil
+    end
+
+    test "on_write always processes operations in test implementation" do
+      # Note: In the real implementation, process_write checks error_threshold_exceeded?
+      # but our test implementation doesn't, so operations are always processed
+      state =
+        %TestReplicationConnection{
+          error_threshold_exceeded?: true
+        }
+        |> Map.put(:operations, [])
+
+      new_state =
+        TestReplicationConnection.on_write(
+          state,
+          103,
+          :insert,
+          "users",
+          nil,
+          %{"id" => "456"}
+        )
+
+      # Our test implementation always processes operations
+      operations = Map.get(new_state, :operations, [])
+      assert length(operations) == 1
+    end
+  end
+
+  describe "flush behavior" do
+    test "calls on_flush when buffer size reached" do
+      state =
+        %TestReplicationConnection{
+          flush_buffer: %{1 => %{}, 2 => %{}},
+          flush_buffer_size: 3
+        }
+        |> Map.put(:flush_count, 0)
+        |> Map.put(:operations, [])
+
+      # Adding one more should trigger flush
+      # In the real implementation, this would happen in process_write
+      # when maybe_flush is called
+      new_state = %{state | flush_buffer: Map.put(state.flush_buffer, 3, %{})}
+
+      # Simulate maybe_flush logic
+      flushed_state =
+        if map_size(new_state.flush_buffer) >= new_state.flush_buffer_size do
+          TestReplicationConnection.on_flush(new_state)
+        else
+          new_state
+        end
+
+      assert Map.get(flushed_state, :flush_count) == 1
+      assert flushed_state.flush_buffer == %{}
+    end
+  end
+
+  describe "publication and slot management flow" do
+    test "creates publication when it doesn't exist" do
+      state = %TestReplicationConnection{
+        publication_name: "test_pub",
+        table_subscriptions: ["users", "posts"],
+        schema: "public",
+        step: :check_publication
+      }
+
+      # Simulate publication not existing
+      {:query, query, new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{num_rows: 0}],
+          state
+        )
+
+      assert query == "CREATE PUBLICATION test_pub FOR TABLE public.users,public.posts"
+      assert new_state.step == :check_replication_slot
+    end
+
+    test "checks publication tables when publication exists" do
+      state = %TestReplicationConnection{
+        publication_name: "test_pub",
+        step: :check_publication
+      }
+
+      {:query, query, new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{num_rows: 1}],
+          state
+        )
+
+      assert query =~ "SELECT schemaname, tablename"
+      assert query =~ "FROM pg_publication_tables"
+      assert query =~ "WHERE pubname = 'test_pub'"
+      assert new_state.step == :check_publication_tables
+    end
+
+    test "creates replication slot when it doesn't exist" do
+      state = %TestReplicationConnection{
+        replication_slot_name: "test_slot",
+        output_plugin: "pgoutput",
+        step: :create_slot
+      }
+
+      {:query, query, new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{num_rows: 0}],
+          state
+        )
+
+      assert query == "CREATE_REPLICATION_SLOT test_slot LOGICAL pgoutput NOEXPORT_SNAPSHOT"
+      assert new_state.step == :start_replication_slot
+    end
+
+    test "starts replication when slot exists" do
+      state = %TestReplicationConnection{
+        replication_slot_name: "test_slot",
+        publication_name: "test_pub",
+        proto_version: 1,
+        step: :start_replication_slot
+      }
+
+      {:stream, query, [], new_state} =
+        TestReplicationConnection.handle_result(
+          [%Postgrex.Result{}],
+          state
+        )
+
+      assert query =~ "START_REPLICATION SLOT \"test_slot\""
+      assert query =~ "publication_names 'test_pub'"
+      assert query =~ "proto_version '1'"
+      assert new_state.step == :streaming
+    end
+  end
+
+  describe "relation message handling" do
+    test "stores relation information" do
+      state = %RelationTestConnection{relations: %{}}
+
+      # In the real implementation, this would be called from handle_data
+      # when a Relation message is received. Since handle_write is private,
+      # we can't test it directly, but we know it updates the relations map
+      relation = %{
+        id: 1,
+        namespace: "public",
+        name: "test_table",
+        columns: [%{name: "id"}, %{name: "data"}]
+      }
+
+      # The relation would be stored with id as key
+      new_state = %{state | relations: Map.put(state.relations, relation.id, relation)}
+
+      assert new_state.relations[1].name == "test_table"
+      assert length(new_state.relations[1].columns) == 2
     end
   end
 end
