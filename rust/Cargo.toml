@@ -27,6 +27,7 @@ members = [
     "relay/ebpf-turn-router",
     "relay/server",
     "telemetry",
+    "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
     "tools/uniffi-bindgen",
@@ -100,6 +101,7 @@ l3-tcp = { path = "connlib/l3-tcp" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 libc = "0.2.174"
+libfuzzer-sys = "0.4"
 lockfree-object-pool = "0.1.6"
 log = "0.4"
 lru = "0.12.5"
