@@ -207,7 +207,7 @@ impl SimGateway {
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
-        if let Some(udp) = packet.as_udp() {
+        if let Ok(udp) = packet.as_udp() {
             let socket = SocketAddr::new(dst_ip, udp.destination_port());
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
@@ -217,7 +217,7 @@ impl SimGateway {
             }
         }
 
-        if let Some(tcp) = packet.as_tcp() {
+        if let Ok(tcp) = packet.as_tcp() {
             let socket = SocketAddr::new(dst_ip, tcp.destination_port());
 
             if let Some(server) = self.tcp_resources.get_mut(&socket) {
@@ -257,7 +257,7 @@ impl SimGateway {
     }
 
     fn request_received(&mut self, packet: &IpPacket) {
-        if let Some(udp) = packet.as_udp() {
+        if let Ok(udp) = packet.as_udp() {
             let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
             tracing::debug!(%packet_id, "Received UDP request");
             self.received_udp_requests.insert(packet_id, packet.clone());
@@ -423,7 +423,7 @@ fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
         return None;
     }
 
-    if let Some(mut packet) = req.as_tcp_mut() {
+    if let Ok(mut packet) = req.as_tcp_mut() {
         let original_src = packet.get_source_port();
         let original_dst = packet.get_destination_port();
 
@@ -431,7 +431,7 @@ fn echo_reply(mut req: IpPacket) -> Option<IpPacket> {
         packet.set_destination_port(original_src);
     }
 
-    if let Some(mut packet) = req.as_udp_mut() {
+    if let Ok(mut packet) = req.as_udp_mut() {
         let original_src = packet.get_source_port();
         let original_dst = packet.get_destination_port();
 

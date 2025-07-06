@@ -81,5 +81,5 @@ fn test_all_getters(packet: &IpPacket) {
     let _ = packet.as_fz_p2p_control();
     let _ = packet.calculate_udp_checksum();
     let _ = packet.calculate_tcp_checksum();
-    let _ = packet.icmp_unreachable_destination();
+    let _ = packet.icmp_error();
 }

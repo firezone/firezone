@@ -117,7 +117,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     ///
     /// Only TCP packets originating from one of the connected DNS resolvers are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
-        let Some(tcp) = packet.as_tcp() else {
+        let Ok(tcp) = packet.as_tcp() else {
             #[cfg(debug_assertions)]
             tracing::trace!(?packet, "Not a TCP packet");
 
