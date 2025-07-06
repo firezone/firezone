@@ -15,5 +15,6 @@ doc = false
 bench = false
 
 [dependencies]
-ip-packet = { workspace = true }
+arbitrary = { workspace = true, features = ["derive"] }
+ip-packet = { workspace = true, features = ["arbitrary"] }
 libfuzzer-sys = { workspace = true }
