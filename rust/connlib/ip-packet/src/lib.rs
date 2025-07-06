@@ -123,6 +123,7 @@ impl IpPacketBuf {
 #[derive(PartialEq, Clone)]
 pub struct IpPacket {
     buf: Buffer<Vec<u8>>,
+    ip_header_length: usize,
     len: usize,
 
     version: IpVersion,
@@ -153,7 +154,7 @@ impl std::fmt::Debug for IpPacket {
             dbg.field("icmp_type", &icmp.icmp_type());
         }
 
-        if let Some(tcp) = self.as_tcp() {
+        if let Ok(tcp) = self.as_tcp() {
             dbg.field("src_port", &tcp.source_port())
                 .field("dst_port", &tcp.destination_port())
                 .field("seq", &tcp.sequence_number())
@@ -172,7 +173,7 @@ impl std::fmt::Debug for IpPacket {
             }
         }
 
-        if let Some(udp) = self.as_udp() {
+        if let Ok(udp) = self.as_udp() {
             dbg.field("src_port", &udp.source_port())
                 .field("dst_port", &udp.destination_port())
                 .field("len", &udp.payload().len());
@@ -234,11 +235,19 @@ impl IpPacket {
             IpSlice::Ipv4(_) => IpVersion::V4,
             IpSlice::Ipv6(_) => IpVersion::V6,
         };
+        let ip_header_length = match ip {
+            IpSlice::Ipv4(ipv4) => {
+                ipv4.header().ihl() as usize * 4
+                    + ipv4.extensions().auth.map_or(0, |ext| ext.slice().len())
+            }
+            IpSlice::Ipv6(ipv6) => ipv6.header().header_len() + ipv6.extensions().slice().len(),
+        };
 
         Ok(Self {
             buf: buf.inner,
             len,
             version,
+            ip_header_length,
         })
     }
 
@@ -261,11 +270,11 @@ impl IpPacket {
     }
 
     pub fn source_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
+        if let Ok(p) = self.as_tcp() {
             return Ok(Protocol::Tcp(p.source_port()));
         }
 
-        if let Some(p) = self.as_udp() {
+        if let Ok(p) = self.as_udp() {
             return Ok(Protocol::Udp(p.source_port()));
         }
 
@@ -293,11 +302,11 @@ impl IpPacket {
     }
 
     pub fn destination_protocol(&self) -> Result<Protocol, UnsupportedProtocol> {
-        if let Some(p) = self.as_tcp() {
+        if let Ok(p) = self.as_tcp() {
             return Ok(Protocol::Tcp(p.destination_port()));
         }
 
-        if let Some(p) = self.as_udp() {
+        if let Ok(p) = self.as_udp() {
             return Ok(Protocol::Udp(p.destination_port()));
         }
 
@@ -325,11 +334,11 @@ impl IpPacket {
     }
 
     pub fn set_source_protocol(&mut self, v: u16) {
-        if let Some(mut p) = self.as_tcp_mut() {
+        if let Ok(mut p) = self.as_tcp_mut() {
             p.set_source_port(v);
         }
 
-        if let Some(mut p) = self.as_udp_mut() {
+        if let Ok(mut p) = self.as_udp_mut() {
             p.set_source_port(v);
         }
 
@@ -337,11 +346,11 @@ impl IpPacket {
     }
 
     pub fn set_destination_protocol(&mut self, v: u16) {
-        if let Some(mut p) = self.as_tcp_mut() {
+        if let Ok(mut p) = self.as_tcp_mut() {
             p.set_destination_port(v);
         }
 
-        if let Some(mut p) = self.as_udp_mut() {
+        if let Ok(mut p) = self.as_udp_mut() {
             p.set_destination_port(v);
         }
 
@@ -485,44 +494,36 @@ impl IpPacket {
             .set_checksum(checksum);
     }
 
-    pub fn as_udp(&self) -> Option<UdpSlice> {
+    pub fn as_udp(&self) -> Result<UdpSlice> {
         if !self.is_udp() {
-            return None;
+            bail!("Not a UDP packet")
         }
 
-        UdpSlice::from_slice(self.payload())
-            .inspect_err(|e| tracing::debug!("Invalid UDP packet: {e}"))
-            .ok()
+        UdpSlice::from_slice(self.payload()).context("Failed to parse UDP header")
     }
 
-    pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut> {
+    pub fn as_udp_mut(&mut self) -> Result<UdpHeaderSliceMut> {
         if !self.is_udp() {
-            return None;
+            bail!("Not a UDP packet")
         }
 
-        UdpHeaderSliceMut::from_slice(self.payload_mut())
-            .inspect_err(|e| tracing::debug!("Invalid UDP packet: {e}"))
-            .ok()
+        UdpHeaderSliceMut::from_slice(self.payload_mut()).context("Failed to parse UDP header")
     }
 
-    pub fn as_tcp(&self) -> Option<TcpSlice> {
+    pub fn as_tcp(&self) -> Result<TcpSlice> {
         if !self.is_tcp() {
-            return None;
+            bail!("Not a TCP packet")
         }
 
-        TcpSlice::from_slice(self.payload())
-            .inspect_err(|e| tracing::debug!("Invalid TCP packet: {e}"))
-            .ok()
+        TcpSlice::from_slice(self.payload()).context("Failed to parse TCP header")
     }
 
-    pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut> {
+    pub fn as_tcp_mut(&mut self) -> Result<TcpHeaderSliceMut> {
         if !self.is_tcp() {
-            return None;
+            bail!("Not a TCP packet")
         }
 
-        TcpHeaderSliceMut::from_slice(self.payload_mut())
-            .inspect_err(|e| tracing::debug!("Invalid TCP packet: {e}"))
-            .ok()
+        TcpHeaderSliceMut::from_slice(self.payload_mut()).context("Failed to parse TCP header")
     }
 
     fn set_icmpv6_checksum(&mut self) {
@@ -859,28 +860,16 @@ impl IpPacket {
         self.next_header() == IpNumber::IPV6_ICMP
     }
 
-    fn header_length(&self) -> usize {
-        match self.version {
-            IpVersion::V4 => self.as_ipv4_unchecked().header().ihl() as usize * 4,
-            IpVersion::V6 => self.as_ipv6_unchecked().header().header_len(),
-        }
-    }
-
     pub fn packet(&self) -> &[u8] {
         &self.buf[..self.len]
     }
 
     pub fn payload(&self) -> &[u8] {
-        match self.version {
-            IpVersion::V4 => self.as_ipv4_unchecked().payload().payload,
-            IpVersion::V6 => self.as_ipv6_unchecked().payload().payload,
-        }
+        &self.buf[self.ip_header_length..self.len]
     }
 
     fn payload_mut(&mut self) -> &mut [u8] {
-        let header_len = self.header_length();
-
-        &mut self.buf[header_len..self.len]
+        &mut self.buf[self.ip_header_length..self.len]
     }
 }
 
