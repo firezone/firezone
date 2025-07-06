@@ -141,7 +141,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: cargo-fuzz
-      - run: rustup run ${{ steps.setup-rust.outputs.nightly_version }}-unknown-linux-gnu cargo fuzz run --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=120
+      - run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=120
         env:
           CARGO_PROFILE_RELEASE_LTO: false
 
