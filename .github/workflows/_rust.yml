@@ -135,12 +135,13 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-rust
+        id: setup-rust
       - uses: taiki-e/install-action@9ca1734d8940023f074414ee621fd530c4ce10f2 # v2.55.3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: cargo-fuzz
-      - run: rustup run nightly cargo fuzz run --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=60
+      - run: rustup run ${{ steps.setup-rust.outputs.nightly_version }} cargo fuzz run --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=120
         env:
           CARGO_PROFILE_RELEASE_LTO: false
 
