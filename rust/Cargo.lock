@@ -2871,6 +2871,7 @@ dependencies = [
 name = "fuzz"
 version = "0.1.0"
 dependencies = [
+ "arbitrary",
  "ip-packet",
  "libfuzzer-sys",
 ]
@@ -3778,6 +3779,7 @@ name = "ip-packet"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "arbitrary",
  "bufferpool",
  "etherparse",
  "etherparse-ext",
