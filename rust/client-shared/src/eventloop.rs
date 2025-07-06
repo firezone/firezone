@@ -139,11 +139,10 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    if e.root_cause().downcast_ref::<io::Error>().is_some_and(|e| {
-                        e.kind() == io::ErrorKind::NetworkUnreachable
-                            || e.kind() == io::ErrorKind::HostUnreachable
-                            || e.kind() == io::ErrorKind::AddrNotAvailable
-                    }) {
+                    if e.root_cause()
+                        .downcast_ref::<io::Error>()
+                        .is_some_and(is_unreachable)
+                    {
                         // `NetworkUnreachable`, `HostUnreachable`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
                         tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
                         continue;
@@ -392,4 +391,15 @@ impl Eventloop {
             }
         }
     }
+}
+
+fn is_unreachable(e: &io::Error) -> bool {
+    #[cfg(unix)]
+    if e.raw_os_error().is_some_and(|e| e == libc::EHOSTDOWN) {
+        return true;
+    }
+
+    e.kind() == io::ErrorKind::NetworkUnreachable
+        || e.kind() == io::ErrorKind::HostUnreachable
+        || e.kind() == io::ErrorKind::AddrNotAvailable
 }
