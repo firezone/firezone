@@ -115,7 +115,7 @@ impl Server {
     ///
     /// Only TCP packets targeted at one of sockets configured with [`Server::set_listen_addresses`] are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
-        let Some(tcp) = packet.as_tcp() else {
+        let Ok(tcp) = packet.as_tcp() else {
             tracing::trace!(?packet, "Not a TCP packet");
 
             return false;

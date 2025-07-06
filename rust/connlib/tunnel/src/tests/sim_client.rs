@@ -195,7 +195,7 @@ impl SimClient {
             }
         }
 
-        if let Some(tcp) = packet.as_tcp() {
+        if let Ok(tcp) = packet.as_tcp() {
             self.sent_tcp_requests.insert(
                 (SPort(tcp.source_port()), DPort(tcp.destination_port())),
                 packet.clone(),
@@ -203,7 +203,7 @@ impl SimClient {
             return;
         }
 
-        if let Some(udp) = packet.as_udp() {
+        if let Ok(udp) = packet.as_udp() {
             self.sent_udp_requests.insert(
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
                 packet.clone(),
@@ -256,7 +256,7 @@ impl SimClient {
             }
         }
 
-        if let Some(udp) = packet.as_udp() {
+        if let Ok(udp) = packet.as_udp() {
             if udp.source_port() == 53 {
                 let response = dns_types::Response::parse(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");
@@ -290,7 +290,7 @@ impl SimClient {
             return;
         }
 
-        if let Some(tcp) = packet.as_tcp() {
+        if let Ok(tcp) = packet.as_tcp() {
             self.received_tcp_replies.insert(
                 (SPort(tcp.source_port()), DPort(tcp.destination_port())),
                 packet.clone(),
