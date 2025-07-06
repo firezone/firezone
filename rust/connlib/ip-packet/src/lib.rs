@@ -211,10 +211,20 @@ impl IpPacket {
                 TcpSlice::from_slice(ip.payload().payload).context("Failed to parse TCP packet")?;
             }
             IpNumber::ICMP => {
+                anyhow::ensure!(
+                    matches!(ip, IpSlice::Ipv4(_)),
+                    "ICMPv4 is only allowed in IPv4 packets"
+                );
+
                 Icmpv4Slice::from_slice(ip.payload().payload)
                     .context("Failed to parse ICMPv4 packet")?;
             }
             IpNumber::IPV6_ICMP => {
+                anyhow::ensure!(
+                    matches!(ip, IpSlice::Ipv6(_)),
+                    "ICMPv6 is only allowed in IPv6 packets"
+                );
+
                 Icmpv6Slice::from_slice(ip.payload().payload)
                     .context("Failed to parse ICMPv6 packet")?;
             }
