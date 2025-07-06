@@ -198,6 +198,7 @@ impl std::fmt::Debug for IpPacket {
 impl IpPacket {
     pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
+        anyhow::ensure!(len <= buf.inner.len(), "Length exceeds buffer size");
 
         let (headers, payload_slice) =
             IpHeaders::from_slice(&buf.inner).context("Failed to parse IP headers")?;
