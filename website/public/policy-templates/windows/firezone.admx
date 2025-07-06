@@ -23,12 +23,11 @@
       explainText="$(string.authURL_explain)"
       key="Software\Policies\Firezone"
       presentation="$(presentation.authURL)"
-      valueName="authURL"
     >
       <parentCategory ref="firezone" />
       <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
       <elements>
-        <text id="authURL" required="true" />
+        <text id="authURL" valueName="authURL" required="true" />
       </elements>
     </policy>
 
@@ -39,12 +38,11 @@
       explainText="$(string.apiURL_explain)"
       key="Software\Policies\Firezone"
       presentation="$(presentation.apiURL)"
-      valueName="apiURL"
     >
       <parentCategory ref="firezone" />
       <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
       <elements>
-        <text id="apiURL" required="true" />
+        <text id="apiURL" valueName="apiURL" required="true" />
       </elements>
     </policy>
 
@@ -55,12 +53,11 @@
       explainText="$(string.logFilter_explain)"
       key="Software\Policies\Firezone"
       presentation="$(presentation.logFilter)"
-      valueName="logFilter"
     >
       <parentCategory ref="firezone" />
       <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
       <elements>
-        <text id="logFilter" required="true" />
+        <text id="logFilter" valueName="logFilter" required="true" />
       </elements>
     </policy>
 
@@ -71,12 +68,11 @@
       explainText="$(string.accountSlug_explain)"
       key="Software\Policies\Firezone"
       presentation="$(presentation.accountSlug)"
-      valueName="accountSlug"
     >
       <parentCategory ref="firezone" />
       <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
       <elements>
-        <text id="accountSlug" required="true" />
+        <text id="accountSlug" valueName="accountSlug" required="true" />
       </elements>
     </policy>
 
@@ -141,12 +137,11 @@
       explainText="$(string.supportURL_explain)"
       key="Software\Policies\Firezone"
       presentation="$(presentation.supportURL)"
-      valueName="supportURL"
     >
       <parentCategory ref="firezone" />
       <supportedOn ref="SUPPORTED_FZ_GUI_1_5_0" />
       <elements>
-        <text id="supportURL" required="true" />
+        <text id="supportURL" valueName="supportURL" required="true" />
       </elements>
     </policy>
   </policies>
