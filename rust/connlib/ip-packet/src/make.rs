@@ -208,10 +208,7 @@ fn icmpv4_unreachable(
         .icmpv4(crate::Icmpv4Type::DestinationUnreachable(code));
     let payload = original_packet.packet();
 
-    let header_len = original_packet
-        .ipv4_header()
-        .context("Not an IPv4 packet")?
-        .header_len();
+    let header_len = original_packet.ipv4_header()?.header_len();
     let icmp_error_payload_len = header_len + 8;
 
     let actual_payload_len = std::cmp::min(payload.len(), icmp_error_payload_len);
