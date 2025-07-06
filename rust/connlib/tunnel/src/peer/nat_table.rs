@@ -65,7 +65,7 @@ impl NatTable {
             if outside.1 == outside_dst {
                 tracing::trace!(?inside, ?outside, "Translating outgoing packet");
 
-                if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+                if packet.as_tcp().is_ok_and(|tcp| tcp.rst()) {
                     tracing::debug!(
                         ?inside,
                         ?outside,
@@ -129,7 +129,7 @@ impl NatTable {
         let outside = (packet.destination_protocol()?, packet.source());
 
         if let Some(inside) = self.translate_incoming_inner(&outside, now) {
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+            if packet.as_tcp().is_ok_and(|tcp| tcp.rst()) {
                 tracing::debug!(
                     ?inside,
                     ?outside,
