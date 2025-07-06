@@ -18,7 +18,7 @@ runs:
         create_credentials_file: true
 
     - id: auth2
-      if: ${{ steps.auth1.conclusion == 'failure' }}
+      if: ${{ steps.auth1.outcome == 'failure' }}
       uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
       continue-on-error: true
       with:
@@ -29,7 +29,7 @@ runs:
         create_credentials_file: true
 
     - id: auth3
-      if: ${{ steps.auth2.conclusion == 'failure' }}
+      if: ${{ steps.auth2.outcome == 'failure' }}
       uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
       with:
         token_format: access_token
