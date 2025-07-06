@@ -200,37 +200,35 @@ impl IpPacket {
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
         anyhow::ensure!(len <= buf.inner.len(), "Length exceeds buffer size");
 
-        let (headers, payload_slice) =
-            IpHeaders::from_slice(&buf.inner).context("Failed to parse IP headers")?;
+        let ip = IpSlice::from_slice(&buf.inner[..len]).context("Failed to parse IP packet")?;
 
         // Validate the packet contents
-        match payload_slice.ip_number {
+        match ip.payload_ip_number() {
             IpNumber::UDP => {
-                UdpSlice::from_slice(payload_slice.payload)
-                    .context("Failed to parse UDP packet")?;
+                UdpSlice::from_slice(ip.payload().payload).context("Failed to parse UDP packet")?;
             }
             IpNumber::TCP => {
-                TcpSlice::from_slice(payload_slice.payload)
-                    .context("Failed to parse TCP packet")?;
+                TcpSlice::from_slice(ip.payload().payload).context("Failed to parse TCP packet")?;
             }
             IpNumber::ICMP => {
-                Icmpv4Slice::from_slice(payload_slice.payload)
+                Icmpv4Slice::from_slice(ip.payload().payload)
                     .context("Failed to parse ICMPv4 packet")?;
             }
             IpNumber::IPV6_ICMP => {
-                Icmpv6Slice::from_slice(payload_slice.payload)
+                Icmpv6Slice::from_slice(ip.payload().payload)
                     .context("Failed to parse ICMPv6 packet")?;
             }
             _ => {}
+        };
+        let version = match ip {
+            IpSlice::Ipv4(_) => IpVersion::V4,
+            IpSlice::Ipv6(_) => IpVersion::V6,
         };
 
         Ok(Self {
             buf: buf.inner,
             len,
-            version: match headers {
-                IpHeaders::Ipv4(_, _) => IpVersion::V4,
-                IpHeaders::Ipv6(_, _) => IpVersion::V6,
-            },
+            version,
         })
     }
 
