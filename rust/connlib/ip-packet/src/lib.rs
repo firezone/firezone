@@ -929,6 +929,7 @@ fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol
 ///
 /// See <https://www.rfc-editor.org/rfc/rfc3168#section-23.1> for details.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Ecn {
     NonEct = 0b00,
     Ect1 = 0b01,
