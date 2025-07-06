@@ -325,10 +325,20 @@ defmodule API.Client.Channel do
         socket
       ) do
     # 1. check if this affects us
-    if resource = Enum.find(get_resources(socket), &(&1.id == resource_id)) do
-      # 2. broadcasted structs have no associations - fetch the gateway_group to hydrate the site name
-      {:ok, gateway_group} = Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject)
+    resource =
+      socket.assigns.policies
+      |> Enum.find(fn {_id, policy} ->
+        policy.resource.id == resource_id
+      end)
+      |> case do
+        nil -> nil
+        {_id, policy} -> policy.resource
+      end
 
+    with %Resources.Resource{} <- resource,
+         # 2. broadcasted structs have no associations - fetch the gateway_group to hydrate the site name
+         {:ok, gateway_group} <-
+           Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject) do
       # 3. update our state
       # TODO: If multi-site resources ever ships, we'll need to handle that here
       resource = %{resource | gateway_groups: [gateway_group]}
@@ -344,12 +354,15 @@ defmodule API.Client.Channel do
 
       socket = assign(socket, policies: policies)
 
-      # 4. push
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      # 4. if resource is allowed, push
+      if resource in get_resources(socket) do
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      end
 
       {:noreply, socket}
     else
-      {:noreply, socket}
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -366,7 +379,7 @@ defmodule API.Client.Channel do
       policies =
         Map.new(socket.assigns.policies, fn {id, policy} ->
           if policy.resource.id == resource.id do
-            {id, %{policy | resource: %{resource | gateway_groups: []}}}
+            {id, %{policy | resource: resource}}
           else
             {id, policy}
           end
