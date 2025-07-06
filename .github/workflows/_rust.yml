@@ -125,6 +125,25 @@ jobs:
           CARGO_PROFILE_TEST_OPT_LEVEL: 1 # Otherwise the tests take forever.
           TESTCASES_DIR: "connlib/tunnel/testcases"
 
+  fuzz:
+    name: fuzz
+    strategy:
+      fail-fast: false
+      matrix:
+        fuzz-target: [ip_packet_getters]
+    runs-on: ubuntu-24.04-xlarge
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: ./.github/actions/setup-rust
+      - uses: taiki-e/install-action@9ca1734d8940023f074414ee621fd530c4ce10f2 # v2.55.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tool: cargo-fuzz
+      - run: rustup run nightly cargo fuzz run --fuzz-dir tests/fuzz ${{ matrix.fuzz-target }} -- -max_total_time=60
+        env:
+          CARGO_PROFILE_RELEASE_LTO: false
+
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
     strategy:
