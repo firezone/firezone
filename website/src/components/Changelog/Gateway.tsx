@@ -28,6 +28,14 @@ export default function Gateway() {
           Fixes an issue where connections would fail to establish if the
           Gateway was under high load.
         </ChangeItem>
+        <ChangeItem pull="9725">
+          Fixes an issue where Firezone failed to sign-in on systems with
+          non-ASCII characters in their kernel build name.
+        </ChangeItem>
+        <ChangeItem pull="9655">
+          Allows long-lived TCP connections to remain open by increasing the NAT
+          TTL to 2h.
+        </ChangeItem>
       </Entry>
       <Entry version="1.4.11" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">

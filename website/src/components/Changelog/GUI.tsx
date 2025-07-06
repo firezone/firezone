@@ -10,7 +10,19 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9779">Fixes a rare crash during sign-in.</ChangeItem>
+        <ChangeItem pull="9725">
+          Fixes an issue where Firezone failed to sign-in on systems with
+          non-ASCII characters in their kernel build name.
+        </ChangeItem>
+        {os === OS.Windows && (
+          <ChangeItem pull="9696">
+            Establishes connections quicker by narrowing the set of network
+            changes we react to.
+          </ChangeItem>
+        )}
+      </Unreleased>
       <Entry version="1.5.4" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both

@@ -32,6 +32,10 @@ export default function Apple() {
         <ChangeItem pull="9536">
           Uses `.zip` to compress logs instead of Apple Archive.
         </ChangeItem>
+        <ChangeItem pull="9725">
+          Fixes an issue where Firezone failed to sign-in on systems with
+          non-ASCII characters in their kernel build name.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.3" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
