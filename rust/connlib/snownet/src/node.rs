@@ -947,21 +947,19 @@ where
             tracing::trace!(%rid, ?event);
 
             match event {
-                allocation::Event::New(candidate) => {
-                    let should_add = if candidate.kind() == CandidateKind::ServerReflexive {
-                        // If it is a server-reflexive candidate, let the `shared_candidates` decide whether it should be used.
-
-                        self.shared_candidates.insert(candidate.clone())
-                    } else {
-                        // All other candidate types are always used.
-
-                        true
-                    };
-
-                    if !should_add {
+                allocation::Event::New(candidate)
+                    if candidate.kind() == CandidateKind::ServerReflexive =>
+                {
+                    if !self.shared_candidates.insert(candidate.clone()) {
                         continue;
                     }
 
+                    for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
+                    {
+                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    }
+                }
+                allocation::Event::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
                     {
                         add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
