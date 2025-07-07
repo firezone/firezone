@@ -583,18 +583,13 @@ impl<'a> Handler<'a> {
                             firezone_telemetry::GUI_DSN,
                             self.device_id.id.clone(),
                         )
-                        .await
-                }
+                        .await;
 
-                if let Some(account_slug) = account_slug {
-                    Telemetry::set_account_slug(account_slug.clone());
+                    if let Some(account_slug) = account_slug {
+                        Telemetry::set_account_slug(account_slug.clone());
 
-                    analytics::identify(
-                        self.device_id.id.clone(),
-                        environment,
-                        release,
-                        Some(account_slug),
-                    );
+                        analytics::identify(release, Some(account_slug));
+                    }
                 }
             }
         }

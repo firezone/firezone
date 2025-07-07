@@ -385,12 +385,7 @@ impl Eventloop {
                 if let Some(account_slug) = init.account_slug {
                     Telemetry::set_account_slug(account_slug.clone());
 
-                    analytics::identify(
-                        self.firezone_id.clone(),
-                        self.portal.url(),
-                        RELEASE.to_owned(),
-                        Some(account_slug),
-                    )
+                    analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
 
                 self.tunnel.state_mut().update_relays(
