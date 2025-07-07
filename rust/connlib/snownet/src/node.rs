@@ -2387,7 +2387,7 @@ impl fmt::Display for SessionId {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
     use super::*;
 
@@ -2479,5 +2479,34 @@ mod tests {
             Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
 
         assert!(agent.remote_candidates().contains(&expected_candidate))
+    }
+
+    #[test]
+    fn skips_optimistic_candidates_of_different_base() {
+        let base1 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625));
+        let base2 = SocketAddr::V6(SocketAddrV6::new(
+            Ipv6Addr::new(10, 0, 0, 0, 0, 0, 0, 1),
+            52625,
+            0,
+            0,
+        ));
+        let addr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+
+        let host1 = Candidate::host(base1, "udp").unwrap();
+        let host2 = Candidate::host(base2, "udp").unwrap();
+        let srvflx =
+            Candidate::server_reflexive(SocketAddr::new(addr, 40000), base1, "udp").unwrap();
+
+        let mut agent = IceAgent::new();
+        agent.add_remote_candidate(host1);
+        agent.add_remote_candidate(host2);
+        agent.add_remote_candidate(srvflx);
+
+        generate_optimistic_candidates(&mut agent);
+
+        let unexpected_candidate =
+            Candidate::server_reflexive(SocketAddr::new(addr, 52625), base2, "udp").unwrap();
+
+        assert!(!agent.remote_candidates().contains(&unexpected_candidate))
     }
 }
