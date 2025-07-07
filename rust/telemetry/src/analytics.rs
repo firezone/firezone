@@ -20,7 +20,7 @@ pub fn new_session(maybe_legacy_id: String, api_url: String) {
         if let Err(e) = capture(
             "new_session",
             distinct_id,
-            ApiUrl(&api_url),
+            ApiUrl::new(&api_url),
             NewSessionProperties {
                 api_url: api_url.clone(),
             },

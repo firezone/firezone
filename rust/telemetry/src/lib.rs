@@ -3,6 +3,7 @@
 use std::{borrow::Cow, collections::BTreeMap, fmt, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
+use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, SessionStatus},
@@ -13,6 +14,7 @@ pub mod analytics;
 pub mod feature_flags;
 pub mod otel;
 
+mod api_url;
 mod posthog;
 
 pub struct Dsn(&'static str);
@@ -97,16 +99,6 @@ impl fmt::Display for Env {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub(crate) struct ApiUrl<'a>(pub(crate) &'a str);
-
-impl ApiUrl<'static> {
-    pub(crate) const PROD: Self = ApiUrl("wss://api.firezone.dev");
-    pub(crate) const STAGING: Self = ApiUrl("wss://api.firez.one");
-    pub(crate) const DOCKER_COMPOSE: Self = ApiUrl("ws://api:8081");
-    pub(crate) const LOCALHOST: Self = ApiUrl("ws://localhost:8081");
-}
-
 #[derive(Default)]
 pub struct Telemetry {
     inner: Option<sentry::ClientInitGuard>,
@@ -127,7 +119,7 @@ impl Telemetry {
     pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
-        let environment = Env::from(ApiUrl(api_url));
+        let environment = Env::from(ApiUrl::new(api_url));
 
         if self
             .inner
