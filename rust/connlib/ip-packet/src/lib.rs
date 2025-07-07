@@ -54,6 +54,7 @@ pub const WG_OVERHEAD: usize = 32;
 pub const DATA_CHANNEL_OVERHEAD: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub enum Protocol {
     /// Contains either the source or destination port.
     Tcp(u16),
@@ -725,18 +726,18 @@ impl IpPacket {
         Some(header)
     }
 
-    pub fn translate_destination(mut self, src_proto: Protocol, dst: IpAddr) -> Result<IpPacket> {
+    pub fn translate_destination(&mut self, src_proto: Protocol, dst: IpAddr) -> Result<()> {
         self.set_dst(dst)?;
         self.set_source_protocol(src_proto.value());
 
-        Ok(self)
+        Ok(())
     }
 
-    pub fn translate_source(mut self, dst_proto: Protocol, src: IpAddr) -> Result<IpPacket> {
+    pub fn translate_source(&mut self, dst_proto: Protocol, src: IpAddr) -> Result<()> {
         self.set_src(src)?;
         self.set_destination_protocol(dst_proto.value());
 
-        Ok(self)
+        Ok(())
     }
 
     #[inline]
