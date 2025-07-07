@@ -20,6 +20,11 @@ cargo +nightly fuzz run --fuzz-dir tests/fuzz --target-dir ./target ip_packet
 
 ## Coverage
 
+1. Clean workspace
+   ```
+   cargo +nightly llvm-cov clean --workspace
+   ```
+
 1. Generate coverage profile
    ```
    cargo +nightly fuzz coverage --fuzz-dir tests/fuzz --target-dir ./target ip_packet
