@@ -1,7 +1,6 @@
 use anyhow::{Context as _, Result};
 use bufferpool::{Buffer, BufferPool};
 use bytes::{Buf as _, BytesMut};
-use firezone_telemetry::feature_flags;
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
@@ -367,7 +366,7 @@ impl UdpSocket {
                     #[cfg(target_os = "macos")]
                     Err(e)
                         if e.raw_os_error().is_some_and(|e| e == libc::ENOBUFS)
-                            && feature_flags::map_enobufs_to_would_block() =>
+                            && firezone_telemetry::feature_flags::map_enobufs_to_would_block() =>
                     {
                         tracing::debug!("Encountered ENOBUFS, treating as WouldBlock");
 
