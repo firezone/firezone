@@ -958,8 +958,17 @@ where
                     };
                     let server = server.expect("Should always have a relay socket of the same IP version as the server-reflexive candidate");
 
-                    self.shared_candidates
-                        .insert_server_reflexive(server, candidate);
+                    if !self
+                        .shared_candidates
+                        .insert_server_reflexive(server, candidate.clone())
+                    {
+                        continue;
+                    }
+
+                    for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
+                    {
+                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    }
                 }
                 allocation::Event::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
