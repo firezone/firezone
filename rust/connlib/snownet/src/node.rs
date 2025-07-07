@@ -950,7 +950,14 @@ where
                 allocation::Event::New(candidate)
                     if candidate.kind() == CandidateKind::ServerReflexive =>
                 {
-                    self.shared_candidates.insert(candidate);
+                    if !self.shared_candidates.insert(candidate.clone()) {
+                        continue;
+                    }
+
+                    for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
+                    {
+                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    }
                 }
                 allocation::Event::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
