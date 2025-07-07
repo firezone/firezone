@@ -52,7 +52,6 @@ pub struct Eventloop {
     tunnel: GatewayTunnel,
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     tun_device_manager: Arc<Mutex<TunDeviceManager>>,
-    firezone_id: String,
 
     resolve_tasks:
         futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
@@ -68,14 +67,12 @@ impl Eventloop {
         tunnel: GatewayTunnel,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
-        firezone_id: String,
     ) -> Self {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
         Self {
             tunnel,
             portal,
-            firezone_id,
             tun_device_manager: Arc::new(Mutex::new(tun_device_manager)),
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
             set_interface_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(5), 10),

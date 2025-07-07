@@ -134,13 +134,8 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         opentelemetry::global::set_meter_provider(provider);
     }
 
-    let login = LoginUrl::gateway(
-        cli.api_url,
-        &cli.token,
-        firezone_id.clone(),
-        cli.firezone_name,
-    )
-    .context("Failed to construct URL for logging into portal")?;
+    let login = LoginUrl::gateway(cli.api_url, &cli.token, firezone_id, cli.firezone_name)
+        .context("Failed to construct URL for logging into portal")?;
 
     let resolv_conf = resolv_conf::Config::parse(
         std::fs::read_to_string("/etc/resolv.conf").context("Failed to read /etc/resolv.conf")?,
@@ -184,7 +179,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 
     let eventloop = future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager, firezone_id);
+        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
 
         move |cx| eventloop.poll(cx)
     });
