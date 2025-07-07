@@ -35,9 +35,11 @@ pub fn new_session(maybe_legacy_id: String, api_url: String) {
 /// Associate several properties with the current telemetry user.
 pub fn identify(release: String, account_slug: Option<String>) {
     let Some(env) = Telemetry::current_env() else {
+        tracing::debug!("Cannot send $identify: Unknown env");
         return;
     };
     let Some(distinct_id) = Telemetry::current_user() else {
+        tracing::debug!("Cannot send $identify: Unknown user");
         return;
     };
 
@@ -88,7 +90,7 @@ where
         .json(&CaptureRequest {
             api_key: api_key.to_string(),
             distinct_id,
-            event,
+            event: event.clone(),
             properties,
         })
         .send()
@@ -102,6 +104,8 @@ where
 
         bail!("Failed to capture event; status={status}, body={body}")
     }
+
+    tracing::debug!(%event);
 
     Ok(())
 }
