@@ -339,10 +339,7 @@ impl UdpSocket {
 
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, %num_packets, %segment_size);
 
-                    self.inner
-                        .async_io(Interest::WRITABLE, || {
-                            self.state.try_send((&self.inner).into(), &chunk)
-                        })
+                    self.send_inner(chunk)
                         .await
                         .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
                 }
@@ -352,16 +349,21 @@ impl UdpSocket {
 
                 tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_bytes);
 
-                self.inner
-                    .async_io(Interest::WRITABLE, || {
-                        self.state.try_send((&self.inner).into(), &transmit)
-                    })
+                self.send_inner(transmit)
                     .await
                     .with_context(|| format!("Failed to send single-datagram to {dst}"))?;
             }
         }
 
         Ok(())
+    }
+
+    async fn send_inner(&self, chunk: Transmit<'_>) -> io::Result<()> {
+        self.inner
+            .async_io(Interest::WRITABLE, || {
+                self.state.try_send((&self.inner).into(), &chunk)
+            })
+            .await
     }
 
     /// Calculate the chunk size for a given segment size.
