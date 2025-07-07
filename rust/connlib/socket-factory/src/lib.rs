@@ -364,7 +364,7 @@ impl UdpSocket {
             .async_io(Interest::WRITABLE, || {
                 match self.state.try_send((&self.inner).into(), &chunk) {
                     Ok(()) => Ok(()),
-                    #[cfg(unix)]
+                    #[cfg(target_os = "macos")]
                     Err(e)
                         if e.raw_os_error().is_some_and(|e| e == libc::ENOBUFS)
                             && feature_flags::map_enobufs_to_would_block() =>
