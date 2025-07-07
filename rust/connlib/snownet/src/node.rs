@@ -1213,6 +1213,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
 
     let optimistic_candidates = public_ips
         .cartesian_product(host_candidates)
+        .filter(|(ip, base)| ip.is_ipv4() == base.is_ipv4())
         .filter_map(|(ip, base)| {
             let addr = SocketAddr::new(ip, base.port());
 
