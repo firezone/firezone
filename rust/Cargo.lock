@@ -1346,6 +1346,7 @@ dependencies = [
  "firezone-logging",
  "firezone-tunnel",
  "ip_network",
+ "libc",
  "phoenix-channel",
  "secrecy",
  "serde",

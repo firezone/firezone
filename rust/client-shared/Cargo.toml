@@ -13,6 +13,7 @@ dns-types = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-tunnel = { workspace = true }
 ip_network = { workspace = true }
+libc = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
