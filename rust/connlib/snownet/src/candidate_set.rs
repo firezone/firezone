@@ -13,7 +13,7 @@ use str0m::{Candidate, CandidateKind};
 #[derive(Debug, Default)]
 pub struct CandidateSet {
     host: HashSet<Candidate>,
-    server_reflexive: HashMap<SocketAddr, HashSet<Candidate>>,
+    server_reflexive: HashMap<SocketAddr, Candidate>,
 
     is_symmetric_nat: bool,
 }
@@ -28,7 +28,10 @@ impl CandidateSet {
     pub fn insert_server_reflexive(&mut self, server: SocketAddr, new: Candidate) -> bool {
         debug_assert_eq!(new.kind(), CandidateKind::ServerReflexive);
 
-        let is_new = self.server_reflexive.entry(server).or_default().insert(new);
+        let is_new = self
+            .server_reflexive
+            .insert(server, new.clone())
+            .is_none_or(|c| c != new);
         let num_servers = self.server_reflexive.keys().count();
 
         self.evaluate_symmetric_nat();
@@ -56,7 +59,6 @@ impl CandidateSet {
             .chain(
                 self.server_reflexive
                     .values()
-                    .flatten()
                     .unique()
                     .filter(|_| self.is_holepunch_friendly()),
             )
@@ -74,7 +76,7 @@ impl CandidateSet {
             return;
         }
 
-        let is_symmetric_nat = !self.server_reflexive.values().flatten().all_equal();
+        let is_symmetric_nat = !self.server_reflexive.values().all_equal();
 
         if !self.is_symmetric_nat && is_symmetric_nat {
             tracing::info!("Symmetric NAT detected: suppressing server-reflexive candidates");
