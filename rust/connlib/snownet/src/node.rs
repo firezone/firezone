@@ -780,7 +780,7 @@ where
         let host_candidate =
             Candidate::host(local, Protocol::Udp).context("Failed to parse host candidate")?;
 
-        if !self.shared_candidates.insert(host_candidate.clone()) {
+        if !self.shared_candidates.insert_host(host_candidate.clone()) {
             return Ok(());
         }
 
@@ -940,17 +940,26 @@ where
 
     fn allocations_drain_events(&mut self) {
         let allocation_events = self.allocations.iter_mut().flat_map(|(rid, allocation)| {
-            std::iter::from_fn(|| allocation.poll_event()).map(|e| (*rid, e))
+            let server = allocation.server();
+
+            std::iter::from_fn(|| allocation.poll_event()).map(move |e| (*rid, server, e))
         });
 
-        for (rid, event) in allocation_events {
+        for (rid, relay_socket, event) in allocation_events {
             tracing::trace!(%rid, ?event);
 
             match event {
                 allocation::Event::New(candidate)
                     if candidate.kind() == CandidateKind::ServerReflexive =>
                 {
-                    self.shared_candidates.insert(candidate);
+                    let server = match candidate.addr() {
+                        SocketAddr::V4(_) => relay_socket.as_v4().copied().map(SocketAddr::V4),
+                        SocketAddr::V6(_) => relay_socket.as_v6().copied().map(SocketAddr::V6),
+                    };
+                    let server = server.expect("Should always have a relay socket of the same IP version as the server-reflexive candidate");
+
+                    self.shared_candidates
+                        .insert_server_reflexive(server, candidate);
                 }
                 allocation::Event::New(candidate) => {
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
