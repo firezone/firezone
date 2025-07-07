@@ -948,8 +948,18 @@ where
 
             match event {
                 allocation::Event::New(candidate) => {
-                    if candidate.kind() == CandidateKind::ServerReflexive {
-                        self.shared_candidates.insert(candidate.clone());
+                    let should_add = if candidate.kind() == CandidateKind::ServerReflexive {
+                        // If it is a server-reflexive candidate, let the `shared_candidates` decide whether it should be used.
+
+                        self.shared_candidates.insert(candidate.clone())
+                    } else {
+                        // All other candidate types are always used.
+
+                        true
+                    };
+
+                    if !should_add {
+                        continue;
                     }
 
                     for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
