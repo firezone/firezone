@@ -685,7 +685,7 @@ dependencies = [
 [[package]]
 name = "aya"
 version = "0.13.1"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "assert_matches",
  "aya-obj",
@@ -694,7 +694,7 @@ dependencies = [
  "hashbrown 0.15.3",
  "libc",
  "log",
- "object",
+ "object 0.37.1",
  "once_cell",
  "thiserror 2.0.12",
  "tokio",
@@ -703,16 +703,16 @@ dependencies = [
 [[package]]
 name = "aya-build"
 version = "0.1.2"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "anyhow",
- "cargo_metadata",
+ "cargo_metadata 0.20.0",
 ]
 
 [[package]]
 name = "aya-ebpf"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "aya-ebpf-bindings",
  "aya-ebpf-cty",
@@ -723,7 +723,7 @@ dependencies = [
 [[package]]
 name = "aya-ebpf-bindings"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "aya-ebpf-cty",
 ]
@@ -731,12 +731,12 @@ dependencies = [
 [[package]]
 name = "aya-ebpf-cty"
 version = "0.2.2"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 
 [[package]]
 name = "aya-ebpf-macros"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "proc-macro2",
  "proc-macro2-diagnostics",
@@ -747,7 +747,7 @@ dependencies = [
 [[package]]
 name = "aya-log"
 version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "aya",
  "aya-log-common",
@@ -760,7 +760,7 @@ dependencies = [
 [[package]]
 name = "aya-log-common"
 version = "0.1.15"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "num_enum",
 ]
@@ -768,7 +768,7 @@ dependencies = [
 [[package]]
 name = "aya-log-ebpf"
 version = "0.1.1"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "aya-ebpf",
  "aya-log-common",
@@ -778,7 +778,7 @@ dependencies = [
 [[package]]
 name = "aya-log-ebpf-macros"
 version = "0.1.0"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "aya-log-common",
  "aya-log-parser",
@@ -790,7 +790,7 @@ dependencies = [
 [[package]]
 name = "aya-log-parser"
 version = "0.1.13"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "aya-log-common",
 ]
@@ -798,12 +798,12 @@ dependencies = [
 [[package]]
 name = "aya-obj"
 version = "0.2.1"
-source = "git+https://github.com/aya-rs/aya#630a76711701a2f489f41d9d91076cc9bebb2675"
+source = "git+https://github.com/aya-rs/aya#cfff75166cca4d83ccc77c66fcf8d27a08f1eb52"
 dependencies = [
  "bytes",
  "hashbrown 0.15.3",
  "log",
- "object",
+ "object 0.37.1",
  "thiserror 2.0.12",
 ]
 
@@ -831,7 +831,7 @@ dependencies = [
  "cfg-if",
  "libc",
  "miniz_oxide",
- "object",
+ "object 0.36.7",
  "rustc-demangle",
  "windows-targets 0.52.6",
 ]
@@ -1131,13 +1131,53 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-platform"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84982c6c0ae343635a3a4ee6dedef965513735c8b183caa7289fa6e27399ebd4"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "cargo-util-schemas"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e63d2780ac94487eb9f1fea7b0d56300abc9eb488800854ca217f102f5caccca"
+dependencies = [
+ "semver",
+ "serde",
+ "serde-untagged",
+ "serde-value",
+ "thiserror 1.0.69",
+ "toml 0.8.22",
+ "unicode-xid",
+ "url",
+]
+
+[[package]]
 name = "cargo_metadata"
 version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd5eb614ed4c27c5d706420e4320fbe3216ab31fa1c33cd8246ac36dae4479ba"
 dependencies = [
  "camino",
- "cargo-platform",
+ "cargo-platform 0.1.9",
+ "semver",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.12",
+]
+
+[[package]]
+name = "cargo_metadata"
+version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f7835cfc6135093070e95eb2b53e5d9b5c403dc3a6be6040ee026270aa82502"
+dependencies = [
+ "camino",
+ "cargo-platform 0.2.0",
+ "cargo-util-schemas",
  "semver",
  "serde",
  "serde_json",
@@ -4697,7 +4737,7 @@ version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
- "proc-macro-crate 3.3.0",
+ "proc-macro-crate 1.3.1",
  "proc-macro2",
  "quote",
  "syn 2.0.104",
@@ -4900,6 +4940,15 @@ version = "0.36.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
 dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "object"
+version = "0.37.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "03fd943161069e1768b4b3d050890ba48730e590f57e56d4aa04e7e090e61b4a"
+dependencies = [
  "crc32fast",
  "hashbrown 0.15.3",
  "indexmap 2.9.0",
@@ -5043,6 +5092,15 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
+
+[[package]]
+name = "ordered-float"
+version = "2.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "ordered-stream"
@@ -6521,6 +6579,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde-value"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
+dependencies = [
+ "ordered-float",
+ "serde",
+]
+
+[[package]]
 name = "serde_assert"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7531,7 +7599,7 @@ checksum = "41743bbbeb96c3a100d234e5a0b60a46d5aa068f266160862c7afdbf828ca02e"
 dependencies = [
  "anyhow",
  "brotli",
- "cargo_metadata",
+ "cargo_metadata 0.19.2",
  "ctor",
  "dunce",
  "glob",
@@ -8363,7 +8431,7 @@ checksum = "b334fd69b3cf198b63616c096aabf9820ab21ed9b2aa1367ddd4b411068bf520"
 dependencies = [
  "anyhow",
  "camino",
- "cargo_metadata",
+ "cargo_metadata 0.19.2",
  "clap",
  "uniffi_bindgen",
  "uniffi_core",
@@ -8387,7 +8455,7 @@ dependencies = [
  "anyhow",
  "askama",
  "camino",
- "cargo_metadata",
+ "cargo_metadata 0.19.2",
  "fs-err",
  "glob",
  "goblin",
@@ -8940,7 +9008,7 @@ version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf221c93e13a30d793f7645a0e7762c55d169dbb0a49671918a2319d289b10bb"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
