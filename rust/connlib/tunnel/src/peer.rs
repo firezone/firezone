@@ -377,7 +377,7 @@ impl ClientOnGateway {
 
     fn transform_network_to_tun(
         &mut self,
-        packet: IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
         let dst = packet.destination();
@@ -424,7 +424,7 @@ impl ClientOnGateway {
             self.nat_table
                 .translate_outgoing(&packet, state.resolved_ip, now)?;
 
-        let mut packet = packet
+        packet
             .translate_destination(source_protocol, real_ip)
             .context("Failed to translate packet to new destination")?;
         packet.update_checksum();
@@ -434,7 +434,7 @@ impl ClientOnGateway {
 
     fn transform_tun_to_network(
         &mut self,
-        packet: IpPacket,
+        mut packet: IpPacket,
         now: Instant,
     ) -> anyhow::Result<Option<IpPacket>> {
         let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
@@ -472,7 +472,7 @@ impl ClientOnGateway {
             }
         };
 
-        let mut packet = packet
+        packet
             .translate_source(proto, ip)
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();

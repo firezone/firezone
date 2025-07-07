@@ -3,7 +3,7 @@
 use std::net::IpAddr;
 
 use arbitrary::Arbitrary;
-use ip_packet::{Ecn, IpPacket, IpPacketBuf};
+use ip_packet::{Ecn, IpPacket, IpPacketBuf, Protocol};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|input: Input| {
@@ -35,6 +35,12 @@ fuzz_target!(|input: Input| {
                 Setter::Ecn(ecn) => {
                     packet = packet.with_ecn_from_transport(ecn);
                 }
+                Setter::TranslateSrc(protocol, src) => {
+                    let _ = packet.translate_source(protocol, src);
+                }
+                Setter::TranslateDst(protocol, dst) => {
+                    let _ = packet.translate_destination(protocol, dst);
+                }
             }
 
             test_all_getters(&packet);
@@ -55,6 +61,8 @@ enum Setter {
     SrcProtocol(u16),
     DstProtocol(u16),
     Ecn(Ecn),
+    TranslateSrc(Protocol, IpAddr),
+    TranslateDst(Protocol, IpAddr),
 }
 
 fn test_all_getters(packet: &IpPacket) {
