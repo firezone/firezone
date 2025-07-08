@@ -222,6 +222,8 @@ fn connect(
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) -> Result<Session, Error> {
+    firezone_telemetry::cpu_monitor::start(50.0)?;
+
     let device_info =
         serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
     let secret = SecretString::from(token);

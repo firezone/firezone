@@ -6,6 +6,8 @@ use firezone_gui_client::service;
 use std::path::PathBuf;
 
 fn main() -> anyhow::Result<()> {
+    firezone_telemetry::cpu_monitor::start(50.0)?;
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");

@@ -10,6 +10,7 @@ hex = { workspace = true }
 ip-packet = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
 opentelemetry = { workspace = true }
+perf_monitor = { workspace = true }
 opentelemetry_sdk = { workspace = true }
 parking_lot = { workspace = true }
 reqwest = { workspace = true }

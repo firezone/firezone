@@ -10,6 +10,7 @@ use sentry::{
 use sha2::Digest as _;
 
 pub mod analytics;
+pub mod cpu_monitor;
 pub mod feature_flags;
 pub mod otel;
 

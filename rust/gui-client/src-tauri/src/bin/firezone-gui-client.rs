@@ -50,6 +50,8 @@ fn try_main(
     bootstrap_log_guard: &mut Option<DefaultGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
+    firezone_telemetry::cpu_monitor::start(50.0)?;
+
     let cli = Cli::parse();
 
     let config = gui::RunConfig {

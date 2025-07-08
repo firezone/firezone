@@ -92,6 +92,8 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
+    firezone_telemetry::cpu_monitor::start(50.0)?;
+
     firezone_logging::setup_global_subscriber(layer::Identity::default())
         .context("Failed to set up logging")?;
 

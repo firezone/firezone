@@ -254,6 +254,8 @@ impl WrappedSession {
         callback_handler: ffi::CallbackHandler,
         device_info: String,
     ) -> Result<Self> {
+        firezone_telemetry::cpu_monitor::start(50.0)?;
+
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(1)
             .thread_name("connlib")
