@@ -212,6 +212,15 @@ impl UdpSocket {
         self.port
     }
 
+    pub fn enable_gro(&mut self) -> io::Result<()> {
+        #[cfg(windows)]
+        {
+            self.state.set_gro((&self.inner).into(), true)?;
+        }
+
+        Ok(())
+    }
+
     /// Configures a new source IP resolver for this UDP socket.
     ///
     /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
