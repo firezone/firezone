@@ -231,7 +231,7 @@ impl SimClient {
 
     /// Process an IP packet received on the client.
     pub(crate) fn on_received_packet(&mut self, packet: IpPacket) {
-        match packet.icmp_unreachable_destination() {
+        match packet.icmp_error() {
             Ok(Some((failed_packet, _))) => {
                 match failed_packet.layer4_protocol() {
                     Layer4Protocol::Udp { src, dst } => {
