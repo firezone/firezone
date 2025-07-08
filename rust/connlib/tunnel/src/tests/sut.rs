@@ -1,5 +1,6 @@
 use super::buffered_transmits::BufferedTransmits;
 use super::dns_records::DnsRecords;
+use super::icmp_error_hosts::IcmpErrorHosts;
 use super::reference::ReferenceState;
 use super::sim_client::SimClient;
 use super::sim_gateway::SimGateway;
@@ -7,7 +8,6 @@ use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
-use super::unreachable_hosts::UnreachableHosts;
 use crate::client::Resource;
 use crate::dns::is_subdomain;
 use crate::messages::{IceCredentials, Key, SecretKey};
@@ -394,7 +394,7 @@ impl TunnelTest {
             // `handle_timeout` needs to be called at the very top to advance state after we have made other modifications.
             self.handle_timeout(
                 &ref_state.global_dns_records,
-                &ref_state.unreachable_hosts,
+                &ref_state.icmp_error_hosts,
                 buffered_transmits,
                 now,
             );
@@ -530,7 +530,7 @@ impl TunnelTest {
     fn handle_timeout(
         &mut self,
         global_dns_records: &DnsRecords,
-        unreachable_hosts: &UnreachableHosts,
+        icmp_error_hosts: &IcmpErrorHosts,
         buffered_transmits: &mut BufferedTransmits,
         now: Instant,
     ) {
@@ -578,7 +578,7 @@ impl TunnelTest {
 
             while let Some(transmit) = gateway.poll_inbox(now) {
                 let Some(reply) = gateway.exec_mut(|g| {
-                    g.receive(transmit, unreachable_hosts, now, self.flux_capacitor.now())
+                    g.receive(transmit, icmp_error_hosts, now, self.flux_capacitor.now())
                 }) else {
                     continue;
                 };
