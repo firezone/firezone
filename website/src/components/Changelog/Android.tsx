@@ -20,7 +20,12 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9725">
+          Fixes an issue where Firezone failed to sign-in on systems with
+          non-ASCII characters in their kernel build name.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.2" date={new Date("2025-06-30")}>
         <ChangeItem pull="9621">
           Fixes an issue where the VPN permission screen wouldn't dismiss after

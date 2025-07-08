@@ -15,6 +15,16 @@ export default function Headless({ os }: { os: OS }) {
           Fixes an issue where connections would fail to establish if both
           Client and Gateway were behind symmetric NAT.
         </ChangeItem>
+        <ChangeItem pull="9725">
+          Fixes an issue where Firezone failed to sign-in on systems with
+          non-ASCII characters in their kernel build name.
+        </ChangeItem>
+        {os === OS.Windows && (
+          <ChangeItem pull="9696">
+            Establishes connections quicker by narrowing the set of network
+            changes we react to.
+          </ChangeItem>
+        )}
       </Entry>
       <Entry version="1.5.0" date={new Date("2025-06-05")}>
         <ChangeItem pull="9300">
