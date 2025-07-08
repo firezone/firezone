@@ -293,10 +293,6 @@ impl UdpSocket {
         Ok(DatagramSegmentIter::new(bufs, meta, self.port, len))
     }
 
-    pub fn poll_send_ready(&self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        self.inner.poll_send_ready(cx)
-    }
-
     pub async fn send(&self, datagram: DatagramOut) -> Result<()> {
         let transmit = self.prepare_transmit(
             datagram.dst,

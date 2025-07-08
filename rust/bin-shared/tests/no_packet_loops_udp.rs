@@ -40,10 +40,6 @@ async fn no_packet_loops_udp() {
     let socket =
         udp_socket_factory(&SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))).unwrap();
 
-    std::future::poll_fn(|cx| socket.poll_send_ready(cx))
-        .await
-        .unwrap();
-
     // Send a STUN request.
     socket
         .send(DatagramOut {
