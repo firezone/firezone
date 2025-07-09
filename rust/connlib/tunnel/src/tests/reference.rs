@@ -532,13 +532,18 @@ impl ReferenceState {
 
                 true
             }
-            Transition::DisableResources(resources) => {
-                // Don't disabled resources we don't have.
-                // It doesn't hurt but makes the logs of reduced testcases weird.
-                resources
-                    .iter()
-                    .all(|r| state.client.inner().has_resource(*r))
-            }
+            Transition::DisableResources(resources) => resources.iter().all(|r| {
+                let has_resource = state.client.inner().has_resource(*r);
+                let has_tcp_connection = state
+                    .client
+                    .inner()
+                    .tcp_connection_tuple_to_resource(*r)
+                    .is_some();
+
+                // Don't disabled resources we don't have. It doesn't hurt but makes the logs of reduced testcases weird.
+                // Also don't disable resources where we have TCP connections as those would get interrupted.
+                has_resource && !has_tcp_connection
+            }),
             Transition::SendIcmpPacket {
                 src,
                 dst: Destination::DomainName { name, .. },
