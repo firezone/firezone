@@ -4,7 +4,7 @@ use super::{
     sim_gateway::SimGateway,
     transition::{Destination, ReplyTo},
 };
-use connlib_model::{GatewayId, ResourceStatus};
+use connlib_model::GatewayId;
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
@@ -124,7 +124,8 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
 }
 
 pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimClient) {
-    let expected_status_map = &ref_client.expected_resource_status();
+    let expected_status_map = &ref_client
+        .expected_resource_status(|tuple| sim_client.failed_tcp_packets.contains_key(&tuple));
     let actual_status_map = &sim_client.resource_status;
 
     if expected_status_map != actual_status_map {

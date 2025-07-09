@@ -13,7 +13,7 @@ use crate::{
     messages::{DnsServer, Interface},
 };
 use bimap::BiMap;
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -544,17 +544,6 @@ impl RefClient {
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
         }
-
-        // TCP connections to resources that we have established will automatically
-        // create new connections and therefore set the corresponding site to online again.
-        for resource in self
-            .expected_tcp_connections
-            .values()
-            .copied()
-            .collect::<Vec<_>>()
-        {
-            self.set_resource_online(resource);
-        }
     }
 
     pub(crate) fn add_internet_resource(&mut self, r: InternetResource) {
@@ -605,12 +594,29 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn expected_resource_status(&self) -> BTreeMap<ResourceId, ResourceStatus> {
+    pub(crate) fn expected_resource_status(
+        &self,
+        has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
+    ) -> BTreeMap<ResourceId, ResourceStatus> {
+        let mut site_status = self.site_status.clone();
+
+        for ((_, _, sport, dport), resource) in &self.expected_tcp_connections {
+            if has_failed_tcp_connection((*sport, *dport)) {
+                continue;
+            }
+
+            let Some(site) = self.site_for_resource(*resource) else {
+                tracing::error!(%resource, "No site for resource");
+                continue;
+            };
+
+            site_status.insert(site.id, ResourceStatus::Online);
+        }
+
         self.resources
             .iter()
             .filter_map(|r| {
-                let status = self
-                    .site_status
+                let status = site_status
                     .get(&r.site().ok()?.id)
                     .copied()
                     .unwrap_or(ResourceStatus::Unknown);
@@ -739,11 +745,7 @@ impl RefClient {
     }
 
     fn set_resource_online(&mut self, resource: ResourceId) {
-        let Some(Ok(site)) = self
-            .resources
-            .iter()
-            .find_map(|r| (r.id() == resource).then_some(r.site()))
-        else {
+        let Some(site) = self.site_for_resource(resource) else {
             tracing::error!(%resource, "Unknown resource or multi-site resource");
             return;
         };
@@ -822,6 +824,17 @@ impl RefClient {
 
     fn is_connected_to_cidr(&self, id: ResourceId) -> bool {
         self.connected_cidr_resources.contains(&id)
+    }
+
+    fn site_for_resource(&self, resource: ResourceId) -> Option<Site> {
+        let site = self
+            .resources
+            .iter()
+            .find_map(|r| (r.id() == resource).then_some(r.site()))?
+            .ok()?
+            .clone();
+
+        Some(site)
     }
 
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
@@ -1077,6 +1090,19 @@ impl RefClient {
     ) -> bool {
         self.expected_tcp_connections
             .contains_key(&(src, dst, sport, dport))
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Iteration order does not matter here."
+    )]
+    pub(crate) fn tcp_connection_tuple_to_resource(
+        &self,
+        resource: ResourceId,
+    ) -> Option<(SPort, DPort)> {
+        self.expected_tcp_connections
+            .iter()
+            .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
     }
 }
 
