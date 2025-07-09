@@ -1,11 +1,11 @@
 use super::{
     dns_records::DnsRecords,
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
+    icmp_error_hosts::{IcmpError, IcmpErrorHosts},
     reference::{PrivateKey, private_key},
     sim_net::{Host, dual_ip_stack, host},
     sim_relay::{SimRelay, map_explode},
     strategies::latency,
-    unreachable_hosts::{IcmpError, UnreachableHosts},
 };
 use crate::{GatewayState, IpConfig};
 use anyhow::{Result, bail};
@@ -61,7 +61,7 @@ impl SimGateway {
     pub(crate) fn receive(
         &mut self,
         transmit: Transmit,
-        unreachable_hosts: &UnreachableHosts,
+        icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
         utc_now: DateTime<Utc>,
     ) -> Option<Transmit> {
@@ -76,7 +76,7 @@ impl SimGateway {
             return None;
         };
 
-        self.on_received_packet(packet, unreachable_hosts, now)
+        self.on_received_packet(packet, icmp_error_hosts, now)
     }
 
     pub(crate) fn advance_resources(
@@ -155,7 +155,7 @@ impl SimGateway {
     fn on_received_packet(
         &mut self,
         packet: IpPacket,
-        unreachable_hosts: &UnreachableHosts,
+        icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
     ) -> Option<Transmit> {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
@@ -166,7 +166,7 @@ impl SimGateway {
         // If so, generate the error reply.
         // We still want to do all the book-keeping in terms of tracking which requests we received.
         // Therefore, pass the generated `icmp_error` to resulting `handle_` functions instead of sending it right away.
-        let icmp_error = unreachable_hosts
+        let icmp_error = icmp_error_hosts
             .icmp_error_for_ip(dst_ip)
             .map(|icmp_error| icmp_error_reply(&packet, icmp_error).unwrap());
 
@@ -347,16 +347,25 @@ fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
     match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
             let icmpv4 = ip_packet::PacketBuilder::ipv4(src.octets(), dst.octets(), 20).icmpv4(
-                Icmpv4Type::DestinationUnreachable(match error {
-                    IcmpError::Network => icmpv4::DestUnreachableHeader::Network,
-                    IcmpError::Host => icmpv4::DestUnreachableHeader::Host,
-                    IcmpError::Port => icmpv4::DestUnreachableHeader::Port,
-                    IcmpError::PacketTooBig { mtu } => {
+                match error {
+                    IcmpError::Network => {
+                        Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Network)
+                    }
+                    IcmpError::Host => {
+                        Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host)
+                    }
+                    IcmpError::Port => {
+                        Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Port)
+                    }
+                    IcmpError::PacketTooBig { mtu } => Icmpv4Type::DestinationUnreachable(
                         icmpv4::DestUnreachableHeader::FragmentationNeeded {
                             next_hop_mtu: u16::try_from(mtu).unwrap_or(u16::MAX),
-                        }
+                        },
+                    ),
+                    IcmpError::TimeExceeded { code } => {
+                        Icmpv4Type::TimeExceeded(icmpv4::TimeExceededCode::from_u8(code).unwrap())
                     }
-                }),
+                },
             );
 
             ip_packet::build!(icmpv4, payload)
@@ -374,6 +383,9 @@ fn icmp_error_reply(packet: &IpPacket, error: IcmpError) -> Result<IpPacket> {
                         Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Port)
                     }
                     IcmpError::PacketTooBig { mtu } => Icmpv6Type::PacketTooBig { mtu },
+                    IcmpError::TimeExceeded { code } => {
+                        Icmpv6Type::TimeExceeded(icmpv6::TimeExceededCode::from_u8(code).unwrap())
+                    }
                 },
             );
 

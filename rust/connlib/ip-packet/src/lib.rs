@@ -4,7 +4,7 @@ pub mod make;
 
 mod fz_p2p_control;
 mod fz_p2p_control_slice;
-mod icmp_dest_unreachable;
+mod icmp_error;
 
 #[cfg(feature = "proptest")]
 #[allow(clippy::unwrap_used)]
@@ -14,7 +14,7 @@ use bufferpool::{Buffer, BufferPool};
 pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
-pub use icmp_dest_unreachable::{DestUnreachable, FailedPacket};
+pub use icmp_error::{FailedPacket, ICMPError};
 
 use anyhow::{Context as _, Result, bail};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -589,8 +589,8 @@ impl IpPacket {
             .ok()
     }
 
-    /// In case the packet is an ICMP unreachable error, parses the unroutable packet from the ICMP payload.
-    pub fn icmp_unreachable_destination(&self) -> Result<Option<(FailedPacket, DestUnreachable)>> {
+    /// In case the packet is an ICMP error with a failed packet, parses the failed packet from the ICMP payload.
+    pub fn icmp_error(&self) -> Result<Option<(FailedPacket, ICMPError)>> {
         if let Some(icmpv4) = self.as_icmpv4() {
             let icmp_type = icmpv4.icmp_type();
 
@@ -602,8 +602,16 @@ impl IpPacket {
                 return Ok(None);
             }
 
-            let Icmpv4Type::DestinationUnreachable(error) = icmp_type else {
-                bail!("ICMP message is not `DestinationUnreachable` but {icmp_type:?}");
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "We only want to match on these variants"
+            )]
+            let icmp_error = match icmp_type {
+                Icmpv4Type::DestinationUnreachable(error) => ICMPError::V4Unreachable(error),
+                Icmpv4Type::TimeExceeded(code) => ICMPError::V4TimeExceeded(code),
+                other => {
+                    bail!("ICMP message {other:?} is not supported");
+                }
             };
 
             let (ipv4, _) = LaxIpv4Slice::from_slice(icmpv4.payload())
@@ -622,10 +630,7 @@ impl IpPacket {
                     l4_proto,
                     raw: icmpv4.payload().to_vec(),
                 },
-                DestUnreachable::V4 {
-                    header: error,
-                    total_length: header.total_len(),
-                },
+                icmp_error,
             )));
         }
 
@@ -642,15 +647,14 @@ impl IpPacket {
 
             #[expect(
                 clippy::wildcard_enum_match_arm,
-                reason = "We only want to match on these two variants"
+                reason = "We only want to match on these variants"
             )]
-            let dest_unreachable = match icmp_type {
-                Icmpv6Type::DestinationUnreachable(error) => DestUnreachable::V6Unreachable(error),
-                Icmpv6Type::PacketTooBig { mtu } => DestUnreachable::V6PacketTooBig { mtu },
+            let icmp_error = match icmp_type {
+                Icmpv6Type::DestinationUnreachable(error) => ICMPError::V6Unreachable(error),
+                Icmpv6Type::PacketTooBig { mtu } => ICMPError::V6PacketTooBig { mtu },
+                Icmpv6Type::TimeExceeded(code) => ICMPError::V6TimeExceeded(code),
                 other => {
-                    bail!(
-                        "ICMP message is not `DestinationUnreachable` or `PacketTooBig` but {other:?}"
-                    );
+                    bail!("ICMPv6 message {other:?} is not supported");
                 }
             };
 
@@ -670,7 +674,7 @@ impl IpPacket {
                     l4_proto,
                     raw: icmpv6.payload().to_vec(),
                 },
-                dest_unreachable,
+                icmp_error,
             )));
         }
 

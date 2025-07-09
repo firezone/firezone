@@ -19,6 +19,7 @@ mod composite_strategy;
 mod dns_records;
 mod dns_server_resource;
 mod flux_capacitor;
+mod icmp_error_hosts;
 mod reference;
 mod sim_client;
 mod sim_gateway;
@@ -28,7 +29,6 @@ mod strategies;
 mod stub_portal;
 mod sut;
 mod transition;
-mod unreachable_hosts;
 
 type QueryId = u16;
 
