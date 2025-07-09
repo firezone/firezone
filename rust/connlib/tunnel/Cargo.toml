@@ -59,6 +59,7 @@ ip-packet = { workspace = true, features = ["proptest"] }
 proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }
+l3-tcp = { workspace = true }
 test-case = { workspace = true }
 test-strategy = { workspace = true }
 tokio = { workspace = true, features = ["process"] }

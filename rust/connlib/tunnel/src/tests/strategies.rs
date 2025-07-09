@@ -1,4 +1,5 @@
 use super::dns_records::DnsRecords;
+use super::unreachable_hosts::UnreachableHosts;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
     CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
@@ -7,7 +8,7 @@ use crate::client::{
 use crate::messages::DnsServer;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
-use dns_types::OwnedRecordData;
+use dns_types::{DomainName, OwnedRecordData};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -146,6 +147,48 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
                 )
             },
         )
+}
+
+/// Samples a list of TCP resource addresses from the given DNS records.
+///
+/// We sample at most 1 domain from the given records and create a [`SocketAddr`]
+/// for _each_ IP that this domain resolves this.
+/// This is equivalent for how one would deploy a service in the real world.
+/// If `example.com` resolves to 4 IPs, an HTTP server needs to run on all 4 IPs on the same port.
+///
+/// The port is sampled together with domain.
+pub(crate) fn tcp_resources(
+    dns_records: DnsRecords,
+    unreachable_hosts: UnreachableHosts,
+) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<SocketAddr>>> {
+    let all_domains = dns_records.domains_iter().collect::<Vec<_>>();
+
+    collection::btree_set(
+        (sample::select(all_domains.clone()), any::<u16>()),
+        1..=all_domains.len(),
+    )
+    .prop_map(move |domains| {
+        domains
+            .into_iter()
+            .filter(|(domain, _)| {
+                dns_records
+                    .domain_ips_iter(domain)
+                    .all(|ip| !unreachable_hosts.is_unreachable(ip))
+            })
+            .map({
+                let dns_records = dns_records.clone();
+
+                move |(domain, port)| {
+                    let addresses = dns_records
+                        .domain_ips_iter(&domain)
+                        .map(|address| SocketAddr::new(address, port))
+                        .collect::<BTreeSet<_>>();
+
+                    (domain, addresses)
+                }
+            })
+            .collect()
+    })
 }
 
 fn create_internet_site(mut sites: BTreeSet<Site>) -> (Site, BTreeSet<Site>) {

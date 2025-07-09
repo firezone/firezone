@@ -37,6 +37,9 @@ pub(crate) struct ReferenceState {
     /// This is used to e.g. mock DNS resolution on the gateway.
     pub(crate) global_dns_records: DnsRecords,
 
+    /// DNS Resources that listen for TCP connections.
+    pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
+
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
     pub(crate) unreachable_hosts: UnreachableHosts,
 
@@ -74,7 +77,7 @@ impl ReferenceState {
                     client,
                     gateways,
                     portal,
-                    records,
+                    dns_resource_records,
                     relays,
                     global_dns,
                     drop_direct_client_traffic,
@@ -83,8 +86,32 @@ impl ReferenceState {
                         Just(client),
                         Just(gateways),
                         Just(portal),
-                        Just(records.clone()),
-                        unreachable_hosts(records),
+                        Just(dns_resource_records.clone()),
+                        unreachable_hosts(dns_resource_records),
+                        Just(relays),
+                        Just(global_dns),
+                        Just(drop_direct_client_traffic),
+                    )
+                },
+            )
+            .prop_flat_map(
+                |(
+                    client,
+                    gateways,
+                    portal,
+                    dns_resource_records,
+                    unreachable_hosts,
+                    relays,
+                    global_dns,
+                    drop_direct_client_traffic,
+                )| {
+                    (
+                        Just(client),
+                        Just(gateways),
+                        Just(portal),
+                        Just(dns_resource_records.clone()),
+                        Just(unreachable_hosts.clone()),
+                        tcp_resources(dns_resource_records, unreachable_hosts),
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
@@ -99,6 +126,7 @@ impl ReferenceState {
                     portal,
                     records,
                     unreachable_hosts,
+                    tcp_resources,
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
@@ -130,6 +158,7 @@ impl ReferenceState {
                         portal,
                         global_dns,
                         unreachable_hosts,
+                        tcp_resources,
                         drop_direct_client_traffic,
                         routing_table,
                     ))
@@ -137,7 +166,7 @@ impl ReferenceState {
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _, _, _)| {
                     let different_keys = gateways
                         .iter()
                         .map(|(_, g)| g.inner().key)
@@ -155,6 +184,7 @@ impl ReferenceState {
                     portal,
                     global_dns_records,
                     unreachable_hosts,
+                    tcp_resources,
                     drop_direct_client_traffic,
                     network,
                 )| {
@@ -167,6 +197,7 @@ impl ReferenceState {
                         unreachable_hosts,
                         network,
                         drop_direct_client_traffic,
+                        tcp_resources,
                     }
                 },
             )
@@ -228,7 +259,6 @@ impl ReferenceState {
                     prop_oneof![
                         icmp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
                         udp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
-                        tcp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
                     ]
                 },
             )
@@ -241,7 +271,6 @@ impl ReferenceState {
                     prop_oneof![
                         icmp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
                         udp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
-                        tcp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
                     ]
                 },
             )
@@ -253,8 +282,7 @@ impl ReferenceState {
 
                     prop_oneof![
                         icmp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains.clone())),
-                        udp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains.clone())),
-                        tcp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains)),
+                        udp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains)),
                     ]
                 },
             )
@@ -266,9 +294,26 @@ impl ReferenceState {
 
                     prop_oneof![
                         icmp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains.clone()),),
-                        udp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains.clone()),),
-                        tcp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains),),
+                        udp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains),),
                     ]
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.resolved_v4_domains_with_tcp_resources(),
+                |dns_v4_domains| {
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
+                    connect_tcp(Just(tunnel_ip4), select(dns_v4_domains))
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.resolved_v6_domains_with_tcp_resources(),
+                |dns_v6_domains| {
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
+                    connect_tcp(Just(tunnel_ip6), select(dns_v6_domains))
                 },
             )
             .with_if_not_empty(
@@ -295,10 +340,6 @@ impl ReferenceState {
                         ),
                         udp_packet(
                             packet_source_v4(tunnel_ip4),
-                            select(resolved_non_resource_ip4s.clone()),
-                        ),
-                        tcp_packet(
-                            packet_source_v4(tunnel_ip4),
                             select(resolved_non_resource_ip4s),
                         ),
                     ]
@@ -320,10 +361,6 @@ impl ReferenceState {
                         ),
                         udp_packet(
                             packet_source_v6(tunnel_ip6),
-                            select(resolved_non_resource_ip6s.clone()),
-                        ),
-                        tcp_packet(
-                            packet_source_v6(tunnel_ip6),
                             select(resolved_non_resource_ip6s),
                         ),
                     ]
@@ -335,7 +372,6 @@ impl ReferenceState {
                 prop_oneof![
                     icmp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
                     udp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
-                    tcp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
                 ]
             })
             .with_if_not_empty(1, state.connected_gateway_ipv6_ips(), |gateway_ips| {
@@ -344,7 +380,6 @@ impl ReferenceState {
                 prop_oneof![
                     icmp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
                     udp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
-                    tcp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
                 ]
             })
             .boxed()
@@ -427,24 +462,14 @@ impl ReferenceState {
                     )
                 });
             }
-            Transition::SendTcpPayload {
+            Transition::ConnectTcp {
+                src,
                 dst,
                 sport,
                 dport,
-                payload,
-                ..
-            } => {
-                state.client.exec_mut(|client| {
-                    client.on_tcp_packet(
-                        dst.clone(),
-                        *sport,
-                        *dport,
-                        *payload,
-                        |r| state.portal.gateway_for_resource(r).copied(),
-                        |ip| state.portal.gateway_by_ip(ip),
-                    )
-                });
-            }
+            } => state.client.exec_mut(|client| {
+                client.on_connect_tcp(*src, dst.clone(), *sport, *dport);
+            }),
             Transition::UpdateSystemDnsServers(servers) => {
                 state
                     .client
@@ -538,17 +563,16 @@ impl ReferenceState {
                 ref_client.is_valid_udp_packet(sport, dport, payload)
                     && state.is_valid_dst_domain(name, src)
             }
-            Transition::SendTcpPayload {
+            Transition::ConnectTcp {
                 src,
-                dst: Destination::DomainName { name, .. },
+                dst: dst @ Destination::DomainName { name, .. },
                 sport,
                 dport,
-                payload,
             } => {
                 let ref_client = state.client.inner();
 
-                ref_client.is_valid_tcp_packet(sport, dport, payload)
-                    && state.is_valid_dst_domain(name, src)
+                state.is_valid_dst_domain(name, src)
+                    && !ref_client.has_tcp_connection(*src, dst.clone(), *sport, *dport)
             }
             Transition::SendIcmpPacket {
                 dst: Destination::IpAddr(dst),
@@ -573,16 +597,17 @@ impl ReferenceState {
 
                 ref_client.is_valid_udp_packet(sport, dport, payload) && state.is_valid_dst_ip(*dst)
             }
-            Transition::SendTcpPayload {
-                dst: Destination::IpAddr(dst),
+            Transition::ConnectTcp {
+                src,
+                dst: dst @ Destination::IpAddr(dst_ip),
                 sport,
                 dport,
-                payload,
                 ..
             } => {
                 let ref_client = state.client.inner();
 
-                ref_client.is_valid_tcp_packet(sport, dport, payload) && state.is_valid_dst_ip(*dst)
+                state.is_valid_dst_ip(*dst_ip)
+                    && !ref_client.has_tcp_connection(*src, dst.clone(), *sport, *dport)
             }
             Transition::UpdateSystemDnsServers(servers) => {
                 if servers.is_empty() {
@@ -776,6 +801,24 @@ impl ReferenceState {
                 Some(gateway_host.inner().tunnel_ip6.into())
             })
             .unique()
+            .collect()
+    }
+
+    fn resolved_v4_domains_with_tcp_resources(&self) -> Vec<DomainName> {
+        self.client
+            .inner()
+            .resolved_v4_domains()
+            .into_iter()
+            .filter(|domain| self.tcp_resources.contains_key(domain))
+            .collect()
+    }
+
+    fn resolved_v6_domains_with_tcp_resources(&self) -> Vec<DomainName> {
+        self.client
+            .inner()
+            .resolved_v6_domains()
+            .into_iter()
+            .filter(|domain| self.tcp_resources.contains_key(domain))
             .collect()
     }
 

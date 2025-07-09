@@ -11,7 +11,7 @@ use std::{
     collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
     hash::Hash,
     marker::PhantomData,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
 };
 use tracing::{Level, Span, Subscriber};
@@ -75,33 +75,48 @@ pub(crate) fn assert_udp_packets_properties(
     );
 }
 
-/// Asserts the following properties for all TCP handshakes:
-/// 1. An TCP request on the client MUST result in an TCP response using the flipped src & dst IP and sport and dport.
-/// 2. An TCP request on the gateway MUST target the intended resource:
-///     - For CIDR resources, that is the actual CIDR resource IP.
-///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
-/// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
-pub(crate) fn assert_tcp_packets_properties(
-    ref_client: &RefClient,
-    sim_client: &SimClient,
-    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
-    global_dns_records: &DnsRecords,
-) {
-    let received_tcp_requests = sim_gateways
-        .iter()
-        .map(|(g, s)| (*g, &s.received_tcp_requests))
-        .collect();
+pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
+    for ((src, _, sport, dport), _) in &ref_client.expected_tcp_connections {
+        let src = SocketAddr::new(*src, sport.0);
 
-    assert_packets_properties(
-        ref_client,
-        &sim_client.sent_tcp_requests,
-        &received_tcp_requests,
-        &ref_client.expected_tcp_exchanges,
-        &sim_client.received_tcp_replies,
-        "TCP",
-        global_dns_records,
-        |sport, dport| tracing::info_span!(target: "assertions", "TCP", ?sport, ?dport),
-    );
+        let Some((socket, local)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
+            let endpoint = s.local_endpoint()?;
+
+            (l3_tcp::IpEndpoint::from(src) == endpoint).then_some((s, endpoint))
+        }) else {
+            tracing::error!(target: "assertions", %src, "Missing TCP connection");
+            continue;
+        };
+        let Some(remote) = socket.remote_endpoint() else {
+            tracing::error!(target: "assertions", %src, "TCP socket does not have a remote endpoint");
+            continue;
+        };
+
+        let port = remote.port;
+
+        if port == dport.0 {
+            tracing::info!(target: "assertions", %port, "TCP connection is targeting expected port");
+        } else {
+            tracing::error!(target: "assertions", expected = %dport.0, actual = %port, "TCP connection dst port does not match");
+        }
+
+        let actual = socket.state();
+
+        let expected = if sim_client
+            .failed_tcp_packets
+            .contains_key(&(*sport, *dport))
+        {
+            l3_tcp::State::SynSent
+        } else {
+            l3_tcp::State::Established
+        };
+
+        if actual == expected {
+            tracing::info!(target: "assertions", %local, %remote, "TCP connection is {expected}");
+        } else {
+            tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
+        }
+    }
 }
 
 pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimClient) {
