@@ -2644,7 +2644,6 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
- "smoltcp",
  "snownet",
  "socket-factory",
  "socket2",

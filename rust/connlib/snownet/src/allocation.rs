@@ -36,6 +36,7 @@ use stun_codec::{
 use tracing::{Span, field};
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(1);
+const REQUEST_MAX_ELAPSED: Duration = Duration::from_secs(8);
 
 /// How often to send a STUN binding request after the initial connection to the relay.
 ///
@@ -272,7 +273,17 @@ impl Allocation {
 
         tracing::debug!("Refreshing allocation");
 
-        self.authenticate_and_queue(make_refresh_request(self.software.clone()), None, now);
+        // By using the `REQUEST_TIMEOUT` for timeout and max_elapsed, we effectively only perform
+        // a single request.
+        //
+        // When pro-actively refreshing the allocation, we don't want to timeout after 8s but much earlier.
+        let backoff = backoff::new(now, REQUEST_TIMEOUT, REQUEST_TIMEOUT);
+
+        self.authenticate_and_queue(
+            make_refresh_request(self.software.clone()),
+            Some(backoff),
+            now,
+        );
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%from, tid, method, class, rtt))]
@@ -1075,7 +1086,7 @@ impl Allocation {
         backoff: Option<ExponentialBackoff>,
         now: Instant,
     ) -> bool {
-        let backoff = backoff.unwrap_or(backoff::new(now, REQUEST_TIMEOUT));
+        let backoff = backoff.unwrap_or(backoff::new(now, REQUEST_TIMEOUT, REQUEST_MAX_ELAPSED));
         let id = message.transaction_id();
 
         if backoff.is_expired(now) {
