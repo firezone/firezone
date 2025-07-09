@@ -225,8 +225,6 @@ impl SimClient {
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
                 packet.clone(),
             );
-
-            return;
         }
     }
 
@@ -255,11 +253,10 @@ impl SimClient {
                     }
                     Layer4Protocol::Tcp { src, dst } => {
                         self.failed_tcp_packets
-                            .insert((SPort(src), DPort(dst)), packet);
+                            .insert((SPort(src), DPort(dst)), packet.clone());
 
                         // Allow the client to process the ICMP error.
-                        // Unfortunately, `smoltcp` doesn't handle ICMPv4 errors right now.
-                        // self.tcp_client.handle_inbound(packet);
+                        self.tcp_client.handle_inbound(packet);
                     }
                     Layer4Protocol::Icmp { seq, id } => {
                         self.received_icmp_replies

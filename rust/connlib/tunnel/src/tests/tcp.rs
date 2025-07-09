@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, Layer4Protocol};
 use l3_tcp::Socket;
 
 pub struct Client {
@@ -74,6 +74,18 @@ impl Client {
     }
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
+        // TODO: Upstream ICMP error handling to `smoltcp`.
+        if let Ok(Some((failed_packet, _))) = packet.icmp_unreachable_destination() {
+            if let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol() {
+                if let Some(handle) = self
+                    .sockets_by_remote
+                    .get(&SocketAddr::new(failed_packet.dst(), dst))
+                {
+                    self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
+                }
+            }
+        }
+
         self.device.receive(packet);
     }
 

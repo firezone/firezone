@@ -4,7 +4,7 @@ use super::{
     sim_gateway::SimGateway,
     transition::{Destination, ReplyTo},
 };
-use connlib_model::GatewayId;
+use connlib_model::{GatewayId, ResourceStatus};
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
@@ -76,14 +76,22 @@ pub(crate) fn assert_udp_packets_properties(
 }
 
 pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
-    for ((src, _, sport, dport), _) in &ref_client.expected_tcp_connections {
+    for (src, _, sport, dport) in ref_client.expected_tcp_connections.keys() {
         let src = SocketAddr::new(*src, sport.0);
+        let received_icmp_error_for_tuple = sim_client
+            .failed_tcp_packets
+            .contains_key(&(*sport, *dport));
 
         let Some((socket, local)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
             let endpoint = s.local_endpoint()?;
 
             (l3_tcp::IpEndpoint::from(src) == endpoint).then_some((s, endpoint))
         }) else {
+            // If we received an ICMP error for this port tuple, not having a socket is okay.
+            if received_icmp_error_for_tuple {
+                continue;
+            }
+
             tracing::error!(target: "assertions", %src, "Missing TCP connection");
             continue;
         };
@@ -101,20 +109,16 @@ pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimCli
         }
 
         let actual = socket.state();
-
-        let expected = if sim_client
-            .failed_tcp_packets
-            .contains_key(&(*sport, *dport))
-        {
-            l3_tcp::State::SynSent
-        } else {
-            l3_tcp::State::Established
-        };
+        let expected = l3_tcp::State::Established;
 
         if actual == expected {
             tracing::info!(target: "assertions", %local, %remote, "TCP connection is {expected}");
         } else {
             tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
+        }
+
+        if received_icmp_error_for_tuple {
+            tracing::error!(target: "assertions", %local, %remote, "TCP socket should have been reset from ICMP error");
         }
     }
 }
