@@ -10,7 +10,8 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.5" date={new Date("2025-07-09")}>
         <ChangeItem pull="9779">Fixes a rare crash during sign-in.</ChangeItem>
         <ChangeItem pull="9725">
           Fixes an issue where Firezone failed to sign-in on systems with
@@ -22,7 +23,7 @@ export default function GUI({ os }: { os: OS }) {
             changes we react to.
           </ChangeItem>
         )}
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.4" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both
