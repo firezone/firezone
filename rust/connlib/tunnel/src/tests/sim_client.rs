@@ -594,6 +594,10 @@ impl RefClient {
         }
     }
 
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "We don't care about the ordering of the expected TCP connections."
+    )]
     pub(crate) fn expected_resource_status(
         &self,
         has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
