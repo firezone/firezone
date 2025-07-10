@@ -597,33 +597,34 @@ impl RefClient {
     pub(crate) fn expected_resource_status(
         &self,
         has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
-    ) -> BTreeMap<ResourceId, ResourceStatus> {
-        let mut site_status = self.site_status.clone();
+    ) -> (BTreeMap<ResourceId, ResourceStatus>, BTreeSet<ResourceId>) {
+        let maybe_online_sites = self
+            .expected_tcp_connections
+            .iter()
+            .filter(|((_, _, sport, dport), _)| !has_failed_tcp_connection((*sport, *dport)))
+            .filter_map(|(_, resource)| self.site_for_resource(*resource))
+            .flat_map(|site| {
+                self.resources
+                    .iter()
+                    .filter_map(move |r| r.sites().contains(&site).then_some(r.id()))
+            })
+            .collect();
 
-        for ((_, _, sport, dport), resource) in &self.expected_tcp_connections {
-            if has_failed_tcp_connection((*sport, *dport)) {
-                continue;
-            }
-
-            let Some(site) = self.site_for_resource(*resource) else {
-                tracing::error!(%resource, "No site for resource");
-                continue;
-            };
-
-            site_status.insert(site.id, ResourceStatus::Online);
-        }
-
-        self.resources
+        let resource_status = self
+            .resources
             .iter()
             .filter_map(|r| {
-                let status = site_status
+                let status = self
+                    .site_status
                     .get(&r.site().ok()?.id)
                     .copied()
                     .unwrap_or(ResourceStatus::Unknown);
 
                 Some((r.id(), status))
             })
-            .collect()
+            .collect();
+
+        (resource_status, maybe_online_sites)
     }
 
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
