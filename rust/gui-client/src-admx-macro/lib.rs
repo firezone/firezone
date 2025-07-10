@@ -28,12 +28,17 @@ fn try_admx(attr: TokenStream, item: TokenStream) -> syn::Result<proc_macro2::To
         .descendants()
         .filter(|n| n.has_tag_name("policy"))
         .map(|policy| {
-            let value_name = policy.attribute("valueName").ok_or_else(|| {
-                syn::Error::new(
-                    admx_path.inner.span(),
-                    "Policy does not have a `valueName` attribute",
+            let value_name = policy
+                .attribute("valueName")
+                .or_else(|| policy
+                    .descendants()
+                    .find(|d| d.has_tag_name("text"))?
+                    .attribute("valueName")
                 )
-            })?;
+                .ok_or_else(|| syn::Error::new(
+                    admx_path.inner.span(),
+                    "Policy does not have a `valueName` attribute"
+                ))?;
             let key = policy.attribute("key").ok_or_else(|| {
                 syn::Error::new(
                     admx_path.inner.span(),
