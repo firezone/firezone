@@ -276,47 +276,6 @@ impl ClientOnGateway {
         }
     }
 
-    fn transform_network_to_tun(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<TranslateOutboundResult> {
-        let dst = packet.destination();
-
-        // Packets to the TUN interface don't get transformed.
-        if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
-
-        // Packets for CIDR resources / Internet resource are forwarded as is.
-        if !is_dns_addr(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
-
-        let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(&packet)?,
-            ));
-        };
-
-        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(&packet)?,
-            ));
-        }
-
-        let (source_protocol, real_ip) =
-            self.nat_table
-                .translate_outgoing(&packet, state.resolved_ip, now)?;
-
-        let mut packet = packet
-            .translate_destination(source_protocol, real_ip)
-            .context("Failed to translate packet to new destination")?;
-        packet.update_checksum();
-
-        Ok(TranslateOutboundResult::Send(packet))
-    }
-
     pub fn translate_outbound(
         &mut self,
         packet: IpPacket,
@@ -378,6 +337,47 @@ impl ClientOnGateway {
         }
 
         Ok(Some(packet))
+    }
+
+    fn transform_network_to_tun(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<TranslateOutboundResult> {
+        let dst = packet.destination();
+
+        // Packets to the TUN interface don't get transformed.
+        if self.gateway_tun.is_ip(dst) {
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
+
+        // Packets for CIDR resources / Internet resource are forwarded as is.
+        if !is_dns_addr(dst) {
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
+
+        let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
+            return Ok(TranslateOutboundResult::DestinationUnreachable(
+                ip_packet::make::icmp_dst_unreachable(&packet)?,
+            ));
+        };
+
+        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+            return Ok(TranslateOutboundResult::DestinationUnreachable(
+                ip_packet::make::icmp_dst_unreachable(&packet)?,
+            ));
+        }
+
+        let (source_protocol, real_ip) =
+            self.nat_table
+                .translate_outgoing(&packet, state.resolved_ip, now)?;
+
+        let mut packet = packet
+            .translate_destination(source_protocol, real_ip)
+            .context("Failed to translate packet to new destination")?;
+        packet.update_checksum();
+
+        Ok(TranslateOutboundResult::Send(packet))
     }
 
     fn transform_tun_to_network(
