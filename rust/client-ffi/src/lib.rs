@@ -237,12 +237,7 @@ fn connect(
     runtime.block_on(telemetry.start(&api_url, RELEASE, platform::DSN, device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 
-    analytics::identify(
-        device_id.clone(),
-        api_url.to_string(),
-        RELEASE.to_owned(),
-        Some(account_slug),
-    );
+    analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
     init_logging(&PathBuf::from(log_dir), log_filter)?;
     install_rustls_crypto_provider();

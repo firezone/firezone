@@ -3,6 +3,7 @@
 use std::{borrow::Cow, collections::BTreeMap, fmt, str::FromStr, sync::Arc, time::Duration};
 
 use anyhow::{Result, bail};
+use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, SessionStatus},
@@ -13,6 +14,7 @@ pub mod analytics;
 pub mod feature_flags;
 pub mod otel;
 
+mod api_url;
 mod posthog;
 
 pub struct Dsn(&'static str);
@@ -53,17 +55,18 @@ pub(crate) enum Env {
     OnPrem,
 }
 
-impl Env {
-    pub(crate) fn from_api_url(api_url: &str) -> Self {
-        match api_url.trim_end_matches('/') {
-            "wss://api.firezone.dev" => Self::Production,
-            "wss://api.firez.one" => Self::Staging,
-            "ws://api:8081" => Self::DockerCompose,
-            "ws://localhost:8081" => Self::DockerCompose,
+impl From<ApiUrl<'_>> for Env {
+    fn from(value: ApiUrl) -> Self {
+        match value {
+            ApiUrl::PROD => Self::Production,
+            ApiUrl::STAGING => Self::Staging,
+            ApiUrl::DOCKER_COMPOSE | ApiUrl::LOCALHOST => Self::DockerCompose,
             _ => Self::OnPrem,
         }
     }
+}
 
+impl Env {
     pub(crate) fn as_str(&self) -> &'static str {
         match self {
             Env::Production => "production",
@@ -116,7 +119,7 @@ impl Telemetry {
     pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
-        let environment = Env::from_api_url(api_url);
+        let environment = Env::from(ApiUrl::new(api_url));
 
         if self
             .inner
@@ -212,6 +215,18 @@ impl Telemetry {
         update_user(|user| {
             user.other.insert("account_slug".to_owned(), slug.into());
         });
+    }
+
+    pub(crate) fn current_env() -> Option<Env> {
+        let client = sentry::Hub::main().client()?;
+        let env = client.options().environment.as_deref()?;
+        let env = Env::from_str(env).ok()?;
+
+        Some(env)
+    }
+
+    pub(crate) fn current_user() -> Option<String> {
+        sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
     }
 }
 
