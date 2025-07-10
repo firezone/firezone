@@ -506,6 +506,10 @@ impl<'a> Handler<'a> {
             ClientMsg::Connect { api_url, token } => {
                 let token = SecretString::new(token);
 
+                if !self.session.is_none() {
+                    tracing::debug!(session = ?self.session, "Connecting despite existing session");
+                }
+
                 let result = self.try_connect(&api_url, token.clone());
 
                 if let Some(e) = result
@@ -603,10 +607,6 @@ impl<'a> Handler<'a> {
 
     fn try_connect(&mut self, api_url: &str, token: SecretString) -> Result<Session> {
         let started_at = Instant::now();
-
-        if !self.session.is_none() {
-            tracing::warn!(session = ?self.session, "Connecting despite existing session");
-        }
 
         let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
 
