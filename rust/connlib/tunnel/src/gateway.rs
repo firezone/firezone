@@ -139,7 +139,7 @@ impl GatewayState {
         let peer = self
             .peers
             .get_mut(&cid)
-            .context("Failed to find connection by ID")?;
+            .with_context(|| format!("No peer for connection {cid}"))?;
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             let Some(immediate_response) =
