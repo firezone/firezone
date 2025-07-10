@@ -23,7 +23,7 @@ use dns_types::prelude::*;
 use rand::SeedableRng;
 use rand::distributions::DistString;
 use sha2::Digest;
-use snownet::Transmit;
+use snownet::{NoTurnServers, Transmit};
 use std::iter;
 use std::{
     collections::BTreeMap,
@@ -416,7 +416,21 @@ impl TunnelTest {
             }
 
             if let Some(event) = self.client.exec_mut(|c| c.sut.poll_event()) {
-                self.on_client_event(self.client.inner().id, event, &ref_state.portal);
+                match self.on_client_event(self.client.inner().id, event, &ref_state.portal) {
+                    Ok(()) => {}
+                    Err(AuthorizeFlowError::Client(_)) => {
+                        self.client.exec_mut(|c| {
+                            c.update_relays(iter::empty(), self.relays.iter(), now);
+                        });
+                    }
+                    Err(AuthorizeFlowError::Gateway(_)) => {
+                        for gateway in self.gateways.values_mut() {
+                            gateway.exec_mut(|g| {
+                                g.update_relays(iter::empty(), self.relays.iter(), now)
+                            });
+                        }
+                    }
+                };
                 continue;
             }
             if let Some(query) = self.client.exec_mut(|c| c.sut.poll_dns_queries()) {
@@ -668,7 +682,12 @@ impl TunnelTest {
         }
     }
 
-    fn on_client_event(&mut self, src: ClientId, event: ClientEvent, portal: &StubPortal) {
+    fn on_client_event(
+        &mut self,
+        src: ClientId,
+        event: ClientEvent,
+        portal: &StubPortal,
+    ) -> Result<(), AuthorizeFlowError> {
         let now = self.flux_capacitor.now();
 
         match event {
@@ -682,7 +701,9 @@ impl TunnelTest {
                     for candidate in candidates {
                         g.sut.add_ice_candidate(src, candidate, now)
                     }
-                })
+                });
+
+                Ok(())
             }
             ClientEvent::RemovedIceCandidates {
                 candidates,
@@ -694,7 +715,9 @@ impl TunnelTest {
                     for candidate in candidates {
                         g.sut.remove_ice_candidate(src, candidate, now)
                     }
-                })
+                });
+
+                Ok(())
             }
             ClientEvent::ConnectionIntent {
                 resource: resource_id,
@@ -710,36 +733,43 @@ impl TunnelTest {
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
 
-                if let Err(e) = gateway.exec_mut(|g| {
-                    g.sut.authorize_flow(
-                        src,
-                        client_key,
-                        preshared_key.clone(),
-                        client_ice.clone(),
-                        gateway_ice.clone(),
-                        self.client.inner().sut.tunnel_ip_config().unwrap(),
-                        None,
-                        resource,
-                        now,
-                    )
-                }) {
-                    tracing::warn!("{e}");
-                };
-                if let Err(e) = self.client.exec_mut(|c| {
-                    c.sut.handle_flow_created(
-                        resource_id,
-                        gateway_id,
-                        gateway_key,
-                        gateway.inner().sut.tunnel_ip_config().unwrap(),
-                        site_id,
-                        preshared_key,
-                        client_ice,
-                        gateway_ice,
-                        now,
-                    )
-                }) {
-                    tracing::error!("{e:#}")
-                };
+                gateway
+                    .exec_mut(|g| {
+                        g.sut.authorize_flow(
+                            src,
+                            client_key,
+                            preshared_key.clone(),
+                            client_ice.clone(),
+                            gateway_ice.clone(),
+                            self.client.inner().sut.tunnel_ip_config().unwrap(),
+                            None,
+                            resource,
+                            now,
+                        )
+                    })
+                    .map_err(AuthorizeFlowError::Gateway)?;
+                self.client
+                    .exec_mut(|c| {
+                        c.sut.handle_flow_created(
+                            resource_id,
+                            gateway_id,
+                            gateway_key,
+                            gateway.inner().sut.tunnel_ip_config().unwrap(),
+                            site_id,
+                            preshared_key,
+                            client_ice,
+                            gateway_ice,
+                            now,
+                        )
+                    })
+                    .unwrap_or_else(|e| {
+                        tracing::error!("{e:#}");
+
+                        Ok(())
+                    })
+                    .map_err(AuthorizeFlowError::Client)?;
+
+                Ok(())
             }
 
             ClientEvent::ResourcesChanged { resources } => {
@@ -749,6 +779,8 @@ impl TunnelTest {
                         .map(|r| (r.id(), r.status()))
                         .collect();
                 });
+
+                Ok(())
             }
             ClientEvent::TunInterfaceUpdated(config) => {
                 if self.client.inner().dns_mapping() == &config.dns_by_sentinel
@@ -776,6 +808,8 @@ impl TunnelTest {
                     c.ipv6_routes = config.ipv6_routes;
                     c.search_domain = config.search_domain
                 });
+
+                Ok(())
             }
         }
     }
@@ -829,6 +863,11 @@ impl TunnelTest {
         }
         self.relays = online; // Override all relays.
     }
+}
+
+enum AuthorizeFlowError {
+    Client(NoTurnServers),
+    Gateway(NoTurnServers),
 }
 
 fn address_from_destination(destination: &Destination, state: &TunnelTest, src: &IpAddr) -> IpAddr {
