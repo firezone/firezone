@@ -134,7 +134,7 @@ pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimCli
         for (resource, expected_status) in expected_status_map {
             match actual_status_map.get(resource) {
                 // For resources with TCP connections, the expected status might be off.
-                // The TCP client sends its own keep-alives so we cannot always track the internal connection state.
+                // The TCP client sends its own keep-alive's so we cannot always track the internal connection state.
                 Some(&Online)
                     if expected_status == &Unknown && tcp_resources.contains(resource) => {}
                 Some(&Unknown)
