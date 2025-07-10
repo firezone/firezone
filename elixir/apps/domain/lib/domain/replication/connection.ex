@@ -422,7 +422,7 @@ defmodule Domain.Replication.Connection do
           state: inspect(state)
         )
 
-        {:noreply, state}
+        {:noreply, [], state}
       end
     end
   end
@@ -456,7 +456,7 @@ defmodule Domain.Replication.Connection do
           columns: columns
         }
 
-        {:noreply, %{state | relations: Map.put(state.relations, id, relation)}}
+        {:noreply, [], %{state | relations: Map.put(state.relations, id, relation)}}
       end
 
       defp handle_write(%Decoder.Messages.Insert{} = msg, server_wal_end, state) do
@@ -481,7 +481,7 @@ defmodule Domain.Replication.Connection do
         state
         |> on_write(server_wal_end, op, table, old_data, data)
         |> maybe_flush()
-        |> then(&{:noreply, &1})
+        |> then(&{:noreply, [], &1})
       end
 
       defp maybe_flush(%{flush_buffer: buffer, flush_buffer_size: size} = state)
@@ -506,7 +506,7 @@ defmodule Domain.Replication.Connection do
         send(self(), {:check_warning_threshold, lag_ms})
         send(self(), {:check_error_threshold, lag_ms})
 
-        {:noreply, state}
+        {:noreply, [], state}
       end
     end
   end
@@ -517,19 +517,19 @@ defmodule Domain.Replication.Connection do
       # These messages are not relevant for our use case, so we ignore them.
 
       defp handle_write(%Decoder.Messages.Commit{}, _server_wal_end, state) do
-        {:noreply, state}
+        {:noreply, [], state}
       end
 
       defp handle_write(%Decoder.Messages.Origin{}, _server_wal_end, state) do
-        {:noreply, state}
+        {:noreply, [], state}
       end
 
       defp handle_write(%Decoder.Messages.Truncate{}, _server_wal_end, state) do
-        {:noreply, state}
+        {:noreply, [], state}
       end
 
       defp handle_write(%Decoder.Messages.Type{}, _server_wal_end, state) do
-        {:noreply, state}
+        {:noreply, [], state}
       end
 
       defp handle_write(%Decoder.Messages.Unsupported{data: data}, _server_wal_end, state) do
@@ -538,7 +538,7 @@ defmodule Domain.Replication.Connection do
           counter: state.counter
         )
 
-        {:noreply, state}
+        {:noreply, [], state}
       end
     end
   end
