@@ -35,6 +35,10 @@ pub fn stream_logs() -> bool {
     FEATURE_FLAGS.stream_logs()
 }
 
+pub fn map_enobufs_to_would_block() -> bool {
+    FEATURE_FLAGS.map_enobufs_to_wouldblock()
+}
+
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     if user_id.is_empty() {
         return;
@@ -146,6 +150,8 @@ struct FeatureFlagsResponse {
     drop_llmnr_nxdomain_responses: bool,
     #[serde(default)]
     stream_logs: bool,
+    #[serde(default)]
+    map_enobufs_to_wouldblock: bool,
 }
 
 #[derive(Debug, Default)]
@@ -153,6 +159,7 @@ struct FeatureFlags {
     icmp_unreachable_instead_of_nat64: AtomicBool,
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: AtomicBool,
+    map_enobufs_to_wouldblock: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -168,6 +175,7 @@ impl FeatureFlags {
             icmp_unreachable_instead_of_nat64,
             drop_llmnr_nxdomain_responses,
             stream_logs,
+            map_enobufs_to_wouldblock,
         }: FeatureFlagsResponse,
     ) {
         self.icmp_unreachable_instead_of_nat64
@@ -175,6 +183,8 @@ impl FeatureFlags {
         self.drop_llmnr_nxdomain_responses
             .store(drop_llmnr_nxdomain_responses, Ordering::Relaxed);
         self.stream_logs.store(stream_logs, Ordering::Relaxed);
+        self.map_enobufs_to_wouldblock
+            .store(map_enobufs_to_wouldblock, Ordering::Relaxed);
     }
 
     fn icmp_unreachable_instead_of_nat64(&self) -> bool {
@@ -189,6 +199,10 @@ impl FeatureFlags {
     fn stream_logs(&self) -> bool {
         self.stream_logs.load(Ordering::Relaxed)
     }
+
+    fn map_enobufs_to_wouldblock(&self) -> bool {
+        self.map_enobufs_to_wouldblock.load(Ordering::Relaxed)
+    }
 }
 
 fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
@@ -198,6 +212,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         IcmpUnreachableInsteadOfNat64 { result: bool },
         DropLlmnrNxdomainResponses { result: bool },
         StreamLogs { result: bool },
+        MapENOBUFSToWouldBlock { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -205,6 +220,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         icmp_unreachable_instead_of_nat64,
         drop_llmnr_nxdomain_responses,
         stream_logs,
+        map_enobufs_to_wouldblock,
     } = flags;
 
     let value = serde_json::json!({
@@ -213,7 +229,8 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
                 result: icmp_unreachable_instead_of_nat64,
             },
             SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
-            SentryFlag::StreamLogs { result: stream_logs }
+            SentryFlag::StreamLogs { result: stream_logs },
+            SentryFlag::MapENOBUFSToWouldBlock { result: map_enobufs_to_wouldblock },
         ]
     });
 
