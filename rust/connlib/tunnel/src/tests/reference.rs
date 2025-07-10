@@ -401,7 +401,6 @@ impl ReferenceState {
                 payload,
             } => state.client.exec_mut(|client| {
                 client.on_icmp_packet(
-                    *src,
                     dst.clone(),
                     *seq,
                     *identifier,
@@ -419,7 +418,6 @@ impl ReferenceState {
             } => {
                 state.client.exec_mut(|client| {
                     client.on_udp_packet(
-                        *src,
                         dst.clone(),
                         *sport,
                         *dport,
@@ -438,7 +436,6 @@ impl ReferenceState {
             } => {
                 state.client.exec_mut(|client| {
                     client.on_tcp_packet(
-                        *src,
                         dst.clone(),
                         *sport,
                         *dport,
