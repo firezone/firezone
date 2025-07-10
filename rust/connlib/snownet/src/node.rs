@@ -935,6 +935,8 @@ where
             return ControlFlow::Break(Ok(()));
         }
 
+        tracing::debug!(packet = %hex::encode(packet));
+
         ControlFlow::Break(Err(anyhow!("Packet has unknown format")))
     }
 
