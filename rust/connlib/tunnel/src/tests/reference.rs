@@ -394,11 +394,11 @@ impl ReferenceState {
                 }
             }
             Transition::SendIcmpPacket {
-                src,
                 dst,
                 seq,
                 identifier,
                 payload,
+                ..
             } => state.client.exec_mut(|client| {
                 client.on_icmp_packet(
                     dst.clone(),
@@ -410,11 +410,11 @@ impl ReferenceState {
                 )
             }),
             Transition::SendUdpPacket {
-                src,
                 dst,
                 sport,
                 dport,
                 payload,
+                ..
             } => {
                 state.client.exec_mut(|client| {
                     client.on_udp_packet(
@@ -428,11 +428,11 @@ impl ReferenceState {
                 });
             }
             Transition::SendTcpPayload {
-                src,
                 dst,
                 sport,
                 dport,
                 payload,
+                ..
             } => {
                 state.client.exec_mut(|client| {
                     client.on_tcp_packet(

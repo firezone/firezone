@@ -661,7 +661,6 @@ impl RefClient {
         );
     }
 
-    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway))]
     fn on_packet<E>(
         &mut self,
