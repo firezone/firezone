@@ -472,7 +472,7 @@ defmodule Domain.Replication.Connection do
       end
 
       defp process_write(_msg, _server_wal_end, %{error_threshold_exceeded?: true} = state) do
-        {:noreply, state}
+        {:noreply, [], state}
       end
 
       defp process_write(msg, server_wal_end, state) do
