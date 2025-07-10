@@ -8,6 +8,9 @@ default-run = "firezone-gui-client"
 authors = ["Firezone, Inc."]
 license = { workspace = true }
 
+[package.metadata.tslink]
+enum_representation = "discriminated"
+
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem
 # DO NOT REMOVE!!
@@ -98,6 +101,3 @@ tempfile = { workspace = true }
 
 [lints]
 workspace = true
-
-[tslink]
-enum_representation = "discriminated"
