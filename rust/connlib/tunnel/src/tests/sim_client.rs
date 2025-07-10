@@ -718,10 +718,6 @@ impl RefClient {
             gateway
         };
 
-        if !self.is_tunnel_ip(src) {
-            return;
-        }
-
         tracing::debug!(%payload, "Sending packet");
 
         map(self)
