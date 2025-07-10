@@ -677,7 +677,16 @@ impl ReferenceState {
             }
             Transition::ReconnectPortal => true,
             Transition::DeactivateResource(r) => {
-                state.client.inner().all_resource_ids().contains(r)
+                let has_resource = state.client.inner().has_resource(*r);
+                let has_tcp_connection = state
+                    .client
+                    .inner()
+                    .tcp_connection_tuple_to_resource(*r)
+                    .is_some();
+
+                // Don't deactivate resources we don't have. It doesn't hurt but makes the logs of reduced testcases weird.
+                // Also don't deactivate resources where we have TCP connections as those would get interrupted.
+                has_resource && !has_tcp_connection
             }
             Transition::RebootRelaysWhilePartitioned(new_relays)
             | Transition::DeployNewRelays(new_relays) => {
