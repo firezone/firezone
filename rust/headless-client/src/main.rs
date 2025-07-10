@@ -179,13 +179,6 @@ fn main() -> Result<()> {
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
-    analytics::identify(
-        firezone_id.clone(),
-        cli.api_url.to_string(),
-        RELEASE.to_owned(),
-        None,
-    );
-
     let mut telemetry = Telemetry::default();
     if cli.is_telemetry_allowed() {
         rt.block_on(telemetry.start(
@@ -194,6 +187,8 @@ fn main() -> Result<()> {
             firezone_telemetry::HEADLESS_DSN,
             firezone_id.clone(),
         ));
+
+        analytics::identify(RELEASE.to_owned(), None);
     }
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
