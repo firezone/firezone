@@ -358,13 +358,21 @@ impl ClientOnGateway {
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
             return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(&packet)?,
+                ip_packet::make::icmp_dest_unreachable(
+                    &packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::Network,
+                    ip_packet::icmpv6::DestUnreachableCode::Address,
+                )?,
             ));
         };
 
         if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
             return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(&packet)?,
+                ip_packet::make::icmp_dest_unreachable(
+                    &packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::Network,
+                    ip_packet::icmpv6::DestUnreachableCode::Address,
+                )?,
             ));
         }
 
