@@ -284,7 +284,13 @@ impl ClientOnGateway {
         // Filtering a packet is not an error.
         if let Err(e) = self.ensure_allowed_src_and_dst(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(TranslateOutboundResult::Filtered);
+            return Ok(TranslateOutboundResult::Filtered(
+                ip_packet::make::icmp_dest_unreachable(
+                    &packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::FilterProhibited,
+                    ip_packet::icmpv6::DestUnreachableCode::Prohibited,
+                )?,
+            ));
         }
 
         // Failing to transform is an error we want to know about further up.
@@ -491,7 +497,7 @@ impl ClientOnGateway {
 pub enum TranslateOutboundResult {
     Send(IpPacket),
     DestinationUnreachable(IpPacket),
-    Filtered,
+    Filtered(IpPacket),
 }
 
 impl GatewayOnClient {
@@ -882,7 +888,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered
+            crate::peer::TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -896,7 +902,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered
+            crate::peer::TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -946,7 +952,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered
+            crate::peer::TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
