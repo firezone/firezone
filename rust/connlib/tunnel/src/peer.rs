@@ -352,6 +352,14 @@ impl ClientOnGateway {
 
         self.ensure_client_ip(packet.destination())?;
 
+        // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
+        if packet
+            .icmp_unreachable_destination()
+            .is_ok_and(|e| e.is_some())
+        {
+            return Ok(Some(packet));
+        }
+
         if let Err(e) = self.ensure_allowed_resource(packet.source(), packet.source_protocol()) {
             tracing::debug!(
                 "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
