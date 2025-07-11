@@ -18,7 +18,7 @@ impl IcmpErrorHosts {
     }
 }
 
-/// Samples a subset of the provided DNS records which we will treat as "unreachable".
+/// Samples a subset of the provided DNS records which we will generate ICMP errors.
 pub(crate) fn icmp_error_hosts(
     dns_resource_records: DnsRecords,
 ) -> impl Strategy<Value = IcmpErrorHosts> {
@@ -31,7 +31,7 @@ pub(crate) fn icmp_error_hosts(
         .prop_flat_map(|ips| {
             let num_ips = ips.len();
 
-            sample::subsequence(ips, 0..num_ips) // Pick a subset of the unreachable IPs.
+            sample::subsequence(ips, 0..num_ips) // Pick a subset of IPs.
         })
         .prop_flat_map(|ips| {
             ips.into_iter()

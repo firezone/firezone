@@ -6,7 +6,7 @@ use etherparse::{Icmpv4Type, Icmpv6Type, LaxIpv4Slice, LaxIpv6Slice, icmpv4, icm
 use crate::{Layer4Protocol, Protocol};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ICMPError {
+pub enum IcmpError {
     V4Unreachable(icmpv4::DestUnreachableHeader),
     V4TimeExceeded(icmpv4::TimeExceededCode),
     V6Unreachable(icmpv6::DestUnreachableCode),
@@ -14,18 +14,18 @@ pub enum ICMPError {
     V6TimeExceeded(icmpv6::TimeExceededCode),
 }
 
-impl ICMPError {
+impl IcmpError {
     pub fn into_icmp_v4_type(self) -> Result<Icmpv4Type> {
         let icmpv4_type = match self {
-            ICMPError::V4Unreachable(header) => Icmpv4Type::DestinationUnreachable(header),
-            ICMPError::V4TimeExceeded(code) => Icmpv4Type::TimeExceeded(code),
-            ICMPError::V6Unreachable(_) => {
+            IcmpError::V4Unreachable(header) => Icmpv4Type::DestinationUnreachable(header),
+            IcmpError::V4TimeExceeded(code) => Icmpv4Type::TimeExceeded(code),
+            IcmpError::V6Unreachable(_) => {
                 bail!("Cannot translate IPv6 unreachable to ICMPv4")
             }
-            ICMPError::V6PacketTooBig { .. } => {
+            IcmpError::V6PacketTooBig { .. } => {
                 bail!("Cannot translate IPv6 packet too big to ICMPv4")
             }
-            ICMPError::V6TimeExceeded { .. } => {
+            IcmpError::V6TimeExceeded { .. } => {
                 bail!("Cannot translate IPv6 packet time exceeded to ICMPv4")
             }
         };
@@ -35,15 +35,15 @@ impl ICMPError {
 
     pub fn into_icmp_v6_type(self) -> Result<Icmpv6Type> {
         match self {
-            ICMPError::V4Unreachable { .. } => {
+            IcmpError::V4Unreachable { .. } => {
                 bail!("Cannot translate IPv4 unreachable to ICMPv6")
             }
-            ICMPError::V4TimeExceeded { .. } => {
+            IcmpError::V4TimeExceeded { .. } => {
                 bail!("Cannot translate IPv4 time exceeded to ICMPv6")
             }
-            ICMPError::V6Unreachable(code) => Ok(Icmpv6Type::DestinationUnreachable(code)),
-            ICMPError::V6PacketTooBig { mtu } => Ok(Icmpv6Type::PacketTooBig { mtu }),
-            ICMPError::V6TimeExceeded(code) => Ok(Icmpv6Type::TimeExceeded(code)),
+            IcmpError::V6Unreachable(code) => Ok(Icmpv6Type::DestinationUnreachable(code)),
+            IcmpError::V6PacketTooBig { mtu } => Ok(Icmpv6Type::PacketTooBig { mtu }),
+            IcmpError::V6TimeExceeded(code) => Ok(Icmpv6Type::TimeExceeded(code)),
         }
     }
 }
