@@ -102,3 +102,40 @@ impl AllowRules {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use ip_packet::{Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
+
+    use super::*;
+
+    #[test]
+    fn allows_icmpv4_destination_unreachable() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: true,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
+            Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host),
+        )));
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn allows_icmpv6_destination_unreachable() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: true,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv6Type(
+            Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Address),
+        )));
+
+        assert!(result.is_ok())
+    }
+}
