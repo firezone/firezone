@@ -315,7 +315,7 @@ impl Tun for ValidateChecksumAdapter {
     }
 
     fn send(&mut self, packet: IpPacket) -> std::io::Result<()> {
-        if let Some(ipv4) = packet.ipv4_header() {
+        if let Ok(ipv4) = packet.ipv4_header() {
             let expected = ipv4.calc_header_checksum();
             let actual = ipv4.header_checksum;
 
@@ -324,36 +324,22 @@ impl Tun for ValidateChecksumAdapter {
             }
         }
 
-        if let Some(udp) = packet.as_udp() {
+        if let Ok(udp) = packet.as_udp() {
             let actual = udp.checksum();
-
-            let expected = match &packet {
-                IpPacket::Ipv4(ipv4) => udp
-                    .to_header()
-                    .calc_checksum_ipv4(&ipv4.header().to_header(), udp.payload()),
-                IpPacket::Ipv6(ipv6) => udp
-                    .to_header()
-                    .calc_checksum_ipv6(&ipv6.header().to_header(), udp.payload()),
-            }
-            .map_err(std::io::Error::other)?;
+            let expected = packet
+                .calculate_udp_checksum()
+                .map_err(std::io::Error::other)?;
 
             if expected != actual {
                 tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
             }
         }
 
-        if let Some(tcp) = packet.as_tcp() {
+        if let Ok(tcp) = packet.as_tcp() {
             let actual = tcp.checksum();
-
-            let expected = match &packet {
-                IpPacket::Ipv4(ipv4) => tcp
-                    .to_header()
-                    .calc_checksum_ipv4(&ipv4.header().to_header(), tcp.payload()),
-                IpPacket::Ipv6(ipv6) => tcp
-                    .to_header()
-                    .calc_checksum_ipv6(&ipv6.header().to_header(), tcp.payload()),
-            }
-            .map_err(std::io::Error::other)?;
+            let expected = packet
+                .calculate_tcp_checksum()
+                .map_err(std::io::Error::other)?;
 
             if expected != actual {
                 tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");

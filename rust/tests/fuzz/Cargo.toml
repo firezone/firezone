@@ -1,0 +1,20 @@
+[package]
+name = "fuzz"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[package.metadata]
+cargo-fuzz = true
+
+[[bin]]
+name = "ip_packet"
+path = "fuzz_targets/ip_packet.rs"
+test = false
+doc = false
+bench = false
+
+[dependencies]
+arbitrary = { workspace = true, features = ["derive"] }
+ip-packet = { workspace = true, features = ["arbitrary"] }
+libfuzzer-sys = { workspace = true }
