@@ -138,4 +138,19 @@ mod tests {
 
         assert!(result.is_ok())
     }
+
+    #[test]
+    fn icmp_false_blocks_other_icmp_messages() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: false,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
+            Icmpv4Type::TimestampRequest(icmpv4::TimestampMessage::from_bytes([0u8; 16])),
+        )));
+
+        assert!(result.is_err())
+    }
 }
