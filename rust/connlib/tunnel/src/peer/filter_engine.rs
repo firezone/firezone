@@ -24,7 +24,7 @@ pub(crate) enum Filtered {
     Udp,
     #[error("ICMP not allowed")]
     Icmp,
-    #[error(transparent)]
+    #[error("Failed to evaluate filter")]
     UnsupportedProtocol(#[from] UnsupportedProtocol),
 }
 
