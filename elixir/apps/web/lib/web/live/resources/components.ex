@@ -206,14 +206,14 @@ defmodule Web.Resources.Components do
 
           <div class="mt-2.5 w-24">
             <.input
-              title="Allow ICMP traffic"
+              title="Allow ICMP echo requests/replies"
               type="checkbox"
               field={@forms_by_protocol[:icmp]}
               name={"#{@form.name}[icmp][enabled]"}
               checked={Map.has_key?(@forms_by_protocol, :icmp)}
               value="true"
               disabled={!@traffic_filters_enabled?}
-              label="ICMP"
+              label="ICMP echo"
             />
           </div>
         </div>
