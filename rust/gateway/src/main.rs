@@ -120,36 +120,28 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             .await;
     }
 
-    if cli.metrics {
+    if let Some(backend) = cli.metrics {
         let resource = otel::default_resource_with([
             otel::attr::service_name!(),
             otel::attr::service_version!(),
             otel::attr::service_instance_id(firezone_id.clone()),
         ]);
 
-        let provider = match cli.otlp_grpc_endpoint.clone() {
-            None => {
-                let exporter = opentelemetry_stdout::MetricExporter::default();
-
-                SdkMeterProvider::builder()
-                    .with_periodic_exporter(exporter)
-                    .with_resource(resource)
-                    .build()
-            }
-            Some(endpoint) => {
-                let grpc_endpoint = format!("http://{endpoint}");
-
-                let exporter = opentelemetry_otlp::MetricExporter::builder()
-                    .with_tonic()
-                    .with_endpoint(grpc_endpoint)
-                    .build()
-                    .context("Failed to build OTLP metric exporter")?;
-
-                SdkMeterProvider::builder()
-                    .with_periodic_exporter(exporter)
-                    .with_resource(resource)
-                    .build()
-            }
+        let provider = match backend {
+            MetricsExporter::Stdout => SdkMeterProvider::builder()
+                .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                .with_resource(resource)
+                .build(),
+            MetricsExporter::OtelCollector => SdkMeterProvider::builder()
+                .with_periodic_exporter(
+                    opentelemetry_otlp::MetricExporter::builder()
+                        .with_tonic()
+                        .with_endpoint(format!("http://{endpoint}"))
+                        .build()
+                        .context("Failed to build OTLP metric exporter")?,
+                )
+                .with_resource(resource)
+                .build(),
         };
 
         opentelemetry::global::set_meter_provider(provider);
@@ -275,16 +267,12 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t)]
     tun_threads: NumThreads,
 
-    /// Enable internal metrics.
-    ///
-    /// By default, they will be dumped to stdout every 60s.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value_t = false)]
-    metrics: bool,
+    /// Where to export metrics to.
+    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
+    metrics: Option<MetricsExporter>,
 
     /// Which OTLP collector we should connect to.
-    ///
-    /// If set, we will report metrics to this collector via gRPC.
-    #[arg(long, env, hide = true)]
+    #[arg(long, env, hide = true, required_if_eq("metrics", "otel-collector"))]
     otlp_grpc_endpoint: Option<String>,
 
     /// Validates the checksums of all packets leaving the TUN device.
@@ -295,6 +283,12 @@ struct Cli {
         default_value_t = false
     )]
     validate_checksums: bool,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum MetricsExporter {
+    Stdout,
+    OtelCollector,
 }
 
 impl Cli {
