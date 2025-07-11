@@ -395,9 +395,11 @@ defmodule Domain.Replication.Connection do
         %KeepAlive{reply: reply, wal_end: wal_end} = parse(data)
 
         wal_end =
-          if state.flush_interval > 0 do
-            # If we are flushing, we use the tracked last_flushed_lsn
-            state.last_flushed_lsn + 1
+          if state.flush_interval > 0 && map_size(state.flush_buffer) > 0 do
+            # If we are flushing and currently buffering data, we use the lowest lsn we have to flush
+            state.flush_buffer
+            |> Map.keys()
+            |> Enum.min()
           else
             # Otherwise, we assume to be current with the server
             wal_end + 1
