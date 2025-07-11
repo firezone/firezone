@@ -27,6 +27,9 @@ export default function Gateway() {
           Excludes ICMP errors from the ICMP traffic filter. Those are now
           always routed back to the client.
         </ChangeItem>
+        <ChangeItem pull="9816">
+          Responds with ICMP errors for filtered packets.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-06-30")}>
         <ChangeItem pull="9657">
