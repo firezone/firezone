@@ -31,6 +31,13 @@ defmodule API.GatewayController do
       |> Pagination.params_to_list_opts()
       |> Keyword.put(:preload, :online?)
 
+    list_opts =
+      if group_id = params["gateway_group_id"] do
+        Keyword.put(list_opts, :filter, gateway_group_id: group_id)
+      else
+        list_opts
+      end
+
     with {:ok, gateways, metadata} <- Gateways.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
     end
