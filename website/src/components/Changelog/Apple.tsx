@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.4" date={new Date("2025-07-11")}>
         <ChangeItem pull="9597">
           Fixes an issue where certain log files would not be recreated after
           logs were cleared.
@@ -36,7 +37,7 @@ export default function Apple() {
           Fixes an issue where Firezone failed to sign-in on systems with
           non-ASCII characters in their kernel build name.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.3" date={new Date("2025-06-19")}>
         <ChangeItem pull="9564">
           Fixes an issue where connections would fail to establish if both
