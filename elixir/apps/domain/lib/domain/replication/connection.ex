@@ -89,7 +89,9 @@ defmodule Domain.Replication.Connection do
               flush_buffer_size: integer(),
               status_log_interval: integer(),
               warning_threshold: integer(),
-              error_threshold: integer()
+              error_threshold: integer(),
+              last_sent_lsn: integer() | nil,
+              last_keep_alive: DateTime.t() | nil
             }
 
       defstruct(
@@ -128,7 +130,11 @@ defmodule Domain.Replication.Connection do
         status_log_interval: :timer.minutes(1),
         # thresholds for warning and error logging
         warning_threshold: :timer.seconds(30),
-        error_threshold: :timer.seconds(60)
+        error_threshold: :timer.seconds(60),
+        # last sent LSN, used to log acknowledgement progress
+        last_sent_lsn: nil,
+        # last keep alive message received at
+        last_keep_alive: nil
       )
     end
   end
@@ -397,13 +403,16 @@ defmodule Domain.Replication.Connection do
             wal_end + 1
           end
 
-        message =
-          case reply do
-            :now -> standby_status(wal_end, wal_end, wal_end, reply)
-            :later -> hold()
-          end
+        state = %{state | last_keep_alive: DateTime.utc_now()}
 
-        {:noreply, message, state}
+        case reply do
+          :now ->
+            {:noreply, standby_status(wal_end, wal_end, wal_end, reply),
+             %{state | last_sent_lsn: wal_end}}
+
+          :later ->
+            {:noreply, hold(), state}
+        end
       end
 
       def handle_data(data, state) when is_write(data) do
@@ -634,7 +643,9 @@ defmodule Domain.Replication.Connection do
 
       def handle_info(:interval_logger, state) do
         Logger.info(
-          "#{__MODULE__}: Processed #{state.counter} write messages from the WAL stream"
+          "#{__MODULE__}: Processed #{state.counter} write messages from the WAL stream",
+          last_sent_lsn: state.last_sent_lsn,
+          last_keep_alive: state.last_keep_alive
         )
 
         Process.send_after(self(), :interval_logger, state.status_log_interval)
