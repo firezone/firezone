@@ -14,7 +14,8 @@ use firezone_bin_shared::{
 use firezone_telemetry::{Telemetry, otel};
 use firezone_tunnel::GatewayTunnel;
 use ip_packet::IpPacket;
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 
@@ -120,16 +121,36 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 
     if cli.metrics {
-        let exporter = opentelemetry_stdout::MetricExporter::default();
-        let reader = PeriodicReader::builder(exporter).build();
-        let provider = SdkMeterProvider::builder()
-            .with_reader(reader)
-            .with_resource(otel::default_resource_with([
-                otel::attr::service_name!(),
-                otel::attr::service_version!(),
-                otel::attr::service_instance_id(firezone_id.clone()),
-            ]))
-            .build();
+        let resource = otel::default_resource_with([
+            otel::attr::service_name!(),
+            otel::attr::service_version!(),
+            otel::attr::service_instance_id(firezone_id.clone()),
+        ]);
+
+        let provider = match cli.otlp_grpc_endpoint.clone() {
+            None => {
+                let exporter = opentelemetry_stdout::MetricExporter::default();
+
+                SdkMeterProvider::builder()
+                    .with_periodic_exporter(exporter)
+                    .with_resource(resource)
+                    .build()
+            }
+            Some(endpoint) => {
+                let grpc_endpoint = format!("http://{endpoint}");
+
+                let exporter = opentelemetry_otlp::MetricExporter::builder()
+                    .with_tonic()
+                    .with_endpoint(grpc_endpoint)
+                    .build()
+                    .context("Failed to build OTLP metric exporter")?;
+
+                SdkMeterProvider::builder()
+                    .with_periodic_exporter(exporter)
+                    .with_resource(resource)
+                    .build()
+            }
+        };
 
         opentelemetry::global::set_meter_provider(provider);
     }
@@ -254,9 +275,17 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t)]
     tun_threads: NumThreads,
 
-    /// Dump internal metrics to stdout every 60s.
+    /// Enable internal metrics.
+    ///
+    /// By default, they will be dumped to stdout every 60s.
     #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value_t = false)]
     metrics: bool,
+
+    /// Which OTLP collector we should connect to.
+    ///
+    /// If set, we will report metrics to this collector via gRPC.
+    #[arg(long, env, hide = true)]
+    otlp_grpc_endpoint: Option<String>,
 
     /// Validates the checksums of all packets leaving the TUN device.
     #[arg(

@@ -2387,6 +2387,7 @@ dependencies = [
  "nix 0.30.1",
  "num_cpus",
  "opentelemetry",
+ "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "phoenix-channel",
