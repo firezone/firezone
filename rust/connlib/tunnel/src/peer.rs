@@ -406,7 +406,7 @@ impl ClientOnGateway {
     ) -> anyhow::Result<Option<IpPacket>> {
         let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
-            TranslateIncomingResult::ICMPError(prototype) => {
+            TranslateIncomingResult::IcmpError(prototype) => {
                 tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
 
                 let icmp_error = prototype

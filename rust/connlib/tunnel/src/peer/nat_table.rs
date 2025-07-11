@@ -111,7 +111,7 @@ impl NatTable {
             let outside = (failed_packet.src_proto(), failed_packet.dst());
 
             if let Some((inside_proto, inside_dst)) = self.translate_incoming_inner(&outside, now) {
-                return Ok(TranslateIncomingResult::ICMPError(IcmpErrorPrototype {
+                return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
                     inside_dst,
                     inside_proto,
                     failed_packet,
@@ -230,7 +230,7 @@ impl IcmpErrorPrototype {
 #[derive(Debug, PartialEq)]
 pub enum TranslateIncomingResult {
     Ok { proto: Protocol, src: IpAddr },
-    ICMPError(IcmpErrorPrototype),
+    IcmpError(IcmpErrorPrototype),
     ExpiredNatSession,
     NoNatSession,
 }
@@ -339,7 +339,7 @@ mod tests {
                 TranslateIncomingResult::Ok { proto, src } => (proto, src),
                 TranslateIncomingResult::NoNatSession
                 | TranslateIncomingResult::ExpiredNatSession
-                | TranslateIncomingResult::ICMPError(_) => panic!("Wrong result"),
+                | TranslateIncomingResult::IcmpError(_) => panic!("Wrong result"),
             }
         });
 
@@ -374,7 +374,7 @@ mod tests {
             TranslateIncomingResult::Ok { .. } => {}
             result @ (TranslateIncomingResult::NoNatSession
             | TranslateIncomingResult::ExpiredNatSession
-            | TranslateIncomingResult::ICMPError(_)) => {
+            | TranslateIncomingResult::IcmpError(_)) => {
                 panic!("Wrong result: {result:?}")
             }
         };
@@ -387,7 +387,7 @@ mod tests {
             TranslateIncomingResult::ExpiredNatSession => {}
             result @ (TranslateIncomingResult::NoNatSession
             | TranslateIncomingResult::Ok { .. }
-            | TranslateIncomingResult::ICMPError(_)) => {
+            | TranslateIncomingResult::IcmpError(_)) => {
                 panic!("Wrong result: {result:?}")
             }
         };
