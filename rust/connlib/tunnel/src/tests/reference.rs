@@ -171,7 +171,7 @@ impl ReferenceState {
                         relays,
                         portal,
                         global_dns_records,
-                        icmp_error_hosts: icmp_error_hosts,
+                        icmp_error_hosts,
                         network,
                         drop_direct_client_traffic,
                         tcp_resources,
