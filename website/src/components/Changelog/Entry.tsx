@@ -19,7 +19,7 @@ export default function Entry({
   };
   const utcDateString = date.toLocaleDateString("en-US", options);
   const numChangeItems = React.Children.toArray(children).filter(
-    (child) => React.isValidElement(child) && child.type === ChangeItem
+    (child) => React.isValidElement(child) && child.type === ChangeItem,
   ).length;
 
   return (

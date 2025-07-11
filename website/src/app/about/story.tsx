@@ -43,7 +43,7 @@ export default function Story() {
                   <Link
                     href={
                       new URL(
-                        "https://github.com/firezone/firezone/tree/d049b006f6b530d8aa6f936441ffadd86e02a574"
+                        "https://github.com/firezone/firezone/tree/d049b006f6b530d8aa6f936441ffadd86e02a574",
                       )
                     }
                     className="hover:underline text-accent-500"

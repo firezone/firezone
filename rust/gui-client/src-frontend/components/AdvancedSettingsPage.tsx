@@ -23,7 +23,7 @@ export default function AdvancedSettingsPage({
       auth_url_is_managed: false,
       log_filter: "",
       log_filter_is_managed: false,
-    }
+    },
   );
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function AdvancedSettingsPage({
         auth_url_is_managed: false,
         log_filter: "",
         log_filter_is_managed: false,
-      }
+      },
     );
   }, [settings]);
 

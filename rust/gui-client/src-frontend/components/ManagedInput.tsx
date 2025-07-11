@@ -22,7 +22,7 @@ export function ManagedTextInput(props: TextInputProps & { managed: boolean }) {
 }
 
 export function ManagedToggleSwitch(
-  props: ToggleSwitchProps & { managed: boolean }
+  props: ToggleSwitchProps & { managed: boolean },
 ) {
   const { managed, ...toggleSwitchProps } = props;
 

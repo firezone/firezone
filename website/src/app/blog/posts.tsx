@@ -395,7 +395,7 @@ export default function Posts() {
     },
   ];
   const filteredPosts = posts.filter(
-    (post) => filters.includes("All Posts") || filters.includes(post.type)
+    (post) => filters.includes("All Posts") || filters.includes(post.type),
   );
 
   return (

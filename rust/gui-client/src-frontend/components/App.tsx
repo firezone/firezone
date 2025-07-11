@@ -51,7 +51,7 @@ export default function App() {
 
         console.log("general_settings_changed", { settings: generalSettings });
         setGeneralSettings(generalSettings);
-      }
+      },
     );
     const advancedSettingsChangedUnlisten = listen<AdvancedSettingsViewModel>(
       "advanced_settings_changed",
@@ -62,7 +62,7 @@ export default function App() {
           settings: advancedSettings,
         });
         setAdvancedSettings(advancedSettings);
-      }
+      },
     );
     const logsRecountedUnlisten = listen<FileCount>("logs_recounted", (e) => {
       const file_count = e.payload;

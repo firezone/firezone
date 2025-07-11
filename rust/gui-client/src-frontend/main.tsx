@@ -61,5 +61,5 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {
         <App />
       </ThemeProvider>
     </BrowserRouter>
-  </StrictMode>
+  </StrictMode>,
 );

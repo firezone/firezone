@@ -18,7 +18,7 @@ export default function KbSearch({
 
     // Find button and update its text
     buttonRef.current.getElementsByClassName(
-      "DocSearch-Button-Placeholder"
+      "DocSearch-Button-Placeholder",
     )[0].textContent = buttonText;
   }, []);
 

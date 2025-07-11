@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 export default function DocsFeedback() {
   const pathname = usePathname();
   const issueUrl = new URL(
-    `https://www.github.com/firezone/firezone/issues/new?title=docs: Feedback for page \`${pathname}\``
+    `https://www.github.com/firezone/firezone/issues/new?title=docs: Feedback for page \`${pathname}\``,
   );
 
   return (

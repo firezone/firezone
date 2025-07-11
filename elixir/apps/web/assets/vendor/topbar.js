@@ -75,7 +75,7 @@
       ctx.moveTo(0, options.barThickness / 2);
       ctx.lineTo(
         Math.ceil(currentProgress * canvas.width),
-        options.barThickness / 2
+        options.barThickness / 2,
       );
       ctx.strokeStyle = lineGradient;
       ctx.stroke();
@@ -112,7 +112,7 @@
             (function loop() {
               progressTimerId = window.requestAnimationFrame(loop);
               topbar.progress(
-                "+" + 0.05 * Math.pow(1 - Math.sqrt(currentProgress), 2)
+                "+" + 0.05 * Math.pow(1 - Math.sqrt(currentProgress), 2),
               );
             })();
           }
