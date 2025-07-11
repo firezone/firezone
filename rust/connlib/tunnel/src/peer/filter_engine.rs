@@ -64,13 +64,23 @@ impl AllowRules {
     }
 
     fn apply(&self, protocol: Result<Protocol, UnsupportedProtocol>) -> Result<(), Filtered> {
-        match protocol? {
-            Protocol::Tcp(port) if self.tcp.contains(&port) => Ok(()),
-            Protocol::Udp(port) if self.udp.contains(&port) => Ok(()),
-            Protocol::Icmp(_) if self.icmp => Ok(()),
-            Protocol::Tcp(_) => Err(Filtered::Tcp),
-            Protocol::Udp(_) => Err(Filtered::Udp),
-            Protocol::Icmp(_) => Err(Filtered::Icmp),
+        match protocol {
+            Ok(Protocol::Tcp(port)) if self.tcp.contains(&port) => Ok(()),
+            Ok(Protocol::Udp(port)) if self.udp.contains(&port) => Ok(()),
+            Ok(Protocol::Icmp(_)) if self.icmp => Ok(()),
+
+            // If ICMP is allowed, we don't care about the specific ICMP type.
+            // i.e. it doesn't have to be an echo request / reply.
+            Err(
+                UnsupportedProtocol::UnsupportedIcmpv4Type(_)
+                | UnsupportedProtocol::UnsupportedIcmpv6Type(_),
+            ) if self.icmp => Ok(()),
+
+            Ok(Protocol::Tcp(_)) => Err(Filtered::Tcp),
+            Ok(Protocol::Udp(_)) => Err(Filtered::Udp),
+            Ok(Protocol::Icmp(_)) => Err(Filtered::Icmp),
+
+            Err(e) => Err(Filtered::UnsupportedProtocol(e)),
         }
     }
 
