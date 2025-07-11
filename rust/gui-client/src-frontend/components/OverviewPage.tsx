@@ -53,15 +53,13 @@ interface SignedOutProps {
 
 function SignedOut({ signIn }: SignedOutProps) {
   return (
-    <div id="signed-out">
+    <div>
       <div className="flex flex-col items-center gap-4">
         <p className="text-center">
           You can sign in by clicking the Firezone icon in the taskbar or by
           clicking &quot;Sign in&quot; below.
         </p>
-        <Button id="sign-in" onClick={signIn}>
-          Sign in
-        </Button>
+        <Button onClick={signIn}>Sign in</Button>
         <p className="text-xs text-center">
           Firezone will continue running after this window is closed.
           <br />
@@ -80,23 +78,17 @@ interface SignedInProps {
 
 function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
   return (
-    <div id="signed-in">
+    <div>
       <div className="flex flex-col items-center gap-4">
         <p className="text-center">
           You are currently signed into&nbsp;
-          <span className="font-bold" id="account-slug">
-            {accountSlug}
-          </span>
+          <span className="font-bold">{accountSlug}</span>
           &nbsp;as&nbsp;
-          <span className="font-bold" id="actor-name">
-            {actorName}
-          </span>
+          <span className="font-bold">{actorName}</span>
           .<br />
           Click the Firezone icon in the taskbar to see the list of Resources.
         </p>
-        <Button id="sign-out" onClick={signOut}>
-          Sign out
-        </Button>
+        <Button onClick={signOut}>Sign out</Button>
         <p className="text-xs text-center">
           Firezone will continue running in the taskbar after this window is
           closed.
@@ -108,7 +100,7 @@ function SignedIn({ actorName, accountSlug, signOut }: SignedInProps) {
 
 function Loading() {
   return (
-    <div id="loading">
+    <div>
       <div className="flex flex-col items-center gap-4">
         <Spinner />
         <p className="text-xs text-center">

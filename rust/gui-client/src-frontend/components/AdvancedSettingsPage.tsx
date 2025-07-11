@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useState } from "react";
 import { Button, Label } from "flowbite-react";
 import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
 import { ManagedTextInput } from "./ManagedInput";
@@ -39,6 +39,10 @@ export default function AdvancedSettingsPage({
     );
   }, [settings]);
 
+  const authBaseUrlId = useId();
+  const apiUrlId = useId();
+  const logFilterInput = useId();
+
   return (
     <div className="container p-4">
       <div className="pb-2">
@@ -59,12 +63,12 @@ export default function AdvancedSettingsPage({
         className="max-w flex flex-col gap-2"
       >
         <div>
-          <Label className="text-neutral-600" htmlFor="auth-base-url-input">
+          <Label className="text-neutral-600" htmlFor={authBaseUrlId}>
             Auth Base URL
           </Label>
           <ManagedTextInput
             name="auth_base_url"
-            id="auth-base-url-input"
+            id={authBaseUrlId}
             managed={localSettings.auth_url_is_managed}
             value={localSettings.auth_url}
             onChange={(e) =>
@@ -78,12 +82,12 @@ export default function AdvancedSettingsPage({
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor="api-url-input">
+          <Label className="text-neutral-600" htmlFor={apiUrlId}>
             API URL
           </Label>
           <ManagedTextInput
             name="api_url"
-            id="api-url-input"
+            id={apiUrlId}
             managed={localSettings.api_url_is_managed}
             value={localSettings.api_url}
             onChange={(e) =>
@@ -97,12 +101,12 @@ export default function AdvancedSettingsPage({
         </div>
 
         <div>
-          <Label className="text-neutral-600" htmlFor="log-filter-input">
+          <Label className="text-neutral-600" htmlFor={logFilterInput}>
             Log Filter
           </Label>
           <ManagedTextInput
             name="log_filter"
-            id="log-filter-input"
+            id={logFilterInput}
             managed={localSettings.log_filter_is_managed}
             value={localSettings.log_filter}
             onChange={(e) =>
