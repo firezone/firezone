@@ -13,7 +13,7 @@ use crate::{
     messages::{DnsServer, Interface},
 };
 use bimap::BiMap;
-use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, SiteId};
+use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
@@ -59,13 +59,14 @@ pub(crate) struct SimClient {
     pub(crate) sent_icmp_requests: HashMap<(Seq, Identifier), IpPacket>,
     pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
 
-    pub(crate) sent_tcp_requests: HashMap<(SPort, DPort), IpPacket>,
-    pub(crate) received_tcp_replies: BTreeMap<(SPort, DPort), IpPacket>,
-
     pub(crate) sent_udp_requests: HashMap<(SPort, DPort), IpPacket>,
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
 
     pub(crate) tcp_dns_client: dns_over_tcp::Client,
+
+    /// TCP connections to resources.
+    pub(crate) tcp_client: crate::tests::tcp::Client,
+    pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IpPacket>,
 }
 
 impl SimClient {
@@ -84,8 +85,6 @@ impl SimClient {
             received_tcp_dns_responses: Default::default(),
             sent_icmp_requests: Default::default(),
             received_icmp_replies: Default::default(),
-            sent_tcp_requests: Default::default(),
-            received_tcp_replies: Default::default(),
             sent_udp_requests: Default::default(),
             received_udp_replies: Default::default(),
             ipv4_routes: Default::default(),
@@ -93,6 +92,8 @@ impl SimClient {
             search_domain: Default::default(),
             resource_status: Default::default(),
             tcp_dns_client,
+            tcp_client: crate::tests::tcp::Client::new(now),
+            failed_tcp_packets: Default::default(),
         }
     }
 
@@ -163,6 +164,15 @@ impl SimClient {
         }
     }
 
+    pub fn connect_tcp(&mut self, src: IpAddr, dst: IpAddr, sport: SPort, dport: DPort) {
+        let local = SocketAddr::new(src, sport.0);
+        let remote = SocketAddr::new(dst, dport.0);
+
+        if let Err(e) = self.tcp_client.connect(local, remote) {
+            tracing::error!("TCP connect failed: {e:#}")
+        }
+    }
+
     pub(crate) fn encapsulate(
         &mut self,
         packet: IpPacket,
@@ -176,6 +186,21 @@ impl SimClient {
         };
 
         Some(transmit)
+    }
+
+    pub fn poll_outbound(&mut self) -> Option<IpPacket> {
+        self.tcp_dns_client
+            .poll_outbound()
+            .or_else(|| self.tcp_client.poll_outbound())
+    }
+
+    pub fn handle_timeout(&mut self, now: Instant) {
+        self.tcp_dns_client.handle_timeout(now);
+        self.tcp_client.handle_timeout(now);
+
+        if self.sut.poll_timeout().is_some_and(|t| t <= now) {
+            self.sut.handle_timeout(now)
+        }
     }
 
     fn update_sent_requests(&mut self, packet: &IpPacket) {
@@ -195,24 +220,12 @@ impl SimClient {
             }
         }
 
-        if let Some(tcp) = packet.as_tcp() {
-            self.sent_tcp_requests.insert(
-                (SPort(tcp.source_port()), DPort(tcp.destination_port())),
-                packet.clone(),
-            );
-            return;
-        }
-
         if let Some(udp) = packet.as_udp() {
             self.sent_udp_requests.insert(
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
                 packet.clone(),
             );
-
-            return;
         }
-
-        tracing::error!("Sent a request with an unknown transport protocol");
     }
 
     pub(crate) fn receive(&mut self, transmit: Transmit, now: Instant) {
@@ -239,8 +252,11 @@ impl SimClient {
                             .insert((SPort(dst), DPort(src)), packet);
                     }
                     Layer4Protocol::Tcp { src, dst } => {
-                        self.received_tcp_replies
-                            .insert((SPort(dst), DPort(src)), packet);
+                        self.failed_tcp_packets
+                            .insert((SPort(src), DPort(dst)), packet.clone());
+
+                        // Allow the client to process the ICMP error.
+                        self.tcp_client.handle_inbound(packet);
                     }
                     Layer4Protocol::Icmp { seq, id } => {
                         self.received_icmp_replies
@@ -290,11 +306,8 @@ impl SimClient {
             return;
         }
 
-        if let Some(tcp) = packet.as_tcp() {
-            self.received_tcp_replies.insert(
-                (SPort(tcp.source_port()), DPort(tcp.destination_port())),
-                packet.clone(),
-            );
+        if self.tcp_client.accepts(&packet) {
+            self.tcp_client.handle_inbound(packet);
             return;
         }
 
@@ -438,10 +451,9 @@ pub struct RefClient {
     pub(crate) expected_udp_handshakes:
         BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
 
-    /// The expected TCP exchanges.
+    /// The expected TCP connections.
     #[debug(skip)]
-    pub(crate) expected_tcp_exchanges:
-        BTreeMap<GatewayId, BTreeMap<u64, (Destination, SPort, DPort)>>,
+    pub(crate) expected_tcp_connections: HashMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
@@ -582,8 +594,28 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn expected_resource_status(&self) -> BTreeMap<ResourceId, ResourceStatus> {
-        self.resources
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "We don't care about the ordering of the expected TCP connections."
+    )]
+    pub(crate) fn expected_resource_status(
+        &self,
+        has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
+    ) -> (BTreeMap<ResourceId, ResourceStatus>, BTreeSet<ResourceId>) {
+        let maybe_online_sites = self
+            .expected_tcp_connections
+            .iter()
+            .filter(|((_, _, sport, dport), _)| !has_failed_tcp_connection((*sport, *dport)))
+            .filter_map(|(_, resource)| self.site_for_resource(*resource))
+            .flat_map(|site| {
+                self.resources
+                    .iter()
+                    .filter_map(move |r| r.sites().contains(&site).then_some(r.id()))
+            })
+            .collect();
+
+        let resource_status = self
+            .resources
             .iter()
             .filter_map(|r| {
                 let status = self
@@ -594,7 +626,9 @@ impl RefClient {
 
                 Some((r.id(), status))
             })
-            .collect()
+            .collect();
+
+        (resource_status, maybe_online_sites)
     }
 
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
@@ -636,25 +670,6 @@ impl RefClient {
             dst.clone(),
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_udp_handshakes,
-            payload,
-            gateway_by_resource,
-            gateway_by_ip,
-        );
-    }
-
-    pub(crate) fn on_tcp_packet(
-        &mut self,
-        dst: Destination,
-        sport: SPort,
-        dport: DPort,
-        payload: u64,
-        gateway_by_resource: impl Fn(ResourceId) -> Option<GatewayId>,
-        gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
-    ) {
-        self.on_packet(
-            dst.clone(),
-            (dst, sport, dport),
-            |ref_client| &mut ref_client.expected_tcp_exchanges,
             payload,
             gateway_by_resource,
             gateway_by_ip,
@@ -708,6 +723,25 @@ impl RefClient {
             .insert(payload, packet_id);
     }
 
+    pub(crate) fn on_connect_tcp(
+        &mut self,
+        src: IpAddr,
+        dst: Destination,
+        sport: SPort,
+        dport: DPort,
+    ) {
+        let Some(resource) = self.resource_by_dst(&dst) else {
+            tracing::warn!("Unknown resource");
+            return;
+        };
+
+        self.connect_to_resource(resource, dst.clone());
+        self.set_resource_online(resource);
+
+        self.expected_tcp_connections
+            .insert((src, dst, sport, dport), resource);
+    }
+
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
         match destination {
             Destination::DomainName { .. } => {}
@@ -716,11 +750,7 @@ impl RefClient {
     }
 
     fn set_resource_online(&mut self, resource: ResourceId) {
-        let Some(Ok(site)) = self
-            .resources
-            .iter()
-            .find_map(|r| (r.id() == resource).then_some(r.site()))
-        else {
+        let Some(site) = self.site_for_resource(resource) else {
             tracing::error!(%resource, "Unknown resource or multi-site resource");
             return;
         };
@@ -801,6 +831,17 @@ impl RefClient {
         self.connected_cidr_resources.contains(&id)
     }
 
+    fn site_for_resource(&self, resource: ResourceId) -> Option<Site> {
+        let site = self
+            .resources
+            .iter()
+            .find_map(|r| (r.id() == resource).then_some(r.site()))?
+            .ok()?
+            .clone();
+
+        Some(site)
+    }
+
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
         self.internet_resource
             .filter(|r| !self.disabled_resources.contains(r))
@@ -860,15 +901,6 @@ impl RefClient {
     /// An UDP packet is valid if we didn't yet send an UDP packet with the same sport, dport and payload.
     pub(crate) fn is_valid_udp_packet(&self, sport: &SPort, dport: &DPort, payload: &u64) -> bool {
         self.expected_udp_handshakes.values().flatten().all(
-            |(existig_payload, (_, existing_sport, existing_dport))| {
-                existing_dport != dport && existing_sport != sport && existig_payload != payload
-            },
-        )
-    }
-
-    /// An TCP packet is valid if we didn't yet send an TCP packet with the same sport, dport and payload.
-    pub(crate) fn is_valid_tcp_packet(&self, sport: &SPort, dport: &DPort, payload: &u64) -> bool {
-        self.expected_tcp_exchanges.values().flatten().all(
             |(existig_payload, (_, existing_sport, existing_dport))| {
                 existing_dport != dport && existing_sport != sport && existig_payload != payload
             },
@@ -1053,6 +1085,30 @@ impl RefClient {
     pub(crate) fn upstream_dns_resolvers(&self) -> Vec<DnsServer> {
         self.upstream_dns_resolvers.clone()
     }
+
+    pub(crate) fn has_tcp_connection(
+        &self,
+        src: IpAddr,
+        dst: Destination,
+        sport: SPort,
+        dport: DPort,
+    ) -> bool {
+        self.expected_tcp_connections
+            .contains_key(&(src, dst, sport, dport))
+    }
+
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Iteration order does not matter here."
+    )]
+    pub(crate) fn tcp_connection_tuple_to_resource(
+        &self,
+        resource: ResourceId,
+    ) -> Option<(SPort, DPort)> {
+        self.expected_tcp_connections
+            .iter()
+            .find_map(|((_, _, sport, dport), res)| (resource == *res).then_some((*sport, *dport)))
+    }
 }
 
 // This function only works on the tests because we are limited to resources with a single wildcard at the beginning of the resource.
@@ -1138,7 +1194,7 @@ fn ref_client(
                     connected_internet_resource: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     expected_udp_handshakes: Default::default(),
-                    expected_tcp_exchanges: Default::default(),
+                    expected_tcp_connections: Default::default(),
                     expected_udp_dns_handshakes: Default::default(),
                     expected_tcp_dns_handshakes: Default::default(),
                     disabled_resources: Default::default(),

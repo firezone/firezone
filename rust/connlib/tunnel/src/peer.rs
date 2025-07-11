@@ -363,6 +363,8 @@ impl ClientOnGateway {
         }
 
         let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
+            tracing::debug!(%dst, "No translation entry");
+
             return Ok(TranslateOutboundResult::DestinationUnreachable(
                 ip_packet::make::icmp_dest_unreachable(
                     &packet,
@@ -373,6 +375,12 @@ impl ClientOnGateway {
         };
 
         if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+            tracing::debug!(
+                %dst,
+                resolved = %state.resolved_ip,
+                "Cannot translate between IP versions"
+            );
+
             return Ok(TranslateOutboundResult::DestinationUnreachable(
                 ip_packet::make::icmp_dest_unreachable(
                     &packet,

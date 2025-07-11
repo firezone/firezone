@@ -15,7 +15,7 @@ use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Instant,
@@ -32,19 +32,20 @@ pub(crate) struct SimGateway {
     /// The received UDP packets, indexed by our custom UDP payload.
     pub(crate) received_udp_requests: BTreeMap<u64, IpPacket>,
 
-    /// The received TCP packets, indexed by our custom TCP payload.
-    pub(crate) received_tcp_requests: BTreeMap<u64, IpPacket>,
-
     site_specific_dns_records: DnsRecords,
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
+
+    tcp_resources: BTreeMap<SocketAddr, crate::tests::tcp::Server>,
 }
 
 impl SimGateway {
     pub(crate) fn new(
         id: GatewayId,
         sut: GatewayState,
+        tcp_resources: BTreeSet<SocketAddr>,
         site_specific_dns_records: DnsRecords,
+        now: Instant,
     ) -> Self {
         Self {
             id,
@@ -54,7 +55,17 @@ impl SimGateway {
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
             received_udp_requests: Default::default(),
-            received_tcp_requests: Default::default(),
+            tcp_resources: tcp_resources
+                .into_iter()
+                .map(|address| {
+                    let mut server = crate::tests::tcp::Server::new(now);
+                    if let Err(e) = server.listen(address) {
+                        tracing::error!(%address, "Failed to listen on address: {e}")
+                    }
+
+                    (address, server)
+                })
+                .collect(),
         }
     }
 
@@ -113,9 +124,15 @@ impl SimGateway {
 
                     std::iter::from_fn(|| server.poll_outbound())
                 });
+        let tcp_resource_packets = self.tcp_resources.values_mut().flat_map(|server| {
+            server.handle_timeout(now);
+
+            std::iter::from_fn(|| server.poll_outbound())
+        });
 
         udp_server_packets
             .chain(tcp_server_packets)
+            .chain(tcp_resource_packets)
             .filter_map(|packet| self.sut.handle_tun_input(packet, now).unwrap())
             .collect()
     }
@@ -203,6 +220,11 @@ impl SimGateway {
         if let Some(tcp) = packet.as_tcp() {
             let socket = SocketAddr::new(dst_ip, tcp.destination_port());
 
+            if let Some(server) = self.tcp_resources.get_mut(&socket) {
+                server.handle_inbound(packet);
+                return None;
+            }
+
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
                 server.handle_input(packet);
@@ -239,12 +261,6 @@ impl SimGateway {
             let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
             tracing::debug!(%packet_id, "Received UDP request");
             self.received_udp_requests.insert(packet_id, packet.clone());
-        }
-
-        if let Some(tcp) = packet.as_tcp() {
-            let packet_id = u64::from_be_bytes(*tcp.payload().first_chunk().unwrap());
-            tracing::debug!(%packet_id, "Received TCP request");
-            self.received_tcp_requests.insert(packet_id, packet.clone());
         }
     }
 
@@ -287,14 +303,19 @@ impl RefGateway {
     /// Initialize the [`GatewayState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self, id: GatewayId, now: Instant) -> SimGateway {
+    pub(crate) fn init(
+        self,
+        id: GatewayId,
+        tcp_resources: BTreeSet<SocketAddr>,
+        now: Instant,
+    ) -> SimGateway {
         let mut sut = GatewayState::new(self.key.0, now); // Cheating a bit here by reusing the key as seed.
         sut.update_tun_device(IpConfig {
             v4: self.tunnel_ip4,
             v6: self.tunnel_ip6,
         });
 
-        SimGateway::new(id, sut, self.site_specific_dns_records)
+        SimGateway::new(id, sut, tcp_resources, self.site_specific_dns_records, now)
     }
 
     pub fn dns_records(&self) -> &DnsRecords {

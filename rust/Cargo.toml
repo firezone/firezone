@@ -9,6 +9,7 @@ members = [
     "connlib/dns-types",
     "connlib/etherparse-ext",
     "connlib/ip-packet",
+    "connlib/l3-tcp",
     "connlib/l4-tcp-dns-server",
     "connlib/l4-udp-dns-server",
     "connlib/model",
@@ -96,6 +97,7 @@ jemallocator = "0.5.4"
 jni = "0.21.1"
 keyring = "3.6.2"
 known-folders = "1.2.0"
+l3-tcp = { path = "connlib/l3-tcp" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 libc = "0.2.174"

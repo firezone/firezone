@@ -100,7 +100,7 @@ jobs:
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
           rg --count --no-ignore SendIcmpPacket "$TESTCASES_DIR"
           rg --count --no-ignore SendUdpPacket "$TESTCASES_DIR"
-          rg --count --no-ignore SendTcpPayload "$TESTCASES_DIR"
+          rg --count --no-ignore ConnectTcp "$TESTCASES_DIR"
           rg --count --no-ignore SendDnsQueries "$TESTCASES_DIR"
           rg --count --no-ignore "Packet for DNS resource" "$TESTCASES_DIR"
           rg --count --no-ignore "Packet for CIDR resource" "$TESTCASES_DIR"

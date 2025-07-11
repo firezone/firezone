@@ -1,0 +1,15 @@
+[package]
+name = "l3-tcp"
+version = "0.1.0"
+description = "The TCP protocol from an OSI-layer 3 perspective, i.e. on IP level."
+edition = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+ip-packet = { workspace = true }
+smoltcp = { workspace = true, features = ["std", "log", "medium-ip", "proto-ipv4", "proto-ipv6", "socket-tcp"] }
+tracing = { workspace = true }
+
+[lints]
+workspace = true

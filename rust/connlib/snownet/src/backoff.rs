@@ -1,11 +1,11 @@
 use std::time::{Duration, Instant};
 
 const MULTIPLIER: f32 = 1.5;
-const MAX_ELAPSED_TIME: Duration = Duration::from_secs(8);
 
 #[derive(Debug)]
 pub struct ExponentialBackoff {
     start_time: Instant,
+    max_elapsed: Duration,
     next_trigger: Instant,
     interval: Duration,
 }
@@ -29,7 +29,7 @@ impl ExponentialBackoff {
     }
 
     pub(crate) fn is_expired(&self, at: Instant) -> bool {
-        at >= self.start_time + MAX_ELAPSED_TIME
+        at >= self.start_time + self.max_elapsed
     }
 
     pub(crate) fn interval(&self) -> Duration {
@@ -41,10 +41,11 @@ impl ExponentialBackoff {
     }
 }
 
-pub fn new(now: Instant, interval: Duration) -> ExponentialBackoff {
+pub fn new(now: Instant, interval: Duration, max_elapsed: Duration) -> ExponentialBackoff {
     ExponentialBackoff {
         interval,
         start_time: now,
+        max_elapsed,
         next_trigger: now + interval,
     }
 }
@@ -77,7 +78,7 @@ mod tests {
 
         let steps = Vec::from_iter(
             iter::from_fn({
-                let mut backoff = super::new(now, Duration::from_secs(1));
+                let mut backoff = super::new(now, Duration::from_secs(1), Duration::from_secs(8));
 
                 move || {
                     if backoff.is_expired(now) {
