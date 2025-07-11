@@ -28,7 +28,7 @@ export default function Diagnostics({
       <div className="p-4 rounded-lg">
         <div className="mt-8 flex justify-center">
           <p className="mr-1">Log directory size:</p>
-          <p id="log-count-output">{`${files} files, ${megabytes} MB`}</p>
+          <p>{`${files} files, ${megabytes} MB`}</p>
         </div>
 
         <div className="mt-8 flex justify-center gap-4">
