@@ -102,8 +102,8 @@ struct Cli {
     no_telemetry: bool,
 
     /// Dump internal metrics to stdout every 60s.
-    #[arg(long, env = "FIREZONE_METRICS", default_value_t = false)]
-    metrics: bool,
+    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
+    metrics: Option<MetricsExporter>,
 
     /// A filesystem path where the token can be found
     // Apparently passing secrets through stdin is the most secure method, but
@@ -112,6 +112,11 @@ struct Cli {
     // on disk somewhere anyway.)
     #[arg(default_value = platform::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum MetricsExporter {
+    Stdout,
 }
 
 impl Cli {
@@ -223,7 +228,7 @@ fn main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
-        if cli.metrics {
+        if let Some(MetricsExporter::Stdout) = cli.metrics {
             let exporter = opentelemetry_stdout::MetricExporter::default();
             let reader = PeriodicReader::builder(exporter).build();
             let provider = SdkMeterProvider::builder()
