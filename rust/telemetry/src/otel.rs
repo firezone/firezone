@@ -7,7 +7,8 @@ use opentelemetry_sdk::{
 pub mod attr {
     use ip_packet::IpPacket;
     use opentelemetry::Value;
-    use std::{io, net::SocketAddr};
+    use sha2::Digest as _;
+    use std::{io, net::SocketAddr, str::FromStr as _};
 
     use super::*;
 
@@ -28,8 +29,14 @@ pub mod attr {
     pub use service_name;
     pub use service_version;
 
-    pub fn service_instance_id(firezone_id: String) -> KeyValue {
-        KeyValue::new("service.instance.id", firezone_id)
+    pub fn service_instance_id(maybe_legacy_id: String) -> KeyValue {
+        let id = if uuid::Uuid::from_str(&maybe_legacy_id).is_ok() {
+            hex::encode(sha2::Sha256::digest(&maybe_legacy_id))
+        } else {
+            maybe_legacy_id
+        };
+
+        KeyValue::new("service.instance.id", id)
     }
 
     pub fn network_transport_udp() -> KeyValue {
