@@ -2,6 +2,6 @@
 
 source "./scripts/tests/lib.sh"
 
-client tc qdisc add dev eth0 root netem loss 1%
+client 'apk add --no-cache iproute2 && tc qdisc add dev eth0 root netem loss 1%'
 
 client_curl_resource "172.20.0.100/get"
