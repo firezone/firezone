@@ -15,7 +15,12 @@ pub mod feature_flags;
 pub mod otel;
 
 mod api_url;
+mod maybe_push_metrics_exporter;
+mod noop_push_metrics_exporter;
 mod posthog;
+
+pub use maybe_push_metrics_exporter::MaybePushMetricsExporter;
+pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 
 pub struct Dsn(&'static str);
 

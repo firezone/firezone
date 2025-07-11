@@ -11,7 +11,9 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory},
 };
 
-use firezone_telemetry::{Telemetry, otel};
+use firezone_telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
+};
 use firezone_tunnel::GatewayTunnel;
 use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
@@ -127,19 +129,24 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             otel::attr::service_instance_id(firezone_id.clone()),
         ]);
 
-        let provider = match backend {
-            MetricsExporter::Stdout => SdkMeterProvider::builder()
+        let provider = match (backend, cli.otlp_grpc_endpoint) {
+            (MetricsExporter::Stdout, _) => SdkMeterProvider::builder()
                 .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
                 .with_resource(resource)
                 .build(),
-            MetricsExporter::OtelCollector => SdkMeterProvider::builder()
-                .with_periodic_exporter(
-                    opentelemetry_otlp::MetricExporter::builder()
-                        .with_tonic()
-                        .with_endpoint(format!("http://{endpoint}"))
-                        .build()
-                        .context("Failed to build OTLP metric exporter")?,
-                )
+            (MetricsExporter::OtelCollector, Some(endpoint)) => SdkMeterProvider::builder()
+                .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+                .with_resource(resource)
+                .build(),
+            (MetricsExporter::OtelCollector, None) => SdkMeterProvider::builder()
+                .with_periodic_exporter(MaybePushMetricsExporter {
+                    inner: {
+                        // TODO: Once Firezone has a hosted OTLP exporter, it will go here.
+
+                        NoopPushMetricsExporter
+                    },
+                    should_export: feature_flags::export_metrics,
+                })
                 .with_resource(resource)
                 .build(),
         };
@@ -212,6 +219,18 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 }
 
+fn tonic_otlp_exporter(
+    endpoint: String,
+) -> Result<opentelemetry_otlp::MetricExporter, anyhow::Error> {
+    let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_endpoint(format!("http://{endpoint}"))
+        .build()
+        .context("Failed to build OTLP metric exporter")?;
+
+    Ok(metric_exporter)
+}
+
 async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     if let Some(id) = env_id {
         if !id.is_empty() {
@@ -271,8 +290,10 @@ struct Cli {
     #[arg(long, hide = true, env = "FIREZONE_METRICS")]
     metrics: Option<MetricsExporter>,
 
-    /// Which OTLP collector we should connect to.
-    #[arg(long, env, hide = true, required_if_eq("metrics", "otel-collector"))]
+    /// Send metrics to a custom OTLP collector.
+    ///
+    /// By default, Firezone's hosted OTLP collector is used.
+    #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
 
     /// Validates the checksums of all packets leaving the TUN device.
