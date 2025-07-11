@@ -12,6 +12,7 @@ use proptest::{prelude::*, sample};
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    num::NonZeroU16,
 };
 
 /// The possible transitions of the state machine.
@@ -39,13 +40,12 @@ pub(crate) enum Transition {
         dport: DPort,
         payload: u64,
     },
-    /// Send an TCP payload to destination (IP resource, DNS resource or IP non-resource).
-    SendTcpPayload {
+
+    ConnectTcp {
         src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
-        payload: u64,
     },
 
     /// Send a DNS query.
@@ -123,6 +123,29 @@ pub(crate) enum Destination {
         name: DomainName,
     },
     IpAddr(IpAddr),
+}
+
+impl Eq for Destination {}
+
+impl std::hash::Hash for Destination {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Destination::DomainName { name, .. } => name.hash(state),
+            Destination::IpAddr(ip_addr) => ip_addr.hash(state),
+        }
+    }
+}
+
+impl PartialEq for Destination {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::DomainName { name: l_name, .. }, Self::DomainName { name: r_name, .. }) => {
+                l_name == r_name
+            }
+            (Self::IpAddr(l0), Self::IpAddr(r0)) => l0 == r0,
+            _ => false,
+        }
+    }
 }
 
 impl Destination {
@@ -246,32 +269,28 @@ where
         )
 }
 
-#[expect(private_bounds)]
-pub(crate) fn tcp_packet<I, D>(
+pub(crate) fn connect_tcp<I>(
     src: impl Strategy<Value = I>,
-    dst: impl Strategy<Value = D>,
+    dst: impl Strategy<Value = DomainName>,
 ) -> impl Strategy<Value = Transition>
 where
     I: Into<IpAddr>,
-    D: Into<PacketDestination>,
 {
     (
         src.prop_map(Into::into),
-        dst.prop_map(Into::into),
-        any::<u16>(),
-        non_dns_ports(),
+        dst,
+        any::<NonZeroU16>().prop_map(|p| p.get()),
+        non_dns_ports().prop_filter("avoid zero port", |p| *p != 0),
         any::<sample::Selector>(),
-        any::<u64>(),
     )
-        .prop_map(|(src, dst, sport, dport, resolved_ip, payload)| {
-            Transition::SendTcpPayload {
+        .prop_map(
+            |(src, name, sport, dport, resolved_ip)| Transition::ConnectTcp {
                 src,
-                dst: dst.into_destination(resolved_ip),
+                dst: Destination::DomainName { resolved_ip, name },
                 sport: SPort(sport),
                 dport: DPort(dport),
-                payload,
-            }
-        })
+            },
+        )
 }
 
 fn non_dns_ports() -> impl Strategy<Value = u16> {

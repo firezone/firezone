@@ -4,17 +4,13 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{
-    codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice,
-    time::smol_now,
-};
+use crate::codec;
 use anyhow::{Context as _, Result, anyhow, bail};
 use ip_packet::IpPacket;
-use rand::{Rng, SeedableRng, rngs::StdRng};
-use smoltcp::{
-    iface::{Interface, PollResult, SocketSet},
-    socket::tcp,
+use l3_tcp::{
+    InMemoryDevice, Interface, PollResult, SocketSet, create_interface, create_tcp_socket,
 };
+use rand::{Rng, SeedableRng, rngs::StdRng};
 
 /// A sans-io DNS-over-TCP client.
 ///
@@ -32,8 +28,8 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     source_ips: Option<(Ipv4Addr, Ipv6Addr)>,
 
     sockets: SocketSet<'static>,
-    sockets_by_remote: BTreeMap<SocketAddr, smoltcp::iface::SocketHandle>,
-    local_ports_by_socket: HashMap<smoltcp::iface::SocketHandle, u16>,
+    sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
+    local_ports_by_socket: HashMap<l3_tcp::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
     pending_queries_by_remote: HashMap<SocketAddr, VecDeque<dns_types::Query>>,
     /// Queries we have sent to a DNS resolver and are waiting for a reply.
@@ -182,7 +178,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         };
 
         let result = self.interface.poll(
-            smol_now(self.created_at, now),
+            l3_tcp::now(self.created_at, now),
             &mut self.device,
             &mut self.sockets,
         );
@@ -194,7 +190,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         for (remote, handle) in self.sockets_by_remote.iter_mut() {
             let _guard = tracing::trace_span!("socket", %handle).entered();
 
-            let socket = self.sockets.get_mut::<tcp::Socket>(*handle);
+            let socket = self.sockets.get_mut::<l3_tcp::Socket>(*handle);
             let server = *remote;
 
             let pending_queries = self.pending_queries_by_remote.entry(server).or_default();
@@ -219,7 +215,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             );
 
             // Third, if the socket got closed, reconnect it.
-            if matches!(socket.state(), tcp::State::Closed) && !pending_queries.is_empty() {
+            if matches!(socket.state(), l3_tcp::State::Closed) && !pending_queries.is_empty() {
                 let local_port = self
                     .local_ports_by_socket
                     .get(handle)
@@ -248,7 +244,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let now = smol_now(self.created_at, self.last_now);
+        let now = l3_tcp::now(self.created_at, self.last_now);
 
         let poll_in = self.interface.poll_delay(now, &self.sockets)?;
 
@@ -303,7 +299,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 }
 
 fn send_pending_queries(
-    socket: &mut tcp::Socket,
+    socket: &mut l3_tcp::Socket,
     server: SocketAddr,
     pending_queries: &mut VecDeque<dns_types::Query>,
     sent_queries: &mut HashMap<u16, dns_types::Query>,
@@ -339,7 +335,7 @@ fn send_pending_queries(
 }
 
 fn recv_responses(
-    socket: &mut tcp::Socket,
+    socket: &mut l3_tcp::Socket,
     server: SocketAddr,
     pending_queries: &mut VecDeque<dns_types::Query>,
     sent_queries: &mut HashMap<u16, dns_types::Query>,
@@ -398,7 +394,7 @@ fn into_failed_results(
     })
 }
 
-fn try_recv_response(socket: &mut tcp::Socket) -> Result<Option<dns_types::Response>> {
+fn try_recv_response(socket: &mut l3_tcp::Socket) -> Result<Option<dns_types::Response>> {
     if !socket.can_recv() {
         tracing::trace!(state = %socket.state(), "Not yet ready to receive next message");
 

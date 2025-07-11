@@ -4,16 +4,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{
-    codec, create_tcp_socket, interface::create_interface, stub_device::InMemoryDevice,
-    time::smol_now,
-};
+use crate::codec;
 use anyhow::{Context as _, Result};
 use ip_packet::IpPacket;
-use smoltcp::{
-    iface::{Interface, PollResult, SocketHandle, SocketSet},
-    socket::tcp,
-    wire::IpEndpoint,
+use l3_tcp::{
+    InMemoryDevice, Interface, IpEndpoint, PollResult, SocketHandle, SocketSet, create_interface,
+    create_tcp_socket,
 };
 
 /// A sans-IO implementation of DNS-over-TCP server.
@@ -158,7 +154,7 @@ impl Server {
             .remove(&(src, dst, response.id()))
             .context("No pending query found for message")?;
 
-        let socket = self.sockets.get_mut::<tcp::Socket>(handle);
+        let socket = self.sockets.get_mut::<l3_tcp::Socket>(handle);
 
         codec::try_send(socket, &response.into_bytes(u16::MAX))
             .inspect_err(|_| socket.abort()) // Abort socket on error.
@@ -174,7 +170,7 @@ impl Server {
         self.last_now = now;
 
         let result = self.interface.poll(
-            smol_now(self.created_at, now),
+            l3_tcp::now(self.created_at, now),
             &mut self.device,
             &mut self.sockets,
         );
@@ -183,7 +179,7 @@ impl Server {
             return;
         }
 
-        for (handle, smoltcp::socket::Socket::Tcp(socket)) in self.sockets.iter_mut() {
+        for (handle, l3_tcp::AnySocket::Tcp(socket)) in self.sockets.iter_mut() {
             let local = self.listen_endpoints.get(&handle).copied().unwrap();
 
             let _guard = tracing::trace_span!("socket", %handle).entered();
@@ -215,7 +211,7 @@ impl Server {
     }
 
     pub fn poll_timeout(&mut self) -> Option<Instant> {
-        let now = smol_now(self.created_at, self.last_now);
+        let now = l3_tcp::now(self.created_at, self.last_now);
 
         let poll_in = self.interface.poll_delay(now, &self.sockets)?;
 
@@ -234,13 +230,13 @@ impl Server {
 }
 
 fn try_recv_query(
-    socket: &mut tcp::Socket,
+    socket: &mut l3_tcp::Socket,
     listen: SocketAddr,
 ) -> Result<Option<(dns_types::Query, SocketAddr)>> {
     // smoltcp's sockets can only ever handle a single remote, i.e. there is no permanent listening socket.
     // to be able to handle a new connection, reset the socket back to `listen` once the connection is closed / closing.
     {
-        use smoltcp::socket::tcp::State::*;
+        use l3_tcp::State::*;
 
         if matches!(socket.state(), Closed | TimeWait | CloseWait) {
             tracing::debug!(state = %socket.state(), "Resetting socket to listen state");

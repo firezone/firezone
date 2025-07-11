@@ -56,6 +56,7 @@ uuid = { workspace = true, features = ["std", "v4"] }
 [dev-dependencies]
 firezone-relay = { workspace = true, features = ["proptest"] }
 ip-packet = { workspace = true, features = ["proptest"] }
+l3-tcp = { workspace = true }
 proptest-state-machine = { workspace = true }
 rand = { workspace = true }
 sha2 = { workspace = true }

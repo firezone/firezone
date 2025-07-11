@@ -11,7 +11,7 @@ use std::{
     collections::{BTreeMap, HashMap, VecDeque, hash_map::Entry},
     hash::Hash,
     marker::PhantomData,
-    net::IpAddr,
+    net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
 };
 use tracing::{Level, Span, Subscriber};
@@ -75,42 +75,71 @@ pub(crate) fn assert_udp_packets_properties(
     );
 }
 
-/// Asserts the following properties for all TCP handshakes:
-/// 1. An TCP request on the client MUST result in an TCP response using the flipped src & dst IP and sport and dport.
-/// 2. An TCP request on the gateway MUST target the intended resource:
-///     - For CIDR resources, that is the actual CIDR resource IP.
-///     - For DNS resources, the IP must match one of the resolved IPs for the domain.
-/// 3. For DNS resources, the mapping of proxy IP to actual resource IP must be stable.
-pub(crate) fn assert_tcp_packets_properties(
-    ref_client: &RefClient,
-    sim_client: &SimClient,
-    sim_gateways: &BTreeMap<GatewayId, &SimGateway>,
-    global_dns_records: &DnsRecords,
-) {
-    let received_tcp_requests = sim_gateways
-        .iter()
-        .map(|(g, s)| (*g, &s.received_tcp_requests))
-        .collect();
+pub(crate) fn assert_tcp_connections(ref_client: &RefClient, sim_client: &SimClient) {
+    for (src, _, sport, dport) in ref_client.expected_tcp_connections.keys() {
+        let src = SocketAddr::new(*src, sport.0);
+        let received_icmp_error_for_tuple = sim_client
+            .failed_tcp_packets
+            .contains_key(&(*sport, *dport));
 
-    assert_packets_properties(
-        ref_client,
-        &sim_client.sent_tcp_requests,
-        &received_tcp_requests,
-        &ref_client.expected_tcp_exchanges,
-        &sim_client.received_tcp_replies,
-        "TCP",
-        global_dns_records,
-        |sport, dport| tracing::info_span!(target: "assertions", "TCP", ?sport, ?dport),
-    );
+        let Some((socket, local)) = sim_client.tcp_client.iter_sockets().find_map(|s| {
+            let endpoint = s.local_endpoint()?;
+
+            (l3_tcp::IpEndpoint::from(src) == endpoint).then_some((s, endpoint))
+        }) else {
+            // If we received an ICMP error for this port tuple, not having a socket is okay.
+            if received_icmp_error_for_tuple {
+                continue;
+            }
+
+            tracing::error!(target: "assertions", %src, "Missing TCP connection");
+            continue;
+        };
+        let Some(remote) = socket.remote_endpoint() else {
+            tracing::error!(target: "assertions", %src, "TCP socket does not have a remote endpoint");
+            continue;
+        };
+
+        let port = remote.port;
+
+        if port == dport.0 {
+            tracing::info!(target: "assertions", %port, "TCP connection is targeting expected port");
+        } else {
+            tracing::error!(target: "assertions", expected = %dport.0, actual = %port, "TCP connection dst port does not match");
+        }
+
+        let actual = socket.state();
+        let expected = l3_tcp::State::Established;
+
+        if actual == expected {
+            tracing::info!(target: "assertions", %local, %remote, "TCP connection is {expected}");
+        } else {
+            tracing::error!(target: "assertions", %actual, %local, %remote, "TCP connection is not {expected}");
+        }
+
+        if received_icmp_error_for_tuple {
+            tracing::error!(target: "assertions", %local, %remote, "TCP socket should have been reset from ICMP error");
+        }
+    }
 }
 
 pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimClient) {
-    let expected_status_map = &ref_client.expected_resource_status();
+    use connlib_model::ResourceStatus::*;
+
+    let (expected_status_map, tcp_resources) = &ref_client
+        .expected_resource_status(|tuple| sim_client.failed_tcp_packets.contains_key(&tuple));
     let actual_status_map = &sim_client.resource_status;
 
     if expected_status_map != actual_status_map {
         for (resource, expected_status) in expected_status_map {
             match actual_status_map.get(resource) {
+                // For resources with TCP connections, the expected status might be off.
+                // The TCP client sends its own keep-alive's so we cannot always track the internal connection state.
+                Some(&Online)
+                    if expected_status == &Unknown && tcp_resources.contains(resource) => {}
+                Some(&Unknown)
+                    if expected_status == &Online && tcp_resources.contains(resource) => {}
+
                 Some(actual_status) if actual_status != expected_status => {
                     tracing::error!(target: "assertions", %expected_status, %actual_status, %resource, "Resource status doesn't match");
                 }

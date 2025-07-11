@@ -16,6 +16,10 @@ impl UnreachableHosts {
     pub(crate) fn icmp_error_for_ip(&self, ip: IpAddr) -> Option<IcmpError> {
         self.inner.get(&ip).copied()
     }
+
+    pub(crate) fn is_unreachable(&self, ip: IpAddr) -> bool {
+        self.inner.contains_key(&ip)
+    }
 }
 
 /// Samples a subset of the provided DNS records which we will treat as "unreachable".

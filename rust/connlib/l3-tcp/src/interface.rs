@@ -32,8 +32,10 @@ pub fn create_interface(device: &mut InMemoryDevice) -> Interface {
 
     // Set our interface IPs. These are just dummies and don't show up anywhere!
     interface.update_ip_addrs(|ips| {
-        ips.push(Ipv4Cidr::new(IP4_ADDR, 32).into()).unwrap();
-        ips.push(Ipv6Cidr::new(IP6_ADDR, 128).into()).unwrap();
+        ips.push(Ipv4Cidr::new(IP4_ADDR, 32).into())
+            .expect("should be a valid IPv4 CIDR");
+        ips.push(Ipv6Cidr::new(IP6_ADDR, 128).into())
+            .expect("should be a valid IPv6 CIDR");
     });
 
     // Configure catch-all routes, meaning all packets given to `smoltcp` will be routed to our interface.

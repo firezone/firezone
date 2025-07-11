@@ -2035,8 +2035,8 @@ dependencies = [
  "futures",
  "ip-packet",
  "ip_network",
+ "l3-tcp",
  "rand 0.8.5",
- "smoltcp",
  "tokio",
  "tracing",
  "tun",
@@ -2631,6 +2631,7 @@ dependencies = [
  "ip_network",
  "ip_network_table",
  "itertools 0.14.0",
+ "l3-tcp",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
  "lru",
@@ -4024,6 +4025,16 @@ dependencies = [
  "html5ever",
  "indexmap 2.9.0",
  "selectors",
+]
+
+[[package]]
+name = "l3-tcp"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ip-packet",
+ "smoltcp",
+ "tracing",
 ]
 
 [[package]]
