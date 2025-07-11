@@ -14,7 +14,7 @@ use bufferpool::{Buffer, BufferPool};
 pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
-pub use icmp_error::{FailedPacket, ICMPError};
+pub use icmp_error::{FailedPacket, IcmpError};
 
 use anyhow::{Context as _, Result, bail};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -590,7 +590,7 @@ impl IpPacket {
     }
 
     /// In case the packet is an ICMP error with a failed packet, parses the failed packet from the ICMP payload.
-    pub fn icmp_error(&self) -> Result<Option<(FailedPacket, ICMPError)>> {
+    pub fn icmp_error(&self) -> Result<Option<(FailedPacket, IcmpError)>> {
         if let Some(icmpv4) = self.as_icmpv4() {
             let icmp_type = icmpv4.icmp_type();
 
@@ -607,11 +607,9 @@ impl IpPacket {
                 reason = "We only want to match on these variants"
             )]
             let icmp_error = match icmp_type {
-                Icmpv4Type::DestinationUnreachable(error) => ICMPError::V4Unreachable(error),
-                Icmpv4Type::TimeExceeded(code) => ICMPError::V4TimeExceeded(code),
-                other => {
-                    bail!("ICMP message {other:?} is not supported");
-                }
+                Icmpv4Type::DestinationUnreachable(error) => IcmpError::V4Unreachable(error),
+                Icmpv4Type::TimeExceeded(code) => IcmpError::V4TimeExceeded(code),
+                other => bail!("ICMP message {other:?} is not supported"),
             };
 
             let (ipv4, _) = LaxIpv4Slice::from_slice(icmpv4.payload())
@@ -650,12 +648,10 @@ impl IpPacket {
                 reason = "We only want to match on these variants"
             )]
             let icmp_error = match icmp_type {
-                Icmpv6Type::DestinationUnreachable(error) => ICMPError::V6Unreachable(error),
-                Icmpv6Type::PacketTooBig { mtu } => ICMPError::V6PacketTooBig { mtu },
-                Icmpv6Type::TimeExceeded(code) => ICMPError::V6TimeExceeded(code),
-                other => {
-                    bail!("ICMPv6 message {other:?} is not supported");
-                }
+                Icmpv6Type::DestinationUnreachable(error) => IcmpError::V6Unreachable(error),
+                Icmpv6Type::PacketTooBig { mtu } => IcmpError::V6PacketTooBig { mtu },
+                Icmpv6Type::TimeExceeded(code) => IcmpError::V6TimeExceeded(code),
+                other => bail!("ICMPv6 message {other:?} is not supported"),
             };
 
             let (ipv6, _) = LaxIpv6Slice::from_slice(icmpv6.payload())
