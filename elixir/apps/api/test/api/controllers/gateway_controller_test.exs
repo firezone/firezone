@@ -30,6 +30,9 @@ defmodule API.GatewayControllerTest do
         for _ <- 1..3,
             do: Fixtures.Gateways.create_gateway(%{account: account, group: gateway_group})
 
+      other_group = Fixtures.Gateways.create_group(account: account)
+      Fixtures.Gateways.create_gateway(%{account: account, group: other_group})
+
       conn =
         conn
         |> authorize_conn(actor)
