@@ -65,6 +65,36 @@ pub fn identify(release: String, account_slug: Option<String>) {
     });
 }
 
+pub fn feature_flag_called(name: impl Into<String>) {
+    let Some(env) = Telemetry::current_env() else {
+        tracing::debug!("Cannot send $feature_flag_called: Unknown env");
+        return;
+    };
+    let Some(distinct_id) = Telemetry::current_user() else {
+        tracing::debug!("Cannot send $feature_flag_called: Unknown user");
+        return;
+    };
+    let feature_flag = name.into();
+
+    RUNTIME.spawn({
+        async move {
+            if let Err(e) = capture(
+                "$feature_flag_called",
+                distinct_id,
+                env,
+                FeatureFlagCalledProperties {
+                    feature_flag,
+                    feature_flag_response: "true".to_owned(),
+                },
+            )
+            .await
+            {
+                tracing::debug!("Failed to log `$feature_flag_called` event: {e:#}");
+            }
+        }
+    });
+}
+
 async fn capture<P>(
     event: impl Into<String>,
     distinct_id: String,
@@ -136,4 +166,12 @@ struct PersonProperties {
     account_slug: Option<String>,
     #[serde(rename = "$os")]
     os: String,
+}
+
+#[derive(serde::Serialize)]
+struct FeatureFlagCalledProperties {
+    #[serde(rename = "$feature_flag")]
+    feature_flag: String,
+    #[serde(rename = "$feature_flag_response")]
+    feature_flag_response: String,
 }
