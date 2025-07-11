@@ -403,16 +403,13 @@ defmodule Domain.Replication.Connection do
             wal_end + 1
           end
 
-        state = %{state | last_keep_alive: DateTime.utc_now()}
+        # Always reply with standby status to send acks. When wal_sender_timeout is disabled,
+        # we won't always receive KeepAlive messages with the reply field set.
+        message = standby_status(wal_end, wal_end, wal_end, reply)
 
-        case reply do
-          :now ->
-            {:noreply, standby_status(wal_end, wal_end, wal_end, reply),
-             %{state | last_sent_lsn: wal_end}}
+        state = %{state | last_sent_lsn: wal_end, last_keep_alive: DateTime.utc_now()}
 
-          :later ->
-            {:noreply, hold(), state}
-        end
+        {:noreply, message, state}
       end
 
       def handle_data(data, state) when is_write(data) do

@@ -78,6 +78,8 @@ defmodule Domain.Replication.ConnectionTest do
       assert struct.status_log_interval == :timer.minutes(1)
       assert struct.warning_threshold == :timer.seconds(30)
       assert struct.error_threshold == :timer.seconds(60)
+      assert struct.last_sent_lsn == nil
+      assert struct.last_keep_alive == nil
     end
   end
 
@@ -603,6 +605,19 @@ defmodule Domain.Replication.ConnectionTest do
         result = TestReplicationConnection.handle_data(input, state)
         assert match?({:noreply, [], _}, result)
       end)
+    end
+
+    test "replies with standby status updates for all KeepAlive messages" do
+      state = %TestReplicationConnection{step: :streaming, last_sent_lsn: 0}
+
+      keep_alive_data = <<?k, 0::integer-size(64), 0::integer-size(64), 0>>
+
+      {:noreply, reply_data, new_state} =
+        TestReplicationConnection.handle_data(keep_alive_data, state)
+
+      assert new_state.last_sent_lsn == 1
+      assert [<<?r, wal_end::64, wal_end::64, wal_end::64, _timestamp::64, 0>>] = reply_data
+      assert wal_end == 1
     end
   end
 
