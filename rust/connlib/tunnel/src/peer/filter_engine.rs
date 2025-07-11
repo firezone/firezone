@@ -64,13 +64,23 @@ impl AllowRules {
     }
 
     fn apply(&self, protocol: Result<Protocol, UnsupportedProtocol>) -> Result<(), Filtered> {
-        match protocol? {
-            Protocol::Tcp(port) if self.tcp.contains(&port) => Ok(()),
-            Protocol::Udp(port) if self.udp.contains(&port) => Ok(()),
-            Protocol::Icmp(_) if self.icmp => Ok(()),
-            Protocol::Tcp(_) => Err(Filtered::Tcp),
-            Protocol::Udp(_) => Err(Filtered::Udp),
-            Protocol::Icmp(_) => Err(Filtered::Icmp),
+        match protocol {
+            Ok(Protocol::Tcp(port)) if self.tcp.contains(&port) => Ok(()),
+            Ok(Protocol::Udp(port)) if self.udp.contains(&port) => Ok(()),
+            Ok(Protocol::Icmp(_)) if self.icmp => Ok(()),
+
+            // If ICMP is allowed, we don't care about the specific ICMP type.
+            // i.e. it doesn't have to be an echo request / reply.
+            Err(
+                UnsupportedProtocol::UnsupportedIcmpv4Type(_)
+                | UnsupportedProtocol::UnsupportedIcmpv6Type(_),
+            ) if self.icmp => Ok(()),
+
+            Ok(Protocol::Tcp(_)) => Err(Filtered::Tcp),
+            Ok(Protocol::Udp(_)) => Err(Filtered::Udp),
+            Ok(Protocol::Icmp(_)) => Err(Filtered::Icmp),
+
+            Err(e) => Err(Filtered::UnsupportedProtocol(e)),
         }
     }
 
@@ -90,5 +100,57 @@ impl AllowRules {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ip_packet::{Icmpv4Type, Icmpv6Type, icmpv4, icmpv6};
+
+    use super::*;
+
+    #[test]
+    fn allows_icmpv4_destination_unreachable() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: true,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
+            Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Host),
+        )));
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn allows_icmpv6_destination_unreachable() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: true,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv6Type(
+            Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Address),
+        )));
+
+        assert!(result.is_ok())
+    }
+
+    #[test]
+    fn icmp_false_blocks_other_icmp_messages() {
+        let filter = FilterEngine::PermitSome(AllowRules {
+            udp: RangeInclusiveSet::default(),
+            tcp: RangeInclusiveSet::default(),
+            icmp: false,
+        });
+
+        let result = filter.apply(Err(UnsupportedProtocol::UnsupportedIcmpv4Type(
+            Icmpv4Type::TimestampRequest(icmpv4::TimestampMessage::from_bytes([0u8; 16])),
+        )));
+
+        assert!(result.is_err())
     }
 }

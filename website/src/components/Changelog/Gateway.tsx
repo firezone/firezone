@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="9834">
+          Excludes ICMP errors from the ICMP traffic filter. Those are now
+          always routed back to the client.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-06-30")}>
         <ChangeItem pull="9657">
           Fixes an issue where connections would fail to establish if the
