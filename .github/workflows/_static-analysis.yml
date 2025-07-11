@@ -86,7 +86,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shfmt
-          npm install -g prettier
+          npm install -g @biomejs/biome
       - name: Run pre-commit
         run: |
           pre-commit install --config .github/pre-commit-config.yaml
