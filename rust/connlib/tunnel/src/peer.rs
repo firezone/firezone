@@ -276,47 +276,6 @@ impl ClientOnGateway {
         }
     }
 
-    fn transform_network_to_tun(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> anyhow::Result<TranslateOutboundResult> {
-        let dst = packet.destination();
-
-        // Packets to the TUN interface don't get transformed.
-        if self.gateway_tun.is_ip(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
-
-        // Packets for CIDR resources / Internet resource are forwarded as is.
-        if !is_dns_addr(dst) {
-            return Ok(TranslateOutboundResult::Send(packet));
-        }
-
-        let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(&packet)?,
-            ));
-        };
-
-        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
-            return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dst_unreachable(&packet)?,
-            ));
-        }
-
-        let (source_protocol, real_ip) =
-            self.nat_table
-                .translate_outgoing(&packet, state.resolved_ip, now)?;
-
-        let mut packet = packet
-            .translate_destination(source_protocol, real_ip)
-            .context("Failed to translate packet to new destination")?;
-        packet.update_checksum();
-
-        Ok(TranslateOutboundResult::Send(packet))
-    }
-
     pub fn translate_outbound(
         &mut self,
         packet: IpPacket,
@@ -325,7 +284,13 @@ impl ClientOnGateway {
         // Filtering a packet is not an error.
         if let Err(e) = self.ensure_allowed_src_and_dst(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
-            return Ok(TranslateOutboundResult::Filtered);
+            return Ok(TranslateOutboundResult::Filtered(
+                ip_packet::make::icmp_dest_unreachable(
+                    &packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::FilterProhibited,
+                    ip_packet::icmpv6::DestUnreachableCode::Prohibited,
+                )?,
+            ));
         }
 
         // Failing to transform is an error we want to know about further up.
@@ -378,6 +343,55 @@ impl ClientOnGateway {
         }
 
         Ok(Some(packet))
+    }
+
+    fn transform_network_to_tun(
+        &mut self,
+        packet: IpPacket,
+        now: Instant,
+    ) -> anyhow::Result<TranslateOutboundResult> {
+        let dst = packet.destination();
+
+        // Packets to the TUN interface don't get transformed.
+        if self.gateway_tun.is_ip(dst) {
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
+
+        // Packets for CIDR resources / Internet resource are forwarded as is.
+        if !is_dns_addr(dst) {
+            return Ok(TranslateOutboundResult::Send(packet));
+        }
+
+        let Some(state) = self.permanent_translations.get_mut(&packet.destination()) else {
+            return Ok(TranslateOutboundResult::DestinationUnreachable(
+                ip_packet::make::icmp_dest_unreachable(
+                    &packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::Network,
+                    ip_packet::icmpv6::DestUnreachableCode::Address,
+                )?,
+            ));
+        };
+
+        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+            return Ok(TranslateOutboundResult::DestinationUnreachable(
+                ip_packet::make::icmp_dest_unreachable(
+                    &packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::Network,
+                    ip_packet::icmpv6::DestUnreachableCode::Address,
+                )?,
+            ));
+        }
+
+        let (source_protocol, real_ip) =
+            self.nat_table
+                .translate_outgoing(&packet, state.resolved_ip, now)?;
+
+        let mut packet = packet
+            .translate_destination(source_protocol, real_ip)
+            .context("Failed to translate packet to new destination")?;
+        packet.update_checksum();
+
+        Ok(TranslateOutboundResult::Send(packet))
     }
 
     fn transform_tun_to_network(
@@ -483,7 +497,7 @@ impl ClientOnGateway {
 pub enum TranslateOutboundResult {
     Send(IpPacket),
     DestinationUnreachable(IpPacket),
-    Filtered,
+    Filtered(IpPacket),
 }
 
 impl GatewayOnClient {
@@ -874,7 +888,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered
+            crate::peer::TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -888,7 +902,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered
+            crate::peer::TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -938,7 +952,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered
+            crate::peer::TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(

@@ -172,16 +172,20 @@ where
     }
 }
 
-pub fn icmp_dst_unreachable(original_packet: &IpPacket) -> Result<IpPacket> {
+pub fn icmp_dest_unreachable(
+    original_packet: &IpPacket,
+    icmpv4: icmpv4::DestUnreachableHeader,
+    icmpv6: icmpv6::DestUnreachableCode,
+) -> Result<IpPacket> {
     let src = original_packet.source();
     let dst = original_packet.destination();
 
     let icmp_error = match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            icmpv4_network_unreachable(dst, src, original_packet)?
+            icmpv4_unreachable(dst, src, original_packet, icmpv4)?
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            icmpv6_address_unreachable(dst, src, original_packet)?
+            icmpv6_unreachable(dst, src, original_packet, icmpv6)?
         }
         (IpAddr::V4(_), IpAddr::V6(_)) => {
             bail!("Invalid IP packet: Inconsistent IP address versions")
@@ -194,14 +198,14 @@ pub fn icmp_dst_unreachable(original_packet: &IpPacket) -> Result<IpPacket> {
     Ok(icmp_error)
 }
 
-fn icmpv4_network_unreachable(
+fn icmpv4_unreachable(
     src: Ipv4Addr,
     dst: Ipv4Addr,
     original_packet: &IpPacket,
+    code: icmpv4::DestUnreachableHeader,
 ) -> Result<IpPacket, anyhow::Error> {
-    let builder = PacketBuilder::ipv4(src.octets(), dst.octets(), 20).icmpv4(
-        crate::Icmpv4Type::DestinationUnreachable(icmpv4::DestUnreachableHeader::Network),
-    );
+    let builder = PacketBuilder::ipv4(src.octets(), dst.octets(), 20)
+        .icmpv4(crate::Icmpv4Type::DestinationUnreachable(code));
     let payload = original_packet.packet();
 
     let header_len = original_packet
@@ -218,16 +222,16 @@ fn icmpv4_network_unreachable(
     Ok(ip_packet)
 }
 
-fn icmpv6_address_unreachable(
+fn icmpv6_unreachable(
     src: Ipv6Addr,
     dst: Ipv6Addr,
     original_packet: &IpPacket,
+    code: icmpv6::DestUnreachableCode,
 ) -> Result<IpPacket, anyhow::Error> {
     const MAX_ICMP_ERROR_PAYLOAD_LEN: usize = MAX_IP_SIZE - Ipv6Header::LEN - Icmpv6Header::MAX_LEN;
 
-    let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
-        crate::Icmpv6Type::DestinationUnreachable(icmpv6::DestUnreachableCode::Address),
-    );
+    let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20)
+        .icmpv6(crate::Icmpv6Type::DestinationUnreachable(code));
     let payload = original_packet.packet();
 
     let actual_payload_len = std::cmp::min(payload.len(), MAX_ICMP_ERROR_PAYLOAD_LEN);
@@ -267,7 +271,12 @@ mod tests {
         )
         .unwrap();
 
-        let icmp_error = icmp_dst_unreachable(&unreachable_packet).unwrap();
+        let icmp_error = icmp_dest_unreachable(
+            &unreachable_packet,
+            icmpv4::DestUnreachableHeader::Network,
+            icmpv6::DestUnreachableCode::Address,
+        )
+        .unwrap();
 
         assert_eq!(
             icmp_error.destination(),
@@ -293,7 +302,12 @@ mod tests {
         )
         .unwrap();
 
-        let icmp_error = icmp_dst_unreachable(&unreachable_packet).unwrap();
+        let icmp_error = icmp_dest_unreachable(
+            &unreachable_packet,
+            icmpv4::DestUnreachableHeader::Network,
+            icmpv6::DestUnreachableCode::Address,
+        )
+        .unwrap();
 
         assert_eq!(
             icmp_error.destination(),

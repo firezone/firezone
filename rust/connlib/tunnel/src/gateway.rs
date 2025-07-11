@@ -163,7 +163,8 @@ impl GatewayState {
             .context("Failed to translate outbound packet")?
         {
             TranslateOutboundResult::Send(ip_packet) => Ok(Some(ip_packet)),
-            TranslateOutboundResult::DestinationUnreachable(reply) => {
+            TranslateOutboundResult::DestinationUnreachable(reply)
+            | TranslateOutboundResult::Filtered(reply) => {
                 let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? else {
                     return Ok(None);
                 };
@@ -172,7 +173,6 @@ impl GatewayState {
 
                 Ok(None)
             }
-            TranslateOutboundResult::Filtered => Ok(None),
         }
     }
 

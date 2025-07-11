@@ -597,13 +597,6 @@ impl RefClient {
             .collect()
     }
 
-    pub(crate) fn is_tunnel_ip(&self, ip: IpAddr) -> bool {
-        match ip {
-            IpAddr::V4(ip4) => self.tunnel_ip4 == ip4,
-            IpAddr::V6(ip6) => self.tunnel_ip6 == ip6,
-        }
-    }
-
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
         match dst {
             IpAddr::V4(_) => self.tunnel_ip4.into(),
@@ -611,10 +604,8 @@ impl RefClient {
         }
     }
 
-    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_icmp_packet(
         &mut self,
-        src: IpAddr,
         dst: Destination,
         seq: Seq,
         identifier: Identifier,
@@ -623,7 +614,6 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
     ) {
         self.on_packet(
-            src,
             dst.clone(),
             (dst, seq, identifier),
             |ref_client| &mut ref_client.expected_icmp_handshakes,
@@ -633,10 +623,8 @@ impl RefClient {
         );
     }
 
-    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_udp_packet(
         &mut self,
-        src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
@@ -645,7 +633,6 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
     ) {
         self.on_packet(
-            src,
             dst.clone(),
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_udp_handshakes,
@@ -655,10 +642,8 @@ impl RefClient {
         );
     }
 
-    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) fn on_tcp_packet(
         &mut self,
-        src: IpAddr,
         dst: Destination,
         sport: SPort,
         dport: DPort,
@@ -667,7 +652,6 @@ impl RefClient {
         gateway_by_ip: impl Fn(IpAddr) -> Option<GatewayId>,
     ) {
         self.on_packet(
-            src,
             dst.clone(),
             (dst, sport, dport),
             |ref_client| &mut ref_client.expected_tcp_exchanges,
@@ -677,11 +661,9 @@ impl RefClient {
         );
     }
 
-    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     #[tracing::instrument(level = "debug", skip_all, fields(dst, resource, gateway))]
     fn on_packet<E>(
         &mut self,
-        src: IpAddr,
         dst: Destination,
         packet_id: E,
         map: impl FnOnce(&mut Self) -> &mut BTreeMap<GatewayId, BTreeMap<u64, E>>,
@@ -717,10 +699,6 @@ impl RefClient {
 
             gateway
         };
-
-        if !self.is_tunnel_ip(src) {
-            return;
-        }
 
         tracing::debug!(%payload, "Sending packet");
 
