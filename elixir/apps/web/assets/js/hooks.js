@@ -115,7 +115,7 @@ Hooks.Popover = {
   mounted() {
     const $triggerEl = this.el;
     const $targetEl = document.getElementById(
-      $triggerEl.getAttribute("data-popover-target-id")
+      $triggerEl.getAttribute("data-popover-target-id"),
     );
 
     const options = {
@@ -133,34 +133,37 @@ Hooks.CopyClipboard = {
     initCopyClipboards();
 
     const id = this.el.id;
-    const clipboard = FlowbiteInstances.getInstance('CopyClipboard', `${id}-code`);
+    const clipboard = FlowbiteInstances.getInstance(
+      "CopyClipboard",
+      `${id}-code`,
+    );
 
     const $defaultMessage = document.getElementById(`${id}-default-message`);
     const $successMessage = document.getElementById(`${id}-success-message`);
 
     clipboard.updateOnCopyCallback((clipboard) => {
-        showSuccess();
+      showSuccess();
 
-        // reset to default state
-        setTimeout(() => {
-            resetToDefault();
-        }, 2000);
-    })
+      // reset to default state
+      setTimeout(() => {
+        resetToDefault();
+      }, 2000);
+    });
 
     const showSuccess = () => {
-        $defaultMessage.classList.add('hidden');
-        $successMessage.classList.remove('hidden');
-    }
+      $defaultMessage.classList.add("hidden");
+      $successMessage.classList.remove("hidden");
+    };
 
     const resetToDefault = () => {
-        $defaultMessage.classList.remove('hidden');
-        $successMessage.classList.add('hidden');
-    }
+      $defaultMessage.classList.remove("hidden");
+      $successMessage.classList.add("hidden");
+    };
   },
 
   updated() {
     this.mounted();
-  }
+  },
 };
 
 export default Hooks;

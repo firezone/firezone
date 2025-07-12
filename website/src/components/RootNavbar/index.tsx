@@ -236,7 +236,7 @@ function SidebarToggle() {
 
 function applyTheme(
   theme: CustomFlowbiteTheme["navbar"],
-  scrollPosition: number
+  scrollPosition: number,
 ) {
   return {
     ...theme,
@@ -259,7 +259,7 @@ export default function RootNavbar() {
     <Navbar
       theme={applyTheme(
         light ? navbarThemeLight : navbarThemeDark,
-        scrollPosition
+        scrollPosition,
       )}
       fluid
     >
