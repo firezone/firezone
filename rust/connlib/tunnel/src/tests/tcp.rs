@@ -75,7 +75,7 @@ impl Client {
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         // TODO: Upstream ICMP error handling to `smoltcp`.
-        if let Ok(Some((failed_packet, _))) = packet.icmp_unreachable_destination() {
+        if let Ok(Some((failed_packet, _))) = packet.icmp_error() {
             if let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol() {
                 if let Some(handle) = self
                     .sockets_by_remote

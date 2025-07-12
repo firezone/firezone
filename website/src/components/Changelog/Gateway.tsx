@@ -30,6 +30,10 @@ export default function Gateway() {
         <ChangeItem pull="9816">
           Responds with ICMP errors for filtered packets.
         </ChangeItem>
+        <ChangeItem pull="9812">
+          Adds support for translating Time-Exceeded ICMP errors in the DNS
+          resource NAT, allowing `tracepath` to work through a Firezone tunnel.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-06-30")}>
         <ChangeItem pull="9657">
