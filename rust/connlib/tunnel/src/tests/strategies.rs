@@ -1,5 +1,5 @@
 use super::dns_records::DnsRecords;
-use super::unreachable_hosts::UnreachableHosts;
+use super::icmp_error_hosts::IcmpErrorHosts;
 use super::{sim_net::Host, sim_relay::ref_relay_host, stub_portal::StubPortal};
 use crate::client::{
     CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
@@ -160,7 +160,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
 /// The port is sampled together with domain.
 pub(crate) fn tcp_resources(
     dns_records: DnsRecords,
-    unreachable_hosts: UnreachableHosts,
+    imcp_error_hosts: IcmpErrorHosts,
 ) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<SocketAddr>>> {
     let all_domains = dns_records.domains_iter().collect::<Vec<_>>();
 
@@ -174,7 +174,7 @@ pub(crate) fn tcp_resources(
             .filter(|(domain, _)| {
                 dns_records
                     .domain_ips_iter(domain)
-                    .all(|ip| !unreachable_hosts.is_unreachable(ip))
+                    .all(|ip| imcp_error_hosts.icmp_error_for_ip(ip).is_none())
             })
             .map({
                 let dns_records = dns_records.clone();

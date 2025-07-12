@@ -208,7 +208,7 @@ fn assert_packets_properties<T, U>(
 
             let Some(gateway_received_request) = received_requests.get(payload) else {
                 if client_received_reply
-                    .icmp_unreachable_destination()
+                    .icmp_error()
                     .ok()
                     .is_some_and(|icmp| icmp.is_some())
                 {
