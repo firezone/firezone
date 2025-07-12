@@ -2178,6 +2178,12 @@ where
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
+            TunnResult::Err(e @ WireGuardError::InvalidAeadTag) if crate::is_handshake(packet) => {
+                tracing::info!("Connection handshake failed ({e})");
+                self.state = ConnectionState::Failed;
+
+                ControlFlow::Break(Err(anyhow::Error::new(e)))
+            }
             TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
 
             // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.

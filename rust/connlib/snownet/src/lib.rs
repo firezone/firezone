@@ -24,3 +24,10 @@ pub use stats::{ConnectionStats, NodeStats};
 pub fn is_wireguard(payload: &[u8]) -> bool {
     boringtun::noise::Tunn::parse_incoming_packet(payload).is_ok()
 }
+
+pub(crate) fn is_handshake(payload: &[u8]) -> bool {
+    use boringtun::noise::Packet;
+
+    boringtun::noise::Tunn::parse_incoming_packet(payload)
+        .is_ok_and(|p| matches!(p, Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)))
+}
