@@ -2397,7 +2397,7 @@ impl fmt::Display for SessionId {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
+    use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
 
     use super::*;
 
