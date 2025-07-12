@@ -109,7 +109,7 @@ where
         if self.level {
             let fmt_level = FmtLevel::new(meta.level(), writer.has_ansi_escapes());
 
-            write!(writer, "{} ", fmt_level)?;
+            write!(writer, "{fmt_level} ")?;
         }
 
         let dimmed = if writer.has_ansi_escapes() {

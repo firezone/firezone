@@ -145,8 +145,8 @@ impl ReferenceState {
                 "private keys must be unique",
                 |(c, gateways, _, _, _, _, _, _, _)| {
                     let different_keys = gateways
-                        .iter()
-                        .map(|(_, g)| g.inner().key)
+                        .values()
+                        .map(|g| g.inner().key)
                         .chain(iter::once(c.inner().key))
                         .collect::<HashSet<_>>();
 
