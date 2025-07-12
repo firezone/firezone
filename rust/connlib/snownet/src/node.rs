@@ -2182,7 +2182,7 @@ where
                 tracing::info!("Connection handshake failed ({e})");
                 self.state = ConnectionState::Failed;
 
-                ControlFlow::Break(Err(anyhow::Error::new(e)))
+                ControlFlow::Break(Ok(())) // Return `Ok` because we are already logging the error.
             }
             TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
 
