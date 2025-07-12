@@ -8,24 +8,20 @@ use proptest::{prelude::*, sample};
 use super::dns_records::DnsRecords;
 
 #[derive(Debug, Clone)]
-pub(crate) struct UnreachableHosts {
+pub(crate) struct IcmpErrorHosts {
     inner: BTreeMap<IpAddr, IcmpError>,
 }
 
-impl UnreachableHosts {
+impl IcmpErrorHosts {
     pub(crate) fn icmp_error_for_ip(&self, ip: IpAddr) -> Option<IcmpError> {
         self.inner.get(&ip).copied()
     }
-
-    pub(crate) fn is_unreachable(&self, ip: IpAddr) -> bool {
-        self.inner.contains_key(&ip)
-    }
 }
 
-/// Samples a subset of the provided DNS records which we will treat as "unreachable".
-pub(crate) fn unreachable_hosts(
+/// Samples a subset of the provided DNS records which we will generate ICMP errors.
+pub(crate) fn icmp_error_hosts(
     dns_resource_records: DnsRecords,
-) -> impl Strategy<Value = UnreachableHosts> {
+) -> impl Strategy<Value = IcmpErrorHosts> {
     // First, deduplicate all IPs.
     let unique_ips = dns_resource_records.ips_iter().collect::<BTreeSet<_>>();
     let ips = Vec::from_iter(unique_ips);
@@ -35,7 +31,7 @@ pub(crate) fn unreachable_hosts(
         .prop_flat_map(|ips| {
             let num_ips = ips.len();
 
-            sample::subsequence(ips, 0..num_ips) // Pick a subset of the unreachable IPs.
+            sample::subsequence(ips, 0..num_ips) // Pick a subset of IPs.
         })
         .prop_flat_map(|ips| {
             ips.into_iter()
@@ -43,7 +39,7 @@ pub(crate) fn unreachable_hosts(
                 .collect::<Vec<_>>()
         })
         .prop_map(BTreeMap::from_iter)
-        .prop_map(|inner| UnreachableHosts { inner })
+        .prop_map(|inner| IcmpErrorHosts { inner })
 }
 
 fn icmp_error() -> impl Strategy<Value = IcmpError> {
@@ -51,7 +47,8 @@ fn icmp_error() -> impl Strategy<Value = IcmpError> {
         Just(IcmpError::Network),
         Just(IcmpError::Host),
         Just(IcmpError::Port),
-        any::<u32>().prop_map(|mtu| IcmpError::PacketTooBig { mtu })
+        any::<u32>().prop_map(|mtu| IcmpError::PacketTooBig { mtu }),
+        Just(IcmpError::TimeExceeded { code: 0 })
     ]
 }
 
@@ -62,4 +59,5 @@ pub(crate) enum IcmpError {
     Host,
     Port,
     PacketTooBig { mtu: u32 },
+    TimeExceeded { code: u8 },
 }

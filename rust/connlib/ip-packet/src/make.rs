@@ -283,10 +283,7 @@ mod tests {
             IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))
         );
         assert_eq!(icmp_error.source(), IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert!(matches!(
-            icmp_error.icmp_unreachable_destination(),
-            Ok(Some(_))
-        ));
+        assert!(matches!(icmp_error.icmp_error(), Ok(Some(_))));
     }
 
     #[test_strategy::proptest()]
@@ -314,10 +311,7 @@ mod tests {
             IpAddr::V6(Ipv6Addr::new(1, 0, 0, 0, 0, 0, 0, 1))
         );
         assert_eq!(icmp_error.source(), IpAddr::V6(Ipv6Addr::LOCALHOST));
-        assert!(matches!(
-            icmp_error.icmp_unreachable_destination(),
-            Ok(Some(_))
-        ));
+        assert!(matches!(icmp_error.icmp_error(), Ok(Some(_))));
     }
 
     fn payload(max_size: usize) -> impl Strategy<Value = Vec<u8>> {

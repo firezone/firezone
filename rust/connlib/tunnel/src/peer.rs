@@ -318,10 +318,7 @@ impl ClientOnGateway {
         self.ensure_client_ip(packet.destination())?;
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
-        if packet
-            .icmp_unreachable_destination()
-            .is_ok_and(|e| e.is_some())
-        {
+        if packet.icmp_error().is_ok_and(|e| e.is_some()) {
             return Ok(Some(packet));
         }
 
@@ -409,12 +406,12 @@ impl ClientOnGateway {
     ) -> anyhow::Result<Option<IpPacket>> {
         let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
-            TranslateIncomingResult::DestinationUnreachable(prototype) => {
-                tracing::debug!(dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), error = ?prototype.error(), "Destination is unreachable");
+            TranslateIncomingResult::IcmpError(prototype) => {
+                tracing::debug!(error = ?prototype.error(), dst = %prototype.outside_dst(), proxy_ip = %prototype.inside_dst(), "ICMP Error");
 
                 let icmp_error = prototype
                     .into_packet(self.client_tun.v4, self.client_tun.v6)
-                    .context("Failed to create `DestinationUnreachable` ICMP error")?;
+                    .context("Failed to create ICMP error")?;
 
                 return Ok(Some(icmp_error));
             }
