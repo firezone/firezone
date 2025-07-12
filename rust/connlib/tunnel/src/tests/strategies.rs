@@ -14,6 +14,7 @@ use itertools::Itertools;
 use prop::sample;
 use proptest::{collection, prelude::*};
 use std::iter;
+use std::num::NonZeroU16;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
@@ -164,7 +165,7 @@ pub(crate) fn tcp_resources(
     let all_domains = dns_records.domains_iter().collect::<Vec<_>>();
 
     collection::btree_set(
-        (sample::select(all_domains.clone()), any::<u16>()),
+        (sample::select(all_domains.clone()), any::<NonZeroU16>()),
         1..=all_domains.len(),
     )
     .prop_map(move |domains| {
@@ -181,7 +182,7 @@ pub(crate) fn tcp_resources(
                 move |(domain, port)| {
                     let addresses = dns_records
                         .domain_ips_iter(&domain)
-                        .map(|address| SocketAddr::new(address, port))
+                        .map(|address| SocketAddr::new(address, port.get()))
                         .collect::<BTreeSet<_>>();
 
                     (domain, addresses)
