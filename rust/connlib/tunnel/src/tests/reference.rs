@@ -1,5 +1,5 @@
 use super::dns_records::DnsRecords;
-use super::unreachable_hosts::{UnreachableHosts, unreachable_hosts};
+use super::icmp_error_hosts::{IcmpErrorHosts, icmp_error_hosts};
 use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
@@ -41,7 +41,7 @@ pub(crate) struct ReferenceState {
     pub(crate) tcp_resources: BTreeMap<DomainName, BTreeSet<SocketAddr>>,
 
     /// A subset of all DNS resource records that have been selected to produce an ICMP error.
-    pub(crate) unreachable_hosts: UnreachableHosts,
+    pub(crate) icmp_error_hosts: IcmpErrorHosts,
 
     pub(crate) network: RoutingTable,
 }
@@ -87,30 +87,7 @@ impl ReferenceState {
                         Just(gateways),
                         Just(portal),
                         Just(dns_resource_records.clone()),
-                        unreachable_hosts(dns_resource_records),
-                        Just(relays),
-                        Just(global_dns),
-                        Just(drop_direct_client_traffic),
-                    )
-                },
-            )
-            .prop_flat_map(
-                |(
-                    client,
-                    gateways,
-                    portal,
-                    dns_resource_records,
-                    unreachable_hosts,
-                    relays,
-                    global_dns,
-                    drop_direct_client_traffic,
-                )| {
-                    (
-                        Just(client),
-                        Just(gateways),
-                        Just(portal),
-                        Just(dns_resource_records.clone()),
-                        Just(unreachable_hosts.clone()),
+                        icmp_error_hosts(dns_resource_records.clone()),
                         tcp_resources(dns_resource_records, unreachable_hosts),
                         Just(relays),
                         Just(global_dns),
@@ -125,7 +102,7 @@ impl ReferenceState {
                     gateways,
                     portal,
                     records,
-                    unreachable_hosts,
+                    icmp_error_hosts,
                     tcp_resources,
                     relays,
                     mut global_dns,
@@ -157,8 +134,8 @@ impl ReferenceState {
                         relays,
                         portal,
                         global_dns,
-                        unreachable_hosts,
                         tcp_resources,
+                        icmp_error_hosts,
                         drop_direct_client_traffic,
                         routing_table,
                     ))
@@ -183,8 +160,8 @@ impl ReferenceState {
                     relays,
                     portal,
                     global_dns_records,
-                    unreachable_hosts,
                     tcp_resources,
+                    icmp_error_hosts,
                     drop_direct_client_traffic,
                     network,
                 )| {
@@ -194,7 +171,7 @@ impl ReferenceState {
                         relays,
                         portal,
                         global_dns_records,
-                        unreachable_hosts,
+                        icmp_error_hosts: icmp_error_hosts,
                         network,
                         drop_direct_client_traffic,
                         tcp_resources,
