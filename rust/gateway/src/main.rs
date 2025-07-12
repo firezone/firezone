@@ -200,16 +200,16 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 }
 
 async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
-    if let Some(id) = env_id {
-        if !id.is_empty() {
-            return Ok(id);
-        }
+    if let Some(id) = env_id
+        && !id.is_empty()
+    {
+        return Ok(id);
     }
 
-    if let Ok(id) = tokio::fs::read_to_string(ID_PATH).await {
-        if !id.is_empty() {
-            return Ok(id);
-        }
+    if let Ok(id) = tokio::fs::read_to_string(ID_PATH).await
+        && !id.is_empty()
+    {
+        return Ok(id);
     }
 
     let device_id = device_id::get_or_create_at(Path::new(ID_PATH))?;

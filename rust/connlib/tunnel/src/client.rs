@@ -622,13 +622,13 @@ impl ClientState {
             return Ok(Ok(()));
         };
 
-        if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id) {
-            if self.peers.get(&old_gateway_id).is_some() {
-                assert_eq!(
-                    old_gateway_id, gateway_id,
-                    "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}"
-                );
-            }
+        if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id)
+            && self.peers.get(&old_gateway_id).is_some()
+        {
+            assert_eq!(
+                old_gateway_id, gateway_id,
+                "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}"
+            )
         }
 
         match self.node.upsert_connection(

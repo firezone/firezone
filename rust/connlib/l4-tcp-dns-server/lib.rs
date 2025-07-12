@@ -136,20 +136,20 @@ impl Server {
                 }));
             }
 
-            if let Some(tcp_v4) = self.tcp_v4.as_mut() {
-                if let Poll::Ready((stream, from)) = tcp_v4.poll_accept(cx)? {
-                    self.reading_tcp_queries
-                        .push(read_tcp_query(stream, from).boxed());
-                    continue;
-                }
+            if let Some(tcp_v4) = self.tcp_v4.as_mut()
+                && let Poll::Ready((stream, from)) = tcp_v4.poll_accept(cx)?
+            {
+                self.reading_tcp_queries
+                    .push(read_tcp_query(stream, from).boxed());
+                continue;
             }
 
-            if let Some(tcp_v6) = self.tcp_v6.as_mut() {
-                if let Poll::Ready((stream, from)) = tcp_v6.poll_accept(cx)? {
-                    self.reading_tcp_queries
-                        .push(read_tcp_query(stream, from).boxed());
-                    continue;
-                }
+            if let Some(tcp_v6) = self.tcp_v6.as_mut()
+                && let Poll::Ready((stream, from)) = tcp_v6.poll_accept(cx)?
+            {
+                self.reading_tcp_queries
+                    .push(read_tcp_query(stream, from).boxed());
+                continue;
             }
 
             self.waker.register(cx.waker());

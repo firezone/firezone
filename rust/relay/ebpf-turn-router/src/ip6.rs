@@ -15,11 +15,15 @@ pub struct Ip6<'a> {
 }
 
 impl<'a> Ip6<'a> {
+    /// # SAFETY
+    ///
+    /// You must not create multiple [`Ip6`] structs at same time.
     #[inline(always)]
-    pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
+    pub unsafe fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
         Ok(Self {
             ctx,
-            inner: ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)?,
+            // Safety: We are forwarding the constraint.
+            inner: unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN) }?,
         })
     }
 

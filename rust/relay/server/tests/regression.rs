@@ -753,7 +753,7 @@ impl TestServer {
             let Some(actual_output) = self.server.next_command() else {
                 let msg = match expected_output {
                     Output::SendMessage((recipient, msg)) => {
-                        format!("to send message {:?} to {recipient}", msg)
+                        format!("to send message {msg:?} to {recipient}")
                     }
                     CreateAllocation(port, family) => {
                         format!("to create allocation on port {port} for address family {family}")
@@ -793,8 +793,8 @@ impl TestServer {
                         .unwrap();
 
                     if expected_bytes != payload {
-                        let expected_message = format!("{:?}", message);
-                        let actual_message = format!("{:?}", sent_message);
+                        let expected_message = format!("{message:?}");
+                        let actual_message = format!("{sent_message:?}");
 
                         difference::assert_diff!(&expected_message, &actual_message, "\n", 0);
                     }

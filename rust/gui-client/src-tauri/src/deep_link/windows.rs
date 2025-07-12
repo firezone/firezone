@@ -29,14 +29,14 @@ fn set_registry_values(id: &str, exe: &str) -> Result<(), io::Error> {
     let base = Path::new("Software").join("Classes").join(FZ_SCHEME);
 
     let (key, _) = hkcu.create_subkey(&base)?;
-    key.set_value("", &format!("URL:{}", id))?;
+    key.set_value("", &format!("URL:{id}"))?;
     key.set_value("URL Protocol", &"")?;
 
     let (icon, _) = hkcu.create_subkey(base.join("DefaultIcon"))?;
-    icon.set_value("", &format!("{},0", &exe))?;
+    icon.set_value("", &format!("{exe},0"))?;
 
     let (cmd, _) = hkcu.create_subkey(base.join("shell").join("open").join("command"))?;
-    cmd.set_value("", &format!("{} open-deep-link \"%1\"", &exe))?;
+    cmd.set_value("", &format!("{exe} open-deep-link \"%1\""))?;
 
     Ok(())
 }

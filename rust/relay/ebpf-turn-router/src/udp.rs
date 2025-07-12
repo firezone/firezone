@@ -10,11 +10,15 @@ pub struct Udp<'a> {
 }
 
 impl<'a> Udp<'a> {
+    /// # SAFETY
+    ///
+    /// You must not create multiple [`Udp`] structs at same time.
     #[inline(always)]
-    pub fn parse(ctx: &'a XdpContext, ip_header_length: usize) -> Result<Self, Error> {
+    pub unsafe fn parse(ctx: &'a XdpContext, ip_header_length: usize) -> Result<Self, Error> {
         Ok(Self {
             ctx,
-            inner: ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + ip_header_length)?,
+            // Safety: We are forwarding the constraint.
+            inner: unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + ip_header_length) }?,
         })
     }
 
