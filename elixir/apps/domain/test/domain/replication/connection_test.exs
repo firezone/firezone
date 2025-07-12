@@ -19,7 +19,16 @@ defmodule Domain.Replication.ConnectionTest do
         data: data
       }
 
-      Map.put(state, :operations, [operation | operations])
+      first_flush_buffer_lsn =
+        if operations == %{} do
+          lsn
+        else
+          state.first_flush_buffer_lsn
+        end
+
+      state
+      |> Map.put(:operations, [operation | operations])
+      |> Map.put(:first_flush_buffer_lsn, first_flush_buffer_lsn)
     end
 
     def on_flush(state) do
@@ -29,6 +38,7 @@ defmodule Domain.Replication.ConnectionTest do
       state
       |> Map.put(:flush_count, flush_count + 1)
       |> Map.put(:flush_buffer, %{})
+      |> Map.put(:first_flush_buffer_lsn, nil)
     end
   end
 
@@ -71,6 +81,7 @@ defmodule Domain.Replication.ConnectionTest do
       assert struct.tables_to_remove == MapSet.new()
       assert struct.flush_interval == 0
       assert struct.flush_buffer == %{}
+      assert struct.first_flush_buffer_lsn == nil
       assert struct.last_flushed_lsn == 0
       assert struct.warning_threshold_exceeded? == false
       assert struct.error_threshold_exceeded? == false
@@ -148,7 +159,8 @@ defmodule Domain.Replication.ConnectionTest do
       state =
         %TestReplicationConnection{
           flush_interval: 1000,
-          flush_buffer: %{1 => %{data: "test"}}
+          flush_buffer: %{1 => %{data: "test"}},
+          first_flush_buffer_lsn: 1
         }
         |> Map.put(:operations, [])
         |> Map.put(:flush_count, 0)
@@ -158,6 +170,7 @@ defmodule Domain.Replication.ConnectionTest do
       # Our test on_flush implementation increments flush_count
       assert Map.get(new_state, :flush_count) == 1
       assert new_state.flush_buffer == %{}
+      assert new_state.first_flush_buffer_lsn == nil
 
       # Should schedule next flush
       assert_receive :flush, 1100
@@ -373,7 +386,8 @@ defmodule Domain.Replication.ConnectionTest do
       state =
         %TestReplicationConnection{
           flush_buffer: %{1 => %{}, 2 => %{}},
-          flush_buffer_size: 3
+          flush_buffer_size: 3,
+          first_flush_buffer_lsn: 1
         }
         |> Map.put(:flush_count, 0)
         |> Map.put(:operations, [])
@@ -393,6 +407,7 @@ defmodule Domain.Replication.ConnectionTest do
 
       assert Map.get(flushed_state, :flush_count) == 1
       assert flushed_state.flush_buffer == %{}
+      assert flushed_state.first_flush_buffer_lsn == nil
     end
   end
 
@@ -656,7 +671,8 @@ defmodule Domain.Replication.ConnectionTest do
     test "on_flush callback integration" do
       state =
         %TestReplicationConnection{
-          flush_buffer: %{1 => "data1", 2 => "data2"}
+          flush_buffer: %{1 => "data1", 2 => "data2"},
+          first_flush_buffer_lsn: 1
         }
         |> Map.put(:flush_count, 5)
 
@@ -665,6 +681,7 @@ defmodule Domain.Replication.ConnectionTest do
       # Our test implementation should increment flush count and clear buffer
       assert Map.get(result_state, :flush_count) == 6
       assert result_state.flush_buffer == %{}
+      assert result_state.first_flush_buffer_lsn == nil
     end
 
     test "state transformations preserve required fields" do

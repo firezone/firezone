@@ -62,10 +62,17 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
       |> Map.keys()
       |> Enum.max()
 
-    %{state | flush_buffer: %{}, last_flushed_lsn: last_lsn}
+    %{state | flush_buffer: %{}, first_flush_buffer_lsn: nil, last_flushed_lsn: last_lsn}
   end
 
   defp buffer(state, lsn, op, table, account_id, old_data, data) do
+    first_flush_buffer_lsn =
+      if state.flush_buffer == %{} do
+        lsn
+      else
+        state.first_flush_buffer_lsn
+      end
+
     flush_buffer =
       state.flush_buffer
       |> Map.put_new(lsn, %{
@@ -78,6 +85,6 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
         vsn: @vsn
       })
 
-    %{state | flush_buffer: flush_buffer}
+    %{state | flush_buffer: flush_buffer, first_flush_buffer_lsn: first_flush_buffer_lsn}
   end
 end

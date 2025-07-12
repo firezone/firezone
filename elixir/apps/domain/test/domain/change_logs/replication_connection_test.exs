@@ -13,7 +13,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
   describe "on_write/6 for inserts" do
     test "ignores account inserts", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -39,7 +39,8 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
                    lsn: 12345,
                    old_data: nil
                  }
-               }
+               },
+               first_flush_buffer_lsn: 12345
              }
     end
 
@@ -54,7 +55,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       lsn = 12345
 
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -67,6 +68,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         )
 
       assert map_size(result_state.flush_buffer) == 1
+      assert result_state.first_flush_buffer_lsn == lsn
       assert Map.has_key?(result_state.flush_buffer, lsn)
 
       attrs = result_state.flush_buffer[lsn]
@@ -92,7 +94,10 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         vsn: 0
       }
 
-      initial_state = %{flush_buffer: %{existing_lsn => existing_item}}
+      initial_state = %{
+        flush_buffer: %{existing_lsn => existing_item},
+        first_flush_buffer_lsn: existing_lsn
+      }
 
       new_lsn = 101
 
@@ -108,11 +113,12 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       assert map_size(result_state.flush_buffer) == 2
       assert result_state.flush_buffer[existing_lsn] == existing_item
+      assert result_state.first_flush_buffer_lsn == existing_lsn
       assert Map.has_key?(result_state.flush_buffer, new_lsn)
     end
 
     test "ignores relay_group tokens" do
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -136,7 +142,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         "boolean" => true
       }
 
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
       lsn = 200
 
       result_state =
@@ -149,6 +155,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
           complex_data
         )
 
+      assert result_state.first_flush_buffer_lsn == lsn
       attrs = result_state.flush_buffer[lsn]
       assert attrs.data == complex_data
     end
@@ -161,7 +168,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       data = %{"id" => old_data["id"], "account_id" => account.id, "name" => "new name"}
       lsn = 12346
 
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -174,6 +181,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         )
 
       assert map_size(result_state.flush_buffer) == 1
+      assert result_state.first_flush_buffer_lsn == lsn
       attrs = result_state.flush_buffer[lsn]
 
       assert attrs.lsn == lsn
@@ -190,7 +198,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       data = %{"id" => account.id, "name" => "new name"}
       lsn = 12346
 
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -204,6 +212,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       # Account updates should be buffered
       assert map_size(result_state.flush_buffer) == 1
+      assert result_state.first_flush_buffer_lsn == lsn
       attrs = result_state.flush_buffer[lsn]
       assert attrs.table == "accounts"
       assert attrs.op == :update
@@ -225,7 +234,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         "tags" => ["new", "updated"]
       }
 
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
       lsn = 300
 
       result_state =
@@ -238,6 +247,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
           new_data
         )
 
+      assert result_state.first_flush_buffer_lsn == lsn
       attrs = result_state.flush_buffer[lsn]
       assert attrs.old_data == old_data
       assert attrs.data == new_data
@@ -246,7 +256,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
   describe "on_write/6 for deletes" do
     test "ignores account deletes", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -273,7 +283,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       lsn = 12347
 
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -285,6 +295,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
           nil
         )
 
+      assert result_state.first_flush_buffer_lsn == lsn
       assert map_size(result_state.flush_buffer) == 1
       attrs = result_state.flush_buffer[lsn]
 
@@ -309,7 +320,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       lsn = 12348
 
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -333,7 +344,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         "name" => "no deleted_at field"
       }
 
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
       lsn = 400
 
       result_state =
@@ -347,6 +358,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         )
 
       assert map_size(result_state.flush_buffer) == 1
+      assert result_state.first_flush_buffer_lsn == lsn
       attrs = result_state.flush_buffer[lsn]
       assert attrs.op == :delete
     end
@@ -354,7 +366,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
   describe "multiple operations and buffer accumulation" do
     test "operations accumulate in flush buffer correctly", %{account: account} do
-      initial_state = %{flush_buffer: %{}}
+      initial_state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       # Insert
       state1 =
@@ -368,6 +380,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         )
 
       assert map_size(state1.flush_buffer) == 1
+      assert state1.first_flush_buffer_lsn == 100
 
       # Update
       resource_id = Ecto.UUID.generate()
@@ -383,6 +396,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         )
 
       assert map_size(state2.flush_buffer) == 2
+      assert state2.first_flush_buffer_lsn == 100
 
       # Delete (non-soft)
       state3 =
@@ -396,6 +410,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         )
 
       assert map_size(state3.flush_buffer) == 3
+      assert state3.first_flush_buffer_lsn == 100
 
       # Verify LSNs
       assert Map.has_key?(state3.flush_buffer, 100)
@@ -408,7 +423,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
     end
 
     test "mixed operations with soft deletes", %{account: account} do
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       # Regular insert
       state1 =
@@ -467,6 +482,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         )
 
       # Should have 3 operations: insert, update, hard delete (soft delete ignored)
+      assert state4.first_flush_buffer_lsn == 100
       assert map_size(state4.flush_buffer) == 3
       assert Map.has_key?(state4.flush_buffer, 100)
       assert Map.has_key?(state4.flush_buffer, 101)
@@ -477,7 +493,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
   describe "on_flush/1" do
     test "handles empty flush buffer" do
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state = ReplicationConnection.on_flush(state)
 
@@ -508,12 +524,14 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
       state = %{
         flush_buffer: %{100 => attrs1, 101 => attrs2},
-        last_flushed_lsn: 99
+        last_flushed_lsn: 99,
+        first_flush_buffer_lsn: 100
       }
 
       result_state = ReplicationConnection.on_flush(state)
 
       assert result_state.flush_buffer == %{}
+      assert result_state.first_flush_buffer_lsn == nil
       # Should be the highest LSN
       assert result_state.last_flushed_lsn == 101
 
@@ -560,13 +578,14 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
         }
       }
 
-      state = %{flush_buffer: attrs_map, last_flushed_lsn: 399}
+      state = %{flush_buffer: attrs_map, last_flushed_lsn: 399, first_flush_buffer_lsn: 400}
 
       result_state = ReplicationConnection.on_flush(state)
 
       # Should update to max LSN (402)
       assert result_state.last_flushed_lsn == 402
       assert result_state.flush_buffer == %{}
+      assert result_state.first_flush_buffer_lsn == nil
     end
   end
 
@@ -574,7 +593,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
     test "LSNs are preserved correctly in buffer" do
       lsns = [1000, 1001, 1002]
 
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       # Add multiple operations with specific LSNs
       final_state =
@@ -605,7 +624,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
     test "handles large LSN values", %{account: account} do
       large_lsn = 999_999_999_999_999
 
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       result_state =
         ReplicationConnection.on_write(
@@ -617,6 +636,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
           %{"id" => Ecto.UUID.generate(), "account_id" => account.id}
         )
 
+      assert result_state.first_flush_buffer_lsn == large_lsn
       attrs = result_state.flush_buffer[large_lsn]
       assert attrs.lsn == large_lsn
     end
@@ -625,7 +645,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       # Add operations with non-sequential LSNs
       lsns = [1005, 1003, 1007, 1001]
 
-      state = %{flush_buffer: %{}, last_flushed_lsn: 0}
+      state = %{flush_buffer: %{}, last_flushed_lsn: 0, first_flush_buffer_lsn: nil}
 
       final_state =
         Enum.reduce(lsns, state, fn lsn, acc_state ->
@@ -653,7 +673,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
     test "logs error for writes without account_id" do
       import ExUnit.CaptureLog
 
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       log =
         capture_log(fn ->
@@ -676,7 +696,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
     end
 
     test "handles account_id in old_data for deletes", %{account: account} do
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
       lsn = 600
 
       result_state =
@@ -695,7 +715,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
     test "handles very large buffers" do
       account_id = Ecto.UUID.generate()
-      state = %{flush_buffer: %{}, last_flushed_lsn: 0}
+      state = %{flush_buffer: %{}, last_flushed_lsn: 0, first_flush_buffer_lsn: nil}
 
       # Simulate adding many operations
       operations = 1..100
@@ -722,7 +742,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
 
   describe "special table handling" do
     test "ignores relay_group token updates" do
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
 
       # Update where old_data has relay_group type
       result_state1 =
@@ -752,7 +772,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
     end
 
     test "processes non-relay_group tokens normally", %{account: account} do
-      state = %{flush_buffer: %{}}
+      state = %{flush_buffer: %{}, first_flush_buffer_lsn: nil}
       lsn = 102
 
       result_state =

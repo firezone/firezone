@@ -83,6 +83,7 @@ defmodule Domain.Replication.Connection do
               tables_to_remove: MapSet.t(),
               flush_interval: integer(),
               flush_buffer: map(),
+              first_flush_buffer_lsn: integer() | nil,
               last_flushed_lsn: integer(),
               warning_threshold_exceeded?: boolean(),
               error_threshold_exceeded?: boolean(),
@@ -119,6 +120,8 @@ defmodule Domain.Replication.Connection do
         flush_interval: 0,
         # buffer for data to flush
         flush_buffer: %{},
+        # first LSN stored in the buffer, used to track replication progress
+        first_flush_buffer_lsn: nil,
         # last flushed LSN, used to track progress while flushing
         last_flushed_lsn: 0,
         # flags to track if we have exceeded warning/error thresholds
@@ -395,11 +398,9 @@ defmodule Domain.Replication.Connection do
         %KeepAlive{reply: reply, wal_end: wal_end} = parse(data)
 
         wal_end =
-          if state.flush_interval > 0 && map_size(state.flush_buffer) > 0 do
-            # If we are flushing and currently buffering data, we use the lowest lsn we have to flush
-            state.flush_buffer
-            |> Map.keys()
-            |> Enum.min()
+          if state.flush_interval > 0 and map_size(state.flush_buffer) > 0 do
+            # If we are flushing and currently buffering data, we use the first lsn we got in the buffer
+            state.first_flush_buffer_lsn
           else
             # Otherwise, we assume to be current with the server
             wal_end + 1
