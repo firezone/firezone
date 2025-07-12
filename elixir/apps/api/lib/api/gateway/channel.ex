@@ -38,6 +38,16 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
+      # Hydrate flow cache so that we properly respond to relevant messages in order to push reject_access.
+      # We use raw bytes and integer timestamps here for better memory efficiency.
+      # Structure:
+      # %{
+      #   {token_id_bytes, policy_id_bytes, client_id_bytes, resource_id_bytes} => inserted_at_integer
+      # }
+      flow_cache =
+        Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
+        |> Map.new()
+
       # Track gateway's presence
       :ok = Gateways.Presence.connect(socket.assigns.gateway)
 
@@ -70,13 +80,6 @@ defmodule API.Gateway.Channel do
 
       # Cache new stamp secrets
       socket = Debouncer.cache_stamp_secrets(socket, relays)
-
-      # Hydrate flow cache so that we properly respond to relevant messages in order to push reject_access.
-      # We use raw bytes and integer timestamps here for better memory efficiency.
-      # Structure: %{{token_id_bytes, policy_id_bytes, client_id_bytes, resource_id_bytes} => inserted_at_integer}
-      flow_cache =
-        Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
-        |> Map.new()
 
       Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
 
@@ -131,6 +134,8 @@ defmodule API.Gateway.Channel do
     client_id_bytes = Ecto.UUID.dump!(client_id)
 
     # Find all flows for this client
+    # TODO: For very busy gateways, this can be a large number of flows, so we may need
+    # to be smarter about Map structure here.
     affected_flows =
       Map.filter(flow_cache, fn {{_, _, c_id_bytes, _}, _} ->
         c_id_bytes == client_id_bytes
@@ -164,6 +169,8 @@ defmodule API.Gateway.Channel do
 
   # POLICIES
 
+  # TODO: HARD DELETE
+  # This can be removed because we will respond to the cascading flow deletion when a policy is deleted
   def handle_info({:deleted, %Policies.Policy{id: policy_id}}, socket) do
     flow_cache = socket.assigns.flow_cache
 
@@ -287,6 +294,44 @@ defmodule API.Gateway.Channel do
     {:noreply, socket}
   end
 
+  def handle_info({:deleted, %Resources.Resource{id: resource_id}}, socket) do
+    flow_cache = socket.assigns.flow_cache
+
+    # Convert to bytes representation for comparison with our cache
+    resource_id_bytes = Ecto.UUID.dump!(resource_id)
+
+    # Find all flows for this resource
+    affected_flows =
+      Map.filter(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
+        res_id_bytes == resource_id_bytes
+      end)
+
+    case affected_flows do
+      flows when map_size(flows) == 0 ->
+        {:noreply, socket}
+
+      affected_flows ->
+        # Send reject_access for each affected client/resource pair
+        affected_flows
+        |> Map.keys()
+        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
+          {client_id_bytes, resource_id_bytes}
+        end)
+        |> Enum.uniq()
+        |> Enum.each(fn {client_id_bytes, _} ->
+          push(socket, "reject_access", %{
+            client_id: Ecto.UUID.cast!(client_id_bytes),
+            resource_id: resource_id
+          })
+        end)
+
+        # Remove affected flows from cache
+        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
+
+        {:noreply, assign(socket, flow_cache: updated_cache)}
+    end
+  end
+
   # RESOURCE_CONNECTIONS
 
   def handle_info({:deleted, %Resources.Connection{resource_id: resource_id}}, socket) do
@@ -326,6 +371,26 @@ defmodule API.Gateway.Channel do
         {:noreply, assign(socket, flow_cache: updated_cache)}
     end
   end
+
+  # GATEWAYS
+
+  # TODO: HARD DELETE
+  # This can be removed because we will respond to the cascading flow deletion when a gateway is deleted
+
+  def handle_info({:deleted, %Gateways.Gateway{id: gateway_id}}, socket) do
+    # TODO
+    {:noreply, socket}
+  end
+
+  # CLIENTS
+
+  def handle_info({:deleted, %Clients.Client{id: client_id}}, socket) do
+    # TODO
+    {:noreply, socket}
+  end
+
+  # TODO: HARD DELETE
+  # This can be removed because we will respond to the cascading flow deletion when a client is deleted
 
   # TOKENS
 
@@ -374,7 +439,18 @@ defmodule API.Gateway.Channel do
     end
   end
 
+  # TODO: HARD DELETE
+
+  def handle_info({:deleted, %Actors.Membership{}}, socket) do
+    # TODO:
+    # Remove flows corresponding to this:
+    # 1. Add id to actor_group_memberships
+    # 2. Populate flows with this new foreign key constraint
+    # 3. Update the flow_cache to track this too
+  end
+
   # Client channel pid broadcasts this whenever a membership is deleted that affects its access.
+  # TODO: This is required effect because deleting a flow does not affect memberships
   def handle_info({:expire_flow, client_id, resource_id}, socket) do
     flow_cache = socket.assigns.flow_cache
 

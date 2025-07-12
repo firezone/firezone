@@ -84,19 +84,14 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
-      # RELAYS
-      {:ok, relays} = select_relays(socket)
-      :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
-      :ok = maybe_subscribe_for_relays_presence(relays, socket)
-      socket = Debouncer.cache_stamp_secrets(socket, relays)
-
-      # Track client's presence
-      :ok = Clients.Presence.connect(socket.assigns.client)
-
-      # Subscribe to all account updates
-      :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
-
       # Maintain a cache of all policies and group_ids that affect us
+      # %{
+      #    policy_id => %Policies.Policy{
+      #     resource: %Resources.Resource{
+      #       gateway_groups: [%Gateways.Group{}]
+      #     }
+      #   }
+      # }
       policies =
         Policies.all_policies_for_actor!(socket.assigns.subject.actor)
         |> Map.new(fn policy -> {policy.id, policy} end)
@@ -106,6 +101,19 @@ defmodule API.Client.Channel do
         |> MapSet.new()
 
       socket = assign(socket, policies: policies, group_ids: group_ids)
+
+      # RELAYS
+      {:ok, relays} = select_relays(socket)
+
+      :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
+      :ok = maybe_subscribe_for_relays_presence(relays, socket)
+      socket = Debouncer.cache_stamp_secrets(socket, relays)
+
+      # Track client's presence
+      :ok = Clients.Presence.connect(socket.assigns.client)
+
+      # Subscribe to all account updates
+      :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
       push(socket, "init", %{
         resources: Views.Resource.render_many(get_resources(socket)),
@@ -153,6 +161,7 @@ defmodule API.Client.Channel do
     {:noreply, socket}
   end
 
+  # TODO: This might be redundant since Tokens will be deleted
   def handle_info({:deleted, %Accounts.Account{}}, socket) do
     disconnect(socket)
   end
@@ -265,6 +274,8 @@ defmodule API.Client.Channel do
     # check if this policy affects us
     with true <- MapSet.member?(socket.assigns.group_ids, policy.actor_group_id),
          # Hydrate resource
+         # One optimization here could be that we first check and see if we already have the resource
+         # in our cache
          {:ok, resource} <-
            Resources.fetch_resource_by_id(policy.resource_id, socket.assigns.subject,
              preload: :gateway_groups
@@ -277,10 +288,8 @@ defmodule API.Client.Channel do
       # Update our state
       socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
 
-      # Get new resources
-      new_resources = get_resources(socket) -- existing_resources
-
-      if [resource] = new_resources do
+      # Get new resource
+      if resource = (get_resources(socket) -- existing_resources) |> List.first() do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
 
@@ -302,7 +311,7 @@ defmodule API.Client.Channel do
       new_resources = get_resources(socket)
 
       # 3. Push deleted resource to the client
-      if [resource] = existing_resources -- new_resources do
+      if resource = (existing_resources -- new_resources) |> List.first() do
         push(socket, "resource_deleted", resource.id)
       end
 
@@ -324,7 +333,7 @@ defmodule API.Client.Channel do
          %Resources.Connection{resource_id: resource_id, gateway_group_id: gateway_group_id}},
         socket
       ) do
-    # 1. check if this affects us
+    # 1. Check if this affects us
     resource =
       socket.assigns.policies
       |> Enum.find(fn {_id, policy} ->
@@ -336,10 +345,10 @@ defmodule API.Client.Channel do
       end
 
     with %Resources.Resource{} <- resource,
-         # 2. broadcasted structs have no associations - fetch the gateway_group to hydrate the site name
+         # 2. Fetch the gateway_group to hydrate the site name
          {:ok, gateway_group} <-
            Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject) do
-      # 3. update our state
+      # 3. Update our state
       # TODO: If multi-site resources ever ships, we'll need to handle that here
       resource = %{resource | gateway_groups: [gateway_group]}
 
@@ -354,7 +363,7 @@ defmodule API.Client.Channel do
 
       socket = assign(socket, policies: policies)
 
-      # 4. if resource is allowed, push
+      # 4. If resource is allowed, push
       if resource in get_resources(socket) do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
@@ -404,6 +413,7 @@ defmodule API.Client.Channel do
         socket
       ) do
     # 1. check if we need to act
+    # TODO: Fix this to act upon all cached resources, not just the ones we currently have access to
     if resource = Enum.find(get_resources(socket), &(&1.id == id)) do
       # 2. use preloaded gateway_group
       resource = %{updated_resource | gateway_groups: resource.gateway_groups}
