@@ -71,6 +71,13 @@ defmodule Domain.Fixtures.Flows do
         |> Fixtures.Policies.create_policy()
       end)
 
+    # A membership should have been created before this to "authorize" the flow
+    {:ok, membership} =
+      Domain.Actors.fetch_membership_by_actor_id_and_group_id(
+        client.actor_id,
+        actor_group_id
+      )
+
     {token_id, _attrs} = Map.pop(attrs, :token_id, subject.token_id)
 
     Flows.Flow.Changeset.create(%{
@@ -79,6 +86,7 @@ defmodule Domain.Fixtures.Flows do
       client_id: client.id,
       gateway_id: gateway.id,
       resource_id: resource_id,
+      actor_group_membership_id: membership.id,
       account_id: account.id,
       client_remote_ip: client.last_seen_remote_ip,
       client_user_agent: client.last_seen_user_agent,
