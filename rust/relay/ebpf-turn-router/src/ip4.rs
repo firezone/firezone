@@ -15,9 +15,13 @@ pub struct Ip4<'a> {
 }
 
 impl<'a> Ip4<'a> {
+    /// # SAFETY
+    ///
+    /// You must not create multiple [`Ip4`] structs at same time.
     #[inline(always)]
-    pub fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
-        let ip4_hdr = ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)?;
+    pub unsafe fn parse(ctx: &'a XdpContext) -> Result<Self, Error> {
+        // Safety: We are forwarding the constraint.
+        let ip4_hdr = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN) }?;
 
         // IPv4 packets with options are handled in user-space.
         if usize::from(ip4_hdr.ihl()) * 4 != Ipv4Hdr::LEN {

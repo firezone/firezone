@@ -6,8 +6,13 @@ use crate::error::Error;
 ///
 /// The length is based on the size of `T` and the bytes at the specified offset will simply be cast into `T`.
 /// `T` should therefore most definitely be `repr(C)`.
+///
+/// # SAFETY
+///
+/// You must not obtain overlapping mutable references from the context.
 #[inline(always)]
-pub(crate) fn ref_mut_at<T>(ctx: &XdpContext, offset: usize) -> Result<&mut T, Error> {
+#[expect(clippy::mut_from_ref, reason = "The function is unsafe.")]
+pub(crate) unsafe fn ref_mut_at<T>(ctx: &XdpContext, offset: usize) -> Result<&mut T, Error> {
     let start = ctx.data();
     let end = ctx.data_end();
     let len = core::mem::size_of::<T>();

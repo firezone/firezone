@@ -204,20 +204,20 @@ impl SimClient {
     }
 
     fn update_sent_requests(&mut self, packet: &IpPacket) {
-        if let Some(icmp) = packet.as_icmpv4() {
-            if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
-                self.sent_icmp_requests
-                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-                return;
-            }
+        if let Some(icmp) = packet.as_icmpv4()
+            && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
+        {
+            self.sent_icmp_requests
+                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            return;
         }
 
-        if let Some(icmp) = packet.as_icmpv6() {
-            if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
-                self.sent_icmp_requests
-                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-                return;
-            }
+        if let Some(icmp) = packet.as_icmpv6()
+            && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
+        {
+            self.sent_icmp_requests
+                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            return;
         }
 
         if let Some(udp) = packet.as_udp() {
@@ -311,20 +311,20 @@ impl SimClient {
             return;
         }
 
-        if let Some(icmp) = packet.as_icmpv4() {
-            if let Icmpv4Type::EchoReply(echo) = icmp.icmp_type() {
-                self.received_icmp_replies
-                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-                return;
-            }
+        if let Some(icmp) = packet.as_icmpv4()
+            && let Icmpv4Type::EchoReply(echo) = icmp.icmp_type()
+        {
+            self.received_icmp_replies
+                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            return;
         }
 
-        if let Some(icmp) = packet.as_icmpv6() {
-            if let Icmpv6Type::EchoReply(echo) = icmp.icmp_type() {
-                self.received_icmp_replies
-                    .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
-                return;
-            }
+        if let Some(icmp) = packet.as_icmpv6()
+            && let Icmpv6Type::EchoReply(echo) = icmp.icmp_type()
+        {
+            self.received_icmp_replies
+                .insert((Seq(echo.seq), Identifier(echo.id)), packet.clone());
+            return;
         }
 
         tracing::error!(?packet, "Unhandled packet");
@@ -521,12 +521,12 @@ impl RefClient {
                 continue;
             }
 
-            if let Some(overlapping_resource) = table.exact_match(resource.address) {
-                if self.is_connected_to_internet_or_cidr(*overlapping_resource) {
-                    tracing::debug!(%overlapping_resource, resource = %resource.id, address = %resource.address, "Already connected to resource with this exact address, retaining existing route");
+            if let Some(overlapping_resource) = table.exact_match(resource.address)
+                && self.is_connected_to_internet_or_cidr(*overlapping_resource)
+            {
+                tracing::debug!(%overlapping_resource, resource = %resource.id, address = %resource.address, "Already connected to resource with this exact address, retaining existing route");
 
-                    continue;
-                }
+                continue;
             }
 
             tracing::debug!(resource = %resource.id, address = %resource.address, "Adding CIDR route");

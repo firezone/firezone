@@ -109,7 +109,8 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
 
 #[inline(always)]
 fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
-    let eth = Eth::parse(ctx)?;
+    // Safety: This is the only instance of `Eth`.
+    let eth = unsafe { Eth::parse(ctx) }?;
 
     match eth.ether_type() {
         EtherType::Ipv4 => try_handle_turn_ipv4(ctx, eth)?,
@@ -124,7 +125,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
 #[inline(always)]
 fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
-    let ipv4 = Ip4::parse(ctx)?;
+    // Safety: This is the only instance of `Ip4`.
+    let ipv4 = unsafe { Ip4::parse(ctx) }?;
 
     eth::save_mac_for_ipv4(ipv4.src(), eth.src());
     eth::save_mac_for_ipv4(ipv4.dst(), eth.dst());
@@ -133,7 +135,8 @@ fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
         return Err(Error::NotUdp);
     }
 
-    let udp = Udp::parse(ctx, Ipv4Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
+    // Safety: This is the only instance of `Udp` in this scope.
+    let udp = unsafe { Udp::parse(ctx, Ipv4Hdr::LEN) }?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
     let udp_payload_len = udp.payload_len();
 
     trace!(
@@ -170,7 +173,8 @@ fn try_handle_ipv4_channel_data_to_udp(
     ipv4: Ip4,
     udp: Udp,
 ) -> Result<(), Error> {
-    let cd = ChannelData::parse(ctx, Ipv4Hdr::LEN)?;
+    // Safety: This is the only instance of `Udp` in this scope.
+    let cd = unsafe { ChannelData::parse(ctx, Ipv4Hdr::LEN) }?;
 
     let key = ClientAndChannelV4::new(ipv4.src(), udp.src(), cd.number());
 
@@ -259,7 +263,8 @@ fn try_handle_ipv4_udp_to_channel_data(
 
 #[inline(always)]
 fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
-    let ipv6 = Ip6::parse(ctx)?;
+    // Safety: This is the only instance of `Ip6` in this scope.
+    let ipv6 = unsafe { Ip6::parse(ctx) }?;
 
     eth::save_mac_for_ipv6(ipv6.src(), eth.src());
     eth::save_mac_for_ipv6(ipv6.dst(), eth.dst());
@@ -268,7 +273,8 @@ fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
         return Err(Error::NotUdp);
     }
 
-    let udp = Udp::parse(ctx, Ipv6Hdr::LEN)?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
+    // Safety: This is the only instance of `Udp` in this scope.
+    let udp = unsafe { Udp::parse(ctx, Ipv6Hdr::LEN) }?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
     let udp_payload_len = udp.payload_len();
 
     trace!(
@@ -354,7 +360,8 @@ fn try_handle_ipv6_channel_data_to_udp(
     ipv6: Ip6,
     udp: Udp,
 ) -> Result<(), Error> {
-    let cd = ChannelData::parse(ctx, Ipv6Hdr::LEN)?;
+    // Safety: This is the only instance of `ChannelData` in this scope.
+    let cd = unsafe { ChannelData::parse(ctx, Ipv6Hdr::LEN) }?;
 
     let key = ClientAndChannelV6::new(ipv6.src(), udp.src(), cd.number());
 
