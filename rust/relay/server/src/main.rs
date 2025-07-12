@@ -1,9 +1,5 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-#[cfg(all(target_os = "linux", not(target_arch = "arm")))]
-#[global_allocator]
-static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
