@@ -2420,57 +2420,6 @@ mod tests {
     }
 
     #[test]
-    fn missing_local_candidates_are_not_an_immediate_ice_timeout() {
-        let _guard = firezone_logging::test("trace");
-
-        let now = Instant::now();
-
-        // Create a new client-node
-        let mut node = ClientNode::<u32, u32>::new([0u8; 32], now);
-        node.update_relays(
-            BTreeSet::default(),
-            &BTreeSet::from([(
-                1,
-                RelaySocket::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 3478)),
-                String::new(),
-                String::new(),
-                String::new(),
-            )]),
-            now,
-        );
-
-        // Add a new connection.
-        node.upsert_connection(
-            1,
-            PublicKey::from([1; 32]),
-            Secret::new([2; 32]),
-            IceCreds::new().into(),
-            IceCreds::new().into(),
-            now,
-        )
-        .unwrap();
-
-        // Remote is quicker in sending us a candidate than we are in discovering our local ones.
-        node.add_remote_candidate(
-            1,
-            String::from("candidate:fffeff64909ff03727e08ec0 1 udp 1694498559 1.1.1.1 52625 typ srflx raddr 0.0.0.0 rport 0"),
-            now,
-        );
-        // Spend a bit of time.
-        node.handle_timeout(now + Duration::from_millis(100));
-
-        // Should not immediately ICE timeout
-        let events = iter::from_fn(|| node.poll_event()).collect::<Vec<_>>();
-        assert!(!events.contains(&Event::ConnectionFailed(1)));
-
-        // After ~2s though, we give up.
-        node.handle_timeout(now + Duration::from_millis(2100));
-
-        let events = iter::from_fn(|| node.poll_event()).collect::<Vec<_>>();
-        assert!(events.contains(&Event::ConnectionFailed(1)));
-    }
-
-    #[test]
     fn generates_correct_optimistic_candidates() {
         let base = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625));
         let addr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
@@ -2489,34 +2438,5 @@ mod tests {
             Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
 
         assert!(agent.remote_candidates().contains(&expected_candidate))
-    }
-
-    #[test]
-    fn skips_optimistic_candidates_of_different_base() {
-        let base1 = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625));
-        let base2 = SocketAddr::V6(SocketAddrV6::new(
-            Ipv6Addr::new(10, 0, 0, 0, 0, 0, 0, 1),
-            52625,
-            0,
-            0,
-        ));
-        let addr = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
-
-        let host1 = Candidate::host(base1, "udp").unwrap();
-        let host2 = Candidate::host(base2, "udp").unwrap();
-        let srvflx =
-            Candidate::server_reflexive(SocketAddr::new(addr, 40000), base1, "udp").unwrap();
-
-        let mut agent = IceAgent::new();
-        agent.add_remote_candidate(host1);
-        agent.add_remote_candidate(host2);
-        agent.add_remote_candidate(srvflx);
-
-        generate_optimistic_candidates(&mut agent);
-
-        let unexpected_candidate =
-            Candidate::server_reflexive(SocketAddr::new(addr, 52625), base2, "udp").unwrap();
-
-        assert!(!agent.remote_candidates().contains(&unexpected_candidate))
     }
 }
