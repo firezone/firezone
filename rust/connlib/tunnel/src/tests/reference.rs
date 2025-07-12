@@ -88,7 +88,30 @@ impl ReferenceState {
                         Just(portal),
                         Just(dns_resource_records.clone()),
                         icmp_error_hosts(dns_resource_records.clone()),
-                        tcp_resources(dns_resource_records, unreachable_hosts),
+                        Just(relays),
+                        Just(global_dns),
+                        Just(drop_direct_client_traffic),
+                    )
+                },
+            )
+            .prop_flat_map(
+                |(
+                    client,
+                    gateways,
+                    portal,
+                    dns_resource_records,
+                    icmp_error_hosts,
+                    relays,
+                    global_dns,
+                    drop_direct_client_traffic,
+                )| {
+                    (
+                        Just(client),
+                        Just(gateways),
+                        Just(portal),
+                        Just(dns_resource_records.clone()),
+                        Just(icmp_error_hosts.clone()),
+                        tcp_resources(dns_resource_records, icmp_error_hosts),
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
