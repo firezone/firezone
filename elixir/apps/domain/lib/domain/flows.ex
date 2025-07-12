@@ -5,6 +5,7 @@ defmodule Domain.Flows do
   require Ecto.Query
   require Logger
 
+  # TODO: Connection setup latency
   def authorize_flow(
         %Clients.Client{
           id: client_id,
@@ -32,7 +33,9 @@ defmodule Domain.Flows do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
          {:ok, resource} <-
            Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts),
-         {:ok, policy, conformation_expires_at} <- fetch_conforming_policy(resource, client) do
+         {:ok, policy, conformation_expires_at} <- fetch_conforming_policy(resource, client),
+         {:ok, membership} =
+           Actors.fetch_membership_by_actor_id_and_group_id(actor_id, policy.actor_group_id) do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
@@ -40,6 +43,7 @@ defmodule Domain.Flows do
           client_id: client_id,
           gateway_id: gateway_id,
           resource_id: resource.id,
+          actor_group_membership_id: membership.id,
           account_id: account_id,
           client_remote_ip: client_remote_ip,
           client_user_agent: client_user_agent,
