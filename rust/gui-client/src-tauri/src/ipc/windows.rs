@@ -169,7 +169,7 @@ fn ipc_path(id: SocketId) -> String {
 /// Public because the GUI Client reuses this for deep links. Eventually that code
 /// will be de-duped into this code.
 pub fn named_pipe_path(id: &str) -> String {
-    format!(r"\\.\pipe\{}", id)
+    format!(r"\\.\pipe\{id}")
 }
 
 #[cfg(test)]

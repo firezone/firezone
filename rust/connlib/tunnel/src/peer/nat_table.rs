@@ -36,11 +36,11 @@ impl NatTable {
                 Protocol::Icmp(_) => ICMP_TTL,
             };
 
-            if now.duration_since(*e) >= ttl {
-                if let Some((inside, _)) = self.table.remove_by_right(outside) {
-                    tracing::debug!(?inside, ?outside, ?ttl, "NAT session expired");
-                    self.expired.insert(*outside);
-                }
+            if now.duration_since(*e) >= ttl
+                && let Some((inside, _)) = self.table.remove_by_right(outside)
+            {
+                tracing::debug!(?inside, ?outside, ?ttl, "NAT session expired");
+                self.expired.insert(*outside);
             }
         }
     }

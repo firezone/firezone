@@ -64,7 +64,7 @@ runs:
     - name: Install nightly Rust
       id: nightly
       run: |
-        NIGHTLY="nightly-2024-12-13"
+        NIGHTLY="nightly-2025-05-30"
 
         rustup toolchain install $NIGHTLY
         rustup component add rust-src --toolchain $NIGHTLY

@@ -187,24 +187,24 @@ impl SimGateway {
             .icmp_error_for_ip(dst_ip)
             .map(|icmp_error| icmp_error_reply(&packet, icmp_error).unwrap());
 
-        if let Some(icmp) = packet.as_icmpv4() {
-            if let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type() {
-                let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-                tracing::debug!(%packet_id, "Received ICMP request");
-                self.received_icmp_requests
-                    .insert(packet_id, packet.clone());
-                return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
-            }
+        if let Some(icmp) = packet.as_icmpv4()
+            && let Icmpv4Type::EchoRequest(echo) = icmp.icmp_type()
+        {
+            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
+            tracing::debug!(%packet_id, "Received ICMP request");
+            self.received_icmp_requests
+                .insert(packet_id, packet.clone());
+            return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
-        if let Some(icmp) = packet.as_icmpv6() {
-            if let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type() {
-                let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
-                tracing::debug!(%packet_id, "Received ICMP request");
-                self.received_icmp_requests
-                    .insert(packet_id, packet.clone());
-                return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
-            }
+        if let Some(icmp) = packet.as_icmpv6()
+            && let Icmpv6Type::EchoRequest(echo) = icmp.icmp_type()
+        {
+            let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
+            tracing::debug!(%packet_id, "Received ICMP request");
+            self.received_icmp_requests
+                .insert(packet_id, packet.clone());
+            return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
         if let Some(udp) = packet.as_udp() {
