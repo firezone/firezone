@@ -87,7 +87,7 @@ impl ReferenceState {
                         Just(gateways),
                         Just(portal),
                         Just(dns_resource_records.clone()),
-                        icmp_error_hosts(dns_resource_records.clone()),
+                        icmp_error_hosts(dns_resource_records),
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
