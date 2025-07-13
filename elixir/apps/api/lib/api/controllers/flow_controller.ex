@@ -30,12 +30,9 @@ defmodule API.FlowController do
     ]
 
   def index(conn, params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> time_filter_to_list_opts(params)
-
-    with {:ok, flows, metadata} <-
-           Flows.list_flows(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
+         {:ok, flows, metadata} <- Flows.list_flows(conn.assigns.subject, list_opts) do
       render(conn, :index, flows: flows, metadata: metadata)
     end
   end
@@ -70,11 +67,9 @@ defmodule API.FlowController do
     ]
 
   def index_for_policy(conn, %{"policy_id" => policy_id} = params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> time_filter_to_list_opts(params)
-
-    with {:ok, flows, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
+         {:ok, flows, metadata} <-
            Flows.list_flows_for_policy_id(policy_id, conn.assigns.subject, list_opts) do
       render(conn, :index, flows: flows, metadata: metadata)
     end
@@ -110,11 +105,9 @@ defmodule API.FlowController do
     ]
 
   def index_for_resource(conn, %{"resource_id" => resource_id} = params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> time_filter_to_list_opts(params)
-
-    with {:ok, flows, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
+         {:ok, flows, metadata} <-
            Flows.list_flows_for_resource_id(resource_id, conn.assigns.subject, list_opts) do
       render(conn, :index, flows: flows, metadata: metadata)
     end
@@ -150,11 +143,9 @@ defmodule API.FlowController do
     ]
 
   def index_for_client(conn, %{"client_id" => client_id} = params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> time_filter_to_list_opts(params)
-
-    with {:ok, flows, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
+         {:ok, flows, metadata} <-
            Flows.list_flows_for_client_id(client_id, conn.assigns.subject, list_opts) do
       render(conn, :index, flows: flows, metadata: metadata)
     end
@@ -190,11 +181,9 @@ defmodule API.FlowController do
     ]
 
   def index_for_actor(conn, %{"actor_id" => actor_id} = params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> time_filter_to_list_opts(params)
-
-    with {:ok, flows, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
+         {:ok, flows, metadata} <-
            Flows.list_flows_for_actor_id(actor_id, conn.assigns.subject, list_opts) do
       render(conn, :index, flows: flows, metadata: metadata)
     end
@@ -236,11 +225,9 @@ defmodule API.FlowController do
     ]
 
   def index_for_gateway(conn, %{"gateway_id" => gateway_id} = params) do
-    list_opts =
-      Pagination.params_to_list_opts(params)
-      |> time_filter_to_list_opts(params)
-
-    with {:ok, flows, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
+         {:ok, flows, metadata} <-
            Flows.list_flows_for_gateway_id(gateway_id, conn.assigns.subject, list_opts) do
       render(conn, :index, flows: flows, metadata: metadata)
     end
@@ -273,7 +260,7 @@ defmodule API.FlowController do
          {:ok, to, 0} <- DateTime.from_iso8601(to) do
       {:ok, %Domain.Repo.Filter.Range{from: from, to: to}}
     else
-      _other -> {:error, :bad_request}
+      {:error, _reason} -> {:error, :bad_request}
     end
   end
 
@@ -281,7 +268,7 @@ defmodule API.FlowController do
     with {:ok, to, 0} <- DateTime.from_iso8601(to) do
       {:ok, %Domain.Repo.Filter.Range{to: to}}
     else
-      _other -> {:error, :bad_request}
+      {:error, _reason} -> {:error, :bad_request}
     end
   end
 
@@ -289,7 +276,7 @@ defmodule API.FlowController do
     with {:ok, from, 0} <- DateTime.from_iso8601(from) do
       {:ok, %Domain.Repo.Filter.Range{from: from}}
     else
-      _other -> {:error, :bad_request}
+      {:error, _reason} -> {:error, :bad_request}
     end
   end
 
@@ -299,8 +286,8 @@ defmodule API.FlowController do
 
   def time_filter_to_list_opts(list_opts, params) do
     case cast_time_range(params) do
-      {:ok, nil} -> list_opts
-      {:ok, value} -> Keyword.put(list_opts, :filter, range: value)
+      {:ok, nil} -> {:ok, list_opts}
+      {:ok, value} -> {:ok, Keyword.put(list_opts, :filter, range: value)}
       other -> other
     end
   end

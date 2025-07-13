@@ -28,9 +28,8 @@ defmodule API.IdentityProviderController do
     ]
 
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, identity_providers, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, identity_providers, metadata} <-
            Auth.list_providers(conn.assigns.subject, list_opts) do
       render(conn, :index, identity_providers: identity_providers, metadata: metadata)
     end

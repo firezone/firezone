@@ -22,9 +22,8 @@ defmodule API.ActorController do
 
   # List Actors
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     end
   end

@@ -27,9 +27,8 @@ defmodule API.GatewayGroupController do
 
   # List Gateway Groups / Sites
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, gateway_groups, metadata} <- Gateways.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, gateway_groups, metadata} <- Gateways.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, gateway_groups: gateway_groups, metadata: metadata)
     end
   end

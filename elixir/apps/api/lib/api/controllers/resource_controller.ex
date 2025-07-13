@@ -21,9 +21,8 @@ defmodule API.ResourceController do
     ]
 
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, resources, metadata} <-
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, resources, metadata} <-
            Resources.list_resources(conn.assigns.subject, list_opts) do
       render(conn, :index, resources: resources, metadata: metadata)
     end

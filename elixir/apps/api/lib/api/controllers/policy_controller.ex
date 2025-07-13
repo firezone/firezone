@@ -22,9 +22,8 @@ defmodule API.PolicyController do
 
   # List Policies
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, policies, metadata} <- Policies.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, policies, metadata} <- Policies.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     end
   end

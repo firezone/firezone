@@ -28,12 +28,9 @@ defmodule API.ClientController do
 
   # List Clients
   def index(conn, params) do
-    list_opts =
-      params
-      |> Pagination.params_to_list_opts()
-      |> Keyword.put(:preload, :online?)
-
-    with {:ok, clients, metadata} <- Clients.list_clients(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         list_opts <- Keyword.put(list_opts, :preload, :online?),
+         {:ok, clients, metadata} <- Clients.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     end
   end

@@ -24,9 +24,9 @@ defmodule API.IdentityController do
   # List Identities
   def index(conn, %{"actor_id" => actor_id} = params) do
     subject = conn.assigns.subject
-    list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actor} <- Domain.Actors.fetch_actor_by_id(actor_id, subject),
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, actor} <- Domain.Actors.fetch_actor_by_id(actor_id, subject),
          {:ok, identities, metadata} <- Auth.list_identities_for(actor, subject, list_opts) do
       render(conn, :index, identities: identities, metadata: metadata)
     end

@@ -22,9 +22,8 @@ defmodule API.ActorGroupController do
 
   # List Actor Groups
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, actor_groups, metadata} <- Actors.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, actor_groups, metadata} <- Actors.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, actor_groups: actor_groups, metadata: metadata)
     end
   end
