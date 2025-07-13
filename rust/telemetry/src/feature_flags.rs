@@ -61,7 +61,7 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
         scope.set_context("flags", sentry_flag_context(flags));
     });
 
-    tracing::debug!(flags = ?FEATURE_FLAGS, "Evaluated feature-flags");
+    tracing::debug!(%env, flags = ?FEATURE_FLAGS, "Evaluated feature-flags");
 }
 
 pub(crate) fn reevaluate(user_id: String, env: &str) {
