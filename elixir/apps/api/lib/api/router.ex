@@ -41,23 +41,37 @@ defmodule API.Router do
   scope "/", API do
     pipe_through :api
 
-    resources "/clients", ClientController, except: [:new, :edit, :create]
+    resources "/clients", ClientController, except: [:new, :edit, :create] do
+      get "/flows", FlowController, :index_for_client
+    end
+
     put "/clients/:id/verify", ClientController, :verify
     put "/clients/:id/unverify", ClientController, :unverify
 
-    resources "/resources", ResourceController, except: [:new, :edit]
-    resources "/policies", PolicyController, except: [:new, :edit]
+    resources "/resources", ResourceController, except: [:new, :edit] do
+      get "/flows", FlowController, :index_for_resource
+    end
+
+    resources "/policies", PolicyController, except: [:new, :edit] do
+      get "/flows", FlowController, :index_for_policy
+    end
+
+    resources "/flows", FlowController, only: [:index, :show]
 
     resources "/gateway_groups", GatewayGroupController, except: [:new, :edit] do
       post "/tokens", GatewayGroupController, :create_token
       delete "/tokens", GatewayGroupController, :delete_all_tokens
       delete "/tokens/:id", GatewayGroupController, :delete_token
-      resources "/gateways", GatewayController, except: [:new, :edit, :create, :update]
+
+      resources "/gateways", GatewayController, except: [:new, :edit, :create, :update] do
+        get "/flows", FlowController, :index_for_gateway
+      end
     end
 
     resources "/actors", ActorController, except: [:new, :edit] do
       resources "/identities", IdentityController, except: [:new, :edit, :create, :update]
       post "/providers/:provider_id/identities/", IdentityController, :create
+      get "/flows", FlowController, :index_for_actor
     end
 
     resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
