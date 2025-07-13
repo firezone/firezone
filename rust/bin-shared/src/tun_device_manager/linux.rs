@@ -299,7 +299,7 @@ pub struct Tun {
 }
 
 impl Tun {
-    pub fn new(num_threads: usize) -> io::Result<Self> {
+    pub fn new(num_threads: usize) -> Result<Self> {
         create_tun_device()?;
 
         let (inbound_tx, inbound_rx) = mpsc::channel(1000);
@@ -345,9 +345,14 @@ impl Tun {
     }
 }
 
-fn open_tun() -> Result<OwnedFd, io::Error> {
+fn open_tun() -> Result<OwnedFd> {
     let fd = match unsafe { open(TUN_FILE.as_ptr() as _, O_RDWR) } {
-        -1 => return Err(get_last_error()),
+        -1 => {
+            let file = TUN_FILE.to_str()?;
+
+            return Err(anyhow::Error::new(get_last_error()))
+                .with_context(|| format!("Failed to open '{file}'"));
+        }
         fd => fd,
     };
 
@@ -356,10 +361,11 @@ fn open_tun() -> Result<OwnedFd, io::Error> {
             fd,
             TUNSETIFF,
             &mut ioctl::Request::<ioctl::SetTunFlagsPayload>::new(TunDeviceManager::IFACE_NAME),
-        )?;
+        )
+        .context("Failed to set flags on TUN device")?;
     }
 
-    set_non_blocking(fd)?;
+    set_non_blocking(fd).context("Failed to make TUN device non-blocking")?;
 
     // Safety: We are not closing the FD.
     let fd = unsafe { OwnedFd::from_raw_fd(fd) };
