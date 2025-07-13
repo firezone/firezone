@@ -110,7 +110,7 @@ defmodule API.Client.Channel do
         relays:
           Views.Relay.render_many(
             relays,
-            socket.assigns.client.id,
+            socket.assigns.turn_salt,
             socket.assigns.subject.expires_at
           ),
         interface:
@@ -447,7 +447,7 @@ defmodule API.Client.Channel do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.client.id,
+              socket.assigns.turn_salt,
               socket.assigns.subject.expires_at
             )
         }
@@ -505,7 +505,7 @@ defmodule API.Client.Channel do
             connected:
               Views.Relay.render_many(
                 relays,
-                socket.assigns.client.id,
+                socket.assigns.turn_salt,
                 socket.assigns.subject.expires_at
               )
           })

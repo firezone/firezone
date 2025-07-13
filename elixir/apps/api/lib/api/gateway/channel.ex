@@ -50,7 +50,7 @@ defmodule API.Gateway.Channel do
         account_slug: account.slug,
         interface: Views.Interface.render(socket.assigns.gateway),
         relays:
-          Views.Relay.render_many(relays, socket.assigns.gateway.id, relay_credentials_expire_at),
+          Views.Relay.render_many(relays, socket.assigns.turn_salt, relay_credentials_expire_at),
         # These aren't used but needed for API compatibility
         config: %{
           ipv4_masquerade_enabled: true,
@@ -183,7 +183,7 @@ defmodule API.Gateway.Channel do
           connected:
             Views.Relay.render_many(
               relays,
-              socket.assigns.gateway.id,
+              socket.assigns.turn_salt,
               relay_credentials_expire_at
             )
         }
@@ -244,7 +244,7 @@ defmodule API.Gateway.Channel do
             connected:
               Views.Relay.render_many(
                 relays,
-                socket.assigns.gateway.id,
+                socket.assigns.turn_salt,
                 relay_credentials_expire_at
               )
           })
