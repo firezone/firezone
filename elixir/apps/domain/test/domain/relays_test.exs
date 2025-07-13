@@ -786,7 +786,7 @@ defmodule Domain.RelaysTest do
     end
   end
 
-  describe "generate_username_and_password/1" do
+  describe "generate_username_and_password/3" do
     test "returns username and password", %{account: account} do
       relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = Ecto.UUID.generate()
@@ -794,10 +794,11 @@ defmodule Domain.RelaysTest do
       expires_at = DateTime.utc_now() |> DateTime.add(3, :second)
 
       assert %{username: username, password: password, expires_at: expires_at_unix} =
-               generate_username_and_password(relay, expires_at)
+               generate_username_and_password(relay, "test", expires_at)
 
       assert [username_expires_at_unix, username_salt] = String.split(username, ":", parts: 2)
       assert username_expires_at_unix == to_string(expires_at_unix)
+      assert username_salt == "test"
       assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
 
       expected_hash =

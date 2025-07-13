@@ -107,7 +107,12 @@ defmodule API.Client.Channel do
 
       push(socket, "init", %{
         resources: Views.Resource.render_many(resources),
-        relays: Views.Relay.render_many(relays, socket.assigns.subject.expires_at),
+        relays:
+          Views.Relay.render_many(
+            relays,
+            socket.assigns.client.id,
+            socket.assigns.subject.expires_at
+          ),
         interface:
           Views.Interface.render(%{
             socket.assigns.client
@@ -439,7 +444,12 @@ defmodule API.Client.Channel do
 
         payload = %{
           disconnected_ids: [relay_id],
-          connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
+          connected:
+            Views.Relay.render_many(
+              relays,
+              socket.assigns.client.id,
+              socket.assigns.subject.expires_at
+            )
         }
 
         {:noreply, Debouncer.queue_leave(self(), socket, relay_id, payload)}
@@ -492,7 +502,12 @@ defmodule API.Client.Channel do
 
           push(socket, "relays_presence", %{
             disconnected_ids: disconnected_ids,
-            connected: Views.Relay.render_many(relays, socket.assigns.subject.expires_at)
+            connected:
+              Views.Relay.render_many(
+                relays,
+                socket.assigns.client.id,
+                socket.assigns.subject.expires_at
+              )
           })
 
           {:noreply, socket}
