@@ -62,28 +62,30 @@ defmodule API.FlowControllerTest do
       assert equal_ids?(data_ids, flows_ids)
     end
 
-    test "lists flows with limit", %{
+    test "lists flows with range", %{
       conn: conn,
       account: account,
       actor: actor,
       subject: subject
     } do
-      flows =
-        for _ <- 1..3,
-            do:
-              Fixtures.Flows.create_flow(
-                account: account,
-                subject: subject
-              )
+      for _ <- 1..3,
+          do:
+            Fixtures.Flows.create_flow(
+              account: account,
+              subject: subject
+            )
 
       conn =
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows", limit: "2")
+        |> get("/flows",
+          min_datetime: "2025-01-01T00:00:00Z",
+          max_datetime: "2025-01-02T00:00:00Z"
+        )
 
       assert %{
-               "data" => data,
+               "data" => [],
                "metadata" => %{
                  "count" => count,
                  "limit" => limit,
@@ -92,15 +94,10 @@ defmodule API.FlowControllerTest do
                }
              } = json_response(conn, 200)
 
-      assert limit == 2
-      assert count == 3
-      refute is_nil(next_page)
+      assert count == 0
+      assert limit == 50
+      assert is_nil(next_page)
       assert is_nil(prev_page)
-
-      data_ids = Enum.map(data, & &1["id"]) |> MapSet.new()
-      flows_ids = Enum.map(flows, & &1.id) |> MapSet.new()
-
-      assert MapSet.subset?(data_ids, flows_ids)
     end
   end
 

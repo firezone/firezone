@@ -111,4 +111,19 @@ defmodule Domain.Flows.Flow.Query do
       {:flows, :desc, :inserted_at},
       {:flows, :asc, :id}
     ]
+
+  @impl Domain.Repo.Query
+  def filters,
+    do: [
+      %Domain.Repo.Filter{
+        name: :range,
+        type: {:range, :datetime},
+        values: [],
+        fun: &filter_by_range/2
+      }
+    ]
+
+  def filter_by_range(queryable, range) do
+    {queryable, by_range(range, dynamic([flows: flows], flows.inserted_at))}
+  end
 end
