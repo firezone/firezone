@@ -29,7 +29,7 @@ defmodule API.Gateway.Socket do
 
         # For Relay credentials
         turn_salt =
-          Domain.Crypto.hash(:sha256, token)
+          Domain.Crypto.hash(:sha256, encoded_token)
           |> Base.url_encode64(padding: false)
 
         socket =
