@@ -375,6 +375,79 @@ defmodule API.FlowControllerTest do
       flows_gateway_ids = Enum.map(flows, & &1.gateway_id)
       assert equal_ids?(data_gateway_ids, flows_gateway_ids)
     end
+
+    test "lists all flows with multiple filters", %{
+      conn: conn,
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      gateway = Fixtures.Gateways.create_gateway(%{account: account})
+
+      # Flows not matching filters
+      for _ <- 1..3 do
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject
+        )
+
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client
+        )
+
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          gateway: gateway
+        )
+      end
+
+      flows =
+        for _ <- 1..3,
+            do:
+              Fixtures.Flows.create_flow(
+                account: account,
+                subject: subject,
+                gateway: gateway,
+                client: client
+              )
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> get("/flows", gateway_id: gateway.id, client_id: client.id)
+
+      assert %{
+               "data" => data,
+               "metadata" => %{
+                 "count" => count,
+                 "limit" => limit,
+                 "next_page" => next_page,
+                 "prev_page" => prev_page
+               }
+             } = json_response(conn, 200)
+
+      assert count == 3
+      assert limit == 50
+      assert is_nil(next_page)
+      assert is_nil(prev_page)
+
+      data_ids = Enum.map(data, & &1["id"])
+      flows_ids = Enum.map(flows, & &1.id)
+      assert equal_ids?(data_ids, flows_ids)
+
+      data_gateway_ids = Enum.map(data, & &1["gateway_id"])
+      flows_gateway_ids = Enum.map(flows, & &1.gateway_id)
+      assert equal_ids?(data_gateway_ids, flows_gateway_ids)
+
+      data_client_ids = Enum.map(data, & &1["client_id"])
+      flows_client_ids = Enum.map(flows, & &1.client_id)
+      assert equal_ids?(data_client_ids, flows_client_ids)
+    end
   end
 
   describe "show/2" do

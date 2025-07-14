@@ -121,9 +121,17 @@ defmodule API.FlowController do
 
   def time_filter_to_list_opts(list_opts, params) do
     case cast_time_range(params) do
-      {:ok, nil} -> {:ok, list_opts}
-      {:ok, value} -> {:ok, Keyword.put(list_opts, :filter, range: value)}
-      other -> other
+      {:ok, nil} ->
+        {:ok, list_opts}
+
+      {:ok, value} ->
+        {:ok,
+         Keyword.update(list_opts, :filter, [{:range, value}], fn filter ->
+           filter ++ [{:range, value}]
+         end)}
+
+      other ->
+        other
     end
   end
 
