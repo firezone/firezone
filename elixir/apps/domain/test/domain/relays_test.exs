@@ -790,19 +790,21 @@ defmodule Domain.RelaysTest do
     test "returns username and password", %{account: account} do
       relay = Fixtures.Relays.create_relay(account: account)
       stamp_secret = "test_secret"
-      turn_salt = "test_salt"
+      public_key = "test_public_key"
       relay = %{relay | stamp_secret: stamp_secret}
       {:ok, expires_at, _} = DateTime.from_iso8601("2023-10-01T00:00:00Z")
 
       assert %{username: username, password: password, expires_at: expires_at_unix} =
-               generate_username_and_password(relay, turn_salt, expires_at)
+               generate_username_and_password(relay, public_key, expires_at)
 
-      assert [username_expires_at_unix, username_salt] = String.split(username, ":", parts: 2)
+      assert [username_expires_at_unix, username_public_key] =
+               String.split(username, ":", parts: 2)
+
       assert username_expires_at_unix == to_string(expires_at_unix)
-      assert username_salt == turn_salt
+      assert username_public_key == public_key
       assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
-      assert username == "1696118400:test_salt"
-      assert password == "P0+gMB7RdvcvPv3eYFh1VSJUJh/FoAmOjUOqU8dToD8"
+      assert username == "1696118400:test_public_key"
+      assert password == "82Yh/3PRtuKb7e4RqanJpTwqNVm+pORwJarvgcOpMrw"
     end
   end
 
