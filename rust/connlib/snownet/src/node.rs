@@ -117,7 +117,6 @@ impl Mode for Client {
 /// We favor these generic parameters over having our own IDs to avoid mapping back and forth in upper layers.
 pub struct Node<T, TId, RId> {
     private_key: StaticSecret,
-    public_key: PublicKey,
     session_id: SessionId,
 
     index: IndexLfsr,
@@ -161,7 +160,6 @@ where
             rng,
             session_id: SessionId::new(*public_key),
             private_key,
-            public_key: *public_key,
             mode: T::new(),
             index,
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
@@ -208,13 +206,12 @@ where
         self.buffered_transmits.clear();
 
         self.private_key = StaticSecret::random_from_rng(&mut self.rng);
-        self.public_key = (&self.private_key).into();
         self.rate_limiter = Arc::new(RateLimiter::new_at(
-            &self.public_key,
+            &self.public_key(),
             HANDSHAKE_RATE_LIMIT,
             now,
         ));
-        self.session_id = SessionId::new(self.public_key);
+        self.session_id = SessionId::new(self.public_key());
 
         tracing::debug!(%num_connections, "Closed all connections as part of reconnecting");
     }
@@ -291,7 +288,7 @@ where
     }
 
     pub fn public_key(&self) -> PublicKey {
-        self.public_key
+        PublicKey::from(&self.private_key)
     }
 
     pub fn connection_id(&self, key: PublicKey, now: Instant) -> Option<TId> {

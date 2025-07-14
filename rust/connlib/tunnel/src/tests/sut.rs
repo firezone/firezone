@@ -1,4 +1,5 @@
 use super::buffered_transmits::BufferedTransmits;
+use super::connection_intent_failures::ConnectionIntentFailure;
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::IcmpErrorHosts;
 use super::reference::ReferenceState;
@@ -24,6 +25,7 @@ use rand::SeedableRng;
 use rand::distributions::DistString;
 use sha2::Digest;
 use snownet::{NoTurnServers, Transmit};
+use std::collections::VecDeque;
 use std::iter;
 use std::{
     collections::BTreeMap,
@@ -44,6 +46,7 @@ pub(crate) struct TunnelTest {
 
     buffer_pool: BufferPool<Vec<u8>>,
 
+    connection_intent_failures: VecDeque<Option<ConnectionIntentFailure>>,
     drop_direct_client_traffic: bool,
     network: RoutingTable,
 }
@@ -102,6 +105,7 @@ impl TunnelTest {
             flux_capacitor: flux_capacitor.clone(),
             network: ref_state.network.clone(),
             drop_direct_client_traffic: ref_state.drop_direct_client_traffic,
+            connection_intent_failures: ref_state.connection_intent_failures.clone(),
             client,
             gateways,
             relays,
@@ -725,16 +729,27 @@ impl TunnelTest {
             } => {
                 let (gateway_id, site_id) =
                     portal.handle_connection_intent(resource_id, connected_gateway_ids);
+                let failure = self.connection_intent_failures.pop_front().flatten();
+
                 let gateway = self.gateways.get_mut(&gateway_id).expect("unknown gateway");
                 let resource = portal.map_client_resource_to_gateway_resource(resource_id);
 
                 let client_key = self.client.inner().sut.public_key();
                 let gateway_key = gateway.inner().sut.public_key();
+
                 let (preshared_key, client_ice, gateway_ice) =
                     make_preshared_key_and_ice(client_key, gateway_key);
 
                 gateway
                     .exec_mut(|g| {
+                        let client_key = failure
+                            .and_then(|f| f.replace_client_pubkey)
+                            .map(PublicKey::from)
+                            .inspect(|_| {
+                                tracing::debug!("Sending wrong client public key to gateway")
+                            })
+                            .unwrap_or(client_key);
+
                         g.sut.authorize_flow(
                             src,
                             client_key,
@@ -748,8 +763,17 @@ impl TunnelTest {
                         )
                     })
                     .map_err(AuthorizeFlowError::Gateway)?;
+
                 self.client
                     .exec_mut(|c| {
+                        let gateway_key = failure
+                            .and_then(|f| f.replace_gateway_pubkey)
+                            .map(PublicKey::from)
+                            .inspect(|_| {
+                                tracing::debug!("Sending wrong gateway public key to client")
+                            })
+                            .unwrap_or(gateway_key);
+
                         c.sut.handle_flow_created(
                             resource_id,
                             gateway_id,
