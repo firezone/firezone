@@ -12,6 +12,8 @@ defmodule API.Client.Views.Relay do
     |> List.flatten()
   end
 
+  defp render_addr(_relay, _salt, _expires_at, nil), do: []
+
   defp render_addr(%Relays.Relay{} = relay, salt, expires_at, address) do
     %{
       username: username,
