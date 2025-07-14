@@ -6,11 +6,12 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+futures = { workspace = true }
 hex = { workspace = true }
 ip-packet = { workspace = true }
 moka = { workspace = true, features = ["sync"] }
 opentelemetry = { workspace = true }
-opentelemetry_sdk = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["metrics"] }
 parking_lot = { workspace = true }
 reqwest = { workspace = true }
 sentry = { workspace = true, features = ["contexts", "backtrace", "debug-images", "panic", "reqwest", "rustls", "tracing", "release-health", "logs"] }

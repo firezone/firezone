@@ -2386,6 +2386,7 @@ dependencies = [
  "nix 0.30.1",
  "num_cpus",
  "opentelemetry",
+ "opentelemetry-otlp",
  "opentelemetry-stdout",
  "opentelemetry_sdk",
  "phoenix-channel",
@@ -2583,6 +2584,7 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "futures",
  "hex",
  "ip-packet",
  "moka",

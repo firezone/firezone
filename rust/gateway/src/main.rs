@@ -7,10 +7,13 @@ use firezone_bin_shared::{
     platform::{tcp_socket_factory, udp_socket_factory},
 };
 
-use firezone_telemetry::{Telemetry, otel};
+use firezone_telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
+};
 use firezone_tunnel::GatewayTunnel;
 use ip_packet::IpPacket;
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 
@@ -115,17 +118,34 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
             .await;
     }
 
-    if cli.metrics {
-        let exporter = opentelemetry_stdout::MetricExporter::default();
-        let reader = PeriodicReader::builder(exporter).build();
-        let provider = SdkMeterProvider::builder()
-            .with_reader(reader)
-            .with_resource(otel::default_resource_with([
-                otel::attr::service_name!(),
-                otel::attr::service_version!(),
-                otel::attr::service_instance_id(firezone_id.clone()),
-            ]))
-            .build();
+    if let Some(backend) = cli.metrics {
+        let resource = otel::default_resource_with([
+            otel::attr::service_name!(),
+            otel::attr::service_version!(),
+            otel::attr::service_instance_id(firezone_id.clone()),
+        ]);
+
+        let provider = match (backend, cli.otlp_grpc_endpoint) {
+            (MetricsExporter::Stdout, _) => SdkMeterProvider::builder()
+                .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                .with_resource(resource)
+                .build(),
+            (MetricsExporter::OtelCollector, Some(endpoint)) => SdkMeterProvider::builder()
+                .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+                .with_resource(resource)
+                .build(),
+            (MetricsExporter::OtelCollector, None) => SdkMeterProvider::builder()
+                .with_periodic_exporter(MaybePushMetricsExporter {
+                    inner: {
+                        // TODO: Once Firezone has a hosted OTLP exporter, it will go here.
+
+                        NoopPushMetricsExporter
+                    },
+                    should_export: feature_flags::export_metrics,
+                })
+                .with_resource(resource)
+                .build(),
+        };
 
         opentelemetry::global::set_meter_provider(provider);
     }
@@ -195,6 +215,18 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 }
 
+fn tonic_otlp_exporter(
+    endpoint: String,
+) -> Result<opentelemetry_otlp::MetricExporter, anyhow::Error> {
+    let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_endpoint(format!("http://{endpoint}"))
+        .build()
+        .context("Failed to build OTLP metric exporter")?;
+
+    Ok(metric_exporter)
+}
+
 async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     if let Some(id) = env_id
         && !id.is_empty()
@@ -250,9 +282,15 @@ struct Cli {
     #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t)]
     tun_threads: NumThreads,
 
-    /// Dump internal metrics to stdout every 60s.
-    #[arg(long, hide = true, env = "FIREZONE_METRICS", default_value_t = false)]
-    metrics: bool,
+    /// Where to export metrics to.
+    #[arg(long, hide = true, env = "FIREZONE_METRICS")]
+    metrics: Option<MetricsExporter>,
+
+    /// Send metrics to a custom OTLP collector.
+    ///
+    /// By default, Firezone's hosted OTLP collector is used.
+    #[arg(long, env, hide = true)]
+    otlp_grpc_endpoint: Option<String>,
 
     /// Validates the checksums of all packets leaving the TUN device.
     #[arg(
@@ -262,6 +300,12 @@ struct Cli {
         default_value_t = false
     )]
     validate_checksums: bool,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum MetricsExporter {
+    Stdout,
+    OtelCollector,
 }
 
 impl Cli {
