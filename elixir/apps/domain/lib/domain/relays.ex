@@ -270,6 +270,8 @@ defmodule Domain.Relays do
     {:ok, relays}
   end
 
+  # TODO: Relays
+  # Revisit credential lifetime when https://github.com/firezone/firezone/issues/8222 is implemented
   def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, salt, expires_at)
       when is_binary(stamp_secret) do
     expires_at = DateTime.to_unix(expires_at, :second)
