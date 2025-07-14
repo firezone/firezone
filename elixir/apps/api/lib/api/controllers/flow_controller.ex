@@ -6,201 +6,37 @@ defmodule API.FlowController do
 
   action_fallback API.FallbackController
 
+  tags ["Flows"]
+
   operation :index,
-    tags: ["Flows"],
     summary: "List Flows",
     parameters: [
-      limit: [in: :query, description: "Limit Flows returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
-      min_datetime: [
-        in: :query,
-        description: "Min UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ],
-      max_datetime: [
-        in: :query,
-        description: "Max UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ]
-    ],
-    responses: [
-      ok: {"Flow Response", "application/json", API.Schemas.Flow.ListResponse}
-    ]
-
-  def index(conn, params) do
-    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
-         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
-         {:ok, flows, metadata} <- Flows.list_flows(conn.assigns.subject, list_opts) do
-      render(conn, :index, flows: flows, metadata: metadata)
-    end
-  end
-
-  operation :index_for_policy,
-    tags: ["Policies"],
-    summary: "List Flows for a policy",
-    parameters: [
       policy_id: [
-        in: :path,
+        in: :query,
         description: "Policy ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Flows returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
-      min_datetime: [
-        in: :query,
-        description: "Min UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ],
-      max_datetime: [
-        in: :query,
-        description: "Max UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ]
-    ],
-    responses: [
-      ok: {"Flow Response", "application/json", API.Schemas.Flow.ListResponse}
-    ]
-
-  def index_for_policy(conn, %{"policy_id" => policy_id} = params) do
-    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
-         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
-         {:ok, flows, metadata} <-
-           Flows.list_flows_for_policy_id(policy_id, conn.assigns.subject, list_opts) do
-      render(conn, :index, flows: flows, metadata: metadata)
-    end
-  end
-
-  operation :index_for_resource,
-    tags: ["Resources"],
-    summary: "List Flows for a resource",
-    parameters: [
       resource_id: [
-        in: :path,
+        in: :query,
         description: "Resource ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Flows returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
-      min_datetime: [
-        in: :query,
-        description: "Min UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ],
-      max_datetime: [
-        in: :query,
-        description: "Max UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ]
-    ],
-    responses: [
-      ok: {"Flow Response", "application/json", API.Schemas.Flow.ListResponse}
-    ]
-
-  def index_for_resource(conn, %{"resource_id" => resource_id} = params) do
-    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
-         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
-         {:ok, flows, metadata} <-
-           Flows.list_flows_for_resource_id(resource_id, conn.assigns.subject, list_opts) do
-      render(conn, :index, flows: flows, metadata: metadata)
-    end
-  end
-
-  operation :index_for_client,
-    tags: ["Clients"],
-    summary: "List Flows for a client",
-    parameters: [
       client_id: [
-        in: :path,
+        in: :query,
         description: "Client ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Flows returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
-      min_datetime: [
-        in: :query,
-        description: "Min UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ],
-      max_datetime: [
-        in: :query,
-        description: "Max UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ]
-    ],
-    responses: [
-      ok: {"Flow Response", "application/json", API.Schemas.Flow.ListResponse}
-    ]
-
-  def index_for_client(conn, %{"client_id" => client_id} = params) do
-    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
-         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
-         {:ok, flows, metadata} <-
-           Flows.list_flows_for_client_id(client_id, conn.assigns.subject, list_opts) do
-      render(conn, :index, flows: flows, metadata: metadata)
-    end
-  end
-
-  operation :index_for_actor,
-    tags: ["Actors"],
-    summary: "List Flows for an actor",
-    parameters: [
       actor_id: [
-        in: :path,
+        in: :query,
         description: "Actor ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Flows returned", type: :integer, example: 10],
-      page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
-      min_datetime: [
-        in: :query,
-        description: "Min UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ],
-      max_datetime: [
-        in: :query,
-        description: "Max UTC datetime",
-        type: :string,
-        example: "2025-01-01T00:00:00Z"
-      ]
-    ],
-    responses: [
-      ok: {"Flow Response", "application/json", API.Schemas.Flow.ListResponse}
-    ]
-
-  def index_for_actor(conn, %{"actor_id" => actor_id} = params) do
-    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
-         {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
-         {:ok, flows, metadata} <-
-           Flows.list_flows_for_actor_id(actor_id, conn.assigns.subject, list_opts) do
-      render(conn, :index, flows: flows, metadata: metadata)
-    end
-  end
-
-  operation :index_for_gateway,
-    tags: ["Gateways"],
-    summary: "List Flows for a gateway",
-    parameters: [
-      gateway_group_id: [
-        in: :path,
-        description: "Gateway Group ID",
-        type: :string,
-        example: "00000000-0000-0000-0000-000000000000"
-      ],
       gateway_id: [
-        in: :path,
+        in: :query,
         description: "Gateway ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
@@ -224,17 +60,16 @@ defmodule API.FlowController do
       ok: {"Flow Response", "application/json", API.Schemas.Flow.ListResponse}
     ]
 
-  def index_for_gateway(conn, %{"gateway_id" => gateway_id} = params) do
+  def index(conn, params) do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
-         {:ok, flows, metadata} <-
-           Flows.list_flows_for_gateway_id(gateway_id, conn.assigns.subject, list_opts) do
+         {:ok, list_opts} <- flows_params_to_list_opts(list_opts, params),
+         {:ok, flows, metadata} <- Flows.list_flows(conn.assigns.subject, list_opts) do
       render(conn, :index, flows: flows, metadata: metadata)
     end
   end
 
   operation :show,
-    tags: ["Flows"],
     summary: "Show Flow",
     parameters: [
       id: [
@@ -290,5 +125,25 @@ defmodule API.FlowController do
       {:ok, value} -> {:ok, Keyword.put(list_opts, :filter, range: value)}
       other -> other
     end
+  end
+
+  def flows_params_to_list_opts(list_opts, params, filter_name, param_name) do
+    if param = params[param_name] do
+      Keyword.update(list_opts, :filter, [{filter_name, param}], fn filter ->
+        filter ++ [{filter_name, param}]
+      end)
+    else
+      list_opts
+    end
+  end
+
+  def flows_params_to_list_opts(list_opts, params) do
+    {:ok,
+     list_opts
+     |> flows_params_to_list_opts(params, :policy_id, "policy_id")
+     |> flows_params_to_list_opts(params, :resource_id, "resource_id")
+     |> flows_params_to_list_opts(params, :client_id, "client_id")
+     |> flows_params_to_list_opts(params, :actor_id, "actor_id")
+     |> flows_params_to_list_opts(params, :gateway_id, "gateway_id")}
   end
 end
