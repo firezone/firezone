@@ -139,115 +139,109 @@ defmodule Domain.Telemetry do
   atom usage, port usage, ETS tables, and detailed memory breakdown.
   """
   def emit_beam_health_metrics do
-    try do
-      # Process counts and utilization
-      process_count = :erlang.system_info(:process_count)
-      process_limit = :erlang.system_info(:process_limit)
-      process_utilization = Float.round(process_count / process_limit * 100, 2)
+    # Process counts and utilization
+    process_count = :erlang.system_info(:process_count)
+    process_limit = :erlang.system_info(:process_limit)
+    process_utilization = Float.round(process_count / process_limit * 100, 2)
 
-      :telemetry.execute([:vm, :process_count], %{
-        total: process_count,
-        limit: process_limit,
-        utilization_percent: process_utilization
-      })
+    :telemetry.execute([:vm, :process_count], %{
+      total: process_count,
+      limit: process_limit,
+      utilization_percent: process_utilization
+    })
 
-      # Atom table usage
-      atom_count = :erlang.system_info(:atom_count)
-      atom_limit = :erlang.system_info(:atom_limit)
-      atom_utilization = Float.round(atom_count / atom_limit * 100, 2)
+    # Atom table usage
+    atom_count = :erlang.system_info(:atom_count)
+    atom_limit = :erlang.system_info(:atom_limit)
+    atom_utilization = Float.round(atom_count / atom_limit * 100, 2)
 
-      :telemetry.execute([:vm, :atom_count], %{
-        count: atom_count,
-        limit: atom_limit,
-        utilization_percent: atom_utilization
-      })
+    :telemetry.execute([:vm, :atom_count], %{
+      count: atom_count,
+      limit: atom_limit,
+      utilization_percent: atom_utilization
+    })
 
-      # Port usage
-      port_count = :erlang.system_info(:port_count)
-      port_limit = :erlang.system_info(:port_limit)
-      port_utilization = Float.round(port_count / port_limit * 100, 2)
+    # Port usage
+    port_count = :erlang.system_info(:port_count)
+    port_limit = :erlang.system_info(:port_limit)
+    port_utilization = Float.round(port_count / port_limit * 100, 2)
 
-      :telemetry.execute([:vm, :port_count], %{
-        count: port_count,
-        limit: port_limit,
-        utilization_percent: port_utilization
-      })
+    :telemetry.execute([:vm, :port_count], %{
+      count: port_count,
+      limit: port_limit,
+      utilization_percent: port_utilization
+    })
 
-      # ETS table count
-      ets_count = length(:ets.all())
-      :telemetry.execute([:vm, :ets], %{count: ets_count})
+    # ETS table count
+    ets_count = length(:ets.all())
+    :telemetry.execute([:vm, :ets], %{count: ets_count})
 
-      # Detailed memory breakdown
-      memory_info = :erlang.memory() |> Enum.into(%{})
-      :telemetry.execute([:vm, :memory, :detailed], memory_info)
-    rescue
-      error ->
-        Logger.info("Error in emit_beam_health_metrics",
-          reason: inspect(error)
-        )
+    # Detailed memory breakdown
+    memory_info = :erlang.memory() |> Enum.into(%{})
+    :telemetry.execute([:vm, :memory, :detailed], memory_info)
+  rescue
+    error ->
+      Logger.info("Error in emit_beam_health_metrics",
+        reason: inspect(error)
+      )
 
-        :ok
-    end
+      :ok
   end
 
   @doc """
   Emits garbage collection metrics across all processes.
   """
   def emit_gc_metrics do
-    try do
-      gc_info = :erlang.statistics(:garbage_collection)
-      {collections, words_reclaimed, _} = gc_info
+    gc_info = :erlang.statistics(:garbage_collection)
+    {collections, words_reclaimed, _} = gc_info
 
-      :telemetry.execute([:vm, :gc], %{
-        collections_count: collections,
-        words_reclaimed: words_reclaimed,
-        # We'll skip GC time for now as it's complex to measure accurately
-        time: 0
-      })
-    rescue
-      error ->
-        Logger.info("Error in emit_gc_metrics",
-          reason: inspect(error)
-        )
+    :telemetry.execute([:vm, :gc], %{
+      collections_count: collections,
+      words_reclaimed: words_reclaimed,
+      # We'll skip GC time for now as it's complex to measure accurately
+      time: 0
+    })
+  rescue
+    error ->
+      Logger.info("Error in emit_gc_metrics",
+        reason: inspect(error)
+      )
 
-        :ok
-    end
+      :ok
   end
 
   @doc """
   Emits scheduler utilization metrics.
   """
   def emit_scheduler_metrics do
-    try do
-      # Get total run queue length (single integer)
-      total_run_queue = :erlang.statistics(:total_run_queue_lengths)
+    # Get total run queue length (single integer)
+    total_run_queue = :erlang.statistics(:total_run_queue_lengths)
 
-      # Get run queue lengths per scheduler (list of integers)
-      run_queue_lengths = :erlang.statistics(:run_queue_lengths)
+    # Get run queue lengths per scheduler (list of integers)
+    run_queue_lengths = :erlang.statistics(:run_queue_lengths)
 
-      max_run_queue = Enum.max(run_queue_lengths, fn -> 0 end)
+    max_run_queue = Enum.max(run_queue_lengths, fn -> 0 end)
 
-      avg_run_queue =
-        if length(run_queue_lengths) > 0 do
-          Enum.sum(run_queue_lengths) / length(run_queue_lengths)
-        else
-          0
-        end
+    avg_run_queue =
+      if length(run_queue_lengths) > 0 do
+        Enum.sum(run_queue_lengths) / length(run_queue_lengths)
+      else
+        0
+      end
 
-      :telemetry.execute([:vm, :scheduler_utilization], %{
-        total_run_queue: total_run_queue,
-        max_run_queue: max_run_queue,
-        avg_run_queue: Float.round(avg_run_queue, 2),
-        scheduler_count: length(run_queue_lengths)
-      })
-    rescue
-      error ->
-        Logger.info("Error in emit_scheduler_metrics",
-          reason: inspect(error)
-        )
+    :telemetry.execute([:vm, :scheduler_utilization], %{
+      total_run_queue: total_run_queue,
+      max_run_queue: max_run_queue,
+      avg_run_queue: Float.round(avg_run_queue, 2),
+      scheduler_count: length(run_queue_lengths)
+    })
+  rescue
+    error ->
+      Logger.info("Error in emit_scheduler_metrics",
+        reason: inspect(error)
+      )
 
-        :ok
-    end
+      :ok
   end
 
   @doc """
