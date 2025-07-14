@@ -99,15 +99,6 @@ defmodule API.FlowControllerTest do
       assert is_nil(next_page)
       assert is_nil(prev_page)
     end
-  end
-
-  describe "index_for_policy/2" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      policy = Fixtures.Policies.create_policy(%{account: account})
-
-      conn = get(conn, "/policies/#{policy.id}/flows")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
 
     test "lists all flows for a policy", %{
       conn: conn,
@@ -116,6 +107,14 @@ defmodule API.FlowControllerTest do
       subject: subject
     } do
       policy = Fixtures.Policies.create_policy(%{account: account})
+
+      # Flows not matching filters
+      for _ <- 1..3,
+          do:
+            Fixtures.Flows.create_flow(
+              account: account,
+              subject: subject
+            )
 
       flows =
         for _ <- 1..3,
@@ -130,7 +129,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/policies/#{policy.id}/flows")
+        |> get("/flows", policy_id: policy.id)
 
       assert %{
                "data" => data,
@@ -155,15 +154,6 @@ defmodule API.FlowControllerTest do
       flows_policy_ids = Enum.map(flows, & &1.policy_id)
       assert equal_ids?(data_policy_ids, flows_policy_ids)
     end
-  end
-
-  describe "index_for_resource/2" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      resource = Fixtures.Resources.create_resource(%{account: account})
-
-      conn = get(conn, "/resources/#{resource.id}/flows")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
 
     test "lists all flows for a resource", %{
       conn: conn,
@@ -172,6 +162,14 @@ defmodule API.FlowControllerTest do
       subject: subject
     } do
       resource = Fixtures.Resources.create_resource(%{account: account})
+
+      # Flows not matching filters
+      for _ <- 1..3,
+          do:
+            Fixtures.Flows.create_flow(
+              account: account,
+              subject: subject
+            )
 
       flows =
         for _ <- 1..3,
@@ -186,7 +184,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/resources/#{resource.id}/flows")
+        |> get("/flows", resource_id: resource.id)
 
       assert %{
                "data" => data,
@@ -211,15 +209,6 @@ defmodule API.FlowControllerTest do
       flows_resource_ids = Enum.map(flows, & &1.resource_id)
       assert equal_ids?(data_resource_ids, flows_resource_ids)
     end
-  end
-
-  describe "index_for_client/2" do
-    test "returns error when not authorized", %{conn: conn, account: account, actor: actor} do
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-
-      conn = get(conn, "/clients/#{client.id}/flows")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
 
     test "lists all flows for a client", %{
       conn: conn,
@@ -228,6 +217,14 @@ defmodule API.FlowControllerTest do
       subject: subject
     } do
       client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+      # Flows not matching filters
+      for _ <- 1..3,
+          do:
+            Fixtures.Flows.create_flow(
+              account: account,
+              subject: subject
+            )
 
       flows =
         for _ <- 1..3,
@@ -242,7 +239,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/clients/#{client.id}/flows")
+        |> get("/flows", client_id: client.id)
 
       assert %{
                "data" => data,
@@ -266,15 +263,6 @@ defmodule API.FlowControllerTest do
       data_client_ids = Enum.map(data, & &1["client_id"])
       flows_client_ids = Enum.map(flows, & &1.client_id)
       assert equal_ids?(data_client_ids, flows_client_ids)
-    end
-  end
-
-  describe "index_for_actor/2" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      user_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
-
-      conn = get(conn, "/actors/#{user_actor.id}/flows")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
     test "lists all flows for an actor", %{
@@ -286,6 +274,14 @@ defmodule API.FlowControllerTest do
       user_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       client = Fixtures.Clients.create_client(account: account, actor: user_actor)
 
+      # Flows not matching filters
+      for _ <- 1..3,
+          do:
+            Fixtures.Flows.create_flow(
+              account: account,
+              subject: subject
+            )
+
       flows =
         for _ <- 1..3,
             do:
@@ -299,7 +295,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/actors/#{user_actor.id}/flows")
+        |> get("/flows", actor_id: user_actor.id)
 
       assert %{
                "data" => data,
@@ -324,16 +320,6 @@ defmodule API.FlowControllerTest do
       flows_client_ids = Enum.map(flows, & &1.client_id)
       assert equal_ids?(data_client_ids, flows_client_ids)
     end
-  end
-
-  describe "index_for_gateway/2" do
-    test "returns error when not authorized", %{conn: conn, account: account} do
-      gateway_group = Fixtures.Gateways.create_group(account: account)
-      gateway = Fixtures.Gateways.create_gateway(%{account: account, group: gateway_group})
-
-      conn = get(conn, "/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}/flows")
-      assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
-    end
 
     test "lists all flows for a gateway", %{
       conn: conn,
@@ -341,8 +327,15 @@ defmodule API.FlowControllerTest do
       actor: actor,
       subject: subject
     } do
-      gateway_group = Fixtures.Gateways.create_group(account: account)
-      gateway = Fixtures.Gateways.create_gateway(%{account: account, group: gateway_group})
+      gateway = Fixtures.Gateways.create_gateway(%{account: account})
+
+      # Flows not matching filters
+      for _ <- 1..3,
+          do:
+            Fixtures.Flows.create_flow(
+              account: account,
+              subject: subject
+            )
 
       flows =
         for _ <- 1..3,
@@ -357,7 +350,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/gateway_groups/#{gateway_group.id}/gateways/#{gateway.id}/flows")
+        |> get("/flows", gateway_id: gateway.id)
 
       assert %{
                "data" => data,

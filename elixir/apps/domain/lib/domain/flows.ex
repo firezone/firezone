@@ -144,56 +144,36 @@ defmodule Domain.Flows do
     |> list_flows(subject, opts)
   end
 
-  def list_flows_for_policy_id(policy_id, %Auth.Subject{} = subject, opts \\ []) do
-    Flow.Query.all()
-    |> Flow.Query.by_policy_id(policy_id)
-    |> list_flows(subject, opts)
-  end
-
-  def list_flows_for_resource_id(resource_id, %Auth.Subject{} = subject, opts \\ []) do
-    Flow.Query.all()
-    |> Flow.Query.by_resource_id(resource_id)
-    |> list_flows(subject, opts)
-  end
-
-  def list_flows_for_client_id(client_id, %Auth.Subject{} = subject, opts \\ []) do
-    Flow.Query.all()
-    |> Flow.Query.by_client_id(client_id)
-    |> list_flows(subject, opts)
-  end
-
-  def list_flows_for_actor_id(actor_id, %Auth.Subject{} = subject, opts \\ []) do
-    Flow.Query.all()
-    |> Flow.Query.by_actor_id(actor_id)
-    |> list_flows(subject, opts)
-  end
-
-  def list_flows_for_gateway_id(gateway_id, %Auth.Subject{} = subject, opts \\ []) do
-    Flow.Query.all()
-    |> Flow.Query.by_gateway_id(gateway_id)
-    |> list_flows(subject, opts)
-  end
-
   def list_flows_for(assoc, subject, opts \\ [])
 
   def list_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject, opts) do
-    list_flows_for_policy_id(policy.id, subject, opts)
+    Flow.Query.all()
+    |> Flow.Query.by_policy_id(policy.id)
+    |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject, opts) do
-    list_flows_for_resource_id(resource.id, subject, opts)
+    Flow.Query.all()
+    |> Flow.Query.by_resource_id(resource.id)
+    |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Clients.Client{} = client, %Auth.Subject{} = subject, opts) do
-    list_flows_for_client_id(client.id, subject, opts)
+    Flow.Query.all()
+    |> Flow.Query.by_client_id(client.id)
+    |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts) do
-    list_flows_for_actor_id(actor.id, subject, opts)
+    Flow.Query.all()
+    |> Flow.Query.by_actor_id(actor.id)
+    |> list_flows(subject, opts)
   end
 
   def list_flows_for(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject, opts) do
-    list_flows_for_gateway_id(gateway.id, subject, opts)
+    Flow.Query.all()
+    |> Flow.Query.by_gateway_id(gateway.id)
+    |> list_flows(subject, opts)
   end
 
   defp list_flows(queryable, subject, opts) do

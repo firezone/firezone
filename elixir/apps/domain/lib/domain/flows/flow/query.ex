@@ -120,10 +120,60 @@ defmodule Domain.Flows.Flow.Query do
         type: {:range, :datetime},
         values: [],
         fun: &filter_by_range/2
+      },
+      %Domain.Repo.Filter{
+        name: :policy_id,
+        type: :string,
+        values: [],
+        fun: &filter_by_policy_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :resource_id,
+        type: :string,
+        values: [],
+        fun: &filter_by_resource_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :client_id,
+        type: :string,
+        values: [],
+        fun: &filter_by_client_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :actor_id,
+        type: :string,
+        values: [],
+        fun: &filter_by_actor_id/2
+      },
+      %Domain.Repo.Filter{
+        name: :gateway_id,
+        type: :string,
+        values: [],
+        fun: &filter_by_gateway_id/2
       }
     ]
 
   def filter_by_range(queryable, range) do
     {queryable, by_range(range, dynamic([flows: flows], flows.inserted_at))}
+  end
+
+  def filter_by_policy_id(queryable, policy_id) do
+    {queryable, dynamic([flows: flows], flows.policy_id == ^policy_id)}
+  end
+
+  def filter_by_resource_id(queryable, resource_id) do
+    {queryable, dynamic([flows: flows], flows.resource_id == ^resource_id)}
+  end
+
+  def filter_by_client_id(queryable, client_id) do
+    {queryable, dynamic([flows: flows], flows.client_id == ^client_id)}
+  end
+
+  def filter_by_actor_id(queryable, actor_id) do
+    {with_joined_client(queryable), dynamic([client: client], client.actor_id == ^actor_id)}
+  end
+
+  def filter_by_gateway_id(queryable, gateway_id) do
+    {queryable, dynamic([flows: flows], flows.gateway_id == ^gateway_id)}
   end
 end
