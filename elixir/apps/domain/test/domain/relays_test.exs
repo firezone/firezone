@@ -797,14 +797,14 @@ defmodule Domain.RelaysTest do
       assert %{username: username, password: password, expires_at: expires_at_unix} =
                generate_username_and_password(relay, public_key, expires_at)
 
-      assert [username_expires_at_unix, username_public_key] =
+      assert [username_expires_at_unix, username_salt] =
                String.split(username, ":", parts: 2)
 
       assert username_expires_at_unix == to_string(expires_at_unix)
-      assert username_public_key == public_key
+      assert username_salt == "5d9CsB7vot2KRIXMGXivBcgmjnW0ClvN5q/DxOeFotA"
       assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
-      assert username == "1696118400:test_public_key"
-      assert password == "82Yh/3PRtuKb7e4RqanJpTwqNVm+pORwJarvgcOpMrw"
+      assert username == "1696118400:5d9CsB7vot2KRIXMGXivBcgmjnW0ClvN5q/DxOeFotA"
+      assert password == "GmFbvRR/LGes0VUmNhzwxG2K2Ww6Y0GTaLVS4S5QJOs"
     end
   end
 
