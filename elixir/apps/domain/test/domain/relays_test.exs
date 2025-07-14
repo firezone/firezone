@@ -789,23 +789,20 @@ defmodule Domain.RelaysTest do
   describe "generate_username_and_password/3" do
     test "returns username and password", %{account: account} do
       relay = Fixtures.Relays.create_relay(account: account)
-      stamp_secret = Ecto.UUID.generate()
+      stamp_secret = "test_secret"
+      turn_salt = "test_salt"
       relay = %{relay | stamp_secret: stamp_secret}
-      expires_at = DateTime.utc_now() |> DateTime.add(3, :second)
+      {:ok, expires_at, _} = DateTime.from_iso8601("2023-10-01T00:00:00Z")
 
       assert %{username: username, password: password, expires_at: expires_at_unix} =
-               generate_username_and_password(relay, "test", expires_at)
+               generate_username_and_password(relay, turn_salt, expires_at)
 
       assert [username_expires_at_unix, username_salt] = String.split(username, ":", parts: 2)
       assert username_expires_at_unix == to_string(expires_at_unix)
-      assert username_salt == "test"
+      assert username_salt == turn_salt
       assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
-
-      expected_hash =
-        :crypto.hash(:sha256, "#{expires_at_unix}:#{stamp_secret}:#{username_salt}")
-        |> Base.encode64(padding: false, case: :lower)
-
-      assert password == expected_hash
+      assert username == "1696118400:test_salt"
+      assert password == "P0+gMB7RdvcvPv3eYFh1VSJUJh/FoAmOjUOqU8dToD8"
     end
   end
 
