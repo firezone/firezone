@@ -102,6 +102,9 @@ struct Cli {
     no_telemetry: bool,
 
     /// Dump internal metrics to stdout every 60s.
+    ///
+    /// This configuration option is private API and has no stability guarantees.
+    /// It may be removed / changed anytime.
     #[arg(long, hide = true, env = "FIREZONE_METRICS")]
     metrics: Option<MetricsExporter>,
 
