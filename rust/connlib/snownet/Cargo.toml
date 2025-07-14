@@ -12,6 +12,7 @@ bytecodec = { workspace = true }
 bytes = { workspace = true }
 derive_more = { workspace = true, features = ["debug"] }
 firezone-logging = { workspace = true }
+firezone-telemetry = { workspace = true }
 hex = { workspace = true }
 hex-display = { workspace = true }
 ip-packet = { workspace = true }

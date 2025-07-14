@@ -11,6 +11,7 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use firezone_logging::err_with_src;
+use firezone_telemetry::{analytics, feature_flags};
 use hex_display::HexDisplayExt;
 use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
 use itertools::Itertools;
@@ -2178,6 +2179,17 @@ where
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
+            TunnResult::Err(e @ WireGuardError::InvalidAeadTag)
+                if crate::is_handshake(packet)
+                    && feature_flags::fail_handshake_on_decryption_errors() =>
+            {
+                analytics::feature_flag_called("fail-handshake-on-decryption-errors");
+
+                tracing::info!("Connection handshake failed ({e})");
+                self.state = ConnectionState::Failed;
+
+                ControlFlow::Break(Ok(())) // Return `Ok` because we are already logging the error.
+            }
             TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
 
             // For WriteToTunnel{V4,V6}, boringtun returns the source IP of the packet that was tunneled to us.

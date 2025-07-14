@@ -6826,6 +6826,7 @@ dependencies = [
  "bytes",
  "derive_more 2.0.1",
  "firezone-logging",
+ "firezone-telemetry",
  "hex",
  "hex-display",
  "ip-packet",
