@@ -283,12 +283,18 @@ struct Cli {
     tun_threads: NumThreads,
 
     /// Where to export metrics to.
+    ///
+    /// This configuration option is private API and has no stability guarantees.
+    /// It may be removed / changed anytime.
     #[arg(long, hide = true, env = "FIREZONE_METRICS")]
     metrics: Option<MetricsExporter>,
 
     /// Send metrics to a custom OTLP collector.
     ///
     /// By default, Firezone's hosted OTLP collector is used.
+    ///
+    /// This configuration option is private API and has no stability guarantees.
+    /// It may be removed / changed anytime.
     #[arg(long, env, hide = true)]
     otlp_grpc_endpoint: Option<String>,
 
