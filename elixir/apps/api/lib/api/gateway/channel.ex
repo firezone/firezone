@@ -39,7 +39,7 @@ defmodule API.Gateway.Channel do
       :ok = Gateways.Presence.connect(socket.assigns.gateway)
 
       # Return all connected relays for the account
-      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
+      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
       {:ok, relays} = select_relays(socket)
       :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
       :ok = maybe_subscribe_for_relays_presence(relays, socket)
@@ -49,7 +49,8 @@ defmodule API.Gateway.Channel do
       push(socket, "init", %{
         account_slug: account.slug,
         interface: Views.Interface.render(socket.assigns.gateway),
-        relays: Views.Relay.render_many(relays, relay_credentials_expire_at),
+        relays:
+          Views.Relay.render_many(relays, socket.assigns.turn_salt, relay_credentials_expire_at),
         # These aren't used but needed for API compatibility
         config: %{
           ipv4_masquerade_enabled: true,
@@ -165,7 +166,7 @@ defmodule API.Gateway.Channel do
         } do
         :ok = Domain.Relays.unsubscribe_from_relay_presence(relay_id)
 
-        relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
+        relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
         {:ok, relays} = select_relays(socket, [relay_id])
         :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
@@ -179,7 +180,12 @@ defmodule API.Gateway.Channel do
 
         payload = %{
           disconnected_ids: [relay_id],
-          connected: Views.Relay.render_many(relays, relay_credentials_expire_at)
+          connected:
+            Views.Relay.render_many(
+              relays,
+              socket.assigns.turn_salt,
+              relay_credentials_expire_at
+            )
         }
 
         socket = Debouncer.queue_leave(self(), socket, relay_id, payload)
@@ -207,7 +213,7 @@ defmodule API.Gateway.Channel do
         {:ok, relays} = select_relays(socket)
 
         if length(relays) > 0 do
-          relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(14, :day)
+          relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
 
           :ok =
             Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
@@ -235,7 +241,12 @@ defmodule API.Gateway.Channel do
 
           push(socket, "relays_presence", %{
             disconnected_ids: disconnected_ids,
-            connected: Views.Relay.render_many(relays, relay_credentials_expire_at)
+            connected:
+              Views.Relay.render_many(
+                relays,
+                socket.assigns.turn_salt,
+                relay_credentials_expire_at
+              )
           })
 
           {:noreply, socket}

@@ -60,7 +60,8 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject
+          subject: subject,
+          turn_salt: "test_salt"
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 

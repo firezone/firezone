@@ -28,8 +28,14 @@ defmodule API.Client.Socket do
           account_id: subject.account.id
         })
 
+        # For Relay credentials
+        turn_salt =
+          Domain.Crypto.hash(:sha256, token)
+          |> Base.url_encode64(padding: false)
+
         socket =
           socket
+          |> assign(:turn_salt, turn_salt)
           |> assign(:subject, subject)
           |> assign(:client, client)
           |> assign(:opentelemetry_span_ctx, OpenTelemetry.Tracer.current_span_ctx())
