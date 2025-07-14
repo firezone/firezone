@@ -1,7 +1,7 @@
 use opentelemetry::KeyValue;
 use opentelemetry_sdk::{
     Resource,
-    resource::{ResourceDetector, TelemetryResourceDetector},
+    resource::{EnvResourceDetector, ResourceDetector, TelemetryResourceDetector},
 };
 
 pub mod attr {
@@ -117,6 +117,7 @@ pub fn default_resource_with<const N: usize>(attributes: [KeyValue; N]) -> Resou
     Resource::builder_empty()
         .with_detector(Box::new(TelemetryResourceDetector))
         .with_detector(Box::new(OsResourceDetector))
+        .with_detector(Box::new(EnvResourceDetector::new()))
         .with_attributes(attributes)
         .build()
 }

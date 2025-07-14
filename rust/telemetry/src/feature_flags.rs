@@ -39,6 +39,10 @@ pub fn map_enobufs_to_would_block() -> bool {
     FEATURE_FLAGS.map_enobufs_to_wouldblock()
 }
 
+pub fn export_metrics() -> bool {
+    false // Placeholder until we actually deploy an OTEL collector.
+}
+
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     if user_id.is_empty() {
         return;
