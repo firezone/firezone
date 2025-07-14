@@ -248,12 +248,26 @@ where
             return Ok(());
         }
 
-        if self
-            .connections
-            .get_established_mut(&cid)
-            .is_some_and(|c| c.agent.local_credentials() == &local_creds)
+        if let Some(c) = self.connections.get_established_mut(&cid)
+            && c.agent.local_credentials() == &local_creds
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
+
+            // When we upsert a connection, let the remote know about all our candidates again.
+            // They might have lost their state and need to reconnect.
+
+            for candidate in c.agent.local_candidates() {
+                signal_candidate_to_remote(cid, candidate, &mut self.pending_events);
+            }
+
+            for candidate in self
+                .shared_candidates
+                .iter()
+                .filter(|c| c.kind() == CandidateKind::ServerReflexive)
+            {
+                signal_candidate_to_remote(cid, candidate, &mut self.pending_events);
+            }
+
             return Ok(());
         }
 
