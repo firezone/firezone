@@ -276,7 +276,7 @@ defmodule Domain.Relays do
       when is_binary(stamp_secret) do
     salt = generate_hash(public_key)
     expires_at = DateTime.to_unix(expires_at, :second)
-    password = generate_hash("#{expires_at}:#{salt}:#{stamp_secret}")
+    password = generate_hash("#{expires_at}:#{stamp_secret}:#{salt}")
 
     %{username: "#{expires_at}:#{salt}", password: password, expires_at: expires_at}
   end
