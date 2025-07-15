@@ -505,7 +505,7 @@ class TunnelService : VpnService() {
                             }
 
                             is TunnelCommand.Reset -> {
-                                session.reset()
+                                session.reset("roam")
                             }
                         }
                     }

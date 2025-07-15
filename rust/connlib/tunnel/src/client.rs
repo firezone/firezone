@@ -1476,8 +1476,8 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn reset(&mut self, now: Instant) {
-        tracing::info!("Resetting network state");
+    pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
+        tracing::info!("Resetting network state ({reason})");
 
         self.node.reset(now); // Clear all network connections.
         self.peers.clear(); // Clear all state associated with Gateways.

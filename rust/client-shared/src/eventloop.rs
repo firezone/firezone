@@ -31,7 +31,7 @@ pub struct Eventloop {
 
 /// Commands that can be sent to the [`Eventloop`].
 pub enum Command {
-    Reset,
+    Reset(String),
     Stop,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
@@ -108,8 +108,8 @@ impl Eventloop {
                     self.tunnel.set_tun(tun);
                     continue;
                 }
-                Poll::Ready(Some(Command::Reset)) => {
-                    self.tunnel.reset();
+                Poll::Ready(Some(Command::Reset(reason))) => {
+                    self.tunnel.reset(&reason);
                     self.portal
                         .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
 

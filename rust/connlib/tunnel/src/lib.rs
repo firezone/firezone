@@ -132,8 +132,8 @@ impl ClientTunnel {
         self.role_state.public_key()
     }
 
-    pub fn reset(&mut self) {
-        self.role_state.reset(Instant::now());
+    pub fn reset(&mut self, reason: &str) {
+        self.role_state.reset(Instant::now(), reason);
         self.io.reset();
     }
 

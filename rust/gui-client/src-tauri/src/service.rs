@@ -369,7 +369,7 @@ impl<'a> Handler<'a> {
                         tracing::debug!("Ignoring network change since we're still signing in");
                     }
                     Session::Connected { connlib, .. } => {
-                        connlib.reset();
+                        connlib.reset("network changed".to_owned());
                     }
                     Session::WaitingForNetwork { api_url, token } => {
                         tracing::info!("Attempting to re-connect upon network change");

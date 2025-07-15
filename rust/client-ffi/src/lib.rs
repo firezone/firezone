@@ -138,8 +138,8 @@ impl Session {
         Ok(())
     }
 
-    pub fn reset(&self) {
-        self.inner.reset()
+    pub fn reset(&self, reason: String) {
+        self.inner.reset(reason)
     }
 
     pub fn set_log_directives(&self, directives: String) -> Result<(), Error> {
