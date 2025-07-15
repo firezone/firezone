@@ -17,7 +17,7 @@ use platform::RELEASE;
 use secrecy::{Secret, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use tokio::sync::Mutex;
-use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::{Layer, layer::SubscriberExt as _};
 
 uniffi::setup_scaffolding!();
 
@@ -296,12 +296,12 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
         return Ok(());
     }
 
-    let (log_filter, reload_handle) = firezone_logging::try_filter(&log_filter)?;
+    let (file_log_filter, file_reload_handle) = firezone_logging::try_filter(&log_filter)?;
+    let (platform_log_filter, platform_reload_handle) = firezone_logging::try_filter(&log_filter)?;
     let (file_layer, handle) = firezone_logging::file::layer(log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()
-        .with(log_filter)
-        .with(file_layer)
+        .with(file_layer.with_filter(file_log_filter))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
@@ -310,9 +310,12 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
                         .without_timestamp()
                         .without_level(),
                 )
-                .with_writer(platform::MakeWriter::default()),
+                .with_writer(platform::MakeWriter::default())
+                .with_filter(platform_log_filter),
         )
         .with(sentry_layer());
+
+    let reload_handle = file_reload_handle.merge(platform_reload_handle);
 
     firezone_logging::init(subscriber)?;
 
