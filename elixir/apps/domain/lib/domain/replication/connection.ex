@@ -579,13 +579,37 @@ defmodule Domain.Replication.Connection do
         {:delete, old, nil}
       end
 
+      defp decode_value({nil, column}) do
+        {column.name, nil}
+      end
+
+      defp decode_value({value, %{type: type} = column}) when type in ["json", "jsonb"] do
+        case JSON.decode(value) do
+          {:ok, decoded} ->
+            {column.name, decoded}
+
+          {:error, reason} ->
+            Logger.warning("Could not decode JSONB value, using as-is",
+              reason: reason,
+              value: value,
+              column: column.name
+            )
+
+            {column.name, value}
+        end
+      end
+
+      defp decode_value({value, column}) do
+        {column.name, value}
+      end
+
       defp zip(nil, _), do: nil
 
       defp zip(tuple_data, columns) do
         tuple_data
         |> Tuple.to_list()
         |> Enum.zip(columns)
-        |> Map.new(fn {value, column} -> {column.name, value} end)
+        |> Map.new(&decode_value/1)
         |> Enum.into(%{})
       end
     end

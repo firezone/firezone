@@ -30,6 +30,11 @@ defmodule Domain.Replication.ConnectionTest do
       |> Map.put(:flush_count, flush_count + 1)
       |> Map.put(:flush_buffer, %{})
     end
+
+    # Helper function to expose the private handle_write function for testing
+    def test_handle_write(msg, server_wal_end, state) do
+      handle_write(msg, server_wal_end, state)
+    end
   end
 
   # Create a test module that captures relation updates
@@ -605,6 +610,49 @@ defmodule Domain.Replication.ConnectionTest do
         result = TestReplicationConnection.handle_data(input, state)
         assert match?({:noreply, [], _}, result)
       end)
+    end
+
+    test "decodes messages containing jsonb fields" do
+      relation = %{
+        namespace: "public",
+        name: "test_table",
+        columns: [
+          %{name: "id", type: "integer"},
+          %{name: "data_map", type: "jsonb"},
+          %{name: "data_list", type: "jsonb"},
+          %{name: "data_null", type: "jsonb"}
+        ]
+      }
+
+      state =
+        %TestReplicationConnection{
+          relations: %{123 => relation}
+        }
+        |> Map.put(:operations, [])
+
+      json_map_string = ~s({"a": 1, "b": {"c": true}})
+      json_list_string = ~s([1, "two", false, null])
+
+      insert_msg = %Domain.Replication.Decoder.Messages.Insert{
+        relation_id: 123,
+        tuple_data: {101, json_map_string, json_list_string, nil}
+      }
+
+      {:noreply, [], new_state} =
+        TestReplicationConnection.test_handle_write(insert_msg, 999, state)
+
+      [operation] = Map.get(new_state, :operations)
+
+      assert operation.op == :insert
+      assert operation.table == "test_table"
+      assert operation.lsn == 999
+
+      assert operation.data == %{
+               "id" => 101,
+               "data_map" => %{"a" => 1, "b" => %{"c" => true}},
+               "data_list" => [1, "two", false, nil],
+               "data_null" => nil
+             }
     end
 
     test "replies with standby status updates for all KeepAlive messages" do
