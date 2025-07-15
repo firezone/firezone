@@ -141,8 +141,9 @@ defmodule API.Client.Channel do
         {:updated, %Accounts.Account{config: old_config},
          %Accounts.Account{config: config} = account},
         socket
-      )
-      when old_config != config do
+      ) do
+    dbg(account)
+
     socket = assign(socket, client: %{socket.assigns.client | account: account})
     payload = %{interface: Views.Interface.render(socket.assigns.client)}
     :ok = push(socket, "config_changed", payload)
@@ -185,8 +186,13 @@ defmodule API.Client.Channel do
         %{assigns: %{client: %{actor_id: id}}} = socket
       )
       when id == actor_id do
-    # 1. Get existing resources
-    existing_resources = authorized_resources(socket)
+    # 1. Get all resource_ids we no longer have access to
+    deleted_resource_ids =
+      socket.assigns.policies
+      |> Enum.flat_map(fn {_id, policy} ->
+        if policy.actor_group_id == group_id, do: [policy.resource_id], else: []
+      end)
+      |> Enum.uniq()
 
     # 2. Update our state
     policies = Map.filter(socket.assigns.policies, fn p -> p.actor_group_id != group_id end)
@@ -200,12 +206,9 @@ defmodule API.Client.Channel do
       |> assign(resources: resources)
       |> assign(membership_group_ids: membership_group_ids)
 
-    # 3. Get any resources we no longer have access to
-    deleted_resources = existing_resources -- authorized_resources(socket)
-
-    for resource <- deleted_resources do
-      # 4. Push deleted resources to the client
-      push(socket, "resource_deleted", resource.id)
+    # 4. Push deleted resources to the client
+    for resource_id <- deleted_resource_ids do
+      push(socket, "resource_deleted", resource_id)
     end
 
     {:noreply, socket}
@@ -219,25 +222,37 @@ defmodule API.Client.Channel do
          %Clients.Client{id: client_id, verified_at: verified_at} = client},
         %{assigns: %{client: %{id: id}}} = socket
       )
-      when old_verified_at != verified_at and id == client_id do
+      when id == client_id do
     # 1. Update our state
-    socket = assign(socket, client: upsert(socket.assigns.client, client))
+    socket = assign(socket, client: client)
 
-    # 2. Get resources
-    resources = authorized_resources(socket)
+    # 2. If client verification changed, resend init
+    if old_verified_at != verified_at do
+      # 3. Get resources
+      resources = authorized_resources(socket)
 
-    push(socket, "init", %{
-      resources: Views.Resource.render_many(resources),
-      relays:
-        Views.Relay.render_many(
-          socket.assigns.relays,
-          socket.assigns.client.public_key,
-          socket.assigns.subject.expires_at
-        ),
-      interface: Views.Interface.render(client)
-    })
+      # 4. Select relays
+      {:ok, relays} = select_relays(socket)
 
-    {:noreply, socket}
+      push(socket, "init", %{
+        resources: Views.Resource.render_many(resources),
+        relays:
+          Views.Relay.render_many(
+            relays,
+            socket.assigns.client.public_key,
+            socket.assigns.subject.expires_at
+          ),
+        interface:
+          Views.Interface.render(%{
+            socket.assigns.client
+            | account: socket.assigns.subject.account
+          })
+      })
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   # POLICIES
@@ -277,21 +292,13 @@ defmodule API.Client.Channel do
   def handle_info({:deleted, %Policies.Policy{} = policy}, socket) do
     # 1. Check if this policy is for us
     if MapSet.member?(socket.assigns.membership_group_ids, policy.actor_group_id) do
-      # 1. Get existing resources
-      existing_resources = authorized_resources(socket)
-
       # 2. Update our state
       socket = assign(socket, policies: Map.delete(socket.assigns.policies, policy.id))
       r_ids = Enum.map(socket.assigns.policies, fn {_id, p} -> p.resource_id end) |> Enum.uniq()
       socket = assign(socket, resources: Map.take(socket.assigns.resources, r_ids))
 
-      # 3. Get new resources
-      new_resources = authorized_resources(socket)
-
       # 4. Push deleted resource to the client
-      if resource = (existing_resources -- new_resources) |> List.first() do
-        push(socket, "resource_deleted", resource.id)
-      end
+      push(socket, "resource_deleted", policy.resource_id)
 
       {:noreply, socket}
     else
@@ -300,11 +307,6 @@ defmodule API.Client.Channel do
   end
 
   # RESOURCE_CONNECTIONS
-
-  # Connlib doesn't explicitly handle site switching, so we need to handle these by replacing
-  # the resource. When a resource "moves" sites, Ecto will update the resource_connections by
-  # deleting and then recreating them, so can simply react to these by deleting and creating
-  # the resource.
 
   def handle_info(
         {:created,
@@ -322,6 +324,9 @@ defmodule API.Client.Channel do
 
       # 4. If resource is allowed, push
       if resource in authorized_resources(socket) do
+        # Connlib doesn't handle resources changing sites, so we need to delete then create
+        # See https://github.com/firezone/firezone/issues/9881
+        push(socket, "resource_deleted", resource.id)
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
 
@@ -346,9 +351,14 @@ defmodule API.Client.Channel do
       resource = %{resource | gateway_groups: gateway_groups}
       socket = assign(socket, resources: Map.put(socket.assigns.resources, resource_id, resource))
 
-      # 3. If resource is allowed, push
-      if resource in authorized_resources(socket) do
-        push(socket, "resource_deleted", resource.id)
+      # 3. Tell connlib
+      push(socket, "resource_deleted", resource.id)
+
+      # 4. If resource is allowed, and has at least one site connected, push
+      if resource in authorized_resources(socket) and length(resource.gateway_groups) > 0 do
+        # Connlib doesn't handle resources changing sites, so we need to delete then create
+        # See https://github.com/firezone/firezone/issues/9881
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
 
       {:noreply, socket}
@@ -1170,18 +1180,6 @@ defmodule API.Client.Channel do
     |> Map.take(resource_ids)
     |> Map.values()
     |> map_and_filter_compatible_resources(client.last_seen_version)
-  end
-
-  # Overwrites all fields in struct with non-nil values from map_or_struct.
-  # This is used to avoid overwriting preloaded fields with `nil` when updating
-  # socket state from WAL messages.
-  defp upsert(struct, new_struct) do
-    updates =
-      new_struct
-      |> Map.from_struct()
-      |> Map.reject(fn {_k, v} -> is_nil(v) end)
-
-    struct(struct, updates)
   end
 
   defp authorize_resource(socket, resource_id) do
