@@ -250,8 +250,7 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             let (filter, reload_handle) = firezone_logging::try_filter(&directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
-                .with(log_layer(args))
-                .with(filter)
+                .with(log_layer(args).with_filter(filter))
                 .with(sentry_layer())
                 .into();
 
@@ -296,9 +295,8 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
             let (filter, reload_handle) = firezone_logging::try_filter(&directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
-                .with(log_layer(args))
+                .with(log_layer(args).with_filter(filter))
                 .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("relay")))
-                .with(filter)
                 .with(sentry_layer())
                 .into();
 
