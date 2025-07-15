@@ -107,6 +107,9 @@ jobs:
           if grep -q '^website/' changed_files.txt; then
             jobs="${jobs},codeql"
           fi
+          if grep -q '^scripts/tests/' changed_files.txt; then
+            jobs="${jobs},build-artifacts,build-perf-artifacts"
+          fi
 
           echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
 
