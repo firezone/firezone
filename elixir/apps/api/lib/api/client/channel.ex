@@ -1,6 +1,6 @@
 defmodule API.Client.Channel do
   use API, :channel
-  alias API.Client.Views
+  alias API.Client.{Cache, Views}
 
   alias Domain.{
     Accounts,
@@ -84,29 +84,18 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
-      # Maintain a cache of all policies and group_ids that affect us
-      # %{
-      #    policy_id => %Policies.Policy{
-      #     resource: %Resources.Resource{
-      #       gateway_groups: [%Gateways.Group{}]
-      #     }
-      #   }
-      # }
-      policies =
-        Policies.all_policies_for_actor!(socket.assigns.subject.actor)
-        |> Map.new(fn policy -> {policy.id, policy} end)
+      # Initialize the cache
+      policies = Policies.all_policies_for_actor!(socket.assigns.subject.actor)
+      group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)
+      cache = Cache.hydrate(policies, group_ids)
+      socket = assign(socket, :cache, cache)
 
-      group_ids =
-        Actors.all_actor_group_ids!(socket.assigns.subject.actor)
-        |> MapSet.new()
-
-      socket = assign(socket, policies: policies, group_ids: group_ids)
-
-      # RELAYS
+      # Initialize relays
       {:ok, relays} = select_relays(socket)
-
       :ok = Enum.each(relays, &Relays.subscribe_to_relay_presence/1)
       :ok = maybe_subscribe_for_relays_presence(relays, socket)
+
+      # Initialize debouncer for flappy relays
       socket = Debouncer.cache_stamp_secrets(socket, relays)
 
       # Track client's presence
@@ -115,8 +104,11 @@ defmodule API.Client.Channel do
       # Subscribe to all account updates
       :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
+      # Initialize resources
+      resources = authorized_resources(socket)
+
       push(socket, "init", %{
-        resources: Views.Resource.render_many(get_resources(socket)),
+        resources: Views.Resource.render_many(resources),
         relays:
           Views.Relay.render_many(
             relays,
@@ -1191,14 +1183,18 @@ defmodule API.Client.Channel do
   end
 
   # TODO: policy conditions evaluation does not seem to be working
-  defp get_resources(socket) do
+  defp authorized_resources(socket) do
     client = socket.assigns.client
 
-    socket.assigns.policies
-    |> Enum.map(fn {_id, policy} -> policy end)
-    |> Policies.filter_by_conforming_policies_for_client(client)
-    |> Enum.map(& &1.resource)
-    |> Enum.uniq()
+    resource_ids =
+      socket.assigns.cache.policies
+      |> Map.values()
+      |> Policies.filter_by_conforming_policies_for_client(client)
+      |> Enum.map(& &1.resource_id)
+      |> Enum.uniq()
+
+    socket.assigns.cache.resources
+    |> Map.take(resource_ids)
     |> map_and_filter_compatible_resources(client.last_seen_version)
   end
 end

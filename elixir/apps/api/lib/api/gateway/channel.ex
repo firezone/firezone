@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Clients, Flows, Gateways, Policies, PubSub, Resources, Relays, Tokens}
+  alias Domain.{Actors, Clients, Flows, Gateways, Policies, PubSub, Resources, Relays, Tokens}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -444,9 +444,7 @@ defmodule API.Gateway.Channel do
   def handle_info({:deleted, %Actors.Membership{}}, socket) do
     # TODO:
     # Remove flows corresponding to this:
-    # 1. Add id to actor_group_memberships
-    # 2. Populate flows with this new foreign key constraint
-    # 3. Update the flow_cache to track this too
+    {:noreply, socket}
   end
 
   # Client channel pid broadcasts this whenever a membership is deleted that affects its access.
