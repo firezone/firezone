@@ -198,7 +198,7 @@ impl SimClient {
         self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
 
-        if self.sut.poll_timeout().is_some_and(|t| t <= now) {
+        if self.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
             self.sut.handle_timeout(now)
         }
     }

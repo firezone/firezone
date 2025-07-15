@@ -1,7 +1,6 @@
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::peer::TranslateOutboundResult;
-use crate::utils::earliest;
 use crate::{GatewayEvent, IpConfig, p2p_control};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::{Context, Result};
@@ -13,6 +12,7 @@ use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::iter;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -339,9 +339,15 @@ impl GatewayState {
         Ok(())
     }
 
-    pub fn poll_timeout(&mut self) -> Option<Instant> {
-        // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
-        earliest(self.next_expiry_resources_check, self.node.poll_timeout())
+    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        iter::empty()
+            // TODO: This should check when the next resource actually expires instead of doing it at a fixed interval.
+            .chain(
+                self.next_expiry_resources_check
+                    .map(|instant| (instant, "resource expiry")),
+            )
+            .chain(self.node.poll_timeout())
+            .min_by_key(|(instant, _)| *instant)
     }
 
     pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {

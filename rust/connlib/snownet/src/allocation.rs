@@ -761,9 +761,10 @@ impl Allocation {
         self.buffered_transmits.pop_front()
     }
 
-    pub fn poll_timeout(&self) -> Option<Instant> {
+    pub fn poll_timeout(&self) -> Option<(Instant, &'static str)> {
         let next_refresh = if !self.refresh_in_flight() {
             self.refresh_allocation_at()
+                .map(|refresh_at| (refresh_at, "refresh allocation"))
         } else {
             None
         };
@@ -771,10 +772,11 @@ impl Allocation {
         let next_timeout = self
             .sent_requests
             .values()
-            .map(|(_, _, b)| b.next_trigger());
+            .map(|(_, _, b)| (b.next_trigger(), "resend TURN message"));
 
         let next_keepalive = if self.has_allocation() {
-            self.active_socket.map(|a| a.next_binding)
+            self.active_socket
+                .map(|a| (a.next_binding, "TURN keep-alive"))
         } else {
             None
         };
@@ -783,7 +785,7 @@ impl Allocation {
             .chain(next_refresh)
             .chain(next_keepalive)
             .chain(next_timeout)
-            .min()
+            .min_by_key(|(instant, _)| *instant)
     }
 
     #[tracing::instrument(level = "debug", skip(self, now), fields(active_socket = ?self.active_socket))]
@@ -1967,7 +1969,7 @@ mod tests {
         let mut expected_backoffs = VecDeque::from(backoff::steps(start));
 
         loop {
-            let Some(timeout) = allocation.poll_timeout() else {
+            let Some((timeout, _)) = allocation.poll_timeout() else {
                 break;
             };
 
@@ -2286,11 +2288,11 @@ mod tests {
             Instant::now(),
         );
 
-        let refresh_at = allocation.poll_timeout().unwrap();
+        let (refresh_at, _) = allocation.poll_timeout().unwrap();
 
         allocation.handle_timeout(refresh_at);
 
-        assert!(allocation.poll_timeout().unwrap() > refresh_at);
+        assert!(allocation.poll_timeout().unwrap().0 > refresh_at);
     }
 
     #[test]
@@ -2477,7 +2479,7 @@ mod tests {
 
         // Test that we send binding requests it.
         {
-            now = allocation.poll_timeout().unwrap();
+            now = allocation.poll_timeout().unwrap().0;
             allocation.handle_timeout(now);
 
             let binding = allocation.next_message().unwrap();
@@ -2486,7 +2488,7 @@ mod tests {
 
         // Simulate bindings timing out
         for _ in backoff::steps(now) {
-            allocation.handle_timeout(allocation.poll_timeout().unwrap());
+            allocation.handle_timeout(allocation.poll_timeout().unwrap().0);
         }
 
         assert_eq!(
@@ -2660,7 +2662,7 @@ mod tests {
         );
 
         loop {
-            let Some(timeout) = allocation.poll_timeout() else {
+            let Some((timeout, _)) = allocation.poll_timeout() else {
                 break;
             };
 
@@ -2680,7 +2682,7 @@ mod tests {
         let mut allocation = Allocation::for_test_dual(Instant::now());
 
         loop {
-            let Some(timeout) = allocation.poll_timeout() else {
+            let Some((timeout, _)) = allocation.poll_timeout() else {
                 break;
             };
             allocation.handle_timeout(timeout);
