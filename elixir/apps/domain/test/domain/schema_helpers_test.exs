@@ -3,6 +3,8 @@ defmodule Domain.SchemaHelpersTest do
 
   alias Domain.SchemaHelpers
 
+  # --- Test Schemas ---
+
   defmodule NestedEmbedSchema do
     use Ecto.Schema
     import Ecto.Changeset
