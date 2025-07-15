@@ -367,28 +367,28 @@ jobs:
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
-        run: ! docker compose logs client | grep "WARN"
+        run: docker compose logs client | grep "WARN" && exit 1 || exit 0
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
 
       - name: Ensure Relay-1 emitted no warnings
         if: "!cancelled()"
-        run: ! docker compose logs relay-1 | grep "WARN"
+        run: docker compose logs relay-1 | grep "WARN" && exit 1 || exit 0
       - name: Show Relay-1 logs
         if: "!cancelled()"
         run: docker compose logs relay-1
 
       - name: Ensure Relay-2 emitted no warnings
         if: "!cancelled()"
-        run: ! docker compose logs relay-2 | grep "WARN"
+        run: docker compose logs relay-2 | grep "WARN" && exit 1 || exit 0
       - name: Show Relay-2 logs
         if: "!cancelled()"
         run: docker compose logs relay-2
 
       - name: Ensure Gateway emitted no warnings
         if: "!cancelled()"
-        run: ! docker compose logs gateway | grep "WARN"
+        run: docker compose logs gateway | grep "WARN" && exit 1 || exit 0
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
