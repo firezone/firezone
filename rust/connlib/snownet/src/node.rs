@@ -541,7 +541,7 @@ where
     /// This function only takes `&mut self` because it caches certain computations internally.
     /// The returned timestamp will **not** change unless other state is modified.
     #[must_use]
-    pub fn poll_timeout(&mut self) -> Option<Instant> {
+    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(self.connections.poll_timeout())
             .chain(
@@ -549,8 +549,11 @@ where
                     .values_mut()
                     .filter_map(|a| a.poll_timeout()),
             )
-            .chain(self.next_rate_limiter_reset)
-            .min()
+            .chain(
+                self.next_rate_limiter_reset
+                    .map(|instant| (instant, "rate limiter reset")),
+            )
+            .min_by_key(|(instant, _)| *instant)
     }
 
     /// Advances time within the [`Node`].
@@ -1438,7 +1441,7 @@ where
         self.established.values().all(|c| c.is_idle())
     }
 
-    fn poll_timeout(&mut self) -> Option<Instant> {
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(self.initial.values_mut().filter_map(|c| c.poll_timeout()))
             .chain(
@@ -1446,7 +1449,7 @@ where
                     .values_mut()
                     .filter_map(|c| c.poll_timeout()),
             )
-            .min()
+            .min_by_key(|(instant, _)| *instant)
     }
 }
 
@@ -1644,11 +1647,18 @@ impl<RId> InitialConnection<RId> {
         }
     }
 
-    fn poll_timeout(&mut self) -> Option<Instant> {
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            .chain(self.agent.poll_timeout())
-            .chain(Some(self.no_answer_received_timeout()))
-            .min()
+            .chain(
+                self.agent
+                    .poll_timeout()
+                    .map(|timeout| (timeout, "ICE agent")),
+            )
+            .chain(Some((
+                self.no_answer_received_timeout(),
+                "connection handshake timeout",
+            )))
+            .min_by_key(|(instant, _)| *instant)
     }
 
     fn no_answer_received_timeout(&self) -> Instant {
@@ -1719,13 +1729,13 @@ impl<RId> ConnectionState<RId>
 where
     RId: Copy,
 {
-    fn poll_timeout(&self) -> Option<Instant> {
+    fn poll_timeout(&self) -> Option<(Instant, &'static str)> {
         match self {
             ConnectionState::Connected {
                 last_incoming,
                 last_outgoing,
                 ..
-            } => Some(idle_at(*last_incoming, *last_outgoing)),
+            } => Some((idle_at(*last_incoming, *last_outgoing), "idle transition")),
             ConnectionState::Connecting { .. }
             | ConnectionState::Idle { .. }
             | ConnectionState::Failed => None,
@@ -1865,14 +1875,24 @@ where
     }
 
     #[must_use]
-    fn poll_timeout(&mut self) -> Option<Instant> {
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            .chain(self.agent.poll_timeout())
-            .chain(Some(self.next_wg_timer_update))
-            .chain(self.candidate_timeout())
-            .chain(self.disconnect_timeout())
+            .chain(
+                self.agent
+                    .poll_timeout()
+                    .map(|instant| (instant, "ICE agent")),
+            )
+            .chain(Some((self.next_wg_timer_update, "boringtun tunnel")))
+            .chain(
+                self.candidate_timeout()
+                    .map(|instant| (instant, "candidate timeout")),
+            )
+            .chain(
+                self.disconnect_timeout()
+                    .map(|instant| (instant, "disconnect timeout")),
+            )
             .chain(self.state.poll_timeout())
-            .min()
+            .min_by_key(|(instant, _)| *instant)
     }
 
     fn candidate_timeout(&self) -> Option<Instant> {

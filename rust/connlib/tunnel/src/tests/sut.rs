@@ -14,7 +14,6 @@ use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
 use crate::tests::transition::Transition;
-use crate::utils::earliest;
 use crate::{ClientEvent, GatewayEvent, dns, messages::Interface};
 use bufferpool::BufferPool;
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
@@ -393,9 +392,9 @@ impl TunnelTest {
                 now,
             );
 
-            if let Some(next) = self.poll_timeout() {
+            if let Some((next, reason)) = self.poll_timeout() {
                 if next < now {
-                    tracing::error!(?next, ?now, "State machine requested time in the past");
+                    tracing::error!(?next, ?now, %reason, "State machine requested time in the past");
                 }
             }
 
@@ -519,7 +518,7 @@ impl TunnelTest {
                 continue;
             }
 
-            let Some(time_to_next_action) = self.poll_timeout() else {
+            let Some((time_to_next_action, _)) = self.poll_timeout() else {
                 break; // Nothing to do.
             };
 
@@ -589,7 +588,7 @@ impl TunnelTest {
             }
 
             gateway.exec_mut(|g| {
-                if g.sut.poll_timeout().is_some_and(|t| t <= now) {
+                if g.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
                     g.sut.handle_timeout(now, self.flux_capacitor.now())
                 }
             });
@@ -613,20 +612,12 @@ impl TunnelTest {
         }
     }
 
-    fn poll_timeout(&mut self) -> Option<Instant> {
-        let client = self.client.poll_timeout();
-        let gateway = self
-            .gateways
-            .values_mut()
-            .flat_map(|g| g.poll_timeout())
-            .min();
-        let relay = self
-            .relays
-            .values_mut()
-            .flat_map(|r| r.poll_timeout())
-            .min();
-
-        earliest(client, earliest(gateway, relay))
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        iter::empty()
+            .chain(self.client.poll_timeout())
+            .chain(self.gateways.values_mut().flat_map(|g| g.poll_timeout()))
+            .chain(self.relays.values_mut().flat_map(|r| r.poll_timeout()))
+            .min_by_key(|(instant, _)| *instant)
     }
 
     /// Dispatches a [`Transmit`] to the correct host.

@@ -1,5 +1,5 @@
+use crate::tests::buffered_transmits::BufferedTransmits;
 use crate::tests::strategies::documentation_ip6s;
-use crate::{tests::buffered_transmits::BufferedTransmits, utils::earliest};
 use connlib_model::{ClientId, GatewayId, RelayId};
 use firezone_relay::{AddressFamily, IpStack};
 use ip_network::IpNetwork;
@@ -8,7 +8,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::HashSet,
-    fmt,
+    fmt, iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -111,30 +111,37 @@ impl<T> Host<T>
 where
     T: PollTimeout,
 {
-    pub(crate) fn poll_timeout(&mut self) -> Option<Instant> {
-        earliest(self.inner.poll_timeout(), self.inbox.next_transmit())
+    pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        iter::empty()
+            .chain(self.inner.poll_timeout())
+            .chain(
+                self.inbox
+                    .next_transmit()
+                    .map(|instant| (instant, "inbox transmit")),
+            )
+            .min_by_key(|(instant, _)| *instant)
     }
 }
 
 pub(crate) trait PollTimeout {
-    fn poll_timeout(&mut self) -> Option<Instant>;
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)>;
 }
 
 impl PollTimeout for SimClient {
-    fn poll_timeout(&mut self) -> Option<Instant> {
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         self.sut.poll_timeout()
     }
 }
 
 impl PollTimeout for SimGateway {
-    fn poll_timeout(&mut self) -> Option<Instant> {
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         self.sut.poll_timeout()
     }
 }
 
 impl PollTimeout for SimRelay {
-    fn poll_timeout(&mut self) -> Option<Instant> {
-        self.sut.poll_timeout()
+    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        self.sut.poll_timeout().map(|instant| (instant, ""))
     }
 }
 

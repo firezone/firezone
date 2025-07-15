@@ -999,13 +999,25 @@ impl ClientState {
             .or_else(|| self.tcp_dns_server.poll_outbound())
     }
 
-    pub fn poll_timeout(&mut self) -> Option<Instant> {
+    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            .chain(self.udp_dns_sockets_by_upstream_and_query_id.poll_timeout())
-            .chain(self.tcp_dns_client.poll_timeout())
-            .chain(self.tcp_dns_server.poll_timeout())
+            .chain(
+                self.udp_dns_sockets_by_upstream_and_query_id
+                    .poll_timeout()
+                    .map(|instant| (instant, "DNS socket timeout")),
+            )
+            .chain(
+                self.tcp_dns_client
+                    .poll_timeout()
+                    .map(|instant| (instant, "TCP DNS client")),
+            )
+            .chain(
+                self.tcp_dns_server
+                    .poll_timeout()
+                    .map(|instant| (instant, "TCP DNS server")),
+            )
             .chain(self.node.poll_timeout())
-            .min()
+            .min_by_key(|(instant, _)| *instant)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {

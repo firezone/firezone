@@ -161,8 +161,8 @@ impl ClientTunnel {
                 continue;
             }
 
-            if let Some(timeout) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout);
+            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                self.io.reset_timeout(timeout, reason);
             }
 
             match self.io.poll(cx, &mut self.buffers)? {
@@ -275,8 +275,8 @@ impl GatewayTunnel {
                 continue;
             }
 
-            if let Some(timeout) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout);
+            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                self.io.reset_timeout(timeout, reason);
             }
 
             match self.io.poll(cx, &mut self.buffers)? {
