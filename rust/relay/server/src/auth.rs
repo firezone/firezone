@@ -102,17 +102,14 @@ impl AuthenticatedMessage {
 
     pub(crate) fn new(
         relay_secret: &SecretString,
-        username: &str,
+        username: &Username,
         mut message: Message<Attribute>,
     ) -> Result<Self, Error> {
-        let (expiry, salt) = split_username(username)?;
-
-        let username =
-            Username::new(format!("{expiry}:{salt}")).map_err(|_| Error::InvalidUsername)?;
+        let (expiry, salt) = split_username(username.name())?;
         let password = generate_password(relay_secret, expiry, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
+            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)?;
 
         message.add_attribute(message_integrity);
 
