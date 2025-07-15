@@ -82,8 +82,8 @@ impl Session {
     ///    However, if the user would now change _back_ to the previous network,
     ///    the TURN server would recognise the old allocation but the client already lost all its state associated with it.
     ///    To avoid race-conditions like this, we rebind the sockets to a new port.
-    pub fn reset(&self) {
-        let _ = self.channel.send(Command::Reset);
+    pub fn reset(&self, reason: String) {
+        let _ = self.channel.send(Command::Reset(reason));
     }
 
     /// Sets a new set of upstream DNS servers for this [`Session`].

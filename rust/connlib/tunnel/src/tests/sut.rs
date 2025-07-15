@@ -259,7 +259,7 @@ impl TunnelTest {
                 );
 
                 state.client.exec_mut(|c| {
-                    c.sut.reset(now);
+                    c.sut.reset(now, "roam");
 
                     // In prod, we reconnect to the portal and receive a new `init` message.
                     c.update_relays(iter::empty(), state.relays.iter(), now);
