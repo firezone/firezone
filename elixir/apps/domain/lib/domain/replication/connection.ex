@@ -610,7 +610,6 @@ defmodule Domain.Replication.Connection do
         |> Tuple.to_list()
         |> Enum.zip(columns)
         |> Map.new(&decode_value/1)
-        |> Enum.into(%{})
       end
     end
   end
