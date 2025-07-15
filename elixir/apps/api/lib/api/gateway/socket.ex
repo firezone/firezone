@@ -27,14 +27,8 @@ defmodule API.Gateway.Socket do
           version: gateway.last_seen_version
         })
 
-        # For Relay credentials
-        turn_salt =
-          Domain.Crypto.hash(:sha256, encoded_token)
-          |> Base.url_encode64(padding: false)
-
         socket =
           socket
-          |> assign(:turn_salt, turn_salt)
           |> assign(:token_id, token.id)
           |> assign(:gateway_group, group)
           |> assign(:gateway, gateway)

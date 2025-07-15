@@ -23,8 +23,7 @@ defmodule API.Gateway.ChannelTest do
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
-        turn_salt: "test_salt"
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
@@ -342,8 +341,7 @@ defmodule API.Gateway.ChannelTest do
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
-        turn_salt: "test_salt"
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
@@ -395,8 +393,7 @@ defmodule API.Gateway.ChannelTest do
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
-        turn_salt: "test_salt"
+        opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
       })
       |> subscribe_and_join(API.Gateway.Channel, "gateway")
 
