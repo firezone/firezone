@@ -341,8 +341,7 @@ where
 
         let message = match message.username() {
             Some(username) => {
-                match AuthenticatedMessage::new(&self.auth_secret, username.name(), error_response)
-                {
+                match AuthenticatedMessage::new(&self.auth_secret, username, error_response) {
                     Ok(message) => message,
                     Err(e) => {
                         tracing::warn!(target: "relay", "Failed to create error response: {}", err_with_src(&e));
@@ -571,7 +570,7 @@ where
                 family: second_relay_addr.family(),
             });
         }
-        self.authenticate_and_send(username.name(), request, message, sender);
+        self.authenticate_and_send(&username, request, message, sender);
 
         Span::current().record("allocation", display(&allocation.port));
 
@@ -628,7 +627,7 @@ where
 
             self.delete_allocation(port);
             self.authenticate_and_send(
-                username.name(),
+                &username,
                 request,
                 refresh_success_response(effective_lifetime, request.transaction_id()),
                 sender,
@@ -642,7 +641,7 @@ where
         tracing::info!(target: "relay", "Refreshed allocation");
 
         self.authenticate_and_send(
-            username.name(),
+            &username,
             request,
             refresh_success_response(effective_lifetime, request.transaction_id()),
             sender,
@@ -728,7 +727,7 @@ where
             tracing::info!(target: "relay", "Refreshed channel binding");
 
             self.authenticate_and_send(
-                username.name(),
+                &username,
                 request,
                 channel_bind_success_response(request.transaction_id()),
                 sender,
@@ -745,7 +744,7 @@ where
         let port = allocation.port;
         self.create_channel_binding(sender, requested_channel, peer_address, port, now);
         self.authenticate_and_send(
-            username.name(),
+            &username,
             request,
             channel_bind_success_response(request.transaction_id()),
             sender,
@@ -771,7 +770,7 @@ where
         let username = self.verify_auth(request)?;
 
         self.authenticate_and_send(
-            username.name(),
+            &username,
             request,
             create_permission_success_response(request.transaction_id()),
             sender,
@@ -953,7 +952,7 @@ where
 
     fn authenticate_and_send(
         &mut self,
-        username: &str,
+        username: &Username,
         request: &impl StunRequest,
         message: Message<Attribute>,
         recipient: ClientSocket,

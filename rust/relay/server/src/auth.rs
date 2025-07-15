@@ -70,18 +70,17 @@ impl MessageIntegrityExt for MessageIntegrity {
         username: &str,
         now: SystemTime,
     ) -> Result<(), Error> {
-        let (expiry_unix_timestamp, salt) = split_username(username)?;
-        let expired = systemtime_from_unix(expiry_unix_timestamp);
+        let (expiry, salt) = split_username(username)?;
+        let expired = systemtime_from_unix(expiry);
 
         if expired < now {
             return Err(Error::Expired);
         }
 
-        let password = generate_password(relay_secret, expired, salt);
+        let password = generate_password(relay_secret, expiry, salt);
 
         self.check_long_term_credential(
-            &Username::new(format!("{expiry_unix_timestamp}:{salt}"))
-                .map_err(|_| Error::InvalidUsername)?,
+            &Username::new(format!("{expiry}:{salt}")).map_err(|_| Error::InvalidUsername)?,
             &FIREZONE,
             &password,
         )
@@ -103,18 +102,14 @@ impl AuthenticatedMessage {
 
     pub(crate) fn new(
         relay_secret: &SecretString,
-        username: &str,
+        username: &Username,
         mut message: Message<Attribute>,
     ) -> Result<Self, Error> {
-        let (expiry_unix_timestamp, salt) = split_username(username)?;
-        let expired = systemtime_from_unix(expiry_unix_timestamp);
-
-        let username = Username::new(format!("{expiry_unix_timestamp}:{salt}"))
-            .map_err(|_| Error::InvalidUsername)?;
-        let password = generate_password(relay_secret, expired, salt);
+        let (expiry, salt) = split_username(username.name())?;
+        let password = generate_password(relay_secret, expiry, salt);
 
         let message_integrity =
-            MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
+            MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)?;
 
         message.add_attribute(message_integrity);
 
@@ -226,21 +221,12 @@ pub(crate) fn split_username(username: &str) -> Result<(u64, &str), Error> {
     Ok((expiry_unix_timestamp, username_salt))
 }
 
-pub fn generate_password(
-    relay_secret: &SecretString,
-    expiry: SystemTime,
-    username_salt: &str,
-) -> String {
+pub fn generate_password(relay_secret: &SecretString, expiry: u64, username_salt: &str) -> String {
     use sha2::Digest as _;
 
     let mut hasher = Sha256::default();
 
-    let expiry_secs = expiry
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .expect("expiry must be later than UNIX_EPOCH")
-        .as_secs();
-
-    hasher.update(format!("{expiry_secs}"));
+    hasher.update(format!("{expiry}"));
     hasher.update(":");
     hasher.update(relay_secret.expose_secret().as_str());
     hasher.update(":");
@@ -268,7 +254,7 @@ mod tests {
 
     #[test]
     fn generate_password_test_vector() {
-        let expiry = systemtime_from_unix(60 * 60 * 24 * 365 * 60);
+        let expiry = 60 * 60 * 24 * 365 * 60;
 
         let password = generate_password(&RELAY_SECRET_1.parse().unwrap(), expiry, SAMPLE_USERNAME);
 
@@ -277,7 +263,7 @@ mod tests {
 
     #[test]
     fn generate_password_test_vector_elixir() {
-        let expiry = systemtime_from_unix(1685984278);
+        let expiry = 1685984278;
         let password = generate_password(
             &"1cab293a-4032-46f4-862a-40e5d174b0d2".parse().unwrap(),
             expiry,
@@ -388,11 +374,7 @@ mod tests {
         username_salt: &str,
     ) -> MessageIntegrity {
         let username = Username::new(format!("{username_expiry}:{username_salt}")).unwrap();
-        let password = generate_password(
-            relay_secret,
-            systemtime_from_unix(username_expiry),
-            username_salt,
-        );
+        let password = generate_password(relay_secret, username_expiry, username_salt);
 
         MessageIntegrity::new_long_term_credential(
             &sample_message(),

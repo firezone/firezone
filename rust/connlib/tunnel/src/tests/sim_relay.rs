@@ -189,7 +189,7 @@ impl SimRelay {
             .expect("expiry must be later than UNIX_EPOCH")
             .as_secs();
 
-        let password = firezone_relay::auth::generate_password(auth_secret, expiry, username);
+        let password = firezone_relay::auth::generate_password(auth_secret, secs, username);
 
         (format!("{secs}:{username}"), password)
     }

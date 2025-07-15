@@ -1,5 +1,5 @@
 use crate::Attribute;
-use crate::auth::{FIREZONE, generate_password, split_username, systemtime_from_unix};
+use crate::auth::{FIREZONE, generate_password, split_username};
 use crate::server::channel_data::ChannelData;
 use crate::server::{UDP_TRANSPORT, error_response};
 use anyhow::{Context, Result};
@@ -269,9 +269,8 @@ impl Allocate {
         }
 
         let (expiry, salt) = split_username(username.name())?;
-        let expiry_systemtime = systemtime_from_unix(expiry);
 
-        let password = generate_password(relay_secret, expiry_systemtime, salt);
+        let password = generate_password(relay_secret, expiry, salt);
 
         let message_integrity =
             MessageIntegrity::new_long_term_credential(&message, username, &FIREZONE, &password)?;
@@ -372,9 +371,8 @@ impl Refresh {
         }
 
         let (expiry, salt) = split_username(username.name())?;
-        let expiry_systemtime = systemtime_from_unix(expiry);
 
-        let password = generate_password(relay_secret, expiry_systemtime, salt);
+        let password = generate_password(relay_secret, expiry, salt);
 
         let message_integrity =
             MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
@@ -462,9 +460,8 @@ impl ChannelBind {
         message.add_attribute(nonce.clone());
 
         let (expiry, salt) = split_username(username.name())?;
-        let expiry_systemtime = systemtime_from_unix(expiry);
 
-        let password = generate_password(relay_secret, expiry_systemtime, salt);
+        let password = generate_password(relay_secret, expiry, salt);
 
         let message_integrity =
             MessageIntegrity::new_long_term_credential(&message, &username, &FIREZONE, &password)?;
