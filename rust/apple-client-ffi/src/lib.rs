@@ -68,7 +68,7 @@ mod ffi {
             device_info: String,
         ) -> Result<WrappedSession, String>;
 
-        fn reset(self: &mut WrappedSession);
+        fn reset(self: &mut WrappedSession, reason: String);
 
         // Set system DNS resolvers
         //
@@ -346,8 +346,8 @@ impl WrappedSession {
         })
     }
 
-    fn reset(&mut self) {
-        self.inner.reset()
+    fn reset(&mut self, reason: String) {
+        self.inner.reset(reason)
     }
 
     fn set_dns(&mut self, dns_servers: String) -> Result<()> {
