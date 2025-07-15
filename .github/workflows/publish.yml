@@ -117,23 +117,29 @@ jobs:
     runs-on: ubuntu-latest-xlarge
     strategy:
       matrix:
-        component:
-          - android-client
-          - apple-client
-          - gateway
-          - gui-client
-          - headless-client
+        include:
+          # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
+          - tag_prefix: gateway
+            component: gateway
+          - tag_prefix: gui-client
+            component: gui-client
+          - tag_prefix: headless-client
+            component: headless-client
+          - tag_prefix: macos-client
+            component: apple-client
+          - tag_prefix: android-client
+            component: android-client
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           token: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
-      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.component) }}
+      - if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
         run: |
           set -x
 
           # Extract version from release name
           version=${{ inputs.release_name || github.event.release.name }}
-          version=${version#${{ matrix.component }}-}
+          version=${version#${{ matrix.tag_prefix }}-}
 
           # Configure gpg
           echo "$RELEASE_PR_BOT_GPG_KEY" | gpg --import --batch
