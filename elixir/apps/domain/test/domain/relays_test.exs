@@ -804,7 +804,7 @@ defmodule Domain.RelaysTest do
       assert username_salt == "5d9CsB7vot2KRIXMGXivBcgmjnW0ClvN5q/DxOeFotA"
       assert DateTime.from_unix!(expires_at_unix) == DateTime.truncate(expires_at, :second)
       assert username == "1696118400:5d9CsB7vot2KRIXMGXivBcgmjnW0ClvN5q/DxOeFotA"
-      assert password == "GmFbvRR/LGes0VUmNhzwxG2K2Ww6Y0GTaLVS4S5QJOs"
+      assert password == "+dkKyS/Rl06h5jatgTWfKcZoeDxEmT+TfsrH4x4cddA"
     end
   end
 
