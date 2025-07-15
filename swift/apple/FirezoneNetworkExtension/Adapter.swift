@@ -135,7 +135,7 @@ class Adapter {
       if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
         lastRelevantPath = path
 
-        session?.reset()
+        session?.reset("primary network path changed")
       }
 
       if shouldFetchSystemResolvers(path: path) {

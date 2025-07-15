@@ -999,13 +999,25 @@ impl ClientState {
             .or_else(|| self.tcp_dns_server.poll_outbound())
     }
 
-    pub fn poll_timeout(&mut self) -> Option<Instant> {
+    pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
-            .chain(self.udp_dns_sockets_by_upstream_and_query_id.poll_timeout())
-            .chain(self.tcp_dns_client.poll_timeout())
-            .chain(self.tcp_dns_server.poll_timeout())
+            .chain(
+                self.udp_dns_sockets_by_upstream_and_query_id
+                    .poll_timeout()
+                    .map(|instant| (instant, "DNS socket timeout")),
+            )
+            .chain(
+                self.tcp_dns_client
+                    .poll_timeout()
+                    .map(|instant| (instant, "TCP DNS client")),
+            )
+            .chain(
+                self.tcp_dns_server
+                    .poll_timeout()
+                    .map(|instant| (instant, "TCP DNS server")),
+            )
             .chain(self.node.poll_timeout())
-            .min()
+            .min_by_key(|(instant, _)| *instant)
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -1476,8 +1488,8 @@ impl ClientState {
         self.buffered_events.pop_front()
     }
 
-    pub(crate) fn reset(&mut self, now: Instant) {
-        tracing::info!("Resetting network state");
+    pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
+        tracing::info!("Resetting network state ({reason})");
 
         self.node.reset(now); // Clear all network connections.
         self.peers.clear(); // Clear all state associated with Gateways.

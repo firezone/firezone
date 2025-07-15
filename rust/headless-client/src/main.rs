@@ -296,8 +296,7 @@ fn main() -> Result<()> {
                     break Ok(());
                 },
                 () = hangup.recv() => {
-                    tracing::info!("Caught SIGHUP");
-                    session.reset();
+                    session.reset("SIGHUP".to_owned());
                     continue;
                 },
                 result = dns_notifier.notified() => {
@@ -310,8 +309,7 @@ fn main() -> Result<()> {
                 },
                 result = network_notifier.notified() => {
                     result?;
-                    tracing::info!("Network change, resetting Session");
-                    session.reset();
+                    session.reset("network changed".to_owned());
                     continue;
                 },
                 event = event_stream.next() => event.context("event stream unexpectedly ran empty")?,

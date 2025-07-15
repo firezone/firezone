@@ -68,7 +68,7 @@ mod ffi {
             device_info: String,
         ) -> Result<WrappedSession, String>;
 
-        fn reset(self: &mut WrappedSession);
+        fn reset(self: &mut WrappedSession, reason: String);
 
         // Set system DNS resolvers
         //
@@ -207,12 +207,13 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
         return Ok(());
     }
 
-    let (env_filter, reload_handle) = firezone_logging::try_filter(&log_filter)?;
+    let (file_log_filter, file_reload_handle) = firezone_logging::try_filter(&log_filter)?;
+    let (oslog_log_filter, oslog_reload_handle) = firezone_logging::try_filter(&log_filter)?;
 
     let (file_layer, handle) = firezone_logging::file::layer(&log_dir, "connlib");
 
     let subscriber = tracing_subscriber::registry()
-        .with(env_filter)
+        .with(file_layer.with_filter(file_log_filter))
         .with(
             tracing_subscriber::fmt::layer()
                 .with_ansi(false)
@@ -224,10 +225,12 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
                 .with_writer(make_writer::MakeWriter::new(
                     "dev.firezone.firezone",
                     "connlib",
-                )),
+                ))
+                .with_filter(oslog_log_filter),
         )
-        .with(file_layer)
         .with(sentry_layer());
+
+    let reload_handle = file_reload_handle.merge(oslog_reload_handle);
 
     firezone_logging::init(subscriber)?;
 
@@ -346,8 +349,8 @@ impl WrappedSession {
         })
     }
 
-    fn reset(&mut self) {
-        self.inner.reset()
+    fn reset(&mut self, reason: String) {
+        self.inner.reset(reason)
     }
 
     fn set_dns(&mut self, dns_servers: String) -> Result<()> {
