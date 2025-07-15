@@ -38,15 +38,9 @@ defmodule API.Gateway.Channel do
     OpenTelemetry.Tracer.set_current_span(opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "gateway.after_join" do
-      # Hydrate flow cache so that we properly respond to relevant messages in order to push reject_access.
-      # We use raw bytes and integer timestamps here for better memory efficiency.
-      # Structure:
-      # %{
-      #   {token_id_bytes, policy_id_bytes, client_id_bytes, resource_id_bytes} => inserted_at_integer
-      # }
-      flow_cache =
-        Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
-        |> Map.new()
+      # Initialize the cache
+      socket = hydrate_cache(socket)
+      Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
 
       # Track gateway's presence
       :ok = Gateways.Presence.connect(socket.assigns.gateway)
@@ -81,38 +75,36 @@ defmodule API.Gateway.Channel do
       # Cache new stamp secrets
       socket = Debouncer.cache_stamp_secrets(socket, relays)
 
-      Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
-
-      {:noreply, assign(socket, flow_cache: flow_cache)}
+      {:noreply, socket}
     end
   end
 
   def handle_info(:prune_flow_cache, socket) do
+    Logger.debug("Pruning flow cache",
+      gateway_id: socket.assigns.gateway.id,
+      flow_cache_size: map_size(socket.assigns.flows)
+    )
+
     Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
 
-    cutoff = DateTime.utc_now() |> DateTime.add(-14, :day) |> DateTime.to_unix(:second)
+    cutoff = DateTime.utc_now() |> DateTime.add(-14, :day)
 
-    flow_cache =
-      Map.filter(socket.assigns.flow_cache, fn {_key, inserted_at} ->
-        inserted_at > cutoff
+    flows =
+      socket.assigns.flows
+      |> Enum.filter(fn {_id, flow} ->
+        # Keep flows that were inserted in the last 14 days
+        flow.inserted_at > cutoff
       end)
+      |> Enum.into(%{})
 
     # We don't need to push reject_access - the gateway uses its own timer to expire flows
 
-    {:noreply, assign(socket, flow_cache: flow_cache)}
+    {:noreply, assign(socket, flows: flows)}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the gateway
   def handle_info({:push_leave, relay_id, stamp_secret, payload}, socket) do
     {:noreply, Debouncer.handle_leave(socket, relay_id, stamp_secret, payload, &push/3)}
-  end
-
-  def handle_info("disconnect", socket) do
-    OpenTelemetry.Tracer.with_span "gateway.disconnect" do
-      push(socket, "disconnect", %{"reason" => "token_expired"})
-      send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-      {:stop, :shutdown, socket}
-    end
   end
 
   ####################################
@@ -128,92 +120,35 @@ defmodule API.Gateway.Channel do
         socket
       )
       when old_verified_at != verified_at do
-    flow_cache = socket.assigns.flow_cache
+    # 1. Find all flows for this client
+    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.client_id == client_id end)
 
-    # Convert to bytes representation for comparison with our cache
-    client_id_bytes = Ecto.UUID.dump!(client_id)
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
 
-    # Find all flows for this client
-    # TODO: For very busy gateways, this can be a large number of flows, so we may need
-    # to be smarter about Map structure here.
-    affected_flows =
-      Map.filter(flow_cache, fn {{_, _, c_id_bytes, _}, _} ->
-        c_id_bytes == client_id_bytes
-      end)
-
-    case affected_flows do
-      flows when map_size(flows) == 0 ->
-        {:noreply, socket}
-
-      affected_flows ->
-        # Send reject_access for each affected client/resource pair
-        affected_flows
-        |> Map.keys()
-        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
-          {client_id_bytes, resource_id_bytes}
-        end)
-        |> Enum.uniq()
-        |> Enum.each(fn {_, resource_id_bytes} ->
-          push(socket, "reject_access", %{
-            client_id: client_id,
-            resource_id: Ecto.UUID.cast!(resource_id_bytes)
-          })
-        end)
-
-        # Remove affected flows from cache
-        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
-
-        {:noreply, assign(socket, flow_cache: updated_cache)}
-    end
+    {:noreply, socket}
   end
 
   # POLICIES
 
   # TODO: HARD DELETE
-  # This can be removed because we will respond to the cascading flow deletion when a policy is deleted
+  # This can be removed when hard deletion is implemented because we will respond to the cascading
+  # flow deletion when a policy is deleted. For now we need to handle this event.
   def handle_info({:deleted, %Policies.Policy{id: policy_id}}, socket) do
-    flow_cache = socket.assigns.flow_cache
+    # 1. Find all flows for this policy
+    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.policy_id == policy_id end)
 
-    # Convert to bytes representation for comparison with our cache
-    policy_id_bytes = Ecto.UUID.dump!(policy_id)
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
 
-    # Find all flows for this policy
-    affected_flows =
-      Map.filter(flow_cache, fn {{_, p_id_bytes, _, _}, _} ->
-        p_id_bytes == policy_id_bytes
-      end)
-
-    case affected_flows do
-      flows when map_size(flows) == 0 ->
-        {:noreply, socket}
-
-      affected_flows ->
-        # Send reject_access for each affected client/resource pair
-        affected_flows
-        |> Map.keys()
-        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
-          {client_id_bytes, resource_id_bytes}
-        end)
-        |> Enum.uniq()
-        |> Enum.each(fn {client_id_bytes, resource_id_bytes} ->
-          push(socket, "reject_access", %{
-            client_id: Ecto.UUID.cast!(client_id_bytes),
-            resource_id: Ecto.UUID.cast!(resource_id_bytes)
-          })
-        end)
-
-        # Remove affected flows from cache
-        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
-
-        {:noreply, assign(socket, flow_cache: updated_cache)}
-    end
+    {:noreply, socket}
   end
 
   # RESOURCES
 
   # The gateway can process traffic filter changes, but not any other type of addressability change.
   # So we send resource_updated for the former, and reject_access for the latter.
-  # The client will re-authorize the flow if the resource addressability changes.
+  # The client will request a new connection on its side if the resource addressability changes.
   def handle_info(
         {:updated,
          %Resources.Resource{ip_stack: old_ip_stack, address: old_address, type: old_type},
@@ -221,41 +156,14 @@ defmodule API.Gateway.Channel do
         socket
       )
       when old_ip_stack != ip_stack or old_address != address or old_type != type do
-    flow_cache = socket.assigns.flow_cache
-
-    # Convert to bytes representation for comparison with our cache
-    resource_id_bytes = Ecto.UUID.dump!(resource_id)
-
-    # Find all flows for this resource
+    # 1. Find all flows for this resource
     affected_flows =
-      Map.filter(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
-        res_id_bytes == resource_id_bytes
-      end)
+      Map.filter(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource_id end)
 
-    case affected_flows do
-      flows when map_size(flows) == 0 ->
-        {:noreply, socket}
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
 
-      affected_flows ->
-        # Send reject_access for each affected client/resource pair
-        affected_flows
-        |> Map.keys()
-        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
-          {client_id_bytes, resource_id_bytes}
-        end)
-        |> Enum.uniq()
-        |> Enum.each(fn {client_id_bytes, _} ->
-          push(socket, "reject_access", %{
-            client_id: Ecto.UUID.cast!(client_id_bytes),
-            resource_id: resource_id
-          })
-        end)
-
-        # Remove affected flows from cache
-        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
-
-        {:noreply, assign(socket, flow_cache: updated_cache)}
-    end
+    {:noreply, socket}
   end
 
   def handle_info(
@@ -264,16 +172,7 @@ defmodule API.Gateway.Channel do
         socket
       )
       when old_filters != filters do
-    flow_cache = socket.assigns.flow_cache
-
-    # Convert to bytes representation for comparison with our cache
-    resource_id_bytes = Ecto.UUID.dump!(resource.id)
-
-    # Check if any flows exist for this resource
-    has_flows? =
-      Enum.any?(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
-        res_id_bytes == resource_id_bytes
-      end)
+    has_flows? = Enum.any?(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource.id end)
 
     if has_flows? do
       case API.Client.Channel.map_or_drop_compatible_resource(
@@ -295,189 +194,94 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info({:deleted, %Resources.Resource{id: resource_id}}, socket) do
-    flow_cache = socket.assigns.flow_cache
-
-    # Convert to bytes representation for comparison with our cache
-    resource_id_bytes = Ecto.UUID.dump!(resource_id)
-
-    # Find all flows for this resource
+    # 1. Find all flows for this resource
     affected_flows =
-      Map.filter(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
-        res_id_bytes == resource_id_bytes
-      end)
+      Map.filter(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource_id end)
 
-    case affected_flows do
-      flows when map_size(flows) == 0 ->
-        {:noreply, socket}
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
 
-      affected_flows ->
-        # Send reject_access for each affected client/resource pair
-        affected_flows
-        |> Map.keys()
-        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
-          {client_id_bytes, resource_id_bytes}
-        end)
-        |> Enum.uniq()
-        |> Enum.each(fn {client_id_bytes, _} ->
-          push(socket, "reject_access", %{
-            client_id: Ecto.UUID.cast!(client_id_bytes),
-            resource_id: resource_id
-          })
-        end)
-
-        # Remove affected flows from cache
-        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
-
-        {:noreply, assign(socket, flow_cache: updated_cache)}
-    end
+    {:noreply, socket}
   end
 
   # RESOURCE_CONNECTIONS
 
   def handle_info({:deleted, %Resources.Connection{resource_id: resource_id}}, socket) do
-    flow_cache = socket.assigns.flow_cache
-
-    # Convert to bytes representation for comparison with our cache
-    resource_id_bytes = Ecto.UUID.dump!(resource_id)
-
-    # Find all flows for this resource
+    # 1. Find all flows for this resource
     affected_flows =
-      Map.filter(flow_cache, fn {{_, _, _, res_id_bytes}, _} ->
-        res_id_bytes == resource_id_bytes
-      end)
+      Map.filter(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource_id end)
 
-    case affected_flows do
-      flows when map_size(flows) == 0 ->
-        {:noreply, socket}
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
 
-      affected_flows ->
-        # Send reject_access for each affected client/resource pair
-        affected_flows
-        |> Map.keys()
-        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
-          {client_id_bytes, resource_id_bytes}
-        end)
-        |> Enum.uniq()
-        |> Enum.each(fn {client_id_bytes, _} ->
-          push(socket, "reject_access", %{
-            client_id: Ecto.UUID.cast!(client_id_bytes),
-            resource_id: resource_id
-          })
-        end)
-
-        # Remove affected flows from cache
-        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
-
-        {:noreply, assign(socket, flow_cache: updated_cache)}
-    end
+    {:noreply, socket}
   end
 
   # GATEWAYS
 
   # TODO: HARD DELETE
-  # This can be removed because we will respond to the cascading flow deletion when a gateway is deleted
+  # This can be removed when hard deletion is implemented because we will respond to the
+  # cascading flow deletion when a gateway is deleted.
 
-  def handle_info({:deleted, %Gateways.Gateway{id: gateway_id}}, socket) do
-    # TODO
-    {:noreply, socket}
+  def handle_info(
+        {:deleted, %Gateways.Gateway{id: gateway_id}},
+        %{assigns: %{gateway: %{id: id}}} = socket
+      )
+      when gateway_id == id do
+    disconnect(socket)
   end
 
   # CLIENTS
 
+  # TODO: HARD DELETE
+  # This can be removed after hard deletion is implemented because we will respond to the cascading
+  # flow deletion when a client is deleted.
   def handle_info({:deleted, %Clients.Client{id: client_id}}, socket) do
-    # TODO
+    # 1. Find all flows for this client
+    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.client_id == client_id end)
+
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
+
     {:noreply, socket}
   end
-
-  # TODO: HARD DELETE
-  # This can be removed because we will respond to the cascading flow deletion when a client is deleted
 
   # TOKENS
 
   # Our gateway token was deleted
   def handle_info({:deleted, %Tokens.Token{type: :gateway_group, id: id}}, socket)
       when id == socket.assigns.subject.token_id do
-    push(socket, "disconnect", %{"reason" => "token_expired"})
-    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-    {:stop, :shutdown, socket}
-  end
-
-  # A client's token was deleted, remove all flows for that token
-  def handle_info({:deleted, %Tokens.Token{type: :client, id: token_id}}, socket) do
-    flow_cache = socket.assigns.flow_cache
-    token_id_bytes = Ecto.UUID.dump!(token_id)
-
-    # Find all flows for this token
-    affected_flows =
-      Map.filter(flow_cache, fn {{t_id_bytes, _, _, _}, _} ->
-        t_id_bytes == token_id_bytes
-      end)
-
-    case affected_flows do
-      flows when map_size(flows) == 0 ->
-        {:noreply, socket}
-
-      affected_flows ->
-        # Send reject_access for each affected client/resource pair
-        affected_flows
-        |> Map.keys()
-        |> Enum.map(fn {_, _, client_id_bytes, resource_id_bytes} ->
-          {client_id_bytes, resource_id_bytes}
-        end)
-        |> Enum.uniq()
-        |> Enum.each(fn {client_id_bytes, resource_id_bytes} ->
-          push(socket, "reject_access", %{
-            client_id: Ecto.UUID.cast!(client_id_bytes),
-            resource_id: Ecto.UUID.cast!(resource_id_bytes)
-          })
-        end)
-
-        # Remove affected flows from cache
-        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
-
-        {:noreply, assign(socket, flow_cache: updated_cache)}
-    end
+    disconnect(socket)
   end
 
   # TODO: HARD DELETE
+  # This can be removed when hard deletion is implemented because we will respond to the
+  # cascading flow deletion when a token is deleted.
 
-  def handle_info({:deleted, %Actors.Membership{}}, socket) do
-    # TODO:
-    # Remove flows corresponding to this:
+  # A client's token was deleted, remove all flows for that token
+  def handle_info({:deleted, %Tokens.Token{type: :client, id: token_id}}, socket) do
+    # 1. Find all flows for this token
+    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.token_id == token_id end)
+
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
+
     {:noreply, socket}
   end
 
-  # Client channel pid broadcasts this whenever a membership is deleted that affects its access.
-  # TODO: This is required effect because deleting a flow does not affect memberships
-  def handle_info({:expire_flow, client_id, resource_id}, socket) do
-    flow_cache = socket.assigns.flow_cache
+  # ACTOR_GROUP_MEMBERSHIPS
 
-    # Convert to bytes representation for comparison with our cache
-    client_id_bytes = Ecto.UUID.dump!(client_id)
-    resource_id_bytes = Ecto.UUID.dump!(resource_id)
-
-    # Find all flows for this client/resource pair
+  def handle_info({:deleted, %Actors.Membership{} = membership}, socket) do
+    # 1. Find all flows for this membership
     affected_flows =
-      Map.filter(flow_cache, fn {{_, _, c_id_bytes, res_id_bytes}, _} ->
-        c_id_bytes == client_id_bytes and res_id_bytes == resource_id_bytes
+      Map.filter(socket.assigns.flows, fn {_id, f} ->
+        f.actor_group_membership_id == membership.id
       end)
 
-    case affected_flows do
-      flows when map_size(flows) == 0 ->
-        {:noreply, socket}
+    # 2. Push reject_access and update our state
+    socket = reject_access(socket, affected_flows)
 
-      affected_flows ->
-        # We only need a single reject_access message for this pair
-        push(socket, "reject_access", %{
-          client_id: client_id,
-          resource_id: resource_id
-        })
-
-        # Remove affected flows from cache
-        updated_cache = Map.drop(flow_cache, Map.keys(affected_flows))
-
-        {:noreply, assign(socket, flow_cache: updated_cache)}
-    end
+    {:noreply, socket}
   end
 
   ####################################
@@ -656,9 +460,7 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
-      flow_id: flow_id,
-      token_id: token_id,
-      policy_id: policy_id,
+      flow: flow,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
       preshared_key: preshared_key
@@ -666,9 +468,7 @@ defmodule API.Gateway.Channel do
 
     OpenTelemetry.Tracer.with_span "gateway.authorize_flow" do
       Logger.debug("Gateway authorizes a new network flow",
-        flow_id: flow_id,
-        client_id: client.id,
-        resource_id: resource.id
+        flow: flow
       )
 
       opentelemetry_headers = :otel_propagator_text_map.inject([])
@@ -677,28 +477,18 @@ defmodule API.Gateway.Channel do
         encode_ref(socket, {
           channel_pid,
           socket_ref,
-          resource.id,
+          flow.resource_id,
           preshared_key,
           ice_credentials,
           opentelemetry_headers
         })
 
-      inserted_at = DateTime.utc_now() |> DateTime.to_unix(:second)
-
-      # Convert to binary UUIDs and add to cache
-      cache_key = {
-        Ecto.UUID.dump!(token_id),
-        Ecto.UUID.dump!(policy_id),
-        Ecto.UUID.dump!(client.id),
-        Ecto.UUID.dump!(resource.id)
-      }
-
-      flow_cache = Map.put(socket.assigns.flow_cache, cache_key, inserted_at)
-      socket = assign(socket, flow_cache: flow_cache)
+      # Update our state
+      socket = assign(socket, Map.put(socket.assigns.flows, flow.id, flow))
 
       push(socket, "authorize_flow", %{
         ref: ref,
-        flow_id: flow_id,
+        flow_id: flow.id,
         actor: Views.Actor.render(client.actor),
         resource: Views.Resource.render(resource),
         gateway_ice_credentials: ice_credentials.gateway,
@@ -712,9 +502,7 @@ defmodule API.Gateway.Channel do
       })
 
       Logger.debug("Awaiting gateway flow_authorized message",
-        client_id: client.id,
-        resource_id: resource.id,
-        flow_id: flow_id
+        flow: flow
       )
 
       {:noreply, socket}
@@ -734,16 +522,14 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
-      flow_id: flow_id,
-      token_id: token_id,
-      policy_id: policy_id,
+      flow: flow,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
 
     OpenTelemetry.Tracer.with_span "gateway.allow_access",
       attributes: %{
-        flow_id: flow_id,
+        flow_id: flow.id,
         client_id: client.id,
         resource_id: resource.id
       } do
@@ -756,16 +542,8 @@ defmodule API.Gateway.Channel do
           ref = encode_ref(socket, {channel_pid, socket_ref, resource.id, opentelemetry_headers})
           expires_at = DateTime.to_unix(authorization_expires_at, :second)
 
-          # Convert to binary UUIDs and add to cache
-          cache_key = {
-            Ecto.UUID.dump!(token_id),
-            Ecto.UUID.dump!(policy_id),
-            Ecto.UUID.dump!(client.id),
-            Ecto.UUID.dump!(resource.id)
-          }
-
-          flow_cache = Map.put(socket.assigns.flow_cache, cache_key, expires_at)
-          socket = assign(socket, flow_cache: flow_cache)
+          # Update our state
+          socket = assign(socket, Map.put(socket.assigns.flows, flow.id, flow))
 
           push(socket, "allow_access", %{
             ref: ref,
@@ -780,7 +558,7 @@ defmodule API.Gateway.Channel do
           Logger.debug("Awaiting gateway connection_ready message",
             client_id: client.id,
             resource_id: resource.id,
-            flow_id: flow_id
+            flow_id: flow.id
           )
 
           {:noreply, socket}
@@ -790,7 +568,7 @@ defmodule API.Gateway.Channel do
             gateway_id: socket.assigns.gateway.id,
             client_id: client.id,
             resource_id: resource.id,
-            flow_id: flow_id
+            flow_id: flow.id
           )
 
           {:noreply, socket}
@@ -811,9 +589,7 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
-      flow_id: flow_id,
-      token_id: token_id,
-      policy_id: policy_id,
+      flow: flow,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload,
       client_preshared_key: preshared_key
@@ -834,16 +610,8 @@ defmodule API.Gateway.Channel do
           ref = encode_ref(socket, {channel_pid, socket_ref, resource.id, opentelemetry_headers})
           expires_at = DateTime.to_unix(authorization_expires_at, :second)
 
-          # Convert to binary UUIDs and add to cache
-          cache_key = {
-            Ecto.UUID.dump!(token_id),
-            Ecto.UUID.dump!(policy_id),
-            Ecto.UUID.dump!(client.id),
-            Ecto.UUID.dump!(resource.id)
-          }
-
-          flow_cache = Map.put(socket.assigns.flow_cache, cache_key, expires_at)
-          socket = assign(socket, flow_cache: flow_cache)
+          # Update our state
+          socket = assign(socket, Map.put(socket.assigns.flows, flow.id, flow))
 
           push(socket, "request_connection", %{
             ref: ref,
@@ -856,7 +624,7 @@ defmodule API.Gateway.Channel do
           Logger.debug("Awaiting gateway connection_ready message",
             client_id: client.id,
             resource_id: resource.id,
-            flow_id: flow_id
+            flow_id: flow.id
           )
 
           {:noreply, socket}
@@ -866,7 +634,7 @@ defmodule API.Gateway.Channel do
             gateway_id: socket.assigns.gateway.id,
             client_id: client.id,
             resource_id: resource.id,
-            flow_id: flow_id
+            flow_id: flow.id
           )
 
           {:noreply, socket}
@@ -1075,5 +843,44 @@ defmodule API.Gateway.Channel do
     else
       Relays.subscribe_to_relays_presence_in_account(socket.assigns.gateway.account_id)
     end
+  end
+
+  defp hydrate_cache(socket) do
+    flows =
+      Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
+      |> Enum.map(fn flow -> {flow.id, flow} end)
+      |> Enum.into(%{})
+
+    assign(socket, flows: flows)
+  end
+
+  defp reject_access(socket, flows) do
+    case flows do
+      flows when map_size(flows) == 0 ->
+        socket
+
+      flows ->
+        # Send reject_access for each affected client/resource pair
+        flows
+        |> Enum.map(fn {_id, flow} ->
+          {flow.client_id, flow.resource_id}
+        end)
+        |> Enum.uniq()
+        |> Enum.each(fn {client_id, resource_id} ->
+          push(socket, "reject_access", %{
+            client_id: client_id,
+            resource_id: resource_id
+          })
+        end)
+
+        # Remove affected flows from cache
+        assign(socket, flows: Map.drop(socket.assigns.flows, Map.keys(flows)))
+    end
+  end
+
+  defp disconnect(socket) do
+    push(socket, "disconnect", %{"reason" => "token_expired"})
+    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+    {:stop, :shutdown, socket}
   end
 end

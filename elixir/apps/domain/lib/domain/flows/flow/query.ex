@@ -22,25 +22,8 @@ defmodule Domain.Flows.Flow.Query do
   end
 
   def within_2_weeks(queryable) do
-    cutoff = DateTime.utc_now() |> DateTime.add(-2, :week)
-
+    cutoff = DateTime.utc_now() |> DateTime.add(-14, :day)
     where(queryable, [flows: flows], flows.inserted_at > ^cutoff)
-  end
-
-  # We return more efficient data types for the cache
-  def for_cache(queryable) do
-    queryable
-    |> select([flows: flows], {
-      {type(flows.token_id, :binary_id), type(flows.policy_id, :binary_id),
-       type(flows.client_id, :binary_id), type(flows.resource_id, :binary_id)},
-      fragment("extract(epoch from ?)::integer", flows.inserted_at)
-    })
-    |> distinct([flows: flows], [
-      flows.token_id,
-      flows.policy_id,
-      flows.client_id,
-      flows.resource_id
-    ])
   end
 
   def by_policy_actor_group_id(queryable, actor_group_id) do

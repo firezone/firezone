@@ -93,7 +93,7 @@ defmodule Domain.Flows do
     Flow.Query.all()
     |> Flow.Query.by_account_id(gateway.account_id)
     |> Flow.Query.by_gateway_id(gateway.id)
-    |> Flow.Query.for_cache()
+    |> Flow.Query.within_2_weeks()
     |> Repo.all()
   end
 

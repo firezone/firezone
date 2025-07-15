@@ -1,6 +1,6 @@
 defmodule API.Client.Channel do
   use API, :channel
-  alias API.Client.{Cache, Views}
+  alias API.Client.Views
 
   alias Domain.{
     Accounts,
@@ -85,10 +85,10 @@ defmodule API.Client.Channel do
 
     OpenTelemetry.Tracer.with_span "client.after_join" do
       # Initialize the cache
-      policies = Policies.all_policies_for_actor!(socket.assigns.subject.actor)
-      group_ids = Actors.all_actor_group_ids!(socket.assigns.subject.actor)
-      cache = Cache.hydrate(policies, group_ids)
-      socket = assign(socket, :cache, cache)
+      socket =
+        socket
+        |> hydrate_policies_and_resources()
+        |> hydrate_membership_group_ids()
 
       # Initialize relays
       {:ok, relays} = select_relays(socket)
@@ -144,18 +144,9 @@ defmodule API.Client.Channel do
       )
       when old_config != config do
     socket = assign(socket, client: %{socket.assigns.client | account: account})
-
-    :ok =
-      push(socket, "config_changed", %{
-        interface: Views.Interface.render(socket.assigns.client)
-      })
-
+    payload = %{interface: Views.Interface.render(socket.assigns.client)}
+    :ok = push(socket, "config_changed", payload)
     {:noreply, socket}
-  end
-
-  # TODO: This might be redundant since Tokens will be deleted
-  def handle_info({:deleted, %Accounts.Account{}}, socket) do
-    disconnect(socket)
   end
 
   # ACTOR_GROUP_MEMBERSHIPS
@@ -166,21 +157,20 @@ defmodule API.Client.Channel do
       )
       when id == actor_id do
     # 1. Get existing resources
-    existing_resources = get_resources(socket)
+    existing_resources = authorized_resources(socket)
 
-    # 2. Update our state
-    new_policies =
-      Policies.all_policies_for_actor_group_id!(socket.assigns.client.account_id, group_id)
-      |> Enum.map(fn policy -> {policy.id, policy} end)
-      |> Map.new()
+    # 2. Re-hydrate our policies and resources
+    # It's not ideal we're hitting the DB here, but in practice it shouldn't be an issue because
+    # periods of bursty membership creation typically only happen for new accounts or new directory
+    # syncs, which won't have any policies associated.
+    socket = hydrate_policies_and_resources(socket)
 
-    socket =
-      socket
-      |> assign(policies: Map.merge(socket.assigns.policies, new_policies))
-      |> assign(group_ids: MapSet.put(socket.assigns.group_ids, group_id))
+    # 3. Update our membership group IDs
+    ids = MapSet.put(socket.assigns.membership_group_ids, group_id)
+    socket = assign(socket, membership_group_ids: ids)
 
     # 3. Get new resources
-    new_resources = get_resources(socket) -- existing_resources
+    new_resources = authorized_resources(socket) -- existing_resources
 
     # 4. Push new resources to the client
     for resource <- new_resources do
@@ -196,34 +186,26 @@ defmodule API.Client.Channel do
       )
       when id == actor_id do
     # 1. Get existing resources
-    existing_resources = get_resources(socket)
+    existing_resources = authorized_resources(socket)
 
     # 2. Update our state
-    policies =
-      socket.assigns.policies
-      |> Map.filter(fn {_id, policy} ->
-        policy.actor_group_id != group_id
-      end)
-
-    group_ids =
-      socket.assigns.group_ids
-      |> MapSet.delete(group_id)
+    policies = Map.filter(socket.assigns.policies, fn p -> p.actor_group_id != group_id end)
+    r_ids = Enum.map(policies, fn {_id, policy} -> policy.resource_id end) |> Enum.uniq()
+    resources = Map.take(socket.assigns.resources, r_ids)
+    membership_group_ids = Map.delete(socket.assigns.membership_group_ids, group_id)
 
     socket =
       socket
-      |> assign(group_ids: group_ids)
       |> assign(policies: policies)
+      |> assign(resources: resources)
+      |> assign(membership_group_ids: membership_group_ids)
 
     # 3. Get any resources we no longer have access to
-    deleted_resources = existing_resources -- get_resources(socket)
+    deleted_resources = existing_resources -- authorized_resources(socket)
 
     for resource <- deleted_resources do
       # 4. Push deleted resources to the client
       push(socket, "resource_deleted", resource.id)
-
-      # 5. Tell the gateway to expire relevant flows
-      payload = {:expire_flow, socket.assigns.client.id, resource.id}
-      :ok = PubSub.Account.broadcast(socket.assigns.client.account_id, payload)
     end
 
     {:noreply, socket}
@@ -231,78 +213,82 @@ defmodule API.Client.Channel do
 
   # CLIENTS
 
+  # Changes in client verification can affect the list of allowed resources - resend init
   def handle_info(
         {:updated, %Clients.Client{verified_at: old_verified_at},
-         %Clients.Client{id: client_id, verified_at: verified_at}} = client,
+         %Clients.Client{id: client_id, verified_at: verified_at} = client},
         %{assigns: %{client: %{id: id}}} = socket
       )
       when old_verified_at != verified_at and id == client_id do
-    # changes in client verification can affect the list of allowed resources - resend init
-    client = Map.merge(socket.assigns.client, client)
-    socket = assign(socket, client: client)
+    # 1. Update our state
+    socket = assign(socket, client: upsert(socket.assigns.client, client))
 
-    resources = get_resources(socket)
+    # 2. Get resources
+    resources = authorized_resources(socket)
 
     push(socket, "init", %{
       resources: Views.Resource.render_many(resources),
-      relays: Views.Relay.render_many(socket.assigns.relays, socket.assigns.subject.expires_at),
+      relays:
+        Views.Relay.render_many(
+          socket.assigns.relays,
+          socket.assigns.client.public_key,
+          socket.assigns.subject.expires_at
+        ),
       interface: Views.Interface.render(client)
     })
 
     {:noreply, socket}
   end
 
-  def handle_info(
-        {:deleted, %Clients.Client{id: client_id}},
-        %{assigns: %{client: %{id: id}}} = socket
-      )
-      when id == client_id do
-    disconnect(socket)
-  end
-
   # POLICIES
 
   def handle_info({:created, %Policies.Policy{} = policy}, socket) do
-    # check if this policy affects us
-    with true <- MapSet.member?(socket.assigns.group_ids, policy.actor_group_id),
-         # Hydrate resource
-         # One optimization here could be that we first check and see if we already have the resource
-         # in our cache
-         {:ok, resource} <-
-           Resources.fetch_resource_by_id(policy.resource_id, socket.assigns.subject,
-             preload: :gateway_groups
-           ) do
-      policy = %{policy | resource: resource}
+    # 1. Check if this policy is for us
+    if MapSet.member?(socket.assigns.membership_group_ids, policy.actor_group_id) do
+      # 2. Get existing resources
+      existing_resources = authorized_resources(socket)
 
-      # Get existing resources
-      existing_resources = get_resources(socket)
+      # 3. Update our state
+      socket =
+        if Map.has_key?(socket.assigns.resources, policy.resource_id) do
+          socket
+        else
+          {:ok, resource} =
+            Resources.fetch_resource_by_id(policy.resource_id, socket.assigns.subject,
+              preload: :gateway_groups
+            )
 
-      # Update our state
+          assign(socket, resources: Map.put(socket.assigns.resources, resource.id, resource))
+        end
+
       socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
 
       # Get new resource
-      if resource = (get_resources(socket) -- existing_resources) |> List.first() do
+      if resource = (authorized_resources(socket) -- existing_resources) |> List.first() do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
 
       {:noreply, socket}
     else
-      _ ->
-        {:noreply, socket}
+      {:noreply, socket}
     end
   end
 
   def handle_info({:deleted, %Policies.Policy{} = policy}, socket) do
-    # check if this policy affects us
-    if MapSet.member?(socket.assigns.group_ids, policy.actor_group_id) do
+    # 1. Check if this policy is for us
+    if MapSet.member?(socket.assigns.membership_group_ids, policy.actor_group_id) do
       # 1. Get existing resources
-      existing_resources = get_resources(socket)
+      existing_resources = authorized_resources(socket)
 
       # 2. Update our state
       socket = assign(socket, policies: Map.delete(socket.assigns.policies, policy.id))
-      new_resources = get_resources(socket)
+      r_ids = Enum.map(socket.assigns.policies, fn {_id, p} -> p.resource_id end) |> Enum.uniq()
+      socket = assign(socket, resources: Map.take(socket.assigns.resources, r_ids))
 
-      # 3. Push deleted resource to the client
+      # 3. Get new resources
+      new_resources = authorized_resources(socket)
+
+      # 4. Push deleted resource to the client
       if resource = (existing_resources -- new_resources) |> List.first() do
         push(socket, "resource_deleted", resource.id)
       end
@@ -326,70 +312,44 @@ defmodule API.Client.Channel do
         socket
       ) do
     # 1. Check if this affects us
-    resource =
-      socket.assigns.policies
-      |> Enum.find(fn {_id, policy} ->
-        policy.resource.id == resource_id
-      end)
-      |> case do
-        nil -> nil
-        {_id, policy} -> policy.resource
-      end
+    if resource = socket.assigns.resources[resource_id] do
+      # 2. Fetch the gateway_group to hydrate the site name
+      {:ok, gateway_group} = Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject)
 
-    with %Resources.Resource{} <- resource,
-         # 2. Fetch the gateway_group to hydrate the site name
-         {:ok, gateway_group} <-
-           Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject) do
       # 3. Update our state
-      # TODO: If multi-site resources ever ships, we'll need to handle that here
-      resource = %{resource | gateway_groups: [gateway_group]}
-
-      policies =
-        Map.new(socket.assigns.policies, fn {id, policy} ->
-          if policy.resource.id == resource.id do
-            {id, %{policy | resource: resource}}
-          else
-            {id, policy}
-          end
-        end)
-
-      socket = assign(socket, policies: policies)
+      resource = %{resource | gateway_groups: resource.gateway_groups ++ [gateway_group]}
+      socket = assign(socket, resources: Map.put(socket.assigns.resources, resource_id, resource))
 
       # 4. If resource is allowed, push
-      if resource in get_resources(socket) do
+      if resource in authorized_resources(socket) do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
 
       {:noreply, socket}
     else
-      _ ->
-        {:noreply, socket}
+      {:noreply, socket}
     end
   end
 
   # Resource connection is a required field on resources, so a delete will always be followed by a create.
   # This means connlib *should* never see a resource with no sites (gateway_groups).
 
-  def handle_info({:deleted, %Resources.Connection{resource_id: resource_id}}, socket) do
-    # 1. check if this affects us
-    if resource = Enum.find(get_resources(socket), &(&1.id == resource_id)) do
-      # 2. update our state
-      # TODO: If multi-site resources ever ships, we'll need to handle that here
-      resource = %{resource | gateway_groups: []}
+  def handle_info(
+        {:deleted,
+         %Resources.Connection{resource_id: resource_id, gateway_group_id: gateway_group_id}},
+        socket
+      ) do
+    # 1. Check if this affects us
+    if resource = socket.assigns.resources[resource_id] do
+      # 2. Update our state
+      gateway_groups = Enum.reject(resource.gateway_groups, &(&1.id == gateway_group_id))
+      resource = %{resource | gateway_groups: gateway_groups}
+      socket = assign(socket, resources: Map.put(socket.assigns.resources, resource_id, resource))
 
-      policies =
-        Map.new(socket.assigns.policies, fn {id, policy} ->
-          if policy.resource.id == resource.id do
-            {id, %{policy | resource: resource}}
-          else
-            {id, policy}
-          end
-        end)
-
-      socket = assign(socket, policies: policies)
-
-      # 3. push
-      push(socket, "resource_deleted", resource.id)
+      # 3. If resource is allowed, push
+      if resource in authorized_resources(socket) do
+        push(socket, "resource_deleted", resource.id)
+      end
 
       {:noreply, socket}
     else
@@ -399,30 +359,20 @@ defmodule API.Client.Channel do
 
   # RESOURCES
 
-  # TODO: Keep resources in socket to do fast lookups
   def handle_info(
         {:updated, %Resources.Resource{}, %Resources.Resource{id: id} = updated_resource},
         socket
       ) do
-    # 1. check if we need to act
-    # TODO: Fix this to act upon all cached resources, not just the ones we currently have access to
-    if resource = Enum.find(get_resources(socket), &(&1.id == id)) do
-      # 2. use preloaded gateway_group
+    # 1. Check if this affects us
+    if resource = socket.assigns.resources[id] do
+      # 2. Update our state
       resource = %{updated_resource | gateway_groups: resource.gateway_groups}
+      socket = assign(socket, resources: Map.put(socket.assigns.resources, id, resource))
 
-      policies =
-        Map.new(socket.assigns.policies, fn {id, policy} ->
-          if policy.resource.id == resource.id do
-            {id, %{policy | resource: resource}}
-          else
-            {id, policy}
-          end
-        end)
-
-      socket = assign(socket, policies: policies)
-
-      # 3. push - connlib handles addressability changes
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      # 3. If resource is allowed, push
+      if resource in authorized_resources(socket) do
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      end
 
       {:noreply, socket}
     else
@@ -696,8 +646,9 @@ defmodule API.Client.Channel do
         socket.assigns.client.last_seen_remote_ip_location_lon
       }
 
-      with {:ok, resource} <-
-             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject),
+      # TODO: Optimization
+      # Gateway selection and flow authorization shouldn't need to hit the DB
+      with {:ok, resource} <- authorize_resource(socket, resource_id),
            {:ok, gateways} when gateways != [] <-
              Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
                preload: :group
@@ -728,9 +679,7 @@ defmodule API.Client.Channel do
              %{
                client: socket.assigns.client,
                resource: resource,
-               flow_id: flow.id,
-               token_id: flow.token_id,
-               policy_id: flow.policy_id,
+               flow: flow,
                authorization_expires_at: expires_at,
                ice_credentials: ice_credentials,
                preshared_key: preshared_key
@@ -742,9 +691,6 @@ defmodule API.Client.Channel do
         {:error, :not_found} ->
           OpenTelemetry.Tracer.set_status(:error, "not_found")
 
-          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
-          # {:reply, {:error, %{reason: :not_found}}, socket}
-
           push(socket, "flow_creation_failed", %{
             resource_id: resource_id,
             reason: :not_found
@@ -755,9 +701,6 @@ defmodule API.Client.Channel do
         {:ok, []} ->
           OpenTelemetry.Tracer.set_status(:error, "offline")
 
-          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
-          # {:reply, {:error, %{reason: :offline}}, socket}
-
           push(socket, "flow_creation_failed", %{
             resource_id: resource_id,
             reason: :offline
@@ -767,9 +710,6 @@ defmodule API.Client.Channel do
 
         {:error, {:forbidden, violated_properties: violated_properties}} ->
           OpenTelemetry.Tracer.set_status(:error, "forbidden")
-
-          # We are pushing a message instead of replying for the sake of connlib message parsing convenience
-          # {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}}, socket}
 
           push(socket, "flow_creation_failed", %{
             resource_id: resource_id,
@@ -796,8 +736,9 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.with_span "client.prepare_connection", attributes: attrs do
       connected_gateway_ids = Map.get(attrs, "connected_gateway_ids", [])
 
-      with {:ok, resource} <-
-             Resources.fetch_and_authorize_resource_by_id(resource_id, socket.assigns.subject),
+      # TODO: Optimization
+      # Gateway selection and flow authorization shouldn't need to hit the DB
+      with {:ok, resource} <- authorize_resource(socket, resource_id),
            {:ok, [_ | _] = gateways} <-
              Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
                preload: :group
@@ -854,7 +795,10 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.reuse_connection", attributes: attrs do
-      with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+      # TODO: Optimization
+      # Gateway selection and flow authorization shouldn't need to hit the DB
+      with {:ok, _resource} <- authorize_resource(socket, resource_id),
+           {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
            {:ok, resource, flow, _expires_at} <-
              Flows.authorize_flow(
                socket.assigns.client,
@@ -873,9 +817,7 @@ defmodule API.Client.Channel do
              %{
                client: socket.assigns.client,
                resource: resource,
-               flow_id: flow.id,
-               token_id: flow.token_id,
-               policy_id: flow.policy_id,
+               flow: flow,
                authorization_expires_at: socket.assigns.subject.expires_at,
                client_payload: payload
              }, {opentelemetry_ctx, opentelemetry_span_ctx}}
@@ -918,7 +860,10 @@ defmodule API.Client.Channel do
     OpenTelemetry.Tracer.set_current_span(socket.assigns.opentelemetry_span_ctx)
 
     OpenTelemetry.Tracer.with_span "client.request_connection", attributes: ctx_attrs do
-      with {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+      # TODO: Optimization
+      # Flow authorization can happen out-of-band since we just authorized the resource above
+      with {:ok, _resource} <- authorize_resource(socket, resource_id),
+           {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
            {:ok, resource, flow, _expires_at} <-
              Flows.authorize_flow(
                socket.assigns.client,
@@ -937,9 +882,7 @@ defmodule API.Client.Channel do
              %{
                client: socket.assigns.client,
                resource: resource,
-               flow_id: flow.id,
-               token_id: flow.token_id,
-               policy_id: flow.policy_id,
+               flow: flow,
                authorization_expires_at: socket.assigns.subject.expires_at,
                client_payload: client_payload,
                client_preshared_key: preshared_key
@@ -1182,19 +1125,77 @@ defmodule API.Client.Channel do
     {:stop, :shutdown, socket}
   end
 
+  # TODO: Optimization
+  # We can reduce memory usage of this cache by an order of magnitude by storing
+  # optimized versions of the fields we need to evaluate policy conditions and
+  # render data to the client.
+  defp hydrate_policies_and_resources(socket) do
+    {_policies, acc} =
+      Policies.all_policies_for_actor!(socket.assigns.subject.actor)
+      |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, acc ->
+        resources = Map.put(acc.resources, policy.resource_id, policy.resource)
+
+        # Remove resource from policy to avoid storing twice
+        policies = Map.put(acc.policies, policy.id, Map.delete(policy, :resource))
+
+        {policy, Map.merge(acc, %{policies: policies, resources: resources})}
+      end)
+
+    assign(socket,
+      policies: acc.policies,
+      resources: acc.resources
+    )
+  end
+
+  defp hydrate_membership_group_ids(socket) do
+    membership_group_ids =
+      Actors.all_actor_group_ids!(socket.assigns.subject.actor)
+      |> MapSet.new()
+
+    assign(socket, membership_group_ids: membership_group_ids)
+  end
+
   # TODO: policy conditions evaluation does not seem to be working
   defp authorized_resources(socket) do
     client = socket.assigns.client
 
     resource_ids =
-      socket.assigns.cache.policies
+      socket.assigns.policies
       |> Map.values()
       |> Policies.filter_by_conforming_policies_for_client(client)
       |> Enum.map(& &1.resource_id)
       |> Enum.uniq()
 
-    socket.assigns.cache.resources
+    socket.assigns.resources
     |> Map.take(resource_ids)
+    |> Map.values()
     |> map_and_filter_compatible_resources(client.last_seen_version)
+  end
+
+  # Overwrites all fields in struct with non-nil values from map_or_struct.
+  # This is used to avoid overwriting preloaded fields with `nil` when updating
+  # socket state from WAL messages.
+  defp upsert(struct, new_struct) do
+    updates =
+      new_struct
+      |> Map.from_struct()
+      |> Map.reject(fn {_k, v} -> is_nil(v) end)
+
+    struct(struct, updates)
+  end
+
+  defp authorize_resource(socket, resource_id) do
+    resource =
+      socket
+      |> authorized_resources()
+      |> Enum.find(&(&1.id == resource_id))
+
+    case resource do
+      nil ->
+        {:error, :not_found}
+
+      resource ->
+        {:ok, resource}
+    end
   end
 end
