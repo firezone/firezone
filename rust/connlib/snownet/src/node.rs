@@ -1761,7 +1761,7 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, packet, now);
+        self.transition_to_connected(peer_socket, agent, tracing::field::debug(packet), now);
     }
 
     fn on_incoming(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
@@ -1774,7 +1774,7 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, packet, now);
+        self.transition_to_connected(peer_socket, agent, tracing::field::debug(packet), now);
     }
 
     fn transition_to_idle(&mut self, peer_socket: PeerSocket<RId>, agent: &mut IceAgent) {
@@ -1787,10 +1787,10 @@ where
         &mut self,
         peer_socket: PeerSocket<RId>,
         agent: &mut IceAgent,
-        packet: &IpPacket,
+        trigger: impl tracing::Value,
         now: Instant,
     ) {
-        tracing::debug!(?packet, "Connection resumed");
+        tracing::debug!(trigger, "Connection resumed");
         *self = Self::Connected {
             peer_socket,
             last_outgoing: now,
