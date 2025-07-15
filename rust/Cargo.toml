@@ -199,7 +199,7 @@ windows-core = "0.61.1"
 windows-implement = "0.60.0"
 windows-service = "0.8.0"
 winreg = "0.52.0"
-zbus = "5.5.0"
+zbus = "5.8.0"
 zip = { version = "2", default-features = false }
 
 [workspace.lints.clippy]
