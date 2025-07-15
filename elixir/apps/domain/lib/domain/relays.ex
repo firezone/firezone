@@ -272,15 +272,17 @@ defmodule Domain.Relays do
 
   # TODO: Relays
   # Revisit credential lifetime when https://github.com/firezone/firezone/issues/8222 is implemented
-  def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, salt, expires_at)
+  def generate_username_and_password(%Relay{stamp_secret: stamp_secret}, public_key, expires_at)
       when is_binary(stamp_secret) do
+    salt = generate_hash(public_key)
     expires_at = DateTime.to_unix(expires_at, :second)
-    password = generate_hash(expires_at, stamp_secret, salt)
+    password = generate_hash("#{expires_at}:#{salt}:#{stamp_secret}")
+
     %{username: "#{expires_at}:#{salt}", password: password, expires_at: expires_at}
   end
 
-  defp generate_hash(expires_at, stamp_secret, salt) do
-    :crypto.hash(:sha256, "#{expires_at}:#{stamp_secret}:#{salt}")
+  defp generate_hash(string) do
+    :crypto.hash(:sha256, string)
     |> Base.encode64(padding: false)
   end
 

@@ -137,8 +137,7 @@ defmodule API.Client.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
-        subject: subject,
-        turn_salt: "test_salt"
+        subject: subject
       })
       |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -192,8 +191,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -215,8 +213,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -234,8 +231,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -249,8 +245,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -263,8 +258,7 @@ defmodule API.Client.ChannelTest do
                opentelemetry_ctx: OpenTelemetry.Ctx.new(),
                opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
                client: client,
-               subject: subject,
-               turn_salt: "test_salt"
+               subject: subject
              })
              |> subscribe_and_join(API.Client.Channel, "client") ==
                {:error, %{reason: :invalid_version}}
@@ -403,8 +397,7 @@ defmodule API.Client.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
-        subject: subject,
-        turn_salt: "test_salt"
+        subject: subject
       })
       |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -477,8 +470,7 @@ defmodule API.Client.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
-        subject: subject,
-        turn_salt: "test_salt"
+        subject: subject
       })
       |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -565,8 +557,7 @@ defmodule API.Client.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
-        subject: subject,
-        turn_salt: "test_salt"
+        subject: subject
       })
       |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -618,8 +609,7 @@ defmodule API.Client.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
-        subject: subject,
-        turn_salt: "test_salt"
+        subject: subject
       })
       |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -683,8 +673,7 @@ defmodule API.Client.ChannelTest do
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
         client: client,
-        subject: subject,
-        turn_salt: "test_salt"
+        subject: subject
       })
       |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -1446,8 +1435,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -1521,8 +1509,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -1875,8 +1862,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -1945,8 +1931,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -2157,8 +2142,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
@@ -2369,8 +2353,7 @@ defmodule API.Client.ChannelTest do
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
           client: client,
-          subject: subject,
-          turn_salt: "test_salt"
+          subject: subject
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
