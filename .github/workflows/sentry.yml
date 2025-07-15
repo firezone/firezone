@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-22.04-xlarge
     strategy:
       matrix:
+        # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
         include:
           - component: gateway
             projects: gateway
