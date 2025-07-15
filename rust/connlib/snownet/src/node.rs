@@ -249,11 +249,11 @@ where
             return Ok(());
         }
 
-        if self
-            .connections
-            .get_established_mut(&cid)
-            .is_some_and(|c| c.agent.local_credentials() == &local_creds)
+        if let Some(c) = self.connections.get_established_mut(&cid)
+            && c.agent.local_credentials() == &local_creds
         {
+            c.state.on_upsert(&mut c.agent, now);
+
             tracing::info!(local = ?local_creds, "Reusing existing connection");
             return Ok(());
         }
@@ -1761,6 +1761,15 @@ where
         self.transition_to_idle(peer_socket, agent);
     }
 
+    fn on_upsert(&mut self, agent: &mut IceAgent, now: Instant) {
+        let peer_socket = match self {
+            Self::Idle { peer_socket } => *peer_socket,
+            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+        };
+
+        self.transition_to_connected(peer_socket, agent, "upsert", now);
+    }
+
     fn on_outgoing(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
@@ -1771,7 +1780,7 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, packet, now);
+        self.transition_to_connected(peer_socket, agent, tracing::field::debug(packet), now);
     }
 
     fn on_incoming(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
@@ -1784,7 +1793,7 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, packet, now);
+        self.transition_to_connected(peer_socket, agent, tracing::field::debug(packet), now);
     }
 
     fn transition_to_idle(&mut self, peer_socket: PeerSocket<RId>, agent: &mut IceAgent) {
@@ -1797,10 +1806,10 @@ where
         &mut self,
         peer_socket: PeerSocket<RId>,
         agent: &mut IceAgent,
-        packet: &IpPacket,
+        trigger: impl tracing::Value,
         now: Instant,
     ) {
-        tracing::debug!(?packet, "Connection resumed");
+        tracing::debug!(trigger, "Connection resumed");
         *self = Self::Connected {
             peer_socket,
             last_outgoing: now,
