@@ -21,6 +21,7 @@ use std::{
     task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
+use tracing::Level;
 use tun::Tun;
 
 /// How many IP packets we will at most read from the MPSC-channel connected to our TUN device thread.
@@ -326,15 +327,26 @@ impl Io {
         self.nameservers.evaluate();
     }
 
-    pub fn reset_timeout(&mut self, timeout: Instant) {
+    pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
+        let wakeup_in = tracing::event_enabled!(Level::TRACE)
+            .then(|| timeout.duration_since(Instant::now()))
+            .map(tracing::field::debug);
         let timeout = tokio::time::Instant::from_std(timeout);
 
         match self.timeout.as_mut() {
             Some(existing_timeout) if existing_timeout.deadline() != timeout => {
+                tracing::trace!(wakeup_in, %reason);
+
                 existing_timeout.as_mut().reset(timeout)
             }
             Some(_) => {}
-            None => self.timeout = Some(Box::pin(tokio::time::sleep_until(timeout))),
+            None => {
+                self.timeout = {
+                    tracing::trace!(?wakeup_in, %reason);
+
+                    Some(Box::pin(tokio::time::sleep_until(timeout)))
+                }
+            }
         }
     }
 
@@ -430,7 +442,7 @@ mod tests {
         let mut io = Io::for_test();
 
         let deadline = Instant::now() + Duration::from_secs(1);
-        io.reset_timeout(deadline);
+        io.reset_timeout(deadline, "");
 
         let Input::Timeout(timeout) = io.next().await else {
             panic!("Unexpected result");
@@ -449,7 +461,7 @@ mod tests {
         let now = Instant::now();
         let mut io = Io::for_test();
 
-        io.reset_timeout(now - Duration::from_secs(10));
+        io.reset_timeout(now - Duration::from_secs(10), "");
 
         let Input::Timeout(timeout) = io.next().await else {
             panic!("Unexpected result");
