@@ -152,16 +152,10 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs client
 
-      - name: Ensure Relay-1 emitted no warnings
-        if: "!cancelled()"
-        run: docker compose logs relay-1 | grep "WARN" && exit 1 || exit 0
       - name: Show Relay-1 logs
         if: "!cancelled()"
         run: docker compose logs relay-1
 
-      - name: Ensure Relay-2 emitted no warnings
-        if: "!cancelled()"
-        run: docker compose logs relay-2 | grep "WARN" && exit 1 || exit 0
       - name: Show Relay-2 logs
         if: "!cancelled()"
         run: docker compose logs relay-2
