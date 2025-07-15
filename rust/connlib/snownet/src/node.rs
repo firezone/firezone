@@ -249,11 +249,11 @@ where
             return Ok(());
         }
 
-        if self
-            .connections
-            .get_established_mut(&cid)
-            .is_some_and(|c| c.agent.local_credentials() == &local_creds)
+        if let Some(c) = self.connections.get_established_mut(&cid)
+            && c.agent.local_credentials() == &local_creds
         {
+            c.state.on_upsert(&mut c.agent, now);
+
             tracing::info!(local = ?local_creds, "Reusing existing connection");
             return Ok(());
         }
@@ -1749,6 +1749,15 @@ where
         let peer_socket = *peer_socket;
 
         self.transition_to_idle(peer_socket, agent);
+    }
+
+    fn on_upsert(&mut self, agent: &mut IceAgent, now: Instant) {
+        let peer_socket = match self {
+            Self::Idle { peer_socket } => *peer_socket,
+            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+        };
+
+        self.transition_to_connected(peer_socket, agent, "upsert", now);
     }
 
     fn on_outgoing(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
