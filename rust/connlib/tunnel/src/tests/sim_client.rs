@@ -221,7 +221,7 @@ impl SimClient {
             return;
         }
 
-        if let Ok(udp) = packet.as_udp() {
+        if let Some(udp) = packet.as_udp() {
             self.sent_udp_requests.insert(
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
                 packet.clone(),
@@ -273,7 +273,7 @@ impl SimClient {
             }
         }
 
-        if let Ok(udp) = packet.as_udp() {
+        if let Some(udp) = packet.as_udp() {
             if udp.source_port() == 53 {
                 let response = dns_types::Response::parse(udp.payload())
                     .expect("ip packets on port 53 to be DNS packets");

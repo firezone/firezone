@@ -1098,7 +1098,7 @@ impl ClientState {
         packet: IpPacket,
         now: Instant,
     ) -> ControlFlow<(), IpPacket> {
-        let Ok(datagram) = packet.as_udp() else {
+        let Some(datagram) = packet.as_udp() else {
             tracing::debug!(?packet, "Not a UDP packet");
 
             return ControlFlow::Break(());
@@ -1171,7 +1171,7 @@ impl ClientState {
     }
 
     fn handle_llmnr_dns_query(&mut self, packet: IpPacket, now: Instant) {
-        let Ok(datagram) = packet.as_udp() else {
+        let Some(datagram) = packet.as_udp() else {
             tracing::debug!(?packet, "Not a UDP packet");
 
             return;
@@ -1931,7 +1931,7 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
 ) -> IpPacket {
     let src_ip = packet.source();
 
-    let Ok(udp) = packet.as_udp() else {
+    let Some(udp) = packet.as_udp() else {
         return packet;
     };
 

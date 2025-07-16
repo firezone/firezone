@@ -370,7 +370,7 @@ impl Tun for ValidateChecksumAdapter {
             }
         }
 
-        if let Ok(udp) = packet.as_udp() {
+        if let Some(udp) = packet.as_udp() {
             let actual = udp.checksum();
             let expected = packet
                 .calculate_udp_checksum()
@@ -381,7 +381,7 @@ impl Tun for ValidateChecksumAdapter {
             }
         }
 
-        if let Ok(tcp) = packet.as_tcp() {
+        if let Some(tcp) = packet.as_tcp() {
             let actual = tcp.checksum();
             let expected = packet
                 .calculate_tcp_checksum()
