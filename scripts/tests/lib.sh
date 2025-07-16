@@ -19,14 +19,15 @@ function relay2() {
 }
 
 function install_iptables_drop_rules() {
-    sudo iptables -I DOCKER-USER -s 172.28.0.100 -d 172.28.0.105 -j DROP
-    sudo iptables -I DOCKER-USER -s 172.28.0.105 -d 172.28.0.100 -j DROP
+    # Execute within the client container because doing so from the host is not reliable in CI.
+    docker compose exec -it client /bin/sh -c 'sudo iptables -A OUTPUT -s 172.28.0.105 -d 172.28.0.100 -j DROP'
+    docker compose exec -it client /bin/sh -c 'sudo iptables -A INPUT -s 172.28.0.100 -d 172.28.0.105 -j DROP'
     trap remove_iptables_drop_rules EXIT # Cleanup after us
 }
 
 function remove_iptables_drop_rules() {
-    sudo iptables -D DOCKER-USER -s 172.28.0.100 -d 172.28.0.105 -j DROP
-    sudo iptables -D DOCKER-USER -s 172.28.0.105 -d 172.28.0.100 -j DROP
+    docker compose exec -it client /bin/sh -c 'sudo iptables -D OUTPUT -s 172.28.0.105 -d 172.28.0.100 -j DROP'
+    docker compose exec -it client /bin/sh -c 'sudo iptables -D INPUT -s 172.28.0.100 -d 172.28.0.105 -j DROP'
 }
 
 function client_curl_resource() {
