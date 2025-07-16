@@ -147,7 +147,11 @@ jobs:
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
-        run: docker compose logs client | grep "WARN" && exit 1 || exit 0
+        # Remove the error filter once headless-client 1.5.2 is released.
+        run: |
+          docker compose logs client | \
+            grep "Operation not permitted (os error 1)" --invert | \
+            grep "WARN" && exit 1 || exit 0
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
