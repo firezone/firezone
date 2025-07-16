@@ -361,7 +361,7 @@ impl Tun for ValidateChecksumAdapter {
     }
 
     fn send(&mut self, packet: IpPacket) -> std::io::Result<()> {
-        if let Ok(ipv4) = packet.ipv4_header() {
+        if let Some(ipv4) = packet.ipv4_header() {
             let expected = ipv4.calc_header_checksum();
             let actual = ipv4.header_checksum;
 

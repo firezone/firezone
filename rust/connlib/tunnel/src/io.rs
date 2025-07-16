@@ -187,7 +187,7 @@ impl Io {
         {
             let num_ipv4 = buffers.ip[..num_packets]
                 .iter()
-                .filter(|p| p.ipv4_header().is_ok())
+                .filter(|p| p.ipv4_header().is_some())
                 .count();
             let num_ipv6 = num_packets - num_ipv4;
 
