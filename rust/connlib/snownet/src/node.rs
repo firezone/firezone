@@ -2214,7 +2214,7 @@ where
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
-            TunnResult::Err(e @ WireGuardError::InvalidAeadTag)
+            TunnResult::Err(e @ (WireGuardError::InvalidAeadTag | WireGuardError::WrongKey))
                 if crate::is_handshake(packet)
                     && feature_flags::fail_handshake_on_decryption_errors() =>
             {
