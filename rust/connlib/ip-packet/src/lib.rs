@@ -394,12 +394,12 @@ impl IpPacket {
         self.set_ipv4_checksum();
     }
 
-    fn as_ipv4(&self) -> Result<Ipv4Slice> {
-        Ipv4Slice::from_slice(&self.buf[..self.len]).context("Not an IPv4 packet")
+    fn as_ipv4(&self) -> Option<Ipv4Slice> {
+        Ipv4Slice::from_slice(&self.buf[..self.len]).ok()
     }
 
-    fn as_ipv4_header_mut(&mut self) -> Result<Ipv4HeaderSliceMut> {
-        Ipv4HeaderSliceMut::from_slice(&mut self.buf[..self.len]).context("Not an IPv4 packet")
+    fn as_ipv4_header_mut(&mut self) -> Option<Ipv4HeaderSliceMut> {
+        Ipv4HeaderSliceMut::from_slice(&mut self.buf[..self.len]).ok()
     }
 
     #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
@@ -412,12 +412,12 @@ impl IpPacket {
         self.as_ipv4_header_mut().unwrap()
     }
 
-    fn as_ipv6(&self) -> Result<Ipv6Slice> {
-        Ipv6Slice::from_slice(&self.buf[..self.len]).context("Not an IPv6 packet")
+    fn as_ipv6(&self) -> Option<Ipv6Slice> {
+        Ipv6Slice::from_slice(&self.buf[..self.len]).ok()
     }
 
-    fn as_ipv6_header_mut(&mut self) -> Result<Ipv6HeaderSliceMut> {
-        Ipv6HeaderSliceMut::from_slice(&mut self.buf[..self.len]).context("Not an IPv6 packet")
+    fn as_ipv6_header_mut(&mut self) -> Option<Ipv6HeaderSliceMut> {
+        Ipv6HeaderSliceMut::from_slice(&mut self.buf[..self.len]).ok()
     }
 
     #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
@@ -431,7 +431,7 @@ impl IpPacket {
     }
 
     fn set_ipv4_checksum(&mut self) {
-        let Ok(p) = self.as_ipv4() else {
+        let Some(p) = self.as_ipv4() else {
             return;
         };
 
@@ -739,8 +739,14 @@ impl IpPacket {
     #[inline]
     pub fn set_dst(&mut self, dst: IpAddr) -> Result<()> {
         match dst {
-            IpAddr::V4(addr) => self.as_ipv4_header_mut()?.set_destination(addr.octets()),
-            IpAddr::V6(addr) => self.as_ipv6_header_mut()?.set_destination(addr.octets()),
+            IpAddr::V4(addr) => self
+                .as_ipv4_header_mut()
+                .context("Not an IPv4 packet")?
+                .set_destination(addr.octets()),
+            IpAddr::V6(addr) => self
+                .as_ipv6_header_mut()
+                .context("Not an IPv6 packet")?
+                .set_destination(addr.octets()),
         }
 
         Ok(())
@@ -749,8 +755,14 @@ impl IpPacket {
     #[inline]
     pub fn set_src(&mut self, src: IpAddr) -> Result<()> {
         match src {
-            IpAddr::V4(addr) => self.as_ipv4_header_mut()?.set_source(addr.octets()),
-            IpAddr::V6(addr) => self.as_ipv6_header_mut()?.set_source(addr.octets()),
+            IpAddr::V4(addr) => self
+                .as_ipv4_header_mut()
+                .context("Not an IPv4 packet")?
+                .set_source(addr.octets()),
+            IpAddr::V6(addr) => self
+                .as_ipv6_header_mut()
+                .context("Not an IPv6 packet")?
+                .set_source(addr.octets()),
         }
 
         Ok(())
@@ -819,12 +831,12 @@ impl IpPacket {
         }
     }
 
-    pub fn ipv4_header(&self) -> Result<Ipv4Header> {
-        Ok(self.as_ipv4()?.header().to_header())
+    pub fn ipv4_header(&self) -> Option<Ipv4Header> {
+        Some(self.as_ipv4()?.header().to_header())
     }
 
-    pub fn ipv6_header(&self) -> Result<Ipv6Header> {
-        Ok(self.as_ipv6()?.header().to_header())
+    pub fn ipv6_header(&self) -> Option<Ipv6Header> {
+        Some(self.as_ipv6()?.header().to_header())
     }
 
     pub fn next_header(&self) -> IpNumber {
@@ -1030,5 +1042,28 @@ mod tests {
         let p_with_ce = p.with_ecn_from_transport(Ecn::NonEct);
 
         assert_eq!(p_with_ce.ecn(), Ecn::Ect0);
+    }
+
+    /// The `as_` functions must be _fast_ because they are being called a lot across `connlib`.
+    /// Returning an `anyhow::Error` is detrimential for performance because `anyhow` captures
+    /// a stacktrace on each error creation.
+    ///
+    /// We have this test so we don't forget this.
+    ///
+    /// One possibility for the future might be to use dedicated `Error` types.
+    #[test]
+    fn all_as_functions_should_return_option() {
+        let mut p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        let _: Option<_> = p.as_udp();
+        let _: Option<_> = p.as_udp_mut();
+        let _: Option<_> = p.as_tcp();
+        let _: Option<_> = p.as_tcp_mut();
+        let _: Option<_> = p.as_icmpv4();
+        let _: Option<_> = p.as_icmpv4_mut();
+        let _: Option<_> = p.as_icmpv6();
+        let _: Option<_> = p.as_icmpv6_mut();
+        let _: Option<_> = p.as_fz_p2p_control();
     }
 }
