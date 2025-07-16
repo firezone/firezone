@@ -89,12 +89,10 @@ defmodule API.Gateway.Channel do
 
     cutoff = DateTime.utc_now() |> DateTime.add(-14, :day)
 
+    # Keep flows that were inserted in the last 14 days
     flows =
       socket.assigns.flows
-      |> Enum.filter(fn {_id, flow} ->
-        # Keep flows that were inserted in the last 14 days
-        flow.inserted_at > cutoff
-      end)
+      |> Enum.filter(fn {_id, flow} -> flow.inserted_at > cutoff end)
       |> Enum.into(%{})
 
     # We don't need to push reject_access - the gateway uses its own timer to expire flows
@@ -120,12 +118,7 @@ defmodule API.Gateway.Channel do
         socket
       )
       when old_verified_at != verified_at do
-    # 1. Find all flows for this client
-    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.client_id == client_id end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
-
+    socket = reject_access(socket, fn {_id, f} -> f.client_id == client_id end)
     {:noreply, socket}
   end
 
@@ -135,12 +128,7 @@ defmodule API.Gateway.Channel do
   # This can be removed when hard deletion is implemented because we will respond to the cascading
   # flow deletion when a policy is deleted. For now we need to handle this event.
   def handle_info({:deleted, %Policies.Policy{id: policy_id}}, socket) do
-    # 1. Find all flows for this policy
-    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.policy_id == policy_id end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
-
+    socket = reject_access(socket, fn {_id, f} -> f.policy_id == policy_id end)
     {:noreply, socket}
   end
 
@@ -156,13 +144,7 @@ defmodule API.Gateway.Channel do
         socket
       )
       when old_ip_stack != ip_stack or old_address != address or old_type != type do
-    # 1. Find all flows for this resource
-    affected_flows =
-      Map.filter(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource_id end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
-
+    socket = reject_access(socket, fn {_id, f} -> f.resource_id == resource_id end)
     {:noreply, socket}
   end
 
@@ -194,26 +176,14 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info({:deleted, %Resources.Resource{id: resource_id}}, socket) do
-    # 1. Find all flows for this resource
-    affected_flows =
-      Map.filter(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource_id end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
-
+    socket = reject_access(socket, fn {_id, f} -> f.resource_id == resource_id end)
     {:noreply, socket}
   end
 
   # RESOURCE_CONNECTIONS
 
   def handle_info({:deleted, %Resources.Connection{resource_id: resource_id}}, socket) do
-    # 1. Find all flows for this resource
-    affected_flows =
-      Map.filter(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource_id end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
-
+    socket = reject_access(socket, fn {_id, f} -> f.resource_id == resource_id end)
     {:noreply, socket}
   end
 
@@ -237,12 +207,7 @@ defmodule API.Gateway.Channel do
   # This can be removed after hard deletion is implemented because we will respond to the cascading
   # flow deletion when a client is deleted.
   def handle_info({:deleted, %Clients.Client{id: client_id}}, socket) do
-    # 1. Find all flows for this client
-    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.client_id == client_id end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
-
+    socket = reject_access(socket, fn {_id, f} -> f.client_id == client_id end)
     {:noreply, socket}
   end
 
@@ -260,26 +225,17 @@ defmodule API.Gateway.Channel do
 
   # A client's token was deleted, remove all flows for that token
   def handle_info({:deleted, %Tokens.Token{type: :client, id: token_id}}, socket) do
-    # 1. Find all flows for this token
-    affected_flows = Map.filter(socket.assigns.flows, fn {_id, f} -> f.token_id == token_id end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
-
+    socket = reject_access(socket, fn {_id, f} -> f.token_id == token_id end)
     {:noreply, socket}
   end
 
   # ACTOR_GROUP_MEMBERSHIPS
 
   def handle_info({:deleted, %Actors.Membership{} = membership}, socket) do
-    # 1. Find all flows for this membership
-    affected_flows =
-      Map.filter(socket.assigns.flows, fn {_id, f} ->
+    socket =
+      reject_access(socket, fn {_id, f} ->
         f.actor_group_membership_id == membership.id
       end)
-
-    # 2. Push reject_access and update our state
-    socket = reject_access(socket, affected_flows)
 
     {:noreply, socket}
   end
@@ -484,7 +440,7 @@ defmodule API.Gateway.Channel do
         })
 
       # Update our state
-      socket = assign(socket, Map.put(socket.assigns.flows, flow.id, flow))
+      socket = assign(socket, flows: Map.put(socket.assigns.flows, flow.id, flow))
 
       push(socket, "authorize_flow", %{
         ref: ref,
@@ -543,7 +499,7 @@ defmodule API.Gateway.Channel do
           expires_at = DateTime.to_unix(authorization_expires_at, :second)
 
           # Update our state
-          socket = assign(socket, Map.put(socket.assigns.flows, flow.id, flow))
+          socket = assign(socket, flows: Map.put(socket.assigns.flows, flow.id, flow))
 
           push(socket, "allow_access", %{
             ref: ref,
@@ -611,7 +567,7 @@ defmodule API.Gateway.Channel do
           expires_at = DateTime.to_unix(authorization_expires_at, :second)
 
           # Update our state
-          socket = assign(socket, Map.put(socket.assigns.flows, flow.id, flow))
+          socket = assign(socket, flows: Map.put(socket.assigns.flows, flow.id, flow))
 
           push(socket, "request_connection", %{
             ref: ref,
@@ -854,7 +810,12 @@ defmodule API.Gateway.Channel do
     assign(socket, flows: flows)
   end
 
-  defp reject_access(socket, flows) do
+  defp reject_access(socket, filter_fn) do
+    flows =
+      socket.assigns.flows
+      |> Enum.filter(filter_fn)
+      |> Enum.into(%{})
+
     case flows do
       flows when map_size(flows) == 0 ->
         socket

@@ -52,6 +52,16 @@ defmodule Domain.SchemaHelpersTest do
     end
   end
 
+  defmodule NestedEnumSchema do
+    use Ecto.Schema
+
+    @primary_key false
+    embedded_schema do
+      field :enum_field, Ecto.Enum, values: ~w[option1 option2 option3]a
+      field :values, {:array, :string}
+    end
+  end
+
   defmodule RootSchema do
     use Ecto.Schema
 

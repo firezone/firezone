@@ -195,7 +195,9 @@ defmodule API.Client.Channel do
 
     # 2. Update our state
     policies =
-      Map.filter(socket.assigns.policies, fn {_id, p} -> p.actor_group_id != group_id end)
+      socket.assigns.policies
+      |> Enum.filter(fn {_id, policy} -> policy.actor_group_id != group_id end)
+      |> Enum.into(%{})
 
     r_ids = Enum.map(policies, fn {_id, policy} -> policy.resource_id end) |> Enum.uniq()
     resources = Map.take(socket.assigns.resources, r_ids)
@@ -267,6 +269,7 @@ defmodule API.Client.Channel do
       # 3. Update our state
       socket =
         if Map.has_key?(socket.assigns.resources, policy.resource_id) do
+          # Resource already exists due to another policy
           socket
         else
           {:ok, resource} =
@@ -290,47 +293,47 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Breaking update - send resource_deleted then resource_created_or_updated
   def handle_info(
         {:updated,
          %Policies.Policy{
            resource_id: old_resource_id,
            actor_group_id: old_actor_group_id,
-           conditions: old_conditions
-         },
+           conditions: old_conditions,
+           # Only react to updates for enabled policies
+           disabled_at: nil
+         } = old_policy,
          %Policies.Policy{
            resource_id: resource_id,
            actor_group_id: actor_group_id,
            conditions: conditions,
-           # Only react to changes for enabled policies
            disabled_at: nil
          } = policy},
         socket
       )
       when old_resource_id != resource_id or old_actor_group_id != actor_group_id or
              old_conditions != conditions do
-    # 1. Check if this policy affects us
-    if Map.has_key?(socket.assigns.policies, policy.id) do
-      # 2. Get existing resources
-      existing_resources = authorized_resources(socket)
+    # Breaking update - process this as a delete and then create
+    {:noreply, socket} = handle_info({:deleted, old_policy}, socket)
+    {:noreply, socket} = handle_info({:created, policy}, socket)
 
-      # 3. Update our state
-      socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
-    else
-      {:noreply, socket}
-    end
+    {:noreply, socket}
   end
 
   def handle_info({:deleted, %Policies.Policy{} = policy}, socket) do
     # 1. Check if this policy is for us
-    if MapSet.member?(socket.assigns.membership_group_ids, policy.actor_group_id) do
-      # 2. Update our state
+    if Map.has_key?(socket.assigns.policies, policy.id) do
+      # 2. Snapshot existing resources
+      existing_resources = authorized_resources(socket)
+
+      # 3. Update our state
       socket = assign(socket, policies: Map.delete(socket.assigns.policies, policy.id))
       r_ids = Enum.map(socket.assigns.policies, fn {_id, p} -> p.resource_id end) |> Enum.uniq()
       socket = assign(socket, resources: Map.take(socket.assigns.resources, r_ids))
 
-      # 4. Push deleted resource to the client
-      push(socket, "resource_deleted", policy.resource_id)
+      # 4. Push deleted resource to the client if we lost access to it
+      if resource = (existing_resources -- authorized_resources(socket)) |> List.first() do
+        push(socket, "resource_deleted", resource.id)
+      end
 
       {:noreply, socket}
     else

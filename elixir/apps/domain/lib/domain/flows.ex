@@ -34,7 +34,7 @@ defmodule Domain.Flows do
          {:ok, resource} <-
            Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts),
          {:ok, policy, conformation_expires_at} <- fetch_conforming_policy(resource, client),
-         {:ok, membership} =
+         {:ok, membership} <-
            Actors.fetch_membership_by_actor_id_and_group_id(actor_id, policy.actor_group_id) do
       flow =
         Flow.Changeset.create(%{
