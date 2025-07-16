@@ -10,6 +10,7 @@ use firezone_tunnel::messages::client::{
 use firezone_tunnel::{ClientTunnel, IpConfig};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
+use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Instant;
 use std::{
@@ -27,6 +28,8 @@ pub struct Eventloop {
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     event_tx: tokio::sync::mpsc::Sender<Event>,
+
+    logged_permission_denied: bool,
 }
 
 /// Commands that can be sent to the [`Eventloop`].
@@ -86,6 +89,7 @@ impl Eventloop {
             portal,
             cmd_rx,
             event_tx,
+            logged_permission_denied: false,
         }
     }
 }
@@ -152,6 +156,19 @@ impl Eventloop {
                         .is::<firezone_tunnel::UdpSocketThreadStopped>()
                     {
                         return Poll::Ready(Err(e));
+                    }
+
+                    if e.root_cause()
+                        .downcast_ref::<io::Error>()
+                        .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
+                    {
+                        if !mem::replace(&mut self.logged_permission_denied, true) {
+                            tracing::info!(
+                                "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                            )
+                        }
+
+                        continue;
                     }
 
                     tracing::warn!("Tunnel error: {e:#}");
