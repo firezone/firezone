@@ -836,30 +836,30 @@ where
             }
             // Channel data number range
             Some(64..=79) => {
+                let Ok(cd) = crate::channel_data::decode(packet) else {
+                    // False-positive, continue processing packet elsewhere
+                    return ControlFlow::Continue((from, packet, None));
+                };
+
                 let Some(allocation) = self
                     .allocations
                     .values_mut()
                     .find(|a| a.server().matches(from))
                 else {
-                    if crate::channel_data::decode(packet).is_ok() {
-                        tracing::debug!("Packet was a channel data message for unknown allocation");
+                    tracing::debug!("Packet was a channel data message for unknown allocation");
 
-                        return ControlFlow::Break(()); // Stop processing the packet.
-                    }
-
-                    // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, packet, None));
+                    return ControlFlow::Break(()); // Stop processing the packet.
                 };
 
-                if let Some((from, packet, socket)) = allocation.decapsulate(from, packet, now) {
-                    // Successfully handled the packet and decapsulated the channel data message.
-                    // Continue processing with the _unwrapped_ packet.
-                    return ControlFlow::Continue((from, packet, Some(socket)));
-                }
+                let Some((from, packet, socket)) = allocation.decapsulate(from, cd, now) else {
+                    tracing::debug!("Packet was a channel data message but not accepted"); // i.e. unbound channel etc
 
-                tracing::debug!("Packet was a channel data message but not accepted");
+                    return ControlFlow::Break(()); // Stop processing the packet.
+                };
 
-                ControlFlow::Break(()) // Stop processing the packet.
+                // Successfully handled the packet and decapsulated the channel data message.
+                // Continue processing with the _unwrapped_ packet.
+                ControlFlow::Continue((from, packet, Some(socket)))
             }
             // Byte is in a different range? Move on with processing the packet.
             Some(_) | None => ControlFlow::Continue((from, packet, None)),
