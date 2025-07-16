@@ -27,5 +27,9 @@ defmodule Domain.Events.Hooks.Resources do
   def on_delete(old_data) do
     resource = SchemaHelpers.struct_from_params(Resources.Resource, old_data)
     PubSub.Account.broadcast(resource.account_id, {:deleted, resource})
+
+    # TODO: Hard delete
+    # This can be removed upon implementation of hard delete
+    Domain.Flows.delete_flows_for(resource)
   end
 end

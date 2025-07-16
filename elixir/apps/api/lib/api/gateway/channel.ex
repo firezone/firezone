@@ -111,13 +111,14 @@ defmodule API.Gateway.Channel do
 
   # CLIENTS
 
-  # Expire flows for this client because verified_at can change allowed resources
+  # Expire flows for this client because unverifying a client can remove access
+  # to resources, but we don't necessarily know which ones.
   def handle_info(
         {:updated, %Clients.Client{verified_at: old_verified_at},
-         %Clients.Client{verified_at: verified_at, id: client_id}},
+         %Clients.Client{verified_at: nil, id: client_id}},
         socket
       )
-      when old_verified_at != verified_at do
+      when old_verified_at != nil do
     socket = reject_access(socket, fn {_id, f} -> f.client_id == client_id end)
     {:noreply, socket}
   end
@@ -157,19 +158,7 @@ defmodule API.Gateway.Channel do
     has_flows? = Enum.any?(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource.id end)
 
     if has_flows? do
-      case API.Client.Channel.map_or_drop_compatible_resource(
-             resource,
-             socket.assigns.gateway.last_seen_version
-           ) do
-        {:cont, resource} ->
-          push(socket, "resource_updated", Views.Resource.render(resource))
-
-        :drop ->
-          Logger.debug("Resource is not compatible with the gateway version",
-            gateway_id: socket.assigns.gateway.id,
-            resource_id: resource.id
-          )
-      end
+      push(socket, "resource_updated", Views.Resource.render(resource))
     end
 
     {:noreply, socket}

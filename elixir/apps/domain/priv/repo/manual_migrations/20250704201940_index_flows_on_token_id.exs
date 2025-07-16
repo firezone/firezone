@@ -5,7 +5,7 @@ defmodule Domain.Repo.Migrations.IndexFlowsOnTokenId do
 
   def up do
     execute("""
-    CREATE INDEX CONCURRENTLY flows_account_id_token_id_index ON flows USING BTREE (account_id, token_id, inserted_at DESC, id DESC);
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS flows_account_id_token_id_index ON flows USING BTREE (account_id, token_id, inserted_at DESC, id DESC);
     """)
   end
 

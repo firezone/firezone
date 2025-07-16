@@ -32,6 +32,10 @@ defmodule Domain.Flows.Flow.Query do
     |> where([policy: policy], policy.actor_group_id == ^actor_group_id)
   end
 
+  def by_actor_group_membership_id(queryable, membership_id) do
+    where(queryable, [flows: flows], flows.actor_group_membership_id == ^membership_id)
+  end
+
   def by_identity_id(queryable, identity_id) do
     queryable
     |> with_joined_client()

@@ -49,7 +49,7 @@ defmodule Domain.Repo.Migrations.BackfillFlowsWithActorGroupMembershipId do
     # Step 6: Add an index on the new foreign key for performance
     execute("""
     CREATE INDEX IF NOT EXISTS flows_actor_group_membership_id_index
-    ON flows (actor_group_membership_id)
+    ON flows USING BTREE (account_id, actor_group_membership_id, inserted_at DESC, id DESC)
     """)
 
     # Step 7: Add the foreign key constraint

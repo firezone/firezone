@@ -24,5 +24,9 @@ defmodule Domain.Events.Hooks.Clients do
   def on_delete(old_data) do
     client = SchemaHelpers.struct_from_params(Clients.Client, old_data)
     PubSub.Account.broadcast(client.account_id, {:deleted, client})
+
+    # TODO: Hard delete
+    # This can be removed upon implementation of hard delete
+    Domain.Flows.delete_flows_for(client)
   end
 end

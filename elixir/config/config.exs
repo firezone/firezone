@@ -101,6 +101,7 @@ config :domain, Domain.Events.ReplicationConnection,
     actor_group_memberships
     clients
     gateways
+    gateway_groups
     policies
     resource_connections
     resources

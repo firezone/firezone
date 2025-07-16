@@ -5,7 +5,9 @@ defmodule Domain.Flows do
   require Ecto.Query
   require Logger
 
-  # TODO: Connection setup latency
+  # TODO: Optimization
+  # Connection setup latency - doesn't need to block setting up flow,
+  # but if this fails, we should
   def authorize_flow(
         %Clients.Client{
           id: client_id,
@@ -135,5 +137,53 @@ defmodule Domain.Flows do
       |> Authorizer.for_subject(Flow, subject)
       |> Repo.list(Flow.Query, opts)
     end
+  end
+
+  def delete_flows_for(%Domain.Accounts.Account{} = account) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(account.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Actors.Membership{} = membership) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(membership.account_id)
+    |> Flow.Query.by_actor_group_membership_id(membership.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Clients.Client{} = client) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(client.account_id)
+    |> Flow.Query.by_client_id(client.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Gateways.Gateway{} = gateway) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(gateway.account_id)
+    |> Flow.Query.by_gateway_id(gateway.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Policies.Policy{} = policy) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(policy.account_id)
+    |> Flow.Query.by_policy_id(policy.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Resources.Resource{} = resource) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(resource.account_id)
+    |> Flow.Query.by_resource_id(resource.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Tokens.Token{} = token) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(token.account_id)
+    |> Flow.Query.by_token_id(token.id)
+    |> Repo.delete_all()
   end
 end

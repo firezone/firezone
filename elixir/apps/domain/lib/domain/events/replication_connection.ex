@@ -7,6 +7,7 @@ defmodule Domain.Events.ReplicationConnection do
     "actor_group_memberships" => Hooks.ActorGroupMemberships,
     "clients" => Hooks.Clients,
     "gateways" => Hooks.Gateways,
+    "gateway_groups" => Hooks.GatewayGroups,
     "policies" => Hooks.Policies,
     "resource_connections" => Hooks.ResourceConnections,
     "resources" => Hooks.Resources,

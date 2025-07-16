@@ -36,13 +36,7 @@ defmodule Domain.Repo.Migrations.AddIdToActorGroupMemberships do
     ADD PRIMARY KEY (id)
     """)
 
-    # Step 6: Restore the index on actor_id
-    execute("""
-    CREATE INDEX IF NOT EXISTS actor_group_memberships_actor_id_index
-    ON actor_group_memberships (actor_id)
-    """)
-
-    # Step 7: Recreate the actor_id, group_id index with unique constraint
+    # Step 6: Recreate the actor_id, group_id index with unique constraint
     execute("""
     CREATE UNIQUE INDEX IF NOT EXISTS actor_group_memberships_actor_id_group_id_index
     ON actor_group_memberships (actor_id, group_id)
@@ -55,24 +49,19 @@ defmodule Domain.Repo.Migrations.AddIdToActorGroupMemberships do
     DROP INDEX IF EXISTS actor_group_memberships_actor_id_group_id_index
     """)
 
-    # Step 2: Remove the index on actor_id
-    execute("""
-    DROP INDEX IF EXISTS actor_group_memberships_actor_id_index
-    """)
-
-    # Step 3: Drop the new single-column primary key
+    # Step 2: Drop the new single-column primary key
     execute("""
     ALTER TABLE actor_group_memberships
     DROP CONSTRAINT IF EXISTS actor_group_memberships_pkey
     """)
 
-    # Step 4: Restore the original composite primary key
+    # Step 3: Restore the original composite primary key
     execute("""
     ALTER TABLE actor_group_memberships
     ADD CONSTRAINT IF NOT EXISTS actor_group_memberships_pkey PRIMARY KEY (actor_id, group_id)
     """)
 
-    # Step 5: Drop the id column
+    # Step 4: Drop the id column
     execute("""
     ALTER TABLE actor_group_memberships
     DROP COLUMN IF EXISTS id

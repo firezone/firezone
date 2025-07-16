@@ -19,5 +19,9 @@ defmodule Domain.Events.Hooks.Gateways do
   def on_delete(old_data) do
     gateway = SchemaHelpers.struct_from_params(Gateways.Gateway, old_data)
     PubSub.Account.broadcast(gateway.account_id, {:deleted, gateway})
+
+    # TODO: Hard delete
+    # This can be removed upon implementation of hard delete
+    Domain.Flows.delete_flows_for(gateway)
   end
 end

@@ -185,7 +185,7 @@ defmodule API.Client.Channel do
         %{assigns: %{client: %{actor_id: id}}} = socket
       )
       when id == actor_id do
-    # 1. Get all resource_ids we no longer have access to
+    # 1. Take a snapshot of all resource_ids we no longer have access to
     deleted_resource_ids =
       socket.assigns.policies
       |> Enum.flat_map(fn {_id, policy} ->
@@ -193,7 +193,12 @@ defmodule API.Client.Channel do
       end)
       |> Enum.uniq()
 
-    # 2. Update our state
+    # 2. Push deleted resources to the client
+    for resource_id <- deleted_resource_ids do
+      push(socket, "resource_deleted", resource_id)
+    end
+
+    # 3. Update our state
     policies =
       socket.assigns.policies
       |> Enum.filter(fn {_id, policy} -> policy.actor_group_id != group_id end)
@@ -209,11 +214,6 @@ defmodule API.Client.Channel do
       |> assign(resources: resources)
       |> assign(membership_group_ids: membership_group_ids)
 
-    # 4. Push deleted resources to the client
-    for resource_id <- deleted_resource_ids do
-      push(socket, "resource_deleted", resource_id)
-    end
-
     {:noreply, socket}
   end
 
@@ -226,6 +226,8 @@ defmodule API.Client.Channel do
         %{assigns: %{client: %{id: id}}} = socket
       )
       when id == client_id do
+    # TODO: Re-evaluate list of authorized_resources instead of re-hydrating everything
+
     # 1. Update our state
     socket = assign(socket, client: client)
 
@@ -258,12 +260,40 @@ defmodule API.Client.Channel do
     end
   end
 
+  # GATEWAY_GROUPS
+
+  def handle_info(
+        {:updated, %Gateways.Group{name: old_name}, %Gateways.Group{name: name} = group},
+        socket
+      )
+      when old_name != name do
+    resources =
+      socket.assigns.resources
+      |> Enum.map(fn {id, resource} ->
+        gateway_groups =
+          resource.gateway_groups
+          |> Enum.map(fn gg -> if gg.id == group.id, do: %{gg | name: name}, else: gg end)
+
+        # Send resource_created_or_updated for all resources that have this group
+        if Enum.any?(gateway_groups, &(&1.id == group.id)) do
+          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+        end
+
+        {id, %{resource | gateway_groups: gateway_groups}}
+      end)
+      |> Enum.into(%{})
+
+    socket = assign(socket, resources: resources)
+
+    {:noreply, socket}
+  end
+
   # POLICIES
 
   def handle_info({:created, %Policies.Policy{} = policy}, socket) do
     # 1. Check if this policy is for us
     if MapSet.member?(socket.assigns.membership_group_ids, policy.actor_group_id) do
-      # 2. Get existing resources
+      # 2. Snapshot existing resources
       existing_resources = authorized_resources(socket)
 
       # 3. Update our state
@@ -282,7 +312,7 @@ defmodule API.Client.Channel do
 
       socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
 
-      # Get new resource
+      # 4. Maybe send new resource
       if resource = (authorized_resources(socket) -- existing_resources) |> List.first() do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
@@ -298,15 +328,13 @@ defmodule API.Client.Channel do
          %Policies.Policy{
            resource_id: old_resource_id,
            actor_group_id: old_actor_group_id,
-           conditions: old_conditions,
-           # Only react to updates for enabled policies
-           disabled_at: nil
+           conditions: old_conditions
          } = old_policy,
          %Policies.Policy{
            resource_id: resource_id,
            actor_group_id: actor_group_id,
            conditions: conditions,
-           disabled_at: nil
+           disabled_at: disabled_at
          } = policy},
         socket
       )
@@ -314,8 +342,16 @@ defmodule API.Client.Channel do
              old_conditions != conditions do
     # Breaking update - process this as a delete and then create
     {:noreply, socket} = handle_info({:deleted, old_policy}, socket)
-    {:noreply, socket} = handle_info({:created, policy}, socket)
 
+    if is_nil(disabled_at) do
+      handle_info({:created, policy}, socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Other update - no-op for the client's purposes
+  def handle_info({:updated, %Policies.Policy{}, %Policies.Policy{}}, socket) do
     {:noreply, socket}
   end
 
@@ -405,9 +441,32 @@ defmodule API.Client.Channel do
   # RESOURCES
 
   def handle_info(
-        {:updated, %Resources.Resource{}, %Resources.Resource{id: id} = updated_resource},
+        {:updated,
+         %Resources.Resource{
+           ip_stack: old_ip_stack,
+           address: old_address,
+           address_description: old_address_description,
+           name: old_name,
+           type: old_type,
+           filters: old_filters
+         },
+         %Resources.Resource{
+           id: id,
+           ip_stack: ip_stack,
+           address: address,
+           address_description: address_description,
+           name: name,
+           type: type,
+           filters: filters
+         } = updated_resource},
         socket
-      ) do
+      )
+      when old_ip_stack != ip_stack or
+             old_address != address or
+             old_address_description != address_description or
+             old_name != name or
+             old_type != type or
+             old_filters != filters do
     # 1. Check if this affects us
     if resource = socket.assigns.resources[id] do
       # 2. Update our state

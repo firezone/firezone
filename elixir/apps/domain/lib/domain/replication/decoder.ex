@@ -165,8 +165,16 @@ defmodule Domain.Replication.Decoder do
   def decode_json({value, %{type: type} = column})
       when type in ["json", "jsonb"] and is_binary(value) do
     case JSON.decode(value) do
-      {:ok, decoded} -> {column.name, decoded}
-      {:error, _} -> {column.name, value}
+      {:ok, decoded} ->
+        {column.name, decoded}
+
+      {:error, reason} ->
+        Logger.warning("Failed to decode JSON, using as-is",
+          json: value,
+          reason: reason
+        )
+
+        {column.name, value}
     end
   end
 
@@ -199,7 +207,13 @@ defmodule Domain.Replication.Decoder do
          {:ok, second} <- Jason.decode(first) do
       second
     else
-      _ -> json_str
+      {:error, reason} ->
+        Logger.warning("Failed to decode JSON, using as-is",
+          json: json_str,
+          reason: reason
+        )
+
+        json_str
     end
   end
 

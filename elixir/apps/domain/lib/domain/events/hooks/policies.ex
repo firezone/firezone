@@ -11,18 +11,6 @@ defmodule Domain.Events.Hooks.Policies do
 
   @impl true
 
-  # Enable - process as insert
-  def on_update(%{"disabled_at" => disabled_at}, %{"disabled_at" => nil} = data)
-      when not is_nil(disabled_at) do
-    on_insert(data)
-  end
-
-  # Disable - process as delete
-  def on_update(%{"disabled_at" => nil} = old_data, %{"disabled_at" => disabled_at})
-      when not is_nil(disabled_at) do
-    on_delete(old_data)
-  end
-
   # Soft-delete - process as delete
   def on_update(%{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
       when not is_nil(deleted_at) do
@@ -40,5 +28,9 @@ defmodule Domain.Events.Hooks.Policies do
   def on_delete(old_data) do
     policy = SchemaHelpers.struct_from_params(Policies.Policy, old_data)
     PubSub.Account.broadcast(policy.account_id, {:deleted, policy})
+
+    # TODO: Hard delete
+    # This can be removed upon implementation of hard delete
+    Domain.Flows.delete_flows_for(policy)
   end
 end
