@@ -841,6 +841,12 @@ where
                     .values_mut()
                     .find(|a| a.server().matches(from))
                 else {
+                    if crate::channel_data::decode(packet).is_ok() {
+                        tracing::debug!("Packet was a channel data message for unknown allocation");
+
+                        return ControlFlow::Break(()); // Stop processing the packet.
+                    }
+
                     // False-positive, continue processing packet elsewhere
                     return ControlFlow::Continue((from, packet, None));
                 };
