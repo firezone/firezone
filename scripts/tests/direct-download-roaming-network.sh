@@ -7,9 +7,8 @@ client sh -c \
     "curl \
         --fail \
         --max-time 12 \
-        --retry 1 \
-        --continue-at - \
-        --limit-rate 1M \
+        --keepalive-time 1 \
+        --limit-rate 1000000 \
         --output download.file \
         http://download.httpbin/bytes?num=10000000" &
 
