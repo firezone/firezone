@@ -21,7 +21,6 @@ function relay2() {
 function install_iptables_drop_rules() {
     # Execute within the client container because doing so from the host is not reliable in CI.
     docker compose exec -it client /bin/sh -c 'iptables -A OUTPUT -d 172.28.0.100 -j DROP'
-    docker compose exec -it client /bin/sh -c 'ping -c 4 172.28.0.100'
 }
 
 function client_curl_resource() {
