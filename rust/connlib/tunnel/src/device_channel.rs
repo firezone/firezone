@@ -99,7 +99,7 @@ fn io_error_not_initialized() -> io::Error {
 }
 
 fn parse_dns_query(packet: &IpPacket) -> Option<dns_types::Query> {
-    let udp = packet.as_udp().ok()?;
+    let udp = packet.as_udp()?;
     if udp.destination_port() != crate::dns::DNS_PORT {
         return None;
     }
@@ -108,7 +108,7 @@ fn parse_dns_query(packet: &IpPacket) -> Option<dns_types::Query> {
 }
 
 fn parse_dns_response(packet: &IpPacket) -> Option<dns_types::Response> {
-    let udp = packet.as_udp().ok()?;
+    let udp = packet.as_udp()?;
     if udp.source_port() != crate::dns::DNS_PORT {
         return None;
     }

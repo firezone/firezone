@@ -82,11 +82,11 @@ fn is_tcp_syn_retransmit(buffered: &IpPacket, new: &IpPacket) -> bool {
         return false;
     }
 
-    let Ok(buffered) = buffered.as_tcp() else {
+    let Some(buffered) = buffered.as_tcp() else {
         return false;
     };
 
-    let Ok(new) = new.as_tcp() else {
+    let Some(new) = new.as_tcp() else {
         return false;
     };
 
