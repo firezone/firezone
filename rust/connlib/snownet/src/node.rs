@@ -746,18 +746,31 @@ where
             tracing::warn!("No TURN servers connected; connection may fail to establish");
         }
 
+        let mut tunnel = Tunn::new_at(
+            self.private_key.clone(),
+            remote,
+            Some(key),
+            None,
+            self.index.next(),
+            Some(self.rate_limiter.clone()),
+            self.rng.next_u64(),
+            now,
+        );
+        // By default, boringtun has a rekey attempt time of 90(!) seconds.
+        // In case of a state de-sync or other issues, this means we try for
+        // 90s to make a handshake, all whilst our ICE layer thinks the connection
+        // is working perfectly fine.
+        // This results in a bad UX as the user has to essentially wait for 90s
+        // before Firezone can fix the state and make a new connection.
+        //
+        // By aligning the rekey-attempt-time roughly with our ICE timeout, we ensure
+        // that even if the hole-punch was successful, it will take at most 15s
+        // until we have a WireGuard tunnel to send packets into.
+        tunnel.set_rekey_attempt_time(Duration::from_secs(15));
+
         Connection {
             agent,
-            tunnel: Tunn::new_at(
-                self.private_key.clone(),
-                remote,
-                Some(key),
-                None,
-                self.index.next(),
-                Some(self.rate_limiter.clone()),
-                self.rng.next_u64(),
-                now,
-            ),
+            tunnel,
             next_wg_timer_update: now,
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
