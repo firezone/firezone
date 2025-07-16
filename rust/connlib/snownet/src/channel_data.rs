@@ -23,11 +23,11 @@ pub fn decode(data: &[u8]) -> Result<(u16, &[u8]), io::Error> {
 
     let length = u16::from_be_bytes([header[2], header[3]]) as usize;
 
-    if payload.len() < length {
+    if payload.len() != length {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!(
-                "channel data message specified {length} bytes but the payload is only {} bytes",
+                "channel data message specified {length} bytes but the payload is {} bytes",
                 payload.len()
             ),
         ));
