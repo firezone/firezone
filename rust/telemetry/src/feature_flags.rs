@@ -43,10 +43,6 @@ pub fn export_metrics() -> bool {
     false // Placeholder until we actually deploy an OTEL collector.
 }
 
-pub fn fail_handshake_on_decryption_errors() -> bool {
-    FEATURE_FLAGS.fail_handshake_on_decryption_errors()
-}
-
 pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     if user_id.is_empty() {
         return;
@@ -160,8 +156,6 @@ struct FeatureFlagsResponse {
     stream_logs: bool,
     #[serde(default)]
     map_enobufs_to_wouldblock: bool,
-    #[serde(default)]
-    fail_handshake_on_decryption_errors: bool,
 }
 
 #[derive(Debug, Default)]
@@ -170,7 +164,6 @@ struct FeatureFlags {
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: AtomicBool,
     map_enobufs_to_wouldblock: AtomicBool,
-    fail_handshake_on_decryption_errors: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -187,7 +180,6 @@ impl FeatureFlags {
             drop_llmnr_nxdomain_responses,
             stream_logs,
             map_enobufs_to_wouldblock,
-            fail_handshake_on_decryption_errors,
         }: FeatureFlagsResponse,
     ) {
         self.icmp_unreachable_instead_of_nat64
@@ -197,8 +189,6 @@ impl FeatureFlags {
         self.stream_logs.store(stream_logs, Ordering::Relaxed);
         self.map_enobufs_to_wouldblock
             .store(map_enobufs_to_wouldblock, Ordering::Relaxed);
-        self.fail_handshake_on_decryption_errors
-            .store(fail_handshake_on_decryption_errors, Ordering::Relaxed);
     }
 
     fn icmp_unreachable_instead_of_nat64(&self) -> bool {
@@ -217,11 +207,6 @@ impl FeatureFlags {
     fn map_enobufs_to_wouldblock(&self) -> bool {
         self.map_enobufs_to_wouldblock.load(Ordering::Relaxed)
     }
-
-    fn fail_handshake_on_decryption_errors(&self) -> bool {
-        self.fail_handshake_on_decryption_errors
-            .load(Ordering::Relaxed)
-    }
 }
 
 fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
@@ -232,7 +217,6 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         DropLlmnrNxdomainResponses { result: bool },
         StreamLogs { result: bool },
         MapENOBUFSToWouldBlock { result: bool },
-        FailHandshakeOnDecryptionErrors { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -241,7 +225,6 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         drop_llmnr_nxdomain_responses,
         stream_logs,
         map_enobufs_to_wouldblock,
-        fail_handshake_on_decryption_errors,
     } = flags;
 
     let value = serde_json::json!({
@@ -252,7 +235,6 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
             SentryFlag::StreamLogs { result: stream_logs },
             SentryFlag::MapENOBUFSToWouldBlock { result: map_enobufs_to_wouldblock },
-            SentryFlag::FailHandshakeOnDecryptionErrors { result: fail_handshake_on_decryption_errors },
         ]
     });
 

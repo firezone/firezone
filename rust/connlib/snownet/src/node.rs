@@ -2214,12 +2214,7 @@ where
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
-            TunnResult::Err(e @ WireGuardError::InvalidAeadTag)
-                if crate::is_handshake(packet)
-                    && feature_flags::fail_handshake_on_decryption_errors() =>
-            {
-                analytics::feature_flag_called("fail-handshake-on-decryption-errors");
-
+            TunnResult::Err(e @ WireGuardError::InvalidAeadTag) if crate::is_handshake(packet) => {
                 tracing::info!("Connection handshake failed ({e})");
                 self.state = ConnectionState::Failed;
 
