@@ -65,7 +65,7 @@ impl Client {
     }
 
     pub fn accepts(&self, packet: &IpPacket) -> bool {
-        let Ok(tcp) = packet.as_tcp() else {
+        let Some(tcp) = packet.as_tcp() else {
             return false;
         };
 
