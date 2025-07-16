@@ -3,30 +3,27 @@
 set -euox pipefail
 
 function client() {
-    docker compose exec -it client "$@"
+    docker compose exec -T client "$@"
 }
 
 function gateway() {
-    docker compose exec -it gateway "$@"
+    docker compose exec -T gateway "$@"
 }
 
 function relay1() {
-    docker compose exec -it relay-1 "$@"
+    docker compose exec -T relay-1 "$@"
 }
 
 function relay2() {
-    docker compose exec -it relay-2 "$@"
+    docker compose exec -T relay-2 "$@"
 }
 
 function install_iptables_drop_rules() {
-    sudo iptables -I FORWARD 1 -s 172.28.0.100 -d 172.28.0.105 -j DROP
-    sudo iptables -I FORWARD 1 -s 172.28.0.105 -d 172.28.0.100 -j DROP
-    trap remove_iptables_drop_rules EXIT # Cleanup after us
-}
+    # Install `iptables` to have it available in the compatibility tests
+    docker compose exec -it client /bin/sh -c 'apk add iptables'
 
-function remove_iptables_drop_rules() {
-    sudo iptables -D FORWARD -s 172.28.0.100 -d 172.28.0.105 -j DROP
-    sudo iptables -D FORWARD -s 172.28.0.105 -d 172.28.0.100 -j DROP
+    # Execute within the client container because doing so from the host is not reliable in CI.
+    docker compose exec -it client /bin/sh -c 'iptables -A OUTPUT -d 172.28.0.105 -j DROP'
 }
 
 function client_curl_resource() {
