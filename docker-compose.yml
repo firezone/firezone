@@ -399,7 +399,7 @@ services:
 
   download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
     build:
-      target: dev
+      target: debug
       context: rust
       dockerfile: Dockerfile
       cache_from:
