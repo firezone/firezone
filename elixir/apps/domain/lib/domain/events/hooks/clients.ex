@@ -1,6 +1,6 @@
 defmodule Domain.Events.Hooks.Clients do
   @behaviour Domain.Events.Hooks
-  alias Domain.{Clients, PubSub, SchemaHelpers}
+  alias Domain.{Clients, SchemaHelpers, PubSub}
 
   @impl true
   def on_insert(_data), do: :ok
@@ -22,7 +22,7 @@ defmodule Domain.Events.Hooks.Clients do
 
   @impl true
   def on_delete(old_data) do
-    client = Domain.struct_from_params(Clients.Client, old_data)
+    client = SchemaHelpers.struct_from_params(Clients.Client, old_data)
     PubSub.Account.broadcast(client.account_id, {:deleted, client})
   end
 end

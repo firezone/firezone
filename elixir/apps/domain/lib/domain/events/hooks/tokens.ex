@@ -1,6 +1,6 @@
 defmodule Domain.Events.Hooks.Tokens do
   @behaviour Domain.Events.Hooks
-  alias Domain.{PubSub, Tokens}
+  alias Domain.{PubSub, Tokens, SchemaHelpers}
 
   @impl true
   def on_insert(_data), do: :ok
@@ -23,7 +23,7 @@ defmodule Domain.Events.Hooks.Tokens do
 
   @impl true
   def on_delete(old_data) do
-    token = Domain.struct_from_params(Tokens.Token, old_data)
+    token = SchemaHelpers.struct_from_params(Tokens.Token, old_data)
     PubSub.Account.broadcast(token.account_id, {:deleted, token})
   end
 end

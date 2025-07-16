@@ -1,6 +1,6 @@
 defmodule Domain.Events.Hooks.Accounts do
   @behaviour Domain.Events.Hooks
-  alias Domain.{Accounts, PubSub}
+  alias Domain.{Accounts, PubSub, SchemaHelpers}
   require Logger
 
   @impl true
@@ -30,15 +30,15 @@ defmodule Domain.Events.Hooks.Accounts do
   end
 
   def on_update(old_data, data) do
-    old_account = Domain.struct_from_params(Accounts.Account, old_data)
-    account = Domain.struct_from_params(Accounts.Account, data)
+    old_account = SchemaHelpers.struct_from_params(Accounts.Account, old_data)
+    account = SchemaHelpers.struct_from_params(Accounts.Account, data)
     :ok = PubSub.Account.broadcast(account.id, {:updated, old_account, account})
   end
 
   @impl true
 
   def on_delete(old_data) do
-    account = Domain.struct_from_params(Accounts.Account, old_data)
+    account = SchemaHelpers.struct_from_params(Accounts.Account, old_data)
     PubSub.Account.broadcast(account.id, {:deleted, account})
   end
 end

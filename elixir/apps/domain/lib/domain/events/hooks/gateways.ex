@@ -1,6 +1,6 @@
 defmodule Domain.Events.Hooks.Gateways do
   @behaviour Domain.Events.Hooks
-  alias Domain.{Gateways, PubSub}
+  alias Domain.{Gateways, PubSub, SchemaHelpers}
 
   @impl true
   def on_insert(_data), do: :ok
@@ -17,7 +17,7 @@ defmodule Domain.Events.Hooks.Gateways do
 
   @impl true
   def on_delete(old_data) do
-    gateway = Domain.struct_from_params(Gateways.Gateway, old_data)
+    gateway = SchemaHelpers.struct_from_params(Gateways.Gateway, old_data)
     PubSub.Account.broadcast(gateway.account_id, {:deleted, gateway})
   end
 end

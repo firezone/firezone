@@ -1,10 +1,10 @@
 defmodule Domain.Events.Hooks.ResourceConnections do
   @behaviour Domain.Events.Hooks
-  alias Domain.{Resources, PubSub}
+  alias Domain.{SchemaHelpers, Resources, PubSub}
 
   @impl true
   def on_insert(data) do
-    connection = Domain.struct_from_params(Resources.Connection, data)
+    connection = SchemaHelpers.struct_from_params(Resources.Connection, data)
     PubSub.Account.broadcast(connection.account_id, {:created, connection})
   end
 
@@ -13,7 +13,7 @@ defmodule Domain.Events.Hooks.ResourceConnections do
 
   @impl true
   def on_delete(old_data) do
-    connection = Domain.struct_from_params(Resources.Connection, old_data)
+    connection = SchemaHelpers.struct_from_params(Resources.Connection, old_data)
     PubSub.Account.broadcast(connection.account_id, {:deleted, connection})
   end
 end

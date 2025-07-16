@@ -141,9 +141,8 @@ defmodule API.Client.Channel do
         {:updated, %Accounts.Account{config: old_config},
          %Accounts.Account{config: config} = account},
         socket
-      ) do
-    dbg(account)
-
+      )
+      when old_config != config do
     socket = assign(socket, client: %{socket.assigns.client | account: account})
     payload = %{interface: Views.Interface.render(socket.assigns.client)}
     :ok = push(socket, "config_changed", payload)
@@ -195,7 +194,9 @@ defmodule API.Client.Channel do
       |> Enum.uniq()
 
     # 2. Update our state
-    policies = Map.filter(socket.assigns.policies, fn p -> p.actor_group_id != group_id end)
+    policies =
+      Map.filter(socket.assigns.policies, fn {_id, p} -> p.actor_group_id != group_id end)
+
     r_ids = Enum.map(policies, fn {_id, policy} -> policy.resource_id end) |> Enum.uniq()
     resources = Map.take(socket.assigns.resources, r_ids)
     membership_group_ids = Map.delete(socket.assigns.membership_group_ids, group_id)
@@ -284,6 +285,37 @@ defmodule API.Client.Channel do
       end
 
       {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Breaking update - send resource_deleted then resource_created_or_updated
+  def handle_info(
+        {:updated,
+         %Policies.Policy{
+           resource_id: old_resource_id,
+           actor_group_id: old_actor_group_id,
+           conditions: old_conditions
+         },
+         %Policies.Policy{
+           resource_id: resource_id,
+           actor_group_id: actor_group_id,
+           conditions: conditions,
+           # Only react to changes for enabled policies
+           disabled_at: nil
+         } = policy},
+        socket
+      )
+      when old_resource_id != resource_id or old_actor_group_id != actor_group_id or
+             old_conditions != conditions do
+    # 1. Check if this policy affects us
+    if Map.has_key?(socket.assigns.policies, policy.id) do
+      # 2. Get existing resources
+      existing_resources = authorized_resources(socket)
+
+      # 3. Update our state
+      socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
     else
       {:noreply, socket}
     end
