@@ -1,5 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, Result};
+use boringtun::noise::errors::WireGuardError;
 use connlib_model::{PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
 use firezone_tunnel::messages::RelaysPresence;
@@ -144,6 +145,15 @@ impl Eventloop {
                         .is_some_and(is_unreachable)
                     {
                         // `NetworkUnreachable`, `HostUnreachable`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
+                        tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
+                        continue;
+                    }
+
+                    if e.root_cause()
+                        .downcast_ref::<WireGuardError>()
+                        .is_some_and(|e| matches!(e, WireGuardError::DuplicateCounter))
+                    {
+                        // Packets with duplicate counter are possibly just retransmissions.
                         tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
                         continue;
                     }

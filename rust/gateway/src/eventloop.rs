@@ -1,4 +1,5 @@
 use anyhow::{Context as _, Result};
+use boringtun::noise::errors::WireGuardError;
 use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
@@ -103,6 +104,15 @@ impl Eventloop {
                             || e.kind() == io::ErrorKind::AddrNotAvailable
                     }) {
                         // `NetworkUnreachable`, `HostUnreachable`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
+                        tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
+                        continue;
+                    }
+
+                    if e.root_cause()
+                        .downcast_ref::<WireGuardError>()
+                        .is_some_and(|e| matches!(e, WireGuardError::DuplicateCounter))
+                    {
+                        // Packets with duplicate counter are possibly just retransmissions.
                         tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
                         continue;
                     }

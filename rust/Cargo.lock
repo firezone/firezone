@@ -1340,6 +1340,7 @@ dependencies = [
  "anyhow",
  "backoff",
  "bimap",
+ "boringtun",
  "chrono",
  "connlib-model",
  "dns-types",
