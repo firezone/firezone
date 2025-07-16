@@ -3,19 +3,19 @@
 set -euox pipefail
 
 function client() {
-    docker compose exec -it client "$@"
+    docker compose exec -T client "$@"
 }
 
 function gateway() {
-    docker compose exec -it gateway "$@"
+    docker compose exec -T gateway "$@"
 }
 
 function relay1() {
-    docker compose exec -it relay-1 "$@"
+    docker compose exec -T relay-1 "$@"
 }
 
 function relay2() {
-    docker compose exec -it relay-2 "$@"
+    docker compose exec -T relay-2 "$@"
 }
 
 function install_iptables_drop_rules() {
