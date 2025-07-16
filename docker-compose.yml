@@ -520,7 +520,6 @@ services:
   # You'll also need the extcap plugin: https://github.com/siemens/cshargextcap
   gostwire:
     image: "ghcr.io/siemens/ghostwire"
-    pull_policy: always
     restart: "unless-stopped"
     read_only: true
     entrypoint:
@@ -559,7 +558,6 @@ services:
 
   edgeshark:
     image: "ghcr.io/siemens/packetflix"
-    pull_policy: "always"
     read_only: true
     restart: "unless-stopped"
     entrypoint:
