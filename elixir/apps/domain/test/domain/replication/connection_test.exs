@@ -620,6 +620,7 @@ defmodule Domain.Replication.ConnectionTest do
           %{name: "id", type: "integer"},
           %{name: "data_map", type: "jsonb"},
           %{name: "data_list", type: "jsonb"},
+          %{name: "data_toast", type: "jsonb"},
           %{name: "data_null", type: "jsonb"}
         ]
       }
@@ -632,10 +633,11 @@ defmodule Domain.Replication.ConnectionTest do
 
       json_map_string = ~s({"a": 1, "b": {"c": true}})
       json_list_string = ~s([1, "two", false, null])
+      json_unchanged_toast = :unchanged_toast
 
       insert_msg = %Domain.Replication.Decoder.Messages.Insert{
         relation_id: 123,
-        tuple_data: {101, json_map_string, json_list_string, nil}
+        tuple_data: {101, json_map_string, json_list_string, json_unchanged_toast, nil}
       }
 
       {:noreply, [], new_state} =
@@ -651,7 +653,8 @@ defmodule Domain.Replication.ConnectionTest do
                "id" => 101,
                "data_map" => %{"a" => 1, "b" => %{"c" => true}},
                "data_list" => [1, "two", false, nil],
-               "data_null" => nil
+               "data_null" => nil,
+               "data_toast" => :unchanged_toast
              }
     end
 

@@ -583,7 +583,8 @@ defmodule Domain.Replication.Connection do
         {column.name, nil}
       end
 
-      defp decode_value({value, %{type: type} = column}) when type in ["json", "jsonb"] do
+      defp decode_value({value, %{type: type} = column})
+           when type in ["json", "jsonb"] and is_binary(value) do
         case JSON.decode(value) do
           {:ok, decoded} ->
             {column.name, decoded}
