@@ -9,7 +9,9 @@ defmodule Domain.FlowsTest do
 
     actor_group = Fixtures.Actors.create_group(account: account)
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-    Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+    membership =
+      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
     Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
     provider = Fixtures.Auth.create_email_provider(account: account)
@@ -41,6 +43,7 @@ defmodule Domain.FlowsTest do
       actor_group: actor_group,
       actor: actor,
       provider: provider,
+      membership: membership,
       identity: identity,
       subject: subject,
       client: client,
@@ -401,6 +404,7 @@ defmodule Domain.FlowsTest do
       client: client,
       gateway: gateway,
       resource: resource,
+      membership: membership,
       policy: policy,
       subject: subject
     } do
@@ -409,6 +413,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
+          actor_group_membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -438,6 +443,7 @@ defmodule Domain.FlowsTest do
       client: client,
       gateway: gateway,
       resource: resource,
+      membership: membership,
       policy: policy,
       subject: subject
     } do
@@ -446,6 +452,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
+          actor_group_membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -508,6 +515,7 @@ defmodule Domain.FlowsTest do
       actor: actor,
       client: client,
       gateway: gateway,
+      membership: membership,
       resource: resource,
       policy: policy,
       subject: subject
@@ -517,6 +525,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
+          actor_group_membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -572,12 +581,13 @@ defmodule Domain.FlowsTest do
     end
   end
 
-  describe "expire_flows_for/1" do
+  describe "delete_flows_for/1" do
     setup %{
       account: account,
       client: client,
       gateway: gateway,
       resource: resource,
+      membership: membership,
       policy: policy,
       subject: subject
     } do
@@ -588,6 +598,7 @@ defmodule Domain.FlowsTest do
           account: account,
           subject: subject,
           client: client,
+          actor_group_membership: membership,
           policy: policy,
           resource: resource,
           gateway: gateway
@@ -596,186 +607,48 @@ defmodule Domain.FlowsTest do
       %{flow: flow}
     end
 
-    test "expires flows for policy actor group", %{
-      flow: flow,
-      actor_group: actor_group
+    test "deletes flows for account", %{
+      account: account
     } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(actor_group)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert {1, nil} = delete_flows_for(account)
     end
 
-    test "expires flows for client identity", %{
-      flow: flow,
-      identity: identity
+    test "deletes flows for membership", %{
+      membership: membership
     } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(identity)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert {1, nil} = delete_flows_for(membership)
     end
 
-    test "expires flows for client", %{
-      flow: flow,
+    test "deletes flows for client", %{
       client: client
     } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(client)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert {1, nil} = delete_flows_for(client)
     end
-  end
 
-  describe "expire_flows_for/2" do
-    setup %{
-      account: account,
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      policy: policy,
-      subject: subject
+    test "deletes flows for gateway", %{
+      gateway: gateway
     } do
-      subject = %{subject | expires_at: DateTime.utc_now() |> DateTime.add(1, :day)}
-
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          subject: subject,
-          client: client,
-          policy: policy,
-          resource: resource,
-          gateway: gateway
-        )
-
-      %{flow: flow}
+      assert {1, nil} = delete_flows_for(gateway)
     end
 
-    test "expires flows for actor id and policy actor group id", %{
-      flow: flow,
-      actor: actor,
+    test "deletes flows for policy", %{
       policy: policy
     } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      assert :ok = expire_flows_for(actor.account_id, actor.id, policy.actor_group_id)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert {1, nil} = delete_flows_for(policy)
     end
 
-    test "expires flows for actor", %{
-      flow: flow,
-      actor: actor,
-      subject: subject
-    } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(actor, subject)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
-    test "expires flows for policy", %{
-      flow: flow,
-      policy: policy
-    } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for_policy_id(policy.account_id, policy.id)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
-    test "expires flows for resource", %{
-      flow: flow,
-      resource: resource,
-      subject: subject
-    } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(resource, subject)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
-    test "expires flows for policy actor group", %{
-      flow: flow,
-      actor_group: actor_group,
-      subject: subject
-    } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(actor_group, subject)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
-    test "expires flows for client identity", %{
-      flow: flow,
-      identity: identity,
-      subject: subject
-    } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(identity, subject)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
-    test "expires flows for client identity provider", %{
-      flow: flow,
-      provider: provider,
-      subject: subject
-    } do
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert :ok = expire_flows_for(provider, subject)
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
-    test "returns error when subject has no permission to expire flows", %{
-      resource: resource,
-      subject: subject
-    } do
-      subject = Fixtures.Auth.remove_permissions(subject)
-
-      assert expire_flows_for(resource, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Authorizer.create_flows_permission()]}}
-    end
-
-    test "does not do anything on state conflict", %{
-      resource: resource,
-      actor_group: actor_group,
-      subject: subject
-    } do
-      assert :ok = expire_flows_for(resource, subject)
-      assert :ok = expire_flows_for(actor_group, subject)
-      assert :ok = expire_flows_for(resource, subject)
-    end
-
-    test "does not expire flows outside of account", %{
+    test "deletes flows for resource", %{
       resource: resource
     } do
-      subject = Fixtures.Auth.create_subject()
-      assert :ok = expire_flows_for(resource, subject)
+      assert {1, nil} = delete_flows_for(resource)
+    end
+
+    test "deletes flows for token", %{
+      subject: subject
+    } do
+      {:ok, token} = Domain.Tokens.fetch_token_by_id(subject.token_id, subject)
+
+      assert {1, nil} = delete_flows_for(token)
     end
   end
 end

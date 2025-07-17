@@ -52,11 +52,15 @@ defmodule Domain.Fixtures.Flows do
         |> Fixtures.Resources.create_resource()
       end)
 
-    {actor_group_id, attrs} =
-      pop_assoc_fixture_id(attrs, :actor_group, fn assoc_attrs ->
+    {membership, attrs} =
+      pop_assoc_fixture(attrs, :actor_group_membership, fn assoc_attrs ->
         assoc_attrs
-        |> Enum.into(%{account: account, subject: subject})
-        |> Fixtures.Actors.create_group()
+        |> Enum.into(%{
+          account: account,
+          subject: subject,
+          actor_id: client.actor_id
+        })
+        |> Fixtures.Actors.create_membership()
       end)
 
     {policy_id, attrs} =
@@ -64,19 +68,12 @@ defmodule Domain.Fixtures.Flows do
         assoc_attrs
         |> Enum.into(%{
           account: account,
-          actor_group_id: actor_group_id,
+          actor_group_id: membership.group_id,
           resource_id: resource_id,
           subject: subject
         })
         |> Fixtures.Policies.create_policy()
       end)
-
-    # A membership should have been created before this to "authorize" the flow
-    {:ok, membership} =
-      Domain.Actors.fetch_membership_by_actor_id_and_group_id(
-        client.actor_id,
-        actor_group_id
-      )
 
     {token_id, _attrs} = Map.pop(attrs, :token_id, subject.token_id)
 
