@@ -23,9 +23,10 @@ defmodule Domain.Events.Hooks.Resources do
 
     # Breaking updates
     # This is a special case - we need to delete related flows because connectivity has changed
+    # Gateway _does_ handle resource filter changes so we don't need to delete flows
+    # for those changes
     if old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
-         old_resource.filters != resource.filters or
          old_resource.address != resource.address do
       Domain.Flows.delete_flows_for(resource)
     end

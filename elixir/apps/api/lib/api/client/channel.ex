@@ -118,14 +118,16 @@ defmodule API.Client.Channel do
   # ACCOUNTS
 
   def handle_info(
-        {:updated, %Accounts.Account{config: old_config},
-         %Accounts.Account{config: config} = account},
+        {:updated, %Accounts.Account{} = old_account, %Accounts.Account{} = account},
         socket
-      )
-      when old_config != config do
+      ) do
     socket = assign(socket, client: %{socket.assigns.client | account: account})
-    payload = %{interface: Views.Interface.render(socket.assigns.client)}
-    :ok = push(socket, "config_changed", payload)
+
+    if old_account.config != account.config do
+      payload = %{interface: Views.Interface.render(socket.assigns.client)}
+      :ok = push(socket, "config_changed", payload)
+    end
+
     {:noreply, socket}
   end
 
@@ -201,61 +203,50 @@ defmodule API.Client.Channel do
 
   # Changes in client verification can affect the list of allowed resources - resend init
   def handle_info(
-        {:updated, %Clients.Client{verified_at: old_verified_at},
-         %Clients.Client{id: client_id, verified_at: verified_at} = client},
+        {:updated, %Clients.Client{} = old_client, %Clients.Client{id: client_id} = client},
         %{assigns: %{client: %{id: id}}} = socket
       )
       when id == client_id do
-    # TODO: Re-evaluate list of authorized_resources instead of re-hydrating everything
+    # 1. Snapshot existing authorized resources
+    existing_resources = authorized_resources(socket)
 
-    # 1. Update our state
+    # 2. Update our state
     socket = assign(socket, client: client)
 
-    # 2. If client verification changed, resend init
-    if old_verified_at != verified_at do
-      # 3. Get resources
+    # 3. If client's verification status changed, send diff of resources
+    if old_client.verified_at != client.verified_at do
       resources = authorized_resources(socket)
 
-      # 4. Select relays
-      {:ok, relays} = select_relays(socket)
+      added_resources = resources -- existing_resources
+      removed_resources = existing_resources -- resources
 
-      push(socket, "init", %{
-        resources: Views.Resource.render_many(resources),
-        relays:
-          Views.Relay.render_many(
-            relays,
-            socket.assigns.client.public_key,
-            socket.assigns.subject.expires_at
-          ),
-        interface:
-          Views.Interface.render(%{
-            socket.assigns.client
-            | account: socket.assigns.subject.account
-          })
-      })
+      for resource <- added_resources do
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      end
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
+      for resource <- removed_resources do
+        push(socket, "resource_deleted", resource.id)
+      end
     end
+
+    {:noreply, socket}
   end
 
   # GATEWAY_GROUPS
 
   def handle_info(
-        {:updated, %Gateways.Group{name: old_name}, %Gateways.Group{name: name} = group},
+        {:updated, %Gateways.Group{} = old_group, %Gateways.Group{} = group},
         socket
-      )
-      when old_name != name do
+      ) do
     resources =
       socket.assigns.resources
       |> Enum.map(fn {id, resource} ->
         gateway_groups =
           resource.gateway_groups
-          |> Enum.map(fn gg -> if gg.id == group.id, do: %{gg | name: name}, else: gg end)
+          |> Enum.map(fn gg -> if gg.id == group.id, do: Map.merge(gg, group), else: gg end)
 
-        # Send resource_created_or_updated for all resources that have this group
-        if Enum.any?(gateway_groups, &(&1.id == group.id)) do
+        # Send resource_created_or_updated for all resources that have this group if name has changed
+        if Enum.any?(gateway_groups, fn gg -> gg.name != old_group.name and gg.id == group.id end) do
           push(socket, "resource_created_or_updated", Views.Resource.render(resource))
         end
 
@@ -276,7 +267,7 @@ defmodule API.Client.Channel do
       # 2. Snapshot existing resources
       existing_resources = authorized_resources(socket)
 
-      # 3. Update our state
+      # 3. Hydrate a new resource if we aren't already tracking it
       socket =
         if Map.has_key?(socket.assigns.resources, policy.resource_id) do
           # Resource already exists due to another policy
@@ -290,9 +281,10 @@ defmodule API.Client.Channel do
           assign(socket, resources: Map.put(socket.assigns.resources, resource.id, resource))
         end
 
+      # 4. Hydrate the new policy
       socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
 
-      # 4. Maybe send new resource
+      # 5. Maybe send new resource
       if resource = (authorized_resources(socket) -- existing_resources) |> List.first() do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
@@ -330,8 +322,15 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Other update - no-op for the client's purposes
-  def handle_info({:updated, %Policies.Policy{}, %Policies.Policy{}}, socket) do
+  # Other update - just update our state if the policy is for us
+  def handle_info({:updated, %Policies.Policy{}, %Policies.Policy{} = policy}, socket) do
+    socket =
+      if Map.has_key?(socket.assigns.policies, policy.id) do
+        assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 
@@ -406,7 +405,8 @@ defmodule API.Client.Channel do
       push(socket, "resource_deleted", resource.id)
 
       # 4. If resource is allowed, and has at least one site connected, push
-      if resource in authorized_resources(socket) and length(resource.gateway_groups) > 0 do
+      if resource.id in Enum.map(authorized_resources(socket), & &1.id) and
+           length(resource.gateway_groups) > 0 do
         # Connlib doesn't handle resources changing sites, so we need to delete then create
         # See https://github.com/firezone/firezone/issues/9881
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
@@ -421,40 +421,30 @@ defmodule API.Client.Channel do
   # RESOURCES
 
   def handle_info(
-        {:updated,
-         %Resources.Resource{
-           ip_stack: old_ip_stack,
-           address: old_address,
-           address_description: old_address_description,
-           name: old_name,
-           type: old_type,
-           filters: old_filters
-         },
-         %Resources.Resource{
-           id: id,
-           ip_stack: ip_stack,
-           address: address,
-           address_description: address_description,
-           name: name,
-           type: type,
-           filters: filters
-         } = updated_resource},
+        {:updated, %Resources.Resource{} = old_resource, %Resources.Resource{id: id} = resource},
         socket
-      )
-      when old_ip_stack != ip_stack or
-             old_address != address or
-             old_address_description != address_description or
-             old_name != name or
-             old_type != type or
-             old_filters != filters do
+      ) do
     # 1. Check if this affects us
-    if resource = socket.assigns.resources[id] do
-      # 2. Update our state
-      resource = %{updated_resource | gateway_groups: resource.gateway_groups}
-      socket = assign(socket, resources: Map.put(socket.assigns.resources, id, resource))
+    if existing_resource = socket.assigns.resources[id] do
+      # 2. Update our state - take gateway_groups from existing resource
+      resource = %{resource | gateway_groups: existing_resource.gateway_groups}
 
-      # 3. If resource is allowed, push
-      if resource in authorized_resources(socket) do
+      socket =
+        assign(socket,
+          resources: Map.put(socket.assigns.resources, id, resource)
+        )
+
+      # 3. If resource is allowed and had meaningful changes, push
+      # GatewayGroup changes are handled in the Resources.Connection handler
+      resource_changed? =
+        old_resource.ip_stack != resource.ip_stack or
+          old_resource.type != resource.type or
+          old_resource.filters != resource.filters or
+          old_resource.address != resource.address or
+          old_resource.address_description != resource.address_description or
+          old_resource.name != resource.name
+
+      if resource.id in Enum.map(authorized_resources(socket), & &1.id) and resource_changed? do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
 

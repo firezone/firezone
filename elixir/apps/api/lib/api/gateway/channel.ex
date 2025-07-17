@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Flows, Gateways, PubSub, Relays, Tokens}
+  alias Domain.{Flows, Gateways, PubSub, Relays, Resources, Tokens}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -101,6 +101,27 @@ defmodule API.Gateway.Channel do
     else
       {:noreply, socket}
     end
+  end
+
+  # RESOURCES
+
+  # The gateway only handles filter changes. Other breaking changes are handled by deleting
+  # relevant flows for the resource.
+  def handle_info(
+        {:updated, %Resources.Resource{filters: old_filters},
+         %Resources.Resource{filters: filters, id: id} = resource},
+        socket
+      )
+      when old_filters != filters do
+    has_flows? =
+      socket.assigns.flows
+      |> Enum.any?(fn {{_client_id, resource_id}, _expires_at} -> resource_id == id end)
+
+    if has_flows? do
+      push(socket, "resource_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply, socket}
   end
 
   # TOKENS

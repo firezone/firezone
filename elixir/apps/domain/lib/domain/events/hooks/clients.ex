@@ -28,7 +28,7 @@ defmodule Domain.Events.Hooks.Clients do
     # Unverifying a client
     # This is a special case - we need to delete associated flows when unverifying a client since
     # it could affect connectivity if any policies are based on the verified status.
-    if old_data["verified_at"] and is_nil(data["verified_at"]) do
+    if not is_nil(old_client.verified_at) and is_nil(client.verified_at) do
       Domain.Flows.delete_flows_for(client)
     end
 
