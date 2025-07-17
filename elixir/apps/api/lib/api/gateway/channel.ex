@@ -57,6 +57,7 @@ defmodule API.Gateway.Channel do
       account = Domain.Accounts.fetch_account_by_id!(socket.assigns.gateway.account_id)
 
       push(socket, "init", %{
+        authorizations: Views.Flow.render_many(socket.assigns.flows),
         account_slug: account.slug,
         interface: Views.Interface.render(socket.assigns.gateway),
         relays:
