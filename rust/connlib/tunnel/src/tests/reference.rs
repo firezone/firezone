@@ -1,3 +1,4 @@
+use super::connection_intent_failures::{ConnectionIntentFailure, connection_intent_failures};
 use super::dns_records::DnsRecords;
 use super::icmp_error_hosts::{IcmpErrorHosts, icmp_error_hosts};
 use super::{
@@ -12,6 +13,7 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample::select;
 use proptest::{prelude::*, sample};
+use std::collections::VecDeque;
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
@@ -30,6 +32,7 @@ pub(crate) struct ReferenceState {
 
     pub(crate) portal: StubPortal,
 
+    pub(crate) connection_intent_failures: VecDeque<Option<ConnectionIntentFailure>>,
     pub(crate) drop_direct_client_traffic: bool,
 
     /// All IP addresses a domain resolves to in our test.
@@ -61,6 +64,7 @@ impl ReferenceState {
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
+                let connection_intent_failures = connection_intent_failures();
 
                 (
                     client,
@@ -70,6 +74,7 @@ impl ReferenceState {
                     relays,
                     global_dns_records,
                     drop_direct_client_traffic,
+                    connection_intent_failures,
                 )
             })
             .prop_flat_map(
@@ -81,6 +86,7 @@ impl ReferenceState {
                     relays,
                     global_dns,
                     drop_direct_client_traffic,
+                    connection_intent_failures,
                 )| {
                     (
                         Just(client),
@@ -91,6 +97,7 @@ impl ReferenceState {
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
+                        Just(connection_intent_failures),
                     )
                 },
             )
@@ -104,6 +111,7 @@ impl ReferenceState {
                     relays,
                     global_dns,
                     drop_direct_client_traffic,
+                    connection_intent_failures,
                 )| {
                     (
                         Just(client),
@@ -115,6 +123,7 @@ impl ReferenceState {
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
+                        Just(connection_intent_failures),
                     )
                 },
             )
@@ -130,6 +139,7 @@ impl ReferenceState {
                     relays,
                     mut global_dns,
                     drop_direct_client_traffic,
+                    connection_intent_failures,
                 )| {
                     let mut routing_table = RoutingTable::default();
 
@@ -160,13 +170,14 @@ impl ReferenceState {
                         tcp_resources,
                         icmp_error_hosts,
                         drop_direct_client_traffic,
+                        connection_intent_failures,
                         routing_table,
                     ))
                 },
             )
             .prop_filter(
                 "private keys must be unique",
-                |(c, gateways, _, _, _, _, _, _, _)| {
+                |(c, gateways, _, _, _, _, _, _, _, _)| {
                     let different_keys = gateways
                         .values()
                         .map(|g| g.inner().key)
@@ -186,6 +197,7 @@ impl ReferenceState {
                     tcp_resources,
                     icmp_error_hosts,
                     drop_direct_client_traffic,
+                    connection_intent_failures,
                     network,
                 )| {
                     Self {
@@ -197,6 +209,7 @@ impl ReferenceState {
                         icmp_error_hosts,
                         network,
                         drop_direct_client_traffic,
+                        connection_intent_failures,
                         tcp_resources,
                     }
                 },
