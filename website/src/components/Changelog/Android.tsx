@@ -25,6 +25,10 @@ export default function Android() {
           Fixes an issue where Firezone failed to sign-in on systems with
           non-ASCII characters in their kernel build name.
         </ChangeItem>
+        <ChangeItem pull="9891">
+          Fixes an issue where connections would sometimes take up to 90s to
+          establish.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.2" date={new Date("2025-06-30")}>
         <ChangeItem pull="9621">

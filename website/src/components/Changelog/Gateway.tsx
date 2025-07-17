@@ -34,6 +34,10 @@ export default function Gateway() {
           Adds support for translating Time-Exceeded ICMP errors in the DNS
           resource NAT, allowing `tracepath` to work through a Firezone tunnel.
         </ChangeItem>
+        <ChangeItem pull="9891">
+          Fixes an issue where connections would sometimes take up to 90s to
+          establish.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-06-30")}>
         <ChangeItem pull="9657">
