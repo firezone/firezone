@@ -8,6 +8,7 @@ defmodule API.Client.Channel do
     Actors,
     PubSub,
     Resources,
+    Flows,
     Gateways,
     Relays,
     Policies,
@@ -226,6 +227,24 @@ defmodule API.Client.Channel do
 
       for resource <- removed_resources do
         push(socket, "resource_deleted", resource.id)
+      end
+    end
+
+    {:noreply, socket}
+  end
+
+  # FLOWS
+
+  # If we're authorized for a resource for this flow, we need to push resource_deleted
+  # followed by resource_created_or_updated in order to reset the access state on the
+  # client.
+  def handle_info({:deleted, %Flows.Flow{} = flow}, socket) do
+    # 1. Check if this possibly affects us
+    if resource = socket.assigns.resources[flow.resource_id] do
+      # 1. If so, check if we're currently authorized for this resource
+      if resource.id in Enum.map(authorized_resources(socket), & &1.id) do
+        push(socket, "resource_deleted", resource.id)
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
     end
 

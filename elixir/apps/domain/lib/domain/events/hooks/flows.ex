@@ -19,6 +19,6 @@ defmodule Domain.Events.Hooks.Flows do
   # This will trigger reject_access for any subscribed gateways
   def on_delete(old_data) do
     flow = SchemaHelpers.struct_from_params(Flows.Flow, old_data)
-    PubSub.broadcast(flow.account_id, {:deleted, flow})
+    PubSub.Account.broadcast(flow.account_id, {:deleted, flow})
   end
 end

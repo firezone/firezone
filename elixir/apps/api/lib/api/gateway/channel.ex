@@ -89,18 +89,17 @@ defmodule API.Gateway.Channel do
   def handle_info({:deleted, %Flows.Flow{} = flow}, socket) do
     tuple = {flow.client_id, flow.resource_id}
 
-    if Map.has_key?(socket.assigns.flows, tuple) do
-      push(socket, "reject_access", %{
-        client_id: flow.client_id,
-        resource_id: flow.resource_id
-      })
+    socket =
+      if Map.has_key?(socket.assigns.flows, tuple) do
+        push(socket, "reject_access", %{
+          client_id: flow.client_id,
+          resource_id: flow.resource_id
+        })
 
-      socket = assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
+        assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
+      end
 
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, socket}
   end
 
   # RESOURCES
@@ -375,7 +374,6 @@ defmodule API.Gateway.Channel do
 
         push(socket, "request_connection", %{
           ref: ref,
-          actor: Views.Actor.render(client.actor),
           resource: Views.Resource.render(resource),
           client: Views.Client.render(client, payload, preshared_key),
           expires_at: expires_at
