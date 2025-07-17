@@ -6,8 +6,8 @@ defmodule Domain.Flows do
   require Logger
 
   # TODO: Optimization
-  # Connection setup latency - doesn't need to block setting up flow,
-  # but if this fails, we should
+  # Connection setup latency - doesn't need to block setting up flow. Authorizing the flow
+  # and logging it can be two parallel operations.
   def authorize_flow(
         %Clients.Client{
           id: client_id,
@@ -95,7 +95,7 @@ defmodule Domain.Flows do
     Flow.Query.all()
     |> Flow.Query.by_account_id(gateway.account_id)
     |> Flow.Query.by_gateway_id(gateway.id)
-    |> Flow.Query.within_2_weeks()
+    |> Flow.Query.for_cache()
     |> Repo.all()
   end
 
@@ -184,6 +184,14 @@ defmodule Domain.Flows do
     Flow.Query.all()
     |> Flow.Query.by_account_id(token.account_id)
     |> Flow.Query.by_token_id(token.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_stale_flows_on_connect(account_id, client_id, authorized_resource_ids) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(account_id)
+    |> Flow.Query.by_client_id(client_id)
+    |> Flow.Query.by_not_in_resource_ids(authorized_resource_ids)
     |> Repo.delete_all()
   end
 end

@@ -119,8 +119,6 @@ defmodule Domain.ClientsTest do
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
       {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
-      :ok = PubSub.Client.subscribe(client.id)
-      :ok = PubSub.Account.Clients.subscribe(client.account_id)
 
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == true
@@ -228,8 +226,7 @@ defmodule Domain.ClientsTest do
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
       {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
-      :ok = PubSub.Client.subscribe(client.id)
-      :ok = PubSub.Account.Clients.subscribe(client.account_id)
+
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == true
     end
@@ -290,8 +287,7 @@ defmodule Domain.ClientsTest do
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
       {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
-      :ok = PubSub.Client.subscribe(client.id)
-      :ok = PubSub.Account.Clients.subscribe(client.account_id)
+
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == true
     end
@@ -1091,8 +1087,6 @@ defmodule Domain.ClientsTest do
           client: client,
           subject: subject
         )
-
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
 
       assert {:ok, client} = verify_client(client, subject)
       assert {:ok, _client} = remove_client_verification(client, subject)

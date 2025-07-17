@@ -100,6 +100,7 @@ config :domain, Domain.Events.ReplicationConnection,
     accounts
     actor_group_memberships
     clients
+    flows
     gateways
     gateway_groups
     policies

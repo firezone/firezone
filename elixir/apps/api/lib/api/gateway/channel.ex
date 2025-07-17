@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Actors, Clients, Flows, Gateways, Policies, PubSub, Resources, Relays, Tokens}
+  alias Domain.{Flows, Gateways, PubSub, Relays, Tokens}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -62,22 +62,15 @@ defmodule API.Gateway.Channel do
   end
 
   def handle_info(:prune_flow_cache, socket) do
-    Logger.debug("Pruning flow cache",
-      gateway_id: socket.assigns.gateway.id,
-      flow_cache_size: map_size(socket.assigns.flows)
-    )
-
     Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
 
-    cutoff = DateTime.utc_now() |> DateTime.add(-14, :day)
+    now = DateTime.utc_now()
 
-    # Keep flows that were inserted in the last 14 days
+    # Reject flows older than 14 days
     flows =
       socket.assigns.flows
-      |> Enum.filter(fn {_id, flow} -> flow.inserted_at > cutoff end)
+      |> Enum.reject(fn {_tuple, expires_at} -> DateTime.compare(expires_at, now) == :lt end)
       |> Enum.into(%{})
-
-    # We don't need to push reject_access - the gateway uses its own timer to expire flows
 
     {:noreply, assign(socket, flows: flows)}
   end
@@ -91,124 +84,31 @@ defmodule API.Gateway.Channel do
   ##### Reacting to domain events ####
   ####################################
 
-  # CLIENTS
+  # FLOWS
 
-  # Expire flows for this client because unverifying a client can remove access
-  # to resources, but we don't necessarily know which ones.
-  def handle_info(
-        {:updated, %Clients.Client{verified_at: old_verified_at},
-         %Clients.Client{verified_at: nil, id: client_id}},
-        socket
-      )
-      when old_verified_at != nil do
-    socket = reject_access(socket, fn {_id, f} -> f.client_id == client_id end)
-    {:noreply, socket}
-  end
+  def handle_info({:deleted, %Flows.Flow{} = flow}, socket) do
+    tuple = {flow.client_id, flow.resource_id}
 
-  # POLICIES
+    if Map.has_key?(socket.assigns.flows, tuple) do
+      push(socket, "reject_access", %{
+        client_id: flow.client_id,
+        resource_id: flow.resource_id
+      })
 
-  # TODO: HARD DELETE
-  # This can be removed when hard deletion is implemented because we will respond to the cascading
-  # flow deletion when a policy is deleted. For now we need to handle this event.
-  def handle_info({:deleted, %Policies.Policy{id: policy_id}}, socket) do
-    socket = reject_access(socket, fn {_id, f} -> f.policy_id == policy_id end)
-    {:noreply, socket}
-  end
+      socket = assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
 
-  # RESOURCES
-
-  # The gateway can process traffic filter changes, but not any other type of addressability change.
-  # So we send resource_updated for the former, and reject_access for the latter.
-  # The client will request a new connection on its side if the resource addressability changes.
-  def handle_info(
-        {:updated,
-         %Resources.Resource{ip_stack: old_ip_stack, address: old_address, type: old_type},
-         %Resources.Resource{ip_stack: ip_stack, address: address, type: type, id: resource_id}},
-        socket
-      )
-      when old_ip_stack != ip_stack or old_address != address or old_type != type do
-    socket = reject_access(socket, fn {_id, f} -> f.resource_id == resource_id end)
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        {:updated, %Resources.Resource{filters: old_filters},
-         %Resources.Resource{filters: filters} = resource},
-        socket
-      )
-      when old_filters != filters do
-    has_flows? = Enum.any?(socket.assigns.flows, fn {_id, f} -> f.resource_id == resource.id end)
-
-    if has_flows? do
-      push(socket, "resource_updated", Views.Resource.render(resource))
+      {:noreply, socket}
+    else
+      {:noreply, socket}
     end
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:deleted, %Resources.Resource{id: resource_id}}, socket) do
-    socket = reject_access(socket, fn {_id, f} -> f.resource_id == resource_id end)
-    {:noreply, socket}
-  end
-
-  # RESOURCE_CONNECTIONS
-
-  def handle_info({:deleted, %Resources.Connection{resource_id: resource_id}}, socket) do
-    socket = reject_access(socket, fn {_id, f} -> f.resource_id == resource_id end)
-    {:noreply, socket}
-  end
-
-  # GATEWAYS
-
-  # TODO: HARD DELETE
-  # This can be removed when hard deletion is implemented because we will respond to the
-  # cascading flow deletion when a gateway is deleted.
-
-  def handle_info(
-        {:deleted, %Gateways.Gateway{id: gateway_id}},
-        %{assigns: %{gateway: %{id: id}}} = socket
-      )
-      when gateway_id == id do
-    disconnect(socket)
-  end
-
-  # CLIENTS
-
-  # TODO: HARD DELETE
-  # This can be removed after hard deletion is implemented because we will respond to the cascading
-  # flow deletion when a client is deleted.
-  def handle_info({:deleted, %Clients.Client{id: client_id}}, socket) do
-    socket = reject_access(socket, fn {_id, f} -> f.client_id == client_id end)
-    {:noreply, socket}
   end
 
   # TOKENS
 
-  # Our gateway token was deleted
+  # Our gateway token was deleted - disconnect WebSocket
   def handle_info({:deleted, %Tokens.Token{type: :gateway_group, id: id}}, socket)
       when id == socket.assigns.subject.token_id do
     disconnect(socket)
-  end
-
-  # TODO: HARD DELETE
-  # This can be removed when hard deletion is implemented because we will respond to the
-  # cascading flow deletion when a token is deleted.
-
-  # A client's token was deleted, remove all flows for that token
-  def handle_info({:deleted, %Tokens.Token{type: :client, id: token_id}}, socket) do
-    socket = reject_access(socket, fn {_id, f} -> f.token_id == token_id end)
-    {:noreply, socket}
-  end
-
-  # ACTOR_GROUP_MEMBERSHIPS
-
-  def handle_info({:deleted, %Actors.Membership{} = membership}, socket) do
-    socket =
-      reject_access(socket, fn {_id, f} ->
-        f.actor_group_membership_id == membership.id
-      end)
-
-    {:noreply, socket}
   end
 
   ####################################
@@ -312,9 +212,9 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  ##############################################################
-  ##### Forwarding messages from the client to the gateway #####
-  ##############################################################
+  ###########################
+  #### Connection setup #####
+  ###########################
 
   def handle_info(
         {{:ice_candidates, gateway_id}, client_id, candidates},
@@ -350,7 +250,6 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
-      flow: flow,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
       preshared_key: preshared_key
@@ -360,18 +259,15 @@ defmodule API.Gateway.Channel do
       encode_ref(socket, {
         channel_pid,
         socket_ref,
-        flow.resource_id,
+        client.id,
+        resource.id,
+        authorization_expires_at,
         preshared_key,
         ice_credentials
       })
 
-    # Update our state
-    socket = assign(socket, flows: Map.put(socket.assigns.flows, flow.id, flow))
-
     push(socket, "authorize_flow", %{
       ref: ref,
-      flow_id: flow.id,
-      actor: Views.Actor.render(client.actor),
       resource: Views.Resource.render(resource),
       gateway_ice_credentials: ice_credentials.gateway,
       client: Views.Client.render(client, preshared_key),
@@ -395,7 +291,6 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
-      flow: flow,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
@@ -405,11 +300,13 @@ defmodule API.Gateway.Channel do
            socket.assigns.gateway.last_seen_version
          ) do
       {:cont, resource} ->
-        ref = encode_ref(socket, {channel_pid, socket_ref, resource.id})
-        expires_at = DateTime.to_unix(authorization_expires_at, :second)
+        ref =
+          encode_ref(
+            socket,
+            {channel_pid, socket_ref, client.id, resource.id, authorization_expires_at}
+          )
 
-        # Update our state
-        socket = assign(socket, flows: Map.put(socket.assigns.flows, flow.id, flow))
+        expires_at = DateTime.to_unix(authorization_expires_at, :second)
 
         push(socket, "allow_access", %{
           ref: ref,
@@ -437,7 +334,6 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
-      flow: flow,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload,
       client_preshared_key: preshared_key
@@ -448,11 +344,13 @@ defmodule API.Gateway.Channel do
            socket.assigns.gateway.last_seen_version
          ) do
       {:cont, resource} ->
-        ref = encode_ref(socket, {channel_pid, socket_ref, resource.id})
-        expires_at = DateTime.to_unix(authorization_expires_at, :second)
+        ref =
+          encode_ref(
+            socket,
+            {channel_pid, socket_ref, client.id, resource.id, authorization_expires_at}
+          )
 
-        # Update our state
-        socket = assign(socket, flows: Map.put(socket.assigns.flows, flow.id, flow))
+        expires_at = DateTime.to_unix(authorization_expires_at, :second)
 
         push(socket, "request_connection", %{
           ref: ref,
@@ -479,7 +377,9 @@ defmodule API.Gateway.Channel do
        {
          channel_pid,
          socket_ref,
+         client_id,
          resource_id,
+         authorization_expires_at,
          preshared_key,
          ice_credentials
        }} ->
@@ -499,7 +399,10 @@ defmodule API.Gateway.Channel do
           }
         )
 
-        {:reply, :ok, socket}
+        # Gateway acknowledged the flow - update our state
+        flows = Map.put(socket.assigns.flows, {client_id, resource_id}, authorization_expires_at)
+
+        {:reply, :ok, assign(socket, flows: flows)}
 
       {:error, :invalid_ref} ->
         Logger.error("Gateway replied with an invalid ref")
@@ -518,13 +421,15 @@ defmodule API.Gateway.Channel do
         socket
       ) do
     case decode_ref(socket, signed_ref) do
-      {:ok, {channel_pid, socket_ref, resource_id}} ->
+      {:ok, {channel_pid, socket_ref, client_id, resource_id, authorization_expires_at}} ->
         send(
           channel_pid,
           {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key, payload}
         )
 
-        {:reply, :ok, socket}
+        flows = Map.put(socket.assigns.flows, {client_id, resource_id}, authorization_expires_at)
+
+        {:reply, :ok, assign(socket, flows: flows)}
 
       {:error, :invalid_ref} ->
         Logger.error("Gateway replied with an invalid ref")
@@ -631,45 +536,9 @@ defmodule API.Gateway.Channel do
       } do
       flows =
         Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
-        |> Enum.map(fn flow -> {flow.id, flow} end)
-        |> Enum.into(%{})
+        |> Map.new()
 
       assign(socket, flows: flows)
-    end
-  end
-
-  defp reject_access(socket, filter_fn) do
-    OpenTelemetry.Tracer.with_span "gateway.reject_access",
-      attributes: %{
-        gateway_id: socket.assigns.gateway.id,
-        account_id: socket.assigns.gateway.account_id
-      } do
-      flows =
-        socket.assigns.flows
-        |> Enum.filter(filter_fn)
-        |> Enum.into(%{})
-
-      case flows do
-        flows when map_size(flows) == 0 ->
-          socket
-
-        flows ->
-          # Send reject_access for each affected client/resource pair
-          flows
-          |> Enum.map(fn {_id, flow} ->
-            {flow.client_id, flow.resource_id}
-          end)
-          |> Enum.uniq()
-          |> Enum.each(fn {client_id, resource_id} ->
-            push(socket, "reject_access", %{
-              client_id: client_id,
-              resource_id: resource_id
-            })
-          end)
-
-          # Remove affected flows from cache
-          assign(socket, flows: Map.drop(socket.assigns.flows, Map.keys(flows)))
-      end
     end
   end
 

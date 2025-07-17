@@ -16,7 +16,36 @@ defmodule Domain.Events.Hooks.Resources do
     on_delete(old_data)
   end
 
-  # Update - breaking updates are handled by the consumer
+  # Breaking updates
+  # This is a special case - we need to delete related flows because connectivity has changed
+  def on_update(
+        %{
+          "type" => old_type,
+          "ip_stack" => old_ip_stack,
+          "address" => old_address,
+          "filters" => old_filters
+        } = old_data,
+        %{
+          "type" => type,
+          "ip_stack" => ip_stack,
+          "address" => address,
+          "filters" => filters
+        } = data
+      )
+      when old_type != type or
+             old_ip_stack != ip_stack or
+             old_address != address or
+             old_filters != filters do
+    old_resource = SchemaHelpers.struct_from_params(Resources.Resource, old_data)
+    resource = SchemaHelpers.struct_from_params(Resources.Resource, data)
+
+    PubSub.Account.broadcast(resource.account_id, {:updated, old_resource, resource})
+
+    # Delete flows for the resource since connectivity has changed
+    Domain.Flows.delete_flows_for(resource)
+  end
+
+  # Regular update
   def on_update(old_data, data) do
     old_resource = SchemaHelpers.struct_from_params(Resources.Resource, old_data)
     resource = SchemaHelpers.struct_from_params(Resources.Resource, data)

@@ -477,6 +477,72 @@ defmodule Domain.FlowsTest do
     end
   end
 
+  describe "all_gateway_flows_for_cache!/1" do
+    test "returns the later of two client_id/resource_id pair", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      membership: membership,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      flow2 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      assert flow1.client_id == flow2.client_id
+      assert flow1.resource_id == flow2.resource_id
+
+      assert DateTime.compare(flow2.inserted_at, flow1.inserted_at) == :gt
+
+      assert [{{flow2.client_id, flow2.resource_id}, flow2.inserted_at}] ==
+               Flows.all_gateway_flows_for_cache!(gateway)
+    end
+
+    test "returns flow when only one unique one exists", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      membership: membership,
+      resource: resource,
+      policy: policy,
+      subject: subject
+    } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      assert [{{flow.client_id, flow.resource_id}, flow.inserted_at}] ==
+               Flows.all_gateway_flows_for_cache!(gateway)
+    end
+  end
+
   describe "list_flows_for/3" do
     test "returns empty list when there are no flows", %{
       actor: actor,
@@ -649,6 +715,270 @@ defmodule Domain.FlowsTest do
       {:ok, token} = Domain.Tokens.fetch_token_by_id(subject.token_id, subject)
 
       assert {1, nil} = delete_flows_for(token)
+    end
+  end
+
+  describe "delete_stale_flows_on_connect/3" do
+    setup %{
+      account: account
+    } do
+      # Create additional resources for testing
+      resource2 = Fixtures.Resources.create_resource(account: account)
+      resource3 = Fixtures.Resources.create_resource(account: account)
+
+      %{
+        resource2: resource2,
+        resource3: resource3
+      }
+    end
+
+    test "deletes flows for resources not in authorized list", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource1,
+      resource2: resource2,
+      resource3: resource3,
+      membership: membership,
+      policy: policy,
+      subject: subject
+    } do
+      # Create flows for multiple resources
+      flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource1,
+          gateway: gateway
+        )
+
+      flow2 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource2,
+          gateway: gateway
+        )
+
+      flow3 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource3,
+          gateway: gateway
+        )
+
+      # Only authorize resource1 and resource2, resource3 should be deleted
+      authorized_resource_ids = [resource1.id, resource2.id]
+
+      assert {1, nil} =
+               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+
+      # Verify flow3 was deleted but flow1 and flow2 remain
+      assert {:ok, ^flow1} = fetch_flow_by_id(flow1.id, subject)
+      assert {:ok, ^flow2} = fetch_flow_by_id(flow2.id, subject)
+      assert {:error, :not_found} = fetch_flow_by_id(flow3.id, subject)
+    end
+
+    test "deletes no flows when all resources are authorized", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource1,
+      resource2: resource2,
+      membership: membership,
+      policy: policy,
+      subject: subject
+    } do
+      flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource1,
+          gateway: gateway
+        )
+
+      flow2 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource2,
+          gateway: gateway
+        )
+
+      # Authorize all resources
+      authorized_resource_ids = [resource1.id, resource2.id]
+
+      assert {0, nil} =
+               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+
+      # Verify both flows still exist
+      assert {:ok, ^flow1} = fetch_flow_by_id(flow1.id, subject)
+      assert {:ok, ^flow2} = fetch_flow_by_id(flow2.id, subject)
+    end
+
+    test "deletes all flows when authorized list is empty", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource1,
+      resource2: resource2,
+      membership: membership,
+      policy: policy,
+      subject: subject
+    } do
+      flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource1,
+          gateway: gateway
+        )
+
+      flow2 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource2,
+          gateway: gateway
+        )
+
+      # Empty authorized list - all flows should be deleted
+      authorized_resource_ids = []
+
+      assert {2, nil} =
+               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+
+      # Verify both flows were deleted
+      assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
+      assert {:error, :not_found} = fetch_flow_by_id(flow2.id, subject)
+    end
+
+    test "only affects flows for the specified client", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource1,
+      resource2: resource2,
+      membership: membership,
+      policy: policy,
+      subject: subject
+    } do
+      # Create another client
+      other_client = Fixtures.Clients.create_client(account: account)
+
+      # Create flows for both clients with the same resources
+      flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource1,
+          gateway: gateway
+        )
+
+      flow2 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: other_client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource1,
+          gateway: gateway
+        )
+
+      # Only authorize resource2 for the first client (resource1 should be deleted)
+      authorized_resource_ids = [resource2.id]
+
+      assert {1, nil} =
+               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+
+      # Verify only the first client's flow was deleted
+      assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
+      assert {:ok, ^flow2} = fetch_flow_by_id(flow2.id, subject)
+    end
+
+    test "only affects flows for the specified account", %{
+      account: account,
+      client: client,
+      gateway: gateway,
+      resource: resource1,
+      membership: membership,
+      policy: policy,
+      subject: subject
+    } do
+      # Create flows in the current account
+      flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource1,
+          gateway: gateway
+        )
+
+      # Create flows in a different account
+      Fixtures.Flows.create_flow()
+
+      # Empty authorized list for current account
+      authorized_resource_ids = []
+
+      assert {1, nil} =
+               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+
+      # Verify only the current account's flow was deleted
+      assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
+      # We can't easily verify flow2 still exists since it's in another account,
+      # but the fact that only 1 flow was deleted confirms account isolation
+    end
+
+    test "handles case when no flows exist for client", %{
+      account: account,
+      client: client
+    } do
+      # Try to delete stale flows for a client with no flows
+      authorized_resource_ids = [Ecto.UUID.generate()]
+
+      assert {0, nil} =
+               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+    end
+
+    test "handles case when client doesn't exist", %{
+      account: account,
+      resource: resource
+    } do
+      # Try to delete stale flows for a non-existent client
+      fake_client_id = Ecto.UUID.generate()
+      authorized_resource_ids = [resource.id]
+
+      assert {0, nil} =
+               delete_stale_flows_on_connect(account.id, fake_client_id, authorized_resource_ids)
     end
   end
 end

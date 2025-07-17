@@ -28,9 +28,6 @@ defmodule API.Client.Channel do
     {">= 1.1.0", ">= 1.1.0"}
   ]
 
-  # Channel pid expiration time is capped at 31 days even if IdP returns really long lived tokens
-  @max_expires_in 31 * :timer.hours(24)
-
   ####################################
   ##### Channel lifecycle events #####
   ####################################
@@ -48,15 +45,10 @@ defmodule API.Client.Channel do
     end
   end
 
-  defp schedule_expiration(%{assigns: %{subject: %{expires_at: nil}}} = socket) do
-    {:ok, socket}
-  end
-
   defp schedule_expiration(%{assigns: %{subject: %{expires_at: expires_at}}} = socket) do
     expires_in =
       expires_at
       |> DateTime.diff(DateTime.utc_now(), :millisecond)
-      |> min(@max_expires_in)
 
     if expires_in > 0 do
       Process.send_after(self(), :token_expired, expires_in)
@@ -657,9 +649,7 @@ defmodule API.Client.Channel do
       gateway_ice_credentials: ice_credentials.gateway
     }
 
-    # We are pushing a message instead of replying for the sake of connlib message parsing convenience
     push(socket, "flow_created", reply_payload)
-    # reply(socket_ref, {:ok, reply_payload})
 
     {:noreply, socket}
   end
@@ -698,7 +688,7 @@ defmodule API.Client.Channel do
          {:ok, gateways} <-
            filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement),
          gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids),
-         {:ok, resource, flow, expires_at} <-
+         {:ok, resource, _flow, expires_at} <-
            Flows.authorize_flow(
              socket.assigns.client,
              gateway,
@@ -715,7 +705,6 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow: flow,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key
@@ -816,7 +805,7 @@ defmodule API.Client.Channel do
     # Gateway selection and flow authorization shouldn't need to hit the DB
     with {:ok, _resource} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         {:ok, resource, flow, _expires_at} <-
+         {:ok, resource, _flow, expires_at} <-
            Flows.authorize_flow(
              socket.assigns.client,
              gateway,
@@ -831,8 +820,7 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow: flow,
-             authorization_expires_at: socket.assigns.subject.expires_at,
+             authorization_expires_at: expires_at,
              client_payload: payload
            }}
         )
@@ -868,7 +856,7 @@ defmodule API.Client.Channel do
     # Flow authorization can happen out-of-band since we just authorized the resource above
     with {:ok, _resource} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         {:ok, resource, flow, _expires_at} <-
+         {:ok, resource, _flow, expires_at} <-
            Flows.authorize_flow(
              socket.assigns.client,
              gateway,
@@ -883,8 +871,7 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flow: flow,
-             authorization_expires_at: socket.assigns.subject.expires_at,
+             authorization_expires_at: expires_at,
              client_payload: client_payload,
              client_preshared_key: preshared_key
            }}

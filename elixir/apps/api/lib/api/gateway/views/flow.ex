@@ -1,12 +1,11 @@
 defmodule API.Gateway.Views.Flow do
   def render_many(flows) do
     flows
-    |> Enum.map(fn {_id, flow} ->
+    |> Enum.map(fn {{client_id, resource_id}, _expires_at} ->
       %{
-        client_id: flow.client_id,
-        resource_id: flow.resource_id
+        client_id: client_id,
+        resource_id: resource_id
       }
     end)
-    |> Enum.uniq()
   end
 end
