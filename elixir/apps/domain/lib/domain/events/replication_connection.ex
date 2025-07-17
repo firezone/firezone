@@ -18,9 +18,9 @@ defmodule Domain.Events.ReplicationConnection do
   def on_write(state, _lsn, op, table, old_data, data) do
     if hook = Map.get(@tables_to_hooks, table) do
       case op do
-        :insert -> hook.on_insert(data)
-        :update -> hook.on_update(old_data, data)
-        :delete -> hook.on_delete(old_data)
+        :insert -> :ok = hook.on_insert(data)
+        :update -> :ok = hook.on_update(old_data, data)
+        :delete -> :ok = hook.on_delete(old_data)
       end
     else
       log_warning(op, table)

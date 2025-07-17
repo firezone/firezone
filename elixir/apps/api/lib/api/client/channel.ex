@@ -85,6 +85,9 @@ defmodule API.Client.Channel do
     # Initialize resources
     resources = authorized_resources(socket)
 
+    # Delete any stale flows for resources we may not have access to anymore
+    Flows.delete_stale_flows_on_connect(socket.assigns.client, resources)
+
     push(socket, "init", %{
       resources: Views.Resource.render_many(resources),
       relays:

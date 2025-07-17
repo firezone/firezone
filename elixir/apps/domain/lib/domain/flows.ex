@@ -187,10 +187,13 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_stale_flows_on_connect(account_id, client_id, authorized_resource_ids) do
+  def delete_stale_flows_on_connect(%Clients.Client{} = client, resources)
+      when is_list(resources) do
+    authorized_resource_ids = Enum.map(resources, & &1.id)
+
     Flow.Query.all()
-    |> Flow.Query.by_account_id(account_id)
-    |> Flow.Query.by_client_id(client_id)
+    |> Flow.Query.by_account_id(client.account_id)
+    |> Flow.Query.by_client_id(client.id)
     |> Flow.Query.by_not_in_resource_ids(authorized_resource_ids)
     |> Repo.delete_all()
   end

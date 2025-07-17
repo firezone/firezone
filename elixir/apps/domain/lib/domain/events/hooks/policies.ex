@@ -21,16 +21,26 @@ defmodule Domain.Events.Hooks.Policies do
   def on_update(old_data, data) do
     old_policy = SchemaHelpers.struct_from_params(Policies.Policy, old_data)
     policy = SchemaHelpers.struct_from_params(Policies.Policy, data)
+
+    # Breaking updates
+    # This is a special case - we need to delete related flows because connectivity has changed
+    if old_policy.conditions != policy.conditions or
+         old_policy.actor_group_id != policy.actor_group_id or
+         old_policy.resource_id != policy.resource_id do
+      Domain.Flows.delete_flows_for(policy)
+    end
+
     PubSub.Account.broadcast(policy.account_id, {:updated, old_policy, policy})
   end
 
   @impl true
   def on_delete(old_data) do
     policy = SchemaHelpers.struct_from_params(Policies.Policy, old_data)
-    PubSub.Account.broadcast(policy.account_id, {:deleted, policy})
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
     Domain.Flows.delete_flows_for(policy)
+
+    PubSub.Account.broadcast(policy.account_id, {:deleted, policy})
   end
 end

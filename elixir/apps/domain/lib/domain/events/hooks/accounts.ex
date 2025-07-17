@@ -20,7 +20,6 @@ defmodule Domain.Events.Hooks.Accounts do
   end
 
   # Account soft-deleted - process as a delete
-
   def on_update(
         %{"deleted_at" => nil} = old_data,
         %{"deleted_at" => deleted_at}
@@ -32,17 +31,18 @@ defmodule Domain.Events.Hooks.Accounts do
   def on_update(old_data, data) do
     old_account = SchemaHelpers.struct_from_params(Accounts.Account, old_data)
     account = SchemaHelpers.struct_from_params(Accounts.Account, data)
-    :ok = PubSub.Account.broadcast(account.id, {:updated, old_account, account})
+    PubSub.Account.broadcast(account.id, {:updated, old_account, account})
   end
 
   @impl true
 
   def on_delete(old_data) do
     account = SchemaHelpers.struct_from_params(Accounts.Account, old_data)
-    PubSub.Account.broadcast(account.id, {:deleted, account})
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
     Domain.Flows.delete_flows_for(account)
+
+    PubSub.Account.broadcast(account.id, {:deleted, account})
   end
 end

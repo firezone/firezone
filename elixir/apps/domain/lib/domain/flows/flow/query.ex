@@ -97,7 +97,7 @@ defmodule Domain.Flows.Flow.Query do
     end)
   end
 
-  # pagination
+  # Pagination
 
   @impl Domain.Repo.Query
   def cursor_fields,

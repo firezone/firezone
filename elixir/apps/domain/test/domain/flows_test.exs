@@ -718,7 +718,7 @@ defmodule Domain.FlowsTest do
     end
   end
 
-  describe "delete_stale_flows_on_connect/3" do
+  describe "delete_stale_flows_on_connect/2" do
     setup %{
       account: account
     } do
@@ -778,10 +778,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Only authorize resource1 and resource2, resource3 should be deleted
-      authorized_resource_ids = [resource1.id, resource2.id]
+      authorized_resources = [resource1, resource2]
 
-      assert {1, nil} =
-               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resources)
 
       # Verify flow3 was deleted but flow1 and flow2 remain
       assert {:ok, ^flow1} = fetch_flow_by_id(flow1.id, subject)
@@ -822,10 +821,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Authorize all resources
-      authorized_resource_ids = [resource1.id, resource2.id]
+      authorized_resources = [resource1, resource2]
 
-      assert {0, nil} =
-               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+      assert {0, nil} = delete_stale_flows_on_connect(client, authorized_resources)
 
       # Verify both flows still exist
       assert {:ok, ^flow1} = fetch_flow_by_id(flow1.id, subject)
@@ -865,10 +863,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Empty authorized list - all flows should be deleted
-      authorized_resource_ids = []
+      authorized_resources = []
 
-      assert {2, nil} =
-               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+      assert {2, nil} = delete_stale_flows_on_connect(client, authorized_resources)
 
       # Verify both flows were deleted
       assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
@@ -912,10 +909,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Only authorize resource2 for the first client (resource1 should be deleted)
-      authorized_resource_ids = [resource2.id]
+      authorized_resources = [resource2]
 
-      assert {1, nil} =
-               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resources)
 
       # Verify only the first client's flow was deleted
       assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
@@ -947,10 +943,9 @@ defmodule Domain.FlowsTest do
       Fixtures.Flows.create_flow()
 
       # Empty authorized list for current account
-      authorized_resource_ids = []
+      authorized_resources = []
 
-      assert {1, nil} =
-               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resources)
 
       # Verify only the current account's flow was deleted
       assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
@@ -959,26 +954,23 @@ defmodule Domain.FlowsTest do
     end
 
     test "handles case when no flows exist for client", %{
-      account: account,
       client: client
     } do
       # Try to delete stale flows for a client with no flows
-      authorized_resource_ids = [Ecto.UUID.generate()]
+      authorized_resources = []
 
-      assert {0, nil} =
-               delete_stale_flows_on_connect(account.id, client.id, authorized_resource_ids)
+      assert {0, nil} = delete_stale_flows_on_connect(client, authorized_resources)
     end
 
-    test "handles case when client doesn't exist", %{
+    test "handles case when client has no flows but resources are provided", %{
       account: account,
       resource: resource
     } do
-      # Try to delete stale flows for a non-existent client
-      fake_client_id = Ecto.UUID.generate()
-      authorized_resource_ids = [resource.id]
+      # Create a client with no flows
+      client_with_no_flows = Fixtures.Clients.create_client(account: account)
+      authorized_resources = [resource]
 
-      assert {0, nil} =
-               delete_stale_flows_on_connect(account.id, fake_client_id, authorized_resource_ids)
+      assert {0, nil} = delete_stale_flows_on_connect(client_with_no_flows, authorized_resources)
     end
   end
 end
