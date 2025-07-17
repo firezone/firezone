@@ -11,7 +11,6 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use firezone_logging::err_with_src;
-use firezone_telemetry::{analytics, feature_flags};
 use hex_display::HexDisplayExt;
 use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
 use itertools::Itertools;
@@ -747,18 +746,31 @@ where
             tracing::warn!("No TURN servers connected; connection may fail to establish");
         }
 
+        let mut tunnel = Tunn::new_at(
+            self.private_key.clone(),
+            remote,
+            Some(key),
+            None,
+            self.index.next(),
+            Some(self.rate_limiter.clone()),
+            self.rng.next_u64(),
+            now,
+        );
+        // By default, boringtun has a rekey attempt time of 90(!) seconds.
+        // In case of a state de-sync or other issues, this means we try for
+        // 90s to make a handshake, all whilst our ICE layer thinks the connection
+        // is working perfectly fine.
+        // This results in a bad UX as the user has to essentially wait for 90s
+        // before Firezone can fix the state and make a new connection.
+        //
+        // By aligning the rekey-attempt-time roughly with our ICE timeout, we ensure
+        // that even if the hole-punch was successful, it will take at most 15s
+        // until we have a WireGuard tunnel to send packets into.
+        tunnel.set_rekey_attempt_time(Duration::from_secs(15));
+
         Connection {
             agent,
-            tunnel: Tunn::new_at(
-                self.private_key.clone(),
-                remote,
-                Some(key),
-                None,
-                self.index.next(),
-                Some(self.rate_limiter.clone()),
-                self.rng.next_u64(),
-                now,
-            ),
+            tunnel,
             next_wg_timer_update: now,
             stats: Default::default(),
             buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
@@ -2214,16 +2226,8 @@ where
             .decapsulate_at(Some(src), packet, ip_packet.buf(), now)
         {
             TunnResult::Done => ControlFlow::Break(Ok(())),
-            TunnResult::Err(e @ WireGuardError::InvalidAeadTag)
-                if crate::is_handshake(packet)
-                    && feature_flags::fail_handshake_on_decryption_errors() =>
-            {
-                analytics::feature_flag_called("fail-handshake-on-decryption-errors");
-
-                tracing::info!("Connection handshake failed ({e})");
-                self.state = ConnectionState::Failed;
-
-                ControlFlow::Break(Ok(())) // Return `Ok` because we are already logging the error.
+            TunnResult::Err(e) if crate::is_handshake(packet) => {
+                ControlFlow::Break(Err(anyhow::Error::new(e).context("handshake packet")))
             }
             TunnResult::Err(e) => ControlFlow::Break(Err(anyhow::Error::new(e))),
 
