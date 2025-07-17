@@ -15,7 +15,7 @@ use firezone_tunnel::{
     DnsResourceNatEntry, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest,
 };
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
@@ -382,6 +382,7 @@ impl Eventloop {
                         config: _,
                         account_slug,
                         relays,
+                        authorizations,
                     }),
                 ..
             } => {
@@ -400,6 +401,19 @@ impl Eventloop {
                     v4: interface.ipv4,
                     v6: interface.ipv6,
                 });
+                self.tunnel
+                    .state_mut()
+                    .retain_authorizations(authorizations.into_iter().fold(
+                        BTreeMap::new(),
+                        |mut authorizations, next| {
+                            authorizations
+                                .entry(next.client_id)
+                                .or_default()
+                                .insert(next.resource_id);
+
+                            authorizations
+                        },
+                    ));
 
                 if self
                     .set_interface_tasks

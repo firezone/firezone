@@ -450,6 +450,19 @@ impl GatewayState {
     pub fn update_tun_device(&mut self, config: IpConfig) {
         self.tun_ip_config = Some(config);
     }
+
+    pub fn retain_authorizations(
+        &mut self,
+        authorizations: BTreeMap<ClientId, BTreeSet<ResourceId>>,
+    ) {
+        for (client, resources) in authorizations {
+            let Some(client) = self.peers.get_mut(&client) else {
+                continue;
+            };
+
+            client.retain_authorizations(resources);
+        }
+    }
 }
 
 fn handle_p2p_control_packet(
