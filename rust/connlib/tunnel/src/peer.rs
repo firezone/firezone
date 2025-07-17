@@ -233,6 +233,17 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
+        for (resource, _) in self
+            .resources
+            .extract_if(|resource, _| !authorization.contains(resource))
+        {
+            tracing::info!(%resource, "Revoking resource authorization");
+        }
+
+        self.recalculate_filters();
+    }
+
     // Call this after any resources change
     //
     // This recalculate the ip-table rules, this allows us to remove and add resources and keep the allow-list correct

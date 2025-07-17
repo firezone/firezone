@@ -250,6 +250,10 @@ impl ReferenceState {
                     |resources_id| Transition::DisableResources(BTreeSet::from_iter(resources_id)),
                 )
             })
+            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
+                sample::select(resources_id)
+                    .prop_map(Transition::DeauthorizeWhileGatewayIsPartitioned)
+            })
             .with_if_not_empty(
                 10,
                 state.client.inner().ipv4_cidr_resource_dsts(),
@@ -516,6 +520,9 @@ impl ReferenceState {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }
+            Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => state
+                .client
+                .exec_mut(|client| client.remove_resource(resource)),
         };
 
         state
@@ -703,6 +710,22 @@ impl ReferenceState {
             }
             Transition::Idle => true,
             Transition::PartitionRelaysFromPortal => true,
+            Transition::DeauthorizeWhileGatewayIsPartitioned(r) => {
+                let has_resource = state.client.inner().has_resource(*r);
+                let has_gateway_for_resource = state
+                    .portal
+                    .gateway_for_resource(*r)
+                    .is_some_and(|g| state.gateways.contains_key(g));
+                let has_tcp_connection = state
+                    .client
+                    .inner()
+                    .tcp_connection_tuple_to_resource(*r)
+                    .is_some();
+
+                // Don't deactivate resources we don't have. It doesn't hurt but makes the logs of reduced testcases weird.
+                // Also don't deactivate resources where we have TCP connections as those would get interrupted.
+                has_resource && has_gateway_for_resource && !has_tcp_connection
+            }
         }
     }
 

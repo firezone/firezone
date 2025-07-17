@@ -122,6 +122,8 @@ pub struct InitGateway {
     pub relays: Vec<Relay>,
     #[serde(default)]
     pub account_slug: Option<String>,
+    #[serde(default)]
+    pub authorizations: Vec<Authorization>,
 }
 
 #[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
@@ -165,6 +167,12 @@ pub struct AllowAccess {
     pub client_ipv4: Ipv4Addr,
     /// Tunnel IPv6 address.
     pub client_ipv6: Ipv6Addr,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Authorization {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
 }
 
 #[derive(Debug, Deserialize, Clone)]

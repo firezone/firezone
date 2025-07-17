@@ -23,6 +23,7 @@ use rand::SeedableRng;
 use rand::distributions::DistString;
 use sha2::Digest;
 use snownet::{NoTurnServers, Transmit};
+use std::collections::BTreeSet;
 use std::iter;
 use std::{
     collections::BTreeMap,
@@ -328,6 +329,33 @@ impl TunnelTest {
                 let to_remove = Vec::default();
 
                 state.deploy_new_relays(new_relays, now, to_remove);
+            }
+            Transition::DeauthorizeWhileGatewayIsPartitioned(rid) => {
+                let client_id = state.client.inner().id;
+                let new_authorized_resources = {
+                    let mut all_resources =
+                        BTreeSet::from_iter(ref_state.client.inner().all_resource_ids());
+                    all_resources.remove(&rid);
+
+                    all_resources
+                };
+
+                state.client.exec_mut(|c| c.sut.remove_resource(rid));
+
+                if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
+                    && let Some(g) = state.gateways.get_mut(gid)
+                {
+                    g.exec_mut(|g| {
+                        // This is partly an `init` message.
+                        // The relays don't change so we don't bother setting them.
+                        g.sut.retain_authorizations(BTreeMap::from([(
+                            client_id,
+                            new_authorized_resources,
+                        )]))
+                    });
+                } else {
+                    tracing::error!(%rid, "No gateway for resource");
+                }
             }
         };
         state.advance(ref_state, &mut buffered_transmits);
