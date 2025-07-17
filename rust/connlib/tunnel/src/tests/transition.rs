@@ -83,6 +83,9 @@ pub(crate) enum Transition {
     ///
     /// In this case, we won't receive a `relays_presence` but instead we will receive relays with the same ID yet different credentials.
     RebootRelaysWhilePartitioned(BTreeMap<RelayId, Host<u64>>),
+
+    /// De-authorize access to a resource whilst the Gateway is network-partitioned from the portal.
+    DeauthorizeWhileGatewayIsPartitioned(ResourceId),
 }
 
 #[derive(Debug, Clone)]
