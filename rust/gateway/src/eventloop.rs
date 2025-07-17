@@ -8,7 +8,7 @@ use firezone_telemetry::{Telemetry, analytics};
 
 use firezone_tunnel::messages::gateway::{
     AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
-    IngressMessages, RejectAccess, RequestConnection,
+    IngressMessages, InitGateway, RejectAccess, RequestConnection,
 };
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{
@@ -376,10 +376,16 @@ impl Eventloop {
                 Instant::now(),
             ),
             phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::Init(init),
+                msg:
+                    IngressMessages::Init(InitGateway {
+                        interface,
+                        config: _,
+                        account_slug,
+                        relays,
+                    }),
                 ..
             } => {
-                if let Some(account_slug) = init.account_slug {
+                if let Some(account_slug) = account_slug {
                     Telemetry::set_account_slug(account_slug.clone());
 
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
@@ -387,12 +393,12 @@ impl Eventloop {
 
                 self.tunnel.state_mut().update_relays(
                     BTreeSet::default(),
-                    firezone_tunnel::turn(&init.relays),
+                    firezone_tunnel::turn(&relays),
                     Instant::now(),
                 );
                 self.tunnel.state_mut().update_tun_device(IpConfig {
-                    v4: init.interface.ipv4,
-                    v6: init.interface.ipv6,
+                    v4: interface.ipv4,
+                    v6: interface.ipv6,
                 });
 
                 if self
@@ -404,7 +410,7 @@ impl Eventloop {
                             let mut tun_device_manager = tun_device_manager.lock().await;
 
                             tun_device_manager
-                                .set_ips(init.interface.ipv4, init.interface.ipv6)
+                                .set_ips(interface.ipv4, interface.ipv6)
                                 .await
                                 .context("Failed to set TUN interface IPs")?;
                             tun_device_manager
@@ -412,7 +418,7 @@ impl Eventloop {
                                 .await
                                 .context("Failed to set TUN routes")?;
 
-                            Ok(init.interface)
+                            Ok(interface)
                         }
                     })
                     .is_err()
