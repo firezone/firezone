@@ -202,7 +202,7 @@ defmodule API.Client.Channel do
 
   # CLIENTS
 
-  # Changes in client verification can affect the list of allowed resources - resend init
+  # Changes in client verification can affect the list of allowed resources - send diff of resources
   def handle_info(
         {:updated, %Clients.Client{} = old_client, %Clients.Client{id: client_id} = client},
         %{assigns: %{client: %{id: id}}} = socket
@@ -231,6 +231,14 @@ defmodule API.Client.Channel do
     end
 
     {:noreply, socket}
+  end
+
+  def handle_info(
+        {:deleted, %Clients.Client{id: id}},
+        %{assigns: %{client: %{id: client_id}}} = socket
+      )
+      when id == client_id do
+    disconnect(socket)
   end
 
   # FLOWS
@@ -490,9 +498,7 @@ defmodule API.Client.Channel do
   # Message is scheduled by schedule_expiration/1 on topic join to be sent
   # when the client token/subject expires
   def handle_info(:token_expired, socket) do
-    push(socket, "disconnect", %{reason: :token_expired})
-    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-    {:stop, :shutdown, socket}
+    disconnect(socket)
   end
 
   ####################################
