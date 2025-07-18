@@ -13,6 +13,7 @@ defmodule Web.Actors.Show do
            ) do
       if connected?(socket) do
         :ok = Clients.Presence.Actor.subscribe(actor.id)
+        :ok = Domain.PubSub.Account.subscribe(socket.assigns.account.id)
       end
 
       available_providers =
@@ -629,6 +630,8 @@ defmodule Web.Actors.Show do
       ) do
     {:noreply, reload_live_table!(socket, "clients")}
   end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
