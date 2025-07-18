@@ -415,7 +415,7 @@ impl ClientState {
             packet.as_ref(),
             now,
         )
-        .inspect_err(|e| tracing::debug!(%local, num_bytes = %packet.len(), "Failed to decapsulate: {e:#}"))
+        .inspect_err(|e| tracing::debug!(%local, %from, num_bytes = %packet.len(), "Failed to decapsulate: {e:#}"))
         .ok()??;
 
         if self.tcp_dns_client.accepts(&packet) {
