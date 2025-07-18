@@ -20,10 +20,10 @@ use phoenix_channel::get_user_agent;
 use futures::{TryFutureExt, future};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
-use std::sync::Arc;
 use std::{collections::BTreeSet, path::Path};
 use std::{fmt, pin::pin};
 use std::{process::ExitCode, str::FromStr};
+use std::{sync::Arc, time::Duration};
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
 use tun::Tun;
@@ -175,7 +175,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         (),
         || {
             ExponentialBackoffBuilder::default()
-                .with_max_elapsed_time(None)
+                .with_max_elapsed_time(Some(Duration::from_secs(60 * 15)))
                 .build()
         },
         Arc::new(tcp_socket_factory),
