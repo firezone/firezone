@@ -425,6 +425,38 @@ mod tests {
         assert!(update_fn(now).is_some());
     }
 
+    #[test]
+    fn resend_intent_on_outgoing_packet_after_2s() {
+        let mut dns_resource_nat = DnsResourceNat::default();
+        let mut now = Instant::now();
+
+        let mut update_fn = |now| {
+            dns_resource_nat.update(
+                EXAMPLE_COM.to_vec(),
+                GID,
+                RID,
+                PROXY_IPS,
+                VecDeque::default(),
+                now,
+            )
+        };
+
+        assert!(update_fn(now).is_some());
+
+        now += Duration::from_secs(2);
+
+        let app_packet =
+            ip_packet::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+                .unwrap();
+
+        let packet = dns_resource_nat
+            .handle_outgoing(GID, &EXAMPLE_COM.to_vec(), app_packet.clone())
+            .expect("should emit a packet");
+
+        assert_ne!(packet, app_packet);
+        assert!(packet.is_fz_p2p_control());
+    }
+
     const EXAMPLE_COM: DomainNameRef =
         unsafe { DomainNameRef::from_octets_unchecked(b"\x08example\x03com\x00") };
     const GID: GatewayId = GatewayId::from_u128(1);
