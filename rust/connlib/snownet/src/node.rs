@@ -248,8 +248,12 @@ where
             return Ok(());
         }
 
+        // Compare the ICE credentials and public key.
+        // Technically, just comparing the ICE credentials should be enough because the portal computes them deterministically based on Client/Gateway ID and their public keys.
+        // But better be safe than sorry.
         if let Some(c) = self.connections.get_established_mut(&cid)
             && c.agent.local_credentials() == &local_creds
+            && c.tunnel.remote_static_public() == remote
         {
             c.state.on_upsert(&mut c.agent, now);
 
