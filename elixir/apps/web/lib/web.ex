@@ -67,16 +67,6 @@ defmodule Web do
           {:noreply, socket}
         end
       end
-
-      # Handle token expiration for all live views by disconnecting them
-      def handle_info(
-            {:deleted, %Domain.Tokens.Token{id: id}},
-            %{assigns: %{subject: %{token_id: token_id}}} = socket
-          )
-          when id == token_id do
-        send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-        {:noreply, socket}
-      end
     end
   end
 

@@ -13,7 +13,6 @@ defmodule Web.Actors.Show do
            ) do
       if connected?(socket) do
         :ok = Clients.Presence.Actor.subscribe(actor.id)
-        :ok = Domain.PubSub.Account.subscribe(socket.assigns.account.id)
       end
 
       available_providers =

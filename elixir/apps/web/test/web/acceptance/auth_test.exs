@@ -92,7 +92,17 @@ defmodule Web.Acceptance.AuthTest do
 
     for token <- tokens do
       assert %DateTime{} = token.deleted_at
-      Domain.PubSub.Account.broadcast(account.id, {:deleted, token})
+
+      Domain.Events.Hooks.Tokens.on_delete(%{
+        "remaining_attempts" => token.remaining_attempts,
+        "actor_id" => token.actor_id,
+        "name" => token.name,
+        "type" => "#{token.type}",
+        "account_id" => token.account_id,
+        "id" => token.id,
+        "identity_id" => token.identity_id,
+        "expires_at" => "#{token.expires_at}"
+      })
     end
 
     wait_for(

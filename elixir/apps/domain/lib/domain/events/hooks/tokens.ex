@@ -25,10 +25,21 @@ defmodule Domain.Events.Hooks.Tokens do
   def on_delete(old_data) do
     token = SchemaHelpers.struct_from_params(Tokens.Token, old_data)
 
+    # Disconnect all sockets using this token
+    disconnect_socket(token)
+
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
     Domain.Flows.delete_flows_for(token)
 
     PubSub.Account.broadcast(token.account_id, {:deleted, token})
+  end
+
+  # This is a special message that disconnects all sockets using this token,
+  # such as for LiveViews.
+  defp disconnect_socket(token) do
+    topic = Domain.Tokens.socket_id(token.id)
+    payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
+    Domain.PubSub.broadcast(topic, payload)
   end
 end
