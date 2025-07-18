@@ -108,6 +108,8 @@ defmodule API.Gateway.Channel do
         })
 
         assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
+      else
+        socket
       end
 
     {:noreply, socket}

@@ -7,7 +7,6 @@ defmodule Domain.SchemaHelpersTest do
 
   defmodule NestedEmbedSchema do
     use Ecto.Schema
-    import Ecto.Changeset
 
     @primary_key false
     embedded_schema do
@@ -17,7 +16,6 @@ defmodule Domain.SchemaHelpersTest do
 
   defmodule EmbeddedSchema do
     use Ecto.Schema
-    import Ecto.Changeset
 
     @primary_key false
     embedded_schema do
@@ -29,7 +27,6 @@ defmodule Domain.SchemaHelpersTest do
 
   defmodule ListItemSchema do
     use Ecto.Schema
-    import Ecto.Changeset
 
     @primary_key false
     embedded_schema do
@@ -40,7 +37,6 @@ defmodule Domain.SchemaHelpersTest do
 
   defmodule DateTimeSchema do
     use Ecto.Schema
-    import Ecto.Changeset
 
     @primary_key false
     embedded_schema do
