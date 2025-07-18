@@ -147,7 +147,7 @@ impl Telemetry {
             set_current_user(None);
         }
 
-        if environment == Env::OnPrem {
+        if [Env::OnPrem, Env::Localhost, Env::DockerCompose].contains(&environment) {
             tracing::debug!(%api_url, "Telemetry won't start in unofficial environment");
             return;
         }
