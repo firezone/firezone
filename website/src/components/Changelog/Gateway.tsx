@@ -42,6 +42,10 @@ export default function Gateway() {
           Fixes a security issue where resource authorizations would not get
           revoked if the Gateway was disconnected from the portal.
         </ChangeItem>
+        <ChangeItem pull="9894">
+          Shuts down the Gateway after 15m of being disconnected from the
+          portal.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-06-30")}>
         <ChangeItem pull="9657">
