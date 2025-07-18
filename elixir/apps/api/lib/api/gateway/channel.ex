@@ -6,7 +6,12 @@ defmodule API.Gateway.Channel do
   require Logger
   require OpenTelemetry.Tracer
 
+  # The interval at which the flow cache is pruned.
   @prune_flow_cache_every :timer.minutes(1)
+
+  # All relayed connections are dropped when this expires, so use
+  # a long expiration time to avoid frequent disconnections.
+  @relay_credentials_expire_in_hours 90 * 24
 
   @impl true
   def join("gateway", _payload, socket) do
@@ -31,29 +36,13 @@ defmodule API.Gateway.Channel do
     :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)
 
     # Return all connected relays for the account
-    relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
     {:ok, relays} = select_relays(socket)
     :ok = Enum.each(relays, &Domain.Relays.subscribe_to_relay_presence/1)
     :ok = maybe_subscribe_for_relays_presence(relays, socket)
 
     account = Domain.Accounts.fetch_account_by_id!(socket.assigns.gateway.account_id)
 
-    push(socket, "init", %{
-      authorizations: Views.Flow.render_many(socket.assigns.flows),
-      account_slug: account.slug,
-      interface: Views.Interface.render(socket.assigns.gateway),
-      relays:
-        Views.Relay.render_many(
-          relays,
-          socket.assigns.gateway.public_key,
-          relay_credentials_expire_at
-        ),
-      # These aren't used but needed for API compatibility
-      config: %{
-        ipv4_masquerade_enabled: true,
-        ipv6_masquerade_enabled: true
-      }
-    })
+    init(socket, account, relays)
 
     # Cache new stamp secrets
     socket = Debouncer.cache_stamp_secrets(socket, relays)
@@ -86,13 +75,16 @@ defmodule API.Gateway.Channel do
 
   # ACCOUNTS
 
-  # Disconnect the gateway when the slug changes that it may reconnect and receive the new slug
+  # Resend init when config changes so that new slug may be applied
   def handle_info(
-        {:updated, %Accounts.Account{slug: old_slug}, %Accounts.Account{slug: slug}},
+        {:updated, %Accounts.Account{slug: old_slug}, %Accounts.Account{slug: slug} = account},
         socket
       )
       when old_slug != slug do
-    disconnect(socket)
+    {:ok, relays} = select_relays(socket)
+    init(socket, account, relays)
+
+    {:noreply, socket}
   end
 
   # FLOWS
@@ -140,7 +132,7 @@ defmodule API.Gateway.Channel do
 
   # Our gateway token was deleted - disconnect WebSocket
   def handle_info({:deleted, %Tokens.Token{type: :gateway_group, id: id}}, socket)
-      when id == socket.assigns.subject.token_id do
+      when id == socket.assigns.token_id do
     disconnect(socket)
   end
 
@@ -553,6 +545,28 @@ defmodule API.Gateway.Channel do
     relays = Relays.load_balance_relays(location, relays)
 
     {:ok, relays}
+  end
+
+  defp init(socket, account, relays) do
+    relay_credentials_expire_at =
+      DateTime.utc_now() |> DateTime.add(@relay_credentials_expire_in_hours, :hour)
+
+    push(socket, "init", %{
+      authorizations: Views.Flow.render_many(socket.assigns.flows),
+      account_slug: account.slug,
+      interface: Views.Interface.render(socket.assigns.gateway),
+      relays:
+        Views.Relay.render_many(
+          relays,
+          socket.assigns.gateway.public_key,
+          relay_credentials_expire_at
+        ),
+      # These aren't used but needed for API compatibility
+      config: %{
+        ipv4_masquerade_enabled: true,
+        ipv6_masquerade_enabled: true
+      }
+    })
   end
 
   defp maybe_subscribe_for_relays_presence(relays, socket) do

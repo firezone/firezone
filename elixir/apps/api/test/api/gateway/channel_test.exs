@@ -1,6 +1,6 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Events, Gateways, PubSub}
+  alias Domain.{Accounts, Events, Gateways, PubSub}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -17,9 +17,16 @@ defmodule API.Gateway.ChannelTest do
         connections: [%{gateway_group_id: gateway.group_id}]
       )
 
+    token =
+      Fixtures.Gateways.create_token(
+        group: gateway_group,
+        account: account
+      )
+
     {:ok, _, socket} =
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
@@ -46,7 +53,8 @@ defmodule API.Gateway.ChannelTest do
       resource: resource,
       relay: relay,
       global_relay: global_relay,
-      socket: socket
+      socket: socket,
+      token: token
     }
   end
 
@@ -83,6 +91,56 @@ defmodule API.Gateway.ChannelTest do
   end
 
   describe "handle_info/2" do
+    test "resends init when account slug changes", %{
+      account: account
+    } do
+      :ok = Domain.PubSub.Account.subscribe(account.id)
+
+      old_data = %{
+        "id" => account.id,
+        "slug" => account.slug
+      }
+
+      data = %{
+        "id" => account.id,
+        "slug" => "new-slug"
+      }
+
+      Events.Hooks.Accounts.on_update(old_data, data)
+
+      assert_receive {:updated, %Accounts.Account{}, %Accounts.Account{}}
+
+      # Consume first init from join
+      assert_push "init", _payload
+
+      assert_push "init", payload
+
+      assert payload.account_slug == "new-slug"
+    end
+
+    test "disconnects socket when token is deleted", %{
+      account: account,
+      token: token
+    } do
+      # Prevents test from failing due to expected socket disconnect
+      Process.flag(:trap_exit, true)
+
+      :ok = Domain.PubSub.Account.subscribe(account.id)
+
+      data = %{
+        "id" => token.id,
+        "account_id" => account.id,
+        "type" => "gateway_group"
+      }
+
+      Events.Hooks.Tokens.on_delete(data)
+
+      assert_receive {:deleted, deleted_token}
+      assert deleted_token.id == token.id
+      assert_push "disconnect", payload
+      assert payload == %{"reason" => "token_expired"}
+    end
+
     test "pushes allow_access message", %{
       client: client,
       gateway: gateway,
@@ -235,7 +293,184 @@ defmodule API.Gateway.ChannelTest do
       assert resource_id == resource.id
     end
 
-    test "handles resource updates", %{
+    test "ignores flow deletion for other flows",
+         %{
+           account: account,
+           client: client,
+           resource: resource,
+           gateway: gateway,
+           relay: relay,
+           socket: socket,
+           subject: subject
+         } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      client_payload = "RTC_SD_or_DNS_Q"
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      other_client = Fixtures.Clients.create_client(account: account, subject: subject)
+
+      other_resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway.group_id}]
+        )
+
+      other_flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: other_client,
+          resource: resource
+        )
+
+      other_flow2 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          resource: other_resource
+        )
+
+      # Build up flow cache
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: other_client,
+           resource: resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: other_resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      assert %{assigns: %{flows: flows}} =
+               :sys.get_state(socket.channel_pid)
+
+      assert flows == %{
+               {client.id, resource.id} => expires_at,
+               {other_client.id, resource.id} => expires_at,
+               {client.id, other_resource.id} => expires_at
+             }
+
+      data = %{
+        "id" => other_flow1.id,
+        "client_id" => other_flow1.client_id,
+        "resource_id" => other_flow1.resource_id,
+        "account_id" => other_flow1.account_id
+      }
+
+      Events.Hooks.Flows.on_delete(data)
+
+      assert_push "reject_access", %{
+        client_id: client_id,
+        resource_id: resource_id
+      }
+
+      assert client_id == other_client.id
+      assert resource_id == resource.id
+
+      data = %{
+        "id" => other_flow2.id,
+        "client_id" => other_flow2.client_id,
+        "resource_id" => other_flow2.resource_id,
+        "account_id" => other_flow2.account_id
+      }
+
+      Events.Hooks.Flows.on_delete(data)
+
+      assert_push "reject_access", %{
+        client_id: client_id,
+        resource_id: resource_id
+      }
+
+      assert client_id == client.id
+      assert resource_id == other_resource.id
+
+      refute_push "reject_access", _payload
+    end
+
+    test "ignores other resource updates", %{
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      relay: relay,
+      socket: socket
+    } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      client_payload = "RTC_SD_or_DNS_Q"
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "name" => resource.name
+      }
+
+      data = Map.put(old_data, "name", "New Resource Name")
+
+      Events.Hooks.Resources.on_update(old_data, data)
+
+      client_id = client.id
+      resource_id = resource.id
+
+      assert %{
+               assigns: %{
+                 flows: %{{^client_id, ^resource_id} => ^expires_at}
+               }
+             } = :sys.get_state(socket.channel_pid)
+
+      refute_push "resource_updated", _payload
+    end
+
+    test "sends resource_updated when filters change", %{
       client: client,
       gateway: gateway,
       resource: resource,
@@ -440,9 +675,7 @@ defmodule API.Gateway.ChannelTest do
                client_id: client.id
              }
     end
-  end
 
-  describe "handle_info/2 :invalidate_ice_candidates" do
     test "pushes invalidate_ice_candidates message", %{
       client: client,
       gateway: gateway,
@@ -462,9 +695,7 @@ defmodule API.Gateway.ChannelTest do
                client_id: client.id
              }
     end
-  end
 
-  describe "handle_info/2 :request_connection" do
     test "pushes request_connection message", %{
       client: client,
       resource: resource,
@@ -526,7 +757,7 @@ defmodule API.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
-    test "tracks flow", %{
+    test "request_connection tracks flow and sends reject_access when flow is deleted", %{
       account: account,
       client: client,
       gateway: gateway,
@@ -583,9 +814,7 @@ defmodule API.Gateway.ChannelTest do
       assert client_id == client.id
       assert resource_id == resource.id
     end
-  end
 
-  describe "handle_info/2 :authorize_flow" do
     test "pushes authorize_flow message", %{
       client: client,
       gateway: gateway,
@@ -676,7 +905,7 @@ defmodule API.Gateway.ChannelTest do
       assert_push "authorize_flow", %{expires_at: nil}
     end
 
-    test "tracks flow", %{
+    test "authorize_flow tracks flow and sends reject_access when flow is deleted", %{
       account: account,
       client: client,
       gateway: gateway,
@@ -735,8 +964,13 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
-  describe "handle_in/3 flow_authorized" do
-    test "forwards reply to the client channel", %{
+  describe "handle_in/3" do
+    test "for unknown messages it doesn't crash", %{socket: socket} do
+      ref = push(socket, "unknown_message", %{})
+      assert_reply ref, :error, %{reason: :unknown_message}
+    end
+
+    test "flow_authorized forwards reply to the client channel", %{
       client: client,
       resource: resource,
       gateway: gateway,
@@ -789,7 +1023,7 @@ defmodule API.Gateway.ChannelTest do
       }
     end
 
-    test "pushes an error when ref is invalid", %{
+    test "flow_authorized pushes an error when ref is invalid", %{
       socket: socket
     } do
       push_ref =
@@ -799,10 +1033,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_reply push_ref, :error, %{reason: :invalid_ref}
     end
-  end
 
-  describe "handle_in/3 connection_ready" do
-    test "forwards RFC session description to the client channel", %{
+    test "connection ready forwards RFC session description to the client channel", %{
       client: client,
       resource: resource,
       relay: relay,
@@ -862,7 +1094,7 @@ defmodule API.Gateway.ChannelTest do
       assert resource_id == resource.id
     end
 
-    test "pushes an error when ref is invalid", %{
+    test "connection_ready pushes an error when ref is invalid", %{
       socket: socket
     } do
       push_ref =
@@ -873,10 +1105,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_reply push_ref, :error, %{reason: :invalid_ref}
     end
-  end
 
-  describe "handle_in/3 broadcast_ice_candidates" do
-    test "does nothing when gateways list is empty", %{
+    test "broadcast ice candidates does nothing when gateways list is empty", %{
       socket: socket,
       account: account
     } do
@@ -918,10 +1148,8 @@ defmodule API.Gateway.ChannelTest do
       assert client_id == client.id
       assert gateway.id == gateway_id
     end
-  end
 
-  describe "handle_in/3 broadcast_invalidated_ice_candidates" do
-    test "does nothing when gateways list is empty", %{
+    test "broadcast_invalidated_ice_candidates does nothing when gateways list is empty", %{
       socket: socket,
       account: account
     } do
@@ -966,8 +1194,8 @@ defmodule API.Gateway.ChannelTest do
   end
 
   # Debouncer tests
-  describe "handle_info/3 :push_leave" do
-    test "cancels leave if reconnecting with the same stamp secret" do
+  describe "handle_info/3" do
+    test "push_leave cancels leave if reconnecting with the same stamp secret" do
       relay_group = Fixtures.Relays.create_global_group()
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
@@ -1075,12 +1303,5 @@ defmodule API.Gateway.ChannelTest do
 
   defp relays_presence_timeout do
     Application.fetch_env!(:api, :relays_presence_debounce_timeout_ms)
-  end
-
-  describe "handle_in/3 for unknown messages" do
-    test "it doesn't crash", %{socket: socket} do
-      ref = push(socket, "unknown_message", %{})
-      assert_reply ref, :error, %{reason: :unknown_message}
-    end
   end
 end
