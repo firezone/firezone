@@ -1,6 +1,8 @@
 defmodule Domain.Mocks.Stripe do
   alias Domain.Billing.Stripe.APIClient
 
+  @charset Enum.to_list(?A..?Z) ++ Enum.to_list(?a..?z) ++ Enum.to_list(?0..?9)
+
   def override_endpoint_url(url) do
     config = Domain.Config.fetch_env!(:domain, APIClient)
     config = Keyword.put(config, :endpoint, url)
@@ -109,8 +111,64 @@ defmodule Domain.Mocks.Stripe do
     bypass
   end
 
+  def fetch_customer_endpoint(bypass, customer) do
+    customer_endpoint_path = "v1/customers/#{customer["id"]}"
+    test_pid = self()
+
+    Bypass.expect(bypass, "GET", customer_endpoint_path, fn conn ->
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
+
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
+
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          send(test_pid, {:bypass_request, conn})
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(customer))
+      end
+    end)
+
+    override_endpoint_url("http://localhost:#{bypass.port}")
+
+    bypass
+  end
+
+  def fetch_product_endpoint(bypass, product) do
+    product_endpoint_path = "v1/products/#{product["id"]}"
+    test_pid = self()
+
+    Bypass.expect(bypass, "GET", product_endpoint_path, fn conn ->
+      conn = %{conn | private: Map.put(conn.private, :test_pid, test_pid)}
+
+      case check_rate_limit(conn) do
+        {:rate_limited, response} ->
+          response
+
+        :ok ->
+          conn = Plug.Conn.fetch_query_params(conn)
+          send(test_pid, {:bypass_request, conn})
+          Plug.Conn.send_resp(conn, 200, Jason.encode!(product))
+      end
+    end)
+
+    override_endpoint_url("http://localhost:#{bypass.port}")
+
+    bypass
+  end
+
   def mock_fetch_product_endpoint(bypass, product_id, resp \\ %{}) do
     product_endpoint_path = "v1/products/#{product_id}"
+
+    # %{
+    #  "active" => true,
+    #  "created" => 1678833149,
+    #  "default_price" => nil,
+    #  "description" => nil,
+    #  "id" => "prod_vGU4ZPE2f3XFmkH8f8KwI2QJ",
+    #  "name" => "Team Plan",
+    #  "object" => "product"
+    # }
 
     resp =
       Map.merge(
@@ -553,12 +611,49 @@ defmodule Domain.Mocks.Stripe do
     }
   end
 
-  def build_event(type, object) do
+  def build_customer(opts \\ []) do
+    opts = normalize_opts(opts)
+
     %{
-      "id" => "evt_1NG8Du2eZvKYlo2CUI79vXWy",
+      "id" => "cus_" <> random_id(),
+      "object" => "customer",
+      "address" => nil,
+      "balance" => 0,
+      "created" => 1_680_893_993,
+      "currency" => nil,
+      "default_source" => nil,
+      "delinquent" => false,
+      "description" => nil,
+      "discount" => nil,
+      "email" => "foo@bar.com",
+      "invoice_prefix" => "0759376C",
+      "invoice_settings" => %{
+        "custom_fields" => nil,
+        "default_payment_method" => nil,
+        "footer" => nil,
+        "rendering_options" => nil
+      },
+      "livemode" => false,
+      "metadata" => %{},
+      "name" => "John Doe",
+      "next_invoice_sequence" => 1,
+      "phone" => nil,
+      "preferred_locales" => [],
+      "shipping" => nil,
+      "tax_exempt" => "none",
+      "test_clock" => nil
+    }
+    |> Map.merge(opts)
+  end
+
+  def build_event(type, object, created_at \\ nil) do
+    created_at = created_at || DateTime.now!("Etc/UTC") |> DateTime.to_unix()
+
+    %{
+      "id" => "evt_#{random_id()}",
       "object" => "event",
       "api_version" => "2019-02-19",
-      "created" => 1_686_089_970,
+      "created" => created_at,
       "data" => %{
         "object" => object
       },
@@ -572,6 +667,188 @@ defmodule Domain.Mocks.Stripe do
     }
   end
 
+  def build_all(type, customer_id, seats, metadata \\ %{})
+
+  def build_all(:starter, customer_id, seats, metadata) do
+    product = build_product(name: "Starter", metadata: starter_metadata())
+    price = build_price(product: product["id"], amount: 0)
+
+    subscription =
+      build_subscription(
+        customer: customer_id,
+        metadata: metadata,
+        items: [[price: price, quantity: seats]]
+      )
+
+    {product, price, subscription}
+  end
+
+  def build_all(:team, customer_id, seats, metadata) do
+    product = build_product(name: "Team", metadata: team_metadata())
+    price = build_price(product: product["id"], amount: 500)
+
+    subscription =
+      build_subscription(
+        customer: customer_id,
+        metadata: metadata,
+        items: [[price: price, quantity: seats]]
+      )
+
+    {product, price, subscription}
+  end
+
+  def build_all(:enterprise, customer_id, seats, metadata) do
+    product = build_product(name: "Enterprise", metadata: enterprise_metadata())
+    price = build_price(product: product["id"], amount: 1000)
+
+    subscription =
+      build_subscription(
+        customer: customer_id,
+        metadata: metadata,
+        items: [[price: price, quantity: seats]]
+      )
+
+    {product, price, subscription}
+  end
+
+  def build_subscription(opts \\ []) do
+    sub_items =
+      for item <- opts[:items] do
+        build_subscription_item(item)
+      end
+
+    opts = normalize_opts(opts)
+
+    items = %{"object" => "list", "data" => sub_items}
+    opts = %{opts | "items" => items}
+
+    %{
+      "id" => "sub_" <> random_id(),
+      "object" => "subscription",
+      "status" => "active",
+      "customer" => "cus_" <> random_id(),
+      "items" => %{
+        "object" => "list",
+        "data" => []
+      },
+      "metadata" => %{},
+      "pause_collection" => nil,
+      "trial_end" => nil,
+      "trial_start" => nil
+    }
+    |> Map.merge(opts)
+  end
+
+  def build_subscription_item(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    %{
+      "id" => "si_" <> random_id(),
+      "object" => "subscription_item",
+      "current_period_start" => System.os_time(:second),
+      "current_period_end" => System.os_time(:second) + duration(30, :day),
+      "price" => build_price(),
+      "quantity" => 1
+    }
+    |> Map.merge(opts)
+  end
+
+  def build_price(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    %{
+      "id" => "price_" <> random_id(),
+      "object" => "price",
+      "active" => true,
+      "currency" => "usd",
+      "unit_amount" => 500,
+      "recurring" => %{
+        "interval" => "month",
+        "interval_count" => 1,
+        "trial_period_days" => nil
+      },
+      "product" => "prod_" <> random_id()
+    }
+    |> Map.merge(opts)
+  end
+
+  def build_product(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    default_values = %{
+      "id" => "prod_" <> random_id(),
+      "object" => "product",
+      "active" => true,
+      "created" => 1_678_833_149,
+      "default_price" => nil,
+      "description" => nil,
+      "name" => "Team",
+      "metadata" => team_metadata()
+    }
+
+    Map.merge(default_values, opts)
+  end
+
+  def starter_metadata(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    %{
+      "account_admin_users_count" => 1,
+      "gateway_groups_count" => 10,
+      "monthly_active_users_count" => "unlimited",
+      "service_accounts_count" => 10,
+      "users_count" => 6
+    }
+    |> Map.merge(opts)
+  end
+
+  def team_metadata(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    %{
+      "account_admin_users_count" => 10,
+      "gateway_groups_count" => 100,
+      "internet_resource" => true,
+      "monthly_active_users_count" => "unlimited",
+      "policy_conditions" => true,
+      "service_accounts_count" => 100,
+      "support_type" => "email",
+      "traffic_filters" => true
+    }
+    |> Map.merge(opts)
+  end
+
+  def enterprise_metadata(opts \\ []) do
+    opts = normalize_opts(opts)
+
+    %{
+      "account_admin_users_count" => "unlimited",
+      "gateway_groups_count" => "unlimited",
+      "idp_sync" => true,
+      "internet_resource" => true,
+      "monthly_active_users_count" => "unlimited",
+      "policy_conditions" => true,
+      "rest_api" => true,
+      "service_accounts_count" => "unlimited",
+      "support_type" => "email_and_slack",
+      "traffic_filters" => true,
+      "users_count" => "unlimited"
+    }
+    |> Map.merge(opts)
+  end
+
+  def pause_subscription(subscription) do
+    Map.put(subscription, "pause_collection", %{"behavior" => "void"})
+  end
+
+  def resume_subscription(subscription) do
+    Map.put(subscription, "pause_collection", nil)
+  end
+
+  def random_id(length \\ 24) do
+    for _ <- 1..length, into: "", do: <<Enum.random(@charset)>>
+  end
+
   defp fetch_request_params(conn) do
     opts =
       Plug.Parsers.init(
@@ -581,5 +858,28 @@ defmodule Domain.Mocks.Stripe do
       )
 
     Plug.Parsers.call(conn, opts)
+  end
+
+  defp duration(length, unit) do
+    case unit do
+      :second -> length
+      :hour -> length * 60 * 60
+      :day -> length * 60 * 60 * 24
+      _ -> nil
+    end
+  end
+
+  defp normalize_opts(opts) when is_list(opts) do
+    opts
+    |> Enum.into(%{})
+    |> stringify_keys()
+  end
+
+  defp normalize_opts(opts) when is_map(opts), do: stringify_keys(opts)
+
+  defp stringify_keys(map) do
+    for {key, val} <- map, into: %{} do
+      {to_string(key), val}
+    end
   end
 end

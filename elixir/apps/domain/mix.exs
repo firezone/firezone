@@ -43,7 +43,7 @@ defmodule Domain.MixProject do
   defp deps do
     [
       # Ecto-related deps
-      {:postgrex, "~> 0.19"},
+      {:postgrex, "~> 0.20"},
       {:decimal, "~> 2.0"},
       {:ecto_sql, "~> 3.7"},
 

@@ -144,7 +144,7 @@ defmodule Domain.Billing do
   defp get_customer_email(%{metadata: %{stripe: %{billing_email: email}}}), do: email
   defp get_customer_email(_account), do: nil
 
-  def update_customer(%Accounts.Account{} = account) do
+  def update_stripe_customer(%Accounts.Account{} = account) do
     secret_key = fetch_config!(:secret_key)
     customer_id = account.metadata.stripe.customer_id
 
@@ -316,7 +316,7 @@ defmodule Domain.Billing do
         :ok
 
       true ->
-        {:ok, _customer} = update_customer(account)
+        {:ok, _customer} = update_stripe_customer(account)
         :ok
     end
   end
