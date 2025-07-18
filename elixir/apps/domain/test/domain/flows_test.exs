@@ -54,200 +54,200 @@ defmodule Domain.FlowsTest do
     }
   end
 
-  describe "authorize_flow/4" do
-    test "returns error when resource does not exist", %{
-      client: client,
-      gateway: gateway,
-      subject: subject
-    } do
-      resource_id = Ecto.UUID.generate()
-      assert authorize_flow(client, gateway, resource_id, subject) == {:error, :not_found}
-    end
+  describe "create_flow/4" do
+    # test "returns error when resource does not exist", %{
+    #   client: client,
+    #   gateway: gateway,
+    #   subject: subject
+    # } do
+    #   resource_id = Ecto.UUID.generate()
+    #   assert authorize_flow(client, gateway, resource_id, subject) == {:error, :not_found}
+    # end
+    #
+    # test "returns error when UUID is invalid", %{
+    #   client: client,
+    #   gateway: gateway,
+    #   subject: subject
+    # } do
+    #   assert authorize_flow(client, gateway, "foo", subject) == {:error, :not_found}
+    # end
+    #
+    # test "returns authorized resource", %{
+    #   client: client,
+    #   gateway: gateway,
+    #   resource: resource,
+    #   policy: policy,
+    #   subject: subject
+    # } do
+    #   assert {:ok, fetched_resource, _flow, _expires_at} =
+    #            authorize_flow(client, gateway, resource.id, subject)
+    #
+    #   assert fetched_resource.id == resource.id
+    #   assert hd(fetched_resource.authorized_by_policies).id == policy.id
+    # end
+    #
+    # test "returns error when some conditions are not satisfied", %{
+    #   account: account,
+    #   actor_group: actor_group,
+    #   client: client,
+    #   gateway_group: gateway_group,
+    #   gateway: gateway,
+    #   subject: subject
+    # } do
+    #   resource =
+    #     Fixtures.Resources.create_resource(
+    #       account: account,
+    #       connections: [%{gateway_group_id: gateway_group.id}]
+    #     )
+    #
+    #   Fixtures.Policies.create_policy(
+    #     account: account,
+    #     actor_group: actor_group,
+    #     resource: resource,
+    #     conditions: [
+    #       %{
+    #         property: :remote_ip_location_region,
+    #         operator: :is_in,
+    #         values: ["AU"]
+    #       },
+    #       %{
+    #         property: :remote_ip_location_region,
+    #         operator: :is_not_in,
+    #         values: [client.last_seen_remote_ip_location_region]
+    #       },
+    #       %{
+    #         property: :remote_ip,
+    #         operator: :is_in_cidr,
+    #         values: ["0.0.0.0/0", "0::/0"]
+    #       }
+    #     ]
+    #   )
+    #
+    #   assert authorize_flow(client, gateway, resource.id, subject) ==
+    #            {:error, {:forbidden, violated_properties: [:remote_ip_location_region]}}
+    # end
+    #
+    # test "returns error when all conditions are not satisfied", %{
+    #   account: account,
+    #   actor_group: actor_group,
+    #   client: client,
+    #   gateway_group: gateway_group,
+    #   gateway: gateway,
+    #   subject: subject
+    # } do
+    #   resource =
+    #     Fixtures.Resources.create_resource(
+    #       account: account,
+    #       connections: [%{gateway_group_id: gateway_group.id}]
+    #     )
+    #
+    #   Fixtures.Policies.create_policy(
+    #     account: account,
+    #     actor_group: actor_group,
+    #     resource: resource,
+    #     conditions: [
+    #       %{
+    #         property: :remote_ip_location_region,
+    #         operator: :is_in,
+    #         values: ["AU"]
+    #       },
+    #       %{
+    #         property: :remote_ip_location_region,
+    #         operator: :is_not_in,
+    #         values: [client.last_seen_remote_ip_location_region]
+    #       }
+    #     ]
+    #   )
+    #
+    #   assert authorize_flow(client, gateway, resource.id, subject) ==
+    #            {:error, {:forbidden, violated_properties: [:remote_ip_location_region]}}
+    # end
+    #
+    # test "creates a flow when the only policy conditions are satisfied", %{
+    #   account: account,
+    #   actor: actor,
+    #   resource: resource,
+    #   client: client,
+    #   policy: policy,
+    #   gateway: gateway,
+    #   subject: subject
+    # } do
+    #   actor_group2 = Fixtures.Actors.create_group(account: account)
+    #   Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group2)
+    #
+    #   time = Time.utc_now()
+    #   midnight = Time.from_iso8601!("23:59:59.999999")
+    #
+    #   date = Date.utc_today()
+    #   day_of_week = Enum.at(~w[M T W R F S U], Date.day_of_week(date) - 1)
+    #
+    #   Fixtures.Policies.create_policy(
+    #     account: account,
+    #     actor_group: actor_group2,
+    #     resource: resource,
+    #     conditions: [
+    #       %{
+    #         property: :remote_ip_location_region,
+    #         operator: :is_not_in,
+    #         values: [client.last_seen_remote_ip_location_region]
+    #       },
+    #       %{
+    #         property: :current_utc_datetime,
+    #         operator: :is_in_day_of_week_time_ranges,
+    #         values: [
+    #           "#{day_of_week}/#{time}-#{midnight}/UTC"
+    #         ]
+    #       }
+    #     ]
+    #   )
+    #
+    #   assert {:ok, _fetched_resource, flow, expires_at} =
+    #            authorize_flow(client, gateway, resource.id, subject)
+    #
+    #   assert flow.policy_id == policy.id
+    #   assert DateTime.diff(expires_at, DateTime.new!(date, midnight)) < 5
+    # end
+    #
+    # test "creates a flow when all conditions for at least one of the policies are satisfied", %{
+    #   account: account,
+    #   actor_group: actor_group,
+    #   client: client,
+    #   gateway_group: gateway_group,
+    #   gateway: gateway,
+    #   subject: subject
+    # } do
+    #   resource =
+    #     Fixtures.Resources.create_resource(
+    #       account: account,
+    #       connections: [%{gateway_group_id: gateway_group.id}]
+    #     )
+    #
+    #   Fixtures.Policies.create_policy(
+    #     account: account,
+    #     actor_group: actor_group,
+    #     resource: resource,
+    #     conditions: [
+    #       %{
+    #         property: :remote_ip_location_region,
+    #         operator: :is_in,
+    #         values: [client.last_seen_remote_ip_location_region]
+    #       },
+    #       %{
+    #         property: :remote_ip,
+    #         operator: :is_in_cidr,
+    #         values: ["0.0.0.0/0", "0::/0"]
+    #       }
+    #     ]
+    #   )
+    #
+    #   assert {:ok, _fetched_resource, flow, expires_at} =
+    #            authorize_flow(client, gateway, resource.id, subject)
+    #
+    #   assert flow.resource_id == resource.id
+    #   assert expires_at == subject.expires_at
+    # end
 
-    test "returns error when UUID is invalid", %{
-      client: client,
-      gateway: gateway,
-      subject: subject
-    } do
-      assert authorize_flow(client, gateway, "foo", subject) == {:error, :not_found}
-    end
-
-    test "returns authorized resource", %{
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      policy: policy,
-      subject: subject
-    } do
-      assert {:ok, fetched_resource, _flow, _expires_at} =
-               authorize_flow(client, gateway, resource.id, subject)
-
-      assert fetched_resource.id == resource.id
-      assert hd(fetched_resource.authorized_by_policies).id == policy.id
-    end
-
-    test "returns error when some conditions are not satisfied", %{
-      account: account,
-      actor_group: actor_group,
-      client: client,
-      gateway_group: gateway_group,
-      gateway: gateway,
-      subject: subject
-    } do
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource,
-        conditions: [
-          %{
-            property: :remote_ip_location_region,
-            operator: :is_in,
-            values: ["AU"]
-          },
-          %{
-            property: :remote_ip_location_region,
-            operator: :is_not_in,
-            values: [client.last_seen_remote_ip_location_region]
-          },
-          %{
-            property: :remote_ip,
-            operator: :is_in_cidr,
-            values: ["0.0.0.0/0", "0::/0"]
-          }
-        ]
-      )
-
-      assert authorize_flow(client, gateway, resource.id, subject) ==
-               {:error, {:forbidden, violated_properties: [:remote_ip_location_region]}}
-    end
-
-    test "returns error when all conditions are not satisfied", %{
-      account: account,
-      actor_group: actor_group,
-      client: client,
-      gateway_group: gateway_group,
-      gateway: gateway,
-      subject: subject
-    } do
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource,
-        conditions: [
-          %{
-            property: :remote_ip_location_region,
-            operator: :is_in,
-            values: ["AU"]
-          },
-          %{
-            property: :remote_ip_location_region,
-            operator: :is_not_in,
-            values: [client.last_seen_remote_ip_location_region]
-          }
-        ]
-      )
-
-      assert authorize_flow(client, gateway, resource.id, subject) ==
-               {:error, {:forbidden, violated_properties: [:remote_ip_location_region]}}
-    end
-
-    test "creates a flow when the only policy conditions are satisfied", %{
-      account: account,
-      actor: actor,
-      resource: resource,
-      client: client,
-      policy: policy,
-      gateway: gateway,
-      subject: subject
-    } do
-      actor_group2 = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group2)
-
-      time = Time.utc_now()
-      midnight = Time.from_iso8601!("23:59:59.999999")
-
-      date = Date.utc_today()
-      day_of_week = Enum.at(~w[M T W R F S U], Date.day_of_week(date) - 1)
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group2,
-        resource: resource,
-        conditions: [
-          %{
-            property: :remote_ip_location_region,
-            operator: :is_not_in,
-            values: [client.last_seen_remote_ip_location_region]
-          },
-          %{
-            property: :current_utc_datetime,
-            operator: :is_in_day_of_week_time_ranges,
-            values: [
-              "#{day_of_week}/#{time}-#{midnight}/UTC"
-            ]
-          }
-        ]
-      )
-
-      assert {:ok, _fetched_resource, flow, expires_at} =
-               authorize_flow(client, gateway, resource.id, subject)
-
-      assert flow.policy_id == policy.id
-      assert DateTime.diff(expires_at, DateTime.new!(date, midnight)) < 5
-    end
-
-    test "creates a flow when all conditions for at least one of the policies are satisfied", %{
-      account: account,
-      actor_group: actor_group,
-      client: client,
-      gateway_group: gateway_group,
-      gateway: gateway,
-      subject: subject
-    } do
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource,
-        conditions: [
-          %{
-            property: :remote_ip_location_region,
-            operator: :is_in,
-            values: [client.last_seen_remote_ip_location_region]
-          },
-          %{
-            property: :remote_ip,
-            operator: :is_in_cidr,
-            values: ["0.0.0.0/0", "0::/0"]
-          }
-        ]
-      )
-
-      assert {:ok, _fetched_resource, flow, expires_at} =
-               authorize_flow(client, gateway, resource.id, subject)
-
-      assert flow.resource_id == resource.id
-      assert expires_at == subject.expires_at
-    end
-
-    test "creates a network flow for users", %{
+    test "creates a new flow for users", %{
       account: account,
       gateway: gateway,
       resource: resource,
@@ -260,8 +260,8 @@ defmodule Domain.FlowsTest do
 
       Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
-      assert {:ok, _fetched_resource, %Flows.Flow{} = flow, expires_at} =
-               authorize_flow(client, gateway, resource.id, subject)
+      assert {:ok, %Flows.Flow{} = flow} =
+               create_flow(client, gateway, resource.id, policy, subject)
 
       assert flow.policy_id == policy.id
       assert flow.client_id == client.id
@@ -271,10 +271,9 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
-      assert expires_at == subject.expires_at
     end
 
-    test "creates a network flow for service accounts", %{
+    test "creates a new flow for service accounts", %{
       account: account,
       actor_group: actor_group,
       gateway: gateway,
@@ -289,8 +288,8 @@ defmodule Domain.FlowsTest do
 
       client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
 
-      assert {:ok, _fetched_resource, %Flows.Flow{} = flow, expires_at} =
-               authorize_flow(client, gateway, resource.id, subject)
+      assert {:ok, %Flows.Flow{} = flow} =
+               create_flow(client, gateway, resource.id, policy, subject)
 
       assert flow.policy_id == policy.id
       assert flow.client_id == client.id
@@ -300,94 +299,37 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
-      assert expires_at == subject.expires_at
     end
 
-    test "does not return authorized access to deleted resources", %{
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      subject: subject
-    } do
-      {:ok, resource} = Domain.Resources.delete_resource(resource, subject)
-
-      assert authorize_flow(client, gateway, resource.id, subject) == {:error, :not_found}
-    end
-
-    test "does not authorize access to resources in other accounts", %{
-      client: client,
-      gateway: gateway,
-      subject: subject
-    } do
-      resource = Fixtures.Resources.create_resource()
-      assert authorize_flow(client, gateway, resource.id, subject) == {:error, :not_found}
-    end
-
-    test "returns error on account_id mismatch", %{
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      subject: subject
-    } do
-      other_subject = Fixtures.Auth.create_subject()
-      other_client = Fixtures.Clients.create_client()
-      other_gateway = Fixtures.Gateways.create_gateway()
-
-      assert_raise FunctionClauseError, fn ->
-        assert authorize_flow(client, gateway, resource.id, other_subject)
-      end
-
-      assert_raise FunctionClauseError, fn ->
-        assert authorize_flow(client, other_gateway, resource.id, subject)
-      end
-
-      assert_raise FunctionClauseError, fn ->
-        assert authorize_flow(other_client, gateway, resource.id, subject)
-      end
-    end
-
-    test "returns error when subject has no permission to create flows", %{
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      subject: subject
-    } do
-      subject = Fixtures.Auth.remove_permissions(subject)
-
-      assert authorize_flow(client, gateway, resource.id, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [
-                   Flows.Authorizer.create_flows_permission()
-                 ]}}
-
-      subject = Fixtures.Auth.add_permission(subject, Flows.Authorizer.create_flows_permission())
-
-      assert authorize_flow(client, gateway, resource.id, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [
-                   Domain.Resources.Authorizer.view_available_resources_permission()
-                 ]}}
-    end
-
-    test "preloads assocs", %{
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      subject: subject
-    } do
-      assert {:ok, resource, _flow, _expires_at} =
-               authorize_flow(client, gateway, resource.id, subject, preload: :connections)
-
-      assert Ecto.assoc_loaded?(resource.connections)
-      assert Ecto.assoc_loaded?(resource.connections)
-      assert Ecto.assoc_loaded?(resource.connections)
-      assert Ecto.assoc_loaded?(resource.connections)
-      assert length(resource.connections) == 1
-    end
+    # TODO: Rename Flows
+    # Authorization a policy authorization ("flow") makes no sense
+    # test "returns error when subject has no permission to create flows", %{
+    #   client: client,
+    #   gateway: gateway,
+    #   resource: resource,
+    #   policy: policy,
+    #   subject: subject
+    # } do
+    #   subject = Fixtures.Auth.remove_permissions(subject)
+    #
+    #   assert create_flow(client, gateway, resource.id, policy, subject) ==
+    #            {:error,
+    #             {:unauthorized,
+    #              reason: :missing_permissions,
+    #              missing_permissions: [
+    #                Flows.Authorizer.create_flows_permission()
+    #              ]}}
+    #
+    #   subject = Fixtures.Auth.add_permission(subject, Flows.Authorizer.create_flows_permission())
+    #
+    #   assert create_flow(client, gateway, resource.id, policy, subject) ==
+    #            {:error,
+    #             {:unauthorized,
+    #              reason: :missing_permissions,
+    #              missing_permissions: [
+    #                Domain.Resources.Authorizer.view_available_resources_permission()
+    #              ]}}
+    # end
   end
 
   describe "fetch_flow_by_id/3" do

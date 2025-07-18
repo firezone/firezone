@@ -696,23 +696,27 @@ defmodule API.Client.Channel do
       socket.assigns.client.last_seen_remote_ip_location_lon
     }
 
-    # TODO: Optimization
-    # Gateway selection and flow authorization shouldn't need to hit the DB
-    with {:ok, resource} <- authorize_resource(socket, resource_id),
+    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
+         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
          {:ok, gateways} when gateways != [] <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
            ),
          {:ok, gateways} <-
-           filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement),
-         gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids),
-         {:ok, resource, _flow, expires_at} <-
-           Flows.authorize_flow(
-             socket.assigns.client,
-             gateway,
-             resource_id,
-             socket.assigns.subject
-           ) do
+           filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement) do
+      gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
+
+      # TODO: Optimization
+      # Move this to a Task.start that completes after broadcasting authorize_flow
+      {:ok, _flow} =
+        Flows.create_flow(
+          socket.assigns.client,
+          gateway,
+          resource_id,
+          policy,
+          socket.assigns.subject
+        )
+
       preshared_key = generate_preshared_key()
       ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
 
@@ -732,6 +736,30 @@ defmodule API.Client.Channel do
       {:noreply, socket}
     else
       {:error, :not_found} ->
+        push(socket, "flow_creation_failed", %{
+          resource_id: resource_id,
+          reason: :not_found
+        })
+
+        {:noreply, socket}
+
+      {:error, :offline} ->
+        push(socket, "flow_creation_failed", %{
+          resource_id: resource_id,
+          reason: :offline
+        })
+
+        {:noreply, socket}
+
+      {:error, :forbidden} ->
+        push(socket, "flow_creation_failed", %{
+          resource_id: resource_id,
+          reason: :forbidden
+        })
+
+        {:noreply, socket}
+
+      :error ->
         push(socket, "flow_creation_failed", %{
           resource_id: resource_id,
           reason: :not_found
@@ -770,7 +798,8 @@ defmodule API.Client.Channel do
 
     # TODO: Optimization
     # Gateway selection and flow authorization shouldn't need to hit the DB
-    with {:ok, resource} <- authorize_resource(socket, resource_id),
+    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
+         {:ok, _policy, _expires_at} <- authorize_resource(socket, resource_id),
          {:ok, [_ | _] = gateways} <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
@@ -804,6 +833,13 @@ defmodule API.Client.Channel do
 
       {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
+
+      :error ->
+        {:reply, {:error, %{reason: :not_found}}, socket}
+
+      {:error, {:forbidden, violated_properties: violated_properties}} ->
+        {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
+         socket}
     end
   end
 
@@ -819,18 +855,20 @@ defmodule API.Client.Channel do
         },
         socket
       ) do
-    # TODO: Optimization
-    # Gateway selection and flow authorization shouldn't need to hit the DB
-    with {:ok, _resource} <- authorize_resource(socket, resource_id),
+    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
+         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         {:ok, resource, _flow, expires_at} <-
-           Flows.authorize_flow(
-             socket.assigns.client,
-             gateway,
-             resource_id,
-             socket.assigns.subject
-           ),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
+      # TODO: Optimization
+      {:ok, _flow} =
+        Flows.create_flow(
+          socket.assigns.client,
+          gateway,
+          resource_id,
+          policy,
+          socket.assigns.subject
+        )
+
       :ok =
         PubSub.Account.broadcast(
           socket.assigns.client.account_id,
@@ -846,6 +884,9 @@ defmodule API.Client.Channel do
       {:noreply, socket}
     else
       {:error, :not_found} ->
+        {:reply, {:error, %{reason: :not_found}}, socket}
+
+      :error ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
@@ -870,18 +911,21 @@ defmodule API.Client.Channel do
         },
         socket
       ) do
-    # TODO: Optimization
     # Flow authorization can happen out-of-band since we just authorized the resource above
-    with {:ok, _resource} <- authorize_resource(socket, resource_id),
+    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
+         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         {:ok, resource, _flow, expires_at} <-
-           Flows.authorize_flow(
-             socket.assigns.client,
-             gateway,
-             resource_id,
-             socket.assigns.subject
-           ),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
+      # TODO: Optimization
+      {:ok, _flow} =
+        Flows.create_flow(
+          socket.assigns.client,
+          gateway,
+          resource_id,
+          policy,
+          socket.assigns.subject
+        )
+
       :ok =
         PubSub.Account.broadcast(
           socket.assigns.client.account_id,
@@ -898,6 +942,9 @@ defmodule API.Client.Channel do
       {:noreply, socket}
     else
       {:error, :not_found} ->
+        {:reply, {:error, %{reason: :not_found}}, socket}
+
+      :error ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
@@ -1146,7 +1193,6 @@ defmodule API.Client.Channel do
     end
   end
 
-  # TODO: policy conditions evaluation does not seem to be working
   defp authorized_resources(socket) do
     OpenTelemetry.Tracer.with_span "client.authorized_resources",
       attributes: %{
@@ -1168,22 +1214,31 @@ defmodule API.Client.Channel do
     end
   end
 
+  # Returns either the authorized resource or an error tuple of violated properties
   defp authorize_resource(socket, resource_id) do
     OpenTelemetry.Tracer.with_span "client.authorize_resource",
       attributes: %{
         account_id: socket.assigns.client.account_id
       } do
-      resource =
-        socket
-        |> authorized_resources()
-        |> Enum.find(&(&1.id == resource_id))
+      socket.assigns.policies
+      |> Enum.filter(fn {_id, policy} -> policy.resource_id == resource_id end)
+      |> Enum.map(fn {_id, policy} -> policy end)
+      |> Enum.reduce_while({:error, []}, fn policy, {:error, acc} ->
+        case Policies.ensure_client_conforms_policy_conditions(socket.assigns.client, policy) do
+          {:ok, expires_at} ->
+            {:halt, {:ok, policy, expires_at}}
 
-      case resource do
-        nil ->
-          {:error, :not_found}
+          {:error, {:forbidden, violated_properties: violated_properties}} ->
+            {:cont, {:error, violated_properties ++ acc}}
+        end
+      end)
+      |> case do
+        {:error, violated_properties} ->
+          {:error, {:forbidden, violated_properties: violated_properties}}
 
-        resource ->
-          {:ok, resource}
+        {:ok, policy, expires_at} ->
+          # Set a maximum expiration time for the authorization
+          {:ok, policy, expires_at || socket.assigns.subject.expires_at}
       end
     end
   end

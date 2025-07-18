@@ -2048,7 +2048,6 @@ defmodule API.Client.ChannelTest do
       account: account,
       client: client,
       actor_group: actor_group,
-      membership: membership,
       gateway_group: gateway_group,
       gateway: gateway,
       socket: socket
@@ -2059,19 +2058,18 @@ defmodule API.Client.ChannelTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group,
-          resource: resource,
-          conditions: [
-            %{
-              property: :remote_ip_location_region,
-              operator: :is_not_in,
-              values: [client.last_seen_remote_ip_location_region]
-            }
-          ]
-        )
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_not_in,
+            values: [client.last_seen_remote_ip_location_region]
+          }
+        ]
+      )
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2080,11 +2078,6 @@ defmodule API.Client.ChannelTest do
       }
 
       :ok = Domain.Gateways.Presence.connect(gateway)
-      :ok = Domain.PubSub.Account.subscribe(account.id)
-
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
 
       ref = push(socket, "reuse_connection", attrs)
 
@@ -2130,8 +2123,6 @@ defmodule API.Client.ChannelTest do
 
     test "broadcasts allow_access to the gateways and then returns connect message", %{
       dns_resource: resource,
-      dns_resource_policy: policy,
-      membership: membership,
       gateway: gateway,
       client: client,
       socket: socket
@@ -2141,11 +2132,6 @@ defmodule API.Client.ChannelTest do
       client_id = client.id
 
       :ok = Domain.Gateways.Presence.connect(gateway)
-      :ok = Domain.PubSub.Account.subscribe(resource.account_id)
-
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2155,19 +2141,15 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "reuse_connection", attrs)
 
-      gateway_id = gateway.id
-
-      assert_receive {{:allow_access, ^gateway_id}, {channel_pid, socket_ref}, payload}
+      assert_receive {:allow_access, {channel_pid, socket_ref}, payload}
 
       assert %{
-               resource: recv_resource,
-               client: recv_client,
+               resource_id: ^resource_id,
+               client_id: ^client_id,
                authorization_expires_at: authorization_expires_at,
                client_payload: "DNS_Q"
              } = payload
 
-      assert recv_resource.id == resource_id
-      assert recv_client.id == client_id
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
       send(
@@ -2296,7 +2278,6 @@ defmodule API.Client.ChannelTest do
       account: account,
       client: client,
       actor_group: actor_group,
-      membership: membership,
       gateway_group: gateway_group,
       gateway: gateway,
       socket: socket
@@ -2307,19 +2288,18 @@ defmodule API.Client.ChannelTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group,
-          resource: resource,
-          conditions: [
-            %{
-              property: :remote_ip_location_region,
-              operator: :is_not_in,
-              values: [client.last_seen_remote_ip_location_region]
-            }
-          ]
-        )
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_not_in,
+            values: [client.last_seen_remote_ip_location_region]
+          }
+        ]
+      )
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2329,12 +2309,6 @@ defmodule API.Client.ChannelTest do
       }
 
       :ok = Domain.Gateways.Presence.connect(gateway)
-
-      :ok = Domain.PubSub.Account.subscribe(account.id)
-
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
 
       ref = push(socket, "request_connection", attrs)
 
@@ -2374,8 +2348,6 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
-      :ok = Domain.PubSub.Account.subscribe(resource.account_id)
-
       attrs = %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
@@ -2385,20 +2357,15 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "request_connection", attrs)
 
-      gateway_id = gateway.id
-
-      assert_receive {{:request_connection, ^gateway_id}, {channel_pid, socket_ref}, payload}
+      assert_receive {:request_connection, {channel_pid, socket_ref}, payload}
 
       assert %{
-               resource: recv_resource,
-               client: recv_client,
+               resource_id: ^resource_id,
+               client_id: ^client_id,
                client_preshared_key: "PSK",
                client_payload: "RTC_SD",
                authorization_expires_at: authorization_expires_at
              } = payload
-
-      assert recv_resource.id == resource_id
-      assert recv_client.id == client_id
 
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
@@ -2440,8 +2407,6 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.Presence.connect(gateway)
       Phoenix.PubSub.subscribe(Domain.PubSub, Domain.Tokens.socket_id(gateway_group_token))
 
-      :ok = Domain.PubSub.Account.subscribe(account.id)
-
       push(socket, "request_connection", %{
         "resource_id" => resource.id,
         "gateway_id" => gateway.id,
@@ -2449,9 +2414,7 @@ defmodule API.Client.ChannelTest do
         "client_preshared_key" => "PSK"
       })
 
-      gateway_id = gateway.id
-
-      assert_receive {{:request_connection, ^gateway_id}, _refs, _payload}
+      assert_receive {:request_connection, _refs, _payload}
     end
   end
 
@@ -2486,13 +2449,9 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.Presence.connect(gateway)
       Domain.PubSub.subscribe(Domain.Tokens.socket_id(gateway_group_token))
 
-      :ok = Domain.PubSub.Account.subscribe(client.account_id)
-
       push(socket, "broadcast_ice_candidates", attrs)
 
-      gateway_id = gateway.id
-
-      assert_receive {{:ice_candidates, ^gateway_id}, client_id, ^candidates}, 200
+      assert_receive {:ice_candidates, client_id, ^candidates}, 200
       assert client.id == client_id
     end
   end

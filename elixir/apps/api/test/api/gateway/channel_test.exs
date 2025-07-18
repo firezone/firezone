@@ -136,8 +136,10 @@ defmodule API.Gateway.ChannelTest do
       Events.Hooks.Tokens.on_delete(data)
 
       assert_receive {:deleted, deleted_token}
-      assert deleted_token.id == token.id
       assert_push "disconnect", payload
+      assert_receive {:EXIT, _pid, _}
+      assert_receive {:socket_close, _pid, _}
+      assert deleted_token.id == token.id
       assert payload == %{"reason" => "token_expired"}
     end
 

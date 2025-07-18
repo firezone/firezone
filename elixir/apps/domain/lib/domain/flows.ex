@@ -7,35 +7,31 @@ defmodule Domain.Flows do
 
   # TODO: Optimization
   # Connection setup latency - doesn't need to block setting up flow. Authorizing the flow
-  # and logging it can be two parallel operations.
-  def authorize_flow(
+  # is now handled in memory and this only logs it, so these can be done in parallel.
+  def create_flow(
         %Clients.Client{
           id: client_id,
           account_id: account_id,
           actor_id: actor_id
-        } = client,
+        },
         %Gateways.Gateway{
           id: gateway_id,
           last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
         },
         resource_id,
+        %Policies.Policy{} = policy,
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
-          expires_at: expires_at,
           token_id: token_id,
           context: %Auth.Context{
             remote_ip: client_remote_ip,
             user_agent: client_user_agent
           }
-        } = subject,
-        opts \\ []
+        } = subject
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
-         {:ok, resource} <-
-           Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts),
-         {:ok, policy, conformation_expires_at} <- fetch_conforming_policy(resource, client),
          {:ok, membership} <-
            Actors.fetch_membership_by_actor_id_and_group_id(actor_id, policy.actor_group_id) do
       flow =
@@ -44,7 +40,7 @@ defmodule Domain.Flows do
           policy_id: policy.id,
           client_id: client_id,
           gateway_id: gateway_id,
-          resource_id: resource.id,
+          resource_id: resource_id,
           actor_group_membership_id: membership.id,
           account_id: account_id,
           client_remote_ip: client_remote_ip,
@@ -53,28 +49,7 @@ defmodule Domain.Flows do
         })
         |> Repo.insert!()
 
-      expires_at = conformation_expires_at || expires_at
-
-      {:ok, resource, flow, expires_at}
-    end
-  end
-
-  defp fetch_conforming_policy(%Resources.Resource{} = resource, client) do
-    Enum.reduce_while(resource.authorized_by_policies, {:error, []}, fn policy, {:error, acc} ->
-      case Policies.ensure_client_conforms_policy_conditions(client, policy) do
-        {:ok, expires_at} ->
-          {:halt, {:ok, policy, expires_at}}
-
-        {:error, {:forbidden, violated_properties: violated_properties}} ->
-          {:cont, {:error, violated_properties ++ acc}}
-      end
-    end)
-    |> case do
-      {:error, violated_properties} ->
-        {:error, {:forbidden, violated_properties: violated_properties}}
-
-      {:ok, policy, expires_at} ->
-        {:ok, policy, expires_at}
+      {:ok, flow}
     end
   end
 
