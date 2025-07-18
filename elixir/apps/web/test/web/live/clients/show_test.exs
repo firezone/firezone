@@ -270,10 +270,10 @@ defmodule Web.Live.Clients.ShowTest do
       |> live(~p"/#{account}/clients/#{client}")
 
     assert [] ==
-      lv
-      |> element("#flows")
-      |> render()
-      |> table_to_map()
+             lv
+             |> element("#flows")
+             |> render()
+             |> table_to_map()
   end
 
   test "allows editing clients", %{

@@ -292,9 +292,7 @@ defmodule API.Gateway.Channel do
       encode_ref(socket, {
         channel_pid,
         socket_ref,
-        client.id,
         resource.id,
-        authorization_expires_at,
         preshared_key,
         ice_credentials
       })
@@ -311,6 +309,10 @@ defmodule API.Gateway.Channel do
           do: DateTime.to_unix(authorization_expires_at, :second)
         )
     })
+
+    # Start tracking flow
+    flows = Map.put(socket.assigns.flows, {client.id, resource.id}, authorization_expires_at)
+    socket = assign(socket, flows: flows)
 
     {:noreply, socket}
   end
@@ -336,7 +338,7 @@ defmodule API.Gateway.Channel do
         ref =
           encode_ref(
             socket,
-            {channel_pid, socket_ref, client.id, resource.id, authorization_expires_at}
+            {channel_pid, socket_ref, resource.id}
           )
 
         expires_at = DateTime.to_unix(authorization_expires_at, :second)
@@ -350,6 +352,10 @@ defmodule API.Gateway.Channel do
           client_ipv4: client.ipv4,
           client_ipv6: client.ipv6
         })
+
+        # Start tracking the flow
+        flows = Map.put(socket.assigns.flows, {client.id, resource.id}, authorization_expires_at)
+        socket = assign(socket, flows: flows)
 
         {:noreply, socket}
 
@@ -380,7 +386,7 @@ defmodule API.Gateway.Channel do
         ref =
           encode_ref(
             socket,
-            {channel_pid, socket_ref, client.id, resource.id, authorization_expires_at}
+            {channel_pid, socket_ref, resource.id}
           )
 
         expires_at = DateTime.to_unix(authorization_expires_at, :second)
@@ -391,6 +397,10 @@ defmodule API.Gateway.Channel do
           client: Views.Client.render(client, payload, preshared_key),
           expires_at: expires_at
         })
+
+        # Start tracking the flow
+        flows = Map.put(socket.assigns.flows, {client.id, resource.id}, authorization_expires_at)
+        socket = assign(socket, flows: flows)
 
         {:noreply, socket}
 
@@ -409,9 +419,7 @@ defmodule API.Gateway.Channel do
        {
          channel_pid,
          socket_ref,
-         client_id,
          resource_id,
-         authorization_expires_at,
          preshared_key,
          ice_credentials
        }} ->
@@ -431,10 +439,7 @@ defmodule API.Gateway.Channel do
           }
         )
 
-        # Gateway acknowledged the flow - update our state
-        flows = Map.put(socket.assigns.flows, {client_id, resource_id}, authorization_expires_at)
-
-        {:reply, :ok, assign(socket, flows: flows)}
+        {:reply, :ok, socket}
 
       {:error, :invalid_ref} ->
         Logger.error("Gateway replied with an invalid ref")
@@ -453,15 +458,13 @@ defmodule API.Gateway.Channel do
         socket
       ) do
     case decode_ref(socket, signed_ref) do
-      {:ok, {channel_pid, socket_ref, client_id, resource_id, authorization_expires_at}} ->
+      {:ok, {channel_pid, socket_ref, resource_id}} ->
         send(
           channel_pid,
           {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key, payload}
         )
 
-        flows = Map.put(socket.assigns.flows, {client_id, resource_id}, authorization_expires_at)
-
-        {:reply, :ok, assign(socket, flows: flows)}
+        {:reply, :ok, socket}
 
       {:error, :invalid_ref} ->
         Logger.error("Gateway replied with an invalid ref")
