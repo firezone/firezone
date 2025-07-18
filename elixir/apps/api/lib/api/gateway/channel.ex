@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Flows, Gateways, PubSub, Relays, Resources, Tokens}
+  alias Domain.{Accounts, Flows, Gateways, PubSub, Relays, Resources, Tokens}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -83,6 +83,17 @@ defmodule API.Gateway.Channel do
   ####################################
   ##### Reacting to domain events ####
   ####################################
+
+  # ACCOUNTS
+
+  # Disconnect the gateway when the slug changes that it may reconnect and receive the new slug
+  def handle_info(
+        {:updated, %Accounts.Account{slug: old_slug}, %Accounts.Account{slug: slug}},
+        socket
+      )
+      when old_slug != slug do
+    disconnect(socket)
+  end
 
   # FLOWS
 
