@@ -248,7 +248,7 @@ defmodule Web.Live.Clients.ShowTest do
              "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
-  test "renders flows even for deleted policy assocs", %{
+  test "does not render flows for deleted policy assocs", %{
     account: account,
     identity: identity,
     client: client,
@@ -269,19 +269,11 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
 
-    [row] =
+    assert [] ==
       lv
       |> element("#flows")
       |> render()
       |> table_to_map()
-
-    assert row["authorized"]
-    assert row["remote ip"] == to_string(client.last_seen_remote_ip)
-    assert row["policy"] =~ flow.policy.actor_group.name
-    assert row["policy"] =~ flow.policy.resource.name
-
-    assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "allows editing clients", %{

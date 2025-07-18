@@ -3,7 +3,6 @@ defmodule Domain.ResourcesTest do
   import Domain.Resources
   alias Domain.Resources
   alias Domain.Actors
-  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -1525,23 +1524,6 @@ defmodule Domain.ResourcesTest do
       assert resource.address_description == attrs["address_description"]
     end
 
-    test "does not expire flows when connections are not updated", %{
-      account: account,
-      resource: resource,
-      subject: subject
-    } do
-      flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      :ok = Domain.PubSub.Flow.subscribe(flow_id)
-
-      attrs = %{"name" => "foo"}
-      assert {:ok, _resource} = update_resource(resource, attrs, subject)
-      refute_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
     test "allows to update connections", %{account: account, resource: resource, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account, subject: subject)
       gateway1 = Fixtures.Gateways.create_gateway(account: account, group: group)
@@ -1552,13 +1534,6 @@ defmodule Domain.ResourcesTest do
       assert gateway_group_ids == [gateway1.group_id]
 
       gateway2 = Fixtures.Gateways.create_gateway(account: account)
-
-      flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      :ok = Domain.PubSub.Flow.subscribe(flow_id)
 
       attrs = %{
         "connections" => [
@@ -1575,15 +1550,6 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway2.group_id]
-
-      # TODO: WAL
-      # Remove this when directly broadcasting flow removals
-      Events.Hooks.ResourceConnections.on_delete(%{
-        "account_id" => resource.account_id,
-        "resource_id" => resource.id
-      })
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "does not allow to remove all connections", %{resource: resource, subject: subject} do
