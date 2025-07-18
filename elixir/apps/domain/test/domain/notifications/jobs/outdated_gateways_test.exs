@@ -1,7 +1,7 @@
 defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Notifications.Jobs.OutdatedGateways
-  alias Domain.{ComponentVersions, Gateways, PubSub}
+  alias Domain.{ComponentVersions, Gateways}
 
   describe "execute/1" do
     setup do
@@ -44,7 +44,6 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       :ok = Gateways.Presence.Group.subscribe(gateway_group.id)
       {:ok, _} = Gateways.Presence.Group.track(gateway.group_id, gateway.id)
       {:ok, _} = Gateways.Presence.Account.track(gateway.account_id, gateway.id)
-      :ok = PubSub.Gateway.subscribe(gateway.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       assert execute(%{}) == :ok
@@ -70,7 +69,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       :ok = Gateways.Presence.Group.subscribe(gateway_group.id)
       {:ok, _} = Gateways.Presence.Group.track(gateway.group_id, gateway.id)
       {:ok, _} = Gateways.Presence.Account.track(gateway.account_id, gateway.id)
-      :ok = PubSub.Gateway.subscribe(gateway.id)
+
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       assert execute(%{}) == :ok

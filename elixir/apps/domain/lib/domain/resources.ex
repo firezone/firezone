@@ -80,21 +80,6 @@ defmodule Domain.Resources do
     end
   end
 
-  def fetch_and_authorize_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <-
-           Auth.ensure_has_permissions(subject, Authorizer.view_available_resources_permission()),
-         true <- Repo.valid_uuid?(id) do
-      Resource.Query.not_deleted()
-      |> Resource.Query.by_id(id)
-      |> Resource.Query.by_account_id(subject.account.id)
-      |> Resource.Query.by_authorized_actor_id(subject.actor.id)
-      |> Repo.fetch(Resource.Query, opts)
-    else
-      false -> {:error, :not_found}
-      other -> other
-    end
-  end
-
   def fetch_resource_by_id!(id) do
     if Repo.valid_uuid?(id) do
       Resource.Query.not_deleted()

@@ -7,6 +7,7 @@ defmodule Domain.Flows.Flow do
     belongs_to :gateway, Domain.Gateways.Gateway
     belongs_to :resource, Domain.Resources.Resource
     belongs_to :token, Domain.Tokens.Token
+    belongs_to :actor_group_membership, Domain.Actors.Membership
 
     belongs_to :account, Domain.Accounts.Account
 

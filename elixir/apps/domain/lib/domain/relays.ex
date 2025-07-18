@@ -344,6 +344,8 @@ defmodule Domain.Relays do
     |> Enum.map(&Enum.random(elem(&1, 1)))
   end
 
+  # TODO: WAL
+  # Refactor to use new conventions
   def connect_relay(%Relay{} = relay, secret) do
     with {:ok, _} <-
            Presence.track(self(), group_presence_topic(relay.group_id), relay.id, %{}),

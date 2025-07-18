@@ -21,10 +21,26 @@ defmodule Domain.Flows.Flow.Query do
     where(queryable, [flows: flows], flows.policy_id == ^policy_id)
   end
 
+  # Return the latest {client_id, resource_id} pairs over the last 14 days
+  def for_cache(queryable) do
+    cutoff = DateTime.utc_now() |> DateTime.add(-14, :day)
+
+    where(queryable, [flows: flows], flows.inserted_at > ^cutoff)
+    |> group_by([flows: flows], [flows.client_id, flows.resource_id])
+    |> select(
+      [flows: flows],
+      {{flows.client_id, flows.resource_id}, max(flows.inserted_at)}
+    )
+  end
+
   def by_policy_actor_group_id(queryable, actor_group_id) do
     queryable
     |> with_joined_policy()
     |> where([policy: policy], policy.actor_group_id == ^actor_group_id)
+  end
+
+  def by_actor_group_membership_id(queryable, membership_id) do
+    where(queryable, [flows: flows], flows.actor_group_membership_id == ^membership_id)
   end
 
   def by_identity_id(queryable, identity_id) do
@@ -41,6 +57,10 @@ defmodule Domain.Flows.Flow.Query do
 
   def by_resource_id(queryable, resource_id) do
     where(queryable, [flows: flows], flows.resource_id == ^resource_id)
+  end
+
+  def by_not_in_resource_ids(queryable, resource_ids) do
+    where(queryable, [flows: flows], flows.resource_id not in ^resource_ids)
   end
 
   def by_client_id(queryable, client_id) do

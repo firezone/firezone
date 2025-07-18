@@ -1,45 +1,47 @@
 defmodule Domain.Flows do
   alias Domain.Repo
-  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies, Tokens}
+  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies}
   alias Domain.Flows.{Authorizer, Flow}
   require Ecto.Query
   require Logger
 
-  def authorize_flow(
+  # TODO: Optimization
+  # Connection setup latency - doesn't need to block setting up flow. Authorizing the flow
+  # is now handled in memory and this only logs it, so these can be done in parallel.
+  def create_flow(
         %Clients.Client{
           id: client_id,
           account_id: account_id,
           actor_id: actor_id
-        } = client,
+        },
         %Gateways.Gateway{
           id: gateway_id,
           last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
         },
         resource_id,
+        %Policies.Policy{} = policy,
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
-          expires_at: expires_at,
           token_id: token_id,
           context: %Auth.Context{
             remote_ip: client_remote_ip,
             user_agent: client_user_agent
           }
-        } = subject,
-        opts \\ []
+        } = subject
       ) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
-         {:ok, resource} <-
-           Resources.fetch_and_authorize_resource_by_id(resource_id, subject, opts),
-         {:ok, policy, conformation_expires_at} <- fetch_conforming_policy(resource, client) do
+         {:ok, membership} <-
+           Actors.fetch_membership_by_actor_id_and_group_id(actor_id, policy.actor_group_id) do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
           policy_id: policy.id,
           client_id: client_id,
           gateway_id: gateway_id,
-          resource_id: resource.id,
+          resource_id: resource_id,
+          actor_group_membership_id: membership.id,
           account_id: account_id,
           client_remote_ip: client_remote_ip,
           client_user_agent: client_user_agent,
@@ -47,28 +49,7 @@ defmodule Domain.Flows do
         })
         |> Repo.insert!()
 
-      expires_at = conformation_expires_at || expires_at
-
-      {:ok, resource, flow, expires_at}
-    end
-  end
-
-  defp fetch_conforming_policy(%Resources.Resource{} = resource, client) do
-    Enum.reduce_while(resource.authorized_by_policies, {:error, []}, fn policy, {:error, acc} ->
-      case Policies.ensure_client_conforms_policy_conditions(client, policy) do
-        {:ok, expires_at} ->
-          {:halt, {:ok, policy, expires_at}}
-
-        {:error, {:forbidden, violated_properties: violated_properties}} ->
-          {:cont, {:error, violated_properties ++ acc}}
-      end
-    end)
-    |> case do
-      {:error, violated_properties} ->
-        {:error, {:forbidden, violated_properties: violated_properties}}
-
-      {:ok, policy, expires_at} ->
-        {:ok, policy, expires_at}
+      {:ok, flow}
     end
   end
 
@@ -83,6 +64,14 @@ defmodule Domain.Flows do
       false -> {:error, :not_found}
       other -> other
     end
+  end
+
+  def all_gateway_flows_for_cache!(%Gateways.Gateway{} = gateway) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(gateway.account_id)
+    |> Flow.Query.by_gateway_id(gateway.id)
+    |> Flow.Query.for_cache()
+    |> Repo.all()
   end
 
   def list_flows_for(assoc, subject, opts \\ [])
@@ -125,121 +114,62 @@ defmodule Domain.Flows do
     end
   end
 
-  # TODO: WAL
-  # Remove all of the indexes used for these after flow expiration is moved to state
-  # broadcasts
-
-  def expire_flows_for(%Auth.Identity{} = identity) do
+  def delete_flows_for(%Domain.Accounts.Account{} = account) do
     Flow.Query.all()
-    |> Flow.Query.by_identity_id(identity.id)
-    |> expire_flows()
+    |> Flow.Query.by_account_id(account.id)
+    |> Repo.delete_all()
   end
 
-  def expire_flows_for(%Clients.Client{} = client) do
+  def delete_flows_for(%Domain.Actors.Membership{} = membership) do
     Flow.Query.all()
+    |> Flow.Query.by_account_id(membership.account_id)
+    |> Flow.Query.by_actor_group_membership_id(membership.id)
+    |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Clients.Client{} = client) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(client.account_id)
     |> Flow.Query.by_client_id(client.id)
-    |> expire_flows()
+    |> Repo.delete_all()
   end
 
-  def expire_flows_for(%Actors.Group{} = actor_group) do
+  def delete_flows_for(%Domain.Gateways.Gateway{} = gateway) do
     Flow.Query.all()
-    |> Flow.Query.by_policy_actor_group_id(actor_group.id)
-    |> expire_flows()
+    |> Flow.Query.by_account_id(gateway.account_id)
+    |> Flow.Query.by_gateway_id(gateway.id)
+    |> Repo.delete_all()
   end
 
-  def expire_flows_for(%Tokens.Token{} = token, %Auth.Subject{} = subject) do
+  def delete_flows_for(%Domain.Policies.Policy{} = policy) do
     Flow.Query.all()
-    |> Flow.Query.by_token_id(token.id)
-    |> expire_flows(subject)
+    |> Flow.Query.by_account_id(policy.account_id)
+    |> Flow.Query.by_policy_id(policy.id)
+    |> Repo.delete_all()
   end
 
-  def expire_flows_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
+  def delete_flows_for(%Domain.Resources.Resource{} = resource) do
     Flow.Query.all()
-    |> Flow.Query.by_actor_id(actor.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
-    Flow.Query.all()
-    |> Flow.Query.by_identity_id(identity.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(%Resources.Resource{} = resource, %Auth.Subject{} = subject) do
-    Flow.Query.all()
+    |> Flow.Query.by_account_id(resource.account_id)
     |> Flow.Query.by_resource_id(resource.id)
-    |> expire_flows(subject)
+    |> Repo.delete_all()
   end
 
-  def expire_flows_for(%Actors.Group{} = actor_group, %Auth.Subject{} = subject) do
+  def delete_flows_for(%Domain.Tokens.Token{} = token) do
     Flow.Query.all()
-    |> Flow.Query.by_policy_actor_group_id(actor_group.id)
-    |> expire_flows(subject)
+    |> Flow.Query.by_account_id(token.account_id)
+    |> Flow.Query.by_token_id(token.id)
+    |> Repo.delete_all()
   end
 
-  def expire_flows_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+  def delete_stale_flows_on_connect(%Clients.Client{} = client, resources)
+      when is_list(resources) do
+    authorized_resource_ids = Enum.map(resources, & &1.id)
+
     Flow.Query.all()
-    |> Flow.Query.by_identity_provider_id(provider.id)
-    |> expire_flows(subject)
-  end
-
-  def expire_flows_for(account_id, actor_id, group_id) do
-    Flow.Query.all()
-    |> Flow.Query.by_account_id(account_id)
-    |> Flow.Query.by_actor_id(actor_id)
-    |> Flow.Query.by_policy_actor_group_id(group_id)
-    |> expire_flows()
-  end
-
-  def expire_flows_for_resource_id(account_id, resource_id) do
-    Flow.Query.all()
-    |> Flow.Query.by_account_id(account_id)
-    |> Flow.Query.by_resource_id(resource_id)
-    |> expire_flows()
-  end
-
-  def expire_flows_for_policy_id(account_id, policy_id) do
-    Flow.Query.all()
-    |> Flow.Query.by_account_id(account_id)
-    |> Flow.Query.by_policy_id(policy_id)
-    |> expire_flows()
-  end
-
-  defp expire_flows(queryable, subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
-      queryable
-      |> Authorizer.for_subject(Flow, subject)
-      |> expire_flows()
-    end
-  end
-
-  defp expire_flows(queryable) do
-    {:ok, :ok} =
-      Repo.transaction(fn ->
-        queryable
-        |> Repo.stream()
-        |> Stream.chunk_every(100)
-        |> Enum.each(fn chunk ->
-          Enum.each(chunk, &broadcast_flow_expiration/1)
-        end)
-      end)
-
-    :ok
-  end
-
-  defp broadcast_flow_expiration(flow) do
-    case Domain.PubSub.Flow.broadcast(
-           flow.id,
-           {:expire_flow, flow.id, flow.client_id, flow.resource_id}
-         ) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.error("Failed to broadcast flow expiration",
-          reason: inspect(reason),
-          flow_id: flow.id
-        )
-    end
+    |> Flow.Query.by_account_id(client.account_id)
+    |> Flow.Query.by_client_id(client.id)
+    |> Flow.Query.by_not_in_resource_ids(authorized_resource_ids)
+    |> Repo.delete_all()
   end
 end

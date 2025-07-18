@@ -2,35 +2,57 @@ defmodule Domain.Events.Hooks.ResourceConnectionsTest do
   use Domain.DataCase, async: true
   import Domain.Events.Hooks.ResourceConnections
 
-  setup do
-    %{old_data: %{}, data: %{}}
-  end
-
   describe "insert/1" do
-    test "returns :ok", %{data: data} do
+    test "broadcasts created resource connection" do
+      account = Fixtures.Accounts.create_account()
+      resource = Fixtures.Resources.create_resource(account: account)
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      :ok = Domain.PubSub.Account.subscribe(account.id)
+
+      data = %{
+        "account_id" => account.id,
+        "resource_id" => resource.id,
+        "gateway_group_id" => gateway_group.id,
+        "deleted_at" => nil
+      }
+
       assert :ok == on_insert(data)
+
+      assert_receive {:created, %Domain.Resources.Connection{} = connection}
+      assert connection.account_id == data["account_id"]
+      assert connection.resource_id == data["resource_id"]
+      assert connection.gateway_group_id == data["gateway_group_id"]
     end
   end
 
   describe "update/2" do
-    test "returns :ok", %{old_data: old_data, data: data} do
-      assert :ok == on_update(old_data, data)
+    test "returns :ok" do
+      assert :ok = on_update(%{}, %{})
     end
   end
 
   describe "delete/1" do
-    test "returns :ok" do
-      flow = Fixtures.Flows.create_flow()
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
+    test "broadcasts deleted connection" do
+      account = Fixtures.Accounts.create_account()
+      resource = Fixtures.Resources.create_resource(account: account)
+      gateway_group = Fixtures.Gateways.create_group(account: account)
 
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
+      :ok = Domain.PubSub.Account.subscribe(account.id)
 
-      assert :ok ==
-               on_delete(%{"account_id" => flow.account_id, "resource_id" => flow.resource_id})
+      old_data = %{
+        "account_id" => account.id,
+        "resource_id" => resource.id,
+        "gateway_group_id" => gateway_group.id,
+        "deleted_at" => nil
+      }
 
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert :ok == on_delete(old_data)
+
+      assert_receive {:deleted, %Domain.Resources.Connection{} = deleted_connection}
+      assert deleted_connection.account_id == old_data["account_id"]
+      assert deleted_connection.resource_id == old_data["resource_id"]
+      assert deleted_connection.gateway_group_id == old_data["gateway_group_id"]
     end
   end
 end

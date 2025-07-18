@@ -630,6 +630,8 @@ defmodule Web.Actors.Show do
     {:noreply, reload_live_table!(socket, "clients")}
   end
 
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
 

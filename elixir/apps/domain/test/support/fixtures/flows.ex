@@ -52,11 +52,15 @@ defmodule Domain.Fixtures.Flows do
         |> Fixtures.Resources.create_resource()
       end)
 
-    {actor_group_id, attrs} =
-      pop_assoc_fixture_id(attrs, :actor_group, fn assoc_attrs ->
+    {membership, attrs} =
+      pop_assoc_fixture(attrs, :actor_group_membership, fn assoc_attrs ->
         assoc_attrs
-        |> Enum.into(%{account: account, subject: subject})
-        |> Fixtures.Actors.create_group()
+        |> Enum.into(%{
+          account: account,
+          subject: subject,
+          actor_id: client.actor_id
+        })
+        |> Fixtures.Actors.create_membership()
       end)
 
     {policy_id, attrs} =
@@ -64,14 +68,17 @@ defmodule Domain.Fixtures.Flows do
         assoc_attrs
         |> Enum.into(%{
           account: account,
-          actor_group_id: actor_group_id,
+          actor_group_id: membership.group_id,
           resource_id: resource_id,
           subject: subject
         })
         |> Fixtures.Policies.create_policy()
       end)
 
-    {token_id, _attrs} = Map.pop(attrs, :token_id, subject.token_id)
+    {token_id, _attrs} =
+      pop_assoc_fixture_id(attrs, :token, fn _assoc_attrs ->
+        %{id: subject.token_id}
+      end)
 
     Flows.Flow.Changeset.create(%{
       token_id: token_id,
@@ -79,6 +86,7 @@ defmodule Domain.Fixtures.Flows do
       client_id: client.id,
       gateway_id: gateway.id,
       resource_id: resource_id,
+      actor_group_membership_id: membership.id,
       account_id: account.id,
       client_remote_ip: client.last_seen_remote_ip,
       client_user_agent: client.last_seen_user_agent,

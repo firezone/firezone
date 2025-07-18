@@ -1,6 +1,6 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Events, Gateways, PubSub}
+  alias Domain.{Accounts, Events, Gateways, PubSub}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -17,9 +17,16 @@ defmodule API.Gateway.ChannelTest do
         connections: [%{gateway_group_id: gateway.group_id}]
       )
 
+    token =
+      Fixtures.Gateways.create_token(
+        group: gateway_group,
+        account: account
+      )
+
     {:ok, _, socket} =
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
@@ -46,7 +53,8 @@ defmodule API.Gateway.ChannelTest do
       resource: resource,
       relay: relay,
       global_relay: global_relay,
-      socket: socket
+      socket: socket,
+      token: token
     }
   end
 
@@ -82,9 +90,62 @@ defmodule API.Gateway.ChannelTest do
     end
   end
 
-  describe "handle_info/2 :allow_access" do
+  describe "handle_info/2" do
+    test "resends init when account slug changes", %{
+      account: account
+    } do
+      :ok = Domain.PubSub.Account.subscribe(account.id)
+
+      old_data = %{
+        "id" => account.id,
+        "slug" => account.slug
+      }
+
+      data = %{
+        "id" => account.id,
+        "slug" => "new-slug"
+      }
+
+      Events.Hooks.Accounts.on_update(old_data, data)
+
+      assert_receive {:updated, %Accounts.Account{}, %Accounts.Account{}}
+
+      # Consume first init from join
+      assert_push "init", _payload
+
+      assert_push "init", payload
+
+      assert payload.account_slug == "new-slug"
+    end
+
+    test "disconnects socket when token is deleted", %{
+      account: account,
+      token: token
+    } do
+      # Prevents test from failing due to expected socket disconnect
+      Process.flag(:trap_exit, true)
+
+      :ok = Domain.PubSub.Account.subscribe(account.id)
+
+      data = %{
+        "id" => token.id,
+        "account_id" => account.id,
+        "type" => "gateway_group"
+      }
+
+      Events.Hooks.Tokens.on_delete(data)
+
+      assert_receive {:deleted, deleted_token}
+      assert_push "disconnect", payload
+      assert_receive {:EXIT, _pid, _}
+      assert_receive {:socket_close, _pid, _}
+      assert deleted_token.id == token.id
+      assert payload == %{"reason" => "token_expired"}
+    end
+
     test "pushes allow_access message", %{
       client: client,
+      gateway: gateway,
       resource: resource,
       relay: relay,
       socket: socket
@@ -92,8 +153,6 @@ defmodule API.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-      flow_id = Ecto.UUID.generate()
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
@@ -101,14 +160,13 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:allow_access, {channel_pid, socket_ref},
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            client_payload: client_payload
-         }, otel_ctx}
+         }}
       )
 
       assert_push "allow_access", payload
@@ -127,7 +185,6 @@ defmodule API.Gateway.ChannelTest do
              }
 
       assert payload.ref
-      assert payload.flow_id == flow_id
       assert payload.client_id == client.id
       assert payload.client_ipv4 == client.ipv4
       assert payload.client_ipv6 == client.ipv6
@@ -137,6 +194,7 @@ defmodule API.Gateway.ChannelTest do
     test "pushes allow_access message for internet resource", %{
       account: account,
       client: client,
+      gateway: gateway,
       relay: relay,
       socket: socket
     } do
@@ -151,8 +209,6 @@ defmodule API.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-      flow_id = Ecto.UUID.generate()
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
@@ -160,14 +216,13 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:allow_access, {channel_pid, socket_ref},
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            client_payload: client_payload
-         }, otel_ctx}
+         }}
       )
 
       assert_push "allow_access", payload
@@ -178,17 +233,17 @@ defmodule API.Gateway.ChannelTest do
              }
 
       assert payload.ref
-      assert payload.flow_id == flow_id
       assert payload.client_id == client.id
       assert payload.client_ipv4 == client.ipv4
       assert payload.client_ipv6 == client.ipv6
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
-    test "subscribes for flow expiration event", %{
+    test "handles flow deletion event", %{
       account: account,
       client: client,
       resource: resource,
+      gateway: gateway,
       relay: relay,
       socket: socket,
       subject: subject
@@ -196,7 +251,6 @@ defmodule API.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
@@ -210,80 +264,241 @@ defmodule API.Gateway.ChannelTest do
           resource: resource
         )
 
+      data = %{
+        "id" => flow.id,
+        "client_id" => client.id,
+        "resource_id" => resource.id,
+        "account_id" => account.id
+      }
+
       send(
         socket.channel_pid,
-        {:allow_access, {channel_pid, socket_ref},
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow.id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            client_payload: client_payload
-         }, otel_ctx}
+         }}
       )
 
       assert_push "allow_access", %{}
 
-      assert :ok = Domain.Flows.expire_flows_for(resource, subject)
-
-      send(socket.channel_pid, {:expire_flow, flow.id, client.id, resource.id})
+      Events.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
-        flow_id: flow_id,
         client_id: client_id,
         resource_id: resource_id
       }
 
-      assert flow_id == flow.id
       assert client_id == client.id
       assert resource_id == resource.id
     end
 
-    test "subscribes for resource events", %{
-      account: account,
-      client: client,
-      resource: resource,
-      relay: relay,
-      socket: socket,
-      subject: subject
-    } do
+    test "ignores flow deletion for other flows",
+         %{
+           account: account,
+           client: client,
+           resource: resource,
+           gateway: gateway,
+           relay: relay,
+           socket: socket,
+           subject: subject
+         } do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
-      flow =
+      other_client = Fixtures.Clients.create_client(account: account, subject: subject)
+
+      other_resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway.group_id}]
+        )
+
+      other_flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: other_client,
+          resource: resource
+        )
+
+      other_flow2 =
         Fixtures.Flows.create_flow(
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: other_resource
         )
 
+      # Build up flow cache
       send(
         socket.channel_pid,
-        {:allow_access, {channel_pid, socket_ref},
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow.id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            client_payload: client_payload
-         }, otel_ctx}
+         }}
       )
 
       assert_push "allow_access", %{}
 
-      {:ok, resource} =
-        Domain.Resources.update_resource(
-          resource,
-          %{"name" => Ecto.UUID.generate()},
-          subject
-        )
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: other_client,
+           resource: resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: other_resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      assert %{assigns: %{flows: flows}} =
+               :sys.get_state(socket.channel_pid)
+
+      assert flows == %{
+               {client.id, resource.id} => expires_at,
+               {other_client.id, resource.id} => expires_at,
+               {client.id, other_resource.id} => expires_at
+             }
+
+      data = %{
+        "id" => other_flow1.id,
+        "client_id" => other_flow1.client_id,
+        "resource_id" => other_flow1.resource_id,
+        "account_id" => other_flow1.account_id
+      }
+
+      Events.Hooks.Flows.on_delete(data)
+
+      assert_push "reject_access", %{
+        client_id: client_id,
+        resource_id: resource_id
+      }
+
+      assert client_id == other_client.id
+      assert resource_id == resource.id
+
+      data = %{
+        "id" => other_flow2.id,
+        "client_id" => other_flow2.client_id,
+        "resource_id" => other_flow2.resource_id,
+        "account_id" => other_flow2.account_id
+      }
+
+      Events.Hooks.Flows.on_delete(data)
+
+      assert_push "reject_access", %{
+        client_id: client_id,
+        resource_id: resource_id
+      }
+
+      assert client_id == client.id
+      assert resource_id == other_resource.id
+
+      refute_push "reject_access", _payload
+    end
+
+    test "ignores other resource updates", %{
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      relay: relay,
+      socket: socket
+    } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      client_payload = "RTC_SD_or_DNS_Q"
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "name" => resource.name
+      }
+
+      data = Map.put(old_data, "name", "New Resource Name")
+
+      Events.Hooks.Resources.on_update(old_data, data)
+
+      client_id = client.id
+      resource_id = resource.id
+
+      assert %{
+               assigns: %{
+                 flows: %{{^client_id, ^resource_id} => ^expires_at}
+               }
+             } = :sys.get_state(socket.channel_pid)
+
+      refute_push "resource_updated", _payload
+    end
+
+    test "sends resource_updated when filters change", %{
+      client: client,
+      gateway: gateway,
+      resource: resource,
+      relay: relay,
+      socket: socket
+    } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      client_payload = "RTC_SD_or_DNS_Q"
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: resource,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
 
       old_data = %{
         "id" => resource.id,
@@ -295,7 +510,14 @@ defmodule API.Gateway.ChannelTest do
         "ip_stack" => "dual"
       }
 
-      data = Map.put(old_data, "name", "new name")
+      filters = [
+        %{"protocol" => "tcp", "ports" => ["80", "433"]},
+        %{"protocol" => "udp", "ports" => ["100-200"]},
+        %{"protocol" => "icmp"}
+      ]
+
+      data = Map.put(old_data, "filters", filters)
+
       Events.Hooks.Resources.on_update(old_data, data)
 
       assert_push "resource_updated", payload
@@ -435,76 +657,17 @@ defmodule API.Gateway.ChannelTest do
                   },
                   relays_presence_timeout() + 10
     end
-  end
 
-  describe "handle_info/2 :expire_flow" do
-    test "pushes message to the socket", %{
-      client: client,
-      resource: resource,
-      socket: socket
-    } do
-      flow_id = Ecto.UUID.generate()
-      send(socket.channel_pid, {:expire_flow, flow_id, client.id, resource.id})
-
-      assert_push "reject_access", payload
-      assert payload == %{flow_id: flow_id, client_id: client.id, resource_id: resource.id}
-    end
-  end
-
-  describe "handle_info/2 :update_resource" do
-    test "pushes message to the socket", %{
-      resource: resource,
-      socket: socket
-    } do
-      send(socket.channel_pid, {:update_resource, resource.id})
-
-      assert_push "resource_updated", payload
-
-      assert payload == %{
-               address: resource.address,
-               id: resource.id,
-               name: resource.name,
-               type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
-                 %{protocol: :icmp}
-               ]
-             }
-    end
-  end
-
-  describe "handle_info/2 :create_resource" do
-    test "does nothing", %{
-      resource: resource,
-      socket: socket
-    } do
-      send(socket.channel_pid, {:create_resource, resource.id})
-    end
-  end
-
-  describe "handle_info/2 :delete_resource" do
-    test "does nothing", %{
-      resource: resource,
-      socket: socket
-    } do
-      send(socket.channel_pid, {:delete_resource, resource.id})
-    end
-  end
-
-  describe "handle_info/2 :ice_candidates" do
     test "pushes ice_candidates message", %{
       client: client,
+      gateway: gateway,
       socket: socket
     } do
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-
       candidates = ["foo", "bar"]
 
       send(
         socket.channel_pid,
-        {:ice_candidates, client.id, candidates, otel_ctx}
+        {{:ice_candidates, gateway.id}, client.id, candidates}
       )
 
       assert_push "ice_candidates", payload
@@ -514,20 +677,17 @@ defmodule API.Gateway.ChannelTest do
                client_id: client.id
              }
     end
-  end
 
-  describe "handle_info/2 :invalidate_ice_candidates" do
     test "pushes invalidate_ice_candidates message", %{
       client: client,
+      gateway: gateway,
       socket: socket
     } do
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-
       candidates = ["foo", "bar"]
 
       send(
         socket.channel_pid,
-        {:invalidate_ice_candidates, client.id, candidates, otel_ctx}
+        {{:invalidate_ice_candidates, gateway.id}, client.id, candidates}
       )
 
       assert_push "invalidate_ice_candidates", payload
@@ -537,12 +697,11 @@ defmodule API.Gateway.ChannelTest do
                client_id: client.id
              }
     end
-  end
 
-  describe "handle_info/2 :request_connection" do
     test "pushes request_connection message", %{
       client: client,
       resource: resource,
+      gateway: gateway,
       global_relay: relay,
       socket: socket
     } do
@@ -551,31 +710,25 @@ defmodule API.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       client_payload = "RTC_SD"
-      flow_id = Ecto.UUID.generate()
-
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
 
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
       send(
         socket.channel_pid,
-        {:request_connection, {channel_pid, socket_ref},
+        {{:request_connection, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
-         }, otel_ctx}
+         }}
       )
 
       assert_push "request_connection", payload
 
       assert is_binary(payload.ref)
-      assert payload.flow_id == flow_id
-      assert payload.actor == %{id: client.actor_id}
 
       assert payload.resource == %{
                address: resource.address,
@@ -606,9 +759,10 @@ defmodule API.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
-    test "subscribes for flow expiration event", %{
+    test "request_connection tracks flow and sends reject_access when flow is deleted", %{
       account: account,
       client: client,
+      gateway: gateway,
       resource: resource,
       relay: relay,
       socket: socket,
@@ -617,7 +771,6 @@ defmodule API.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
       client_payload = "RTC_SD_or_DNS_Q"
       preshared_key = "PSK"
 
@@ -634,115 +787,39 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:request_connection, {channel_pid, socket_ref},
+        {{:request_connection, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow.id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
-         }, otel_ctx}
+         }}
       )
 
       assert_push "request_connection", %{}
 
-      assert :ok = Domain.Flows.expire_flows_for(resource, subject)
+      data = %{
+        "id" => flow.id,
+        "client_id" => client.id,
+        "resource_id" => resource.id,
+        "account_id" => account.id
+      }
 
-      send(socket.channel_pid, {:expire_flow, flow.id, client.id, resource.id})
+      Events.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
-        flow_id: flow_id,
         client_id: client_id,
         resource_id: resource_id
       }
 
-      assert flow_id == flow.id
       assert client_id == client.id
       assert resource_id == resource.id
     end
 
-    test "subscribes for resource events", %{
-      account: account,
-      client: client,
-      resource: resource,
-      relay: relay,
-      socket: socket,
-      subject: subject
-    } do
-      channel_pid = self()
-      socket_ref = make_ref()
-      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-      client_payload = "RTC_SD_or_DNS_Q"
-      preshared_key = "PSK"
-
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
-
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          subject: subject,
-          client: client,
-          resource: resource
-        )
-
-      send(
-        socket.channel_pid,
-        {:request_connection, {channel_pid, socket_ref},
-         %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow.id,
-           authorization_expires_at: expires_at,
-           client_payload: client_payload,
-           client_preshared_key: preshared_key
-         }, otel_ctx}
-      )
-
-      assert_push "request_connection", %{}, 200
-
-      {:ok, resource} =
-        Domain.Resources.update_resource(
-          resource,
-          %{"name" => Ecto.UUID.generate()},
-          subject
-        )
-
-      old_data = %{
-        "id" => resource.id,
-        "account_id" => resource.account_id,
-        "address" => resource.address,
-        "name" => resource.name,
-        "type" => "dns",
-        "filters" => [],
-        "ip_stack" => "dual"
-      }
-
-      data = Map.put(old_data, "name", "new name")
-      Events.Hooks.Resources.on_update(old_data, data)
-
-      assert_push "resource_updated", payload, 200
-
-      assert payload == %{
-               address: resource.address,
-               id: resource.id,
-               name: resource.name,
-               type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
-                 %{protocol: :icmp}
-               ]
-             }
-    end
-  end
-
-  describe "handle_info/2 :authorize_flow" do
     test "pushes authorize_flow message", %{
       client: client,
+      gateway: gateway,
       resource: resource,
       socket: socket
     } do
@@ -750,33 +827,27 @@ defmodule API.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
-      flow_id = Ecto.UUID.generate()
 
       ice_credentials = %{
         client: %{username: "A", password: "B"},
         gateway: %{username: "C", password: "D"}
       }
 
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-
       send(
         socket.channel_pid,
-        {:authorize_flow, {channel_pid, socket_ref},
+        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
-         }, otel_ctx}
+         }}
       )
 
       assert_push "authorize_flow", payload
 
       assert is_binary(payload.ref)
-      assert payload.flow_id == flow_id
-      assert payload.actor == %{id: client.actor_id}
 
       assert payload.resource == %{
                address: resource.address,
@@ -808,13 +879,13 @@ defmodule API.Gateway.ChannelTest do
 
     test "pushes authorize_flow message for authorizations that do not expire", %{
       client: client,
+      gateway: gateway,
       resource: resource,
       socket: socket
     } do
       channel_pid = self()
       socket_ref = make_ref()
       preshared_key = "PSK"
-      flow_id = Ecto.UUID.generate()
 
       ice_credentials = %{
         client: %{username: "A", password: "B"},
@@ -823,23 +894,23 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_flow, {channel_pid, socket_ref},
+        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
+           client: client,
+           resource: resource,
            authorization_expires_at: nil,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
-         }, {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}}
+         }}
       )
 
       assert_push "authorize_flow", %{expires_at: nil}
     end
 
-    test "subscribes for flow expiration event", %{
+    test "authorize_flow tracks flow and sends reject_access when flow is deleted", %{
       account: account,
       client: client,
+      gateway: gateway,
       resource: resource,
       socket: socket,
       subject: subject
@@ -847,7 +918,6 @@ defmodule API.Gateway.ChannelTest do
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
       preshared_key = "PSK"
 
       ice_credentials = %{
@@ -865,118 +935,44 @@ defmodule API.Gateway.ChannelTest do
 
       send(
         socket.channel_pid,
-        {:authorize_flow, {channel_pid, socket_ref},
+        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow.id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
-         }, otel_ctx}
+         }}
       )
 
       assert_push "authorize_flow", %{}
 
-      assert :ok = Domain.Flows.expire_flows_for(resource, subject)
+      data = %{
+        "id" => flow.id,
+        "client_id" => client.id,
+        "resource_id" => resource.id,
+        "account_id" => account.id
+      }
 
-      send(socket.channel_pid, {:expire_flow, flow.id, client.id, resource.id})
+      Events.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
-        flow_id: flow_id,
         client_id: client_id,
         resource_id: resource_id
       }
 
-      assert flow_id == flow.id
       assert client_id == client.id
       assert resource_id == resource.id
     end
-
-    test "subscribes for resource events", %{
-      account: account,
-      client: client,
-      resource: resource,
-      relay: relay,
-      socket: socket,
-      subject: subject
-    } do
-      channel_pid = self()
-      socket_ref = make_ref()
-      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
-      preshared_key = "PSK"
-
-      ice_credentials = %{
-        client: %{username: "A", password: "B"},
-        gateway: %{username: "C", password: "D"}
-      }
-
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
-
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          subject: subject,
-          client: client,
-          resource: resource
-        )
-
-      send(
-        socket.channel_pid,
-        {:authorize_flow, {channel_pid, socket_ref},
-         %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow.id,
-           authorization_expires_at: expires_at,
-           ice_credentials: ice_credentials,
-           preshared_key: preshared_key
-         }, otel_ctx}
-      )
-
-      assert_push "authorize_flow", %{}
-
-      {:ok, resource} =
-        Domain.Resources.update_resource(
-          resource,
-          %{"name" => Ecto.UUID.generate()},
-          subject
-        )
-
-      old_data = %{
-        "id" => resource.id,
-        "account_id" => resource.account_id,
-        "address" => resource.address,
-        "name" => resource.name,
-        "type" => "dns",
-        "filters" => [],
-        "ip_stack" => "dual"
-      }
-
-      data = Map.put(old_data, "name", "new name")
-      Events.Hooks.Resources.on_update(old_data, data)
-
-      assert_push "resource_updated", payload
-
-      assert payload == %{
-               address: resource.address,
-               id: resource.id,
-               name: resource.name,
-               type: :dns,
-               filters: [
-                 %{protocol: :tcp, port_range_end: 80, port_range_start: 80},
-                 %{protocol: :tcp, port_range_end: 433, port_range_start: 433},
-                 %{protocol: :udp, port_range_start: 100, port_range_end: 200},
-                 %{protocol: :icmp}
-               ]
-             }
-    end
   end
 
-  describe "handle_in/3 flow_authorized" do
-    test "forwards reply to the client channel", %{
+  describe "handle_in/3" do
+    test "for unknown messages it doesn't crash", %{socket: socket} do
+      ref = push(socket, "unknown_message", %{})
+      assert_reply ref, :error, %{reason: :unknown_message}
+    end
+
+    test "flow_authorized forwards reply to the client channel", %{
       client: client,
       resource: resource,
       gateway: gateway,
@@ -984,7 +980,6 @@ defmodule API.Gateway.ChannelTest do
     } do
       channel_pid = self()
       socket_ref = make_ref()
-      flow_id = Ecto.UUID.generate()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       preshared_key = "PSK"
       gateway_group_id = gateway.group_id
@@ -999,19 +994,16 @@ defmodule API.Gateway.ChannelTest do
         gateway: %{username: "C", password: "D"}
       }
 
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("authorize_flow")}
-
       send(
         socket.channel_pid,
-        {:authorize_flow, {channel_pid, socket_ref},
+        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
-           flow_id: flow_id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
-         }, otel_ctx}
+         }}
       )
 
       assert_push "authorize_flow", %{ref: ref}
@@ -1029,14 +1021,11 @@ defmodule API.Gateway.ChannelTest do
         ^gateway_ipv4,
         ^gateway_ipv6,
         ^preshared_key,
-        ^ice_credentials,
-        {_opentelemetry_ctx, opentelemetry_span_ctx}
+        ^ice_credentials
       }
-
-      assert elem(opentelemetry_span_ctx, 1) == otel_ctx |> elem(1) |> elem(1)
     end
 
-    test "pushes an error when ref is invalid", %{
+    test "flow_authorized pushes an error when ref is invalid", %{
       socket: socket
     } do
       push_ref =
@@ -1046,10 +1035,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_reply push_ref, :error, %{reason: :invalid_ref}
     end
-  end
 
-  describe "handle_in/3 connection_ready" do
-    test "forwards RFC session description to the client channel", %{
+    test "connection ready forwards RFC session description to the client channel", %{
       client: client,
       resource: resource,
       relay: relay,
@@ -1062,27 +1049,41 @@ defmodule API.Gateway.ChannelTest do
       preshared_key = "PSK"
       gateway_public_key = gateway.public_key
       payload = "RTC_SD"
-      flow_id = Ecto.UUID.generate()
-
-      otel_ctx = {OpenTelemetry.Ctx.new(), OpenTelemetry.Tracer.start_span("connect")}
 
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
       send(
         socket.channel_pid,
-        {:request_connection, {channel_pid, socket_ref},
+        {{:request_connection, gateway.id}, {channel_pid, socket_ref},
          %{
-           client_id: client.id,
-           resource_id: resource.id,
+           client: client,
+           resource: resource,
            authorization_expires_at: expires_at,
-           flow_id: flow_id,
            client_payload: payload,
            client_preshared_key: preshared_key
-         }, otel_ctx}
+         }}
       )
 
-      assert_push "request_connection", %{ref: ref, flow_id: ^flow_id}
+      assert_push "request_connection", %{
+        ref: ref,
+        client: %{
+          peer: peer,
+          id: client_id
+        },
+        resource: re,
+        expires_at: ex
+      }
+
+      assert is_binary(ref)
+      assert client_id == client.id
+      assert peer.ipv4 == client.ipv4
+      assert peer.ipv6 == client.ipv6
+      assert peer.public_key == client.public_key
+      assert peer.persistent_keepalive == 25
+      assert peer.preshared_key == preshared_key
+      assert re.id == resource.id
+      assert DateTime.from_unix!(ex) == DateTime.truncate(expires_at, :second)
 
       push_ref =
         push(socket, "connection_ready", %{
@@ -1091,14 +1092,11 @@ defmodule API.Gateway.ChannelTest do
         })
 
       assert_reply push_ref, :ok
-
-      assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key, ^payload,
-                      _opentelemetry_ctx}
-
+      assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key, ^payload}
       assert resource_id == resource.id
     end
 
-    test "pushes an error when ref is invalid", %{
+    test "connection_ready pushes an error when ref is invalid", %{
       socket: socket
     } do
       push_ref =
@@ -1109,13 +1107,14 @@ defmodule API.Gateway.ChannelTest do
 
       assert_reply push_ref, :error, %{reason: :invalid_ref}
     end
-  end
 
-  describe "handle_in/3 broadcast_ice_candidates" do
-    test "does nothing when gateways list is empty", %{
-      socket: socket
+    test "broadcast ice candidates does nothing when gateways list is empty", %{
+      socket: socket,
+      account: account
     } do
       candidates = ["foo", "bar"]
+
+      :ok = Domain.PubSub.Account.subscribe(account.id)
 
       attrs = %{
         "candidates" => candidates,
@@ -1123,10 +1122,10 @@ defmodule API.Gateway.ChannelTest do
       }
 
       push(socket, "broadcast_ice_candidates", attrs)
-      refute_receive {:ice_candidates, _client_id, _candidates, _opentelemetry_ctx}
+      refute_receive {:ice_candidates, _client_id, _candidates}
     end
 
-    test "broadcasts :ice_candidates message to all gateways", %{
+    test "broadcasts :ice_candidates message to the target gateway", %{
       client: client,
       gateway: gateway,
       subject: subject,
@@ -1141,19 +1140,24 @@ defmodule API.Gateway.ChannelTest do
 
       :ok = Domain.Clients.Presence.connect(client)
       PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+      :ok = Domain.PubSub.Account.subscribe(gateway.account_id)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
-      assert_receive {:ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx}, 200
+      assert_receive {{:ice_candidates, client_id}, gateway_id, ^candidates},
+                     200
+
+      assert client_id == client.id
       assert gateway.id == gateway_id
     end
-  end
 
-  describe "handle_in/3 broadcast_invalidated_ice_candidates" do
-    test "does nothing when gateways list is empty", %{
-      socket: socket
+    test "broadcast_invalidated_ice_candidates does nothing when gateways list is empty", %{
+      socket: socket,
+      account: account
     } do
       candidates = ["foo", "bar"]
+
+      :ok = Domain.PubSub.Account.subscribe(account.id)
 
       attrs = %{
         "candidates" => candidates,
@@ -1161,7 +1165,7 @@ defmodule API.Gateway.ChannelTest do
       }
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
-      refute_receive {:invalidate_ice_candidates, _client_id, _candidates, _opentelemetry_ctx}
+      refute_receive {{:invalidate_ice_candidates, _client_id}, _gateway_id, _candidates}
     end
 
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
@@ -1177,21 +1181,23 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
+      :ok = Domain.PubSub.Account.subscribe(gateway.account_id)
       :ok = Domain.Clients.Presence.connect(client)
       PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
-      assert_receive {:invalidate_ice_candidates, gateway_id, ^candidates, _opentelemetry_ctx},
+      assert_receive {{:invalidate_ice_candidates, client_id}, gateway_id, ^candidates},
                      200
 
+      assert client_id == client.id
       assert gateway.id == gateway_id
     end
   end
 
   # Debouncer tests
-  describe "handle_info/3 :push_leave" do
-    test "cancels leave if reconnecting with the same stamp secret" do
+  describe "handle_info/3" do
+    test "push_leave cancels leave if reconnecting with the same stamp secret" do
       relay_group = Fixtures.Relays.create_global_group()
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
@@ -1299,12 +1305,5 @@ defmodule API.Gateway.ChannelTest do
 
   defp relays_presence_timeout do
     Application.fetch_env!(:api, :relays_presence_debounce_timeout_ms)
-  end
-
-  describe "handle_in/3 for unknown messages" do
-    test "it doesn't crash", %{socket: socket} do
-      ref = push(socket, "unknown_message", %{})
-      assert_reply ref, :error, %{reason: :unknown_message}
-    end
   end
 end

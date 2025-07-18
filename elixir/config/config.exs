@@ -99,13 +99,10 @@ config :domain, Domain.Events.ReplicationConnection,
   table_subscriptions: ~w[
     accounts
     actor_group_memberships
-    actor_groups
-    actors
-    auth_identities
-    auth_providers
     clients
-    gateway_groups
+    flows
     gateways
+    gateway_groups
     policies
     resource_connections
     resources
