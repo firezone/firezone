@@ -85,6 +85,11 @@ defmodule Domain.Flows do
     end
   end
 
+  def list_flows(%Auth.Subject{} = subject, opts \\ []) do
+    Flow.Query.all()
+    |> list_flows(subject, opts)
+  end
+
   def list_flows_for(assoc, subject, opts \\ [])
 
   def list_flows_for(%Policies.Policy{} = policy, %Auth.Subject{} = subject, opts) do
