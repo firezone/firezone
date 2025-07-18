@@ -43,6 +43,10 @@ export default function Gateway() {
           would not get revoked if the Gateway was disconnected from the portal
           while access was removed.
         </ChangeItem>
+        <ChangeItem pull="9894">
+          Shuts down the Gateway after 15m of being disconnected from the
+          portal.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.12" date={new Date("2025-06-30")}>
         <ChangeItem pull="9657">
