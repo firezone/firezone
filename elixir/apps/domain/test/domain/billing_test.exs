@@ -33,7 +33,7 @@ defmodule Domain.BillingTest do
     test "returns true when account is provisioned", %{account: account} do
       {:ok, account} =
         Domain.Accounts.update_account(account, %{
-          metadata: %{stripe: %{customer_id: Ecto.UUID.generate()}}
+          metadata: %{stripe: %{customer_id: "cus_" <> Stripe.random_id()}}
         })
 
       assert account_provisioned?(account) == true
@@ -387,7 +387,7 @@ defmodule Domain.BillingTest do
     test "does nothing when account is already provisioned", %{account: account} do
       {:ok, account} =
         Domain.Accounts.update_account(account, %{
-          metadata: %{stripe: %{customer_id: Ecto.UUID.generate()}}
+          metadata: %{stripe: %{customer_id: "cus_" <> Stripe.random_id()}}
         })
 
       assert provision_account(account) == {:ok, account}
@@ -439,7 +439,7 @@ defmodule Domain.BillingTest do
 
   describe "handle_events/1" do
     setup %{account: account} do
-      customer_id = "cus_" <> Ecto.UUID.generate()
+      customer_id = "cus_" <> Stripe.random_id()
 
       {:ok, account} =
         Domain.Accounts.update_account(account, %{
@@ -459,7 +459,7 @@ defmodule Domain.BillingTest do
     end
 
     test "does nothing on customer.created event when metadata is incomplete" do
-      customer_id = "cus_" <> Ecto.UUID.generate()
+      customer_id = "cus_" <> Stripe.random_id()
 
       event =
         Stripe.build_event(
@@ -478,7 +478,7 @@ defmodule Domain.BillingTest do
     end
 
     test "does nothing on customer.created event when metadata has account_id" do
-      customer_id = "cus_" <> Ecto.UUID.generate()
+      customer_id = "cus_" <> Stripe.random_id()
 
       event =
         Stripe.build_event(
@@ -499,7 +499,7 @@ defmodule Domain.BillingTest do
     test "syncs an account from stripe on customer.created event" do
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
-      customer_id = "cus_" <> Ecto.UUID.generate()
+      customer_id = "cus_" <> Stripe.random_id()
 
       Bypass.open()
       |> Stripe.mock_update_customer_endpoint(%{
@@ -563,6 +563,45 @@ defmodule Domain.BillingTest do
              }
     end
 
+    test "ignores replay of customer.created event" do
+      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+
+      customer_id = "cus_" <> Stripe.random_id()
+
+      Bypass.open()
+      |> Stripe.mock_update_customer_endpoint(%{
+        id: Ecto.UUID.generate(),
+        name: "New Account Name",
+        metadata: %{stripe: %{customer_id: customer_id}}
+      })
+      |> Stripe.mock_create_subscription_endpoint()
+
+      event =
+        Stripe.build_event(
+          "customer.created",
+          Stripe.customer_object(
+            customer_id,
+            "New Account Name",
+            "iown@bigcompany.com",
+            %{
+              "company_website" => "https://bigcompany.com",
+              "account_owner_first_name" => "John",
+              "account_owner_last_name" => "Smith"
+            }
+          )
+        )
+
+      assert handle_events([event]) == :ok
+      assert Repo.get_by(Domain.Accounts.Account, slug: "bigcompany")
+
+      assert handle_events([event]) == :ok
+
+      assert Domain.Accounts.Account.Query.all()
+             |> Domain.Accounts.Account.Query.by_slug("bigcompany")
+             |> Repo.all()
+             |> length() == 1
+    end
+
     test "does nothing on customer.created event when an account already exists", %{
       account: account
     } do
@@ -586,7 +625,7 @@ defmodule Domain.BillingTest do
     end
 
     test "does nothing on customer.updated event when metadata is incomplete" do
-      customer_id = "cus_" <> Ecto.UUID.generate()
+      customer_id = "cus_" <> Stripe.random_id()
 
       customer_mock_attrs = %{
         id: Ecto.UUID.generate(),
@@ -618,7 +657,7 @@ defmodule Domain.BillingTest do
     test "creates an account from stripe on customer.updated event for new accounts" do
       Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
-      customer_id = "cus_" <> Ecto.UUID.generate()
+      customer_id = "cus_" <> Stripe.random_id()
 
       customer_mock_attrs = %{
         id: Ecto.UUID.generate(),
@@ -704,11 +743,10 @@ defmodule Domain.BillingTest do
     } do
       Bypass.open() |> Stripe.mock_fetch_customer_endpoint(account)
 
+      {_product, _price, subscription} = Stripe.build_all(:team, customer_id, 0)
+
       event =
-        Stripe.build_event(
-          "customer.subscription.deleted",
-          Stripe.subscription_object(customer_id, %{}, %{}, 0)
-        )
+        Stripe.build_event("customer.subscription.deleted", subscription)
 
       assert handle_events([event]) == :ok
 
@@ -717,18 +755,16 @@ defmodule Domain.BillingTest do
       assert account.disabled_reason == "Stripe subscription deleted"
     end
 
-    test "disables the account on when subscription is paused (updated event)", %{
+    test "disables the account when subscription is paused (updated event)", %{
       account: account,
       customer_id: customer_id
     } do
       Bypass.open() |> Stripe.mock_fetch_customer_endpoint(account)
 
-      event =
-        Stripe.build_event(
-          "customer.subscription.updated",
-          Stripe.subscription_object(customer_id, %{}, %{}, 0)
-          |> Map.put("pause_collection", %{"behavior" => "void"})
-        )
+      {_product, _price, subscription} = Stripe.build_all(:team, customer_id, 0)
+      subscription = Stripe.pause_subscription(subscription)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
 
       assert handle_events([event]) == :ok
 
@@ -741,103 +777,149 @@ defmodule Domain.BillingTest do
       account: account,
       customer_id: customer_id
     } do
-      Bypass.open()
-      |> Stripe.mock_fetch_customer_endpoint(account)
-      |> Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R")
+      {product, _price, subscription} = Stripe.build_all(:team, customer_id, 5)
 
-      {:ok, account} =
-        Domain.Accounts.update_account(account, %{
-          disabled_at: DateTime.utc_now(),
-          disabled_reason: "Stripe subscription paused"
-        })
-
-      event =
-        Stripe.build_event(
-          "customer.subscription.updated",
-          Stripe.subscription_object(customer_id, %{}, %{}, 0)
+      customer =
+        Stripe.build_customer(
+          id: customer_id,
+          email: "foo@bar.com",
+          name: account.name,
+          metadata: %{account_id: account.id}
         )
 
-      assert handle_events([event]) == :ok
+      Bypass.open()
+      |> Stripe.fetch_customer_endpoint(customer)
+      |> Stripe.fetch_product_endpoint(product)
 
+      subscription = Stripe.pause_subscription(subscription)
+
+      pause_event =
+        Stripe.build_event(
+          "customer.subscription.updated",
+          subscription,
+          System.os_time(:second) - 30
+        )
+
+      assert handle_events([pause_event]) == :ok
+
+      # Verify that account is disabled
+      assert account = Repo.get(Domain.Accounts.Account, account.id)
+      assert account.disabled_at
+      assert account.disabled_reason == "Stripe subscription paused"
+
+      subscription = Stripe.resume_subscription(subscription)
+      continue_event = Stripe.build_event("customer.subscription.updated", subscription)
+
+      assert handle_events([continue_event]) == :ok
+
+      # Verify that account has been re-enabled
       assert account = Repo.get(Domain.Accounts.Account, account.id)
       assert account.disabled_at == nil
       assert account.disabled_reason == nil
     end
 
-    test "updates account on subscription update", %{
+    test "updates account from starter to team on subscription update", %{
       account: account,
       customer_id: customer_id
     } do
+      # Set account to 'Starter' limits
       account =
         Fixtures.Accounts.update_account(account, %{
           limits: %{
-            service_accounts_count: 10101
-          },
-          features: %{
-            traffic_filters: true
+            account_admin_users_count: 1,
+            gateway_groups_count: 10,
+            service_accounts_count: 10,
+            users_count: 6
           }
         })
 
-      Bypass.open()
-      |> Stripe.mock_fetch_customer_endpoint(account)
-      |> Stripe.mock_fetch_product_endpoint("prod_Na6dGcTsmU0I4R", %{
-        metadata: %{
-          "multi_site_resources" => "false",
-          "self_hosted_relays" => "true",
-          "monthly_active_users_count" => "15",
-          "service_accounts_count" => "unlimited",
-          "gateway_groups_count" => 1,
-          "users_count" => 14,
-          "support_type" => "email"
-        }
-      })
-
-      subscription_metadata = %{
-        "idp_sync" => "true",
-        "multi_site_resources" => "true",
-        "traffic_filters" => "false",
-        "gateway_groups_count" => 5
-      }
-
-      quantity = 13
-
-      trial_ends_at =
-        DateTime.utc_now()
-        |> DateTime.add(2, :day)
-
-      event =
-        Stripe.build_event(
-          "customer.subscription.updated",
-          Stripe.subscription_object(customer_id, subscription_metadata, %{}, quantity)
-          |> Map.put("trial_end", DateTime.to_unix(trial_ends_at))
-          |> Map.put("status", "trialing")
+      customer =
+        Stripe.build_customer(
+          id: customer_id,
+          email: "foo@bar.com",
+          name: account.name,
+          metadata: %{account_id: account.id}
         )
+
+      quantity = 15
+
+      {product, _price, subscription} =
+        Stripe.build_all(:team, customer_id, quantity)
+
+      Bypass.open()
+      |> Stripe.fetch_customer_endpoint(customer)
+      |> Stripe.fetch_product_endpoint(product)
+
+      event = Stripe.build_event("customer.subscription.updated", subscription)
 
       assert handle_events([event]) == :ok
 
       assert account = Repo.get(Domain.Accounts.Account, account.id)
 
       assert account.metadata.stripe.customer_id == customer_id
-      assert account.metadata.stripe.subscription_id
-      assert account.metadata.stripe.product_name == "Enterprise"
+      assert account.metadata.stripe.subscription_id == subscription["id"]
+      assert account.metadata.stripe.product_name == "Team"
       assert account.metadata.stripe.support_type == "email"
 
-      assert DateTime.truncate(account.metadata.stripe.trial_ends_at, :second) ==
-               DateTime.truncate(trial_ends_at, :second)
-
       assert account.limits == %Domain.Accounts.Limits{
-               monthly_active_users_count: 15,
-               gateway_groups_count: 5,
-               service_accounts_count: nil,
-               users_count: 14
+               account_admin_users_count: 10,
+               gateway_groups_count: 100,
+               service_accounts_count: 100,
+               users_count: 15
              }
 
       assert account.features == %Domain.Accounts.Features{
-               idp_sync: true,
-               multi_site_resources: true,
-               self_hosted_relays: true,
-               traffic_filters: false
+               internet_resource: true,
+               policy_conditions: true,
+               traffic_filters: true
              }
+    end
+
+    test "ignores older subscription update events", %{
+      account: account,
+      customer_id: customer_id
+    } do
+      {_product, _price, starter_subscription} = Stripe.build_all(:starter, customer_id, 1)
+      {team_product, _price, team_subscription} = Stripe.build_all(:team, customer_id, 5)
+
+      Bypass.open()
+      |> Stripe.mock_fetch_customer_endpoint(account)
+      |> Stripe.fetch_product_endpoint(team_product)
+
+      starter_sub_update_time = System.os_time(:second) - 30
+      team_sub_update_time = System.os_time(:second)
+
+      starter_event =
+        Stripe.build_event(
+          "customer.subscription.updated",
+          starter_subscription,
+          starter_sub_update_time
+        )
+
+      team_event =
+        Stripe.build_event(
+          "customer.subscription.updated",
+          team_subscription,
+          team_sub_update_time
+        )
+
+      assert handle_events([team_event]) == :ok
+      assert Repo.all(Domain.Billing.Stripe.ProcessedEvent) |> length() == 1
+
+      assert account = Repo.get(Domain.Accounts.Account, account.id)
+
+      assert account.metadata.stripe.customer_id == customer_id
+      assert account.metadata.stripe.subscription_id
+      assert account.metadata.stripe.product_name == "Team"
+      assert account.metadata.stripe.support_type == "email"
+
+      assert handle_events([starter_event]) == :ok
+
+      assert account = Repo.get(Domain.Accounts.Account, account.id)
+
+      # Account metadata should not have been changed since starter event was in the past
+      assert account.metadata.stripe.product_name == "Team"
+      assert account.metadata.stripe.support_type == "email"
     end
 
     test "resets trial ended when subscription becomes active", %{

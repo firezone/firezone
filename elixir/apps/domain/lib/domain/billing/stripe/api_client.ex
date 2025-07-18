@@ -131,6 +131,7 @@ defmodule Domain.Billing.Stripe.APIClient do
           "Rate limited by Stripe API (429), retrying request.",
           request_delay: "#{delay}ms",
           attempt_num: "#{attempt + 1} of #{max_retries}",
+          url_path: path,
           response: inspect(response)
         )
 
