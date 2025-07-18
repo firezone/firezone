@@ -1,7 +1,7 @@
 defmodule Domain.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Clients
-  alias Domain.{Clients, PubSub}
+  alias Domain.Clients
 
   setup do
     account = Fixtures.Accounts.create_account()

@@ -242,6 +242,10 @@ defmodule Domain.Clients do
     end
   end
 
+  # TODO: Hard delete
+  # We don't necessarily want to delete associated tokens when deleting a client because
+  # that token could be a multi-owner token in the case of a headless client.
+  # Instead we need to introduce the concept of ephemeral clients/gateways and permanent ones.
   defp delete_clients(queryable, subject) do
     {_count, clients} =
       queryable

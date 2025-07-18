@@ -24,5 +24,8 @@ defmodule Domain.Events.Hooks.GatewayGroups do
   end
 
   @impl true
+
+  # Deleting a gateway group will delete the associated resource connection, where
+  # we handle removing it from the client's resource list.
   def on_delete(_old_data), do: :ok
 end

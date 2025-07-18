@@ -75,7 +75,10 @@ defmodule Domain.Fixtures.Flows do
         |> Fixtures.Policies.create_policy()
       end)
 
-    {token_id, _attrs} = Map.pop(attrs, :token_id, subject.token_id)
+    {token_id, _attrs} =
+      pop_assoc_fixture_id(attrs, :token, fn _assoc_attrs ->
+        %{id: subject.token_id}
+      end)
 
     Flows.Flow.Changeset.create(%{
       token_id: token_id,

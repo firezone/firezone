@@ -4,207 +4,202 @@ defmodule Domain.Events.Hooks.ResourcesTest do
   alias Domain.PubSub
 
   describe "insert/1" do
-    test "broadcasts :create_resource to subscribed" do
-      resource_id = "test_resource"
-      account_id = "test_account"
-      :ok = PubSub.Resource.subscribe(resource_id)
-      :ok = PubSub.Account.Resources.subscribe(account_id)
+    test "broadcasts created resource" do
+      account = Fixtures.Accounts.create_account()
+      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
+      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
 
-      data = %{"id" => resource_id, "account_id" => account_id}
+      :ok = PubSub.Account.subscribe(account.id)
+
+      data = %{
+        "id" => resource.id,
+        "account_id" => account.id,
+        "address_description" => resource.address_description,
+        "type" => resource.type,
+        "address" => resource.address,
+        "filters" => filters,
+        "ip_stack" => resource.ip_stack,
+        "deleted_at" => nil
+      }
 
       assert :ok == on_insert(data)
-
-      # we expect two - once for the resource subscription, and once for the account
-      assert_receive {:create_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-
-      :ok = PubSub.Resource.unsubscribe(resource_id)
-
-      assert :ok = on_insert(data)
-      assert_receive {:create_resource, ^resource_id}
-      refute_receive {:create_resource, ^resource_id}
+      assert_receive {:created, %Domain.Resources.Resource{} = created_resource}
+      assert created_resource.id == resource.id
+      assert created_resource.account_id == resource.account_id
+      assert created_resource.type == resource.type
+      assert created_resource.address == resource.address
+      assert created_resource.filters == resource.filters
+      assert created_resource.ip_stack == resource.ip_stack
+      assert created_resource.address_description == resource.address_description
     end
   end
 
   describe "update/2" do
-    setup do
-      flow = Fixtures.Flows.create_flow()
+    test "soft-delete broadcasts deleted resource" do
+      account = Fixtures.Accounts.create_account()
+      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
+      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
+
+      :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
-        "type" => "dns",
-        "address" => "1.2.3.4",
-        "filters" => [],
-        "ip_stack" => "dual",
-        "id" => flow.resource_id,
-        "account_id" => flow.account_id
+        "id" => resource.id,
+        "account_id" => account.id,
+        "address_description" => resource.address_description,
+        "type" => resource.type,
+        "address" => resource.address,
+        "filters" => filters,
+        "ip_stack" => resource.ip_stack,
+        "deleted_at" => nil
       }
 
-      %{flow: flow, old_data: old_data}
-    end
-
-    test "broadcasts :delete_resource to subscribed for soft-deletions" do
-      resource_id = "test_resource"
-      account_id = "test_account"
-      :ok = PubSub.Resource.subscribe(resource_id)
-      :ok = PubSub.Account.Resources.subscribe(account_id)
-
-      old_data = %{"id" => resource_id, "account_id" => account_id, "deleted_at" => nil}
-
-      data = %{
-        "id" => resource_id,
-        "account_id" => account_id,
-        "deleted_at" => DateTime.utc_now()
-      }
+      data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
       assert :ok == on_update(old_data, data)
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
 
-      :ok = PubSub.Resource.unsubscribe(resource_id)
+      assert_receive {:deleted, %Domain.Resources.Resource{} = deleted_resource}
 
-      assert :ok = on_update(old_data, data)
-      assert_receive {:delete_resource, ^resource_id}
-      refute_receive {:delete_resource, ^resource_id}
+      assert deleted_resource.id == resource.id
+      assert deleted_resource.account_id == resource.account_id
+      assert deleted_resource.type == resource.type
+      assert deleted_resource.address == resource.address
+      assert deleted_resource.filters == resource.filters
+      assert deleted_resource.ip_stack == resource.ip_stack
+      assert deleted_resource.address_description == resource.address_description
     end
 
-    test "expires flows when resource type changes", %{flow: flow, old_data: old_data} do
-      :ok = PubSub.Flow.subscribe(flow.id)
-      :ok = PubSub.Resource.subscribe(flow.resource_id)
-      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
+    test "soft-delete deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
+      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => account.id,
+        "address_description" => resource.address_description,
+        "type" => resource.type,
+        "address" => resource.address,
+        "filters" => filters,
+        "ip_stack" => resource.ip_stack,
+        "deleted_at" => nil
+      }
+
+      data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
+
+      assert flow = Fixtures.Flows.create_flow(resource: resource, account: account)
+      assert :ok = on_update(old_data, data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+    end
+
+    test "regular update broadcasts updated resource" do
+      account = Fixtures.Accounts.create_account()
+      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
+      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
+
+      :ok = PubSub.Account.subscribe(account.id)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => account.id,
+        "address_description" => resource.address_description,
+        "type" => resource.type,
+        "address" => resource.address,
+        "filters" => filters,
+        "ip_stack" => resource.ip_stack,
+        "deleted_at" => nil
+      }
+
+      data = Map.put(old_data, "address", "new-address.example.com")
+
+      assert :ok == on_update(old_data, data)
+
+      assert_receive {:updated, %Domain.Resources.Resource{},
+                      %Domain.Resources.Resource{} = updated_resource}
+
+      assert updated_resource.id == resource.id
+      assert updated_resource.account_id == resource.account_id
+      assert updated_resource.type == resource.type
+      assert updated_resource.address == "new-address.example.com"
+      assert updated_resource.filters == resource.filters
+      assert updated_resource.ip_stack == resource.ip_stack
+      assert updated_resource.address_description == resource.address_description
+    end
+
+    test "breaking update deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
+      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => account.id,
+        "address_description" => resource.address_description,
+        "type" => "dns",
+        "address" => resource.address,
+        "filters" => filters,
+        "ip_stack" => resource.ip_stack,
+        "deleted_at" => nil
+      }
 
       data = Map.put(old_data, "type", "cidr")
 
-      assert :ok == on_update(old_data, data)
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-    end
-
-    test "expires flows when resource address changes", %{flow: flow, old_data: old_data} do
-      :ok = PubSub.Flow.subscribe(flow.id)
-      :ok = PubSub.Resource.subscribe(flow.resource_id)
-      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
-
-      data = Map.put(old_data, "address", "4.3.2.1")
-
-      assert :ok == on_update(old_data, data)
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-    end
-
-    test "expires flows when resource filters change", %{flow: flow, old_data: old_data} do
-      :ok = PubSub.Flow.subscribe(flow.id)
-      :ok = PubSub.Resource.subscribe(flow.resource_id)
-      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
-
-      data = Map.put(old_data, "filters", ["new_filter"])
-
-      assert :ok == on_update(old_data, data)
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-    end
-
-    test "expires flows when resource ip_stack changes", %{flow: flow, old_data: old_data} do
-      :ok = PubSub.Flow.subscribe(flow.id)
-      :ok = PubSub.Resource.subscribe(flow.resource_id)
-      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
-
-      data = Map.put(old_data, "ip_stack", "ipv4_only")
-
-      assert :ok == on_update(old_data, data)
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-      assert_receive {:create_resource, ^resource_id}
-    end
-
-    test "broadcasts update for non-addressability change", %{flow: flow, old_data: old_data} do
-      :ok = PubSub.Resource.subscribe(flow.resource_id)
-      :ok = PubSub.Account.Resources.subscribe(flow.account_id)
-
-      data = Map.put(old_data, "name", "New Name")
-
-      assert :ok == on_update(old_data, data)
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      refute_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-      assert_receive {:update_resource, ^resource_id}
-      assert_receive {:update_resource, ^resource_id}
-      refute_receive {:delete_resource, ^resource_id}
-      refute_receive {:create_resource, ^resource_id}
+      assert flow = Fixtures.Flows.create_flow(resource: resource, account: account)
+      assert :ok = on_update(old_data, data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end
 
   describe "delete/1" do
-    test "broadcasts :delete_resource to subscribed" do
-      resource_id = "test_resource"
-      account_id = "test_account"
-      :ok = PubSub.Resource.subscribe(resource_id)
-      :ok = PubSub.Account.Resources.subscribe(account_id)
+    test "broadcasts deleted resource" do
+      account = Fixtures.Accounts.create_account()
+      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
+      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
 
-      old_data = %{"id" => resource_id, "account_id" => account_id}
+      :ok = PubSub.Account.subscribe(account.id)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => account.id,
+        "address_description" => resource.address_description,
+        "type" => resource.type,
+        "address" => resource.address,
+        "filters" => filters,
+        "ip_stack" => resource.ip_stack,
+        "deleted_at" => nil
+      }
 
       assert :ok == on_delete(old_data)
-      assert_receive {:delete_resource, ^resource_id}
-      assert_receive {:delete_resource, ^resource_id}
 
-      :ok = PubSub.Resource.unsubscribe(resource_id)
+      assert_receive {:deleted, %Domain.Resources.Resource{} = deleted_resource}
 
+      assert deleted_resource.id == resource.id
+      assert deleted_resource.account_id == resource.account_id
+      assert deleted_resource.type == resource.type
+      assert deleted_resource.address == resource.address
+      assert deleted_resource.filters == resource.filters
+      assert deleted_resource.ip_stack == resource.ip_stack
+      assert deleted_resource.address_description == resource.address_description
+    end
+
+    test "deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
+      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => account.id,
+        "address_description" => resource.address_description,
+        "type" => resource.type,
+        "address" => resource.address,
+        "filters" => filters,
+        "ip_stack" => resource.ip_stack,
+        "deleted_at" => nil
+      }
+
+      assert flow = Fixtures.Flows.create_flow(resource: resource, account: account)
       assert :ok = on_delete(old_data)
-      assert_receive {:delete_resource, ^resource_id}
-      refute_receive {:delete_resource, ^resource_id}
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end
 end
