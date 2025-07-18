@@ -951,7 +951,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.1"
-source = "git+https://github.com/firezone/boringtun?branch=master#3d5df9c2a6f55424e02671374f835cc7db1d7a44"
+source = "git+https://github.com/firezone/boringtun?branch=master#b9f2d4bad50a5d3ea9bbb6e7c67809158fcf4118"
 dependencies = [
  "aead",
  "base64 0.22.1",
@@ -6944,7 +6944,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.9.0"
-source = "git+https://github.com/algesten/str0m?branch=main#3d6e3d2f2745c9e8c561603b99c034c9bab7670f"
+source = "git+https://github.com/algesten/str0m?branch=main#214fcd2f2064046efb4194f33a40085fb9e86ac6"
 dependencies = [
  "combine",
  "crc",
