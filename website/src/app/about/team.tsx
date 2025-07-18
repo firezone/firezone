@@ -99,7 +99,7 @@ export default function Team() {
       imgSrc: "/images/avatars/brian.png",
       githubUrl: new URL("https://github.com/bmanifold"),
       linkedinUrl: new URL(
-        "https://www.linkedin.com/in/brian-manifold-536a0a3a/"
+        "https://www.linkedin.com/in/brian-manifold-536a0a3a/",
       ),
     },
     {

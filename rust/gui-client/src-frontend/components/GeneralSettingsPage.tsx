@@ -23,7 +23,7 @@ export default function GeneralSettingsPage({
       start_on_login: false,
       account_slug_is_managed: false,
       connect_on_start_is_managed: false,
-    }
+    },
   );
 
   useEffect(() => {
@@ -35,7 +35,7 @@ export default function GeneralSettingsPage({
         start_on_login: false,
         account_slug_is_managed: false,
         connect_on_start_is_managed: false,
-      }
+      },
     );
   }, [settings]);
 
