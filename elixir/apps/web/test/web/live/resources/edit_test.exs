@@ -1,6 +1,6 @@
 defmodule Web.Live.Resources.EditTest do
   use Web.ConnCase, async: true
-  alias Domain.{Events, PubSub}
+  alias Domain.{Events, PubSub, Resources}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -229,7 +229,7 @@ defmodule Web.Live.Resources.EditTest do
       }
     }
 
-    :ok = PubSub.Account.Resources.subscribe(account.id)
+    :ok = PubSub.Account.subscribe(account.id)
 
     {:ok, lv, _html} =
       conn
@@ -240,7 +240,7 @@ defmodule Web.Live.Resources.EditTest do
       "account_id" => resource.account_id,
       "type" => resource.type,
       "address" => resource.address,
-      "filters" => resource.filters,
+      "filters" => [%{"protocol" => "icmp", "ports" => ["80"]}],
       "ip_stack" => resource.ip_stack
     }
 
@@ -253,9 +253,9 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/resources")
 
-    assert_receive {:delete_resource, delete_msg_resource_id}
-    assert_receive {:create_resource, create_msg_resource_id}
-    assert delete_msg_resource_id == create_msg_resource_id
+    assert_receive {:updated, %Resources.Resource{}, %Resources.Resource{} = updated_resource}
+
+    assert updated_resource.id == resource.id
 
     assert updated_resource = Repo.get_by(Domain.Resources.Resource, id: resource.id)
     assert updated_resource.name == attrs.name

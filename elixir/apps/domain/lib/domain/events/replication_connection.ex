@@ -5,13 +5,10 @@ defmodule Domain.Events.ReplicationConnection do
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
     "actor_group_memberships" => Hooks.ActorGroupMemberships,
-    "actor_groups" => Hooks.ActorGroups,
-    "actors" => Hooks.Actors,
-    "auth_identities" => Hooks.AuthIdentities,
-    "auth_providers" => Hooks.AuthProviders,
     "clients" => Hooks.Clients,
-    "gateway_groups" => Hooks.GatewayGroups,
+    "flows" => Hooks.Flows,
     "gateways" => Hooks.Gateways,
+    "gateway_groups" => Hooks.GatewayGroups,
     "policies" => Hooks.Policies,
     "resource_connections" => Hooks.ResourceConnections,
     "resources" => Hooks.Resources,
@@ -21,9 +18,9 @@ defmodule Domain.Events.ReplicationConnection do
   def on_write(state, _lsn, op, table, old_data, data) do
     if hook = Map.get(@tables_to_hooks, table) do
       case op do
-        :insert -> hook.on_insert(data)
-        :update -> hook.on_update(old_data, data)
-        :delete -> hook.on_delete(old_data)
+        :insert -> :ok = hook.on_insert(data)
+        :update -> :ok = hook.on_update(old_data, data)
+        :delete -> :ok = hook.on_delete(old_data)
       end
     else
       log_warning(op, table)

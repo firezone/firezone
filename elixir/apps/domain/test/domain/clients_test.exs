@@ -1,7 +1,7 @@
 defmodule Domain.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Clients
-  alias Domain.{Clients, PubSub}
+  alias Domain.Clients
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -119,8 +119,6 @@ defmodule Domain.ClientsTest do
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
       {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
-      :ok = PubSub.Client.subscribe(client.id)
-      :ok = PubSub.Account.Clients.subscribe(client.account_id)
 
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == true
@@ -228,8 +226,7 @@ defmodule Domain.ClientsTest do
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
       {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
-      :ok = PubSub.Client.subscribe(client.id)
-      :ok = PubSub.Account.Clients.subscribe(client.account_id)
+
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == true
     end
@@ -290,8 +287,7 @@ defmodule Domain.ClientsTest do
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
       {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
-      :ok = PubSub.Client.subscribe(client.id)
-      :ok = PubSub.Account.Clients.subscribe(client.account_id)
+
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == true
     end
@@ -1075,32 +1071,6 @@ defmodule Domain.ClientsTest do
       assert is_nil(client.verified_at)
       assert is_nil(client.verified_by)
       assert is_nil(client.verified_by_subject)
-    end
-
-    test "expires flows for the unverified client", %{
-      account: account,
-      admin_actor: actor,
-      admin_subject: subject
-    } do
-      client = Fixtures.Clients.create_client(actor: actor)
-
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          actor: actor,
-          client: client,
-          subject: subject
-        )
-
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-
-      assert {:ok, client} = verify_client(client, subject)
-      assert {:ok, _client} = remove_client_verification(client, subject)
-
-      flow_id = flow.id
-      client_id = client.id
-      resource_id = flow.resource_id
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "returns error when subject has no permission to verify clients", %{

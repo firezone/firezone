@@ -7,21 +7,15 @@ defmodule Domain.SchemaHelpersTest do
 
   defmodule NestedEmbedSchema do
     use Ecto.Schema
-    import Ecto.Changeset
 
     @primary_key false
     embedded_schema do
       field :nested_field, :string
     end
-
-    def changeset(struct, params) do
-      cast(struct, params, [:nested_field])
-    end
   end
 
   defmodule EmbeddedSchema do
     use Ecto.Schema
-    import Ecto.Changeset
 
     @primary_key false
     embedded_schema do
@@ -29,26 +23,34 @@ defmodule Domain.SchemaHelpersTest do
       field :sub_field2, :string
       embeds_one :nested_item, NestedEmbedSchema
     end
-
-    def changeset(struct, params) do
-      struct
-      |> cast(params, [:sub_field1, :sub_field2])
-      |> cast_embed(:nested_item)
-    end
   end
 
   defmodule ListItemSchema do
     use Ecto.Schema
-    import Ecto.Changeset
 
     @primary_key false
     embedded_schema do
       field :list_field1, :string
       field :list_field2, :string, default: "default_value"
     end
+  end
 
-    def changeset(struct, params) do
-      cast(struct, params, [:list_field1, :list_field2])
+  defmodule DateTimeSchema do
+    use Ecto.Schema
+
+    @primary_key false
+    embedded_schema do
+      field :datetime_field, :utc_datetime_usec
+    end
+  end
+
+  defmodule NestedEnumSchema do
+    use Ecto.Schema
+
+    @primary_key false
+    embedded_schema do
+      field :enum_field, Ecto.Enum, values: ~w[option1 option2 option3]a
+      field :values, {:array, :string}
     end
   end
 
@@ -182,6 +184,145 @@ defmodule Domain.SchemaHelpersTest do
 
       assert %RootSchema{field1: "Empty Embedded", embedded_item: item} = result
       assert %EmbeddedSchema{sub_field1: nil, sub_field2: nil} = item
+    end
+
+    test "correctly casts ISO 8601 datetime string" do
+      params = %{
+        "datetime_field" => "2023-12-25T10:30:45Z"
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: datetime} = result
+      assert %DateTime{} = datetime
+      assert datetime.year == 2023
+      assert datetime.month == 12
+      assert datetime.day == 25
+      assert datetime.hour == 10
+      assert datetime.minute == 30
+      assert datetime.second == 45
+      assert datetime.time_zone == "Etc/UTC"
+    end
+
+    test "correctly casts ISO 8601 datetime string with microseconds" do
+      params = %{
+        "datetime_field" => "2023-12-25T10:30:45.123456Z"
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: datetime} = result
+      assert %DateTime{} = datetime
+      assert datetime.microsecond == {123_456, 6}
+    end
+
+    test "correctly casts ISO 8601 datetime string with timezone offset" do
+      params = %{
+        "datetime_field" => "2023-12-25T10:30:45+02:00"
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: datetime} = result
+      assert %DateTime{} = datetime
+      # Should be converted to UTC
+      assert datetime.time_zone == "Etc/UTC"
+      # Should be adjusted for timezone (10:30 +02:00 = 08:30 UTC)
+      assert datetime.hour == 8
+      assert datetime.minute == 30
+    end
+
+    test "correctly casts ISO 8601 datetime string with negative timezone offset" do
+      params = %{
+        "datetime_field" => "2023-12-25T10:30:45-05:00"
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: datetime} = result
+      assert %DateTime{} = datetime
+      # Should be converted to UTC
+      assert datetime.time_zone == "Etc/UTC"
+      # Should be adjusted for timezone (10:30 -05:00 = 15:30 UTC)
+      assert datetime.hour == 15
+      assert datetime.minute == 30
+    end
+
+    test "handles nil datetime field" do
+      params = %{
+        "datetime_field" => nil
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: nil} = result
+    end
+
+    test "handles missing datetime field" do
+      params = %{}
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: nil} = result
+    end
+
+    test "handles DateTime struct input" do
+      datetime = DateTime.utc_now()
+
+      params = %{
+        "datetime_field" => datetime
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: ^datetime} = result
+    end
+
+    test "handles invalid datetime string gracefully" do
+      params = %{
+        "datetime_field" => "invalid-datetime"
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      # Ecto casting should handle invalid datetime strings by setting to nil
+      # or keeping the original value depending on changeset validation
+      assert %DateTimeSchema{} = result
+    end
+
+    test "correctly casts datetime string without 'Z' suffix" do
+      params = %{
+        "datetime_field" => "2023-12-25T10:30:45"
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: datetime} = result
+      # Should still parse as UTC when no timezone is specified
+      assert %DateTime{} = datetime
+      assert datetime.year == 2023
+      assert datetime.month == 12
+      assert datetime.day == 25
+    end
+
+    test "correctly casts NaiveDateTime to DateTime" do
+      naive_datetime = ~N[2023-12-25 10:30:45]
+
+      params = %{
+        "datetime_field" => naive_datetime
+      }
+
+      result = SchemaHelpers.struct_from_params(DateTimeSchema, params)
+
+      assert %DateTimeSchema{datetime_field: datetime} = result
+      assert %DateTime{} = datetime
+      assert datetime.year == 2023
+      assert datetime.month == 12
+      assert datetime.day == 25
+      assert datetime.hour == 10
+      assert datetime.minute == 30
+      assert datetime.second == 45
+      assert datetime.time_zone == "Etc/UTC"
     end
   end
 end

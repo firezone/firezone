@@ -3,81 +3,90 @@ defmodule Domain.Events.Hooks.ClientsTest do
   import Domain.Events.Hooks.Clients
   alias Domain.{Clients, PubSub}
 
-  setup do
-    %{old_data: %{}, data: %{}}
-  end
-
   describe "insert/1" do
-    test "returns :ok", %{data: data} do
-      assert :ok == on_insert(data)
+    test "returns :ok" do
+      assert :ok == on_insert(%{})
     end
   end
 
   describe "update/2" do
-    test "soft-delete broadcasts disconnect" do
+    test "soft-delete broadcasts deleted client" do
       client = Fixtures.Clients.create_client()
-      :ok = Clients.Presence.connect(client)
+      :ok = PubSub.Account.subscribe(client.account_id)
 
-      old_data = %{"id" => client.id, "deleted_at" => nil}
-      data = %{"id" => client.id, "deleted_at" => DateTime.utc_now()}
+      old_data = %{"id" => client.id, "deleted_at" => nil, "account_id" => client.account_id}
+
+      data = %{
+        "id" => client.id,
+        "deleted_at" => DateTime.utc_now(),
+        "account_id" => client.account_id
+      }
 
       assert :ok == on_update(old_data, data)
-
-      assert_receive "disconnect"
-      refute_receive :updated
+      assert_receive {:deleted, %Clients.Client{} = deleted_client}
+      assert deleted_client.id == client.id
     end
 
-    test "update broadcasts :update" do
-      client = Fixtures.Clients.create_client()
-      :ok = Clients.Presence.connect(client)
+    test "update broadcasts updated client" do
+      account = Fixtures.Accounts.create_account()
+      client = Fixtures.Clients.create_client(account: account)
+      :ok = PubSub.Account.subscribe(client.account_id)
 
-      old_data = %{"id" => client.id, "name" => "Old Client"}
-      data = %{"id" => client.id, "name" => "Updated Client"}
+      old_data = %{"id" => client.id, "name" => "Old Name", "account_id" => client.account_id}
+      data = %{"id" => client.id, "name" => "New Name", "account_id" => client.account_id}
 
       assert :ok == on_update(old_data, data)
 
-      assert_receive {:updated, %Clients.Client{} = updated_client}
-      assert updated_client.id == client.id
-      refute_receive "disconnect"
+      assert_receive {:updated, %Clients.Client{} = old_client, %Clients.Client{} = new_client}
+      assert old_client.name == "Old Name"
+      assert new_client.name == "New Name"
+      assert new_client.id == client.id
+    end
+
+    test "update unverifies client and deletes associated flows" do
+      account = Fixtures.Accounts.create_account()
+      client = Fixtures.Clients.create_client(account: account, verified_at: DateTime.utc_now())
+      :ok = PubSub.Account.subscribe(client.account_id)
+
+      old_data = %{
+        "id" => client.id,
+        "verified_at" => "2023-10-01T00:00:00Z",
+        "account_id" => client.account_id
+      }
+
+      data = %{"id" => client.id, "verified_at" => nil, "account_id" => client.account_id}
+
+      assert flow = Fixtures.Flows.create_flow(client: client, account: account)
+      assert :ok == on_update(old_data, data)
+      assert_receive {:updated, %Clients.Client{}, %Clients.Client{} = new_client}
+      assert is_nil(new_client.verified_at)
+      assert new_client.id == client.id
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end
 
   describe "delete/1" do
-    test "broadcasts disconnect" do
-      client = Fixtures.Clients.create_client()
-      :ok = Clients.Presence.connect(client)
+    test "broadcasts deleted client" do
+      account = Fixtures.Accounts.create_account()
+      client = Fixtures.Clients.create_client(account: account)
+      :ok = PubSub.Account.subscribe(client.account_id)
 
-      old_data = %{"id" => client.id}
+      old_data = %{"id" => client.id, "account_id" => client.account_id}
 
       assert :ok == on_delete(old_data)
-
-      assert_receive "disconnect"
-      refute_receive :updated
+      assert_receive {:deleted, %Clients.Client{} = deleted_client}
+      assert deleted_client.id == client.id
     end
-  end
 
-  describe "connect/1" do
-    test "tracks client presence and subscribes to topics" do
-      client = Fixtures.Clients.create_client()
-      assert :ok == Clients.Presence.connect(client)
+    test "deletes associated flows" do
+      account = Fixtures.Accounts.create_account()
+      client = Fixtures.Clients.create_client(account: account)
 
-      assert Clients.Presence.Account.get(client.account_id, client.id)
-      assert Clients.Presence.Actor.get(client.actor_id, client.id)
+      old_data = %{"id" => client.id, "account_id" => client.account_id}
 
-      PubSub.Account.Clients.broadcast(client.account_id, :test_event)
-
-      assert_receive :test_event
-    end
-  end
-
-  describe "broadcast/2" do
-    test "broadcasts payload to client topic" do
-      client = Fixtures.Clients.create_client()
-      :ok = Clients.Presence.connect(client)
-
-      assert :ok == PubSub.Client.broadcast(client.id, :updated)
-
-      assert_receive :updated
+      assert flow = Fixtures.Flows.create_flow(client: client, account: account)
+      assert :ok == on_delete(old_data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end
 end

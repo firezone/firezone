@@ -498,35 +498,12 @@ defmodule Domain.TokensTest do
     } do
       other_token = Fixtures.Tokens.create_token(account: account, identity: identity)
 
-      assert {:ok, deleted_token} = delete_token_for(subject)
+      assert {:ok, [deleted_token]} = delete_token_for(subject)
       assert deleted_token.id == subject.token_id
 
       assert Repo.get(Tokens.Token, subject.token_id).deleted_at
 
       refute Repo.get(Tokens.Token, other_token.id).deleted_at
-    end
-
-    test "expires flows for given subject", %{
-      account: account,
-      identity: identity,
-      subject: subject
-    } do
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          identity: identity,
-          subject: subject
-        )
-
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-
-      assert {:ok, _token} = delete_token_for(subject)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "does not delete tokens for other actors", %{account: account, subject: subject} do

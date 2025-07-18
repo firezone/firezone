@@ -67,12 +67,6 @@ defmodule Web do
           {:noreply, socket}
         end
       end
-
-      # ignore "disconnect" message that is broadcasted for some pages
-      # because of subscription for relay/gateway group events
-      def handle_info("disconnect", socket) do
-        {:noreply, socket}
-      end
     end
   end
 

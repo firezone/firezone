@@ -1,6 +1,6 @@
 defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
   use Domain.DataCase, async: true
-  alias Domain.{Auth, Actors, Events, PubSub}
+  alias Domain.{Auth, Actors}
   alias Domain.Mocks.OktaDirectory
   import Domain.Auth.Adapters.Okta.Jobs.SyncDirectory
 
@@ -655,20 +655,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
           identity: deleted_identity
         )
 
-      deleted_identity_client =
-        Fixtures.Clients.create_client(
-          account: account,
-          actor: other_actor,
-          identity: deleted_identity
-        )
-
-      deleted_identity_flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          client: deleted_identity_client,
-          token_id: deleted_identity_token.id
-        )
-
       group =
         Fixtures.Actors.create_group(
           account: account,
@@ -690,32 +676,10 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
           provider_identifier: "G:DELETED_GROUP_ID!"
         )
 
-      policy = Fixtures.Policies.create_policy(account: account, actor_group: group)
-
-      deleted_policy =
-        Fixtures.Policies.create_policy(account: account, actor_group: deleted_group)
-
-      deleted_group_flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          actor_group: deleted_group,
-          resource_id: deleted_policy.resource_id,
-          policy: deleted_policy
-        )
-
       Fixtures.Actors.create_membership(account: account, actor: actor)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
       deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
-
-      :ok = PubSub.Flow.subscribe(deleted_identity_flow.id)
-      :ok = PubSub.Flow.subscribe(deleted_group_flow.id)
-      :ok = PubSub.Actor.Memberships.subscribe(actor.id)
-      :ok = PubSub.Actor.Memberships.subscribe(other_actor.id)
-      :ok = PubSub.Actor.Memberships.subscribe(deleted_membership.actor_id)
-      :ok = PubSub.Actor.Policies.subscribe(actor.id)
-      :ok = PubSub.Actor.Policies.subscribe(other_actor.id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(deleted_group.id)
 
       OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!(groups))
       OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
@@ -771,18 +735,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       # Creates membership for a member of existing group
       assert Repo.get_by(Domain.Actors.Membership, actor_id: other_actor.id, group_id: group.id)
 
-      # Broadcasts allow_access for it
-      policy_id = policy.id
-      group_id = group.id
-      resource_id = policy.resource_id
-
-      Events.Hooks.ActorGroupMemberships.on_insert(%{
-        "actor_id" => other_actor.id,
-        "group_id" => group.id
-      })
-
-      assert_receive {:allow_access, ^policy_id, ^group_id, ^resource_id}
-
       # Deletes membership that is not found on IdP end
       refute Repo.get_by(Domain.Actors.Membership,
                actor_id: deleted_membership.actor_id,
@@ -792,48 +744,6 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       # Signs out users which identity has been deleted
       deleted_identity_token = Repo.reload(deleted_identity_token)
       assert deleted_identity_token.deleted_at
-
-      # Deleted group deletes all policies and broadcasts reject access events for them
-      policy_id = deleted_policy.id
-      group_id = deleted_group.id
-      resource_id = deleted_policy.resource_id
-      account_id = deleted_policy.account_id
-
-      # Simulate WAL events
-      Events.Hooks.ActorGroupMemberships.on_delete(%{
-        "account_id" => deleted_membership.account_id,
-        "actor_id" => actor.id,
-        "group_id" => deleted_group.id
-      })
-
-      Events.Hooks.Policies.on_delete(%{
-        "id" => policy_id,
-        "actor_group_id" => group_id,
-        "resource_id" => resource_id,
-        "account_id" => account_id
-      })
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      assert_receive {:reject_access, ^policy_id, ^group_id, ^resource_id}
-
-      # Deleted policies expire all flows authorized by them
-      flow_id = deleted_group_flow.id
-      client_id = deleted_group_flow.client_id
-      resource_id = deleted_group_flow.resource_id
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-
-      # Expires flows for signed out user
-      flow_id = deleted_identity_flow.id
-      client_id = deleted_identity_flow.client_id
-      resource_id = deleted_identity_flow.resource_id
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-
-      # Should not do anything else
-      refute_received {:allow_access, _policy_id, _group_id, _resource_id}
-      refute_received {:reject_access, _policy_id, _group_id, _resource_id}
     end
 
     test "resurrects deleted identities that reappear on the next sync", %{

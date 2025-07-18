@@ -1,277 +1,280 @@
 defmodule Domain.Events.Hooks.PoliciesTest do
   use Domain.DataCase, async: true
   import Domain.Events.Hooks.Policies
-  alias Domain.PubSub
+  alias Domain.{Policies, PubSub}
 
   describe "insert/1" do
-    test "broadcasts :create_policy and :allow_access" do
-      policy_id = "policy-123"
-      account_id = "account-456"
-      actor_group_id = "group-456"
-      resource_id = "resource-789"
+    test "broadcasts created policy" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+      :ok = PubSub.Account.subscribe(account.id)
 
       data = %{
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "disabled_at" => nil,
+        "deleted_at" => nil
       }
 
-      :ok = PubSub.Policy.subscribe(policy_id)
-      :ok = PubSub.Account.Policies.subscribe(account_id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
-
       assert :ok == on_insert(data)
-      assert_receive {:create_policy, ^policy_id}
-      assert_receive {:create_policy, ^policy_id}
-      assert_receive {:allow_access, ^policy_id, ^actor_group_id, ^resource_id}
+      assert_receive {:created, %Policies.Policy{} = policy}
+
+      assert policy.id == data["id"]
+      assert policy.account_id == data["account_id"]
+      assert policy.actor_group_id == data["actor_group_id"]
+      assert policy.resource_id == data["resource_id"]
     end
   end
 
   describe "update/2" do
-    test "enable: broadcasts :enable_policy and :allow_access" do
-      policy_id = "policy-123"
-      account_id = "account-456"
-      actor_group_id = "group-456"
-      resource_id = "resource-789"
+    test "disable policy broadcasts deleted policy and deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      resource = Fixtures.Resources.create_resource(account: account)
+      policy = Fixtures.Policies.create_policy(account: account, resource: resource)
+      :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id,
-        "disabled_at" => "2023-10-01T00:00:00Z"
-      }
-
-      data = Map.put(old_data, "disabled_at", nil)
-
-      :ok = Domain.PubSub.Policy.subscribe(policy_id)
-      :ok = Domain.PubSub.Account.Policies.subscribe(account_id)
-      :ok = Domain.PubSub.ActorGroup.Policies.subscribe(actor_group_id)
-
-      assert :ok == on_update(old_data, data)
-      assert_receive {:enable_policy, ^policy_id}
-      assert_receive {:enable_policy, ^policy_id}
-      assert_receive {:allow_access, ^policy_id, ^actor_group_id, ^resource_id}
-    end
-
-    test "disable: broadcasts :disable_policy and :reject_access" do
-      flow = Fixtures.Flows.create_flow()
-      flow_id = flow.id
-      client_id = flow.client_id
-      policy_id = flow.policy_id
-      account_id = flow.account_id
-      actor_group_id = "group-456"
-      resource_id = flow.resource_id
-
-      old_data = %{
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id,
-        "disabled_at" => nil
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "disabled_at" => nil,
+        "deleted_at" => nil
       }
 
       data = Map.put(old_data, "disabled_at", "2023-10-01T00:00:00Z")
 
-      :ok = PubSub.Flow.subscribe(flow_id)
-      :ok = PubSub.Policy.subscribe(policy_id)
-      :ok = PubSub.Account.Policies.subscribe(account_id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
+      # Create a flow that should be deleted
+      flow = Fixtures.Flows.create_flow(policy: policy, resource: resource, account: account)
 
       assert :ok == on_update(old_data, data)
-      assert_receive {:disable_policy, ^policy_id}
-      assert_receive {:disable_policy, ^policy_id}
-      assert_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
+      assert_receive {:deleted, %Policies.Policy{} = broadcasted_policy}
 
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
+      assert broadcasted_policy.id == data["id"]
+      assert broadcasted_policy.account_id == data["account_id"]
 
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      # Verify flow was deleted
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
 
-    test "soft-delete: broadcasts :delete_policy and :reject_access" do
-      flow = Fixtures.Flows.create_flow()
-      flow_id = flow.id
-      client_id = flow.client_id
-      policy_id = flow.policy_id
-      account_id = flow.account_id
-      actor_group_id = "group-456"
-      resource_id = flow.resource_id
+    test "enable policy broadcasts created policy" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+      :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id,
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "disabled_at" => "2023-09-01T00:00:00Z",
+        "deleted_at" => nil
+      }
+
+      data = Map.put(old_data, "disabled_at", nil)
+
+      assert :ok == on_update(old_data, data)
+      assert_receive {:created, %Policies.Policy{} = policy}
+
+      assert policy.id == data["id"]
+      assert policy.account_id == data["account_id"]
+      assert policy.actor_group_id == data["actor_group_id"]
+      assert policy.resource_id == data["resource_id"]
+    end
+
+    test "soft-delete broadcasts deleted policy" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+      :ok = PubSub.Account.subscribe(account.id)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "disabled_at" => nil,
         "deleted_at" => nil
       }
 
       data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
-      :ok = PubSub.Flow.subscribe(flow_id)
-      :ok = PubSub.Policy.subscribe(policy_id)
-      :ok = PubSub.Account.Policies.subscribe(account_id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
-
       assert :ok == on_update(old_data, data)
-      assert_receive {:delete_policy, ^policy_id}
-      assert_receive {:delete_policy, ^policy_id}
-      assert_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
+      assert_receive {:deleted, %Policies.Policy{} = policy}
 
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert policy.id == old_data["id"]
+      assert policy.account_id == old_data["account_id"]
+      assert policy.actor_group_id == old_data["actor_group_id"]
+      assert policy.resource_id == old_data["resource_id"]
     end
 
-    test "breaking update: broadcasts :delete_policy, :reject_access, :create_policy, :allow_access" do
-      flow = Fixtures.Flows.create_flow()
-      flow_id = flow.id
-      client_id = flow.client_id
-      policy_id = flow.policy_id
-      account_id = flow.account_id
-      actor_group_id = "group-456"
-      resource_id = flow.resource_id
+    test "soft-delete deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      resource = Fixtures.Resources.create_resource(account: account)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource
+        )
 
       old_data = %{
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id,
-        "conditions" => []
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => resource.id,
+        "deleted_at" => nil
       }
 
-      data = Map.put(old_data, "resource_id", "new-resource-123")
+      data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
-      :ok = PubSub.Flow.subscribe(flow_id)
-      :ok = PubSub.Policy.subscribe(policy_id)
-      :ok = PubSub.Account.Policies.subscribe(account_id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
+      assert flow =
+               Fixtures.Flows.create_flow(
+                 policy: policy,
+                 resource: resource,
+                 account: account
+               )
 
-      assert :ok == on_update(old_data, data)
-
-      # TODO: WAL
-      # Remove this when side effects are directly broadcasted
-      Process.sleep(100)
-
-      assert_receive {:delete_policy, ^policy_id}
-      assert_receive {:delete_policy, ^policy_id}
-      assert_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
-
-      assert_receive {:create_policy, ^policy_id}
-      assert_receive {:create_policy, ^policy_id}
-      assert_receive {:allow_access, ^policy_id, ^actor_group_id, "new-resource-123"}
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert :ok = on_update(old_data, data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
 
-    test "breaking update: disabled policy has no side-effects" do
-      flow = Fixtures.Flows.create_flow()
-      flow_id = flow.id
-      client_id = flow.client_id
-      policy_id = flow.policy_id
-      account_id = flow.account_id
-      actor_group_id = "group-456"
-      resource_id = flow.resource_id
+    test "non-breaking update broadcasts updated policy" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+      :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id,
-        "disabled_at" => "2023-10-01T00:00:00Z"
+        "id" => policy.id,
+        "description" => "Old description",
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "disabled_at" => nil,
+        "deleted_at" => nil
       }
 
-      data = Map.put(old_data, "resource_id", "new-resource-123")
-
-      :ok = PubSub.Policy.subscribe(policy_id)
-      :ok = PubSub.Account.Policies.subscribe(account_id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
+      data = Map.put(old_data, "description", "Updated description")
 
       assert :ok == on_update(old_data, data)
-
-      refute_receive {:delete_policy, ^policy_id}
-      refute_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
-      refute_receive {:create_policy, ^policy_id}
-      refute_receive {:allow_access, ^policy_id, ^actor_group_id, "new-resource-123"}
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      refute_receive {:expire_flow, ^flow_id, ^client_id, "new-resource-123"}
+      assert_receive {:updated, %Policies.Policy{} = old_policy, %Policies.Policy{} = new_policy}
+      assert old_policy.id == old_data["id"]
+      assert new_policy.description == data["description"]
+      assert new_policy.account_id == old_data["account_id"]
+      assert new_policy.actor_group_id == old_data["actor_group_id"]
+      assert new_policy.resource_id == old_data["resource_id"]
     end
 
-    test "non-breaking-update: broadcasts :update_policy" do
-      policy_id = "policy-123"
-      account_id = "account-456"
-      actor_group_id = "group-456"
-      resource_id = "resource-789"
+    test "breaking update deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
 
       old_data = %{
-        "description" => "Old Policy",
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id,
-        "disabled_at" => "2023-10-01T00:00:00Z"
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "deleted_at" => nil
       }
 
-      data = Map.put(old_data, "resource_id", "new-resource-123")
+      data = Map.put(old_data, "resource_id", "00000000-0000-0000-0000-000000000001")
 
-      :ok = PubSub.Policy.subscribe(policy_id)
-      :ok = PubSub.Account.Policies.subscribe(account_id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
+      assert flow =
+               Fixtures.Flows.create_flow(
+                 policy: policy,
+                 account: account
+               )
 
-      assert :ok == on_update(old_data, data)
+      assert :ok = on_update(old_data, data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+    end
 
-      assert_receive {:update_policy, ^policy_id}
-      assert_receive {:update_policy, ^policy_id}
+    test "breaking update on actor_group_id deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "deleted_at" => nil
+      }
+
+      data = Map.put(old_data, "actor_group_id", "00000000-0000-0000-0000-000000000001")
+
+      assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
+
+      assert :ok = on_update(old_data, data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+    end
+
+    test "breaking update on conditions deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
+        "conditions" => [
+          %{"property" => "remote_ip", "operator" => "is_in", "values" => ["10.0.0.1"]}
+        ],
+        "deleted_at" => nil
+      }
+
+      data =
+        Map.put(old_data, "conditions", [
+          %{"property" => "remote_ip", "operator" => "is_in", "values" => ["10.0.0.2"]}
+        ])
+
+      assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
+
+      assert :ok = on_update(old_data, data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end
 
   describe "delete/1" do
-    test "broadcasts :delete_policy and :reject_access" do
-      flow = Fixtures.Flows.create_flow()
-      flow_id = flow.id
-      client_id = flow.client_id
-      policy_id = flow.policy_id
-      account_id = flow.account_id
-      actor_group_id = "group-456"
-      resource_id = flow.resource_id
+    test "broadcasts deleted policy" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+      :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
-        "id" => policy_id,
-        "account_id" => account_id,
-        "actor_group_id" => actor_group_id,
-        "resource_id" => resource_id,
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id
+      }
+
+      assert :ok == on_delete(old_data)
+      assert_receive {:deleted, %Policies.Policy{} = policy}
+
+      assert policy.id == old_data["id"]
+      assert policy.account_id == old_data["account_id"]
+      assert policy.actor_group_id == old_data["actor_group_id"]
+      assert policy.resource_id == old_data["resource_id"]
+    end
+
+    test "deletes flows" do
+      account = Fixtures.Accounts.create_account()
+      policy = Fixtures.Policies.create_policy(account: account)
+
+      old_data = %{
+        "id" => policy.id,
+        "account_id" => account.id,
+        "actor_group_id" => policy.actor_group_id,
+        "resource_id" => policy.resource_id,
         "deleted_at" => nil
       }
 
-      data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
+      assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
 
-      :ok = PubSub.Flow.subscribe(flow_id)
-      :ok = PubSub.Policy.subscribe(policy_id)
-      :ok = PubSub.Account.Policies.subscribe(account_id)
-      :ok = PubSub.ActorGroup.Policies.subscribe(actor_group_id)
-
-      assert :ok == on_update(old_data, data)
-      assert_receive {:delete_policy, ^policy_id}
-      assert_receive {:delete_policy, ^policy_id}
-      assert_receive {:reject_access, ^policy_id, ^actor_group_id, ^resource_id}
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
+      assert :ok = on_delete(old_data)
+      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end
 end

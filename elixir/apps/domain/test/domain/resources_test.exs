@@ -3,7 +3,6 @@ defmodule Domain.ResourcesTest do
   import Domain.Resources
   alias Domain.Resources
   alias Domain.Actors
-  alias Domain.Events
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -216,222 +215,6 @@ defmodule Domain.ResourcesTest do
                fetch_resource_by_id_or_persistent_id(resource.persistent_id, subject,
                  preload: :connections
                )
-
-      assert Ecto.assoc_loaded?(resource.connections)
-      assert length(resource.connections) == 1
-    end
-  end
-
-  describe "fetch_and_authorize_resource_by_id/3" do
-    test "returns error when resource does not exist", %{subject: subject} do
-      assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
-               {:error, :not_found}
-    end
-
-    test "returns error when UUID is invalid", %{subject: subject} do
-      assert fetch_and_authorize_resource_by_id("foo", subject) == {:error, :not_found}
-    end
-
-    test "returns authorized resource for account admin", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      resource = Fixtures.Resources.create_resource(account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group,
-          resource: resource
-        )
-
-      assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
-      assert fetched_resource.id == resource.id
-      assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
-    end
-
-    test "returns authorized resource for account user", %{
-      account: account
-    } do
-      actor_group = Fixtures.Actors.create_group(account: account)
-      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group,
-          resource: resource
-        )
-
-      assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
-      assert fetched_resource.id == resource.id
-      assert Enum.map(fetched_resource.authorized_by_policies, & &1.id) == [policy.id]
-    end
-
-    test "returns authorized resource using one of multiple policies for account user", %{
-      account: account
-    } do
-      actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      actor_group1 = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group1)
-
-      policy1 =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group1,
-          resource: resource
-        )
-
-      actor_group2 = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group2)
-
-      policy2 =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group2,
-          resource: resource
-        )
-
-      assert {:ok, fetched_resource} = fetch_and_authorize_resource_by_id(resource.id, subject)
-      assert fetched_resource.id == resource.id
-
-      authorized_by_policy_ids = Enum.map(fetched_resource.authorized_by_policies, & &1.id)
-      policy_ids = [policy1.id, policy2.id]
-      assert Enum.sort(authorized_by_policy_ids) == Enum.sort(policy_ids)
-    end
-
-    test "does not return deleted resources", %{account: account, actor: actor, subject: subject} do
-      {:ok, resource} =
-        Fixtures.Resources.create_resource(account: account)
-        |> delete_resource(subject)
-
-      actor_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-    end
-
-    test "does not authorize using deleted policies", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      resource = Fixtures.Resources.create_resource(account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
-      |> Fixtures.Policies.delete_policy()
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-    end
-
-    test "does not authorize using deleted group membership", %{
-      account: account,
-      subject: subject
-    } do
-      resource = Fixtures.Resources.create_resource(account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
-
-      # memberships are not soft deleted
-      # Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-    end
-
-    test "does not authorize using disabled policies", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      resource = Fixtures.Resources.create_resource(account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          actor_group: actor_group,
-          resource: resource
-        )
-
-      {:ok, _policy} = Domain.Policies.disable_policy(policy, subject)
-
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-    end
-
-    test "does not return resources in other accounts", %{subject: subject} do
-      resource = Fixtures.Resources.create_resource()
-      assert fetch_and_authorize_resource_by_id(resource.id, subject) == {:error, :not_found}
-    end
-
-    test "returns error when subject has no permission to view resources", %{subject: subject} do
-      subject = Fixtures.Auth.remove_permissions(subject)
-
-      assert fetch_and_authorize_resource_by_id(Ecto.UUID.generate(), subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Resources.Authorizer.view_available_resources_permission()]}}
-    end
-
-    test "associations are preloaded when opts given", %{
-      account: account,
-      actor: actor,
-      subject: subject
-    } do
-      actor_group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
-
-      gateway_group = Fixtures.Gateways.create_group(account: account)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway_group.id}]
-        )
-
-      Fixtures.Policies.create_policy(
-        account: account,
-        actor_group: actor_group,
-        resource: resource
-      )
-
-      assert {:ok, resource} =
-               fetch_and_authorize_resource_by_id(resource.id, subject, preload: :connections)
 
       assert Ecto.assoc_loaded?(resource.connections)
       assert length(resource.connections) == 1
@@ -1525,23 +1308,6 @@ defmodule Domain.ResourcesTest do
       assert resource.address_description == attrs["address_description"]
     end
 
-    test "does not expire flows when connections are not updated", %{
-      account: account,
-      resource: resource,
-      subject: subject
-    } do
-      flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      :ok = Domain.PubSub.Flow.subscribe(flow_id)
-
-      attrs = %{"name" => "foo"}
-      assert {:ok, _resource} = update_resource(resource, attrs, subject)
-      refute_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
     test "allows to update connections", %{account: account, resource: resource, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account, subject: subject)
       gateway1 = Fixtures.Gateways.create_gateway(account: account, group: group)
@@ -1552,13 +1318,6 @@ defmodule Domain.ResourcesTest do
       assert gateway_group_ids == [gateway1.group_id]
 
       gateway2 = Fixtures.Gateways.create_gateway(account: account)
-
-      flow = Fixtures.Flows.create_flow(account: account, resource: resource, subject: subject)
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-
-      :ok = Domain.PubSub.Flow.subscribe(flow_id)
 
       attrs = %{
         "connections" => [
@@ -1575,15 +1334,6 @@ defmodule Domain.ResourcesTest do
       assert {:ok, resource} = update_resource(resource, attrs, subject)
       gateway_group_ids = Enum.map(resource.connections, & &1.gateway_group_id)
       assert gateway_group_ids == [gateway2.group_id]
-
-      # TODO: WAL
-      # Remove this when directly broadcasting flow removals
-      Events.Hooks.ResourceConnections.on_delete(%{
-        "account_id" => resource.account_id,
-        "resource_id" => resource.id
-      })
-
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "does not allow to remove all connections", %{resource: resource, subject: subject} do

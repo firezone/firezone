@@ -9,7 +9,7 @@ defmodule Web.Resources.Show do
          {:ok, actor_groups_peek} <-
            Resources.peek_resource_actor_groups([resource], 3, socket.assigns.subject) do
       if connected?(socket) do
-        :ok = PubSub.Resource.subscribe(resource.id)
+        :ok = PubSub.Account.subscribe(resource.account_id)
       end
 
       socket =
@@ -399,7 +399,12 @@ defmodule Web.Resources.Show do
     """
   end
 
-  def handle_info({_action, _resource_id}, socket) do
+  # TODO: Do we really want to update the view in place?
+  def handle_info(
+        {_action, _old_resource, %Resources.Resource{id: resource_id}},
+        %{assigns: %{resource: %{id: id}}} = socket
+      )
+      when resource_id == id do
     {:ok, resource} =
       Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject,
         preload: [
@@ -411,6 +416,10 @@ defmodule Web.Resources.Show do
       )
 
     {:noreply, assign(socket, resource: resource)}
+  end
+
+  def handle_info(_, socket) do
+    {:noreply, socket}
   end
 
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],

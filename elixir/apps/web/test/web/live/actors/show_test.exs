@@ -184,7 +184,7 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
-  test "renders flows even for deleted policy assocs", %{
+  test "does not render flows for deleted policy assocs", %{
     conn: conn
   } do
     account = Fixtures.Accounts.create_account()
@@ -207,21 +207,11 @@ defmodule Web.Live.Actors.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/#{actor}")
 
-    [row] =
-      lv
-      |> element("#flows")
-      |> render()
-      |> table_to_map()
-
-    assert row["authorized"]
-    assert row["policy"] =~ flow.policy.actor_group.name
-    assert row["policy"] =~ flow.policy.resource.name
-
-    assert row["client"] ==
-             "#{flow.client.name} #{client.last_seen_remote_ip}"
-
-    assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+    assert [] ==
+             lv
+             |> element("#flows")
+             |> render()
+             |> table_to_map()
   end
 
   test "renders groups table", %{

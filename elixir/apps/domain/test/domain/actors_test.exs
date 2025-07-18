@@ -4,7 +4,6 @@ defmodule Domain.ActorsTest do
   alias Domain.Auth
   alias Domain.Clients
   alias Domain.Actors
-  alias Domain.Events
 
   describe "fetch_groups_count_grouped_by_provider_id/1" do
     test "returns empty map when there are no groups" do
@@ -1169,28 +1168,9 @@ defmodule Domain.ActorsTest do
       provider: provider,
       group1: group1,
       group2: group2,
-      actor1: actor1,
       identity1: identity1,
       identity2: identity2
     } do
-      policy = Fixtures.Policies.create_policy(account: account, actor_group: group1)
-
-      client =
-        Fixtures.Clients.create_client(
-          account: account,
-          actor: actor1,
-          identity: identity1
-        )
-
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          actor_group: group1,
-          client: client,
-          resource_id: policy.resource_id,
-          policy: policy
-        )
-
       Fixtures.Actors.create_membership(
         account: account,
         group: group1,
@@ -1233,27 +1213,6 @@ defmodule Domain.ActorsTest do
 
       assert Repo.aggregate(Actors.Membership, :count) == 0
       assert Repo.aggregate(Actors.Membership.Query.all(), :count) == 0
-
-      # TODO: WAL
-      # These tests will be made redundant soon
-      Events.Hooks.ActorGroupMemberships.on_delete(%{
-        "account_id" => account.id,
-        "actor_id" => identity1.actor_id,
-        "group_id" => group1.id
-      })
-
-      Events.Hooks.ActorGroupMemberships.on_delete(%{
-        "account_id" => account.id,
-        "actor_id" => identity2.actor_id,
-        "group_id" => group2.id
-      })
-
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "deletes memberships of removed groups", %{
@@ -3036,30 +2995,6 @@ defmodule Domain.ActorsTest do
       assert token.deleted_at
     end
 
-    test "expires actor flows" do
-      account = Fixtures.Accounts.create_account()
-      actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-      client = Fixtures.Clients.create_client(account: account, identity: identity)
-
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          subject: subject,
-          client: client
-        )
-
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-
-      assert {:ok, _actor} = disable_actor(actor, subject)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
-    end
-
     test "returns error when trying to disable the last admin actor" do
       account = Fixtures.Accounts.create_account()
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
@@ -3282,31 +3217,6 @@ defmodule Domain.ActorsTest do
       assert {:ok, _actor} = delete_actor(actor, subject)
 
       assert Repo.aggregate(Actors.Membership, :count) == 0
-    end
-
-    test "expires actor flows", %{
-      account: account,
-      actor: actor,
-      identity: identity,
-      subject: subject
-    } do
-      client = Fixtures.Clients.create_client(account: account, identity: identity)
-
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          subject: subject,
-          client: client
-        )
-
-      :ok = Domain.PubSub.Flow.subscribe(flow.id)
-
-      assert {:ok, _actor} = delete_actor(actor, subject)
-
-      flow_id = flow.id
-      client_id = flow.client_id
-      resource_id = flow.resource_id
-      assert_receive {:expire_flow, ^flow_id, ^client_id, ^resource_id}
     end
 
     test "returns error when trying to delete the last admin actor", %{

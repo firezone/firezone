@@ -151,6 +151,73 @@ defmodule Domain.Replication.Decoder do
   alias Domain.Replication.OidDatabase
 
   @doc """
+  Helper for decoding JSON data inside messages.
+  """
+
+  # Postgrex uses `_jsonb` to mean `jsonb[]`. These array types are returned as string literals from
+  # Postgrex and need to be split, and then double-decoded.
+  def decode_json({value, %{type: type} = column})
+      when type in ["_json", "_jsonb"] and is_binary(value) do
+    decoded_list = parse_postgres_jsonb_array(value)
+    {column.name, decoded_list}
+  end
+
+  def decode_json({value, %{type: type} = column})
+      when type in ["json", "jsonb"] and is_binary(value) do
+    case JSON.decode(value) do
+      {:ok, decoded} ->
+        {column.name, decoded}
+
+      {:error, reason} ->
+        Logger.warning("Failed to decode JSON, using as-is",
+          json: value,
+          reason: reason
+        )
+
+        {column.name, value}
+    end
+  end
+
+  def decode_json({value, column}) do
+    {column.name, value}
+  end
+
+  defp parse_postgres_jsonb_array("{}"), do: []
+
+  defp parse_postgres_jsonb_array("{" <> content) do
+    content
+    |> String.trim_trailing("}")
+    |> split_json_array_elements()
+    |> Enum.map(&double_decode_json/1)
+  end
+
+  defp parse_postgres_jsonb_array(_), do: []
+
+  # Split JSON elements in PostgreSQL array using regex
+  defp split_json_array_elements(content) do
+    ~r/,(?=(?:[^"]*"[^"]*")*[^"]*$)(?![^{]*})/
+    |> Regex.split(content)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  # PostgreSQL double-encodes JSON in arrays, so we need to decode twice
+  defp double_decode_json(json_str) do
+    with {:ok, first} <- Jason.decode(json_str),
+         {:ok, second} <- Jason.decode(first) do
+      second
+    else
+      {:error, reason} ->
+        Logger.warning("Failed to decode JSON, using as-is",
+          json: json_str,
+          reason: reason
+        )
+
+        json_str
+    end
+  end
+
+  @doc """
   Parses logical replication messages from Postgres
 
   ## Examples

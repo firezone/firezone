@@ -1048,7 +1048,7 @@ defmodule Domain.Repo.Seeds do
     IO.puts("  #{search_domain_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("")
 
-    {:ok, _} =
+    {:ok, policy} =
       Policies.create_policy(
         %{
           name: "All Access To Google",
@@ -1175,11 +1175,12 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    {:ok, _resource, _flow, _expires_at} =
-      Flows.authorize_flow(
+    {:ok, _flow} =
+      Flows.create_flow(
         user_iphone,
         gateway1,
         cidr_resource.id,
+        policy,
         unprivileged_subject
       )
   end

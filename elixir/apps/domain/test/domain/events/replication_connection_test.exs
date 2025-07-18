@@ -1,5 +1,5 @@
 defmodule Domain.Events.ReplicationConnectionTest do
-  use ExUnit.Case, async: true
+  use Domain.DataCase, async: true
 
   import ExUnit.CaptureLog
   alias Domain.Events.ReplicationConnection
@@ -15,7 +15,12 @@ defmodule Domain.Events.ReplicationConnectionTest do
   describe "on_write/6 for inserts" do
     test "logs warning for unknown table" do
       table = "unknown_table"
-      data = %{"id" => Ecto.UUID.generate(), "name" => "test"}
+
+      data = %{
+        "account_id" => Ecto.UUID.generate(),
+        "id" => Ecto.UUID.generate(),
+        "name" => "test"
+      }
 
       log_output =
         capture_log(fn ->
@@ -29,7 +34,11 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
     test "handles known tables without errors", %{tables: tables} do
       for table <- tables do
-        data = %{"id" => Ecto.UUID.generate(), "table" => table}
+        data = %{
+          "account_id" => Ecto.UUID.generate(),
+          "id" => Ecto.UUID.generate(),
+          "table" => table
+        }
 
         # The actual hook call might fail if the hook modules aren't available,
         # but we can test that our routing logic works
@@ -51,6 +60,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
           capture_log(fn ->
             try do
               ReplicationConnection.on_write(%{}, 0, :insert, table, nil, %{
+                "account_id" => Ecto.UUID.generate(),
                 "id" => Ecto.UUID.generate()
               })
             rescue
@@ -68,8 +78,14 @@ defmodule Domain.Events.ReplicationConnectionTest do
   describe "on_write/6 for updates" do
     test "logs warning for unknown table" do
       table = "unknown_table"
-      old_data = %{"id" => Ecto.UUID.generate(), "name" => "old"}
-      data = %{"id" => old_data["id"], "name" => "new"}
+
+      old_data = %{
+        "account_id" => Ecto.UUID.generate(),
+        "id" => Ecto.UUID.generate(),
+        "name" => "old"
+      }
+
+      data = %{"account_id" => Ecto.UUID.generate(), "id" => old_data["id"], "name" => "new"}
 
       log_output =
         capture_log(fn ->
@@ -82,8 +98,13 @@ defmodule Domain.Events.ReplicationConnectionTest do
     end
 
     test "handles known tables", %{tables: tables} do
-      old_data = %{"id" => Ecto.UUID.generate(), "name" => "old name"}
-      data = %{"id" => old_data["id"], "name" => "new name"}
+      old_data = %{
+        "account_id" => Ecto.UUID.generate(),
+        "id" => Ecto.UUID.generate(),
+        "name" => "old name"
+      }
+
+      data = %{"account_id" => Ecto.UUID.generate(), "id" => old_data["id"], "name" => "new name"}
 
       for table <- tables do
         try do
@@ -101,7 +122,12 @@ defmodule Domain.Events.ReplicationConnectionTest do
   describe "on_write/6 for deletes" do
     test "logs warning for unknown table" do
       table = "unknown_table"
-      old_data = %{"id" => Ecto.UUID.generate(), "name" => "deleted"}
+
+      old_data = %{
+        "account_id" => Ecto.UUID.generate(),
+        "id" => Ecto.UUID.generate(),
+        "name" => "deleted"
+      }
 
       log_output =
         capture_log(fn ->
@@ -114,7 +140,11 @@ defmodule Domain.Events.ReplicationConnectionTest do
     end
 
     test "handles known tables", %{tables: tables} do
-      old_data = %{"id" => Ecto.UUID.generate(), "name" => "deleted item"}
+      old_data = %{
+        "account_id" => Ecto.UUID.generate(),
+        "id" => Ecto.UUID.generate(),
+        "name" => "deleted item"
+      }
 
       for table <- tables do
         try do
@@ -139,7 +169,11 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       # Insert
       try do
-        result = ReplicationConnection.on_write(state, 1, :insert, table, nil, %{"id" => "123"})
+        result =
+          ReplicationConnection.on_write(state, 1, :insert, table, nil, %{
+            "id" => "00000000-0000-0000-0000-000000000001"
+          })
+
         assert result == state
       rescue
         FunctionClauseError -> :ok
@@ -148,10 +182,17 @@ defmodule Domain.Events.ReplicationConnectionTest do
       # Update
       try do
         result =
-          ReplicationConnection.on_write(state, 2, :update, table, %{"id" => "123"}, %{
-            "id" => "123",
-            "updated" => true
-          })
+          ReplicationConnection.on_write(
+            state,
+            2,
+            :update,
+            table,
+            %{"id" => "00000000-0000-0000-0000-000000000001"},
+            %{
+              "id" => "00000000-0000-0000-0000-000000000001",
+              "updated" => true
+            }
+          )
 
         assert result == state
       rescue
@@ -160,7 +201,16 @@ defmodule Domain.Events.ReplicationConnectionTest do
 
       # Delete
       try do
-        result = ReplicationConnection.on_write(state, 3, :delete, table, %{"id" => "123"}, nil)
+        result =
+          ReplicationConnection.on_write(
+            state,
+            3,
+            :delete,
+            table,
+            %{"id" => "00000000-0000-0000-0000-000000000001"},
+            nil
+          )
+
         assert result == state
       rescue
         FunctionClauseError -> :ok
@@ -223,11 +273,8 @@ defmodule Domain.Events.ReplicationConnectionTest do
       tables_to_hooks = %{
         "accounts" => Domain.Events.Hooks.Accounts,
         "actor_group_memberships" => Domain.Events.Hooks.ActorGroupMemberships,
-        "actor_groups" => Domain.Events.Hooks.ActorGroups,
-        "actors" => Domain.Events.Hooks.Actors,
-        "auth_identities" => Domain.Events.Hooks.AuthIdentities,
-        "auth_providers" => Domain.Events.Hooks.AuthProviders,
         "clients" => Domain.Events.Hooks.Clients,
+        "flows" => Domain.Events.Hooks.Flows,
         "gateway_groups" => Domain.Events.Hooks.GatewayGroups,
         "gateways" => Domain.Events.Hooks.Gateways,
         "policies" => Domain.Events.Hooks.Policies,
@@ -241,11 +288,8 @@ defmodule Domain.Events.ReplicationConnectionTest do
                [
                  "accounts",
                  "actor_group_memberships",
-                 "actor_groups",
-                 "actors",
-                 "auth_identities",
-                 "auth_providers",
                  "clients",
+                 "flows",
                  "gateway_groups",
                  "gateways",
                  "policies",

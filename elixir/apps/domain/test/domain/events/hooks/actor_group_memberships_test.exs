@@ -1,37 +1,34 @@
 defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
   use API.ChannelCase, async: true
   import Domain.Events.Hooks.ActorGroupMemberships
+  alias Domain.Actors
   alias Domain.PubSub
 
-  setup do
-    %{old_data: %{}, data: %{}}
-  end
-
   describe "insert/1" do
-    test "returns :ok" do
-      actor_id = "#{Ecto.UUID.generate()}"
-      group_id = "#{Ecto.UUID.generate()}"
+    test "broadcasts membership" do
+      account_id = "00000000-0000-0000-0000-000000000001"
+      actor_id = "00000000-0000-0000-0000-000000000002"
+      group_id = "00000000-0000-0000-0000-000000000003"
+
+      :ok = PubSub.Account.subscribe(account_id)
 
       data = %{
+        "account_id" => account_id,
         "actor_id" => actor_id,
         "group_id" => group_id
       }
 
-      :ok = PubSub.Actor.Memberships.subscribe(actor_id)
-
       assert :ok == on_insert(data)
-
-      # TODO: WAL
-      # Remove this when direct broadcast is implement
-      Process.sleep(100)
-
-      assert_receive {:create_membership, ^actor_id, ^group_id}
+      assert_receive {:created, %Actors.Membership{} = membership}
+      assert membership.account_id == account_id
+      assert membership.actor_id == actor_id
+      assert membership.group_id == group_id
     end
   end
 
   describe "update/2" do
-    test "returns :ok", %{old_data: old_data, data: data} do
-      assert :ok == on_update(old_data, data)
+    test "returns :ok" do
+      assert :ok == on_update(%{}, %{})
     end
   end
 
@@ -40,80 +37,53 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
       account = Fixtures.Accounts.create_account()
       actor_group = Fixtures.Actors.create_group(account: account)
       actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
-      Fixtures.Actors.create_membership(account: account, group: actor_group, actor: actor)
-      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-      client = Fixtures.Clients.create_client(subject: subject)
 
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          resource: resource,
-          actor_group: actor_group
-        )
-
-      {:ok, _reply, socket} =
-        API.Client.Socket
-        |> socket("client:#{client.id}", %{
-          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
-          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test"),
-          client: client,
-          subject: subject,
-          turn_salt: "test_salt"
-        })
-        |> subscribe_and_join(API.Client.Channel, "client")
+      membership =
+        Fixtures.Actors.create_membership(account: account, group: actor_group, actor: actor)
 
       %{
         account: account,
         actor_group: actor_group,
         actor: actor,
-        identity: identity,
-        subject: subject,
-        client: client,
-        resource: resource,
-        policy: policy,
-        socket: socket
+        membership: membership
       }
     end
 
-    test "returns :ok" do
-      actor_id = "#{Ecto.UUID.generate()}"
-      group_id = "#{Ecto.UUID.generate()}"
+    test "broadcasts deleted membership" do
+      account_id = "00000000-0000-0000-0000-000000000001"
+      :ok = PubSub.Account.subscribe(account_id)
 
-      data = %{
-        "account_id" => "#{Ecto.UUID.generate()}",
-        "actor_id" => actor_id,
-        "group_id" => group_id
+      old_data = %{
+        "id" => "00000000-0000-0000-0000-000000000000",
+        "account_id" => "00000000-0000-0000-0000-000000000001",
+        "actor_id" => "00000000-0000-0000-0000-000000000002",
+        "group_id" => "00000000-0000-0000-0000-000000000003"
       }
 
-      :ok = PubSub.Actor.Memberships.subscribe(actor_id)
+      assert :ok == on_delete(old_data)
 
-      assert :ok == on_delete(data)
-      assert_receive {:delete_membership, ^actor_id, ^group_id}
+      assert_receive {:deleted, %Actors.Membership{} = membership}
+      assert membership.id == "00000000-0000-0000-0000-000000000000"
+      assert membership.account_id == "00000000-0000-0000-0000-000000000001"
+      assert membership.actor_id == "00000000-0000-0000-0000-000000000002"
+      assert membership.group_id == "00000000-0000-0000-0000-000000000003"
     end
 
-    test "client channel pushes \"resource_deleted\" when affected membership is deleted", %{
-      actor: actor,
-      subject: subject,
-      actor_group: actor_group
-    } do
-      assert_push "init", %{}
-      # TODO: WAL
-      # This is needed because the :reject_access received in the client channel re-fetches allowed resources for this client.
-      # Remove this when that's cleaned up.
-      {:ok, _actor} = Domain.Actors.update_actor(actor, %{memberships: []}, subject)
+    test "deletes flows for membership", %{account: account, membership: membership} do
+      flow = Fixtures.Flows.create_flow(account: account, actor_group_membership: membership)
+      unrelated_flow = Fixtures.Flows.create_flow(account: account)
 
-      assert :ok =
-               on_delete(%{
-                 "account_id" => actor.account_id,
-                 "actor_id" => actor.id,
-                 "group_id" => actor_group.id
-               })
+      old_data = %{
+        "id" => membership.id,
+        "account_id" => membership.account_id,
+        "actor_id" => membership.actor_id,
+        "group_id" => membership.group_id
+      }
 
-      assert_push "resource_deleted", _payload
-      refute_push "resource_created_or_updated", _payload
+      assert ^flow = Repo.get_by(Domain.Flows.Flow, actor_group_membership_id: membership.id)
+      assert :ok == on_delete(old_data)
+      assert nil == Repo.get_by(Domain.Flows.Flow, actor_group_membership_id: membership.id)
+      assert ^unrelated_flow = Repo.get_by(Domain.Flows.Flow, id: unrelated_flow.id)
     end
   end
 end
