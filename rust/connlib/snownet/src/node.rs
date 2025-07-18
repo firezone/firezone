@@ -253,6 +253,9 @@ where
         // But better be safe than sorry.
         if let Some(c) = self.connections.get_established_mut(&cid)
             && c.agent.local_credentials() == &local_creds
+            && c.agent
+                .remote_credentials()
+                .is_some_and(|c| c == &remote_creds)
             && c.tunnel.remote_static_public() == remote
         {
             c.state.on_upsert(&mut c.agent, now);
