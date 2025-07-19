@@ -41,6 +41,7 @@ permissions:
   # write permission is required to create a github release
   contents: write
   id-token: write
+  packages: write
 
 jobs:
   control-plane:
