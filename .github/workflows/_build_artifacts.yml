@@ -102,10 +102,10 @@ jobs:
           target: ${{ matrix.target }}
           context: elixir
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:main
           cache-to: |
-            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{steps.login.outputs.registry}}/firezone/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
           push: true
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
@@ -375,10 +375,10 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.image_name }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
           target: ${{ matrix.stage }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
