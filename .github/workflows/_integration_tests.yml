@@ -6,7 +6,7 @@ on:
       domain_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/domain"
+        default: "ghcr.io/firezone/domain"
       domain_tag:
         required: false
         type: string
@@ -14,7 +14,7 @@ on:
       api_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/api"
+        default: "ghcr.io/firezone/api"
       api_tag:
         required: false
         type: string
@@ -22,7 +22,7 @@ on:
       web_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/web"
+        default: "ghcr.io/firezone/web"
       web_tag:
         required: false
         type: string
@@ -30,7 +30,7 @@ on:
       elixir_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/elixir"
+        default: "ghcr.io/firezone/elixir"
       elixir_tag:
         required: false
         type: string
@@ -38,7 +38,7 @@ on:
       relay_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay"
+        default: "ghcr.io/firezone/debug/relay"
       relay_tag:
         required: false
         type: string
@@ -46,7 +46,7 @@ on:
       gateway_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway"
+        default: "ghcr.io/firezone/debug/gateway"
       gateway_tag:
         required: false
         type: string
@@ -54,7 +54,7 @@ on:
       client_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client"
+        default: "ghcr.io/firezone/debug/client"
       client_tag:
         required: false
         type: string
@@ -62,7 +62,7 @@ on:
       http_test_server_image:
         required: false
         type: string
-        default: "us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server"
+        default: "ghcr.io/firezone/debug/http-test-server"
       http_test_server_tag:
         required: false
         type: string
@@ -115,7 +115,7 @@ jobs:
           - name: systemd/dns-systemd-resolved
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: ./.github/actions/gcp-docker-login
+      - uses: ./.github/actions/ghcr-docker-login
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Start docker compose in the background

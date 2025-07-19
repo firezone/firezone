@@ -33,15 +33,6 @@ outputs:
 runs:
   using: "composite"
   steps:
-    - uses: ./.github/actions/gcp-docker-login
-    - run: |
-        echo "SCCACHE_GCS_BUCKET=firezone-staging-sccache" >> $GITHUB_ENV
-        echo "SCCACHE_GCS_RW_MODE=READ_WRITE" >> $GITHUB_ENV
-      shell: bash
-    - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-    - run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
-      shell: bash
-
     - name: Disable Windows Defender
       if: ${{ runner.os == 'Windows' }}
       run: Set-MpPreference -DisableRealtimeMonitoring $true
@@ -71,9 +62,3 @@ runs:
 
         echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
       shell: bash
-
-    - name: Start sccache
-      run: $SCCACHE_PATH --start-server
-      shell: bash
-      env:
-        SCCACHE_CONF: ".github/actions/setup-rust/sccache.toml"

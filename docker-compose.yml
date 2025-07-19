@@ -52,11 +52,9 @@ services:
   web:
     build:
       context: elixir
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/web:main
       args:
         APPLICATION_NAME: web
-    image: ${WEB_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/web}:${WEB_TAG:-main}
+    image: ${WEB_IMAGE:-ghcr.io/firezone/web}:${WEB_TAG:-main}
     hostname: web.cluster.local
     ports:
       - 8080:8080/tcp
@@ -124,11 +122,9 @@ services:
   api:
     build:
       context: elixir
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/api:main
       args:
         APPLICATION_NAME: api
-    image: ${API_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/api}:${API_TAG:-main}
+    image: ${API_IMAGE:-ghcr.io/firezone/api}:${API_TAG:-main}
     hostname: api.cluster.local
     ports:
       - 8081:8081/tcp
@@ -196,11 +192,9 @@ services:
   domain:
     build:
       context: elixir
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/domain:main
       args:
         APPLICATION_NAME: domain
-    image: ${DOMAIN_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/domain}:${DOMAIN_TAG:-main}
+    image: ${DOMAIN_IMAGE:-ghcr.io/firezone/domain}:${DOMAIN_TAG:-main}
     hostname: domain.cluster.local
     environment:
       # Erlang
@@ -263,11 +257,9 @@ services:
     build:
       context: elixir
       target: compiler
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/elixir:main
       args:
         APPLICATION_NAME: api
-    image: ${ELIXIR_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/elixir}:${ELIXIR_TAG:-main}
+    image: ${ELIXIR_IMAGE:-ghcr.io/firezone/elixir}:${ELIXIR_TAG:-main}
     hostname: elixir
     environment:
       # Web Server
@@ -332,11 +324,9 @@ services:
       target: debug
       context: rust
       dockerfile: Dockerfile
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/client:main
       args:
         PACKAGE: firezone-headless-client
-    image: ${CLIENT_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/client}:${CLIENT_TAG:-main}
+    image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
     privileged: true # Needed to tune `sysctl` inside container.
     cap_add:
       - NET_ADMIN
@@ -365,11 +355,9 @@ services:
       target: debug
       context: rust
       dockerfile: Dockerfile
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/gateway:main
       args:
         PACKAGE: firezone-gateway
-    image: ${GATEWAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/gateway}:${GATEWAY_TAG:-main}
+    image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -402,11 +390,9 @@ services:
       target: debug
       context: rust
       dockerfile: Dockerfile
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/http-test-server:main
       args:
         PACKAGE: http-test-server
-    image: ${HTTP_TEST_SERVER_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
+    image: ${HTTP_TEST_SERVER_IMAGE:-ghcr.io/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
     environment:
       PORT: 80
     networks:
@@ -452,11 +438,9 @@ services:
       target: debug
       context: rust
       dockerfile: Dockerfile
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-main}
+    image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -493,11 +477,9 @@ services:
       target: debug
       context: rust
       dockerfile: Dockerfile
-      cache_from:
-        - type=registry,ref=us-east1-docker.pkg.dev/firezone-staging/cache/relay:main
       args:
         PACKAGE: firezone-relay
-    image: ${RELAY_IMAGE:-us-east1-docker.pkg.dev/firezone-staging/firezone/debug/relay}:${RELAY_TAG:-main}
+    image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
