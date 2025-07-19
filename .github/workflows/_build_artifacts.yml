@@ -41,6 +41,7 @@ permissions:
   # write permission is required to create a github release
   contents: write
   id-token: write
+  packages: write
 
 jobs:
   control-plane:
@@ -76,8 +77,10 @@ jobs:
           ref: ${{ inputs.sha }}
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - uses: ./.github/actions/gcp-docker-login
+      - uses: ./.github/actions/ghcr-docker-login
         id: login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -99,10 +102,10 @@ jobs:
           target: ${{ matrix.target }}
           context: elixir
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.image_name }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.image_name }}:main
           cache-to: |
-            type=registry,ref=${{steps.login.outputs.registry}}/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{steps.login.outputs.registry}}/firezone/cache/${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max
           push: true
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
@@ -263,8 +266,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.sha }}
-      - uses: ./.github/actions/gcp-docker-login
+      - uses: ./.github/actions/ghcr-docker-login
         id: login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: ./.github/actions/setup-rust
         with:
           targets: ${{ matrix.arch.target }}
@@ -370,10 +375,10 @@ jobs:
             TARGET=${{ matrix.arch.target }}
           context: rust
           cache-from: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:main
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.image_name }}:main
           cache-to: |
-            type=registry,ref=${{ steps.login.outputs.registry }}/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
+            type=registry,ref=${{ steps.login.outputs.registry }}/firezone/cache/${{ matrix.name.image_name }}:${{ env.CACHE_TAG }},mode=max
           target: ${{ matrix.stage }}
           outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
       - name: Export digest
@@ -422,8 +427,10 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           ref: ${{ inputs.sha }}
-      - uses: ./.github/actions/gcp-docker-login
+      - uses: ./.github/actions/ghcr-docker-login
         id: login
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Download digests
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
