@@ -90,7 +90,7 @@ defmodule Domain.MixProject do
       {:opentelemetry_exporter, "~> 1.8"},
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_finch, "~> 0.2.0"},
-      {:sentry, "~> 10.0"},
+      {:sentry, "~> 11.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
 
