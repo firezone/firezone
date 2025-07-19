@@ -344,29 +344,23 @@ impl ClientState {
                 .remove(&(*gid, domain))
                 .unwrap_or_default();
 
-            let Some(intent) = self.dns_resource_nat.update(
+            match self.dns_resource_nat.update(
                 domain.clone(),
                 *gid,
                 *rid,
                 proxy_ips,
                 packets_for_domain,
                 now,
-            ) else {
-                continue;
-            };
+            ) {
+                Ok(()) => {}
+                Err(e) => {
+                    tracing::warn!("Failed to update DNS resource NAT state: {e:#}");
+                    continue;
+                }
+            }
 
             self.peers
                 .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
-
-            tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
-
-            encapsulate_and_buffer(
-                intent,
-                *gid,
-                now,
-                &mut self.node,
-                &mut self.buffered_transmits,
-            );
         }
     }
 
@@ -539,7 +533,7 @@ impl ClientState {
         if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
             packet = self
                 .dns_resource_nat
-                .handle_outgoing(peer.id(), domain, packet)?;
+                .handle_outgoing(peer.id(), domain, packet, now)?;
         }
 
         let gid = peer.id();
@@ -1028,6 +1022,7 @@ impl ClientState {
             .handle_timeout(now);
 
         self.advance_dns_tcp_sockets(now);
+        self.send_dns_resource_nat_packets(now);
     }
 
     /// Advance the TCP DNS server and client state machines.
@@ -1080,6 +1075,20 @@ impl ClientState {
             }
 
             break;
+        }
+    }
+
+    fn send_dns_resource_nat_packets(&mut self, now: Instant) {
+        while let Some((gid, domain, packet)) = self.dns_resource_nat.poll_packet() {
+            tracing::debug!(%gid, %domain, "Setting up DNS resource NAT");
+
+            encapsulate_and_buffer(
+                packet,
+                gid,
+                now,
+                &mut self.node,
+                &mut self.buffered_transmits,
+            );
         }
     }
 
