@@ -18,7 +18,7 @@ updates:
       - "/"
       # Dependabot doesn't look in these by default
       - "/.github/actions/create-sentry-release"
-      - "/.github/actions/gcp-docker-login"
+      - "/.github/actions/ghcr-docker-login"
       - "/.github/actions/setup-android"
       - "/.github/actions/setup-elixir"
       - "/.github/actions/setup-node"
