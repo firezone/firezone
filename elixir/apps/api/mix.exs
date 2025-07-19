@@ -53,7 +53,7 @@ defmodule API.MixProject do
       {:opentelemetry_telemetry, "~> 1.1.1", override: true},
       {:opentelemetry_cowboy, "~> 1.0"},
       {:opentelemetry_phoenix, "~> 2.0"},
-      {:sentry, "~> 10.0"},
+      {:sentry, "~> 11.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
 
