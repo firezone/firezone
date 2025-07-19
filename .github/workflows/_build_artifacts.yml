@@ -322,16 +322,6 @@ jobs:
             ${{ env.BINARY_DEST_PATH }}.sha256sum.txt \
             "$clobber" \
             --repo ${{ github.repository }}
-      - name: Copy binaries to Google Cloud Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && contains(fromJSON('["gateway", "client"]'), matrix.name.image_name) }}
-        run: |
-          gcloud storage cp \
-            "$BINARY_DEST_PATH" \
-            gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
-
-          gcloud storage cp \
-            "$BINARY_DEST_PATH".sha256sum.txt \
-            gs://firezone-staging-artifacts/firezone-${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
