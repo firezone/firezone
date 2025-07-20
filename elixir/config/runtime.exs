@@ -14,14 +14,12 @@ if config_env() == :prod do
            {:username, env_var_to_config!(:database_user)},
            {:port, env_var_to_config!(:database_port)},
            {:pool_size, env_var_to_config!(:database_pool_size)},
+           {:queue_target, env_var_to_config!(:database_queue_target)},
+           {:queue_interval, env_var_to_config!(:database_queue_interval)},
            {:ssl, env_var_to_config!(:database_ssl_enabled)},
            {:ssl_opts, env_var_to_config!(:database_ssl_opts)},
            {:parameters, env_var_to_config!(:database_parameters)}
          ] ++
-           if(env_var_to_config(:background_jobs_enabled),
-             do: [{:queue_target, 5_000}],
-             else: []
-           ) ++
            if(env_var_to_config(:database_password),
              do: [{:password, env_var_to_config!(:database_password)}],
              else: []
