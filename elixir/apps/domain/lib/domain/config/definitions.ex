@@ -67,6 +67,8 @@ defmodule Domain.Config.Definitions do
          :database_user,
          :database_password,
          :database_pool_size,
+         :database_queue_target,
+         :database_queue_interval,
          :database_ssl_enabled,
          :database_ssl_opts,
          :database_parameters,
@@ -299,6 +301,16 @@ defmodule Domain.Config.Definitions do
   defconfig(:database_pool_size, :integer,
     default: fn -> :erlang.system_info(:logical_processors_available) * 2 end
   )
+
+  @doc """
+  The target threshold for the length of time in milliseconds that a query should wait in the queue
+  """
+  defconfig(:database_queue_target, :integer, default: 500)
+
+  @doc """
+  How often to check for queries that exceeded 2 * `database_queue_target` milliseconds
+  """
+  defconfig(:database_queue_interval, :integer, default: 1000)
 
   @doc """
   Whether to connect to the database over SSL.
