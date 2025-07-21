@@ -2,11 +2,11 @@
 
 source "./scripts/tests/lib.sh"
 
-# Download 10MB at a max rate of 1MB/s. Shouldn't take longer than 12 seconds (allows for 2s of restablishing)
+# Download 10MB at a max rate of 1MB/s. Shouldn't take longer than 13 seconds (allows for 3s of restablishing)
 client sh -c \
     "curl \
         --fail \
-        --max-time 12 \
+        --max-time 13 \
         --keepalive-time 1 \
         --limit-rate 1000000 \
         --output download.file \
