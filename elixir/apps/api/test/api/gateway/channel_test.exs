@@ -145,11 +145,19 @@ defmodule API.Gateway.ChannelTest do
 
     test "pushes allow_access message", %{
       client: client,
+      account: account,
       gateway: gateway,
       resource: resource,
       relay: relay,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -164,6 +172,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -206,6 +215,13 @@ defmodule API.Gateway.ChannelTest do
           connections: [%{gateway_group_id: internet_gateway_group.id}]
         )
 
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -220,6 +236,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -239,7 +256,81 @@ defmodule API.Gateway.ChannelTest do
       assert DateTime.from_unix!(payload.expires_at) == DateTime.truncate(expires_at, :second)
     end
 
-    test "handles flow deletion event", %{
+    test "does not send reject_access if another flow is granting access to the same client and resource",
+         %{
+           account: account,
+           client: client,
+           resource: resource,
+           gateway: gateway,
+           relay: relay,
+           socket: socket,
+           subject: subject
+         } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      client_payload = "RTC_SD_or_DNS_Q"
+
+      stamp_secret = Ecto.UUID.generate()
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+
+      flow1 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          resource: resource
+        )
+
+      flow2 =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          resource: resource
+        )
+
+      data = %{
+        "id" => flow1.id,
+        "client_id" => client.id,
+        "resource_id" => resource.id,
+        "account_id" => account.id
+      }
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: resource,
+           flow_id: flow1.id,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: resource,
+           flow_id: flow2.id,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      Events.Hooks.Flows.on_delete(data)
+
+      refute_push "reject_access", %{}
+    end
+
+    test "handles flow deletion event when access is removed", %{
       account: account,
       client: client,
       resource: resource,
@@ -261,14 +352,16 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       data = %{
         "id" => flow.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
-        "account_id" => account.id
+        "account_id" => account.id,
+        "gateway_id" => gateway.id
       }
 
       send(
@@ -277,6 +370,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -313,6 +407,15 @@ defmodule API.Gateway.ChannelTest do
       stamp_secret = Ecto.UUID.generate()
       :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          resource: resource,
+          gateway: gateway
+        )
+
       other_client = Fixtures.Clients.create_client(account: account, subject: subject)
 
       other_resource =
@@ -326,7 +429,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: other_client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       other_flow2 =
@@ -334,7 +438,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: other_resource
+          resource: other_resource,
+          gateway: gateway
         )
 
       # Build up flow cache
@@ -344,6 +449,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -357,6 +463,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: other_client,
            resource: resource,
+           flow_id: other_flow1.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -370,6 +477,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: other_resource,
+           flow_id: other_flow2.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -381,16 +489,17 @@ defmodule API.Gateway.ChannelTest do
                :sys.get_state(socket.channel_pid)
 
       assert flows == %{
-               {client.id, resource.id} => expires_at,
-               {other_client.id, resource.id} => expires_at,
-               {client.id, other_resource.id} => expires_at
+               {client.id, resource.id} => %{flow.id => expires_at},
+               {other_client.id, resource.id} => %{other_flow1.id => expires_at},
+               {client.id, other_resource.id} => %{other_flow2.id => expires_at}
              }
 
       data = %{
         "id" => other_flow1.id,
         "client_id" => other_flow1.client_id,
         "resource_id" => other_flow1.resource_id,
-        "account_id" => other_flow1.account_id
+        "account_id" => other_flow1.account_id,
+        "gateway_id" => other_flow1.gateway_id
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -407,7 +516,8 @@ defmodule API.Gateway.ChannelTest do
         "id" => other_flow2.id,
         "client_id" => other_flow2.client_id,
         "resource_id" => other_flow2.resource_id,
-        "account_id" => other_flow2.account_id
+        "account_id" => other_flow2.account_id,
+        "gateway_id" => other_flow2.gateway_id
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -425,11 +535,19 @@ defmodule API.Gateway.ChannelTest do
 
     test "ignores other resource updates", %{
       client: client,
+      account: account,
       gateway: gateway,
       resource: resource,
       relay: relay,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -443,6 +561,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -462,10 +581,11 @@ defmodule API.Gateway.ChannelTest do
 
       client_id = client.id
       resource_id = resource.id
+      flow_id = flow.id
 
       assert %{
                assigns: %{
-                 flows: %{{^client_id, ^resource_id} => ^expires_at}
+                 flows: %{{^client_id, ^resource_id} => %{^flow_id => ^expires_at}}
                }
              } = :sys.get_state(socket.channel_pid)
 
@@ -475,10 +595,18 @@ defmodule API.Gateway.ChannelTest do
     test "sends resource_updated when filters change", %{
       client: client,
       gateway: gateway,
+      account: account,
       resource: resource,
       relay: relay,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -493,6 +621,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
@@ -700,11 +829,19 @@ defmodule API.Gateway.ChannelTest do
 
     test "pushes request_connection message", %{
       client: client,
+      account: account,
       resource: resource,
       gateway: gateway,
       global_relay: relay,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -720,6 +857,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
@@ -782,7 +920,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       send(
@@ -791,6 +930,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
@@ -803,7 +943,8 @@ defmodule API.Gateway.ChannelTest do
         "id" => flow.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
-        "account_id" => account.id
+        "account_id" => account.id,
+        "gateway_id" => gateway.id
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -819,10 +960,18 @@ defmodule API.Gateway.ChannelTest do
 
     test "pushes authorize_flow message", %{
       client: client,
+      account: account,
       gateway: gateway,
       resource: resource,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -839,6 +988,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -881,8 +1031,16 @@ defmodule API.Gateway.ChannelTest do
       client: client,
       gateway: gateway,
       resource: resource,
+      account: account,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       preshared_key = "PSK"
@@ -898,6 +1056,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: nil,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -930,7 +1089,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       send(
@@ -939,6 +1099,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -951,7 +1112,8 @@ defmodule API.Gateway.ChannelTest do
         "id" => flow.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
-        "account_id" => account.id
+        "account_id" => account.id,
+        "gateway_id" => gateway.id
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -974,10 +1136,18 @@ defmodule API.Gateway.ChannelTest do
 
     test "flow_authorized forwards reply to the client channel", %{
       client: client,
+      account: account,
       resource: resource,
       gateway: gateway,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -1000,6 +1170,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
@@ -1038,11 +1209,19 @@ defmodule API.Gateway.ChannelTest do
 
     test "connection ready forwards RFC session description to the client channel", %{
       client: client,
+      account: account,
       resource: resource,
       relay: relay,
       gateway: gateway,
       socket: socket
     } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource
+        )
+
       channel_pid = self()
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
@@ -1059,6 +1238,7 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
+           flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: payload,
            client_preshared_key: preshared_key

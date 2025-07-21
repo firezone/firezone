@@ -63,11 +63,14 @@ defmodule API.Client.Channel do
 
   # Called immediately after the client joins the channel
   def handle_info(:after_join, socket) do
-    # Initialize the cache
+    # Initialize the cache. Flows contains active flows for this client, so we
+    # can toggle the affected resource if the active flow is deleted. That will allow
+    # the client to create a new flow if the resource is still authorized.
     socket =
       socket
       |> hydrate_policies_and_resources()
       |> hydrate_membership_group_ids()
+      |> assign(flows: MapSet.new())
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -243,20 +246,34 @@ defmodule API.Client.Channel do
 
   # FLOWS
 
-  # If we're authorized for a resource for this flow, we need to push resource_deleted
-  # followed by resource_created_or_updated in order to reset the access state on the
-  # client.
-  def handle_info({:deleted, %Flows.Flow{} = flow}, socket) do
-    # 1. Check if this possibly affects us
-    if resource = socket.assigns.resources[flow.resource_id] do
-      # 1. If so, check if we're currently authorized for this resource
-      if resource.id in Enum.map(authorized_resources(socket), & &1.id) do
-        push(socket, "resource_deleted", resource.id)
-        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-      end
-    end
+  def handle_info(
+        {:deleted, %Flows.Flow{client_id: client_id} = flow},
+        %{assigns: %{client: %{id: id}}} = socket
+      )
+      when client_id == id do
+    if MapSet.member?(socket.assigns.flows, flow.id) do
+      # If an active flow is deleted, we need to recreate it.
+      # To do that, we need to flap the resource on the client because it doesn't track flows.
+      # The gateway is also tracking flows and will have sent a reject_access for this client/resource
+      # if this was the last flow in its cache that was authorizing it.
+      push(socket, "resource_deleted", flow.resource_id)
 
-    {:noreply, socket}
+      resource = Map.get(socket.assigns.resources, flow.resource_id)
+
+      # Access to resource is still allowed, allow creating a new flow
+      if not is_nil(resource) and resource.id in Enum.map(authorized_resources(socket), & &1.id) do
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      else
+        Logger.warning("Active flow deleted for resource but resource not found in socket state",
+          resource_id: flow.resource_id,
+          flow_id: flow.id
+        )
+      end
+
+      {:noreply, assign(socket, flows: MapSet.delete(socket.assigns.flows, flow.id))}
+    else
+      {:noreply, socket}
+    end
   end
 
   # GATEWAY_GROUPS
@@ -708,7 +725,7 @@ defmodule API.Client.Channel do
 
       # TODO: Optimization
       # Move this to a Task.start that completes after broadcasting authorize_flow
-      {:ok, _flow} =
+      {:ok, flow} =
         Flows.create_flow(
           socket.assigns.client,
           gateway,
@@ -727,11 +744,14 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
+             flow_id: flow.id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key
            }}
         )
+
+      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
 
       {:noreply, socket}
     else
@@ -860,7 +880,7 @@ defmodule API.Client.Channel do
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization
-      {:ok, _flow} =
+      {:ok, flow} =
         Flows.create_flow(
           socket.assigns.client,
           gateway,
@@ -876,10 +896,13 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
+             flow_id: flow.id,
              authorization_expires_at: expires_at,
              client_payload: payload
            }}
         )
+
+      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
 
       {:noreply, socket}
     else
@@ -917,7 +940,7 @@ defmodule API.Client.Channel do
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization
-      {:ok, _flow} =
+      {:ok, flow} =
         Flows.create_flow(
           socket.assigns.client,
           gateway,
@@ -933,11 +956,14 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
+             flow_id: flow.id,
              authorization_expires_at: expires_at,
              client_payload: client_payload,
              client_preshared_key: preshared_key
            }}
         )
+
+      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
 
       {:noreply, socket}
     else
