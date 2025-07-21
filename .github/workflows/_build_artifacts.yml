@@ -208,7 +208,7 @@ jobs:
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
               if [[ ! -x /tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc ]]; then
-                gcloud storage cp gs://firezone-ci-dependencies/aarch64-linux-musl-cross.tgz /tmp/
+                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/aarch64-linux-musl-cross.tgz -o /tmp/aarch64-linux-musl-cross.tgz
                 mkdir -p /tmp/toolchain
                 tar -xzf /tmp/aarch64-linux-musl-cross.tgz -C /tmp/toolchain
               fi
@@ -224,7 +224,7 @@ jobs:
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
               if [[ ! -x /tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc ]]; then
-                gcloud storage cp gs://firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz /tmp/
+                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/arm-linux-musleabihf-cross.tgz -o /tmp/arm-linux-musleabihf-cross.tgz
                 mkdir -p /tmp/toolchain
                 tar -xzf /tmp/arm-linux-musleabihf-cross.tgz -C /tmp/toolchain
               fi
