@@ -352,14 +352,16 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       data = %{
         "id" => flow.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
-        "account_id" => account.id
+        "account_id" => account.id,
+        "gateway_id" => gateway.id
       }
 
       send(
@@ -410,7 +412,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       other_client = Fixtures.Clients.create_client(account: account, subject: subject)
@@ -426,7 +429,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: other_client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       other_flow2 =
@@ -434,7 +438,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: other_resource
+          resource: other_resource,
+          gateway: gateway
         )
 
       # Build up flow cache
@@ -493,7 +498,8 @@ defmodule API.Gateway.ChannelTest do
         "id" => other_flow1.id,
         "client_id" => other_flow1.client_id,
         "resource_id" => other_flow1.resource_id,
-        "account_id" => other_flow1.account_id
+        "account_id" => other_flow1.account_id,
+        "gateway_id" => other_flow1.gateway_id
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -510,7 +516,8 @@ defmodule API.Gateway.ChannelTest do
         "id" => other_flow2.id,
         "client_id" => other_flow2.client_id,
         "resource_id" => other_flow2.resource_id,
-        "account_id" => other_flow2.account_id
+        "account_id" => other_flow2.account_id,
+        "gateway_id" => other_flow2.gateway_id
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -913,7 +920,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       send(
@@ -935,7 +943,8 @@ defmodule API.Gateway.ChannelTest do
         "id" => flow.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
-        "account_id" => account.id
+        "account_id" => account.id,
+        "gateway_id" => gateway.id
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -1080,7 +1089,8 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          resource: resource,
+          gateway: gateway
         )
 
       send(
@@ -1102,7 +1112,8 @@ defmodule API.Gateway.ChannelTest do
         "id" => flow.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
-        "account_id" => account.id
+        "account_id" => account.id,
+        "gateway_id" => gateway.id
       }
 
       Events.Hooks.Flows.on_delete(data)
