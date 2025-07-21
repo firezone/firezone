@@ -55,11 +55,17 @@ defmodule API.Gateway.Channel do
 
     now = DateTime.utc_now()
 
-    # Reject flows older than 14 days
+    # 1. Remove individual flows older than 14 days, then remove access entry if no flows left
     flows =
       socket.assigns.flows
-      |> Enum.reject(fn {_tuple, expires_at} -> DateTime.compare(expires_at, now) == :lt end)
-      |> Enum.into(%{})
+      |> Enum.map(fn {_tuple, flow_id_map} ->
+        Enum.reject(flow_id_map, fn {_flow_id, expires_at} ->
+          DateTime.compare(expires_at, now) == :lt
+        end)
+      end)
+      |> Enum.reject(fn {_tuple, flow_id_map} -> map_size(flow_id_map) == 0 end)
+
+    # The gateway has its own flow expiration, so no need to send `reject_access`
 
     {:noreply, assign(socket, flows: flows)}
   end
@@ -93,13 +99,20 @@ defmodule API.Gateway.Channel do
     tuple = {flow.client_id, flow.resource_id}
 
     socket =
-      if Map.has_key?(socket.assigns.flows, tuple) do
-        push(socket, "reject_access", %{
-          client_id: flow.client_id,
-          resource_id: flow.resource_id
-        })
+      if flow_map = Map.get(socket.assigns.flows, tuple) do
+        flow_map = Map.delete(flow_map, flow.id)
 
-        assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
+        if map_size(flow_map) == 0 do
+          # Send reject_access if this was the last flow granting access for this client/resource
+          push(socket, "reject_access", %{
+            client_id: flow.client_id,
+            resource_id: flow.resource_id
+          })
+
+          assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
+        else
+          assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))
+        end
       else
         socket
       end
@@ -275,6 +288,7 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
+      flow_id: flow_id,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
       preshared_key: preshared_key
@@ -303,7 +317,13 @@ defmodule API.Gateway.Channel do
     })
 
     # Start tracking flow
-    flows = Map.put(socket.assigns.flows, {client.id, resource.id}, authorization_expires_at)
+    tuple = {client.id, resource.id}
+
+    flow_map =
+      Map.get(socket.assigns.flows, tuple, %{})
+      |> Map.put(flow_id, authorization_expires_at)
+
+    flows = Map.put(socket.assigns.flows, tuple, flow_map)
     socket = assign(socket, flows: flows)
 
     {:noreply, socket}
@@ -318,6 +338,7 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
+      flow_id: flow_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
     } = attrs
@@ -346,7 +367,13 @@ defmodule API.Gateway.Channel do
         })
 
         # Start tracking the flow
-        flows = Map.put(socket.assigns.flows, {client.id, resource.id}, authorization_expires_at)
+        tuple = {client.id, resource.id}
+
+        flow_map =
+          Map.get(socket.assigns.flows, tuple, %{})
+          |> Map.put(flow_id, authorization_expires_at)
+
+        flows = Map.put(socket.assigns.flows, tuple, flow_map)
         socket = assign(socket, flows: flows)
 
         {:noreply, socket}
@@ -365,6 +392,7 @@ defmodule API.Gateway.Channel do
     %{
       client: client,
       resource: resource,
+      flow_id: flow_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload,
       client_preshared_key: preshared_key
@@ -391,7 +419,13 @@ defmodule API.Gateway.Channel do
         })
 
         # Start tracking the flow
-        flows = Map.put(socket.assigns.flows, {client.id, resource.id}, authorization_expires_at)
+        tuple = {client.id, resource.id}
+
+        flow_map =
+          Map.get(socket.assigns.flows, tuple, %{})
+          |> Map.put(flow_id, authorization_expires_at)
+
+        flows = Map.put(socket.assigns.flows, tuple, flow_map)
         socket = assign(socket, flows: flows)
 
         {:noreply, socket}
@@ -585,6 +619,21 @@ defmodule API.Gateway.Channel do
       } do
       flows =
         Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
+        # Reduces [ {client_id, resource_id}, {flow_id, inserted_at} ]
+        #
+        # to %{ {client_id, resource_id} => %{flow_id => expires_at} }
+        #
+        # This data structure is used to efficiently:
+        #   1. Check if there are any active flows remaining for this client/resource?
+        #   2. Remove a deleted flow
+        |> Enum.reduce(%{}, fn {{client_id, resource_id}, {flow_id, inserted_at}}, acc ->
+          # Assume all flows have a 14 day expiration if they still exist
+          expires_at = DateTime.add(inserted_at, 14, :day)
+
+          flow_id_map = Map.get(acc, {client_id, resource_id}, %{})
+
+          Map.put(acc, {client_id, resource_id}, Map.put(flow_id_map, flow_id, expires_at))
+        end)
         |> Map.new()
 
       assign(socket, flows: flows)
