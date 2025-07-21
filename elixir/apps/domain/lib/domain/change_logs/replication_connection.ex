@@ -17,6 +17,10 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay_group"}), do: state
 
   # Handle accounts specially
+  def on_write(state, lsn, op, "accounts", %{"id" => account_id} = old_data, data) do
+    buffer(state, lsn, op, "accounts", account_id, old_data, data)
+  end
+
   def on_write(state, lsn, op, "accounts", old_data, %{"id" => account_id} = data) do
     buffer(state, lsn, op, "accounts", account_id, old_data, data)
   end
