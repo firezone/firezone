@@ -31,28 +31,4 @@ done
 
 ## Adding a new repository to Google Cloud workload identity
 
-We are using a separate Google Cloud project for GitHub Actions workload
-federation, if you need `auth` action to work from a new repo - it needs to be
-added to the principal set of a GitHub Actions service account:
-
-```
-export REPO="firezone/firezone"
-gcloud iam service-accounts add-iam-policy-binding "github-actions@github-iam-387915.iam.gserviceaccount.com" \
-  --project="github-iam-387915" \
-  --role="roles/iam.workloadIdentityUser" \
-  --member="principalSet://iam.googleapis.com/projects/397012414171/locations/global/workloadIdentityPools/github-actions-pool/attribute.repository/${REPO}"
-```
-
-for more details see https://github.com/google-github-actions/auth.
-
-## Busting the GCP Docker layer cache
-
-If you find yourself hitting strange Docker image issues like Rust binaries
-failing to start inside Docker images, you may need to bust the GCP layer cache.
-
-To do so:
-
-- Login to [GCP](console.cloud.google.com)
-- Ensure `firezone-staging` project is selected
-- Navigate to the artifact registry service
-- Delete all image versions for the appropriate `cache/` image repository
+Use Terraform configuration for this. See the `iam.tf` configuration in the https://github.com/firezone/infra repo for an example.
