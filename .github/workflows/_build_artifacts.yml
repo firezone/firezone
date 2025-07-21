@@ -105,7 +105,7 @@ jobs:
             type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
             type=gha,scope=${{ matrix.image_name }}:main
           cache-to: |
-            type=gha,scope=${{ matrix.image_name}}:${{ env.CACHE_TAG }},mode=max,ignore-error=true
+            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }},mode=max,ignore-error=true
           push: true
           tags: |
             ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
