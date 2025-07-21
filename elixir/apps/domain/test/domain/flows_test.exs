@@ -420,7 +420,7 @@ defmodule Domain.FlowsTest do
   end
 
   describe "all_gateway_flows_for_cache!/1" do
-    test "returns the later of two client_id/resource_id pair", %{
+    test "returns all flows for client_id/resource_id pair", %{
       account: account,
       client: client,
       gateway: gateway,
@@ -456,32 +456,10 @@ defmodule Domain.FlowsTest do
 
       assert DateTime.compare(flow2.inserted_at, flow1.inserted_at) == :gt
 
-      assert [{{flow2.client_id, flow2.resource_id}, flow2.inserted_at}] ==
-               Flows.all_gateway_flows_for_cache!(gateway)
-    end
+      flows = all_gateway_flows_for_cache!(gateway)
 
-    test "returns flow when only one unique one exists", %{
-      account: account,
-      client: client,
-      gateway: gateway,
-      membership: membership,
-      resource: resource,
-      policy: policy,
-      subject: subject
-    } do
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          subject: subject,
-          client: client,
-          actor_group_membership: membership,
-          policy: policy,
-          resource: resource,
-          gateway: gateway
-        )
-
-      assert [{{flow.client_id, flow.resource_id}, flow.inserted_at}] ==
-               Flows.all_gateway_flows_for_cache!(gateway)
+      assert {{flow1.client_id, flow1.resource_id}, {flow1.id, flow1.inserted_at}} in flows
+      assert {{flow2.client_id, flow2.resource_id}, {flow2.id, flow2.inserted_at}} in flows
     end
   end
 

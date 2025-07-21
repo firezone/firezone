@@ -26,10 +26,9 @@ defmodule Domain.Flows.Flow.Query do
     cutoff = DateTime.utc_now() |> DateTime.add(-14, :day)
 
     where(queryable, [flows: flows], flows.inserted_at > ^cutoff)
-    |> group_by([flows: flows], [flows.client_id, flows.resource_id])
     |> select(
       [flows: flows],
-      {{flows.client_id, flows.resource_id}, max(flows.inserted_at)}
+      {{flows.client_id, flows.resource_id}, {flows.id, flows.inserted_at}}
     )
   end
 
