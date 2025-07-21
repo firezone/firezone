@@ -326,4 +326,4 @@ USER default
 # Tini would become an entrypoin script and would take care of zombie reaping no matter how you start the VM.
 ENTRYPOINT ["/sbin/tini", "--"]
 
-CMD bin/server
+CMD ["bin/server"]
