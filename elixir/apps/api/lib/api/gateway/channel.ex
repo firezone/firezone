@@ -58,12 +58,18 @@ defmodule API.Gateway.Channel do
     # 1. Remove individual flows older than 14 days, then remove access entry if no flows left
     flows =
       socket.assigns.flows
-      |> Enum.map(fn {_tuple, flow_id_map} ->
-        Enum.reject(flow_id_map, fn {_flow_id, expires_at} ->
-          DateTime.compare(expires_at, now) == :lt
-        end)
+      |> Enum.map(fn {tuple, flow_id_map} ->
+        flow_id_map =
+          Enum.reject(flow_id_map, fn {_flow_id, expires_at} ->
+            DateTime.compare(expires_at, now) == :lt
+          end)
+          |> Enum.into(%{})
+
+        {tuple, flow_id_map}
       end)
+      |> Enum.into(%{})
       |> Enum.reject(fn {_tuple, flow_id_map} -> map_size(flow_id_map) == 0 end)
+      |> Enum.into(%{})
 
     # The gateway has its own flow expiration, so no need to send `reject_access`
 
@@ -95,7 +101,13 @@ defmodule API.Gateway.Channel do
 
   # FLOWS
 
-  def handle_info({:deleted, %Flows.Flow{} = flow}, socket) do
+  def handle_info(
+        {:deleted, %Flows.Flow{gateway_id: gateway_id} = flow},
+        %{
+          assigns: %{gateway: %{id: id}}
+        } = socket
+      )
+      when gateway_id == id do
     tuple = {flow.client_id, flow.resource_id}
 
     socket =
@@ -634,7 +646,6 @@ defmodule API.Gateway.Channel do
 
           Map.put(acc, {client_id, resource_id}, Map.put(flow_id_map, flow_id, expires_at))
         end)
-        |> Map.new()
 
       assign(socket, flows: flows)
     end

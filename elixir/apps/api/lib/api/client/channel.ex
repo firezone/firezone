@@ -63,11 +63,14 @@ defmodule API.Client.Channel do
 
   # Called immediately after the client joins the channel
   def handle_info(:after_join, socket) do
-    # Initialize the cache
+    # Initialize the cache. Flows contains active flows for this client, so we
+    # can toggle the affected resource if the active flow is deleted. That will allow
+    # the client to create a new flow if the resource is still authorized.
     socket =
       socket
       |> hydrate_policies_and_resources()
       |> hydrate_membership_group_ids()
+      |> assign(flows: MapSet.new())
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -243,13 +246,34 @@ defmodule API.Client.Channel do
 
   # FLOWS
 
-  def handle_info({:deleted, %Flows.Flow{}}, socket) do
-    # Any change in flows has already been handled in the Gateway as a `reject_access` message.
-    # If the list of authorized resources has meaningfully changed, we should have received
-    # a relevant Resource, Policy or some other event that would have updated our state.
+  def handle_info(
+        {:deleted, %Flows.Flow{client_id: client_id} = flow},
+        %{assigns: %{client: %{id: id}}} = socket
+      )
+      when client_id == id do
+    if MapSet.member?(socket.assigns.flows, flow.id) do
+      # If an active flow is deleted, we need to recreate it.
+      # To do that, we need to flap the resource on the client because it doesn't track flows.
+      # The gateway is also tracking flows and will have sent a reject_access for this client/resource
+      # if this was the last flow in its cache that was authorizing it.
+      push(socket, "resource_deleted", flow.resource_id)
 
-    # So this is essentially a no-op for us.
-    {:noreply, socket}
+      # If access was actually removed, we'll receive a different WAL message for the
+      # Resource/Policy/Membership, and access will be removed from the client there.
+      # Here, we just need to reset the flow.
+      if resource = Map.get(socket.assigns.resources, flow.resource_id) do
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      else
+        Logger.warning("Active flow deleted for resource but resource not found in socket state",
+          resource_id: flow.resource_id,
+          flow_id: flow.id
+        )
+      end
+
+      {:noreply, assign(socket, flows: MapSet.delete(socket.assigns.flows, flow.id))}
+    else
+      {:noreply, socket}
+    end
   end
 
   # GATEWAY_GROUPS
@@ -727,6 +751,8 @@ defmodule API.Client.Channel do
            }}
         )
 
+      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
+
       {:noreply, socket}
     else
       {:error, :not_found} ->
@@ -876,6 +902,8 @@ defmodule API.Client.Channel do
            }}
         )
 
+      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
+
       {:noreply, socket}
     else
       {:error, :not_found} ->
@@ -934,6 +962,8 @@ defmodule API.Client.Channel do
              client_preshared_key: preshared_key
            }}
         )
+
+      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
 
       {:noreply, socket}
     else
