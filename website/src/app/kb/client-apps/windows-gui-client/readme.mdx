@@ -141,7 +141,7 @@ Good output
 ```text
 Status   Name               DisplayName
 ------   ----               -----------
-Running  FirezoneClientI... Firezone Client IPC
+Running  FirezoneClientI... Firezone Tunnel Service
 ```
 
 Bad output
@@ -149,8 +149,17 @@ Bad output
 ```text
 Status   Name               DisplayName
 ------   ----               -----------
-Stopped  FirezoneClientI... Firezone Client IPC
+Stopped  FirezoneClientI... Firezone Tunnel Service
 ```
+
+If the service isn't running or behaving not as expected, you can restart it
+with the following command:
+
+```pwsh
+Restart-Service -Name FirezoneClientTunnelService
+```
+
+Relaunch Firezone from the Start Menu afterwards.
 
 ### Check if Firezone is controlling DNS
 
