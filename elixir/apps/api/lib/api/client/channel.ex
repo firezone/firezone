@@ -258,10 +258,10 @@ defmodule API.Client.Channel do
       # if this was the last flow in its cache that was authorizing it.
       push(socket, "resource_deleted", flow.resource_id)
 
-      # If access was actually removed, we'll receive a different WAL message for the
-      # Resource/Policy/Membership, and access will be removed from the client there.
-      # Here, we just need to reset the flow.
-      if resource = Map.get(socket.assigns.resources, flow.resource_id) do
+      resource = Map.get(socket.assigns.resources, flow.resource_id)
+
+      # Access to resource is still allowed, allow creating a new flow
+      if resource and resource.id in Enum.map(authorized_resources(socket), & &1.id) do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       else
         Logger.warning("Active flow deleted for resource but resource not found in socket state",
