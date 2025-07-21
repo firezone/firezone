@@ -65,7 +65,7 @@ defmodule Web.MixProject do
       {:opentelemetry_cowboy, "~> 1.0"},
       {:opentelemetry_phoenix, "~> 2.0"},
       {:nimble_options, "~> 1.0", override: true},
-      {:sentry, "~> 10.0"},
+      {:sentry, "~> 11.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
 
