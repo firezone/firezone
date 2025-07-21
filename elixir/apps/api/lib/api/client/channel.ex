@@ -261,7 +261,7 @@ defmodule API.Client.Channel do
       resource = Map.get(socket.assigns.resources, flow.resource_id)
 
       # Access to resource is still allowed, allow creating a new flow
-      if resource and resource.id in Enum.map(authorized_resources(socket), & &1.id) do
+      if not is_nil(resource) and resource.id in Enum.map(authorized_resources(socket), & &1.id) do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       else
         Logger.warning("Active flow deleted for resource but resource not found in socket state",
