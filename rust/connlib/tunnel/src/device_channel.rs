@@ -1,7 +1,6 @@
 use ip_packet::IpPacket;
 use std::io;
 use std::task::{Context, Poll, Waker};
-use tracing::Level;
 use tun::Tun;
 
 pub struct Device {
@@ -43,10 +42,8 @@ impl Device {
         for packet in &buf[..n] {
             tracing::trace!(target: "wire::dev::recv", ?packet);
 
-            if tracing::event_enabled!(target: "wire::dns::qry", Level::TRACE) {
-                if let Some(query) = parse_dns_query(packet) {
-                    tracing::trace!(target: "wire::dns::qry", ?query);
-                }
+            if let Some(query) = parse_dns_query(packet) {
+                tracing::trace!(target: "wire::dns::qry", ?query);
             }
 
             if packet.is_fz_p2p_control() {
@@ -67,10 +64,8 @@ impl Device {
     }
 
     pub fn send(&mut self, packet: IpPacket) -> io::Result<()> {
-        if tracing::event_enabled!(target: "wire::dns::res", Level::TRACE) {
-            if let Some(response) = parse_dns_response(&packet) {
-                tracing::trace!(target: "wire::dns::res", ?response);
-            }
+        if let Some(response) = parse_dns_response(&packet) {
+            tracing::trace!(target: "wire::dns::res", ?response);
         }
 
         tracing::trace!(target: "wire::dev::send", ?packet);
