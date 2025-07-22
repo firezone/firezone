@@ -39,15 +39,7 @@ defmodule Domain.Replication.Manager do
         start_connection(state)
 
       pid when is_pid(pid) ->
-        case Process.alive?(pid) do
-          true ->
-            # Found existing alive process, link to it
-            link_existing_pid(pid, state)
-
-          false ->
-            # Process is dead but still registered, try to start a new one
-            start_connection(state)
-        end
+        link_existing_pid(pid, state)
     end
   end
 
