@@ -10,7 +10,7 @@ use opentelemetry::{KeyValue, metrics::UpDownCounter};
 
 #[derive(Clone)]
 pub struct BufferPool<B> {
-    inner: Arc<lockfree_object_pool::MutexObjectPool<BufferStorage<B>>>,
+    inner: Arc<lockfree_object_pool::SpinLockObjectPool<BufferStorage<B>>>,
 }
 
 impl<B> BufferPool<B>
@@ -25,7 +25,7 @@ where
             .build();
 
         Self {
-            inner: Arc::new(lockfree_object_pool::MutexObjectPool::new(
+            inner: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
                 move || {
                     BufferStorage::new(
                         B::with_capacity(capacity),
@@ -65,8 +65,8 @@ where
 }
 
 pub struct Buffer<B> {
-    inner: lockfree_object_pool::MutexOwnedReusable<BufferStorage<B>>,
-    pool: Arc<lockfree_object_pool::MutexObjectPool<BufferStorage<B>>>,
+    inner: lockfree_object_pool::SpinLockOwnedReusable<BufferStorage<B>>,
+    pool: Arc<lockfree_object_pool::SpinLockObjectPool<BufferStorage<B>>>,
 }
 
 impl Buffer<Vec<u8>> {
