@@ -825,8 +825,8 @@ where
                 else {
                     tracing::debug!(
                         %from,
-                        ?message,
-                        "Packet but a STUN message but we are not connected to this relay"
+                        packet = %hex::encode(packet),
+                        "Packet was a STUN message but we are not connected to this relay"
                     );
 
                     return ControlFlow::Break(()); // Stop processing the packet.
