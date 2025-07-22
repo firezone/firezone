@@ -808,16 +808,26 @@ where
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
+                let Ok(Ok(message)) = allocation::decode(packet) else {
+                    // False-positive, continue processing packet elsewhere
+                    return ControlFlow::Continue((from, packet, None));
+                };
+
                 let Some(allocation) = self
                     .allocations
                     .values_mut()
                     .find(|a| a.server().matches(from))
                 else {
-                    // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, packet, None));
+                    tracing::debug!(
+                        %from,
+                        ?message,
+                        "Packet but a STUN message but we are not connected to this relay"
+                    );
+
+                    return ControlFlow::Break(()); // Stop processing the packet.
                 };
 
-                if allocation.handle_input(from, local, packet, now) {
+                if allocation.handle_input(from, local, message, now) {
                     // Successfully handled the packet
                     return ControlFlow::Break(());
                 }
