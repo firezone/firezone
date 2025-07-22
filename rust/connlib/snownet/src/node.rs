@@ -805,6 +805,11 @@ where
         packet: &'p [u8],
         now: Instant,
     ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+        if from.port() != 3478 {
+            // Relays always send & receive from port 3478.
+            return ControlFlow::Continue((from, packet, None));
+        }
+
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
