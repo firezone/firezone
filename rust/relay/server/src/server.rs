@@ -39,8 +39,7 @@ use stun_codec::rfc8656::attributes::{
 };
 use stun_codec::rfc8656::errors::{AddressFamilyNotSupported, PeerAddressFamilyMismatch};
 use stun_codec::{Message, MessageClass, Method, TransactionId};
-use tracing::{Span, field};
-use tracing_core::field::display;
+use tracing::field;
 use uuid::Uuid;
 
 /// A sans-IO STUN & TURN server.
@@ -367,7 +366,6 @@ where
     ///
     /// - [`Some`] if there is an active channel on this allocation for this peer.
     ///   In that case, you should create a [`ChannelData`] message with the returned channel number and send it to the [`ClientSocket`].
-    #[tracing::instrument(level = "debug", skip_all, fields(%sender, %allocation, recipient, channel))]
     pub fn handle_peer_traffic(
         &mut self,
         msg: &[u8],
@@ -378,12 +376,10 @@ where
             .channel_and_client_by_port_and_peer
             .get(&(allocation, sender))
         else {
-            tracing::debug!(target: "relay", "no channel");
+            tracing::debug!(target: "relay", %sender, %allocation, "no channel");
 
             return None;
         };
-
-        Span::current().record("recipient", field::display(&client));
 
         self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
@@ -394,7 +390,6 @@ where
     }
 
     /// An allocation failed.
-    #[tracing::instrument(level = "debug", skip(self), fields(%allocation))]
     pub fn handle_allocation_failed(&mut self, allocation: AllocationPort) {
         self.delete_allocation(allocation)
     }
@@ -483,7 +478,6 @@ where
     /// Handle a TURN allocate request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-an-allocate-reque> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_allocate_request(
         &mut self,
         request: &Allocate,
@@ -493,10 +487,9 @@ where
         let username = self.verify_auth(request)?;
 
         if let Some(allocation) = self.allocations.get(&sender) {
-            Span::current().record("allocation", display(&allocation.port));
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
 
-            tracing::debug!(target: "relay", "{msg}: Client already has an allocation");
+            tracing::debug!(target: "relay", allocation = %allocation.port, %sender, "{msg}: Client already has an allocation");
 
             return Err(error_response);
         }
@@ -505,7 +498,7 @@ where
         if self.clients_by_allocation.len() == max_available_ports {
             let (error_response, msg) = make_error_response(InsufficientCapacity, request);
 
-            tracing::warn!(target: "relay", %max_available_ports, "{msg}: No more ports available");
+            tracing::warn!(target: "relay", %max_available_ports, %sender, "{msg}: No more ports available");
 
             return Err(error_response);
         }
@@ -514,7 +507,7 @@ where
         if requested_protocol != UDP_TRANSPORT {
             let (error_response, msg) = make_error_response(BadRequest, request);
 
-            tracing::warn!(target: "relay", %requested_protocol, "{msg}: Unsupported protocol");
+            tracing::warn!(target: "relay", %requested_protocol, %sender, "{msg}: Unsupported protocol");
 
             return Err(error_response);
         }
@@ -526,7 +519,7 @@ where
         )
         .map_err(|e| {
             let (error_response, msg) = make_error_response(e, request);
-            tracing::warn!(target: "relay", "{msg}: Failed to derive relay addresses");
+            tracing::warn!(target: "relay", %sender, "{msg}: Failed to derive relay addresses");
 
             error_response
         })?;
@@ -572,11 +565,10 @@ where
         }
         self.authenticate_and_send(&username, request, message, sender);
 
-        Span::current().record("allocation", display(&allocation.port));
-
         if let Some(second_relay_addr) = maybe_second_relay_addr {
             tracing::info!(
                 target: "relay",
+                %sender,
                 first_relay_address = field::display(first_relay_address),
                 second_relay_address = field::display(second_relay_addr),
                 lifetime = field::debug(effective_lifetime.lifetime()),
@@ -585,6 +577,7 @@ where
         } else {
             tracing::info!(
                 target: "relay",
+                %sender,
                 first_relay_address = field::display(first_relay_address),
                 lifetime = field::debug(effective_lifetime.lifetime()),
                 "Created new allocation",
@@ -601,7 +594,6 @@ where
     /// Handle a TURN refresh request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-refresh-request> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_refresh_request(
         &mut self,
         request: &Refresh,
@@ -613,12 +605,10 @@ where
         // TODO: Verify that this is the correct error code.
         let Some(allocation) = self.allocations.get_mut(&sender) else {
             let (error_response, msg) = make_error_response(AllocationMismatch, request);
-            tracing::info!(target: "relay", "{msg}: Sender doesn't have an allocation");
+            tracing::info!(target: "relay", %sender, "{msg}: Sender doesn't have an allocation");
 
             return Err(error_response);
         };
-
-        Span::current().record("allocation", display(&allocation.port));
 
         let effective_lifetime = request.effective_lifetime();
 
@@ -638,7 +628,7 @@ where
 
         allocation.expires_at = now + effective_lifetime.lifetime();
 
-        tracing::info!(target: "relay", "Refreshed allocation");
+        tracing::info!(target: "relay", allocation = %allocation.port, %sender, "Refreshed allocation");
 
         self.authenticate_and_send(
             &username,
@@ -653,7 +643,6 @@ where
     /// Handle a TURN channel bind request.
     ///
     /// See <https://www.rfc-editor.org/rfc/rfc8656#name-receiving-a-channelbind-req> for details.
-    #[tracing::instrument(level = "info", skip_all, fields(allocation, peer, channel, software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_channel_bind_request(
         &mut self,
         request: &ChannelBind,
@@ -674,15 +663,11 @@ where
         let requested_channel = request.channel_number();
         let peer_address = PeerSocket(request.xor_peer_address().address());
 
-        Span::current().record("allocation", display(&allocation.port));
-        Span::current().record("peer", display(&peer_address));
-        Span::current().record("channel", display(&requested_channel.value()));
-
         // Check that our allocation can handle the requested peer addr.
         if !allocation.can_relay_to(peer_address) {
             let (error_response, msg) = make_error_response(PeerAddressFamilyMismatch, request);
 
-            tracing::warn!(target: "relay", "{msg}: Allocation cannot relay to peer");
+            tracing::warn!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Allocation cannot relay to peer");
 
             return Err(error_response);
         }
@@ -695,7 +680,7 @@ where
             if number != &requested_channel {
                 let (error_response, msg) = make_error_response(BadRequest, request);
 
-                tracing::warn!(target: "relay", existing_channel = %number.value(), "{msg}: Peer is already bound to another channel");
+                tracing::warn!(target: "relay", existing_channel = %number.value(), allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is already bound to another channel");
 
                 return Err(error_response);
             }
@@ -709,7 +694,7 @@ where
             if channel.peer_address != peer_address {
                 let (error_response, msg) = make_error_response(BadRequest, request);
 
-                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, "{msg}: Channel is already bound to a different peer");
+                tracing::warn!(target: "relay", existing_peer = %channel.peer_address, allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Channel is already bound to a different peer");
 
                 return Err(error_response);
             }
@@ -724,7 +709,7 @@ where
                 (sender, requested_channel),
             );
 
-            tracing::info!(target: "relay", "Refreshed channel binding");
+            tracing::info!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
             self.authenticate_and_send(
                 &username,
@@ -750,7 +735,7 @@ where
             sender,
         );
 
-        tracing::info!(target: "relay", "Successfully bound channel");
+        tracing::info!(target: "relay", allocation = %port, peer = %peer_address, channel = %requested_channel.value(), "Successfully bound channel");
 
         Ok(())
     }
@@ -761,7 +746,6 @@ where
     ///
     /// This TURN server implementation does not support relaying data other than through channels.
     /// Thus, creating a permission is a no-op that always succeeds.
-    #[tracing::instrument(level = "info", skip_all, fields(software = request.software().map(|s| field::display(s.description())), tid = %format_args!("{:X}", request.transaction_id().as_bytes().hex()), %sender))]
     fn handle_create_permission_request(
         &mut self,
         request: &CreatePermission,
@@ -779,7 +763,6 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(allocation, recipient, channel, %sender))] // It is important that this is level `debug` otherwise performance is shit!
     fn handle_channel_data_message(
         &mut self,
         message: &ChannelData,
@@ -803,10 +786,6 @@ where
             tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel exists but is unbound");
             return None;
         }
-
-        Span::current().record("allocation", field::display(&channel.allocation));
-        Span::current().record("recipient", field::display(&channel.peer_address));
-        Span::current().record("channel", field::display(&channel_number.value()));
 
         tracing::trace!(target: "wire", num_bytes = %data.len());
 
@@ -1024,7 +1003,7 @@ where
 
     fn delete_allocation(&mut self, port: AllocationPort) {
         let Some(client) = self.clients_by_allocation.remove(&port) else {
-            tracing::debug!(target: "relay", "Unable to delete unknown allocation");
+            tracing::debug!(target: "relay", allocation = %port, "Unable to delete unknown allocation");
 
             return;
         };
@@ -1060,7 +1039,7 @@ where
                     debug_assert_eq!(&existing_n, number, "internal state should be consistent");
                 }
 
-                tracing::info!(%peer, %number, "Deleted channel binding");
+                tracing::info!(%peer, %number, allocation = %port, "Deleted channel binding");
 
                 false
             });
@@ -1077,7 +1056,7 @@ where
             })
         }
 
-        tracing::info!(target: "relay", %port, "Deleted allocation");
+        tracing::info!(target: "relay", allocation = %port, "Deleted allocation");
     }
 
     fn delete_channel_binding(&mut self, client: ClientSocket, chan: ChannelNumber) {
