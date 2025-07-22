@@ -26,32 +26,42 @@ defmodule Domain.Replication.Manager do
   def handle_info({:connect, connection_module}, %{retries: retries} = state) do
     Process.send_after(self(), {:connect, connection_module}, @retry_interval)
 
-    case connection_module.start_link(replication_child_spec(connection_module)) do
-      {:ok, pid} ->
-        {:noreply, %{state | retries: 0, connection_pid: pid}}
+    case :global.whereis_name(connection_module) do
+      :undefined ->
+        # No existing process found, attempt to start one
+        case connection_module.start_link(replication_child_spec(connection_module)) do
+          {:ok, pid} ->
+            {:noreply, %{state | retries: 0, connection_pid: pid}}
 
-      {:error, {:already_started, pid}} ->
-        # This will allow our current node to attempt connections whenever any node's
-        # replication connection dies.
-        Process.link(pid)
-        {:noreply, %{state | retries: 0, connection_pid: pid}}
+          {:error, {:already_started, pid}} ->
+            # Race condition: process started between whereis_name and start_link
+            Process.link(pid)
+            {:noreply, %{state | retries: 0, connection_pid: pid}}
 
-      {:error, reason} ->
-        if retries < @max_retries do
-          Logger.info("Failed to start replication connection #{connection_module}",
-            retries: retries,
-            max_retries: @max_retries,
-            reason: inspect(reason)
-          )
+          {:error, reason} ->
+            handle_start_error(reason, retries, state, connection_module)
+        end
 
-          {:noreply, %{state | retries: retries + 1, connection_pid: nil}}
-        else
-          Logger.error(
-            "Failed to start replication connection #{connection_module} after #{@max_retries} attempts, giving up!",
-            reason: inspect(reason)
-          )
+      pid when is_pid(pid) ->
+        # Found existing process, link to it
+        case Process.alive?(pid) do
+          true ->
+            Process.link(pid)
+            {:noreply, %{state | retries: 0, connection_pid: pid}}
 
-          {:noreply, %{state | retries: -1, connection_pid: nil}}
+          false ->
+            # Process is dead but still registered, try to start a new one
+            case connection_module.start_link(replication_child_spec(connection_module)) do
+              {:ok, new_pid} ->
+                {:noreply, %{state | retries: 0, connection_pid: new_pid}}
+
+              {:error, {:already_started, new_pid}} ->
+                Process.link(new_pid)
+                {:noreply, %{state | retries: 0, connection_pid: new_pid}}
+
+              {:error, reason} ->
+                handle_start_error(reason, retries, state, connection_module)
+            end
         end
     end
   end
@@ -71,6 +81,25 @@ defmodule Domain.Replication.Manager do
 
   def handle_info({:EXIT, _other_pid, _reason}, state) do
     {:noreply, state}
+  end
+
+  defp handle_start_error(reason, retries, state, connection_module) do
+    if retries < @max_retries do
+      Logger.info("Failed to start replication connection #{connection_module}",
+        retries: retries,
+        max_retries: @max_retries,
+        reason: inspect(reason)
+      )
+
+      {:noreply, %{state | retries: retries + 1, connection_pid: nil}}
+    else
+      Logger.error(
+        "Failed to start replication connection #{connection_module} after #{@max_retries} attempts, giving up!",
+        reason: inspect(reason)
+      )
+
+      {:noreply, %{state | retries: -1, connection_pid: nil}}
+    end
   end
 
   def replication_child_spec(connection_module) do
