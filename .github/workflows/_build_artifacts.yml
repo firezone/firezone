@@ -326,15 +326,6 @@ jobs:
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - name: Build Version Tags
-        run: |
-          set -xe
-
-          version="${{ matrix.name.version }}"
-          MAJOR_VERSION="${version%%.*}"
-          MAJOR_MINOR_VERSION="${version%.*}"
-          echo "MAJOR_VERSION=$MAJOR_VERSION" >> "$GITHUB_ENV"
-          echo "MAJOR_MINOR_VERSION=$MAJOR_MINOR_VERSION" >> "$GITHUB_ENV"
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -345,10 +336,6 @@ jobs:
             type=raw,value=latest
             type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
-            ${{ matrix.name.version && format('type=raw,value={0}', matrix.name.version) }}
-            ${{ matrix.name.version && format('type=raw,value={0}-{1}', matrix.name.version, inputs.sha) }}
-            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
-            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
@@ -431,15 +418,6 @@ jobs:
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - name: Build Version Tags
-        run: |
-          set -xe
-
-          version="${{ matrix.image.version }}"
-          MAJOR_VERSION="${version%%.*}"
-          MAJOR_MINOR_VERSION="${version%.*}"
-          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> "$GITHUB_ENV"
-          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> "$GITHUB_ENV"
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -449,10 +427,6 @@ jobs:
             type=raw,value=latest
             type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
-            ${{ matrix.image.version && format('type=raw,value={0}', matrix.image.version) }}
-            ${{ matrix.image.version && format('type=raw,value={0}-{1}', matrix.image.version, inputs.sha) }}
-            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
-            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Create manifest list and push
         working-directory: /tmp/digests/${{ matrix.image.name }}
         run: |
