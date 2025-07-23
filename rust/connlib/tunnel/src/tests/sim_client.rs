@@ -2,7 +2,7 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
-    sim_net::{Host, any_ip_stack, host},
+    sim_net::{Host, any_ip_stack, connlib_port, host},
     sim_relay::{SimRelay, map_explode},
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
@@ -1141,7 +1141,7 @@ pub(crate) fn ref_client_host(
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
-        Just(52625),
+        connlib_port(),
         ref_client(
             tunnel_ip4s,
             tunnel_ip6s,
