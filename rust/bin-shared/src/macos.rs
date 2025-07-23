@@ -1,3 +1,6 @@
+use socket_factory::{SocketFactory, UdpSocket};
+use std::io;
+
 pub use socket_factory::tcp as tcp_socket_factory;
 
 pub struct UdpSocketFactory;
