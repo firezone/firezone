@@ -10,7 +10,7 @@ use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
     device_info, known_dirs,
-    platform::{tcp_socket_factory, UdpSocketFactory},
+    platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
 use firezone_logging::{FilterReloadHandle, err_with_src};
