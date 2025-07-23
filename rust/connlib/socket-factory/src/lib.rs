@@ -20,15 +20,24 @@ use std::collections::hash_map::Entry;
 use std::pin::Pin;
 use tokio::io::Interest;
 
-pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
+pub trait SocketFactory<S>: Send + Sync + 'static {
+    fn bind(&self, local: SocketAddr) -> io::Result<S>;
+}
 
 pub const SEND_BUFFER_SIZE: usize = ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 10 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
-impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
+impl<F, S> SocketFactory<S> for F
+where
+    F: Fn(SocketAddr) -> io::Result<S> + Send + Sync + 'static,
+{
+    fn bind(&self, local: SocketAddr) -> io::Result<S> {
+        (self)(local)
+    }
+}
 
-pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
+pub fn tcp(addr: SocketAddr) -> io::Result<TcpSocket> {
     let socket = match addr {
         SocketAddr::V4(_) => tokio::net::TcpSocket::new_v4()?,
         SocketAddr::V6(_) => tokio::net::TcpSocket::new_v6()?,
@@ -42,8 +51,8 @@ pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
     })
 }
 
-pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let addr = socket2::SockAddr::from(*std_addr);
+pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
+    let addr = socket2::SockAddr::from(std_addr);
     let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
