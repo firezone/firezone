@@ -1,6 +1,8 @@
 use crate::TUNNEL_NAME;
 use anyhow::Result;
+use dashmap::DashMap;
 use firezone_logging::err_with_src;
+use socket_factory::SocketFactory;
 use socket_factory::{TcpSocket, UdpSocket};
 use std::{
     cmp::Ordering,
@@ -8,6 +10,7 @@ use std::{
     mem::MaybeUninit,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     ptr::null,
+    sync::Arc,
 };
 use uuid::Uuid;
 use windows::Win32::NetworkManagement::{
@@ -87,7 +90,7 @@ pub mod error {
     pub const EPT_S_NOT_REGISTERED: HRESULT = HRESULT::from_win32(0x06D9);
 }
 
-pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
+pub fn tcp_socket_factory(addr: SocketAddr) -> io::Result<TcpSocket> {
     delete_all_routing_entries_matching(addr.ip())?;
 
     let route = get_best_non_tunnel_route(addr.ip())?;
@@ -104,13 +107,61 @@ pub fn tcp_socket_factory(addr: &SocketAddr) -> io::Result<TcpSocket> {
     Ok(socket)
 }
 
-pub fn udp_socket_factory(src_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let source_ip_resolver = |dst| Ok(get_best_non_tunnel_route(dst)?.addr);
+/// A UDP socket factory with a src IP cache.
+///
+/// On Windows, we need to manually compute and set the source IP for all UDP packets.
+/// Determining this mapping requires several syscalls and therefore is too expensive to perform on every packet.
+/// To speed things up, we therefore implement a cache across all UDP sockets created by a given [`UdpSocketFactory`].
+///
+/// This cache needs to be reset whenever we are roaming networks which happens in the [`reset`] function.
+///
+/// As most of the time we will only read from the cache, we use a [`DashMap`] (a concurrent hash-map).
+pub struct UdpSocketFactory {
+    src_ip_cache: Arc<DashMap<IpAddr, IpAddr>>,
+}
 
-    let socket =
-        socket_factory::udp(src_addr)?.with_source_ip_resolver(Box::new(source_ip_resolver));
+impl SocketFactory<UdpSocket> for UdpSocketFactory {
+    fn bind(&self, local: SocketAddr) -> io::Result<UdpSocket> {
+        let src_ip_cache = self.src_ip_cache.clone();
 
-    Ok(socket)
+        let source_ip_resolver = move |dst| {
+            // First, try to get the existing entry (this is only using a read-lock internally so quite fast.)
+            if let Some(addr) = src_ip_cache.get(&dst) {
+                return Ok(*addr.value());
+            }
+
+            // If we don't have an entry, compute it.
+            let addr = get_best_non_tunnel_route(dst)?.addr;
+
+            // Insert the result.
+            // This may be a possible data-race if two sockets want to resolve the same IP at the same time.
+            // It doesn't matter though as the result of `get_best_non_tunnel_route` should be deterministic.
+            src_ip_cache.insert(dst, addr);
+
+            Ok(addr)
+        };
+
+        let socket =
+            socket_factory::udp(local)?.with_source_ip_resolver(Box::new(source_ip_resolver));
+
+        Ok(socket)
+    }
+
+    fn reset(&self) {
+        self.src_ip_cache.clear()
+    }
+}
+
+impl Default for UdpSocketFactory {
+    fn default() -> Self {
+        Self {
+            // This cache is expected to be quite small as there are only so many different IPs a client will talk to:
+            // - All connected Gateways
+            // - All DNS servers
+            // The capacity is only a guideline for the initial memory-consumption, it can also be outgrown.
+            src_ip_cache: Arc::new(DashMap::with_capacity(16)),
+        }
+    }
 }
 
 fn delete_all_routing_entries_matching(addr: IpAddr) -> io::Result<()> {

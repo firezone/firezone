@@ -53,6 +53,7 @@ windows-core = { workspace = true }
 windows-implement = { workspace = true }
 winreg = { workspace = true }
 wintun = "0.5.1"
+dashmap = { workspace = true }
 
 [target.'cfg(windows)'.dependencies.windows]
 workspace = true

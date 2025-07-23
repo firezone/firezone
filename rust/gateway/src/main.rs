@@ -4,7 +4,7 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::{
     TunDeviceManager, device_id, http_health_check,
-    platform::{tcp_socket_factory, udp_socket_factory},
+    platform::{tcp_socket_factory, UdpSocketFactory},
 };
 
 use firezone_telemetry::{
@@ -165,7 +165,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
-        Arc::new(udp_socket_factory),
+        Arc::new(UdpSocketFactory::default()),
         nameservers,
     );
     let portal = PhoenixChannel::disconnected(

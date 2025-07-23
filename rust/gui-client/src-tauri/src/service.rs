@@ -10,7 +10,7 @@ use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
     device_info, known_dirs,
-    platform::{tcp_socket_factory, udp_socket_factory},
+    platform::{tcp_socket_factory, UdpSocketFactory},
     signals,
 };
 use firezone_logging::{FilterReloadHandle, err_with_src};
@@ -636,7 +636,7 @@ impl<'a> Handler<'a> {
         let dns = self.dns_controller.system_resolvers();
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
-            Arc::new(udp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
             portal,
             tokio::runtime::Handle::current(),
         );

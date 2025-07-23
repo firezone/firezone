@@ -2,9 +2,10 @@
 
 use bufferpool::BufferPool;
 use bytes::BytesMut;
-use firezone_bin_shared::{TunDeviceManager, platform::udp_socket_factory};
+use firezone_bin_shared::{TunDeviceManager, platform::UdpSocketFactory};
 use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
+use socket_factory::SocketFactory as _;
 use ip_packet::Ecn;
 use socket_factory::DatagramOut;
 use std::{
@@ -36,9 +37,12 @@ async fn no_packet_loops_udp() {
         .await
         .unwrap();
 
+    let factory = UdpSocketFactory::default();
+
     // Make a socket.
-    let socket =
-        udp_socket_factory(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0))).unwrap();
+    let socket = factory
+        .bind(SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0)))
+        .unwrap();
 
     // Send a STUN request.
     socket
