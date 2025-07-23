@@ -8,7 +8,7 @@ use clap::Parser;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
-    platform::{tcp_socket_factory, UdpSocketFactory},
+    platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
 use firezone_telemetry::{Telemetry, analytics, otel};

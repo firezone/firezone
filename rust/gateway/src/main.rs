@@ -4,7 +4,7 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::{
     TunDeviceManager, device_id, http_health_check,
-    platform::{tcp_socket_factory, UdpSocketFactory},
+    platform::{UdpSocketFactory, tcp_socket_factory},
 };
 
 use firezone_telemetry::{

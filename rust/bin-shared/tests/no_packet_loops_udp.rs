@@ -5,9 +5,9 @@ use bytes::BytesMut;
 use firezone_bin_shared::{TunDeviceManager, platform::UdpSocketFactory};
 use gat_lending_iterator::LendingIterator as _;
 use ip_network::Ipv4Network;
-use socket_factory::SocketFactory as _;
 use ip_packet::Ecn;
 use socket_factory::DatagramOut;
+use socket_factory::SocketFactory as _;
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     time::Duration,
