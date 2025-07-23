@@ -113,7 +113,7 @@ pub fn tcp_socket_factory(addr: SocketAddr) -> io::Result<TcpSocket> {
 /// Determining this mapping requires several syscalls and therefore is too expensive to perform on every packet.
 /// To speed things up, we therefore implement a cache across all UDP sockets created by a given [`UdpSocketFactory`].
 ///
-/// This cache needs to be reset whenever we are roaming networks which happens in the [`reset`] function.
+/// This cache needs to be reset whenever we are roaming networks which happens in the [`SocketFactory::reset`] function.
 ///
 /// As most of the time we will only read from the cache, we use a [`DashMap`] (a concurrent hash-map).
 pub struct UdpSocketFactory {
