@@ -4,6 +4,7 @@ defmodule Domain.Flows.Flow.Changeset do
 
   @fields ~w[token_id policy_id client_id gateway_id resource_id actor_group_membership_id
              account_id
+             expires_at
              client_remote_ip client_user_agent
              gateway_remote_ip]a
 

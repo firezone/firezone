@@ -6,21 +6,21 @@ defmodule Domain.Flows do
   require Logger
 
   # TODO: Optimization
-  # Connection setup latency - doesn't need to block setting up flow. Authorizing the flow
+  # Connection setup latency - doesn't need to block setting up flows. Authorizing the flow
   # is now handled in memory and this only logs it, so these can be done in parallel.
-  def create_flow(
+  def create_flows(
         %Clients.Client{
           id: client_id,
-          account_id: account_id,
-          actor_id: actor_id
+          actor_id: actor_id,
+          account_id: account_id
         },
+        resource_id,
+        tuples,
         %Gateways.Gateway{
           id: gateway_id,
           last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
         },
-        resource_id,
-        %Policies.Policy{} = policy,
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
@@ -29,28 +29,32 @@ defmodule Domain.Flows do
             remote_ip: client_remote_ip,
             user_agent: client_user_agent
           }
-        } = subject
+        }
       ) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
-         {:ok, membership} <-
-           Actors.fetch_membership_by_actor_id_and_group_id(actor_id, policy.actor_group_id) do
-      flow =
-        Flow.Changeset.create(%{
+    flow_attrs =
+      tuples
+      |> Enum.map(fn {policy_id, membership_id, expires_at} ->
+        %{
           token_id: token_id,
-          policy_id: policy.id,
+          policy_id: policy_id,
           client_id: client_id,
           gateway_id: gateway_id,
           resource_id: resource_id,
-          actor_group_membership_id: membership.id,
+          actor_group_membership_id: membership_id,
           account_id: account_id,
           client_remote_ip: client_remote_ip,
           client_user_agent: client_user_agent,
-          gateway_remote_ip: gateway_remote_ip
-        })
-        |> Repo.insert!()
+          gateway_remote_ip: gateway_remote_ip,
+          expires_at: expires_at,
+          inserted_at: DateTime.utc_now()
+        }
+      end)
 
-      {:ok, flow}
-    end
+    {_count, flows} = Repo.insert_all(Flow, flow_attrs, returning: [:id, :expires_at])
+
+    flows
+    |> Enum.map(fn flow -> {flow.id, flow.expires_at} end)
+    |> Enum.into(%{})
   end
 
   def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -70,6 +74,7 @@ defmodule Domain.Flows do
     Flow.Query.all()
     |> Flow.Query.by_account_id(gateway.account_id)
     |> Flow.Query.by_gateway_id(gateway.id)
+    |> Flow.Query.not_expired()
     |> Flow.Query.for_cache()
     |> Repo.all()
   end

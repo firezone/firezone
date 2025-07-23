@@ -38,13 +38,6 @@ defmodule Domain.Actors do
     end
   end
 
-  def fetch_membership_by_actor_id_and_group_id(actor_id, group_id) do
-    Membership.Query.all()
-    |> Membership.Query.by_actor_id(actor_id)
-    |> Membership.Query.by_group_id(group_id)
-    |> Repo.fetch(Membership.Query, [])
-  end
-
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Group.Query.not_deleted()
@@ -79,6 +72,13 @@ defmodule Domain.Actors do
     |> Authorizer.for_subject(subject)
     |> Repo.all()
     |> Repo.preload(preload)
+  end
+
+  def all_memberships_for_actor!(%Actor{} = actor) do
+    Membership.Query.all()
+    |> Membership.Query.by_account_id(actor.account_id)
+    |> Membership.Query.by_actor_id(actor.id)
+    |> Repo.all()
   end
 
   def list_editable_groups(%Auth.Subject{} = subject, opts \\ []) do

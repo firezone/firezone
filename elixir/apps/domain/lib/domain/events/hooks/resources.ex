@@ -22,9 +22,14 @@ defmodule Domain.Events.Hooks.Resources do
     resource = SchemaHelpers.struct_from_params(Resources.Resource, data)
 
     # Breaking updates
+
     # This is a special case - we need to delete related flows because connectivity has changed
     # Gateway _does_ handle resource filter changes so we don't need to delete flows
-    # for those changes
+    # for those changes - they're processed by the Gateway channel pid.
+
+    # The Gateway channel will process these flow deletions and end up sending reject_access for any
+    # affected flows. If the client is connected at the time of the update, it will handle this
+    # by toggling the resource deleted then created.
     if old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
          old_resource.address != resource.address do

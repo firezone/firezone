@@ -1175,12 +1175,14 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
-    {:ok, _flow} =
-      Flows.create_flow(
+    membership = Domain.Repo.all(Domain.Actors.Membership) |> List.first()
+
+    %{} =
+      Flows.create_flows(
         user_iphone,
-        gateway1,
         cidr_resource.id,
-        policy,
+        [{policy.id, membership.id, unprivileged_subject.expires_at}],
+        gateway1,
         unprivileged_subject
       )
   end
