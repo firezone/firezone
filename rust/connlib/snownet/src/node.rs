@@ -1014,7 +1014,6 @@ where
             intent_sent_at,
             relay: self.sample_relay()?,
             is_failed: false,
-            span: tracing::Span::none(),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -1267,7 +1266,6 @@ where
                 continue;
             }
 
-            let _guard = c.span.enter();
 
             let Some(new_rid) = allocations.keys().copied().choose(rng) else {
                 continue;
@@ -1594,8 +1592,6 @@ struct InitialConnection<RId> {
     intent_sent_at: Instant,
 
     is_failed: bool,
-
-    span: tracing::Span,
 }
 
 impl<RId> InitialConnection<RId> {
