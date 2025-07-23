@@ -2191,7 +2191,7 @@ where
         };
     }
 
-    fn encapsulate<'b, TId>(
+    fn encapsulate<TId>(
         &mut self,
         cid: TId,
         socket: PeerSocket<RId>,
