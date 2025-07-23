@@ -378,6 +378,15 @@ where
         };
 
         allocation.bind_channel(candidate.addr(), now);
+
+        let Some(connection) = self.connections.get_established_mut(&cid) else {
+            return;
+        };
+
+        // Make sure we move out of idle mode when we add new candidates.
+        connection
+            .state
+            .on_candidate(cid, &mut connection.agent, now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -1696,6 +1705,18 @@ impl ConnectionState {
         };
 
         self.transition_to_connected(cid, peer_socket, agent, "upsert", now);
+    }
+
+    fn on_candidate<TId>(&mut self, cid: TId, agent: &mut IceAgent, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        let peer_socket = match self {
+            Self::Idle { peer_socket } => *peer_socket,
+            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+        };
+
+        self.transition_to_connected(cid, peer_socket, agent, "new candidate", now);
     }
 
     fn on_outgoing<TId>(&mut self, cid: TId, agent: &mut IceAgent, packet: &IpPacket, now: Instant)
