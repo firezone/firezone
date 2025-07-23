@@ -176,6 +176,8 @@ pub struct AllowAccess {
 pub struct Authorization {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
+    #[serde(with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
