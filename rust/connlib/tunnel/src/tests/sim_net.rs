@@ -10,7 +10,6 @@ use std::{
     collections::HashSet,
     fmt, iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
-    num::NonZeroU16,
     time::{Duration, Instant},
 };
 use tracing::Span;
@@ -309,14 +308,6 @@ pub(crate) fn any_ip_stack() -> impl Strategy<Value = IpStack> {
 
 pub(crate) fn dual_ip_stack() -> impl Strategy<Value = IpStack> {
     (host_ip4s(), host_ip6s()).prop_map(|(ip4, ip6)| IpStack::Dual { ip4, ip6 })
-}
-
-pub(crate) fn connlib_port() -> impl Strategy<Value = u16> {
-    prop_oneof![
-        Just(52625),
-        Just(3478), // Make sure connlib works even if a NAT is re-mapping our public port to a relay port.
-        any::<NonZeroU16>().prop_map(|p| p.get()),
-    ]
 }
 
 /// A [`Strategy`] of [`Ipv4Addr`]s used for routing packets between hosts within our test.

@@ -2,7 +2,7 @@ use super::{
     QueryId,
     dns_records::DnsRecords,
     reference::{PrivateKey, private_key},
-    sim_net::{Host, any_ip_stack, connlib_port, host},
+    sim_net::{Host, any_ip_stack, host},
     sim_relay::{SimRelay, map_explode},
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
@@ -25,6 +25,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    num::NonZeroU16,
     time::Instant,
 };
 
@@ -1141,7 +1142,7 @@ pub(crate) fn ref_client_host(
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
-        connlib_port(),
+        listening_port(),
         ref_client(
             tunnel_ip4s,
             tunnel_ip6s,
@@ -1205,6 +1206,14 @@ fn ref_client(
                 }
             },
         )
+}
+
+fn listening_port() -> impl Strategy<Value = u16> {
+    prop_oneof![
+        Just(52625),
+        Just(3478), // Make sure connlib works even if a NAT is re-mapping our public port to a relay port.
+        any::<NonZeroU16>().prop_map(|p| p.get()),
+    ]
 }
 
 fn default_routes_v4() -> Vec<Ipv4Network> {

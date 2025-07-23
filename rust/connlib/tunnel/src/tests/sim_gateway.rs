@@ -3,7 +3,7 @@ use super::{
     dns_server_resource::{TcpDnsServerResource, UdpDnsServerResource},
     icmp_error_hosts::{IcmpError, IcmpErrorHosts},
     reference::{PrivateKey, private_key},
-    sim_net::{Host, connlib_port, dual_ip_stack, host},
+    sim_net::{Host, dual_ip_stack, host},
     sim_relay::{SimRelay, map_explode},
     strategies::latency,
 };
@@ -330,7 +330,7 @@ pub(crate) fn ref_gateway_host(
 ) -> impl Strategy<Value = Host<RefGateway>> {
     host(
         dual_ip_stack(),
-        connlib_port(),
+        Just(52625),
         ref_gateway(tunnel_ip4s, tunnel_ip6s, site_specific_dns_records),
         latency(200), // We assume gateways have a somewhat decent Internet connection.
     )
