@@ -7,8 +7,8 @@ use firezone_bin_shared::TunDeviceManager;
 use firezone_telemetry::{Telemetry, analytics};
 
 use firezone_tunnel::messages::gateway::{
-    AllowAccess, ClientIceCandidates, ClientsIceCandidates, ConnectionReady, EgressMessages,
-    IngressMessages, InitGateway, RejectAccess, RequestConnection,
+    AccessAuthorizationExpiryUpdated, AllowAccess, ClientIceCandidates, ClientsIceCandidates,
+    ConnectionReady, EgressMessages, IngressMessages, InitGateway, RejectAccess, RequestConnection,
 };
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
 use firezone_tunnel::{
@@ -447,6 +447,25 @@ impl Eventloop {
                 self.tunnel
                     .state_mut()
                     .update_resource(resource_description);
+            }
+            phoenix_channel::Event::InboundMessage {
+                msg:
+                    IngressMessages::AccessAuthorizationExpiryUpdated(
+                        AccessAuthorizationExpiryUpdated {
+                            client_id,
+                            resource_id,
+                            expires_at,
+                        },
+                    ),
+                ..
+            } => {
+                if let Err(e) = self.tunnel.state_mut().update_access_authorization_expiry(
+                    client_id,
+                    resource_id,
+                    expires_at,
+                ) {
+                    tracing::warn!(%client_id, %resource_id, "Failed to update expiry of access authorization: {e:#}")
+                };
             }
             phoenix_channel::Event::ErrorResponse { topic, req_id, res } => {
                 tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
