@@ -10,7 +10,7 @@ pub fn tcp_socket_factory(socket_addr: SocketAddr) -> io::Result<TcpSocket> {
     Ok(socket)
 }
 
-pub struct UdpSocketFactory;
+pub struct UdpSocketFactory {}
 
 impl SocketFactory<UdpSocket> for UdpSocketFactory {
     fn bind(&self, local: SocketAddr) -> io::Result<UdpSocket> {
@@ -24,6 +24,6 @@ impl SocketFactory<UdpSocket> for UdpSocketFactory {
 
 impl Default for UdpSocketFactory {
     fn default() -> Self {
-        Self
+        Self {}
     }
 }

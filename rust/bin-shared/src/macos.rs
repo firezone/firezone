@@ -3,7 +3,7 @@ use std::io;
 
 pub use socket_factory::tcp as tcp_socket_factory;
 
-pub struct UdpSocketFactory;
+pub struct UdpSocketFactory {}
 
 impl SocketFactory<UdpSocket> for UdpSocketFactory {
     fn bind(&self, local: SocketAddr) -> io::Result<UdpSocket> {
@@ -15,6 +15,6 @@ impl SocketFactory<UdpSocket> for UdpSocketFactory {
 
 impl Default for UdpSocketFactory {
     fn default() -> Self {
-        Self
+        Self {}
     }
 }
