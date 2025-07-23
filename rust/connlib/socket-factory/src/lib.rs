@@ -22,6 +22,7 @@ use tokio::io::Interest;
 
 pub trait SocketFactory<S>: Send + Sync + 'static {
     fn bind(&self, local: SocketAddr) -> io::Result<S>;
+    fn reset(&self);
 }
 
 pub const SEND_BUFFER_SIZE: usize = ONE_MB;
@@ -35,6 +36,8 @@ where
     fn bind(&self, local: SocketAddr) -> io::Result<S> {
         (self)(local)
     }
+
+    fn reset(&self) {}
 }
 
 pub fn tcp(addr: SocketAddr) -> io::Result<TcpSocket> {

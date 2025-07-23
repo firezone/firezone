@@ -321,6 +321,8 @@ impl Io {
     }
 
     pub fn reset(&mut self) {
+        self.tcp_socket_factory.reset();
+        self.udp_socket_factory.reset();
         self.sockets.rebind(self.udp_socket_factory.clone());
         self.gso_queue.clear();
         self.dns_queries = FuturesTupleSet::new(DNS_QUERY_TIMEOUT, 1000);
