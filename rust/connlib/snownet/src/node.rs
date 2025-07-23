@@ -2086,7 +2086,9 @@ where
                             Some(peer_socket)
                         }
                         ConnectionState::Idle { peer_socket } => {
-                            self.state = ConnectionState::Idle { peer_socket };
+                            self.state = ConnectionState::Idle {
+                                peer_socket: remote_socket,
+                            };
 
                             Some(peer_socket)
                         }
