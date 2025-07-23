@@ -233,6 +233,28 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    pub(crate) fn update_resource_expiry(
+        &mut self,
+        resource: ResourceId,
+        new_expiry: DateTime<Utc>,
+    ) {
+        let Some(resource) = self.resources.get_mut(&resource) else {
+            tracing::debug!(%resource, "Unknown resource");
+
+            return;
+        };
+
+        let new_expiry_rfc3339 = new_expiry.to_rfc3339();
+
+        let old_expiry = match resource {
+            ResourceOnGateway::Cidr { expires_at, .. } => expires_at.replace(new_expiry),
+            ResourceOnGateway::Dns { expires_at, .. } => expires_at.replace(new_expiry),
+            ResourceOnGateway::Internet { expires_at } => expires_at.replace(new_expiry),
+        };
+
+        tracing::info!(old = ?old_expiry.map(|e| e.to_rfc3339()), new = %new_expiry_rfc3339, "Updated resource expiry");
+    }
+
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
         for (resource, _) in self
             .resources

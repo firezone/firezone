@@ -300,6 +300,20 @@ impl GatewayState {
         Ok(())
     }
 
+    pub fn update_access_authorization_expiry(
+        &mut self,
+        client: ClientId,
+        resource: ResourceId,
+        expires_at: DateTime<Utc>,
+    ) -> anyhow::Result<()> {
+        self.peers
+            .get_mut(&client)
+            .context("No peer state")?
+            .update_resource_expiry(resource, expires_at);
+
+        Ok(())
+    }
+
     pub fn handle_domain_resolved(
         &mut self,
         req: ResolveDnsRequest,
