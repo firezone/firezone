@@ -220,49 +220,48 @@ defmodule API.Gateway.Channel do
           payload: %{joins: joins}
         },
         socket
-      ) do
-    if Enum.count(joins) > 0 do
-      {:ok, relays} = select_relays(socket)
+      )
+      when map_size(joins) > 0 do
+    {:ok, relays} = select_relays(socket)
 
-      if length(relays) > 0 do
-        relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
+    if length(relays) > 0 do
+      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
 
-        :ok =
-          Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
+      :ok =
+        Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
 
-        :ok =
-          Enum.each(relays, fn relay ->
-            # TODO: WAL
-            # Why are we unsubscribing and subscribing again?
-            :ok = Relays.unsubscribe_from_relay_presence(relay)
-            :ok = Relays.subscribe_to_relay_presence(relay)
-          end)
+      :ok =
+        Enum.each(relays, fn relay ->
+          # TODO: WAL
+          # Why are we unsubscribing and subscribing again?
+          :ok = Relays.unsubscribe_from_relay_presence(relay)
+          :ok = Relays.subscribe_to_relay_presence(relay)
+        end)
 
-        # Cache new stamp secrets
-        socket = Debouncer.cache_stamp_secrets(socket, relays)
+      # Cache new stamp secrets
+      socket = Debouncer.cache_stamp_secrets(socket, relays)
 
-        # If a relay reconnects with a different stamp_secret, disconnect them immediately
-        joined_ids = Map.keys(joins)
+      # If a relay reconnects with a different stamp_secret, disconnect them immediately
+      joined_ids = Map.keys(joins)
 
-        {socket, disconnected_ids} =
-          Debouncer.cancel_leaves_or_disconnect_immediately(
-            socket,
-            joined_ids,
-            socket.assigns.gateway.account_id
+      {socket, disconnected_ids} =
+        Debouncer.cancel_leaves_or_disconnect_immediately(
+          socket,
+          joined_ids,
+          socket.assigns.gateway.account_id
+        )
+
+      push(socket, "relays_presence", %{
+        disconnected_ids: disconnected_ids,
+        connected:
+          Views.Relay.render_many(
+            relays,
+            socket.assigns.gateway.public_key,
+            relay_credentials_expire_at
           )
+      })
 
-        push(socket, "relays_presence", %{
-          disconnected_ids: disconnected_ids,
-          connected:
-            Views.Relay.render_many(
-              relays,
-              socket.assigns.gateway.public_key,
-              relay_credentials_expire_at
-            )
-        })
-
-        {:noreply, socket}
-      end
+      {:noreply, socket}
     else
       {:noreply, socket}
     end
