@@ -29,6 +29,11 @@ export default function Apple() {
           Fixes an issue where only the first system DNS resolver was used to
           forward queries instead of all found ones.
         </ChangeItem>
+        <ChangeItem pull="9985">
+          Fixes an issue where control plane messages could be stuck forever on
+          flaky connections, requiring signing out and signin back in to
+          recover.
+        </ChangeItem>
         <ChangeItem pull="9891">
           Fixes an issue where connections would sometimes take up to 90s to
           establish.
