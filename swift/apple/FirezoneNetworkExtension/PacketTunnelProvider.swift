@@ -134,7 +134,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   // Called when the system wakes from sleep.
   // We essentially need to do a network reset here as it's very likely whatever NAT sessions we had open prior
-  // are no longer valid.
+  // are no longer valid. Notably, we don't want to shutdown the adapter and restart it because the DNS mappings
+  // will be lost, leading to connectivity issues upon wake from sleep.
   override func wake() {
     adapter?.reset()
 
