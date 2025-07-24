@@ -1261,7 +1261,7 @@ defmodule API.Client.Channel do
       |> Enum.reduce(%{authorizations: [], errors: []}, fn policy, acc ->
         case Policies.ensure_client_conforms_policy_conditions(socket.assigns.client, policy) do
           {:ok, expires_at} ->
-            membership_id = Map.get(socket.assigns.memberships, policy.actor_group_id).id
+            membership_id = Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id
             expires_at = expires_at || socket.assigns.subject.expires_at
             %{acc | authorizations: [{policy.id, membership_id, expires_at} | acc.authorizations]}
 
