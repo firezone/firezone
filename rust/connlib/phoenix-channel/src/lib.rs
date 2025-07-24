@@ -398,6 +398,11 @@ where
                         self.heartbeat.reset();
                         self.state = State::Connected(stream);
 
+                        // Clear local state.
+                        // Joins are only valid whilst we are connected, so we need to discard any previous ones on reconnect.
+                        self.pending_joins.clear();
+                        self.pending_join_requests.clear();
+
                         let (host, _) = self.url_prototype.expose_secret().host_and_port();
 
                         tracing::info!(%host, "Connected to portal");
@@ -512,6 +517,11 @@ where
 
                             continue;
                         }
+                    } else if !self.pending_messages.is_empty() {
+                        tracing::trace!(
+                            requests = ?self.pending_join_requests,
+                            "Unable to send message because we are waiting for JOIN requests to complete"
+                        );
                     }
                 }
                 Poll::Ready(Err(e)) => {

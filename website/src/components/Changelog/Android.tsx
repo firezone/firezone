@@ -21,6 +21,11 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9985">
+          Fixes an issue where control plane messages could be stuck forever on
+          flaky connections, requiring signing out and signin back in to
+          recover.
+        </ChangeItem>
         <ChangeItem pull="9725">
           Fixes an issue where Firezone failed to sign-in on systems with
           non-ASCII characters in their kernel build name.
