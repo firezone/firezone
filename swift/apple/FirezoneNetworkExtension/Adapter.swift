@@ -68,9 +68,6 @@ class Adapter {
     private let systemConfigurationResolvers = SystemConfigurationResolvers()
   #endif
 
-  /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
-  private var lastFetchedResolvers: [String] = []
-
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
   /// network state.
@@ -127,6 +124,10 @@ class Adapter {
         self.packetTunnelProvider?.reasserting = true
       }
     } else {
+      if self.packetTunnelProvider?.reasserting == true {
+        self.packetTunnelProvider?.reasserting = false
+      }
+
       // Tell connlib to reset network state, but only do so if our connectivity has
       // meaningfully changed. On darwin, this is needed to send packets
       // out of a different interface even when 0.0.0.0 is used as the source.
@@ -142,26 +143,20 @@ class Adapter {
         let resolvers = getSystemDefaultResolvers(
           interfaceName: path.availableInterfaces.first?.name)
 
-        if self.lastFetchedResolvers != resolvers,
-          let encoded = try? JSONEncoder().encode(resolvers),
-          let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString()
-        {
-
-          do {
-            try session?.setDns(jsonResolvers)
-          } catch let error {
-            // `toString` needed to deep copy the string and avoid a possible dangling pointer
-            let msg = (error as? RustString)?.toString() ?? "Unknown error"
-            Log.error(AdapterError.setDnsError(msg))
+        do {
+          let encoded = try JSONEncoder().encode(resolvers)
+          guard let jsonResolvers = String(data: encoded, encoding: .utf8)
+          else {
+            Log.warning("jsonResolvers conversion failed: \(resolvers)")
+            return
           }
 
-          // Update our state tracker
-          self.lastFetchedResolvers = resolvers
+          try session?.setDns(jsonResolvers.intoRustString())
+        } catch let error {
+          // `toString` needed to deep copy the string and avoid a possible dangling pointer
+          let msg = (error as? RustString)?.toString() ?? "Unknown error"
+          Log.error(AdapterError.setDnsError(msg))
         }
-      }
-
-      if self.packetTunnelProvider?.reasserting == true {
-        self.packetTunnelProvider?.reasserting = false
       }
     }
   }
@@ -525,6 +520,7 @@ extension Network.NWPath {
   func connectivityDifferentFrom(path: Network.NWPath) -> Bool {
     // We define a path as different from another if the following properties change
     return path.supportsIPv4 != self.supportsIPv4 || path.supportsIPv6 != self.supportsIPv6
+      || path.supportsDNS != self.supportsDNS
       || path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
       // Apple provides no documentation on whether order is meaningful, so assume it isn't.
       || Set(self.gateways) != Set(path.gateways)
