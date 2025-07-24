@@ -4,6 +4,7 @@ use futures::{SinkExt, StreamExt, ready};
 use gat_lending_iterator::LendingIterator;
 use socket_factory::DatagramOut;
 use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
+use std::time::Duration;
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
@@ -189,7 +190,14 @@ impl ThreadedUdpSocket {
                     let mut socket = match listen(
                         sf,
                         // Listen on the preferred address, fall back to picking a free port if that doesn't work
-                        &[preferred_addr, SocketAddr::new(preferred_addr.ip(), 0)],
+                        // We try to listen on the preferred address multiple times in case the previous background
+                        // thread hasn't fully cleared the socket yet.
+                        &[
+                            preferred_addr,
+                            preferred_addr,
+                            preferred_addr,
+                            SocketAddr::new(preferred_addr.ip(), 0),
+                        ],
                     ) {
                         Ok(s) => s,
                         Err(e) => {
@@ -317,6 +325,8 @@ fn listen(
                 tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");
 
                 last_err = Some(e);
+
+                std::thread::sleep(Duration::from_millis(100)); // Give the OS some time to free up resources.
             }
         };
     }
