@@ -244,41 +244,6 @@ defmodule API.Client.Channel do
     disconnect(socket)
   end
 
-  # FLOWS
-
-  # TODO: This likely isn't needed as we should have reacted to any breaking changes already
-  # and sent a resource_deleted.
-  def handle_info(
-        {:deleted, %Flows.Flow{client_id: client_id} = flow},
-        %{assigns: %{client: %{id: id}}} = socket
-      )
-      when client_id == id do
-    if MapSet.member?(socket.assigns.flows, flow.id) do
-      # If an active flow is deleted, we need to recreate it.
-      # To do that, we need to flap the resource on the client because it doesn't track flows.
-      # The gateway is also tracking flows and will have sent a reject_access for this client/resource
-      # if this was the last flow in its cache that was authorizing it.
-
-      push(socket, "resource_deleted", flow.resource_id)
-
-      resource = Map.get(socket.assigns.resources, flow.resource_id)
-
-      # Access to resource is still allowed, allow creating a new flow
-      if not is_nil(resource) and resource.id in Enum.map(authorized_resources(socket), & &1.id) do
-        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-      else
-        Logger.warning("Active flow deleted for resource but resource not found in socket state",
-          resource_id: flow.resource_id,
-          flow_id: flow.id
-        )
-      end
-
-      {:noreply, assign(socket, flows: MapSet.delete(socket.assigns.flows, flow.id))}
-    else
-      {:noreply, socket}
-    end
-  end
-
   # GATEWAY_GROUPS
 
   def handle_info(
