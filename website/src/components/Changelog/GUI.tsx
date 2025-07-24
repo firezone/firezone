@@ -16,8 +16,8 @@ export default function GUI({ os }: { os: OS }) {
           establish.
         </ChangeItem>
         <ChangeItem pull="9979">
-          Fixes an issue where connections would sometimes fail to establish
-          reliably.
+          Fixes an issue where connections in low-latency networks (between
+          Client and Gateway) would fail to establish reliably.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.5" date={new Date("2025-07-09")}>
