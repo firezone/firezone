@@ -25,6 +25,11 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9985">
+          Fixes an issue where control plane messages could be stuck forever on
+          flaky connections, requiring signing out and signin back in to
+          recover.
+        </ChangeItem>
         <ChangeItem pull="9891">
           Fixes an issue where connections would sometimes take up to 90s to
           establish.
