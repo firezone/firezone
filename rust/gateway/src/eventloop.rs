@@ -421,6 +421,10 @@ impl Eventloop {
                     expires_at,
                 } in authorizations
                 {
+                    let Some(expires_at) = expires_at else {
+                        continue;
+                    };
+
                     if let Err(e) = self.tunnel.state_mut().update_access_authorization_expiry(
                         client_id,
                         resource_id,

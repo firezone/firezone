@@ -176,8 +176,9 @@ pub struct AllowAccess {
 pub struct Authorization {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
-    #[serde(with = "ts_seconds")]
-    pub expires_at: DateTime<Utc>,
+    #[serde(with = "ts_seconds_option")]
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>, // TODO: Remove `Option` once API implements this field
 }
 
 #[derive(Debug, Deserialize, Clone)]
