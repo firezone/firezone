@@ -3,7 +3,7 @@
 mod get_user_agent;
 mod login_url;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::Arc;
 use std::time::Duration;
@@ -14,6 +14,7 @@ use backoff::ExponentialBackoff;
 use backoff::backoff::Backoff;
 use base64::Engine;
 use firezone_logging::err_with_src;
+use futures::channel::mpsc;
 use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
@@ -38,8 +39,10 @@ const MAX_BUFFERED_MESSAGES: usize = 32; // Chosen pretty arbitrarily. If we are
 pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
     state: State,
     waker: Option<Waker>,
-    pending_joins: VecDeque<String>,
-    pending_messages: VecDeque<String>,
+    pending_joins_tx: mpsc::UnboundedSender<String>,
+    pending_joins_rx: mpsc::UnboundedReceiver<String>,
+    pending_messages_tx: mpsc::Sender<String>,
+    pending_messages_rx: mpsc::Receiver<String>,
     next_request_id: u64,
     socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 
@@ -273,6 +276,9 @@ where
             .map(|addr| addr.ip())
             .collect();
 
+        let (pending_joins_tx, pending_joins_rx) = mpsc::unbounded();
+        let (pending_messages_tx, pending_messages_rx) = mpsc::channel(MAX_BUFFERED_MESSAGES);
+
         Ok(Self {
             make_reconnect_backoff: Box::new(make_reconnect_backoff),
             reconnect_backoff: None,
@@ -281,8 +287,10 @@ where
             state: State::Closed,
             socket_factory,
             waker: None,
-            pending_joins: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
-            pending_messages: VecDeque::with_capacity(MAX_BUFFERED_MESSAGES),
+            pending_joins_tx,
+            pending_joins_rx,
+            pending_messages_tx,
+            pending_messages_rx,
             _phantom: PhantomData,
             heartbeat: tokio::time::interval(Duration::from_secs(30)),
             next_request_id: 0,
@@ -300,24 +308,33 @@ where
     pub fn join(&mut self, topic: impl Into<String>, payload: impl Serialize) {
         let (request_id, msg) = self.make_message(topic, EgressControlMessage::PhxJoin(payload));
 
-        self.pending_joins.push_back(msg);
+        // Ignore the error, the local channel will never be closed.
+        let _ = self.pending_joins_tx.unbounded_send(msg);
         self.pending_join_requests.insert(request_id);
     }
 
     /// Send a message to a topic.
     pub fn send(&mut self, topic: impl Into<String>, message: impl Serialize) -> OutboundRequestId {
-        if self.pending_messages.len() > MAX_BUFFERED_MESSAGES {
-            self.pending_messages.clear();
+        let (id, msg) = self.make_message(topic, message);
 
+        if self.pending_messages_tx.try_send(msg.clone()).is_err() {
             tracing::debug!(
                 "Dropping pending messages to portal because we exceeded the maximum of {MAX_BUFFERED_MESSAGES}"
             );
+
+            // Drain the channel so we can send another message.
+            while let Ok(Some(msg)) = self.pending_messages_rx.try_next() {
+                tracing::trace!(%msg, "Dropping message");
+            }
+
+            self.pending_messages_tx
+                .try_send(msg.clone())
+                .expect("Unable to send message despite having drained the channel");
         }
 
-        let (id, msg) = self.make_message(topic, message);
-        self.pending_messages.push_back(msg);
+        tracing::trace!(%msg, "Scheduled message for sending");
 
-        id
+        return id;
     }
 
     /// Establishes a new connection, dropping the current one if any exists.
@@ -480,7 +497,7 @@ where
             // Priority 2: Keep local buffers small and send pending messages.
             match stream.poll_ready_unpin(cx) {
                 Poll::Ready(Ok(())) => {
-                    if let Some(join) = self.pending_joins.pop_front() {
+                    if let Poll::Ready(Some(join)) = self.pending_joins_rx.poll_next_unpin(cx) {
                         match stream.start_send_unpin(Message::Text(join.clone().into())) {
                             Ok(()) => {
                                 tracing::trace!(target: "wire::api::send", %join);
@@ -488,7 +505,7 @@ where
                                 self.heartbeat.reset()
                             }
                             Err(e) => {
-                                self.pending_joins.push_front(join);
+                                let _ = self.pending_joins_tx.unbounded_send(join);
                                 self.reconnect_on_transient_error(InternalError::WebSocket(e));
                             }
                         }
@@ -497,7 +514,8 @@ where
                     }
 
                     if self.pending_join_requests.is_empty() {
-                        if let Some(msg) = self.pending_messages.pop_front() {
+                        if let Poll::Ready(Some(msg)) = self.pending_messages_rx.poll_next_unpin(cx)
+                        {
                             match stream.start_send_unpin(Message::Text(msg.clone().into())) {
                                 Ok(()) => {
                                     tracing::trace!(target: "wire::api::send", %msg);
@@ -505,7 +523,9 @@ where
                                     self.heartbeat.reset()
                                 }
                                 Err(e) => {
-                                    self.pending_messages.push_front(msg);
+                                    if let Err(e) = self.pending_messages_tx.try_send(msg) {
+                                        tracing::warn!("Failed to re-queue pending message: {e}");
+                                    }
                                     self.reconnect_on_transient_error(InternalError::WebSocket(e));
                                 }
                             }
@@ -871,9 +891,12 @@ fn serialize_msg(
 
 #[cfg(test)]
 mod tests {
+    use backoff::exponential::ExponentialBackoff;
+    use secrecy::SecretString;
+
     use super::*;
 
-    #[derive(Deserialize, PartialEq, Debug)]
+    #[derive(Serialize, Deserialize, PartialEq, Debug)]
     #[serde(rename_all = "snake_case", tag = "event", content = "payload")] // This line makes it all work.
     enum Msg {
         Shout { hello: String },
@@ -1009,6 +1032,46 @@ mod tests {
         let expected = PhoenixMessage::new_err_reply("client", ErrorReply::Disabled, None);
 
         assert_eq!(actual, expected)
+    }
+
+    #[tokio::test]
+    #[ignore = "Needs Internet to resolve the domain name."]
+    async fn queueing_more_than_32_messages_clears_the_buffer() {
+        let _guard = firezone_logging::test("trace");
+
+        let mut channel = PhoenixChannel::<(), (), (), PublicKeyParam>::disconnected(
+            Secret::new(
+                LoginUrl::client(
+                    "wss://example.com",
+                    &SecretString::new(String::new()),
+                    String::new(),
+                    None,
+                    DeviceInfo::default(),
+                )
+                .unwrap(),
+            ),
+            String::new(),
+            "foo",
+            (),
+            || ExponentialBackoff::default(),
+            Arc::new(|_| Err(io::Error::other("not implemented"))),
+        )
+        .unwrap();
+
+        for _ in 0..34 {
+            channel.send(
+                "foo",
+                Msg::Shout {
+                    hello: "world".to_owned(),
+                },
+            );
+        }
+
+        let pending_messages =
+            std::iter::from_fn(|| channel.pending_messages_rx.try_next().ok().flatten())
+                .collect::<Vec<_>>();
+
+        assert_eq!(pending_messages.len(), 1);
     }
 
     #[tokio::test]
