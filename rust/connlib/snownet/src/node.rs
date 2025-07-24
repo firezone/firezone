@@ -1398,12 +1398,7 @@ fn add_local_candidate<TId>(
 {
     // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
     if candidate.kind() == CandidateKind::ServerReflexive {
-        tracing::info!(?candidate, "Signalling candidate to remote");
-
-        pending_events.push_back(Event::NewIceCandidate {
-            connection: id,
-            candidate: candidate.to_sdp_string(),
-        });
+        signal_candidate_to_remote(id, &candidate, pending_events);
         return;
     }
 
@@ -1411,6 +1406,14 @@ fn add_local_candidate<TId>(
         return;
     };
 
+    signal_candidate_to_remote(id, candidate, pending_events);
+}
+
+fn signal_candidate_to_remote<TId>(
+    id: TId,
+    candidate: &Candidate,
+    pending_events: &mut VecDeque<Event<TId>>,
+) {
     tracing::info!(?candidate, "Signalling candidate to remote");
 
     pending_events.push_back(Event::NewIceCandidate {
