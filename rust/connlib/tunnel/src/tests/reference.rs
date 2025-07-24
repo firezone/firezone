@@ -870,11 +870,6 @@ impl ReferenceState {
             self.relays.insert(*rid, new_relay.clone());
             debug_assert!(self.network.add_host(*rid, new_relay));
         }
-
-        // In case we were using the relays, all connections will be cut and require us to make a new one.
-        if self.drop_direct_client_traffic {
-            self.client.exec_mut(|client| client.reset_connections());
-        }
     }
 }
 

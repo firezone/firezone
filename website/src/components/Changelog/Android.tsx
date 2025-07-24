@@ -29,6 +29,10 @@ export default function Android() {
           Fixes an issue where connections would sometimes take up to 90s to
           establish.
         </ChangeItem>
+        <ChangeItem pull="9979">
+          Fixes an issue where connections would sometimes fail to establish
+          reliably.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.2" date={new Date("2025-06-30")}>
         <ChangeItem pull="9621">

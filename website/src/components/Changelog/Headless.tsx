@@ -14,6 +14,10 @@ export default function Headless({ os }: { os: OS }) {
           Fixes an issue where connections would sometimes take up to 90s to
           establish.
         </ChangeItem>
+        <ChangeItem pull="9979">
+          Fixes an issue where connections would sometimes fail to establish
+          reliably.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.1" date={new Date("2025-07-04")}>
         <ChangeItem pull="9564">
