@@ -23,6 +23,10 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
+        <ChangeItem pull="9986">
+          Fixes an issue where a Client could not establish a connection unless
+          their first attempt succeeded.
+        </ChangeItem>
         <ChangeItem pull="9979">
           Fixes an issue where connections in low-latency networks (between
           Client and Gateway) would fail to establish reliably.
