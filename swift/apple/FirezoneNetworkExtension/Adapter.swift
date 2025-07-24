@@ -68,9 +68,6 @@ class Adapter {
     private let systemConfigurationResolvers = SystemConfigurationResolvers()
   #endif
 
-  /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
-  private var lastFetchedResolvers: [String] = []
-
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
   /// network state.
@@ -142,8 +139,7 @@ class Adapter {
         let resolvers = getSystemDefaultResolvers(
           interfaceName: path.availableInterfaces.first?.name)
 
-        if self.lastFetchedResolvers != resolvers,
-          let encoded = try? JSONEncoder().encode(resolvers),
+        if let encoded = try? JSONEncoder().encode(resolvers),
           let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString()
         {
 
@@ -154,9 +150,6 @@ class Adapter {
             let msg = (error as? RustString)?.toString() ?? "Unknown error"
             Log.error(AdapterError.setDnsError(msg))
           }
-
-          // Update our state tracker
-          self.lastFetchedResolvers = resolvers
         }
       }
 
