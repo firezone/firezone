@@ -27,6 +27,10 @@ export default function Gateway() {
           Fixes an issue where a Client could not establish a connection unless
           their first attempt succeeded.
         </ChangeItem>
+        <ChangeItem pull="9979">
+          Fixes an issue where connections in low-latency networks (between
+          Client and Gateway) would fail to establish reliably.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.13" date={new Date("2025-07-22")}>
         <ChangeItem pull="9834">

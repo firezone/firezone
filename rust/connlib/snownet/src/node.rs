@@ -1677,7 +1677,11 @@ enum ConnectionState {
 }
 
 impl ConnectionState {
-    fn poll_timeout(&self) -> Option<(Instant, &'static str)> {
+    fn poll_timeout(&self, agent: &IceAgent) -> Option<(Instant, &'static str)> {
+        if agent.state() != IceConnectionState::Connected {
+            return None;
+        }
+
         match self {
             ConnectionState::Connected {
                 last_incoming,
@@ -1704,6 +1708,10 @@ impl ConnectionState {
         };
 
         if idle_at(*last_incoming, *last_outgoing) > now {
+            return;
+        }
+
+        if agent.state() != IceConnectionState::Connected {
             return;
         }
 
@@ -1903,7 +1911,7 @@ where
                 self.disconnect_timeout()
                     .map(|instant| (instant, "disconnect timeout")),
             )
-            .chain(self.state.poll_timeout())
+            .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant)
     }
 
