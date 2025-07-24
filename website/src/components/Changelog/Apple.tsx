@@ -30,6 +30,10 @@ export default function Apple() {
           flaky connections, requiring signing out and signin back in to
           recover.
         </ChangeItem>
+        <ChangeItem pull="9993">
+          Fixes an issue where DNS resolvers could be lost upon waking from
+          sleep, leading to broken Internet connectivity.
+        </ChangeItem>
         <ChangeItem pull="9891">
           Fixes an issue where connections would sometimes take up to 90s to
           establish.
