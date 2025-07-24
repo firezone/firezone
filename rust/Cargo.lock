@@ -951,7 +951,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.1"
-source = "git+https://github.com/firezone/boringtun?branch=master#5cb8ec28749fe6a81a33471cb77565376bcf1d67"
+source = "git+https://github.com/firezone/boringtun?branch=master#a99332c529ce7546e953de5b6618e4e8de7170f3"
 dependencies = [
  "aead",
  "base64 0.22.1",
@@ -1714,6 +1714,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2318,6 +2332,7 @@ dependencies = [
  "bufferpool",
  "bytes",
  "clap",
+ "dashmap",
  "dirs",
  "dns-types",
  "firezone-logging",
@@ -6855,7 +6870,6 @@ dependencies = [
  "ip-packet",
  "libc",
  "opentelemetry",
- "parking_lot",
  "quinn-udp",
  "socket2",
  "tokio",
@@ -6944,7 +6958,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.9.0"
-source = "git+https://github.com/algesten/str0m?branch=main#214fcd2f2064046efb4194f33a40085fb9e86ac6"
+source = "git+https://github.com/algesten/str0m?branch=main#3b3fe3181b3823f3b5a1d50f5ed9c49b043cf5be"
 dependencies = [
  "combine",
  "crc",
