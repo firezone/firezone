@@ -311,6 +311,11 @@ fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
             continue;
         }
 
+        let key = match key.rsplit_once(':') {
+            Some((_, key)) => key,
+            None => key,
+        };
+
         log.body.push_str(&format!(" {key}={attr_string}"));
     }
 
@@ -332,6 +337,8 @@ fn set_current_user(user: Option<sentry::User>) {
 
 #[cfg(test)]
 mod tests {
+    use std::time::SystemTime;
+
     use super::*;
 
     #[tokio::test]
@@ -363,10 +370,43 @@ mod tests {
         assert!(before_send(event1.clone()).is_some());
     }
 
+    #[test]
+    fn trims_name_of_span_from_field_before_pushing_to_message() {
+        let log = log(
+            "Foobar",
+            &[
+                ("handle_input:class", "success response"),
+                ("handle_input:from", "1.1.1.1:3478"),
+                ("handle_input:method", "binding"),
+            ],
+        );
+
+        let log = append_tracing_fields_to_message(log).unwrap();
+
+        assert_eq!(
+            log.body,
+            "Foobar class=success response from=1.1.1.1:3478 method=binding"
+        )
+    }
+
     fn event(msg: &str) -> Event<'static> {
         Event {
             message: Some(msg.to_owned()),
             ..Default::default()
+        }
+    }
+
+    fn log(msg: &str, attrs: &[(&str, &str)]) -> Log {
+        Log {
+            level: sentry::protocol::LogLevel::Info,
+            body: msg.to_owned(),
+            trace_id: None,
+            timestamp: SystemTime::now(),
+            severity_number: None,
+            attributes: attrs
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_owned().into()))
+                .collect(),
         }
     }
 }
