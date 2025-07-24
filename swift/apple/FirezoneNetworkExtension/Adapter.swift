@@ -463,12 +463,12 @@ extension Adapter: CallbackHandlerDelegate {
     for stringAddress in resolvers {
       if let ipv4Address = IPv4Address(stringAddress) {
         parsedResolvers.append("\(ipv4Address)")
-        break
+        continue
       }
 
       if let ipv6Address = IPv6Address(stringAddress) {
         parsedResolvers.append("\(ipv6Address)")
-        break
+        continue
       }
 
       Log.warning("IP address \(stringAddress) did not parse as either IPv4 or IPv6")
