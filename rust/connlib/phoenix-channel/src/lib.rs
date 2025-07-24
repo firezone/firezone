@@ -517,6 +517,11 @@ where
 
                             continue;
                         }
+                    } else if !self.pending_messages.is_empty() {
+                        tracing::trace!(
+                            requests = ?self.pending_join_requests,
+                            "Unable to send message because we are waiting for JOIN requests to complete"
+                        );
                     }
                 }
                 Poll::Ready(Err(e)) => {
