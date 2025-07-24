@@ -71,8 +71,10 @@ class Adapter {
   /// Track our last fetched DNS resolvers to know whether to tell connlib they've updated
   private var lastFetchedResolvers: [String] = []
 
-  /// Remembers the last path update to determine when connectivity changes
-  private var lastPath: Network.NWPath?
+  /// Remembers the last _relevant_ path update.
+  /// A path update is considered relevant if certain properties change that require us to reset connlib's
+  /// network state.
+  private var lastRelevantPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
   /// This is the primary async primitive used in this class.
@@ -130,34 +132,38 @@ class Adapter {
       // out of a different interface even when 0.0.0.0 is used as the source.
       // If our primary interface changes, we can be certain the old socket shouldn't be
       // used anymore.
+      if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
+        lastRelevantPath = path
 
-      session?.reset("network path changed")
+        session?.reset("primary network path changed")
+      }
 
-      let resolvers = getSystemDefaultResolvers(interfaceName: path.availableInterfaces.first?.name)
+      if shouldFetchSystemResolvers(path: path) {
+        let resolvers = getSystemDefaultResolvers(
+          interfaceName: path.availableInterfaces.first?.name)
 
-      if self.lastFetchedResolvers != resolvers,
-        let encoded = try? JSONEncoder().encode(resolvers),
-        let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString()
-      {
-        do {
-          try session?.setDns(jsonResolvers)
-        } catch let error {
-          // `toString` needed to deep copy the string and avoid a possible dangling pointer
-          let msg = (error as? RustString)?.toString() ?? "Unknown error"
-          Log.error(AdapterError.setDnsError(msg))
+        if self.lastFetchedResolvers != resolvers,
+          let encoded = try? JSONEncoder().encode(resolvers),
+          let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString()
+        {
+
+          do {
+            try session?.setDns(jsonResolvers)
+          } catch let error {
+            // `toString` needed to deep copy the string and avoid a possible dangling pointer
+            let msg = (error as? RustString)?.toString() ?? "Unknown error"
+            Log.error(AdapterError.setDnsError(msg))
+          }
+
+          // Update our state tracker
+          self.lastFetchedResolvers = resolvers
         }
-
-        // Update our state tracker
-        self.lastFetchedResolvers = resolvers
       }
 
       if self.packetTunnelProvider?.reasserting == true {
         self.packetTunnelProvider?.reasserting = false
       }
     }
-
-    // Update our path tracker
-    self.lastPath = path
   }
 
   /// Currently disabled resources
@@ -514,3 +520,14 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 #endif
+
+extension Network.NWPath {
+  func connectivityDifferentFrom(path: Network.NWPath) -> Bool {
+    // We define a path as different from another if the following properties change
+    return path.supportsIPv4 != self.supportsIPv4 || path.supportsIPv6 != self.supportsIPv6
+      || path.supportsDNS != self.supportsDNS
+      || path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
+      // Apple provides no documentation on whether order is meaningful, so assume it isn't.
+      || Set(self.gateways) != Set(path.gateways)
+  }
+}
