@@ -1150,7 +1150,7 @@ pub(crate) fn ref_client_host(
             upstream_dns,
             search_domain,
         ),
-        latency(300), // TODO: Increase with #6062.
+        latency(250), // TODO: Increase with #6062.
     )
 }
 
