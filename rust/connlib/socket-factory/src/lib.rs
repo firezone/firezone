@@ -4,9 +4,7 @@ use bytes::{Buf as _, BytesMut};
 use gat_lending_iterator::LendingIterator;
 use ip_packet::{Ecn, Ipv4Header, Ipv6Header, UdpHeader};
 use opentelemetry::KeyValue;
-use parking_lot::Mutex;
 use quinn_udp::{EcnCodepoint, Transmit, UdpSockRef};
-use std::collections::HashMap;
 use std::io;
 use std::io::IoSliceMut;
 use std::ops::Deref;
@@ -16,19 +14,30 @@ use std::{
 };
 
 use std::any::Any;
-use std::collections::hash_map::Entry;
 use std::pin::Pin;
 use tokio::io::Interest;
 
-pub trait SocketFactory<S>: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
+pub trait SocketFactory<S>: Send + Sync + 'static {
+    fn bind(&self, local: SocketAddr) -> io::Result<S>;
+    fn reset(&self);
+}
 
 pub const SEND_BUFFER_SIZE: usize = ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 10 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 
-impl<F, S> SocketFactory<S> for F where F: Fn(&SocketAddr) -> io::Result<S> + Send + Sync + 'static {}
+impl<F, S> SocketFactory<S> for F
+where
+    F: Fn(SocketAddr) -> io::Result<S> + Send + Sync + 'static,
+{
+    fn bind(&self, local: SocketAddr) -> io::Result<S> {
+        (self)(local)
+    }
 
-pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
+    fn reset(&self) {}
+}
+
+pub fn tcp(addr: SocketAddr) -> io::Result<TcpSocket> {
     let socket = match addr {
         SocketAddr::V4(_) => tokio::net::TcpSocket::new_v4()?,
         SocketAddr::V6(_) => tokio::net::TcpSocket::new_v6()?,
@@ -42,8 +51,8 @@ pub fn tcp(addr: &SocketAddr) -> io::Result<TcpSocket> {
     })
 }
 
-pub fn udp(std_addr: &SocketAddr) -> io::Result<UdpSocket> {
-    let addr = socket2::SockAddr::from(*std_addr);
+pub fn udp(std_addr: SocketAddr) -> io::Result<UdpSocket> {
+    let addr = socket2::SockAddr::from(std_addr);
     let socket = socket2::Socket::new(addr.domain(), socket2::Type::DGRAM, None)?;
 
     // Note: for AF_INET sockets IPV6_V6ONLY is not a valid flag
@@ -151,9 +160,6 @@ pub struct UdpSocket {
     source_ip_resolver:
         Option<Box<dyn Fn(IpAddr) -> std::io::Result<IpAddr> + Send + Sync + 'static>>,
 
-    /// A cache of source IPs by their destination IPs.
-    src_by_dst_cache: Mutex<HashMap<IpAddr, IpAddr>>,
-
     /// A buffer pool for batches of incoming UDP packets.
     buffer_pool: BufferPool<Vec<u8>>,
 
@@ -171,7 +177,6 @@ impl UdpSocket {
             port,
             inner,
             source_ip_resolver: None,
-            src_by_dst_cache: Default::default(),
             buffer_pool: BufferPool::new(
                 u16::MAX as usize,
                 match socket_addr.ip() {
@@ -215,8 +220,7 @@ impl UdpSocket {
     /// Configures a new source IP resolver for this UDP socket.
     ///
     /// In case [`DatagramOut::src`] is [`None`], this function will be used to set a source IP given the destination IP of the datagram.
-    /// The resulting IPs will be cached.
-    /// To evict this cache, drop the [`UdpSocket`] and make a new one.
+    /// If set, this function will be called for _every_ packet and should therefore be fast.
     ///
     /// Errors during resolution result in the packet being dropped.
     pub fn with_source_ip_resolver(
@@ -469,23 +473,12 @@ impl UdpSocket {
 
     /// Attempt to resolve the source IP to use for sending to the given destination IP.
     fn resolve_source_for(&self, dst: IpAddr) -> std::io::Result<Option<IpAddr>> {
-        let src = match self.src_by_dst_cache.lock().entry(dst) {
-            Entry::Occupied(occ) => *occ.get(),
-            Entry::Vacant(vac) => {
-                // Caching errors could be a good idea to not incur in multiple calls for the resolver which can be costly
-                // For some cases like hosts ipv4-only stack trying to send ipv6 packets this can happen quite often but doing this is also a risk
-                // that in case that the adapter for some reason is temporarily unavailable it'd prevent the system from recovery.
-
-                let Some(resolver) = self.source_ip_resolver.as_ref() else {
-                    // If we don't have a resolver, let the operating system decide.
-                    return Ok(None);
-                };
-
-                let src = (resolver)(dst)?;
-
-                *vac.insert(src)
-            }
+        let Some(resolver) = self.source_ip_resolver.as_ref() else {
+            // If we don't have a resolver, let the operating system decide.
+            return Ok(None);
         };
+
+        let src = (resolver)(dst)?;
 
         Ok(Some(src))
     }

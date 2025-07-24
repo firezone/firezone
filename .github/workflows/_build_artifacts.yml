@@ -208,7 +208,7 @@ jobs:
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
               if [[ ! -x /tmp/toolchain/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc ]]; then
-                gcloud storage cp gs://firezone-ci-dependencies/aarch64-linux-musl-cross.tgz /tmp/
+                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/aarch64-linux-musl-cross.tgz -o /tmp/aarch64-linux-musl-cross.tgz
                 mkdir -p /tmp/toolchain
                 tar -xzf /tmp/aarch64-linux-musl-cross.tgz -C /tmp/toolchain
               fi
@@ -224,7 +224,7 @@ jobs:
               # TODO: musl.cc has blocked GitHub actions: https://github.com/orgs/community/discussions/27906
               # Find some other way to keep these updated.
               if [[ ! -x /tmp/toolchain/arm-linux-musleabihf-cross/bin/arm-linux-musleabihf-gcc ]]; then
-                gcloud storage cp gs://firezone-ci-dependencies/arm-linux-musleabihf-cross.tgz /tmp/
+                curl -fsSL https://github.com/firezone/musl-toolchains/releases/download/1/arm-linux-musleabihf-cross.tgz -o /tmp/arm-linux-musleabihf-cross.tgz
                 mkdir -p /tmp/toolchain
                 tar -xzf /tmp/arm-linux-musleabihf-cross.tgz -C /tmp/toolchain
               fi
@@ -248,9 +248,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.4.13
+            release_name: gateway-1.4.14
             # mark:next-gateway-version
-            version: 1.4.13
+            version: 1.4.14
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -280,7 +280,7 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.arch.shortname }}-musl-cross
       - name: Install dependencies
         run: ${{ matrix.arch.install_dependencies }}
-      - uses: taiki-e/install-action@9ca1734d8940023f074414ee621fd530c4ce10f2 # v2.55.3
+      - uses: taiki-e/install-action@c99cc51b309eee71a866715cfa08c922f11cf898 # v2.56.19
         with:
           tool: bpf-linker
         env:
@@ -326,15 +326,6 @@ jobs:
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - name: Build Version Tags
-        run: |
-          set -xe
-
-          version="${{ matrix.name.version }}"
-          MAJOR_VERSION="${version%%.*}"
-          MAJOR_MINOR_VERSION="${version%.*}"
-          echo "MAJOR_VERSION=$MAJOR_VERSION" >> "$GITHUB_ENV"
-          echo "MAJOR_MINOR_VERSION=$MAJOR_MINOR_VERSION" >> "$GITHUB_ENV"
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -345,10 +336,6 @@ jobs:
             type=raw,value=latest
             type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
-            ${{ matrix.name.version && format('type=raw,value={0}', matrix.name.version) }}
-            ${{ matrix.name.version && format('type=raw,value={0}-{1}', matrix.name.version, inputs.sha) }}
-            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
-            ${{ matrix.name.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Sanitize github.ref_name
         run: |
           # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
@@ -408,7 +395,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.4.13
+            version: 1.4.14
           - name: client
             # mark:next-client-version
             version: 1.0.6
@@ -431,15 +418,6 @@ jobs:
         run: ls -R /tmp/digests
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - name: Build Version Tags
-        run: |
-          set -xe
-
-          version="${{ matrix.image.version }}"
-          MAJOR_VERSION="${version%%.*}"
-          MAJOR_MINOR_VERSION="${version%.*}"
-          echo "MAJOR_VERSION=${MAJOR_VERSION}" >> "$GITHUB_ENV"
-          echo "MAJOR_MINOR_VERSION=${MAJOR_MINOR_VERSION}" >> "$GITHUB_ENV"
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
@@ -449,10 +427,6 @@ jobs:
             type=raw,value=latest
             type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
-            ${{ matrix.image.version && format('type=raw,value={0}', matrix.image.version) }}
-            ${{ matrix.image.version && format('type=raw,value={0}-{1}', matrix.image.version, inputs.sha) }}
-            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_VERSION) }}
-            ${{ matrix.image.version && format('type=raw,value={0}', env.MAJOR_MINOR_VERSION) }}
       - name: Create manifest list and push
         working-directory: /tmp/digests/${{ matrix.image.name }}
         run: |

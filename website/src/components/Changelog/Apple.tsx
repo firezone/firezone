@@ -25,9 +25,22 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="9991">
+          Fixes an issue where only the first system DNS resolver was used to
+          forward queries instead of all found ones.
+        </ChangeItem>
+        <ChangeItem pull="9985">
+          Fixes an issue where control plane messages could be stuck forever on
+          flaky connections, requiring signing out and signin back in to
+          recover.
+        </ChangeItem>
         <ChangeItem pull="9891">
           Fixes an issue where connections would sometimes take up to 90s to
           establish.
+        </ChangeItem>
+        <ChangeItem pull="9979">
+          Fixes an issue where connections in low-latency networks (between
+          Client and Gateway) would fail to establish reliably.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.4" date={new Date("2025-07-11")}>

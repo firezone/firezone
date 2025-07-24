@@ -53,7 +53,7 @@ defmodule API.MixProject do
       {:opentelemetry_telemetry, "~> 1.1.1", override: true},
       {:opentelemetry_cowboy, "~> 1.0"},
       {:opentelemetry_phoenix, "~> 2.0"},
-      {:sentry, "~> 10.0"},
+      {:sentry, "~> 11.0"},
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
 
@@ -62,7 +62,7 @@ defmodule API.MixProject do
       {:remote_ip, "~> 1.1"},
       {:open_api_spex, "~> 3.21.2"},
       {:ymlr, "~> 5.0"},
-      {:hammer, "~> 7.0.0"},
+      {:hammer, "~> 7.1.0"},
 
       # Test deps
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},

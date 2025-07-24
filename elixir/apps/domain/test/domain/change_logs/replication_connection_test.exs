@@ -12,7 +12,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "on_write/6 for inserts" do
-    test "ignores account inserts", %{account: account} do
+    test "handles account inserts", %{account: account} do
       initial_state = %{flush_buffer: %{}}
 
       result_state =
@@ -245,7 +245,7 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
   end
 
   describe "on_write/6 for deletes" do
-    test "ignores account deletes", %{account: account} do
+    test "handles account deletes", %{account: account} do
       initial_state = %{flush_buffer: %{}}
 
       result_state =
@@ -258,7 +258,19 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
           nil
         )
 
-      assert result_state == initial_state
+      assert result_state == %{
+               flush_buffer: %{
+                 12345 => %{
+                   data: nil,
+                   table: "accounts",
+                   vsn: 0,
+                   op: :delete,
+                   account_id: account.id,
+                   lsn: 12345,
+                   old_data: %{"id" => account.id, "name" => "deleted account"}
+                 }
+               }
+             }
     end
 
     test "adds delete operation to flush buffer for non-soft-deleted records", %{account: account} do

@@ -401,7 +401,7 @@ dependencies = [
  "serde_repr",
  "tokio",
  "url",
- "zbus 5.8.0",
+ "zbus 5.9.0",
 ]
 
 [[package]]
@@ -951,7 +951,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.1"
-source = "git+https://github.com/firezone/boringtun?branch=master#b9f2d4bad50a5d3ea9bbb6e7c67809158fcf4118"
+source = "git+https://github.com/firezone/boringtun?branch=master#a99332c529ce7546e953de5b6618e4e8de7170f3"
 dependencies = [
  "aead",
  "base64 0.22.1",
@@ -1714,6 +1714,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "dashmap"
+version = "6.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5041cc499144891f3790297212f32a74fb938e5136a14943f338ef9e0ae276cf"
+dependencies = [
+ "cfg-if",
+ "crossbeam-utils",
+ "hashbrown 0.14.5",
+ "lock_api",
+ "once_cell",
+ "parking_lot_core",
+]
+
+[[package]]
 name = "data-encoding"
 version = "2.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2318,6 +2332,7 @@ dependencies = [
  "bufferpool",
  "bytes",
  "clap",
+ "dashmap",
  "dirs",
  "dns-types",
  "firezone-logging",
@@ -2356,12 +2371,12 @@ dependencies = [
  "windows-implement",
  "winreg 0.52.0",
  "wintun",
- "zbus 5.8.0",
+ "zbus 5.9.0",
 ]
 
 [[package]]
 name = "firezone-gateway"
-version = "1.4.13"
+version = "1.4.14"
 dependencies = [
  "anyhow",
  "backoff",
@@ -4574,7 +4589,7 @@ dependencies = [
  "mac-notification-sys",
  "serde",
  "tauri-winrt-notification",
- "zbus 5.8.0",
+ "zbus 5.9.0",
 ]
 
 [[package]]
@@ -6556,9 +6571,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.140"
+version = "1.0.141"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20068b6e96dc6c9bd23e01df8827e6c7e1f2fddd43c21810382803c136b99373"
+checksum = "30b9eff21ebe718216c6ec64e1d9ac57087aad11efc64e32002bce4a0d4c03d3"
 dependencies = [
  "itoa",
  "memchr",
@@ -6855,7 +6870,6 @@ dependencies = [
  "ip-packet",
  "libc",
  "opentelemetry",
- "parking_lot",
  "quinn-udp",
  "socket2",
  "tokio",
@@ -6944,7 +6958,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.9.0"
-source = "git+https://github.com/algesten/str0m?branch=main#214fcd2f2064046efb4194f33a40085fb9e86ac6"
+source = "git+https://github.com/algesten/str0m?branch=main#3b3fe3181b3823f3b5a1d50f5ed9c49b043cf5be"
 dependencies = [
  "combine",
  "crc",
@@ -7456,7 +7470,7 @@ dependencies = [
  "thiserror 2.0.12",
  "url",
  "windows",
- "zbus 5.8.0",
+ "zbus 5.9.0",
 ]
 
 [[package]]
@@ -9609,9 +9623,9 @@ dependencies = [
 
 [[package]]
 name = "zbus"
-version = "5.8.0"
+version = "5.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "597f45e98bc7e6f0988276012797855613cd8269e23b5be62cc4e5d28b7e515d"
+checksum = "4bb4f9a464286d42851d18a605f7193b8febaf5b0919d71c6399b7b26e5b0aad"
 dependencies = [
  "async-broadcast",
  "async-executor",
@@ -9636,7 +9650,7 @@ dependencies = [
  "uds_windows",
  "windows-sys 0.59.0",
  "winnow 0.7.10",
- "zbus_macros 5.8.0",
+ "zbus_macros 5.9.0",
  "zbus_names 4.2.0",
  "zvariant 5.5.3",
 ]
@@ -9656,9 +9670,9 @@ dependencies = [
 
 [[package]]
 name = "zbus_macros"
-version = "5.8.0"
+version = "5.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5c8e4e14dcdd9d97a98b189cd1220f30e8394ad271e8c987da84f73693862c2"
+checksum = "ef9859f68ee0c4ee2e8cde84737c78e3f4c54f946f2a38645d0d4c7a95327659"
 dependencies = [
  "proc-macro-crate 3.3.0",
  "proc-macro2",

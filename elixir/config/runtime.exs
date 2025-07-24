@@ -294,7 +294,8 @@ if config_env() == :prod do
 
   # Sentry
 
-  with api_external_url <- env_var_to_config!(:api_external_url),
+  with api_external_url when not is_nil(api_external_url) <-
+         env_var_to_config!(:api_external_url),
        api_external_url_host <- URI.parse(api_external_url).host,
        environment_name when environment_name in [:staging, :production] <-
          (case api_external_url_host do

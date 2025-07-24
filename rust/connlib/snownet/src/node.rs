@@ -32,7 +32,6 @@ use str0m::ice::{IceAgent, IceAgentEvent, IceCreds, StunMessage, StunPacket};
 use str0m::net::Protocol;
 use str0m::{Candidate, CandidateKind, IceConnectionState};
 use stun_codec::rfc5389::attributes::{Realm, Username};
-use tracing::info_span;
 
 // Note: Taken from boringtun
 const HANDSHAKE_RATE_LIMIT: u64 = 100;
@@ -258,9 +257,23 @@ where
                 .is_some_and(|c| c == &remote_creds)
             && c.tunnel.remote_static_public() == remote
         {
-            c.state.on_upsert(&mut c.agent, now);
-
             tracing::info!(local = ?local_creds, "Reusing existing connection");
+
+            c.state.on_upsert(cid, &mut c.agent, now);
+
+            for candidate in c.agent.local_candidates() {
+                signal_candidate_to_remote(cid, candidate, &mut self.pending_events);
+            }
+
+            // Server-reflexive candidates are not in the local candidates of the ICE agent so those need special handling.
+            for candidate in self
+                .shared_candidates
+                .iter()
+                .filter(|c| c.kind() == CandidateKind::ServerReflexive)
+            {
+                signal_candidate_to_remote(cid, candidate, &mut self.pending_events);
+            }
+
             return Ok(());
         }
 
@@ -351,8 +364,8 @@ where
             }
         };
 
-        let Some((agent, relay)) = self.connections.connecting_agent_mut(cid) else {
-            tracing::debug!(ignored_candidate = %candidate, "Unknown connection or socket has already been nominated");
+        let Some((agent, relay)) = self.connections.agent_mut(cid) else {
+            tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
         };
 
@@ -373,12 +386,21 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = relay.and_then(|r| self.allocations.get_mut(&r)) else {
-            tracing::debug!(rid = ?relay, "Unknown relay");
+        let Some(allocation) = self.allocations.get_mut(&relay) else {
+            tracing::debug!(rid = %relay, "Unknown relay");
             return;
         };
 
         allocation.bind_channel(candidate.addr(), now);
+
+        let Some(connection) = self.connections.get_established_mut(&cid) else {
+            return;
+        };
+
+        // Make sure we move out of idle mode when we add new candidates.
+        connection
+            .state
+            .on_candidate(cid, &mut connection.agent, now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
@@ -391,7 +413,7 @@ where
             }
         };
 
-        if let Some(agent) = self.connections.agent_mut(cid) {
+        if let Some((agent, _)) = self.connections.agent_mut(cid) {
             agent.invalidate_candidate(&candidate);
             agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
         }
@@ -443,14 +465,14 @@ where
     /// Nevertheless, using [`IpPacket`] in our API has good documentation value.
     pub fn encapsulate(
         &mut self,
-        connection: TId,
+        cid: TId,
         packet: IpPacket,
         now: Instant,
     ) -> Result<Option<Transmit>> {
         let conn = self
             .connections
-            .get_established_mut(&connection)
-            .with_context(|| format!("Unknown connection {connection}"))?;
+            .get_established_mut(&cid)
+            .with_context(|| format!("Unknown connection {cid}"))?;
 
         if self.mode.is_server() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -461,79 +483,27 @@ where
             return Ok(None);
         }
 
-        let mut buffer = self.buffer_pool.pull();
-        buffer.resize(ip_packet::MAX_FZ_PAYLOAD, 0);
-
-        // Encode the packet with an offset of 4 bytes, in case we need to wrap it in a channel-data message.
-        let Some(packet_len) = conn
-            .encapsulate(packet, &mut buffer[4..], now)
-            .with_context(|| format!("cid={connection}"))?
-            .map(|p| p.len())
-        // Mapping to len() here terminate the mutable borrow of buffer, allowing re-borrowing further down.
-        else {
-            return Ok(None);
-        };
-
-        let packet_start = 4;
-        let packet_end = 4 + packet_len;
-
         let socket = match &mut conn.state {
-            ConnectionState::Connecting { buffered, .. } => {
-                buffered.push(buffer[packet_start..packet_end].to_vec());
-                let num_buffered = buffered.len();
+            ConnectionState::Connecting { ip_buffer, .. } => {
+                ip_buffer.push(packet);
+                let num_buffered = ip_buffer.len();
 
-                let _guard = conn.span.enter();
-
-                tracing::debug!(%num_buffered, "ICE is still in progress, buffering WG handshake");
+                tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering WG handshake");
 
                 return Ok(None);
             }
-            ConnectionState::Connected { peer_socket, .. } => peer_socket,
-            ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Connected { peer_socket, .. } => *peer_socket,
+            ConnectionState::Idle { peer_socket } => *peer_socket,
             ConnectionState::Failed => {
-                return Err(anyhow!("Connection {connection} failed"));
+                return Err(anyhow!("Connection {cid} failed"));
             }
         };
 
-        match *socket {
-            PeerSocket::PeerToPeer {
-                source,
-                dest: remote,
-            }
-            | PeerSocket::PeerToRelay {
-                source,
-                dest: remote,
-            } => {
-                buffer.copy_within(packet_start..packet_end, 0);
-                buffer.truncate(packet_len);
+        let maybe_transmit = conn
+            .encapsulate(cid, socket, packet, now, &mut self.allocations)
+            .with_context(|| format!("cid={cid}"))?;
 
-                Ok(Some(Transmit {
-                    src: Some(source),
-                    dst: remote,
-                    payload: buffer,
-                }))
-            }
-            PeerSocket::RelayToPeer { relay, dest: peer }
-            | PeerSocket::RelayToRelay { relay, dest: peer } => {
-                let Some(allocation) = self.allocations.get_mut(&relay) else {
-                    tracing::warn!(%relay, "No allocation");
-                    return Ok(None);
-                };
-                let Some(encode_ok) =
-                    allocation.encode_channel_data_header(peer, &mut buffer[..packet_end], now)
-                else {
-                    return Ok(None);
-                };
-
-                buffer.truncate(packet_end);
-
-                Ok(Some(Transmit {
-                    src: None,
-                    dst: encode_ok.socket,
-                    payload: buffer,
-                }))
-            }
-        }
+        Ok(maybe_transmit)
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -614,8 +584,11 @@ where
                 }
                 None => true,
             });
-        self.connections
-            .check_relays_available(&self.allocations, &mut self.rng);
+        self.connections.check_relays_available(
+            &self.allocations,
+            &mut self.pending_events,
+            &mut self.rng,
+        );
         self.connections.gc(&mut self.pending_events);
     }
 
@@ -750,7 +723,7 @@ where
         agent.handle_timeout(now);
 
         if self.allocations.is_empty() {
-            tracing::warn!("No TURN servers connected; connection may fail to establish");
+            tracing::warn!(%cid, "No TURN servers connected; connection may fail to establish");
         }
 
         let mut tunnel = Tunn::new_at(
@@ -784,13 +757,13 @@ where
             intent_sent_at,
             signalling_completed_at: now,
             remote_pub_key: remote,
+            relay,
             state: ConnectionState::Connecting {
-                relay: Some(relay),
-                buffered: AllocRingBuffer::new(128),
+                wg_buffer: AllocRingBuffer::new(128),
+                ip_buffer: AllocRingBuffer::new(128),
             },
             disconnected_at: None,
             possible_sockets: BTreeSet::default(),
-            span: info_span!(parent: tracing::Span::none(), "connection", %cid),
             buffer_pool: self.buffer_pool.clone(),
         }
     }
@@ -807,7 +780,7 @@ where
             return Ok(());
         }
 
-        for (cid, agent, _span) in self.connections.agents_mut() {
+        for (cid, agent) in self.connections.agents_mut() {
             add_local_candidate(cid, agent, host_candidate.clone(), &mut self.pending_events);
         }
 
@@ -896,7 +869,7 @@ where
             return ControlFlow::Continue(());
         };
 
-        for (_, agent, _span) in self.connections.agents_mut() {
+        for (_, agent) in self.connections.agents_mut() {
             if agent.accepts_message(&message) {
                 agent.handle_packet(
                     now,
@@ -931,6 +904,7 @@ where
             let handshake_complete_before_decapsulate = conn.wg_handshake_complete(now);
 
             let control_flow = conn.decapsulate(
+                cid,
                 from.ip(),
                 packet,
                 &mut self.allocations,
@@ -985,19 +959,17 @@ where
                         continue;
                     }
 
-                    for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
-                    {
+                    for (cid, agent) in self.connections.agents_by_relay_mut(rid) {
                         add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
                     }
                 }
                 allocation::Event::New(candidate) => {
-                    for (cid, agent, _span) in self.connections.connecting_agents_by_relay_mut(rid)
-                    {
+                    for (cid, agent) in self.connections.agents_by_relay_mut(rid) {
                         add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
-                    for (cid, agent, _span) in self.connections.agents_mut() {
+                    for (cid, agent) in self.connections.agents_mut() {
                         remove_local_candidate(cid, agent, &candidate, &mut self.pending_events);
                     }
                 }
@@ -1068,7 +1040,6 @@ where
             intent_sent_at,
             relay: self.sample_relay()?,
             is_failed: false,
-            span: info_span!("connection", %cid),
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
@@ -1313,15 +1284,13 @@ where
     fn check_relays_available(
         &mut self,
         allocations: &BTreeMap<RId, Allocation>,
+        pending_events: &mut VecDeque<Event<TId>>,
         rng: &mut impl Rng,
     ) {
-        // For initial connections, we can just update the relay to be used.
         for (_, c) in self.iter_initial_mut() {
             if allocations.contains_key(&c.relay) {
                 continue;
             }
-
-            let _guard = c.span.enter();
 
             let Some(new_rid) = allocations.keys().copied().choose(rng) else {
                 continue;
@@ -1331,43 +1300,23 @@ where
             c.relay = new_rid;
         }
 
-        // For established connections, we check if we are currently using the relay.
-        for (_, c) in self.iter_established_mut() {
-            let _guard = c.span.enter();
-
-            use ConnectionState::*;
-            let peer_socket = match &mut c.state {
-                Connected { peer_socket, .. } | Idle { peer_socket } => peer_socket,
-                Failed => continue,
-                Connecting {
-                    relay: maybe_relay, ..
-                } => {
-                    let Some(relay) = maybe_relay else {
-                        continue;
-                    };
-                    if allocations.contains_key(relay) {
-                        continue;
-                    }
-
-                    tracing::debug!("Selected relay disconnected during ICE; connection may fail");
-                    *maybe_relay = None;
-                    continue;
-                }
-            };
-
-            let relay = match peer_socket {
-                PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => continue, // Don't care if relay of direct connection disappears, we weren't using it anyway.
-                PeerSocket::RelayToPeer { relay, .. } | PeerSocket::RelayToRelay { relay, .. } => {
-                    relay
-                }
-            };
-
-            if allocations.contains_key(relay) {
+        for (cid, c) in self.iter_established_mut() {
+            if allocations.contains_key(&c.relay) {
                 continue; // Our relay is still there, no problems.
             }
 
-            tracing::info!("Connection failed (relay disconnected)");
-            c.state = ConnectionState::Failed;
+            let Some((rid, allocation)) = allocations.iter().choose(rng) else {
+                tracing::debug!(%cid, "Failed to sample new relay for connection");
+                continue;
+            };
+
+            tracing::info!(%cid, old = %c.relay, new = %rid, "Attempting to migrate connection to new relay");
+
+            c.relay = *rid;
+
+            for candidate in allocation.current_relay_candidates() {
+                add_local_candidate(cid, &mut c.agent, candidate, pending_events);
+            }
         }
     }
 
@@ -1375,60 +1324,35 @@ where
         self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
 
-    fn agent_mut(&mut self, id: TId) -> Option<&mut IceAgent> {
-        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| &mut i.agent);
-        let maybe_established_connection = self.established.get_mut(&id).map(|c| &mut c.agent);
+    fn agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, RId)> {
+        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
+        let maybe_established_connection = self
+            .established
+            .get_mut(&id)
+            .map(|c| (&mut c.agent, c.relay));
 
         maybe_initial_connection.or(maybe_established_connection)
     }
 
-    fn connecting_agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, Option<RId>)> {
-        let maybe_initial_connection = self
-            .initial
-            .get_mut(&id)
-            .map(|i| (&mut i.agent, Some(i.relay)));
-        let maybe_pending_connection = self.established.get_mut(&id).and_then(|c| match c.state {
-            ConnectionState::Connecting { relay, .. } => Some((&mut c.agent, relay)),
-            ConnectionState::Failed
-            | ConnectionState::Idle { .. }
-            | ConnectionState::Connected { .. } => None,
-        });
-
-        maybe_initial_connection.or(maybe_pending_connection)
-    }
-
-    fn connecting_agents_by_relay_mut(
-        &mut self,
-        id: RId,
-    ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> + '_ {
-        let initial_connections = self.initial.iter_mut().filter_map(move |(cid, i)| {
-            (i.relay == id).then_some((*cid, &mut i.agent, i.span.enter()))
-        });
-        let pending_connections = self.established.iter_mut().filter_map(move |(cid, c)| {
-            use ConnectionState::*;
-
-            match c.state {
-                Connecting {
-                    relay: Some(relay), ..
-                } if relay == id => Some((*cid, &mut c.agent, c.span.enter())),
-                Failed | Idle { .. } | Connecting { .. } | Connected { .. } => None,
-            }
-        });
-
-        initial_connections.chain(pending_connections)
-    }
-
-    fn agents_mut(
-        &mut self,
-    ) -> impl Iterator<Item = (TId, &mut IceAgent, tracing::span::Entered<'_>)> {
-        let initial_agents = self
+    fn agents_by_relay_mut(&mut self, id: RId) -> impl Iterator<Item = (TId, &mut IceAgent)> + '_ {
+        let initial_connections = self
             .initial
             .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
+            .filter_map(move |(cid, i)| (i.relay == id).then_some((*cid, &mut i.agent)));
+        let established_connections = self
+            .established
+            .iter_mut()
+            .filter_map(move |(cid, c)| (c.relay == id).then_some((*cid, &mut c.agent)));
+
+        initial_connections.chain(established_connections)
+    }
+
+    fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
+        let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
         let negotiated_agents = self
             .established
             .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent, c.span.enter()));
+            .map(|(id, c)| (*id, &mut c.agent));
 
         initial_agents.chain(negotiated_agents)
     }
@@ -1488,12 +1412,7 @@ fn add_local_candidate<TId>(
 {
     // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
     if candidate.kind() == CandidateKind::ServerReflexive {
-        tracing::info!(?candidate, "Signalling candidate to remote");
-
-        pending_events.push_back(Event::NewIceCandidate {
-            connection: id,
-            candidate: candidate.to_sdp_string(),
-        });
+        signal_candidate_to_remote(id, &candidate, pending_events);
         return;
     }
 
@@ -1501,6 +1420,14 @@ fn add_local_candidate<TId>(
         return;
     };
 
+    signal_candidate_to_remote(id, candidate, pending_events);
+}
+
+fn signal_candidate_to_remote<TId>(
+    id: TId,
+    candidate: &Candidate,
+    pending_events: &mut VecDeque<Event<TId>>,
+) {
     tracing::info!(?candidate, "Signalling candidate to remote");
 
     pending_events.push_back(Event::NewIceCandidate {
@@ -1517,7 +1444,7 @@ fn invalidate_allocation_candidates<TId, RId>(
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    for (cid, agent, _guard) in connections.agents_mut() {
+    for (cid, agent) in connections.agents_mut() {
         for candidate in allocation.current_relay_candidates() {
             remove_local_candidate(cid, agent, &candidate, pending_events);
         }
@@ -1654,12 +1581,9 @@ struct InitialConnection<RId> {
     intent_sent_at: Instant,
 
     is_failed: bool,
-
-    span: tracing::Span,
 }
 
 impl<RId> InitialConnection<RId> {
-    #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
     fn handle_timeout<TId>(&mut self, cid: TId, now: Instant)
     where
         TId: fmt::Display,
@@ -1667,7 +1591,7 @@ impl<RId> InitialConnection<RId> {
         self.agent.handle_timeout(now);
 
         if now >= self.no_answer_received_timeout() {
-            tracing::info!("Connection setup timed out (no answer received)");
+            tracing::info!(%cid, "Connection setup timed out (no answer received)");
             self.is_failed = true;
         }
     }
@@ -1703,7 +1627,10 @@ struct Connection<RId> {
     /// When to next update the [`Tunn`]'s timers.
     next_wg_timer_update: Instant,
 
-    state: ConnectionState<RId>,
+    /// The relay we have selected for this connection.
+    relay: RId,
+
+    state: ConnectionState,
     disconnected_at: Option<Instant>,
 
     /// Socket addresses from which we might receive data (even before we are connected).
@@ -1715,28 +1642,27 @@ struct Connection<RId> {
 
     buffer: Vec<u8>,
 
-    span: tracing::Span,
     buffer_pool: BufferPool<Vec<u8>>,
 }
 
-enum ConnectionState<RId> {
+enum ConnectionState {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
-        /// The relay we have selected for this connection.
-        relay: Option<RId>,
-
         /// Packets emitted by wireguard whilst are still running ICE.
         ///
         /// This can happen if the remote's WG session initiation arrives at our socket before we nominate it.
         /// A session initiation requires a response that we must not drop, otherwise the connection setup experiences unnecessary delays.
+        wg_buffer: AllocRingBuffer<Vec<u8>>,
+
+        /// Packets we are told to send whilst we are still running ICE.
         ///
-        /// It can also happen if we attempt to encapsulate a packet prior to the WireGuard handshake which triggers the creation of a WireGuard handshake initiation packet.
-        buffered: AllocRingBuffer<Vec<u8>>,
+        /// These need to be encrypted and sent once the tunnel is established.
+        ip_buffer: AllocRingBuffer<IpPacket>,
     },
     /// A socket has been nominated.
     Connected {
         /// Our nominated socket.
-        peer_socket: PeerSocket<RId>,
+        peer_socket: PeerSocket,
 
         last_outgoing: Instant,
         last_incoming: Instant,
@@ -1744,17 +1670,18 @@ enum ConnectionState<RId> {
     /// We haven't seen application packets in a while.
     Idle {
         /// Our nominated socket.
-        peer_socket: PeerSocket<RId>,
+        peer_socket: PeerSocket,
     },
     /// The connection failed in an unrecoverable way and will be GC'd.
     Failed,
 }
 
-impl<RId> ConnectionState<RId>
-where
-    RId: Copy,
-{
-    fn poll_timeout(&self) -> Option<(Instant, &'static str)> {
+impl ConnectionState {
+    fn poll_timeout(&self, agent: &IceAgent) -> Option<(Instant, &'static str)> {
+        if agent.state() != IceConnectionState::Connected {
+            return None;
+        }
+
         match self {
             ConnectionState::Connected {
                 last_incoming,
@@ -1767,7 +1694,10 @@ where
         }
     }
 
-    fn handle_timeout(&mut self, agent: &mut IceAgent, now: Instant) {
+    fn handle_timeout<TId>(&mut self, cid: TId, agent: &mut IceAgent, now: Instant)
+    where
+        TId: fmt::Display,
+    {
         let Self::Connected {
             last_outgoing,
             last_incoming,
@@ -1781,21 +1711,43 @@ where
             return;
         }
 
+        if agent.state() != IceConnectionState::Connected {
+            return;
+        }
+
         let peer_socket = *peer_socket;
 
-        self.transition_to_idle(peer_socket, agent);
+        self.transition_to_idle(cid, peer_socket, agent);
     }
 
-    fn on_upsert(&mut self, agent: &mut IceAgent, now: Instant) {
+    fn on_upsert<TId>(&mut self, cid: TId, agent: &mut IceAgent, now: Instant)
+    where
+        TId: fmt::Display,
+    {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
             Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, "upsert", now);
+        self.transition_to_connected(cid, peer_socket, agent, "upsert", now);
     }
 
-    fn on_outgoing(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
+    fn on_candidate<TId>(&mut self, cid: TId, agent: &mut IceAgent, now: Instant)
+    where
+        TId: fmt::Display,
+    {
+        let peer_socket = match self {
+            Self::Idle { peer_socket } => *peer_socket,
+            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+        };
+
+        self.transition_to_connected(cid, peer_socket, agent, "new candidate", now);
+    }
+
+    fn on_outgoing<TId>(&mut self, cid: TId, agent: &mut IceAgent, packet: &IpPacket, now: Instant)
+    where
+        TId: fmt::Display,
+    {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
             Self::Connected { last_outgoing, .. } => {
@@ -1805,10 +1757,13 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, tracing::field::debug(packet), now);
+        self.transition_to_connected(cid, peer_socket, agent, tracing::field::debug(packet), now);
     }
 
-    fn on_incoming(&mut self, agent: &mut IceAgent, packet: &IpPacket, now: Instant) {
+    fn on_incoming<TId>(&mut self, cid: TId, agent: &mut IceAgent, packet: &IpPacket, now: Instant)
+    where
+        TId: fmt::Display,
+    {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
             Self::Connected { last_incoming, .. } => {
@@ -1818,23 +1773,29 @@ where
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(peer_socket, agent, tracing::field::debug(packet), now);
+        self.transition_to_connected(cid, peer_socket, agent, tracing::field::debug(packet), now);
     }
 
-    fn transition_to_idle(&mut self, peer_socket: PeerSocket<RId>, agent: &mut IceAgent) {
-        tracing::debug!("Connection is idle");
+    fn transition_to_idle<TId>(&mut self, cid: TId, peer_socket: PeerSocket, agent: &mut IceAgent)
+    where
+        TId: fmt::Display,
+    {
+        tracing::debug!(%cid, "Connection is idle");
         *self = Self::Idle { peer_socket };
         apply_idle_stun_timings(agent);
     }
 
-    fn transition_to_connected(
+    fn transition_to_connected<TId>(
         &mut self,
-        peer_socket: PeerSocket<RId>,
+        cid: TId,
+        peer_socket: PeerSocket,
         agent: &mut IceAgent,
         trigger: impl tracing::Value,
         now: Instant,
-    ) {
-        tracing::debug!(trigger, "Connection resumed");
+    ) where
+        TId: fmt::Display,
+    {
+        tracing::debug!(trigger, %cid, "Connection resumed");
         *self = Self::Connected {
             peer_socket,
             last_outgoing: now,
@@ -1855,8 +1816,8 @@ fn idle_at(last_incoming: Instant, last_outgoing: Instant) -> Instant {
 }
 
 /// The socket of the peer we are connected to.
-#[derive(Debug, PartialEq, Clone, Copy)]
-enum PeerSocket<RId> {
+#[derive(PartialEq, Clone, Copy)]
+enum PeerSocket {
     PeerToPeer {
         source: SocketAddr,
         dest: SocketAddr,
@@ -1866,18 +1827,43 @@ enum PeerSocket<RId> {
         dest: SocketAddr,
     },
     RelayToPeer {
-        relay: RId,
         dest: SocketAddr,
     },
     RelayToRelay {
-        relay: RId,
         dest: SocketAddr,
     },
 }
 
+impl PeerSocket {
+    fn send_from_relay(&self) -> bool {
+        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
+    }
+
+    // TODO: Return `Arguments` here once we hit 1.89
+    fn fmt<RId>(&self, relay: RId) -> String
+    where
+        RId: fmt::Display,
+    {
+        match self {
+            PeerSocket::PeerToPeer { source, dest } => {
+                format!("PeerToPeer {{ source: {source}, dest: {dest} }}")
+            }
+            PeerSocket::PeerToRelay { source, dest } => {
+                format!("PeerToRelay {{ source: {source}, dest: {dest} }}")
+            }
+            PeerSocket::RelayToPeer { dest } => {
+                format!("PeerToRelay {{ relay: {relay}, dest: {dest} }}")
+            }
+            PeerSocket::RelayToRelay { dest } => {
+                format!("PeerToRelay {{ relay: {relay}, dest: {dest} }}")
+            }
+        }
+    }
+}
+
 impl<RId> Connection<RId>
 where
-    RId: PartialEq + Eq + Hash + fmt::Debug + Copy + Ord,
+    RId: PartialEq + Eq + Hash + fmt::Debug + fmt::Display + Copy + Ord,
 {
     /// Checks if we want to accept a packet from a certain address.
     ///
@@ -1887,7 +1873,7 @@ where
     fn accepts(&self, addr: &SocketAddr) -> bool {
         let from_nominated = match &self.state {
             ConnectionState::Idle { peer_socket }
-            | ConnectionState::Connected { peer_socket, .. } => match peer_socket {
+            | ConnectionState::Connected { peer_socket, .. } => match &peer_socket {
                 PeerSocket::PeerToPeer { dest, .. } | PeerSocket::PeerToRelay { dest, .. } => {
                     dest == addr
                 }
@@ -1925,7 +1911,7 @@ where
                 self.disconnect_timeout()
                     .map(|instant| (instant, "disconnect timeout")),
             )
-            .chain(self.state.poll_timeout())
+            .chain(self.state.poll_timeout(&self.agent))
             .min_by_key(|(instant, _)| *instant)
     }
 
@@ -1943,7 +1929,6 @@ where
         Some(disconnected_at + DISCONNECT_TIMEOUT)
     }
 
-    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     fn handle_timeout<TId>(
         &mut self,
         cid: TId,
@@ -1955,13 +1940,13 @@ where
         RId: Copy + Ord + fmt::Display,
     {
         self.agent.handle_timeout(now);
-        self.state.handle_timeout(&mut self.agent, now);
+        self.state.handle_timeout(cid, &mut self.agent, now);
 
         if self
             .candidate_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!("Connection failed (no candidates received)");
+            tracing::info!(%cid, "Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -1970,12 +1955,12 @@ where
             .disconnect_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!("Connection failed (ICE timeout)");
+            tracing::info!(%cid, "Connection failed (ICE timeout)");
             self.state = ConnectionState::Failed;
             return;
         }
 
-        self.handle_tunnel_timeout(now, allocations, transmits);
+        self.handle_tunnel_timeout(cid, now, allocations, transmits);
 
         // If this was a scheduled update, hop to the next interval.
         if now >= self.next_wg_timer_update {
@@ -2018,6 +2003,13 @@ where
                     let source_relay = allocations.iter().find_map(|(relay, allocation)| {
                         allocation.has_socket(source).then_some(*relay)
                     });
+
+                    if source_relay.is_some_and(|r| self.relay != r) {
+                        tracing::warn!(
+                            "Nominated a relay different from what we set out to! Weird?"
+                        );
+                    }
+
                     let dest_is_relay = self
                         .agent
                         .remote_candidates()
@@ -2033,24 +2025,25 @@ where
                             source,
                             dest: destination,
                         },
-                        (Some(relay), false) => PeerSocket::RelayToPeer {
-                            relay,
-                            dest: destination,
-                        },
-                        (Some(relay), true) => PeerSocket::RelayToRelay {
-                            relay,
-                            dest: destination,
-                        },
+                        (Some(_), false) => PeerSocket::RelayToPeer { dest: destination },
+                        (Some(_), true) => PeerSocket::RelayToRelay { dest: destination },
                     };
 
                     let old = match mem::replace(&mut self.state, ConnectionState::Failed) {
-                        ConnectionState::Connecting { buffered, .. } => {
-                            let num_buffered = buffered.len();
+                        ConnectionState::Connecting {
+                            wg_buffer,
+                            ip_buffer,
+                            ..
+                        } => {
+                            tracing::debug!(
+                                num_buffered = %wg_buffer.len(),
+                                %cid,
+                                "Flushing WireGuard packets buffered during ICE"
+                            );
 
-                            tracing::debug!(%num_buffered, "Flushing packets buffered during ICE");
-
-                            transmits.extend(buffered.into_iter().flat_map(|packet| {
+                            transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
                                 make_owned_transmit(
+                                    self.relay,
                                     remote_socket,
                                     &packet,
                                     &self.buffer_pool,
@@ -2058,12 +2051,31 @@ where
                                     now,
                                 )
                             }));
+
+                            tracing::debug!(
+                                num_buffered = %ip_buffer.len(),
+                                %cid,
+                                "Flushing IP packets buffered during ICE"
+                            );
+                            transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
+                                let transmit = self
+                                    .encapsulate(cid, remote_socket, packet, now, allocations)
+                                    .inspect_err(|e| {
+                                        tracing::debug!(
+                                            %cid,
+                                            "Failed to encapsulate buffered IP packet: {e:#}"
+                                        )
+                                    })
+                                    .ok()??;
+
+                                Some(transmit)
+                            }));
+
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
                                 last_incoming: now,
                                 last_outgoing: now,
                             };
-
                             None
                         }
                         ConnectionState::Connected {
@@ -2093,14 +2105,23 @@ where
                             Some(peer_socket)
                         }
                         ConnectionState::Idle { peer_socket } => {
-                            self.state = ConnectionState::Idle { peer_socket };
+                            self.state = ConnectionState::Idle {
+                                peer_socket: remote_socket,
+                            };
 
                             Some(peer_socket)
                         }
                         ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
                     };
 
-                    tracing::info!(?old, new = ?remote_socket, duration_since_intent = ?self.duration_since_intent(now), "Updating remote socket");
+                    let relay = self.relay;
+
+                    tracing::info!(
+                        old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
+                        new = %remote_socket.fmt(relay),
+                        duration_since_intent = ?self.duration_since_intent(now),
+                        "Updating remote socket"
+                    );
 
                     if self.agent.controlling() {
                         self.force_handshake(allocations, transmits, now);
@@ -2153,12 +2174,15 @@ where
         }
     }
 
-    fn handle_tunnel_timeout(
+    fn handle_tunnel_timeout<TId>(
         &mut self,
+        cid: TId,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
-    ) {
+    ) where
+        TId: fmt::Display,
+    {
         // Don't update wireguard timers until we are connected.
         let Some(peer_socket) = self.socket() else {
             return;
@@ -2174,14 +2198,15 @@ where
         match self.tunnel.update_timers_at(&mut buf, now) {
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                tracing::info!("Connection failed (wireguard tunnel expired)");
+                tracing::info!(%cid, "Connection failed (wireguard tunnel expired)");
                 self.state = ConnectionState::Failed;
             }
             TunnResult::Err(e) => {
-                tracing::warn!(?e);
+                tracing::warn!(%cid, "boringtun error: {e}");
             }
             TunnResult::WriteToNetwork(b) => {
                 transmits.extend(make_owned_transmit(
+                    self.relay,
                     peer_socket,
                     b,
                     &self.buffer_pool,
@@ -2195,37 +2220,87 @@ where
         };
     }
 
-    fn encapsulate<'b>(
+    fn encapsulate<TId>(
         &mut self,
+        cid: TId,
+        socket: PeerSocket,
         packet: IpPacket,
-        buffer: &'b mut [u8],
         now: Instant,
-    ) -> Result<Option<&'b [u8]>> {
-        let _guard = self.span.enter();
+        allocations: &mut BTreeMap<RId, Allocation>,
+    ) -> Result<Option<Transmit>>
+    where
+        TId: fmt::Display,
+    {
+        self.state.on_outgoing(cid, &mut self.agent, &packet, now);
 
-        self.state.on_outgoing(&mut self.agent, &packet, now);
+        let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 
-        let len = match self.tunnel.encapsulate_at(packet.packet(), buffer, now) {
-            TunnResult::Done => return Ok(None),
-            TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
-            TunnResult::WriteToNetwork(packet) => packet.len(),
-            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                unreachable!("never returned from encapsulate")
+        let mut buffer = self.buffer_pool.pull();
+        buffer.resize(ip_packet::MAX_FZ_PAYLOAD, 0);
+
+        let len =
+            match self
+                .tunnel
+                .encapsulate_at(packet.packet(), &mut buffer[packet_start..], now)
+            {
+                TunnResult::Done => return Ok(None),
+                TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
+                TunnResult::WriteToNetwork(packet) => packet.len(),
+                TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                    unreachable!("never returned from encapsulate")
+                }
+            };
+
+        let packet_end = packet_start + len;
+        buffer.truncate(packet_end);
+
+        match socket {
+            PeerSocket::PeerToPeer {
+                source,
+                dest: remote,
             }
-        };
+            | PeerSocket::PeerToRelay {
+                source,
+                dest: remote,
+            } => Ok(Some(Transmit {
+                src: Some(source),
+                dst: remote,
+                payload: buffer,
+            })),
+            PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
+                let Some(allocation) = allocations.get_mut(&self.relay) else {
+                    tracing::warn!(relay = %self.relay, "No allocation");
+                    return Ok(None);
+                };
+                let Some(encode_ok) =
+                    allocation.encode_channel_data_header(peer, &mut buffer[..packet_end], now)
+                else {
+                    return Ok(None);
+                };
 
-        Ok(Some(&buffer[..len]))
+                buffer.truncate(packet_end);
+
+                Ok(Some(Transmit {
+                    src: None,
+                    dst: encode_ok.socket,
+                    payload: buffer,
+                }))
+            }
+        }
     }
 
-    fn decapsulate(
+    fn decapsulate<TId>(
         &mut self,
+        cid: TId,
         src: IpAddr,
         packet: &[u8],
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
-    ) -> ControlFlow<Result<()>, IpPacket> {
-        let _guard = self.span.enter();
+    ) -> ControlFlow<Result<()>, IpPacket>
+    where
+        TId: fmt::Display,
+    {
         let mut ip_packet = IpPacketBuf::new();
 
         let control_flow = match self
@@ -2268,21 +2343,22 @@ where
             // Overall, this results in a much nicer API for our caller and should not affect performance.
             TunnResult::WriteToNetwork(bytes) => {
                 match &mut self.state {
-                    ConnectionState::Connecting { buffered, .. } => {
-                        tracing::debug!("No socket has been nominated yet, buffering WG packet");
+                    ConnectionState::Connecting { wg_buffer, .. } => {
+                        tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
 
-                        buffered.push(bytes.to_owned());
+                        wg_buffer.push(bytes.to_owned());
 
                         while let TunnResult::WriteToNetwork(packet) =
                             self.tunnel
                                 .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                         {
-                            buffered.push(packet.to_owned());
+                            wg_buffer.push(packet.to_owned());
                         }
                     }
                     ConnectionState::Connected { peer_socket, .. }
                     | ConnectionState::Idle { peer_socket } => {
                         transmits.extend(make_owned_transmit(
+                            self.relay,
                             *peer_socket,
                             bytes,
                             &self.buffer_pool,
@@ -2295,6 +2371,7 @@ where
                                 .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                         {
                             transmits.extend(make_owned_transmit(
+                                self.relay,
                                 *peer_socket,
                                 packet,
                                 &self.buffer_pool,
@@ -2311,7 +2388,7 @@ where
         };
 
         if let ControlFlow::Continue(packet) = &control_flow {
-            self.state.on_incoming(&mut self.agent, packet, now);
+            self.state.on_incoming(cid, &mut self.agent, packet, now);
         }
 
         control_flow
@@ -2344,6 +2421,7 @@ where
             .expect("cannot force handshake while not connected");
 
         transmits.extend(make_owned_transmit(
+            self.relay,
             socket,
             bytes,
             &self.buffer_pool,
@@ -2352,7 +2430,7 @@ where
         ));
     }
 
-    fn socket(&self) -> Option<PeerSocket<RId>> {
+    fn socket(&self) -> Option<PeerSocket> {
         match self.state {
             ConnectionState::Connected { peer_socket, .. }
             | ConnectionState::Idle { peer_socket } => Some(peer_socket),
@@ -2371,7 +2449,8 @@ where
 
 #[must_use]
 fn make_owned_transmit<RId>(
-    socket: PeerSocket<RId>,
+    relay: RId,
+    socket: PeerSocket,
     message: &[u8],
     buffer_pool: &BufferPool<Vec<u8>>,
     allocations: &mut BTreeMap<RId, Allocation>,
@@ -2393,8 +2472,7 @@ where
             dst: remote,
             payload: buffer_pool.pull_initialised(message),
         },
-        PeerSocket::RelayToPeer { relay, dest: peer }
-        | PeerSocket::RelayToRelay { relay, dest: peer } => {
+        PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
             let allocation = allocations.get_mut(&relay)?;
 
             let mut channel_data = channel_data_packet_buffer(message);

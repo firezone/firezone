@@ -4,7 +4,10 @@ use crate::messages::{
     GatewayResponse, IceCredentials, Interface, Key, Peer, Relay, RelaysPresence, ResolveRequest,
     SecretKey,
 };
-use chrono::{DateTime, Utc, serde::ts_seconds_option};
+use chrono::{
+    DateTime, Utc,
+    serde::{ts_seconds, ts_seconds_option},
+};
 use connlib_model::{ClientId, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
@@ -173,6 +176,8 @@ pub struct AllowAccess {
 pub struct Authorization {
     pub client_id: ClientId,
     pub resource_id: ResourceId,
+    #[serde(with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -195,6 +200,7 @@ pub enum IngressMessages {
     RelaysPresence(RelaysPresence),
     ResourceUpdated(ResourceDescription),
     AuthorizeFlow(AuthorizeFlow),
+    AccessAuthorizationExpiryUpdated(AccessAuthorizationExpiryUpdated),
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -218,6 +224,14 @@ pub struct AuthorizeFlow {
 
     #[serde(with = "ts_seconds_option")]
     pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct AccessAuthorizationExpiryUpdated {
+    pub client_id: ClientId,
+    pub resource_id: ResourceId,
+    #[serde(with = "ts_seconds")]
+    pub expires_at: DateTime<Utc>,
 }
 
 /// A client's ice candidate message.
