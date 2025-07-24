@@ -132,6 +132,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     super.stopTunnel(with: reason, completionHandler: completionHandler)
   }
 
+  // Called when the system wakes from sleep.
+  // We essentially need to do a network reset here as it's very likely whatever NAT sessions we had open prior
+  // are longer valid.
+  override func wake() {
+    adapter?.reset()
+
+    super.wake()
+  }
+
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol

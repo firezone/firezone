@@ -288,6 +288,10 @@ class Adapter {
     }
   }
 
+  func reset() {
+    session?.reset("awoke from sleep")
+  }
+
   func resources() -> [Resource] {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
