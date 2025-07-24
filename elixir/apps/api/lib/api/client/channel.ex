@@ -63,14 +63,11 @@ defmodule API.Client.Channel do
 
   # Called immediately after the client joins the channel
   def handle_info(:after_join, socket) do
-    # Initialize the cache. Flows contains active flows for this client, so we
-    # can toggle the affected resource if the active flow is deleted. That will allow
-    # the client to create a new flow if the resource is still authorized.
+    # Initialize the cache.
     socket =
       socket
       |> hydrate_policies_and_resources()
       |> hydrate_memberships()
-      |> assign(flows: MapSet.new())
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -718,9 +715,6 @@ defmodule API.Client.Channel do
            }}
         )
 
-      flows = MapSet.union(socket.assigns.flows, MapSet.new(Map.keys(flows_map)))
-      socket = assign(socket, flows: flows)
-
       {:noreply, socket}
     else
       {:error, :not_found} ->
@@ -869,9 +863,6 @@ defmodule API.Client.Channel do
            }}
         )
 
-      flows = MapSet.union(socket.assigns.flows, MapSet.new(Map.keys(flows_map)))
-      socket = assign(socket, flows: flows)
-
       {:noreply, socket}
     else
       {:error, :not_found} ->
@@ -929,9 +920,6 @@ defmodule API.Client.Channel do
              client_preshared_key: preshared_key
            }}
         )
-
-      flows = MapSet.union(socket.assigns.flows, MapSet.new(Map.keys(flows_map)))
-      socket = assign(socket, flows: flows)
 
       {:noreply, socket}
     else
