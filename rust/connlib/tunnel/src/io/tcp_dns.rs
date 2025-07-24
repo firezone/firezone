@@ -10,7 +10,7 @@ pub async fn send(
 ) -> io::Result<dns_types::Response> {
     tracing::trace!(target: "wire::dns::recursive::tcp", %server, domain = %query.domain());
 
-    let tcp_socket = factory(&server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
+    let tcp_socket = factory.bind(server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
     let mut tcp_stream = tcp_socket.connect(server).await?;
 
     let query = query.into_bytes();

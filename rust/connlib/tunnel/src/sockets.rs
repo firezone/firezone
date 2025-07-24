@@ -311,7 +311,7 @@ fn listen(
     let mut last_err = None;
 
     for addr in addresses {
-        match sf(addr) {
+        match sf.bind(*addr) {
             Ok(s) => return Ok(s),
             Err(e) => {
                 tracing::debug!(%addr, "Failed to listen on UDP socket: {e}");
