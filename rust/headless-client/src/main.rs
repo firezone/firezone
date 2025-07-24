@@ -8,7 +8,7 @@ use clap::Parser;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
-    platform::{tcp_socket_factory, udp_socket_factory},
+    platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
 use firezone_telemetry::{Telemetry, analytics, otel};
@@ -265,7 +265,7 @@ fn main() -> Result<()> {
         )?;
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
-            Arc::new(udp_socket_factory),
+            Arc::new(UdpSocketFactory::default()),
             portal,
             rt.handle().clone(),
         );

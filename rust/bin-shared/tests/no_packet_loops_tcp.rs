@@ -29,7 +29,7 @@ async fn no_packet_loops_tcp() {
         .unwrap();
 
     let remote = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::from([1, 1, 1, 1]), 80));
-    let socket = tcp_socket_factory(&remote).unwrap();
+    let socket = tcp_socket_factory(remote).unwrap();
     let mut stream = socket.connect(remote).await.unwrap();
 
     // Send an HTTP request

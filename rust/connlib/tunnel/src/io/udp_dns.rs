@@ -21,7 +21,7 @@ pub async fn send(
     // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
     const BUF_SIZE: usize = 1500;
 
-    let udp_socket = factory(&bind_addr)?;
+    let udp_socket = factory.bind(bind_addr)?;
 
     let response = udp_socket
         .handshake::<BUF_SIZE>(server, &query.into_bytes())

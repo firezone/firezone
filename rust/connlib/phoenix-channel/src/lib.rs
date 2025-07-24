@@ -113,7 +113,7 @@ async fn connect(
     let mut errors = Vec::with_capacity(addresses.len());
 
     for addr in addresses {
-        let Ok(socket) = socket_factory(&addr) else {
+        let Ok(socket) = socket_factory.bind(addr) else {
             continue;
         };
 
