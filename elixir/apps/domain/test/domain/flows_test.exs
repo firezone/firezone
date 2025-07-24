@@ -54,7 +54,8 @@ defmodule Domain.FlowsTest do
     }
   end
 
-  describe "create_flow/4" do
+  describe "create_flows/5" do
+    # TODO: Update these for the new flow architecture
     # test "returns error when resource does not exist", %{
     #   client: client,
     #   gateway: gateway,
@@ -258,11 +259,18 @@ defmodule Domain.FlowsTest do
       client = Fixtures.Clients.create_client(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor)
 
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      membership =
+        Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
-      assert {:ok, %Flows.Flow{} = flow} =
-               create_flow(client, gateway, resource.id, policy, subject)
+      tuples = [
+        {policy.id, membership.id, subject.expires_at}
+      ]
 
+      assert flow_map = create_flows(client, resource.id, tuples, gateway, subject)
+      assert map_size(flow_map) == 1
+      assert Map.values(flow_map) |> List.first() == subject.expires_at
+      assert flow = Repo.get(Flows.Flow, Map.keys(flow_map) |> List.first())
+      assert flow.expires_at == subject.expires_at
       assert flow.policy_id == policy.id
       assert flow.client_id == client.id
       assert flow.gateway_id == gateway.id
@@ -281,16 +289,24 @@ defmodule Domain.FlowsTest do
       policy: policy
     } do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      membership =
+        Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
 
       client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
 
-      assert {:ok, %Flows.Flow{} = flow} =
-               create_flow(client, gateway, resource.id, policy, subject)
+      tuples = [
+        {policy.id, membership.id, subject.expires_at}
+      ]
 
+      assert flow_map = create_flows(client, resource.id, tuples, gateway, subject)
+      assert map_size(flow_map) == 1
+      assert Map.values(flow_map) |> List.first() == subject.expires_at
+      assert flow_id = Map.keys(flow_map) |> List.first()
+      assert flow = Repo.get(Flows.Flow, flow_id)
       assert flow.policy_id == policy.id
       assert flow.client_id == client.id
       assert flow.gateway_id == gateway.id
@@ -458,8 +474,8 @@ defmodule Domain.FlowsTest do
 
       flows = all_gateway_flows_for_cache!(gateway)
 
-      assert {{flow1.client_id, flow1.resource_id}, {flow1.id, flow1.inserted_at}} in flows
-      assert {{flow2.client_id, flow2.resource_id}, {flow2.id, flow2.inserted_at}} in flows
+      assert {{flow1.client_id, flow1.resource_id}, {flow1.id, flow1.expires_at}} in flows
+      assert {{flow2.client_id, flow2.resource_id}, {flow2.id, flow2.expires_at}} in flows
     end
   end
 

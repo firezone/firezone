@@ -1073,7 +1073,6 @@ defmodule API.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      # assert_reply ref, :error, %{reason: :not_found}
       assert_push "flow_creation_failed", %{reason: :not_found, resource_id: ^resource_id}
     end
 
@@ -1098,7 +1097,6 @@ defmodule API.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      # assert_reply ref, :error, %{reason: :offline}
       assert_push "flow_creation_failed", %{reason: :offline, resource_id: resource_id}
       assert resource_id == resource.id
     end
@@ -1118,8 +1116,6 @@ defmodule API.Client.ChannelTest do
       }
 
       push(socket, "create_flow", attrs)
-
-      # assert_reply ref, :error, %{reason: :not_found}
 
       assert_push "flow_creation_failed", %{reason: :not_found, resource_id: resource_id}
       assert resource_id == resource.id
@@ -1245,14 +1241,16 @@ defmodule API.Client.ChannelTest do
       assert %{
                client: received_client,
                resource: received_resource,
-               authorization_expires_at: authorization_expires_at,
+               flows_map: flows_map,
                ice_credentials: _ice_credentials,
                preshared_key: preshared_key
              } = payload
 
+      assert expires_at = flows_map |> Map.values() |> List.first()
+
       assert received_client.id == client.id
       assert received_resource.id == resource.id
-      assert authorization_expires_at == socket.assigns.subject.expires_at
+      assert expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
     end
 
@@ -1309,14 +1307,16 @@ defmodule API.Client.ChannelTest do
       assert %{
                client: recv_client,
                resource: recv_resource,
-               authorization_expires_at: authorization_expires_at,
+               flows_map: flows_map,
                ice_credentials: _ice_credentials,
                preshared_key: preshared_key
              } = payload
 
+      assert expires_at = flows_map |> Map.values() |> List.first()
+
       assert recv_client.id == client.id
       assert recv_resource.id == resource.id
-      assert authorization_expires_at == socket.assigns.subject.expires_at
+      assert expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
     end
 
@@ -1366,10 +1366,12 @@ defmodule API.Client.ChannelTest do
       assert %{
                client: recv_client,
                resource: recv_resource,
-               authorization_expires_at: authorization_expires_at,
+               flows_map: flows_map,
                ice_credentials: ice_credentials,
                preshared_key: preshared_key
              } = payload
+
+      assert expires_at = flows_map |> Map.values() |> List.first()
 
       client_id = recv_client.id
       resource_id = recv_resource.id
@@ -1383,7 +1385,7 @@ defmodule API.Client.ChannelTest do
 
       assert client_id == client.id
       assert resource_id == resource.id
-      assert authorization_expires_at == socket.assigns.subject.expires_at
+      assert expires_at == socket.assigns.subject.expires_at
 
       send(
         channel_pid,
@@ -2162,13 +2164,15 @@ defmodule API.Client.ChannelTest do
       assert %{
                resource: recv_resource,
                client: recv_client,
-               authorization_expires_at: authorization_expires_at,
+               flows_map: flows_map,
                client_payload: "DNS_Q"
              } = payload
 
+      assert expires_at = flows_map |> Map.values() |> List.first()
+
       assert recv_resource.id == resource_id
       assert recv_client.id == client_id
-      assert authorization_expires_at == socket.assigns.subject.expires_at
+      assert expires_at == socket.assigns.subject.expires_at
 
       send(
         channel_pid,
@@ -2394,13 +2398,15 @@ defmodule API.Client.ChannelTest do
                client: recv_client,
                client_preshared_key: "PSK",
                client_payload: "RTC_SD",
-               authorization_expires_at: authorization_expires_at
+               flows_map: flows_map
              } = payload
+
+      assert expires_at = flows_map |> Map.values() |> List.first()
 
       assert recv_resource.id == resource_id
       assert recv_client.id == client_id
 
-      assert authorization_expires_at == socket.assigns.subject.expires_at
+      assert expires_at == socket.assigns.subject.expires_at
 
       send(
         channel_pid,
