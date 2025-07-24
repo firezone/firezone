@@ -124,6 +124,10 @@ class Adapter {
         self.packetTunnelProvider?.reasserting = true
       }
     } else {
+      if self.packetTunnelProvider?.reasserting == true {
+        self.packetTunnelProvider?.reasserting = false
+      }
+
       // Tell connlib to reset network state, but only do so if our connectivity has
       // meaningfully changed. On darwin, this is needed to send packets
       // out of a different interface even when 0.0.0.0 is used as the source.
@@ -139,22 +143,20 @@ class Adapter {
         let resolvers = getSystemDefaultResolvers(
           interfaceName: path.availableInterfaces.first?.name)
 
-        if let encoded = try? JSONEncoder().encode(resolvers),
-          let jsonResolvers = String(data: encoded, encoding: .utf8)?.intoRustString()
-        {
-
-          do {
-            try session?.setDns(jsonResolvers)
-          } catch let error {
-            // `toString` needed to deep copy the string and avoid a possible dangling pointer
-            let msg = (error as? RustString)?.toString() ?? "Unknown error"
-            Log.error(AdapterError.setDnsError(msg))
+        do {
+          let encoded = try JSONEncoder().encode(resolvers)
+          guard let jsonResolvers = String(data: encoded, encoding: .utf8)
+          else {
+            Log.warning("jsonResolvers conversion failed: \(resolvers)")
+            return
           }
-        }
-      }
 
-      if self.packetTunnelProvider?.reasserting == true {
-        self.packetTunnelProvider?.reasserting = false
+          try session?.setDns(jsonResolvers.intoRustString())
+        } catch let error {
+          // `toString` needed to deep copy the string and avoid a possible dangling pointer
+          let msg = (error as? RustString)?.toString() ?? "Unknown error"
+          Log.error(AdapterError.setDnsError(msg))
+        }
       }
     }
   }
