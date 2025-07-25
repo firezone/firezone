@@ -511,7 +511,7 @@ impl Allocation {
         match message.method() {
             BINDING => {
                 // First, see if we need to update our host candidate.
-                let current_host_candidate = match original_dst {
+                let current_host_candidate = match local {
                     SocketAddr::V4(_) => &mut self.ip4_host_candidate,
                     SocketAddr::V6(_) => &mut self.ip6_host_candidate,
                 };
