@@ -5,6 +5,11 @@ defmodule Domain.Flows.Flow.Query do
     from(flows in Domain.Flows.Flow, as: :flows)
   end
 
+  def expired(queryable) do
+    now = DateTime.utc_now()
+    where(queryable, [flows: flows], flows.expires_at <= ^now)
+  end
+
   def not_expired(queryable) do
     now = DateTime.utc_now()
     where(queryable, [flows: flows], flows.expires_at > ^now)
