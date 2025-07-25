@@ -211,6 +211,10 @@ impl ThreadedUdpSocket {
                         tracing::warn!("Failed to set socket buffer sizes: {e}");
                     }
 
+                    if let Err(e) = socket.enable_gro() {
+                        tracing::warn!("Failed to enable GRO: {e}");
+                    }
+
                     let send = pin!(async {
                         while let Ok(datagram) = outbound_rx.recv_async().await {
                             if let Err(e) = socket.send(datagram).await {
