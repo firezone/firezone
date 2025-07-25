@@ -75,7 +75,6 @@ defmodule API.Client.Channel do
       @recompute_authorized_resources_every
     )
 
-    Process
     # Initialize the cache.
     socket =
       socket
