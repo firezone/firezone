@@ -174,6 +174,10 @@ impl ClientTunnel {
                     let now = Instant::now();
 
                     for packet in packets {
+                        if packet.is_fz_p2p_control() {
+                            tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
+                        }
+
                         let ecn = packet.ecn();
 
                         let Some(transmit) = self.role_state.handle_tun_input(packet, now) else {
@@ -306,6 +310,10 @@ impl GatewayTunnel {
                     let now = Instant::now();
 
                     for packet in packets {
+                        if packet.is_fz_p2p_control() {
+                            tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
+                        }
+
                         let ecn = packet.ecn();
 
                         let Some(transmit) = self.role_state.handle_tun_input(packet, now)? else {
