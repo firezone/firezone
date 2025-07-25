@@ -46,6 +46,10 @@ export default function Apple() {
           Fixes an issue where connections in low-latency networks (between
           Client and Gateway) would fail to establish reliably.
         </ChangeItem>
+        <ChangeItem pull="9999">
+          Decreases connection setup time on flaky Internet connections in
+          certain edge cases.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.4" date={new Date("2025-07-11")}>
         <ChangeItem pull="9597">
