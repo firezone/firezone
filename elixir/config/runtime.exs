@@ -222,6 +222,7 @@ if config_env() == :prod do
       secret_key_base: env_var_to_config!(:secret_key_base)
 
     config :api,
+      wireguard_psk_base: env_var_to_config!(:wireguard_psk_base),
       cookie_secure: env_var_to_config!(:phoenix_secure_cookies),
       cookie_signing_salt: env_var_to_config!(:cookie_signing_salt),
       cookie_encryption_salt: env_var_to_config!(:cookie_encryption_salt)
