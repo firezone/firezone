@@ -701,7 +701,7 @@ defmodule API.Client.Channel do
           expires_at
         )
 
-      preshared_key = generate_preshared_key()
+      preshared_key = generate_preshared_key(socket.assigns.client, gateway)
       ice_credentials = generate_ice_credentials(socket.assigns.client, gateway)
 
       :ok =
@@ -1091,10 +1091,8 @@ defmodule API.Client.Channel do
     end
   end
 
-  # We generate a new preshared key for each flow request, the client and gateway MUST
-  # ignore it if this is for a connection that is already established.
-  defp generate_preshared_key do
-    Domain.Crypto.psk()
+  defp generate_preshared_key(client, gateway) do
+    Domain.Crypto.psk(client, gateway)
   end
 
   # Ice credentials must stay the same for all connections between client and gateway as long as they
