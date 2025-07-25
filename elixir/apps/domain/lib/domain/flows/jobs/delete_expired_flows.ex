@@ -4,11 +4,16 @@ defmodule Domain.Flows.Jobs.DeleteExpiredFlows do
   """
   use Oban.Worker, queue: :default
 
+  require Logger
+
   alias Domain.Flows
 
   @impl Oban.Worker
   def perform(_args) do
-    dbg(Flows.delete_expired_flows())
+    {count, nil} = Flows.delete_expired_flows()
+
+    Logger.info("Deleted #{count} expired flows")
+
     :ok
   end
 end
