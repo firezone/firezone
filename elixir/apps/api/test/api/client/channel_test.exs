@@ -1073,7 +1073,6 @@ defmodule API.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      # assert_reply ref, :error, %{reason: :not_found}
       assert_push "flow_creation_failed", %{reason: :not_found, resource_id: ^resource_id}
     end
 
@@ -1098,7 +1097,6 @@ defmodule API.Client.ChannelTest do
         "connected_gateway_ids" => []
       })
 
-      # assert_reply ref, :error, %{reason: :offline}
       assert_push "flow_creation_failed", %{reason: :offline, resource_id: resource_id}
       assert resource_id == resource.id
     end
@@ -1118,8 +1116,6 @@ defmodule API.Client.ChannelTest do
       }
 
       push(socket, "create_flow", attrs)
-
-      # assert_reply ref, :error, %{reason: :not_found}
 
       assert_push "flow_creation_failed", %{reason: :not_found, resource_id: resource_id}
       assert resource_id == resource.id

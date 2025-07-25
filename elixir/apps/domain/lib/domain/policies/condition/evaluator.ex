@@ -1,5 +1,4 @@
 defmodule Domain.Policies.Condition.Evaluator do
-  alias Domain.Repo
   alias Domain.Clients
   alias Domain.Policies.Condition
 
@@ -17,8 +16,6 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def ensure_conforms(conditions, %Clients.Client{} = client) when is_list(conditions) do
-    client = Repo.preload(client, :identity)
-
     conditions
     |> Enum.reduce({[], nil}, fn condition, {violated_properties, min_expires_at} ->
       if condition.property in violated_properties do
@@ -102,8 +99,6 @@ defmodule Domain.Policies.Condition.Evaluator do
         %Condition{property: :provider_id, operator: :is_in, values: values},
         %Clients.Client{} = client
       ) do
-    client = Repo.preload(client, :identity)
-
     if client.identity.provider_id in values do
       {:ok, nil}
     else
@@ -115,8 +110,6 @@ defmodule Domain.Policies.Condition.Evaluator do
         %Condition{property: :provider_id, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
-    client = Repo.preload(client, :identity)
-
     if client.identity.provider_id in values do
       :error
     else

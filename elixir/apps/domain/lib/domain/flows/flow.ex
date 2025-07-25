@@ -11,10 +11,12 @@ defmodule Domain.Flows.Flow do
 
     belongs_to :account, Domain.Accounts.Account
 
+    # TODO: These can be removed since we don't use them
     field :client_remote_ip, Domain.Types.IP
     field :client_user_agent, :string
-
     field :gateway_remote_ip, Domain.Types.IP
+
+    field :expires_at, :utc_datetime_usec
 
     timestamps(updated_at: false)
   end
