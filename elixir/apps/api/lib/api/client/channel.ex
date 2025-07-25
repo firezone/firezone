@@ -1265,7 +1265,7 @@ defmodule API.Client.Channel do
   end
 
   defp authorized_resources(socket) do
-    OpenTelemetry.Tracer.with_span "client.compute_authorized_resource_ids",
+    OpenTelemetry.Tracer.with_span "client.authorized_resources",
       attributes: %{
         account_id: socket.assigns.client.account_id
       } do
