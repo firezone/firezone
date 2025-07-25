@@ -1,20 +1,22 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, iter, net::SocketAddr};
 
 use itertools::Itertools;
 use str0m::{Candidate, CandidateKind};
 
 /// A collection of host candidates.
 ///
-/// We only allow a single host candidate per STUN server.
+/// We only allow a single host candidate per STUN server per IP family.
 #[derive(Debug)]
 pub struct HostCandidates<RId> {
-    inner: BTreeMap<RId, Candidate>,
+    ipv4: BTreeMap<RId, Candidate>,
+    ipv6: BTreeMap<RId, Candidate>,
 }
 
 impl<RId> Default for HostCandidates<RId> {
     fn default() -> Self {
         Self {
-            inner: Default::default(),
+            ipv4: Default::default(),
+            ipv6: Default::default(),
         }
     }
 }
@@ -28,17 +30,27 @@ where
             return false;
         }
 
-        let existing = self.inner.insert(server, candidate.clone());
+        let map = match candidate.addr() {
+            SocketAddr::V4(_) => &mut self.ipv4,
+            SocketAddr::V6(_) => &mut self.ipv6,
+        };
+
+        let existing = map.insert(server, candidate.clone());
 
         existing.is_none_or(|existing| existing != candidate)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Candidate> {
-        self.inner.values().unique().cloned()
+        iter::empty()
+            .chain(self.ipv4.values())
+            .chain(self.ipv6.values())
+            .unique()
+            .cloned()
     }
 
     pub fn clear(&mut self) {
-        self.inner.clear();
+        self.ipv4.clear();
+        self.ipv6.clear();
     }
 }
 
@@ -67,6 +79,19 @@ mod tests {
         assert_eq!(
             candidates.iter().collect::<Vec<_>>(),
             vec![host("2.2.2.2:80")]
+        );
+    }
+
+    #[test]
+    fn allows_for_ipv4_and_ipv6_candidates_from_same_server() {
+        let mut candidates = HostCandidates::default();
+
+        candidates.insert(1, host("1.1.1.1:80"));
+        candidates.insert(1, host("[::1]:80"));
+
+        assert_eq!(
+            candidates.iter().collect::<Vec<_>>(),
+            vec![host("1.1.1.1:80"), host("[::1]:80")]
         );
     }
 
