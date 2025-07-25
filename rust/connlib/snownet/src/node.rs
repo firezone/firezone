@@ -247,15 +247,27 @@ where
             return Ok(());
         }
 
-        // Compare the ICE credentials and public key.
-        // Technically, just comparing the ICE credentials should be enough because the portal computes them deterministically based on Client/Gateway ID and their public keys.
-        // But better be safe than sorry.
+        let preshared_key = *session_key.expose_secret();
+
+        // Check if we already have a connection with the exact same parameters.
+        // In order for the connection to be same, we need to compare:
+        // - Local ICE credentials
+        // - Remote ICE credentials
+        // - Remote public key
+        // - Preshared key
+        //
+        // Only if all of those things are the same, will:
+        // - ICE be able to establish a connection
+        // - boringtun be able to handshake a session
         if let Some(c) = self.connections.get_established_mut(&cid)
             && c.agent.local_credentials() == &local_creds
             && c.agent
                 .remote_credentials()
                 .is_some_and(|c| c == &remote_creds)
             && c.tunnel.remote_static_public() == remote
+            && c.tunnel
+                .preshared_key()
+                .is_some_and(|key| key == preshared_key)
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
 
@@ -295,15 +307,8 @@ where
 
         self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
 
-        let connection = self.init_connection(
-            cid,
-            agent,
-            remote,
-            *session_key.expose_secret(),
-            selected_relay,
-            now,
-            now,
-        );
+        let connection =
+            self.init_connection(cid, agent, remote, preshared_key, selected_relay, now, now);
 
         self.connections.established.insert(cid, connection);
 
