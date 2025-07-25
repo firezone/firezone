@@ -45,10 +45,6 @@ impl Device {
             if let Some(query) = parse_dns_query(packet) {
                 tracing::trace!(target: "wire::dns::qry", ?query);
             }
-
-            if packet.is_fz_p2p_control() {
-                tracing::warn!("Packet matches heuristics of FZ-internal p2p control protocol");
-            }
         }
 
         Poll::Ready(n)
