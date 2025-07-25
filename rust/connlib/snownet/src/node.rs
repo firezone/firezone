@@ -1746,7 +1746,11 @@ impl ConnectionState {
     {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
-            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+            Self::Connected { last_activity, .. } => {
+                *last_activity = now;
+                return;
+            }
+            Self::Failed | Self::Connecting { .. } => return,
         };
 
         self.transition_to_connected(cid, peer_socket, agent, "upsert", now);
@@ -1758,7 +1762,11 @@ impl ConnectionState {
     {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
-            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+            Self::Connected { last_activity, .. } => {
+                *last_activity = now;
+                return;
+            }
+            Self::Failed | Self::Connecting { .. } => return,
         };
 
         self.transition_to_connected(cid, peer_socket, agent, "new candidate", now);
