@@ -101,7 +101,7 @@ defmodule API.Client.Channel do
 
     # Save list of authorized resources in the socket to check against in
     # the recompute_authorized_resources timer
-    socket = assign(socket, authorized_resource_ids: Enum.map(resources, & &1.id))
+    socket = assign(socket, authorized_resource_ids: MapSet.new(Enum.map(resources, & &1.id)))
 
     # Delete any stale flows for resources we may not have access to anymore
     Flows.delete_stale_flows_on_connect(
@@ -136,7 +136,7 @@ defmodule API.Client.Channel do
     )
 
     old_authorized_resources =
-      Map.take(socket.assigns.resources, socket.assigns.authorized_resource_ids)
+      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
       |> Map.values()
 
     new_authorized_resources = authorized_resources(socket)
@@ -150,7 +150,9 @@ defmodule API.Client.Channel do
     end
 
     {:noreply,
-     assign(socket, authorized_resource_ids: Enum.map(new_authorized_resources, & &1.id))}
+     assign(socket,
+       authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
+     )}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the client
@@ -187,7 +189,8 @@ defmodule API.Client.Channel do
       when id == actor_id do
     # 1. Get existing authorized resources
     old_authorized_resources =
-      Map.take(socket.assigns.resources, socket.assigns.authorized_resource_ids) |> Map.values()
+      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
+      |> Map.values()
 
     # 2. Re-hydrate our policies and resources
     # It's not ideal we're hitting the DB here, but in practice it shouldn't be an issue because
@@ -207,7 +210,10 @@ defmodule API.Client.Channel do
       push(socket, "resource_created_or_updated", Views.Resource.render(resource))
     end
 
-    socket = assign(socket, authorized_resource_ids: Enum.map(new_authorized_resources, & &1.id))
+    socket =
+      assign(socket,
+        authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
+      )
 
     {:noreply, socket}
   end
@@ -259,7 +265,8 @@ defmodule API.Client.Channel do
       when id == client_id do
     # 1. Snapshot existing authorized resources
     old_authorized_resources =
-      Map.take(socket.assigns.resources, socket.assigns.authorized_resource_ids) |> Map.values()
+      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
+      |> Map.values()
 
     # 2. Update our state
     socket = assign(socket, client: client)
@@ -277,7 +284,9 @@ defmodule API.Client.Channel do
           push(socket, "resource_deleted", resource.id)
         end
 
-        assign(socket, authorized_resource_ids: Enum.map(new_authorized_resources, & &1.id))
+        assign(socket,
+          authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
+        )
       else
         socket
       end
@@ -327,7 +336,8 @@ defmodule API.Client.Channel do
     if Map.has_key?(socket.assigns.memberships, policy.actor_group_id) do
       # 2. Snapshot existing resources
       old_authorized_resources =
-        Map.take(socket.assigns.resources, socket.assigns.authorized_resource_ids) |> Map.values()
+        Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
+        |> Map.values()
 
       # 3. Hydrate a new resource if we aren't already tracking it
       socket =
@@ -343,7 +353,8 @@ defmodule API.Client.Channel do
           socket
           |> assign(resources: Map.put(socket.assigns.resources, resource.id, resource))
           |> assign(
-            authorized_resource_ids: socket.assigns.authorized_resource_ids ++ [resource.id]
+            authorized_resource_ids:
+              MapSet.put(socket.assigns.authorized_resource_ids, resource.id)
           )
         end
 
@@ -405,7 +416,8 @@ defmodule API.Client.Channel do
     if Map.has_key?(socket.assigns.policies, policy.id) do
       # 2. Snapshot existing resources
       old_authorized_resources =
-        Map.take(socket.assigns.resources, socket.assigns.authorized_resource_ids) |> Map.values()
+        Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
+        |> Map.values()
 
       # 3. Update our state
       socket = assign(socket, policies: Map.delete(socket.assigns.policies, policy.id))
@@ -413,7 +425,11 @@ defmodule API.Client.Channel do
       socket = assign(socket, resources: Map.take(socket.assigns.resources, r_ids))
 
       authorized_resources = authorized_resources(socket)
-      socket = assign(socket, authorized_resource_ids: Enum.map(authorized_resources, & &1.id))
+
+      socket =
+        assign(socket,
+          authorized_resource_ids: MapSet.new(Enum.map(authorized_resources, & &1.id))
+        )
 
       # 4. Push deleted resource to the client if we lost access to it
       if resource = (old_authorized_resources -- authorized_resources) |> List.first() do
@@ -443,7 +459,7 @@ defmodule API.Client.Channel do
       socket = assign(socket, resources: Map.put(socket.assigns.resources, resource_id, resource))
 
       # 4. If resource is allowed, push
-      if resource.id in socket.assigns.authorized_resource_ids do
+      if MapSet.member?(socket.assigns.authorized_resource_ids, resource.id) do
         # Connlib doesn't handle resources changing sites, so we need to delete then create
         # See https://github.com/firezone/firezone/issues/9881
         push(socket, "resource_deleted", resource.id)
@@ -475,7 +491,7 @@ defmodule API.Client.Channel do
       push(socket, "resource_deleted", resource.id)
 
       # 4. If resource is allowed, and has at least one site connected, push
-      if resource.id in socket.assigns.authorized_resource_ids and
+      if MapSet.member?(socket.assigns.authorized_resource_ids, resource.id) and
            length(resource.gateway_groups) > 0 do
         # Connlib doesn't handle resources changing sites, so we need to delete then create
         # See https://github.com/firezone/firezone/issues/9881
@@ -514,7 +530,7 @@ defmodule API.Client.Channel do
           old_resource.address_description != resource.address_description or
           old_resource.name != resource.name
 
-      if resource.id in socket.assigns.authorized_resource_ids and
+      if MapSet.member?(socket.assigns.authorized_resource_ids, resource.id) and
            resource_changed? do
         push(socket, "resource_created_or_updated", Views.Resource.render(resource))
       end
