@@ -280,9 +280,6 @@ config :api, API.Endpoint,
   pubsub_server: Domain.PubSub
 
 config :api,
-  # regenerate with openssl rand -base64 64
-  wireguard_psk_base:
-    "nFx2KUtLMMoRIEMVQbsfpgW0MmeaAWRGv475Bpto+H4zo9FViMBJtH9VWMjixd1J7rBnROIweOhe7s0GmQQMfw==",
   cookie_secure: false,
   cookie_signing_salt: "WjllcThpb2Y=",
   cookie_encryption_salt: "M0EzM0R6NEMyaw=="

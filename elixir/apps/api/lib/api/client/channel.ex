@@ -1092,10 +1092,7 @@ defmodule API.Client.Channel do
   end
 
   defp generate_preshared_key(client, gateway) do
-    {:ok, psk_base} = Application.fetch_env(:api, :wireguard_psk_base)
-    {:ok, psk} = Domain.Crypto.psk(psk_base, client, gateway)
-
-    psk
+    Domain.Crypto.psk(client, gateway)
   end
 
   # Ice credentials must stay the same for all connections between client and gateway as long as they

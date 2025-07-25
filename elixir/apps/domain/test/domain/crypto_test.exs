@@ -11,63 +11,43 @@ defmodule Domain.CryptoTest do
       client = Fixtures.Clients.create_client(subject: subject)
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      psk_base =
-        "wfbZRYGjQlpFQ1VbVrWcPuTiE1jfwhORiWzqxc6Y1gQaaSooonTWaDx06vIhQfOxLUj9PKMMALWzjzDyQQsiYg=="
-
-      %{psk_base: psk_base, account: account, subject: subject, client: client, gateway: gateway}
+      %{account: account, subject: subject, client: client, gateway: gateway}
     end
 
     test "it returns a string of proper length", %{
-      psk_base: psk_base,
       client: client,
       gateway: gateway
     } do
-      {:ok, psk} = psk(psk_base, client, gateway)
+      psk = psk(client, gateway)
       assert 44 == String.length(psk)
     end
 
     test "it changes when client or gateway inputs change", %{
       account: account,
-      psk_base: psk_base,
       subject: subject,
       client: client,
       gateway: gateway
     } do
-      {:ok, psk1} = psk(psk_base, client, gateway)
+      psk1 = psk(client, gateway)
 
       other_client = Fixtures.Clients.create_client(account: account, subject: subject)
-      {:ok, other_psk} = psk(psk_base, other_client, gateway)
+      other_psk = psk(other_client, gateway)
 
       assert other_psk != psk1
 
       other_gateway = Fixtures.Gateways.create_gateway(account: account)
-      {:ok, other_psk} = psk(psk_base, client, other_gateway)
+      other_psk = psk(client, other_gateway)
 
       assert other_psk != psk1
     end
 
     test "it remains consistent across calls", %{
-      psk_base: psk_base,
       client: client,
       gateway: gateway
     } do
-      {:ok, psk1} = psk(psk_base, client, gateway)
-      {:ok, psk2} = psk(psk_base, client, gateway)
+      psk1 = psk(client, gateway)
+      psk2 = psk(client, gateway)
       assert psk1 == psk2
-    end
-
-    test "returns error when WIREGUARD_PSK_BASE is empty", %{
-      client: client,
-      gateway: gateway
-    } do
-      assert {:error, _} = psk("", client, gateway)
-    end
-
-    test "returns error when WIREGUARD_PSK_BASE is invalid", %{
-      client: client,
-      gateway: gateway
-    } do
-      assert {:error, _} = psk("invalid", client, gateway)
     end
   end
 

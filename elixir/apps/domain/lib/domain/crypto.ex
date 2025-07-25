@@ -5,19 +5,11 @@ defmodule Domain.Crypto do
   Generate a WireGuard PSK for a client-gateway pair.
   Returns {:ok, base64_psk} or {:error, reason}.
   """
-  def psk(psk_base, %Clients.Client{} = client, %Gateways.Gateway{} = gateway) do
-    with {:ok, master_secret_bytes} <- Base.decode64(psk_base),
-         true <- byte_size(master_secret_bytes) == 64 do
-      info_string = build_info_string(client, gateway)
-
-      psk_bytes = :crypto.mac(:hmac, :sha256, master_secret_bytes, info_string)
-
-      {:ok, Base.encode64(psk_bytes)}
-    else
-      _ ->
-        {:error,
-         "WIREGUARD_PSK_BASE not present or valid. Generate with openssl rand -base64 64."}
-    end
+  def psk(%Clients.Client{} = client, %Gateways.Gateway{} = gateway) do
+    secret_bytes = client.psk_base <> gateway.psk_base
+    info_string = build_info_string(client, gateway)
+    psk_bytes = :crypto.mac(:hmac, :sha256, secret_bytes, info_string)
+    Base.encode64(psk_bytes)
   end
 
   defp build_info_string(
