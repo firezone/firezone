@@ -50,8 +50,8 @@ auto-updates as you edit the file.
 
 ### Linting
 
-This project uses [Prettier](https://prettier.io/) to format code and ensure a
-consistent style. Use the [.prettierrc.json](../.prettierrc.json) in the root of
+This project uses [biome](https://biomejs.dev) to format code and ensure a
+consistent style. Use the [biome.json](../biome.json) in the root of
 this repo to configure your editor.
 
 ## Learn More
