@@ -1,8 +1,34 @@
 defmodule Domain.Crypto do
-  @wg_psk_length 32
+  alias Domain.{Clients, Gateways}
 
-  def psk do
-    random_token(@wg_psk_length, encoder: :base64)
+  @doc """
+  Generates a WireGuard pre-shared key for a client-gateway pair.
+  """
+  def psk(
+        %Clients.Client{
+          id: client_id,
+          public_key: client_pubkey,
+          psk_base: client_psk_base
+        },
+        %Gateways.Gateway{
+          id: gateway_id,
+          public_key: gateway_pubkey,
+          psk_base: gateway_psk_base
+        }
+      )
+      when not (is_nil(client_id) or is_nil(client_pubkey) or is_nil(client_psk_base) or
+                  is_nil(gateway_id) or is_nil(gateway_pubkey) or is_nil(gateway_psk_base)) do
+    secret_bytes = client_psk_base <> gateway_psk_base
+    salt = build_salt(client_id, client_pubkey, gateway_id, gateway_pubkey)
+
+    # PBKDF2 is overkill since inputs are high entropy, but still better than maintaining our own HKDF implementation.
+    psk_bytes = :crypto.pbkdf2_hmac(:sha256, secret_bytes, salt, 1, 32)
+
+    Base.encode64(psk_bytes)
+  end
+
+  defp build_salt(client_id, client_pubkey, gateway_id, gateway_pubkey) do
+    "WG_PSK|C_ID:#{client_id}|G_ID:#{gateway_id}|C_PK:#{client_pubkey}|G_PK:#{gateway_pubkey}"
   end
 
   def random_token(length \\ 16, opts \\ []) do

@@ -7,6 +7,7 @@ defmodule Domain.Clients.Client do
     field :name, :string
 
     field :public_key, :string
+    field :psk_base, :binary, read_after_writes: true
 
     field :ipv4, Domain.Types.IP
     field :ipv6, Domain.Types.IP
