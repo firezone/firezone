@@ -20,6 +20,11 @@ defmodule API.Client.Channel do
   require Logger
   require OpenTelemetry.Tracer
 
+  # For time-based policy conditions, we need to determine whether we still have access
+  # If not, we need to send resource_deleted so that if it's added back later, the client's
+  # connlib state will be cleaned up so it can request a new connection.
+  @reassess_allowed_resources_every :timer.minutes(1)
+
   @gateway_compatibility [
     # We introduced new websocket protocol and the clients of version 1.4+
     # are only compatible with gateways of version 1.4+
