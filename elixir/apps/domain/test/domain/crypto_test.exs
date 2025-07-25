@@ -1,10 +1,53 @@
 defmodule Domain.CryptoTest do
-  use ExUnit.Case, async: true
+  use Domain.DataCase, async: true
   import Domain.Crypto
 
-  describe "psk/0" do
-    test "it returns a string of proper length" do
-      assert 44 == String.length(psk())
+  describe "psk/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      identity = Fixtures.Auth.create_identity(actor: actor, account: account)
+      subject = Fixtures.Auth.create_subject(identity: identity)
+      client = Fixtures.Clients.create_client(subject: subject)
+      gateway = Fixtures.Gateways.create_gateway(account: account)
+
+      %{account: account, subject: subject, client: client, gateway: gateway}
+    end
+
+    test "it returns a string of proper length", %{
+      client: client,
+      gateway: gateway
+    } do
+      psk = psk(client, gateway)
+      assert 44 == String.length(psk)
+    end
+
+    test "it changes when client or gateway inputs change", %{
+      account: account,
+      subject: subject,
+      client: client,
+      gateway: gateway
+    } do
+      psk1 = psk(client, gateway)
+
+      other_client = Fixtures.Clients.create_client(account: account, subject: subject)
+      other_psk = psk(other_client, gateway)
+
+      assert other_psk != psk1
+
+      other_gateway = Fixtures.Gateways.create_gateway(account: account)
+      other_psk = psk(client, other_gateway)
+
+      assert other_psk != psk1
+    end
+
+    test "it remains consistent across calls", %{
+      client: client,
+      gateway: gateway
+    } do
+      psk1 = psk(client, gateway)
+      psk2 = psk(client, gateway)
+      assert psk1 == psk2
     end
   end
 
