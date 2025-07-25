@@ -1,7 +1,5 @@
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
-use crate::host_candidates::HostCandidates;
 use crate::index::IndexLfsr;
-use crate::server_reflexive_candidates::ServerReflexiveCandidates;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
@@ -123,8 +121,6 @@ pub struct Node<T, TId, RId> {
     index: IndexLfsr,
     rate_limiter: Arc<RateLimiter>,
 
-    host_candidates: HostCandidates<RId>,
-    srvflx_candidates: ServerReflexiveCandidates<RId>,
     buffered_transmits: VecDeque<Transmit>,
 
     next_rate_limiter_reset: Option<Instant>,
@@ -166,8 +162,6 @@ where
             mode: T::new(),
             index,
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
-            host_candidates: Default::default(),
-            srvflx_candidates: Default::default(),
             buffered_transmits: VecDeque::default(),
             next_rate_limiter_reset: None,
             pending_events: VecDeque::default(),
@@ -205,8 +199,6 @@ where
 
         self.pending_events.extend(closed_connections);
 
-        self.host_candidates.clear();
-        self.srvflx_candidates.clear();
         self.connections.clear();
         self.buffered_transmits.clear();
 
@@ -277,14 +269,13 @@ where
 
             c.state.on_upsert(cid, &mut c.agent, now);
 
-            for candidate in c.agent.local_candidates() {
-                signal_candidate_to_remote(cid, candidate, &mut self.pending_events);
-            }
-
-            // Server-reflexive candidates are not in the local candidates of the ICE agent so those need special handling.
-            for candidate in self.srvflx_candidates.iter() {
-                signal_candidate_to_remote(cid, &candidate, &mut self.pending_events);
-            }
+            seed_agent_with_local_candidates(
+                cid,
+                c.relay,
+                &mut c.agent,
+                &self.allocations,
+                &mut self.pending_events,
+            );
 
             return Ok(());
         }
@@ -305,7 +296,13 @@ where
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
-        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
+        seed_agent_with_local_candidates(
+            cid,
+            selected_relay,
+            &mut agent,
+            &self.allocations,
+            &mut self.pending_events,
+        );
 
         let connection =
             self.init_connection(cid, agent, remote, preshared_key, selected_relay, now, now);
@@ -931,26 +928,6 @@ where
             tracing::trace!(%rid, ?event);
 
             match event {
-                allocation::Event::New(candidate) if candidate.kind() == CandidateKind::Host => {
-                    if !self.host_candidates.insert(rid, candidate.clone()) {
-                        continue;
-                    }
-
-                    for (cid, agent) in self.connections.agents_by_relay_mut(rid) {
-                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
-                    }
-                }
-                allocation::Event::New(candidate)
-                    if candidate.kind() == CandidateKind::ServerReflexive =>
-                {
-                    if !self.srvflx_candidates.insert(rid, candidate.clone()) {
-                        continue;
-                    }
-
-                    for (cid, agent) in self.connections.agents_by_relay_mut(rid) {
-                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
-                    }
-                }
                 allocation::Event::New(candidate) => {
                     for (cid, agent) in self.connections.agents_by_relay_mut(rid) {
                         add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
@@ -1057,7 +1034,13 @@ where
 
         let selected_relay = initial.relay;
 
-        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
+        seed_agent_with_local_candidates(
+            cid,
+            selected_relay,
+            &mut agent,
+            &self.allocations,
+            &mut self.pending_events,
+        );
 
         let connection = self.init_connection(
             cid,
@@ -1122,7 +1105,13 @@ where
         };
 
         let selected_relay = self.sample_relay()?;
-        self.seed_agent_with_local_candidates(cid, selected_relay, &mut agent);
+        seed_agent_with_local_candidates(
+            cid,
+            selected_relay,
+            &mut agent,
+            &self.allocations,
+            &mut self.pending_events,
+        );
 
         let connection = self.init_connection(
             cid,
@@ -1143,28 +1132,27 @@ where
     }
 }
 
-impl<T, TId, RId> Node<T, TId, RId>
-where
-    TId: Eq + Hash + Copy + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
+fn seed_agent_with_local_candidates<TId, RId>(
+    connection: TId,
+    selected_relay: RId,
+    agent: &mut IceAgent,
+    allocations: &BTreeMap<RId, Allocation>,
+    pending_events: &mut VecDeque<Event<TId>>,
+) where
+    RId: Ord,
+    TId: fmt::Display + Copy,
 {
-    fn seed_agent_with_local_candidates(
-        &mut self,
-        connection: TId,
-        selected_relay: RId,
-        agent: &mut IceAgent,
-    ) {
-        let host = self.host_candidates.iter();
-        let srflx = self.srvflx_candidates.iter();
-        let relay = self
-            .allocations
-            .get(&selected_relay)
-            .into_iter()
-            .flat_map(|allocation| allocation.current_relay_candidates());
+    let shared_candidates = allocations
+        .values()
+        .flat_map(|allocation| allocation.host_and_server_reflexive_candidates())
+        .unique();
+    let relay_candidates = allocations
+        .get(&selected_relay)
+        .into_iter()
+        .flat_map(|allocation| allocation.current_relay_candidates());
 
-        for candidate in host.chain(srflx).chain(relay) {
-            add_local_candidate(connection, agent, candidate, &mut self.pending_events);
-        }
+    for candidate in shared_candidates.chain(relay_candidates) {
+        add_local_candidate(connection, agent, candidate, pending_events);
     }
 }
 

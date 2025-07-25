@@ -254,6 +254,17 @@ impl Allocation {
         allocation
     }
 
+    pub fn host_and_server_reflexive_candidates(&self) -> impl Iterator<Item = Candidate> + use<> {
+        [
+            self.ip4_host_candidate.clone(),
+            self.ip6_host_candidate.clone(),
+            self.ip4_srflx_candidate.clone(),
+            self.ip6_srflx_candidate.clone(),
+        ]
+        .into_iter()
+        .flatten()
+    }
+
     pub fn current_relay_candidates(&self) -> impl Iterator<Item = Candidate> + use<> {
         [self.ip4_allocation.clone(), self.ip6_allocation.clone()]
             .into_iter()
