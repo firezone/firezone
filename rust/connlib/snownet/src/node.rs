@@ -1688,8 +1688,7 @@ enum ConnectionState {
         /// Our nominated socket.
         peer_socket: PeerSocket,
 
-        last_outgoing: Instant,
-        last_incoming: Instant,
+        last_activity: Instant,
     },
     /// We haven't seen application packets in a while.
     Idle {
@@ -1707,11 +1706,9 @@ impl ConnectionState {
         }
 
         match self {
-            ConnectionState::Connected {
-                last_incoming,
-                last_outgoing,
-                ..
-            } => Some((idle_at(*last_incoming, *last_outgoing), "idle transition")),
+            ConnectionState::Connected { last_activity, .. } => {
+                Some((idle_at(*last_activity), "idle transition"))
+            }
             ConnectionState::Connecting { .. }
             | ConnectionState::Idle { .. }
             | ConnectionState::Failed => None,
@@ -1723,15 +1720,14 @@ impl ConnectionState {
         TId: fmt::Display,
     {
         let Self::Connected {
-            last_outgoing,
-            last_incoming,
+            last_activity,
             peer_socket,
         } = self
         else {
             return;
         };
 
-        if idle_at(*last_incoming, *last_outgoing) > now {
+        if idle_at(*last_activity) > now {
             return;
         }
 
@@ -1750,7 +1746,11 @@ impl ConnectionState {
     {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
-            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+            Self::Connected { last_activity, .. } => {
+                *last_activity = now;
+                return;
+            }
+            Self::Failed | Self::Connecting { .. } => return,
         };
 
         self.transition_to_connected(cid, peer_socket, agent, "upsert", now);
@@ -1762,7 +1762,11 @@ impl ConnectionState {
     {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
-            Self::Failed | Self::Connecting { .. } | Self::Connected { .. } => return,
+            Self::Connected { last_activity, .. } => {
+                *last_activity = now;
+                return;
+            }
+            Self::Failed | Self::Connecting { .. } => return,
         };
 
         self.transition_to_connected(cid, peer_socket, agent, "new candidate", now);
@@ -1774,8 +1778,8 @@ impl ConnectionState {
     {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_outgoing, .. } => {
-                *last_outgoing = now;
+            Self::Connected { last_activity, .. } => {
+                *last_activity = now;
                 return;
             }
             Self::Failed | Self::Connecting { .. } => return,
@@ -1790,8 +1794,8 @@ impl ConnectionState {
     {
         let peer_socket = match self {
             Self::Idle { peer_socket } => *peer_socket,
-            Self::Connected { last_incoming, .. } => {
-                *last_incoming = now;
+            Self::Connected { last_activity, .. } => {
+                *last_activity = now;
                 return;
             }
             Self::Failed | Self::Connecting { .. } => return,
@@ -1822,8 +1826,7 @@ impl ConnectionState {
         tracing::debug!(trigger, %cid, "Connection resumed");
         *self = Self::Connected {
             peer_socket,
-            last_outgoing: now,
-            last_incoming: now,
+            last_activity: now,
         };
         apply_default_stun_timings(agent);
     }
@@ -1833,10 +1836,10 @@ impl ConnectionState {
     }
 }
 
-fn idle_at(last_incoming: Instant, last_outgoing: Instant) -> Instant {
+fn idle_at(last_activity: Instant) -> Instant {
     const MAX_IDLE: Duration = Duration::from_secs(20); // Must be longer than the ICE timeout otherwise we might not detect a failed connection early enough.
 
-    last_incoming.max(last_outgoing) + MAX_IDLE
+    last_activity + MAX_IDLE
 }
 
 /// The socket of the peer we are connected to.
@@ -2097,33 +2100,28 @@ where
 
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                last_incoming: now,
-                                last_outgoing: now,
+                                last_activity: now,
                             };
                             None
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            last_incoming,
-                            last_outgoing,
+                            last_activity,
                         } if peer_socket == remote_socket => {
                             self.state = ConnectionState::Connected {
                                 peer_socket,
-                                last_incoming,
-                                last_outgoing,
+                                last_activity,
                             };
 
                             continue; // If we re-nominate the same socket, don't just continue. TODO: Should this be fixed upstream?
                         }
                         ConnectionState::Connected {
                             peer_socket,
-                            last_incoming,
-                            last_outgoing,
+                            last_activity,
                         } => {
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
-                                last_incoming,
-                                last_outgoing,
+                                last_activity,
                             };
 
                             Some(peer_socket)
