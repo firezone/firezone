@@ -318,7 +318,7 @@ impl ThreadedUdpSocket {
     }
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {
-        Ok(self.channels.as_mut().context("Missing channels")?)
+        self.channels.as_mut().context("Missing channels")
     }
 }
 
