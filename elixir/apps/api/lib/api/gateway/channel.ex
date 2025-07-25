@@ -111,19 +111,31 @@ defmodule API.Gateway.Channel do
     tuple = {flow.client_id, flow.resource_id}
 
     socket =
-      if flow_map = Map.get(socket.assigns.flows, tuple) do
-        flow_map = Map.delete(flow_map, flow.id)
+      if flows_map = Map.get(socket.assigns.flows, tuple) do
+        flow_map = Map.delete(flows_map, flow.id)
 
-        if map_size(flow_map) == 0 do
-          # Send reject_access if this was the last flow granting access for this client/resource
-          push(socket, "reject_access", %{
-            client_id: flow.client_id,
-            resource_id: flow.resource_id
-          })
+        with 0 <- map_size(flow_map),
+             {:ok, new_flow} <- Flows.reauthorize_flow(flow) do
+          flow_map = %{
+            new_flow.id => new_flow.expires_at
+          }
 
-          assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
-        else
+          push(
+            socket,
+            "access_authorization_expiry_updated",
+            Views.Flow.render(new_flow, new_flow.expires_at)
+          )
+
           assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))
+        else
+          _ ->
+            # Send reject_access if access is no longer granted
+            push(socket, "reject_access", %{
+              client_id: flow.client_id,
+              resource_id: flow.resource_id
+            })
+
+            assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
         end
       else
         socket
@@ -144,7 +156,7 @@ defmodule API.Gateway.Channel do
       when old_filters != filters do
     has_flows? =
       socket.assigns.flows
-      |> Enum.any?(fn {{_client_id, resource_id}, _expires_at} -> resource_id == id end)
+      |> Enum.any?(fn {{_client_id, resource_id}, _flow_map} -> resource_id == id end)
 
     if has_flows? do
       push(socket, "resource_updated", Views.Resource.render(resource))
@@ -214,49 +226,48 @@ defmodule API.Gateway.Channel do
           payload: %{joins: joins}
         },
         socket
-      ) do
-    if Enum.count(joins) > 0 do
-      {:ok, relays} = select_relays(socket)
+      )
+      when map_size(joins) > 0 do
+    {:ok, relays} = select_relays(socket)
 
-      if length(relays) > 0 do
-        relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
+    if length(relays) > 0 do
+      relay_credentials_expire_at = DateTime.utc_now() |> DateTime.add(90, :day)
 
-        :ok =
-          Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
+      :ok =
+        Relays.unsubscribe_from_relays_presence_in_account(socket.assigns.gateway.account_id)
 
-        :ok =
-          Enum.each(relays, fn relay ->
-            # TODO: WAL
-            # Why are we unsubscribing and subscribing again?
-            :ok = Relays.unsubscribe_from_relay_presence(relay)
-            :ok = Relays.subscribe_to_relay_presence(relay)
-          end)
+      :ok =
+        Enum.each(relays, fn relay ->
+          # TODO: WAL
+          # Why are we unsubscribing and subscribing again?
+          :ok = Relays.unsubscribe_from_relay_presence(relay)
+          :ok = Relays.subscribe_to_relay_presence(relay)
+        end)
 
-        # Cache new stamp secrets
-        socket = Debouncer.cache_stamp_secrets(socket, relays)
+      # Cache new stamp secrets
+      socket = Debouncer.cache_stamp_secrets(socket, relays)
 
-        # If a relay reconnects with a different stamp_secret, disconnect them immediately
-        joined_ids = Map.keys(joins)
+      # If a relay reconnects with a different stamp_secret, disconnect them immediately
+      joined_ids = Map.keys(joins)
 
-        {socket, disconnected_ids} =
-          Debouncer.cancel_leaves_or_disconnect_immediately(
-            socket,
-            joined_ids,
-            socket.assigns.gateway.account_id
+      {socket, disconnected_ids} =
+        Debouncer.cancel_leaves_or_disconnect_immediately(
+          socket,
+          joined_ids,
+          socket.assigns.gateway.account_id
+        )
+
+      push(socket, "relays_presence", %{
+        disconnected_ids: disconnected_ids,
+        connected:
+          Views.Relay.render_many(
+            relays,
+            socket.assigns.gateway.public_key,
+            relay_credentials_expire_at
           )
+      })
 
-        push(socket, "relays_presence", %{
-          disconnected_ids: disconnected_ids,
-          connected:
-            Views.Relay.render_many(
-              relays,
-              socket.assigns.gateway.public_key,
-              relay_credentials_expire_at
-            )
-        })
-
-        {:noreply, socket}
-      end
+      {:noreply, socket}
     else
       {:noreply, socket}
     end
@@ -321,11 +332,7 @@ defmodule API.Gateway.Channel do
       gateway_ice_credentials: ice_credentials.gateway,
       client: Views.Client.render(client, preshared_key),
       client_ice_credentials: ice_credentials.client,
-      # Gateway manages its own expiration
-      expires_at:
-        if(authorization_expires_at,
-          do: DateTime.to_unix(authorization_expires_at, :second)
-        )
+      expires_at: DateTime.to_unix(authorization_expires_at, :second)
     })
 
     # Start tracking flow
@@ -366,13 +373,11 @@ defmodule API.Gateway.Channel do
             {channel_pid, socket_ref, resource.id}
           )
 
-        expires_at = DateTime.to_unix(authorization_expires_at, :second)
-
         push(socket, "allow_access", %{
           ref: ref,
           client_id: client.id,
           resource: Views.Resource.render(resource),
-          expires_at: expires_at,
+          expires_at: DateTime.to_unix(authorization_expires_at, :second),
           payload: payload,
           client_ipv4: client.ipv4,
           client_ipv6: client.ipv6
@@ -421,13 +426,11 @@ defmodule API.Gateway.Channel do
             {channel_pid, socket_ref, resource.id}
           )
 
-        expires_at = DateTime.to_unix(authorization_expires_at, :second)
-
         push(socket, "request_connection", %{
           ref: ref,
           resource: Views.Resource.render(resource),
           client: Views.Client.render(client, payload, preshared_key),
-          expires_at: expires_at
+          expires_at: DateTime.to_unix(authorization_expires_at, :second)
         })
 
         # Start tracking the flow
@@ -638,10 +641,7 @@ defmodule API.Gateway.Channel do
         # This data structure is used to efficiently:
         #   1. Check if there are any active flows remaining for this client/resource?
         #   2. Remove a deleted flow
-        |> Enum.reduce(%{}, fn {{client_id, resource_id}, {flow_id, inserted_at}}, acc ->
-          # Assume all flows have a 14 day expiration if they still exist
-          expires_at = DateTime.add(inserted_at, 14, :day)
-
+        |> Enum.reduce(%{}, fn {{client_id, resource_id}, {flow_id, expires_at}}, acc ->
           flow_id_map = Map.get(acc, {client_id, resource_id}, %{})
 
           Map.put(acc, {client_id, resource_id}, Map.put(flow_id_map, flow_id, expires_at))

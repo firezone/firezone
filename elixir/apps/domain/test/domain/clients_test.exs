@@ -108,7 +108,10 @@ defmodule Domain.ClientsTest do
 
     test "returns client by id", %{unprivileged_actor: actor, unprivileged_subject: subject} do
       client = Fixtures.Clients.create_client(actor: actor)
-      assert fetch_client_by_id(client.id, subject, preload: [:online?]) == {:ok, client}
+      client = Repo.preload(client, :identity)
+
+      assert fetch_client_by_id(client.id, subject, preload: [:online?, :identity]) ==
+               {:ok, client}
     end
 
     test "preloads online status", %{unprivileged_actor: actor, unprivileged_subject: subject} do
@@ -135,7 +138,8 @@ defmodule Domain.ClientsTest do
         |> Fixtures.Auth.remove_permissions()
         |> Fixtures.Auth.add_permission(Clients.Authorizer.manage_clients_permission())
 
-      assert fetch_client_by_id(client.id, subject, preload: [:online?]) == {:ok, client}
+      assert fetch_client_by_id(client.id, subject, preload: [:online?, :identity]) ==
+               {:ok, client}
     end
 
     test "does not returns client that belongs to another account with manage permission", %{
@@ -215,7 +219,7 @@ defmodule Domain.ClientsTest do
 
     test "returns client by id", %{unprivileged_actor: actor} do
       client = Fixtures.Clients.create_client(actor: actor)
-      assert fetch_client_by_id!(client.id, preload: [:online?]) == client
+      assert fetch_client_by_id!(client.id, preload: [:online?, :identity]) == client
     end
 
     test "preloads online status", %{unprivileged_actor: actor} do
@@ -357,7 +361,7 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: other_actor)
 
       assert {:ok, [^client], _metadata} =
-               list_clients_by_actor_id(actor.id, subject, preload: [:online?])
+               list_clients_by_actor_id(actor.id, subject, preload: [:online?, :identity])
 
       assert {:ok, [], _metadata} = list_clients_by_actor_id(other_actor.id, subject)
     end
@@ -993,7 +997,7 @@ defmodule Domain.ClientsTest do
 
       for field <- fields do
         assert {:ok, updated_client} = update_client(client, %{field => value}, subject)
-        assert updated_client == client
+        assert Repo.preload(updated_client, :identity) == client
       end
     end
 

@@ -63,14 +63,11 @@ defmodule API.Client.Channel do
 
   # Called immediately after the client joins the channel
   def handle_info(:after_join, socket) do
-    # Initialize the cache. Flows contains active flows for this client, so we
-    # can toggle the affected resource if the active flow is deleted. That will allow
-    # the client to create a new flow if the resource is still authorized.
+    # Initialize the cache.
     socket =
       socket
       |> hydrate_policies_and_resources()
-      |> hydrate_membership_group_ids()
-      |> assign(flows: MapSet.new())
+      |> hydrate_memberships()
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -138,7 +135,7 @@ defmodule API.Client.Channel do
   # ACTOR_GROUP_MEMBERSHIPS
 
   def handle_info(
-        {:created, %Actors.Membership{actor_id: actor_id, group_id: group_id}},
+        {:created, %Actors.Membership{actor_id: actor_id, group_id: group_id} = membership},
         %{assigns: %{client: %{actor_id: id}}} = socket
       )
       when id == actor_id do
@@ -152,8 +149,8 @@ defmodule API.Client.Channel do
     socket = hydrate_policies_and_resources(socket)
 
     # 3. Update our membership group IDs
-    ids = MapSet.put(socket.assigns.membership_group_ids, group_id)
-    socket = assign(socket, membership_group_ids: ids)
+    memberships = Map.put(socket.assigns.memberships, group_id, membership)
+    socket = assign(socket, memberships: memberships)
 
     # 3. Get new resources
     new_resources = authorized_resources(socket) -- existing_resources
@@ -192,13 +189,13 @@ defmodule API.Client.Channel do
 
     r_ids = Enum.map(policies, fn {_id, policy} -> policy.resource_id end) |> Enum.uniq()
     resources = Map.take(socket.assigns.resources, r_ids)
-    membership_group_ids = Map.delete(socket.assigns.membership_group_ids, group_id)
+    memberships = Map.delete(socket.assigns.memberships, group_id)
 
     socket =
       socket
       |> assign(policies: policies)
       |> assign(resources: resources)
-      |> assign(membership_group_ids: membership_group_ids)
+      |> assign(memberships: memberships)
 
     {:noreply, socket}
   end
@@ -244,38 +241,6 @@ defmodule API.Client.Channel do
     disconnect(socket)
   end
 
-  # FLOWS
-
-  def handle_info(
-        {:deleted, %Flows.Flow{client_id: client_id} = flow},
-        %{assigns: %{client: %{id: id}}} = socket
-      )
-      when client_id == id do
-    if MapSet.member?(socket.assigns.flows, flow.id) do
-      # If an active flow is deleted, we need to recreate it.
-      # To do that, we need to flap the resource on the client because it doesn't track flows.
-      # The gateway is also tracking flows and will have sent a reject_access for this client/resource
-      # if this was the last flow in its cache that was authorizing it.
-      push(socket, "resource_deleted", flow.resource_id)
-
-      resource = Map.get(socket.assigns.resources, flow.resource_id)
-
-      # Access to resource is still allowed, allow creating a new flow
-      if not is_nil(resource) and resource.id in Enum.map(authorized_resources(socket), & &1.id) do
-        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-      else
-        Logger.warning("Active flow deleted for resource but resource not found in socket state",
-          resource_id: flow.resource_id,
-          flow_id: flow.id
-        )
-      end
-
-      {:noreply, assign(socket, flows: MapSet.delete(socket.assigns.flows, flow.id))}
-    else
-      {:noreply, socket}
-    end
-  end
-
   # GATEWAY_GROUPS
 
   def handle_info(
@@ -307,7 +272,7 @@ defmodule API.Client.Channel do
 
   def handle_info({:created, %Policies.Policy{} = policy}, socket) do
     # 1. Check if this policy is for us
-    if MapSet.member?(socket.assigns.membership_group_ids, policy.actor_group_id) do
+    if Map.has_key?(socket.assigns.memberships, policy.actor_group_id) do
       # 2. Snapshot existing resources
       existing_resources = authorized_resources(socket)
 
@@ -731,7 +696,9 @@ defmodule API.Client.Channel do
           gateway,
           resource_id,
           policy,
-          socket.assigns.subject
+          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          socket.assigns.subject,
+          expires_at
         )
 
       preshared_key = generate_preshared_key()
@@ -750,8 +717,6 @@ defmodule API.Client.Channel do
              preshared_key: preshared_key
            }}
         )
-
-      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
 
       {:noreply, socket}
     else
@@ -886,7 +851,9 @@ defmodule API.Client.Channel do
           gateway,
           resource_id,
           policy,
-          socket.assigns.subject
+          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          socket.assigns.subject,
+          expires_at
         )
 
       :ok =
@@ -901,8 +868,6 @@ defmodule API.Client.Channel do
              client_payload: payload
            }}
         )
-
-      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
 
       {:noreply, socket}
     else
@@ -946,7 +911,9 @@ defmodule API.Client.Channel do
           gateway,
           resource_id,
           policy,
-          socket.assigns.subject
+          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          socket.assigns.subject,
+          expires_at
         )
 
       :ok =
@@ -962,8 +929,6 @@ defmodule API.Client.Channel do
              client_preshared_key: preshared_key
            }}
         )
-
-      socket = assign(socket, flows: MapSet.put(socket.assigns.flows, flow.id))
 
       {:noreply, socket}
     else
@@ -1206,16 +1171,19 @@ defmodule API.Client.Channel do
     end
   end
 
-  defp hydrate_membership_group_ids(socket) do
-    OpenTelemetry.Tracer.with_span "client.hydrate_membership_group_ids",
+  defp hydrate_memberships(socket) do
+    OpenTelemetry.Tracer.with_span "client.hydrate_memberships",
       attributes: %{
         account_id: socket.assigns.client.account_id
       } do
-      membership_group_ids =
-        Actors.all_actor_group_ids!(socket.assigns.subject.actor)
-        |> MapSet.new()
+      memberships =
+        Actors.all_memberships_for_actor!(socket.assigns.subject.actor)
+        |> Enum.map(fn membership ->
+          {membership.group_id, membership}
+        end)
+        |> Enum.into(%{})
 
-      assign(socket, membership_group_ids: membership_group_ids)
+      assign(socket, memberships: memberships)
     end
   end
 
@@ -1240,7 +1208,7 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Returns either the authorized resource or an error tuple of violated properties
+  # Returns either the authorized policy or an error tuple of violated properties
   defp authorize_resource(socket, resource_id) do
     OpenTelemetry.Tracer.with_span "client.authorize_resource",
       attributes: %{
@@ -1264,7 +1232,11 @@ defmodule API.Client.Channel do
 
         {:ok, policy, expires_at} ->
           # Set a maximum expiration time for the authorization
-          {:ok, policy, expires_at || socket.assigns.subject.expires_at}
+          expires_at =
+            expires_at || socket.assigns.subject.expires_at ||
+              DateTime.utc_now() |> DateTime.add(14, :day)
+
+          {:ok, policy, expires_at}
       end
     end
   end

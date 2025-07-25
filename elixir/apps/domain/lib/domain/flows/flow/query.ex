@@ -5,6 +5,11 @@ defmodule Domain.Flows.Flow.Query do
     from(flows in Domain.Flows.Flow, as: :flows)
   end
 
+  def not_expired(queryable) do
+    now = DateTime.utc_now()
+    where(queryable, [flows: flows], flows.expires_at > ^now)
+  end
+
   def by_id(queryable, id) do
     where(queryable, [flows: flows], flows.id == ^id)
   end
@@ -21,14 +26,11 @@ defmodule Domain.Flows.Flow.Query do
     where(queryable, [flows: flows], flows.policy_id == ^policy_id)
   end
 
-  # Return the latest {client_id, resource_id} pairs over the last 14 days
   def for_cache(queryable) do
-    cutoff = DateTime.utc_now() |> DateTime.add(-14, :day)
-
-    where(queryable, [flows: flows], flows.inserted_at > ^cutoff)
+    queryable
     |> select(
       [flows: flows],
-      {{flows.client_id, flows.resource_id}, {flows.id, flows.inserted_at}}
+      {{flows.client_id, flows.resource_id}, {flows.id, flows.expires_at}}
     )
   end
 

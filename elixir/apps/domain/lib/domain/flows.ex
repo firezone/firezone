@@ -21,6 +21,7 @@ defmodule Domain.Flows do
         },
         resource_id,
         %Policies.Policy{} = policy,
+        membership_id,
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
@@ -29,11 +30,10 @@ defmodule Domain.Flows do
             remote_ip: client_remote_ip,
             user_agent: client_user_agent
           }
-        } = subject
+        } = subject,
+        expires_at
       ) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()),
-         {:ok, membership} <-
-           Actors.fetch_membership_by_actor_id_and_group_id(actor_id, policy.actor_group_id) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
@@ -41,15 +41,62 @@ defmodule Domain.Flows do
           client_id: client_id,
           gateway_id: gateway_id,
           resource_id: resource_id,
-          actor_group_membership_id: membership.id,
+          actor_group_membership_id: membership_id,
           account_id: account_id,
           client_remote_ip: client_remote_ip,
           client_user_agent: client_user_agent,
-          gateway_remote_ip: gateway_remote_ip
+          gateway_remote_ip: gateway_remote_ip,
+          expires_at: expires_at
         })
         |> Repo.insert!()
 
       {:ok, flow}
+    end
+  end
+
+  # When the last flow in a Gateway's cache is deleted, we need to see if there are
+  # any other policies potentially authorizing the client before sending reject_access.
+  # This can happen if a Policy was created that grants redundant access to a client that
+  # is already connected to the Resource, then the initial Policy is deleted.
+  #
+  # We need to create a new flow with the new Policy but the same (or shorter) expiration as
+  # the old flow.
+  def reauthorize_flow(%Flow{} = flow) do
+    with {:ok, client} <- Clients.fetch_client_by_id(flow.client_id, preload: :identity),
+         policies when policies != [] <-
+           Policies.all_policies_for_resource_id!(
+             flow.account_id,
+             flow.resource_id
+           ),
+         conforming_policies when conforming_policies != [] <-
+           Policies.filter_by_conforming_policies_for_client(policies, client),
+         policy <- Enum.at(conforming_policies, 0),
+         {:ok, expires_at} <- Policies.ensure_client_conforms_policy_conditions(client, policy),
+         {:ok, membership} <-
+           Actors.fetch_membership_by_actor_id_and_group_id(
+             client.actor_id,
+             policy.actor_group_id
+           ),
+         {:ok, new_flow} <-
+           Flow.Changeset.create(%{
+             token_id: flow.token_id,
+             policy_id: Enum.at(conforming_policies, 0).id,
+             client_id: flow.client_id,
+             gateway_id: flow.gateway_id,
+             resource_id: flow.resource_id,
+             actor_group_membership_id: membership.id,
+             account_id: flow.account_id,
+             client_remote_ip: client.last_seen_remote_ip,
+             client_user_agent: client.last_seen_user_agent,
+             gateway_remote_ip: flow.gateway_remote_ip,
+             expires_at: expires_at || flow.expires_at
+           })
+           |> Repo.insert() do
+      {:ok, new_flow}
+    else
+      reason ->
+        Logger.info("Failed to reauthorize flow: #{inspect(reason)}")
+        {:error, :forbidden}
     end
   end
 
@@ -70,6 +117,7 @@ defmodule Domain.Flows do
     Flow.Query.all()
     |> Flow.Query.by_account_id(gateway.account_id)
     |> Flow.Query.by_gateway_id(gateway.id)
+    |> Flow.Query.not_expired()
     |> Flow.Query.for_cache()
     |> Repo.all()
   end

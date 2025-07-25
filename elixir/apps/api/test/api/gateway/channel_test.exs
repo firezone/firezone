@@ -1027,45 +1027,6 @@ defmodule API.Gateway.ChannelTest do
                DateTime.truncate(expires_at, :second)
     end
 
-    test "pushes authorize_flow message for authorizations that do not expire", %{
-      client: client,
-      gateway: gateway,
-      resource: resource,
-      account: account,
-      socket: socket
-    } do
-      flow =
-        Fixtures.Flows.create_flow(
-          account: account,
-          client: client,
-          resource: resource
-        )
-
-      channel_pid = self()
-      socket_ref = make_ref()
-      preshared_key = "PSK"
-
-      ice_credentials = %{
-        client: %{username: "A", password: "B"},
-        gateway: %{username: "C", password: "D"}
-      }
-
-      send(
-        socket.channel_pid,
-        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
-         %{
-           client: client,
-           resource: resource,
-           flow_id: flow.id,
-           authorization_expires_at: nil,
-           ice_credentials: ice_credentials,
-           preshared_key: preshared_key
-         }}
-      )
-
-      assert_push "authorize_flow", %{expires_at: nil}
-    end
-
     test "authorize_flow tracks flow and sends reject_access when flow is deleted", %{
       account: account,
       client: client,

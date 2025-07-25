@@ -74,6 +74,13 @@ defmodule Domain.Policies do
     |> Repo.all()
   end
 
+  def all_policies_for_resource_id!(account_id, resource_id) do
+    Policy.Query.not_disabled()
+    |> Policy.Query.by_account_id(account_id)
+    |> Policy.Query.by_resource_id(resource_id)
+    |> Repo.all()
+  end
+
   def new_policy(attrs, %Auth.Subject{} = subject) do
     Policy.Changeset.create(attrs, subject)
   end

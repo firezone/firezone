@@ -54,7 +54,7 @@ defmodule Domain.FlowsTest do
     }
   end
 
-  describe "create_flow/4" do
+  describe "create_flow/7" do
     # test "returns error when resource does not exist", %{
     #   client: client,
     #   gateway: gateway,
@@ -258,10 +258,19 @@ defmodule Domain.FlowsTest do
       client = Fixtures.Clients.create_client(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(account: account, actor: actor)
 
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+      membership =
+        Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
       assert {:ok, %Flows.Flow{} = flow} =
-               create_flow(client, gateway, resource.id, policy, subject)
+               create_flow(
+                 client,
+                 gateway,
+                 resource.id,
+                 policy,
+                 membership.id,
+                 subject,
+                 subject.expires_at
+               )
 
       assert flow.policy_id == policy.id
       assert flow.client_id == client.id
@@ -271,6 +280,8 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
+      assert flow.actor_group_membership_id == membership.id
+      assert flow.expires_at == subject.expires_at
     end
 
     test "creates a new flow for service accounts", %{
@@ -281,7 +292,9 @@ defmodule Domain.FlowsTest do
       policy: policy
     } do
       actor = Fixtures.Actors.create_actor(type: :service_account, account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
+
+      membership =
+        Fixtures.Actors.create_membership(account: account, actor: actor, group: actor_group)
 
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
@@ -289,7 +302,15 @@ defmodule Domain.FlowsTest do
       client = Fixtures.Clients.create_client(account: account, actor: actor, identity: identity)
 
       assert {:ok, %Flows.Flow{} = flow} =
-               create_flow(client, gateway, resource.id, policy, subject)
+               create_flow(
+                 client,
+                 gateway,
+                 resource.id,
+                 policy,
+                 membership.id,
+                 subject,
+                 subject.expires_at
+               )
 
       assert flow.policy_id == policy.id
       assert flow.client_id == client.id
@@ -299,6 +320,8 @@ defmodule Domain.FlowsTest do
       assert flow.client_remote_ip.address == subject.context.remote_ip
       assert flow.client_user_agent == subject.context.user_agent
       assert flow.gateway_remote_ip == gateway.last_seen_remote_ip
+      assert flow.actor_group_membership_id == membership.id
+      assert flow.expires_at == subject.expires_at
     end
 
     # TODO: Rename Flows
@@ -330,6 +353,103 @@ defmodule Domain.FlowsTest do
     #                Domain.Resources.Authorizer.view_available_resources_permission()
     #              ]}}
     # end
+  end
+
+  describe "reauthorize_flow/1" do
+    test "when another valid policy exists for the resource",
+         %{
+           account: account,
+           actor: actor,
+           membership: membership,
+           subject: subject,
+           client: client,
+           gateway: gateway,
+           resource: resource,
+           policy: policy
+         } do
+      other_group = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: other_group
+      )
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: other_group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_in,
+            values: [client.last_seen_remote_ip_location_region]
+          }
+        ]
+      )
+
+      assert {:ok, reauthorized_flow} = reauthorize_flow(flow)
+      assert reauthorized_flow.resource_id == flow.resource_id
+    end
+
+    test "when no more valid policies exist for the resource",
+         %{
+           account: account,
+           actor: actor,
+           membership: membership,
+           subject: subject,
+           client: client,
+           gateway: gateway,
+           resource: resource,
+           policy: policy
+         } do
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          subject: subject,
+          client: client,
+          actor_group_membership: membership,
+          policy: policy,
+          resource: resource,
+          gateway: gateway
+        )
+
+      other_group = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: other_group
+      )
+
+      Repo.delete_all(Domain.Policies.Policy)
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: other_group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :remote_ip_location_region,
+            operator: :is_in,
+            values: ["AU"]
+          }
+        ]
+      )
+
+      assert {:error, :forbidden} = reauthorize_flow(flow)
+    end
   end
 
   describe "fetch_flow_by_id/3" do
@@ -458,8 +578,8 @@ defmodule Domain.FlowsTest do
 
       flows = all_gateway_flows_for_cache!(gateway)
 
-      assert {{flow1.client_id, flow1.resource_id}, {flow1.id, flow1.inserted_at}} in flows
-      assert {{flow2.client_id, flow2.resource_id}, {flow2.id, flow2.inserted_at}} in flows
+      assert {{flow1.client_id, flow1.resource_id}, {flow1.id, flow1.expires_at}} in flows
+      assert {{flow2.client_id, flow2.resource_id}, {flow2.id, flow2.expires_at}} in flows
     end
   end
 

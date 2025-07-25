@@ -12,14 +12,12 @@ defmodule Domain.Events.Hooks.Policies do
   @impl true
 
   # Disable - process as delete
-
   def on_update(%{"disabled_at" => nil}, %{"disabled_at" => disabled_at} = data)
       when not is_nil(disabled_at) do
     on_delete(data)
   end
 
   # Enable - process as insert
-
   def on_update(%{"disabled_at" => disabled_at}, %{"disabled_at" => nil} = data)
       when not is_nil(disabled_at) do
     on_insert(data)
@@ -38,6 +36,8 @@ defmodule Domain.Events.Hooks.Policies do
 
     # Breaking updates
     # This is a special case - we need to delete related flows because connectivity has changed
+    # The Gateway PID will receive flow deletion messages and process them to potentially reject
+    # access. The client PID (if connected) will toggle the resource deleted/created.
     if old_policy.conditions != policy.conditions or
          old_policy.actor_group_id != policy.actor_group_id or
          old_policy.resource_id != policy.resource_id do

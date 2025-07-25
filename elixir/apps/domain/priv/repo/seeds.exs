@@ -1175,13 +1175,21 @@ defmodule Domain.Repo.Seeds do
 
     IO.puts("")
 
+    membership =
+      Repo.get_by(Domain.Actors.Membership,
+        group_id: synced_group.id,
+        actor_id: unprivileged_actor.id
+      )
+
     {:ok, _flow} =
       Flows.create_flow(
         user_iphone,
         gateway1,
         cidr_resource.id,
         policy,
-        unprivileged_subject
+        membership.id,
+        unprivileged_subject,
+        unprivileged_subject.expires_at
       )
   end
 end
