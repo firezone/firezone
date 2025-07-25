@@ -267,7 +267,8 @@ defmodule API.Client.Channel do
       Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
       |> Map.values()
 
-    # 2. Update our state
+    # 2. Update our state - maintain preloaded identity
+    client = %{client | identity: socket.assigns.client.identity}
     socket = assign(socket, client: client)
 
     # 3. If client's verification status changed, send diff of resources
