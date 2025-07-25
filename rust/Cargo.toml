@@ -63,6 +63,7 @@ chrono = { version = "0.4", default-features = false, features = ["std", "clock"
 clap = "4.5.41"
 client-shared = { path = "client-shared" }
 connlib-model = { path = "connlib/model" }
+crossbeam-queue = "0.3.12"
 dashmap = "6.1.0"
 derive_more = "2.0.1"
 difference = "2.0.0"
@@ -101,7 +102,6 @@ l3-tcp = { path = "connlib/l3-tcp" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 libc = "0.2.174"
-lockfree-object-pool = "0.1.6"
 log = "0.4"
 lru = "0.12.5"
 mio = "1.0.4"

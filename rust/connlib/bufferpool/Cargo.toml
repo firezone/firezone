@@ -9,7 +9,7 @@ path = "lib.rs"
 
 [dependencies]
 bytes = { workspace = true }
-lockfree-object-pool = { workspace = true }
+crossbeam-queue = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 tracing = { workspace = true }
 

@@ -6,11 +6,26 @@ use std::{
 };
 
 use bytes::BytesMut;
+use crossbeam_queue::SegQueue;
 use opentelemetry::{KeyValue, metrics::UpDownCounter};
 
-#[derive(Clone)]
+/// A lock-free pool of buffers that are all equal in size.
+///
+/// The buffers are stored in a queue ([`SegQueue`]) and taken from the front and push to the back.
+/// This minimizes contention even under high load where buffers are constantly needed and returned.
 pub struct BufferPool<B> {
-    inner: Arc<lockfree_object_pool::SpinLockObjectPool<BufferStorage<B>>>,
+    inner: Arc<SegQueue<BufferStorage<B>>>,
+
+    new_buffer_fn: Arc<dyn Fn() -> BufferStorage<B> + Send + Sync>,
+}
+
+impl<B> Clone for BufferPool<B> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            new_buffer_fn: self.new_buffer_fn.clone(),
+        }
+    }
 }
 
 impl<B> BufferPool<B>
@@ -25,26 +40,28 @@ where
             .build();
 
         Self {
-            inner: Arc::new(lockfree_object_pool::SpinLockObjectPool::new(
-                move || {
-                    BufferStorage::new(
-                        B::with_capacity(capacity),
-                        buffer_counter.clone(),
-                        [
-                            KeyValue::new("system.buffer.pool.name", tag),
-                            KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
-                        ],
-                    )
-                },
-                |_| {},
-            )),
+            inner: Arc::new(SegQueue::new()),
+
+            // TODO: It would be nice to eventually create a fixed amount of buffers upfront.
+            // This however means that getting a buffer can fail which would require us to implement back-pressure.
+            new_buffer_fn: Arc::new(move || {
+                BufferStorage::new(
+                    B::with_capacity(capacity),
+                    buffer_counter.clone(),
+                    [
+                        KeyValue::new("system.buffer.pool.name", tag),
+                        KeyValue::new("system.buffer.pool.buffer_size", capacity as i64),
+                    ],
+                )
+            }),
         }
     }
 
     pub fn pull(&self) -> Buffer<B> {
         Buffer {
-            inner: self.inner.pull_owned(),
+            inner: Some(self.inner.pop().unwrap_or_else(|| (self.new_buffer_fn)())),
             pool: self.inner.clone(),
+            new_buffer_fn: self.new_buffer_fn.clone(),
         }
     }
 }
@@ -65,8 +82,10 @@ where
 }
 
 pub struct Buffer<B> {
-    inner: lockfree_object_pool::SpinLockOwnedReusable<BufferStorage<B>>,
-    pool: Arc<lockfree_object_pool::SpinLockObjectPool<BufferStorage<B>>>,
+    inner: Option<BufferStorage<B>>,
+
+    pool: Arc<SegQueue<BufferStorage<B>>>,
+    new_buffer_fn: Arc<dyn Fn() -> BufferStorage<B> + Send + Sync>,
 }
 
 impl Buffer<Vec<u8>> {
@@ -74,7 +93,7 @@ impl Buffer<Vec<u8>> {
     pub fn shift_start_right(&mut self, num: usize) -> Vec<u8> {
         let num_to_end = self.split_off(num);
 
-        std::mem::replace(&mut self.inner.inner, num_to_end)
+        std::mem::replace(self.storage_mut(), num_to_end)
     }
 
     /// Shifts the start of the buffer to the left by N bytes, returning a slice to the added bytes at the front of the buffer.
@@ -88,18 +107,33 @@ impl Buffer<Vec<u8>> {
     }
 }
 
+impl<B> Buffer<B> {
+    fn storage(&self) -> &BufferStorage<B> {
+        self.inner
+            .as_ref()
+            .expect("should always have buffer storage until dropped")
+    }
+
+    fn storage_mut(&mut self) -> &mut BufferStorage<B> {
+        self.inner
+            .as_mut()
+            .expect("should always have buffer storage until dropped")
+    }
+}
+
 impl<B> Clone for Buffer<B>
 where
     B: Buf,
 {
     fn clone(&self) -> Self {
-        let mut copy = self.pool.pull_owned();
+        let mut copy = self.pool.pop().unwrap_or_else(|| (self.new_buffer_fn)());
 
-        self.inner.inner.clone(&mut copy);
+        self.storage().inner.clone(&mut copy);
 
         Self {
-            inner: copy,
+            inner: Some(copy),
             pool: self.pool.clone(),
+            new_buffer_fn: self.new_buffer_fn.clone(),
         }
     }
 }
@@ -143,13 +177,21 @@ impl<B> Deref for Buffer<B> {
     type Target = B;
 
     fn deref(&self) -> &Self::Target {
-        self.inner.deref()
+        self.storage().deref()
     }
 }
 
 impl<B> DerefMut for Buffer<B> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.inner.deref_mut()
+        self.storage_mut().deref_mut()
+    }
+}
+
+impl<B> Drop for Buffer<B> {
+    fn drop(&mut self) {
+        let buffer_storage = self.inner.take().expect("should have storage in `Drop`");
+
+        self.pool.push(buffer_storage);
     }
 }
 
