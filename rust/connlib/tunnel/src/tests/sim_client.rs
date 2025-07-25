@@ -25,6 +25,7 @@ use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
     mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    num::NonZeroU16,
     time::Instant,
 };
 
@@ -1141,7 +1142,7 @@ pub(crate) fn ref_client_host(
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
         any_ip_stack(),
-        Just(52625),
+        listening_port(),
         ref_client(
             tunnel_ip4s,
             tunnel_ip6s,
@@ -1149,7 +1150,7 @@ pub(crate) fn ref_client_host(
             upstream_dns,
             search_domain,
         ),
-        latency(300), // TODO: Increase with #6062.
+        latency(250), // TODO: Increase with #6062.
     )
 }
 
@@ -1205,6 +1206,14 @@ fn ref_client(
                 }
             },
         )
+}
+
+fn listening_port() -> impl Strategy<Value = u16> {
+    prop_oneof![
+        Just(52625),
+        Just(3478), // Make sure connlib works even if a NAT is re-mapping our public port to a relay port.
+        any::<NonZeroU16>().prop_map(|p| p.get()),
+    ]
 }
 
 fn default_routes_v4() -> Vec<Ipv4Network> {
