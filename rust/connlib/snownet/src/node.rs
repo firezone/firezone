@@ -330,35 +330,6 @@ where
         (self.stats, self.connections.stats())
     }
 
-    /// Add an address as a `host` candidate.
-    ///
-    /// For most network topologies, [`snownet`](crate) will automatically discover host candidates via the traffic to the configured STUN and TURN servers.
-    /// However, in topologies like the one below, we cannot discover that there is a more optimal link between BACKEND and DB.
-    /// For those situations, users need to manually add the address of the direct link in order for [`snownet`](crate) to establish a connection.
-    ///
-    /// ```text
-    ///        ┌──────┐          ┌──────┐
-    ///        │ STUN ├─┐      ┌─┤ TURN │
-    ///        └──────┘ │      │ └──────┘
-    ///                 │      │
-    ///               ┌─┴──────┴─┐
-    ///      ┌────────┤   WAN    ├───────┐
-    ///      │        └──────────┘       │
-    /// ┌────┴─────┐                  ┌──┴───┐
-    /// │    FW    │                  │  FW  │
-    /// └────┬─────┘                  └──┬───┘
-    ///      │            ┌──┐           │
-    ///  ┌───┴─────┐      │  │         ┌─┴──┐
-    ///  │ BACKEND ├──────┤FW├─────────┤ DB │
-    ///  └─────────┘      │  │         └────┘
-    ///                   └──┘
-    /// ```
-    pub fn add_local_host_candidate(&mut self, address: SocketAddr) -> Result<()> {
-        self.add_local_as_host_candidate(address)?;
-
-        Ok(())
-    }
-
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
         let candidate = match Candidate::from_sdp_string(&candidate) {
