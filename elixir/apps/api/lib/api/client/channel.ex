@@ -679,7 +679,7 @@ defmodule API.Client.Channel do
     }
 
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, tuples} <- authorize_resource(socket, resource_id),
+         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
          {:ok, gateways} when gateways != [] <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
@@ -690,13 +690,15 @@ defmodule API.Client.Channel do
 
       # TODO: Optimization
       # Move this to a Task.start that completes after broadcasting authorize_flow
-      flows_map =
-        Flows.create_flows(
+      {:ok, flow} =
+        Flows.create_flow(
           socket.assigns.client,
-          resource_id,
-          tuples,
           gateway,
-          socket.assigns.subject
+          resource_id,
+          policy,
+          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          socket.assigns.subject,
+          expires_at
         )
 
       preshared_key = generate_preshared_key()
@@ -709,7 +711,8 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flows_map: flows_map,
+             flow_id: flow.id,
+             authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
              preshared_key: preshared_key
            }}
@@ -781,7 +784,7 @@ defmodule API.Client.Channel do
     # TODO: Optimization
     # Gateway selection and flow authorization shouldn't need to hit the DB
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, _tuples} <- authorize_resource(socket, resource_id),
+         {:ok, _policy, _expires_at} <- authorize_resource(socket, resource_id),
          {:ok, [_ | _] = gateways} <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
@@ -838,17 +841,19 @@ defmodule API.Client.Channel do
         socket
       ) do
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, tuples} <- authorize_resource(socket, resource_id),
+         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization
-      flows_map =
-        Flows.create_flows(
+      {:ok, flow} =
+        Flows.create_flow(
           socket.assigns.client,
-          resource_id,
-          tuples,
           gateway,
-          socket.assigns.subject
+          resource_id,
+          policy,
+          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          socket.assigns.subject,
+          expires_at
         )
 
       :ok =
@@ -858,7 +863,8 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flows_map: flows_map,
+             flow_id: flow.id,
+             authorization_expires_at: expires_at,
              client_payload: payload
            }}
         )
@@ -895,17 +901,19 @@ defmodule API.Client.Channel do
       ) do
     # Flow authorization can happen out-of-band since we just authorized the resource above
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, tuples} <- authorize_resource(socket, resource_id),
+         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization
-      flows_map =
-        Flows.create_flows(
+      {:ok, flow} =
+        Flows.create_flow(
           socket.assigns.client,
-          resource_id,
-          tuples,
           gateway,
-          socket.assigns.subject
+          resource_id,
+          policy,
+          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          socket.assigns.subject,
+          expires_at
         )
 
       :ok =
@@ -915,7 +923,8 @@ defmodule API.Client.Channel do
            %{
              client: socket.assigns.client,
              resource: resource,
-             flows_map: flows_map,
+             flow_id: flow.id,
+             authorization_expires_at: expires_at,
              client_payload: client_payload,
              client_preshared_key: preshared_key
            }}
@@ -1199,10 +1208,7 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Returns either:
-  # - a list of {policy_id, membership_id, expires_at} tuples if one or more policies
-  #   authorized the resource, or
-  # - an error tuple {:error, {:forbidden, violated_properties: violated_properties}}
+  # Returns either the authorized policy or an error tuple of violated properties
   defp authorize_resource(socket, resource_id) do
     OpenTelemetry.Tracer.with_span "client.authorize_resource",
       attributes: %{
@@ -1211,26 +1217,26 @@ defmodule API.Client.Channel do
       socket.assigns.policies
       |> Enum.filter(fn {_id, policy} -> policy.resource_id == resource_id end)
       |> Enum.map(fn {_id, policy} -> policy end)
-      |> Enum.reduce(%{authorizations: [], errors: []}, fn policy, acc ->
+      |> Enum.reduce_while({:error, []}, fn policy, {:error, acc} ->
         case Policies.ensure_client_conforms_policy_conditions(socket.assigns.client, policy) do
           {:ok, expires_at} ->
-            membership_id = Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id
-            expires_at = expires_at || socket.assigns.subject.expires_at
-            %{acc | authorizations: [{policy.id, membership_id, expires_at} | acc.authorizations]}
+            {:halt, {:ok, policy, expires_at}}
 
           {:error, {:forbidden, violated_properties: violated_properties}} ->
-            %{acc | errors: violated_properties ++ acc.errors}
+            {:cont, {:error, violated_properties ++ acc}}
         end
       end)
       |> case do
-        %{authorizations: [], errors: []} ->
-          {:error, :not_found}
-
-        %{authorizations: [], errors: violated_properties} ->
+        {:error, violated_properties} ->
           {:error, {:forbidden, violated_properties: violated_properties}}
 
-        %{authorizations: authorizations} ->
-          {:ok, authorizations}
+        {:ok, policy, expires_at} ->
+          # Set a maximum expiration time for the authorization
+          expires_at =
+            expires_at || socket.assigns.subject.expires_at ||
+              DateTime.utc_now() |> DateTime.add(14, :day)
+
+          {:ok, policy, expires_at}
       end
     end
   end

@@ -39,6 +39,12 @@ defmodule Domain.Clients do
     |> Repo.aggregate(:count)
   end
 
+  def fetch_client_by_id(id, preload: :identity) do
+    Client.Query.not_deleted()
+    |> Client.Query.by_id(id)
+    |> Repo.fetch(Client.Query, preload: :identity)
+  end
+
   def fetch_client_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,
@@ -158,9 +164,12 @@ defmodule Domain.Clients do
         %{client: %Client{} = client, ipv4: ipv4, ipv6: ipv6} ->
           Client.Changeset.finalize_upsert(client, ipv4, ipv6)
       end)
+      |> Ecto.Multi.run(:client_with_identity, fn _repo, %{client_with_address: client} ->
+        {:ok, Repo.preload(client, :identity)}
+      end)
       |> Repo.transaction()
       |> case do
-        {:ok, %{client_with_address: client}} -> {:ok, client}
+        {:ok, %{client_with_identity: client}} -> {:ok, client}
         {:error, :client, changeset, _effects_so_far} -> {:error, changeset}
       end
     end

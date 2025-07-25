@@ -6,21 +6,22 @@ defmodule Domain.Flows do
   require Logger
 
   # TODO: Optimization
-  # Connection setup latency - doesn't need to block setting up flows. Authorizing the flow
+  # Connection setup latency - doesn't need to block setting up flow. Authorizing the flow
   # is now handled in memory and this only logs it, so these can be done in parallel.
-  def create_flows(
+  def create_flow(
         %Clients.Client{
           id: client_id,
-          actor_id: actor_id,
-          account_id: account_id
+          account_id: account_id,
+          actor_id: actor_id
         },
-        resource_id,
-        tuples,
         %Gateways.Gateway{
           id: gateway_id,
           last_seen_remote_ip: gateway_remote_ip,
           account_id: account_id
         },
+        resource_id,
+        %Policies.Policy{} = policy,
+        membership_id,
         %Auth.Subject{
           account: %{id: account_id},
           actor: %{id: actor_id},
@@ -29,14 +30,14 @@ defmodule Domain.Flows do
             remote_ip: client_remote_ip,
             user_agent: client_user_agent
           }
-        }
+        } = subject,
+        expires_at
       ) do
-    flow_attrs =
-      tuples
-      |> Enum.map(fn {policy_id, membership_id, expires_at} ->
-        %{
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.create_flows_permission()) do
+      flow =
+        Flow.Changeset.create(%{
           token_id: token_id,
-          policy_id: policy_id,
+          policy_id: policy.id,
           client_id: client_id,
           gateway_id: gateway_id,
           resource_id: resource_id,
@@ -45,16 +46,58 @@ defmodule Domain.Flows do
           client_remote_ip: client_remote_ip,
           client_user_agent: client_user_agent,
           gateway_remote_ip: gateway_remote_ip,
-          expires_at: expires_at,
-          inserted_at: DateTime.utc_now()
-        }
-      end)
+          expires_at: expires_at
+        })
+        |> Repo.insert!()
 
-    {_count, flows} = Repo.insert_all(Flow, flow_attrs, returning: [:id, :expires_at])
+      {:ok, flow}
+    end
+  end
 
-    flows
-    |> Enum.map(fn flow -> {flow.id, flow.expires_at} end)
-    |> Enum.into(%{})
+  # When the last flow in a Gateway's cache is deleted, we need to see if there are
+  # any other policies potentially authorizing the client before sending reject_access.
+  # This can happen if a Policy was created that grants redundant access to a client that
+  # is already connected to the Resource, then the initial Policy is deleted.
+  #
+  # We need to create a new flow with the new Policy but the same (or shorter) expiration as
+  # the old flow.
+  def reauthorize_flow(%Flow{} = flow) do
+    with {:ok, client} <- Clients.fetch_client_by_id(flow.client_id, preload: :identity),
+         policies when policies != [] <-
+           Policies.all_policies_for_resource_id!(
+             flow.account_id,
+             flow.resource_id
+           ),
+         conforming_policies when conforming_policies != [] <-
+           Policies.filter_by_conforming_policies_for_client(policies, client),
+         policy <- Enum.at(conforming_policies, 0),
+         {:ok, expires_at} <- Policies.ensure_client_conforms_policy_conditions(client, policy),
+         {:ok, membership} <-
+           Actors.fetch_membership_by_actor_id_and_group_id(
+             client.actor_id,
+             policy.actor_group_id
+           ),
+         {:ok, new_flow} <-
+           Flow.Changeset.create(%{
+             token_id: flow.token_id,
+             policy_id: Enum.at(conforming_policies, 0).id,
+             client_id: flow.client_id,
+             gateway_id: flow.gateway_id,
+             resource_id: flow.resource_id,
+             actor_group_membership_id: membership.id,
+             account_id: flow.account_id,
+             client_remote_ip: client.last_seen_remote_ip,
+             client_user_agent: client.last_seen_user_agent,
+             gateway_remote_ip: flow.gateway_remote_ip,
+             expires_at: expires_at || flow.expires_at
+           })
+           |> Repo.insert() do
+      {:ok, new_flow}
+    else
+      reason ->
+        Logger.info("Failed to reauthorize flow: #{inspect(reason)}")
+        {:error, :forbidden}
+    end
   end
 
   def fetch_flow_by_id(id, %Auth.Subject{} = subject, opts \\ []) do

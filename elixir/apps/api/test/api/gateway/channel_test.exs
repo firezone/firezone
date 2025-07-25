@@ -172,7 +172,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -235,7 +236,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -301,7 +303,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow1.id => expires_at},
+           flow_id: flow1.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -314,7 +317,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow2.id => expires_at},
+           flow_id: flow2.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -366,7 +370,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -444,7 +449,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -457,7 +463,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: other_client,
            resource: resource,
-           flows_map: %{other_flow1.id => expires_at},
+           flow_id: other_flow1.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -470,7 +477,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: other_resource,
-           flows_map: %{other_flow2.id => expires_at},
+           flow_id: other_flow2.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -553,7 +561,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -612,7 +621,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload
          }}
       )
@@ -847,7 +857,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
          }}
@@ -919,7 +930,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: client_payload,
            client_preshared_key: preshared_key
          }}
@@ -976,7 +988,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
          }}
@@ -1047,7 +1060,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
          }}
@@ -1117,7 +1131,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
            preshared_key: preshared_key
          }}
@@ -1184,7 +1199,8 @@ defmodule API.Gateway.ChannelTest do
          %{
            client: client,
            resource: resource,
-           flows_map: %{flow.id => expires_at},
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
            client_payload: payload,
            client_preshared_key: preshared_key
          }}

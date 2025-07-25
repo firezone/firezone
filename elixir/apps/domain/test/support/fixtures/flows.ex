@@ -80,30 +80,19 @@ defmodule Domain.Fixtures.Flows do
         %{id: subject.token_id}
       end)
 
-    expires_at = subject.expires_at
-
-    {_count, flows} =
-      Repo.insert_all(
-        Flows.Flow,
-        [
-          %{
-            token_id: token_id,
-            policy_id: policy_id,
-            client_id: client.id,
-            gateway_id: gateway.id,
-            resource_id: resource_id,
-            actor_group_membership_id: membership.id,
-            account_id: account.id,
-            expires_at: expires_at,
-            inserted_at: DateTime.utc_now(),
-            client_remote_ip: client.last_seen_remote_ip,
-            client_user_agent: client.last_seen_user_agent,
-            gateway_remote_ip: gateway.last_seen_remote_ip
-          }
-        ],
-        returning: true
-      )
-
-    List.first(flows)
+    Flows.Flow.Changeset.create(%{
+      token_id: token_id,
+      policy_id: policy_id,
+      client_id: client.id,
+      gateway_id: gateway.id,
+      resource_id: resource_id,
+      actor_group_membership_id: membership.id,
+      account_id: account.id,
+      client_remote_ip: client.last_seen_remote_ip,
+      client_user_agent: client.last_seen_user_agent,
+      gateway_remote_ip: gateway.last_seen_remote_ip,
+      expires_at: subject.expires_at || DateTime.utc_now() |> DateTime.add(14, :day)
+    })
+    |> Repo.insert!()
   end
 end
