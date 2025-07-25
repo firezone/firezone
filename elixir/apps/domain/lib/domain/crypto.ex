@@ -1,26 +1,16 @@
 defmodule Domain.Crypto do
   alias Domain.{Clients, Gateways}
 
-  @wg_psk_length 32
-
-  @fixed_salt <<0x46, 0x69, 0x72, 0x65, 0x7A, 0x6F, 0x6E, 0x65, 0x5F, 0x50, 0x53, 0x4B, 0x5F,
-                0x53, 0x61, 0x6C, 0x74>>
-
   @doc """
   Generate a WireGuard PSK for a client-gateway pair.
   Returns {:ok, base64_psk} or {:error, reason}.
   """
   def psk(psk_base, %Clients.Client{} = client, %Gateways.Gateway{} = gateway) do
     with {:ok, master_secret_bytes} <- Base.decode64(psk_base),
-         true <- byte_size(master_secret_bytes) == 64,
-         {:ok, info_string} <- build_info_string(client, gateway) do
-      psk_bytes =
-        hkdf_derive_sha256(
-          master_secret_bytes,
-          @fixed_salt,
-          info_string,
-          @wg_psk_length
-        )
+         true <- byte_size(master_secret_bytes) == 64 do
+      info_string = build_info_string(client, gateway)
+
+      psk_bytes = :crypto.mac(:hmac, :sha256, master_secret_bytes, info_string)
 
       {:ok, Base.encode64(psk_bytes)}
     else
@@ -34,59 +24,7 @@ defmodule Domain.Crypto do
          %Clients.Client{id: client_id, public_key: client_pk},
          %Gateways.Gateway{id: gateway_id, public_key: gateway_pk}
        ) do
-    id_byte_size = 16
-    pubkey_byte_size = 32
-
-    info_string =
-      "WG_PSK" <>
-        <<id_byte_size::16>> <>
-        client_id <>
-        <<id_byte_size::16>> <>
-        gateway_id <>
-        <<pubkey_byte_size::16>> <>
-        client_pk <>
-        <<pubkey_byte_size::16>> <> gateway_pk
-
-    {:ok, info_string}
-  end
-
-  defp hkdf_derive_sha256(ikm, salt, info, length) do
-    prk = hkdf_extract_sha256(salt, ikm)
-    hkdf_expand_sha256(prk, info, length)
-  end
-
-  defp hkdf_extract_sha256(salt, ikm) do
-    :crypto.mac(:hmac, :sha256, salt, ikm)
-  end
-
-  defp hkdf_expand_sha256(prk, info, length) do
-    hash_len = 32
-    num_blocks = div(length + hash_len - 1, hash_len)
-
-    if num_blocks > 255 do
-      raise "HKDF-Expand: Requested output length too large"
-    end
-
-    hkdf_expand_recursive(prk, info, <<>>, 1, num_blocks, <<>>)
-    |> binary_part(0, length)
-  end
-
-  defp hkdf_expand_recursive(_prk, _info, _prev_t, _counter, 0, acc) do
-    acc
-  end
-
-  defp hkdf_expand_recursive(prk, info, prev_t, counter, num_blocks_remaining, acc) do
-    input_to_hmac = prev_t <> info <> <<counter>>
-    t_n = :crypto.mac(:hmac, :sha256, prk, input_to_hmac)
-
-    hkdf_expand_recursive(
-      prk,
-      info,
-      t_n,
-      counter + 1,
-      num_blocks_remaining - 1,
-      acc <> t_n
-    )
+    "WG_PSK|C_ID:#{client_id}|G_ID:#{gateway_id}|C_PK:#{client_pk}|G_PK:#{gateway_pk}"
   end
 
   def random_token(length \\ 16, opts \\ []) do
