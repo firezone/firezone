@@ -162,6 +162,12 @@ defmodule Domain.Flows do
     end
   end
 
+  def delete_expired_flows do
+    Flow.Query.all()
+    |> Flow.Query.expired()
+    |> Repo.delete_all()
+  end
+
   def delete_flows_for(%Domain.Accounts.Account{} = account) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(account.id)

@@ -148,6 +148,14 @@ if config_env() == :prod do
       env_var_to_config!(:background_jobs_enabled) and
         Enum.member?(env_var_to_config!(:auth_provider_adapters), :mock)
 
+  config :domain, Oban,
+    queues:
+      if(env_var_to_config!(:background_jobs_enabled),
+        do: [default: 10],
+        # Using an empty queue prevents jobs from running on other nodes
+        else: []
+      )
+
   if web_external_url = env_var_to_config!(:web_external_url) do
     %{
       scheme: web_external_url_scheme,
