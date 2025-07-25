@@ -3,20 +3,20 @@ defmodule Domain.Repo.Migrations.AddPskBaseToClientsAndGateways do
 
   def up do
     alter table(:clients) do
-      add(:psk_base, :binary, default: fragment("gen_random_bytes(32)"))
+      add(:psk_base, :binary, default: fragment("gen_random_bytes(128)"))
     end
 
-    execute("UPDATE clients SET psk_base = gen_random_bytes(32) WHERE psk_base IS NULL;")
+    execute("UPDATE clients SET psk_base = gen_random_bytes(128) WHERE psk_base IS NULL;")
 
     alter table(:clients) do
       modify(:psk_base, :binary, null: false)
     end
 
     alter table(:gateways) do
-      add(:psk_base, :binary, default: fragment("gen_random_bytes(32)"))
+      add(:psk_base, :binary, default: fragment("gen_random_bytes(128)"))
     end
 
-    execute("UPDATE gateways SET psk_base = gen_random_bytes(32) WHERE psk_base IS NULL;")
+    execute("UPDATE gateways SET psk_base = gen_random_bytes(128) WHERE psk_base IS NULL;")
 
     alter table(:gateways) do
       modify(:psk_base, :binary, null: false)

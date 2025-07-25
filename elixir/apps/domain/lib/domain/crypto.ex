@@ -19,17 +19,15 @@ defmodule Domain.Crypto do
       when not (is_nil(client_id) or is_nil(client_pubkey) or is_nil(client_psk_base) or
                   is_nil(gateway_id) or is_nil(gateway_pubkey) or is_nil(gateway_psk_base)) do
     secret_bytes = client_psk_base <> gateway_psk_base
-    info_string = build_info_string(client_id, client_pubkey, gateway_id, gateway_pubkey)
-    psk_bytes = :crypto.mac(:hmac, :sha256, secret_bytes, info_string)
+    salt = build_salt(client_id, client_pubkey, gateway_id, gateway_pubkey)
+
+    # PBKDF2 is overkill since inputs are high entropy, but still better than maintaining our own HKDF implementation.
+    psk_bytes = :crypto.pbkdf2_hmac(:sha256, secret_bytes, salt, 1, 32)
+
     Base.encode64(psk_bytes)
   end
 
-  defp build_info_string(
-         client_id,
-         client_pubkey,
-         gateway_id,
-         gateway_pubkey
-       ) do
+  defp build_salt(client_id, client_pubkey, gateway_id, gateway_pubkey) do
     "WG_PSK|C_ID:#{client_id}|G_ID:#{gateway_id}|C_PK:#{client_pubkey}|G_PK:#{gateway_pubkey}"
   end
 
