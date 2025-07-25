@@ -2135,6 +2135,11 @@ mod tests {
         let next_event = allocation.poll_event();
         assert_eq!(
             next_event,
+            Some(Event::New(Candidate::host(PEER1, Protocol::Udp).unwrap()))
+        );
+        let next_event = allocation.poll_event();
+        assert_eq!(
+            next_event,
             Some(Event::New(
                 Candidate::server_reflexive(PEER1, PEER1, Protocol::Udp).unwrap()
             ))
@@ -2645,9 +2650,11 @@ mod tests {
         assert_eq!(
             events,
             vec![
+                Event::New(Candidate::host(PEER2_IP4, Protocol::Udp).unwrap()),
                 Event::New(
                     Candidate::server_reflexive(PEER2_IP4, PEER2_IP4, Protocol::Udp).unwrap()
                 ),
+                Event::New(Candidate::host(PEER2_IP6, Protocol::Udp).unwrap()),
                 Event::New(
                     Candidate::server_reflexive(PEER2_IP6, PEER2_IP6, Protocol::Udp).unwrap()
                 )
