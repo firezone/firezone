@@ -67,6 +67,10 @@ pub struct Allocation {
 
     software: Software,
 
+    /// If present, the IPv4 address we received traffic on.
+    ip4_host_candidate: Option<Candidate>,
+    /// If present, the IPv6 address we received traffic on.
+    ip6_host_candidate: Option<Candidate>,
     /// If present, the IPv4 address the relay observed for us.
     ip4_srflx_candidate: Option<Candidate>,
     /// If present, the IPv6 address the relay observed for us.
@@ -221,6 +225,8 @@ impl Allocation {
         let mut allocation = Self {
             server,
             active_socket: None,
+            ip4_host_candidate: Default::default(),
+            ip6_host_candidate: Default::default(),
             ip4_srflx_candidate: Default::default(),
             ip6_srflx_candidate: Default::default(),
             ip4_allocation: Default::default(),
@@ -504,7 +510,18 @@ impl Allocation {
 
         match message.method() {
             BINDING => {
-                // First, process the binding request itself.
+                // First, see if we need to update our host candidate.
+                let current_host_candidate = match original_dst {
+                    SocketAddr::V4(_) => &mut self.ip4_host_candidate,
+                    SocketAddr::V6(_) => &mut self.ip6_host_candidate,
+                };
+
+                let maybe_candidate = Candidate::host(local, Protocol::Udp).ok();
+                if update_candidate(maybe_candidate, current_host_candidate, &mut self.events) {
+                    self.log_update(now);
+                }
+
+                // Second, process the binding request itself.
                 let current_srflx_candidate = match original_dst {
                     SocketAddr::V4(_) => &mut self.ip4_srflx_candidate,
                     SocketAddr::V6(_) => &mut self.ip6_srflx_candidate,
@@ -515,7 +532,7 @@ impl Allocation {
                     self.log_update(now);
                 }
 
-                // Second, check if we have already determined which socket to use for this relay.
+                // Third, check if we have already determined which socket to use for this relay.
                 // We send 2 BINDING requests to start with (one for each IP version) and the first one coming back wins.
                 // Thus, if we already have a socket set, we are done with processing this binding request.
 
@@ -905,6 +922,8 @@ impl Allocation {
 
     fn log_update(&self, now: Instant) {
         tracing::info!(
+            host_ip4 = ?self.ip4_host_candidate.as_ref().map(|c| c.addr()),
+            host_ip6 = ?self.ip6_host_candidate.as_ref().map(|c| c.addr()),
             srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
             srflx_ip6 = ?self.ip6_srflx_candidate.as_ref().map(|c| c.addr()),
             relay_ip4 = ?self.ip4_allocation.as_ref().map(|c| c.addr()),

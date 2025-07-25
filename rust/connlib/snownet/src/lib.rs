@@ -5,10 +5,11 @@
 
 mod allocation;
 mod backoff;
-mod candidate_set;
 mod channel_data;
+mod host_candidates;
 mod index;
 mod node;
+mod server_reflexive_candidates;
 mod stats;
 mod utils;
 
