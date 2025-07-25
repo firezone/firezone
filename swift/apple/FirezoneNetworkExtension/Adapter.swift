@@ -123,6 +123,8 @@ class Adapter {
         // Tell the UI we're not connected
         self.packetTunnelProvider?.reasserting = true
       }
+
+      lastRelevantPath = nil
     } else {
       if self.packetTunnelProvider?.reasserting == true {
         self.packetTunnelProvider?.reasserting = false
@@ -521,6 +523,7 @@ extension Network.NWPath {
     // We define a path as different from another if the following properties change
     return path.supportsIPv4 != self.supportsIPv4 || path.supportsIPv6 != self.supportsIPv6
       || path.supportsDNS != self.supportsDNS
+      || path.status != self.status
       || path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
       // Apple provides no documentation on whether order is meaningful, so assume it isn't.
       || Set(self.gateways) != Set(path.gateways)
