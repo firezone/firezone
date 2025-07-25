@@ -326,10 +326,10 @@ impl UdpSocket {
                     .enumerate()
                 {
                     let num_bytes = chunk.contents.len();
-                    let num_packets = num_bytes / segment_size;
                     let batch_num = idx + 1;
 
-                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, %num_packets, %segment_size);
+                    #[cfg(debug_assertions)]
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, num_packets = %(num_bytes / segment_size), %segment_size);
 
                     self.send_inner(chunk)
                         .await
@@ -337,9 +337,8 @@ impl UdpSocket {
                 }
             }
             None => {
-                let num_bytes = transmit.contents.len();
-
-                tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, %num_bytes);
+                #[cfg(debug_assertions)]
+                tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, num_bytes = %transmit.contents.len());
 
                 self.send_inner(transmit)
                     .await
@@ -528,8 +527,8 @@ pub struct DatagramSegmentIter<const N: usize = { quinn_udp::BATCH_SIZE }, B = B
     buf_index: usize,
     segment_index: usize,
 
-    total_bytes: usize,
-    num_packets: usize,
+    _total_bytes: usize,
+    _num_packets: usize,
 }
 
 impl<B, const N: usize> DatagramSegmentIter<N, B> {
@@ -553,8 +552,8 @@ impl<B, const N: usize> DatagramSegmentIter<N, B> {
             port,
             buf_index: 0,
             segment_index: 0,
-            total_bytes,
-            num_packets,
+            _total_bytes: total_bytes,
+            _num_packets: num_packets,
         }
     }
 }
@@ -610,7 +609,8 @@ where
 
             let segment_size = meta.stride;
 
-            tracing::trace!(target: "wire::net::recv", num_p = %self.num_packets, tot_b = %self.total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
+            #[cfg(debug_assertions)]
+            tracing::trace!(target: "wire::net::recv", num_p = %self._num_packets, tot_b = %self._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
 
             let segment_start = self.segment_index;
             let segment_end = std::cmp::min(segment_start + segment_size, meta.len);
