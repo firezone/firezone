@@ -805,19 +805,43 @@ where
         packet: &'p [u8],
         now: Instant,
     ) -> ControlFlow<(), (SocketAddr, &'p [u8], Option<Socket>)> {
+        if from.port() != 3478 {
+            // Relays always send & receive from port 3478.
+            //
+            // Some NATs may remap our p2p listening port (i.e. 52625 or another ephemeral one) to a port
+            // in the non-ephemeral range. If this happens, there is a chance that a peer is sending
+            // traffic originating from port 3478.
+            //
+            // The above check would wrongly classify a STUN request from such a peer as relay traffic and
+            // fail to process it because we don't have an `Allocation` for the peer's IP.
+            //
+            // Effectively this means that the connection will have to fallback to a relay-relay candidate pair.
+            return ControlFlow::Continue((from, packet, None));
+        }
+
         match packet.first().copied() {
             // STUN method range
             Some(0..=3) => {
+                let Ok(Ok(message)) = allocation::decode(packet) else {
+                    // False-positive, continue processing packet elsewhere
+                    return ControlFlow::Continue((from, packet, None));
+                };
+
                 let Some(allocation) = self
                     .allocations
                     .values_mut()
                     .find(|a| a.server().matches(from))
                 else {
-                    // False-positive, continue processing packet elsewhere
-                    return ControlFlow::Continue((from, packet, None));
+                    tracing::debug!(
+                        %from,
+                        packet = %hex::encode(packet),
+                        "Packet was a STUN message but we are not connected to this relay"
+                    );
+
+                    return ControlFlow::Break(()); // Stop processing the packet.
                 };
 
-                if allocation.handle_input(from, local, packet, now) {
+                if allocation.handle_input(from, local, message, now) {
                     // Successfully handled the packet
                     return ControlFlow::Break(());
                 }

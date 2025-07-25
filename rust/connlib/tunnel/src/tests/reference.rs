@@ -516,7 +516,7 @@ impl ReferenceState {
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
-                if state.drop_direct_client_traffic {
+                if state.drop_direct_client_traffic || state.client.port == 3478 {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }

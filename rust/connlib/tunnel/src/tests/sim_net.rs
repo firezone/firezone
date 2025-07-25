@@ -24,7 +24,7 @@ pub(crate) struct Host<T> {
 
     pub(crate) ip4: Option<Ipv4Addr>,
     pub(crate) ip6: Option<Ipv6Addr>,
-    port: u16,
+    pub(crate) port: u16,
 
     #[debug(skip)]
     allocated_ports: HashSet<(u16, AddressFamily)>,
