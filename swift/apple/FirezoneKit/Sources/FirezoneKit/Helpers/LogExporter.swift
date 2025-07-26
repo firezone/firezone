@@ -106,6 +106,7 @@ import System
     enum ExportError: Error {
       case invalidSourceDirectory
       case invalidFilePath
+      case documentDirectoryNotAvailable
     }
 
     static func export(to archiveURL: URL) async throws {
@@ -138,12 +139,16 @@ import System
       )
     }
 
-    // iOS doesn't let us save to any ol' place, we must write to our temporary
-    // directory and then the OS will move it into place when the ShareSheet
-    // is dismissed.
-    static func tempFile() -> URL {
+    static func tempFile() throws -> URL {
       let fileName = "firezone_logs_\(now()).zip"
-      return fileManager.temporaryDirectory.appendingPathComponent(fileName)
+
+      // The share sheet can read from the documents directory, but not the temp directory, so use the former.
+      guard let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first
+      else {
+        throw ExportError.documentDirectoryNotAvailable
+      }
+
+      return documentsPath.appendingPathComponent(fileName)
     }
   }
 #endif
