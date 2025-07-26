@@ -515,7 +515,7 @@ public struct SettingsView: View {
                 action: {
                   self.isExportingLogs = true
                   Task.detached(priority: .background) {
-                    let archiveURL = LogExporter.tempFile()
+                    let archiveURL = try LogExporter.tempFile()
                     try await LogExporter.export(to: archiveURL)
                     await MainActor.run {
                       self.logTempZipFileURL = archiveURL
