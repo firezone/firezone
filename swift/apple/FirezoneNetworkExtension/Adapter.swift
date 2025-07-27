@@ -306,7 +306,6 @@ class Adapter {
 
 extension Adapter {
   private func beginPathMonitoring() {
-    Log.log("Beginning path monitoring")
     let networkMonitor = NWPathMonitor()
     networkMonitor.pathUpdateHandler = self.pathUpdateHandler
     networkMonitor.start(queue: self.workQueue)
@@ -330,10 +329,6 @@ extension Adapter: CallbackHandlerDelegate {
 
       let networkSettings =
         networkSettings ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
-
-      Log.log(
-        "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses) \(routeListv4) \(routeListv6)"
-      )
 
       guard let data4 = routeListv4.data(using: .utf8),
         let data6 = routeListv6.data(using: .utf8),
@@ -367,8 +362,6 @@ extension Adapter: CallbackHandlerDelegate {
     // This is a queued callback to ensure ordering
     workQueue.async { [weak self] in
       guard let self = self else { return }
-
-      Log.log("\(#function)")
 
       // Update resource List. We don't care what's inside.
       resourceListJSON = resourceList
@@ -424,12 +417,24 @@ extension Adapter: CallbackHandlerDelegate {
 
     for stringAddress in resolvers {
       if let ipv4Address = IPv4Address(stringAddress) {
-        parsedResolvers.append("\(ipv4Address)")
+        if ipv4Address.isWithinSentinelRange() {
+          Log.warning(
+            "Not adding fetched system resolver because it's within sentinel range: \(ipv4Address)")
+        } else {
+          parsedResolvers.append("\(ipv4Address)")
+        }
+
         continue
       }
 
       if let ipv6Address = IPv6Address(stringAddress) {
-        parsedResolvers.append("\(ipv6Address)")
+        if ipv6Address.isWithinSentinelRange() {
+          Log.warning(
+            "Not adding fetched system resolver because it's within sentinel range: \(ipv6Address)")
+        } else {
+          parsedResolvers.append("\(ipv6Address)")
+        }
+
         continue
       }
 
@@ -446,6 +451,7 @@ extension Adapter: CallbackHandlerDelegate {
 
     // Step 4: Send to connlib
     do {
+      Log.log("Sending resolvers to connlib: \(jsonResolvers)")
       try session?.setDns(jsonResolvers.intoRustString())
     } catch let error {
       // `toString` needed to deep copy the string and avoid a possible dangling pointer
@@ -507,5 +513,17 @@ extension Network.NWPath {
       || path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
       // Apple provides no documentation on whether order is meaningful, so assume it isn't.
       || Set(self.gateways) != Set(path.gateways)
+  }
+}
+
+extension IPv4Address {
+  func isWithinSentinelRange() -> Bool {
+    return "\(self)".hasPrefix("100.100.111.")
+  }
+}
+
+extension IPv6Address {
+  func isWithinSentinelRange() -> Bool {
+    return "\(self)".hasPrefix("fd00:2021:1111:8000:100:100:111:")
   }
 }
