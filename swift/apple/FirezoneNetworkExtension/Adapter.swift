@@ -71,7 +71,7 @@ class Adapter {
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
   /// network state.
-  private var lastRelevantPath: Network.NWPath?
+  private var lastPath: Network.NWPath?
 
   /// Private queue used to ensure consistent ordering among path update and connlib callbacks
   /// This is the primary async primitive used in this class.
@@ -123,43 +123,22 @@ class Adapter {
         // Tell the UI we're not connected
         self.packetTunnelProvider?.reasserting = true
       }
-
-      lastRelevantPath = nil
     } else {
       if self.packetTunnelProvider?.reasserting == true {
         self.packetTunnelProvider?.reasserting = false
       }
 
-      // Tell connlib to reset network state, but only do so if our connectivity has
-      // meaningfully changed. On darwin, this is needed to send packets
-      // out of a different interface even when 0.0.0.0 is used as the source.
-      // If our primary interface changes, we can be certain the old socket shouldn't be
-      // used anymore.
-      if lastRelevantPath?.connectivityDifferentFrom(path: path) != false {
-        lastRelevantPath = path
-
+      if lastPath?.connectivityDifferentFrom(path: path) != false {
+        // Tell connlib to reset network state, but only do so if our connectivity has
+        // meaningfully changed. On darwin, this is needed to send packets
+        // out of a different interface even when 0.0.0.0 is used as the source.
+        // If our primary interface changes, we can be certain the old socket shouldn't be
+        // used anymore.
         session?.reset("primary network path changed")
+        setSystemDefaultResolvers(path)
       }
 
-      if shouldFetchSystemResolvers(path: path) {
-        let resolvers = getSystemDefaultResolvers(
-          interfaceName: path.availableInterfaces.first?.name)
-
-        do {
-          let encoded = try JSONEncoder().encode(resolvers)
-          guard let jsonResolvers = String(data: encoded, encoding: .utf8)
-          else {
-            Log.warning("jsonResolvers conversion failed: \(resolvers)")
-            return
-          }
-
-          try session?.setDns(jsonResolvers.intoRustString())
-        } catch let error {
-          // `toString` needed to deep copy the string and avoid a possible dangling pointer
-          let msg = (error as? RustString)?.toString() ?? "Unknown error"
-          Log.error(AdapterError.setDnsError(msg))
-        }
-      }
+      lastPath = path
     }
   }
 
@@ -236,11 +215,6 @@ class Adapter {
         callbackHandler,
         String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!
       )
-
-      // Start listening for network change events. The first few will be our
-      // tunnel interface coming up, but that's ok -- it will trigger a `set_dns`
-      // connlib.
-      beginPathMonitoring()
     } catch let error {
       // `toString` needed to deep copy the string and avoid a possible dangling pointer
       let msg = (error as? RustString)?.toString() ?? "Unknown error"
@@ -337,21 +311,6 @@ extension Adapter {
     networkMonitor.pathUpdateHandler = self.pathUpdateHandler
     networkMonitor.start(queue: self.workQueue)
   }
-
-  #if os(iOS)
-    private func shouldFetchSystemResolvers(path: Network.NWPath) -> Bool {
-      if path.gateways != gateways {
-        gateways = path.gateways
-        return true
-      }
-
-      return false
-    }
-  #else
-    private func shouldFetchSystemResolvers(path _: Network.NWPath) -> Bool {
-      return true
-    }
-  #endif
 }
 
 // MARK: Implementing CallbackHandlerDelegate
@@ -370,8 +329,7 @@ extension Adapter: CallbackHandlerDelegate {
       guard let self = self else { return }
 
       let networkSettings =
-        self.networkSettings
-        ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
+        networkSettings ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
 
       Log.log(
         "\(#function): \(tunnelAddressIPv4) \(tunnelAddressIPv6) \(dnsAddresses) \(routeListv4) \(routeListv6)"
@@ -394,6 +352,12 @@ extension Adapter: CallbackHandlerDelegate {
       networkSettings.routes4 = routes4
       networkSettings.routes6 = routes6
       networkSettings.setSearchDomain(domain: searchDomain)
+      self.networkSettings = networkSettings
+
+      // Now that we have our interface configured, start listening for events. The first one will be us applying
+      // our network settings in the call below. We need the physical interface name macOS chooses for us in order
+      // to get the correct DNS resolvers on macOS. For that, we need the path parameter from the path update callback.
+      beginPathMonitoring()
 
       networkSettings.apply()
     }
@@ -446,17 +410,18 @@ extension Adapter: CallbackHandlerDelegate {
     }
   }
 
-  private func getSystemDefaultResolvers(interfaceName: String?) -> [String] {
+  private func setSystemDefaultResolvers(_ path: Network.NWPath) {
+    // Step 1: Get system default resolvers
     #if os(macOS)
       let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
-        interfaceName: interfaceName)
+        interfaceName: path.availableInterfaces.first?.name)
     #elseif os(iOS)
       let resolvers = resetToSystemDNSGettingBindResolvers()
     #endif
 
+    // Step 2: Validate and strip scope suffixes
     var parsedResolvers: [String] = []
 
-    // Normalize addresses to remove any possible scope suffixes
     for stringAddress in resolvers {
       if let ipv4Address = IPv4Address(stringAddress) {
         parsedResolvers.append("\(ipv4Address)")
@@ -471,7 +436,22 @@ extension Adapter: CallbackHandlerDelegate {
       Log.warning("IP address \(stringAddress) did not parse as either IPv4 or IPv6")
     }
 
-    return parsedResolvers
+    // Step 3: Encode
+    guard let encoded = try? JSONEncoder().encode(parsedResolvers),
+      let jsonResolvers = String(data: encoded, encoding: .utf8)
+    else {
+      Log.warning("jsonResolvers conversion failed: \(parsedResolvers)")
+      return
+    }
+
+    // Step 4: Send to connlib
+    do {
+      try session?.setDns(jsonResolvers.intoRustString())
+    } catch let error {
+      // `toString` needed to deep copy the string and avoid a possible dangling pointer
+      let msg = (error as? RustString)?.toString() ?? "Unknown error"
+      Log.error(AdapterError.setDnsError(msg))
+    }
   }
 }
 
