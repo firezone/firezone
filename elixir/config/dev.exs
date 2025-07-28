@@ -20,6 +20,8 @@ config :domain, Domain.Billing,
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111")
 
+# Oban has its own config validation that prevents overriding config in runtime.exs,
+# so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
 config :domain, Oban,
   plugins: [
     # Keep the last 90 days of completed, cancelled, and discarded jobs

@@ -148,7 +148,10 @@ if config_env() == :prod do
       env_var_to_config!(:background_jobs_enabled) and
         Enum.member?(env_var_to_config!(:auth_provider_adapters), :mock)
 
+  # Oban has its own config validation that prevents overriding config in runtime.exs,
+  # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   config :domain, Oban,
+    # Periodic jobs don't make sense in tests
     plugins: [
       # Keep the last 90 days of completed, cancelled, and discarded jobs
       {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
