@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
+    collections::{BTreeMap, HashMap, HashSet, VecDeque},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::{Duration, Instant},
 };
@@ -118,12 +118,14 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// Only TCP packets originating from one of the connected DNS resolvers are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
         let Some(tcp) = packet.as_tcp() else {
+            #[cfg(debug_assertions)]
             tracing::trace!(?packet, "Not a TCP packet");
 
             return false;
         };
 
         let Some((ipv4_source, ipv6_source)) = self.source_ips else {
+            #[cfg(debug_assertions)]
             tracing::trace!("No source interface");
 
             return false;
@@ -139,8 +141,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         let remote = SocketAddr::new(packet.source(), tcp.source_port());
         let has_socket = self.sockets_by_remote.contains_key(&remote);
 
+        #[cfg(debug_assertions)]
         if !has_socket && tracing::enabled!(tracing::Level::TRACE) {
-            let open_sockets = BTreeSet::from_iter(self.sockets_by_remote.keys().copied());
+            let open_sockets =
+                std::collections::BTreeSet::from_iter(self.sockets_by_remote.keys().copied());
 
             tracing::trace!(%remote, ?open_sockets, "No open socket for remote");
         }
