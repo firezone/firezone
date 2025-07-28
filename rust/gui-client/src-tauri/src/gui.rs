@@ -13,13 +13,17 @@ use crate::{
         GeneralSettingsViewModel, MdmSettings,
     },
     updates,
-    view::SessionViewModel,
+    view::{
+        AdvancedSettingsChanged, GeneralSettingsChanged, LogsRecounted, SessionChanged,
+        SessionViewModel,
+    },
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
 use futures::SinkExt as _;
 use std::time::Duration;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
+use tauri_specta::Event;
 use tokio::{runtime::Runtime, sync::mpsc};
 use tokio_stream::StreamExt;
 use tracing::instrument;
@@ -103,9 +107,9 @@ impl Drop for TauriIntegration {
 
 impl GuiIntegration for TauriIntegration {
     fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
-        self.app
-            .emit("session_changed", session)
-            .context("Failed to send `session_changed` event")
+        SessionChanged(session.clone())
+            .emit(&self.app)
+            .context("Failed to emit `session_changed` event")
     }
 
     fn notify_settings_changed(
@@ -114,26 +118,27 @@ impl GuiIntegration for TauriIntegration {
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()> {
-        self.app
-            .emit(
-                "general_settings_changed",
-                GeneralSettingsViewModel::new(mdm_settings.clone(), general_settings),
-            )
-            .context("Failed to send `general_settings_changed` event")?;
-        self.app
-            .emit(
-                "advanced_settings_changed",
-                AdvancedSettingsViewModel::new(mdm_settings, advanced_settings),
-            )
-            .context("Failed to send `advanced_settings_changed` event")?;
+        GeneralSettingsChanged(GeneralSettingsViewModel::new(
+            mdm_settings.clone(),
+            general_settings,
+        ))
+        .emit(&self.app)
+        .context("Failed to emit `general_settings_changed` event")?;
+
+        AdvancedSettingsChanged(AdvancedSettingsViewModel::new(
+            mdm_settings,
+            advanced_settings,
+        ))
+        .emit(&self.app)
+        .context("Failed to emit `advanced_settings_changed` event")?;
 
         Ok(())
     }
 
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
-        self.app
-            .emit("logs_recounted", file_count)
-            .context("Failed to send `logs_recounted` event")?;
+        LogsRecounted(file_count.clone())
+            .emit(&self.app)
+            .context("Failed to emit `logs_recounted` event")?;
 
         Ok(())
     }
