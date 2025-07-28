@@ -13,13 +13,17 @@ use crate::{
         GeneralSettingsViewModel, MdmSettings,
     },
     updates,
-    view::SessionViewModel,
+    view::{
+        AdvancedSettingsChanged, GeneralSettingsChanged, LogsRecounted, SessionChanged,
+        SessionViewModel,
+    },
 };
 use anyhow::{Context, Result, bail};
 use firezone_logging::err_with_src;
 use futures::SinkExt as _;
 use std::time::Duration;
-use tauri::{Emitter, Manager};
+use tauri::Manager;
+use tauri_specta::Event;
 use tokio::{runtime::Runtime, sync::mpsc};
 use tokio_stream::StreamExt;
 use tracing::instrument;
@@ -103,9 +107,9 @@ impl Drop for TauriIntegration {
 
 impl GuiIntegration for TauriIntegration {
     fn notify_session_changed(&self, session: &SessionViewModel) -> Result<()> {
-        self.app
-            .emit("session_changed", session)
-            .context("Failed to send `session_changed` event")
+        SessionChanged(session.clone())
+            .emit(&self.app)
+            .context("Failed to emit `session_changed` event")
     }
 
     fn notify_settings_changed(
@@ -114,26 +118,27 @@ impl GuiIntegration for TauriIntegration {
         general_settings: GeneralSettings,
         advanced_settings: AdvancedSettings,
     ) -> Result<()> {
-        self.app
-            .emit(
-                "general_settings_changed",
-                GeneralSettingsViewModel::new(mdm_settings.clone(), general_settings),
-            )
-            .context("Failed to send `general_settings_changed` event")?;
-        self.app
-            .emit(
-                "advanced_settings_changed",
-                AdvancedSettingsViewModel::new(mdm_settings, advanced_settings),
-            )
-            .context("Failed to send `advanced_settings_changed` event")?;
+        GeneralSettingsChanged(GeneralSettingsViewModel::new(
+            mdm_settings.clone(),
+            general_settings,
+        ))
+        .emit(&self.app)
+        .context("Failed to emit `general_settings_changed` event")?;
+
+        AdvancedSettingsChanged(AdvancedSettingsViewModel::new(
+            mdm_settings,
+            advanced_settings,
+        ))
+        .emit(&self.app)
+        .context("Failed to emit `advanced_settings_changed` event")?;
 
         Ok(())
     }
 
     fn notify_logs_recounted(&self, file_count: &FileCount) -> Result<()> {
-        self.app
-            .emit("logs_recounted", file_count)
-            .context("Failed to send `logs_recounted` event")?;
+        LogsRecounted(file_count.clone())
+            .emit(&self.app)
+            .context("Failed to emit `logs_recounted` event")?;
 
         Ok(())
     }
@@ -360,6 +365,46 @@ pub fn run(
         anyhow::Ok(ctrl_task)
     });
 
+    let tauri_specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .events(tauri_specta::collect_events![
+            crate::view::SessionChanged,
+            crate::view::GeneralSettingsChanged,
+            crate::view::AdvancedSettingsChanged,
+            crate::view::LogsRecounted,
+        ])
+        .commands(tauri_specta::collect_commands![
+            crate::view::clear_logs,
+            crate::view::export_logs,
+            crate::view::apply_advanced_settings,
+            crate::view::reset_advanced_settings,
+            crate::view::apply_general_settings,
+            crate::view::reset_general_settings,
+            crate::view::sign_in,
+            crate::view::sign_out,
+            crate::view::update_state,
+        ])
+        .typ::<crate::view::Error>();
+
+    #[cfg(debug_assertions)]
+    {
+        let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src-frontend/generated/bindings.ts")
+            .canonicalize()
+            .context("Failed to create absolute path to bindings file")?;
+
+        tracing::debug!(path = %bindings_path.display(), "Exporting TypeScript bindings");
+
+        tauri_specta_builder
+            .export(
+                specta_typescript::Typescript::default()
+                    .bigint(specta_typescript::BigIntExportBehavior::Number)
+                    .header("/* eslint-disable */\n/* tslint:disable */\n")
+                    .formatter(specta_typescript::formatter::prettier),
+                bindings_path,
+            )
+            .context("Failed to export TypeScript bindings")?;
+    }
+
     tauri::Builder::default()
         .manage(Managed {
             req_tx,
@@ -377,7 +422,12 @@ pub fn run(
                 api.prevent_close();
             }
         })
-        .invoke_handler(crate::view::generate_handler())
+        .invoke_handler(tauri_specta_builder.invoke_handler())
+        .setup(move |app| {
+            tauri_specta_builder.mount_events(app);
+
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())

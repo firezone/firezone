@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useState } from "react";
 import { Button, Label, ToggleSwitch } from "flowbite-react";
-import { GeneralSettingsViewModel } from "../generated/GeneralSettingsViewModel";
 import { ManagedToggleSwitch, ManagedTextInput } from "./ManagedInput";
+import { GeneralSettingsViewModel } from "../generated/bindings";
 
 interface Props {
   settings: GeneralSettingsViewModel | null;
