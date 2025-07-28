@@ -1,7 +1,7 @@
 import React from "react";
 import { ShareIcon, TrashIcon } from "@heroicons/react/16/solid";
 import { Button } from "flowbite-react";
-import { FileCount } from "../generated/FileCount";
+import { FileCount } from "../generated/bindings";
 
 interface DiagnosticsPageProps {
   logCount: FileCount | null;
@@ -14,10 +14,10 @@ export default function Diagnostics({
   exportLogs,
   clearLogs,
 }: DiagnosticsPageProps) {
-  const bytes = logCount?.bytes ?? 0;
-  const files = logCount?.files ?? 0;
+  const bytes = logCount?.bytes ?? 0n;
+  const files = logCount?.files ?? 0n;
 
-  const megabytes = Math.round(bytes / 100000) / 10;
+  const megabytes = Math.round(Number(bytes / 100000n)) / 10;
 
   return (
     <div className="container mx-auto p-4">
