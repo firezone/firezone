@@ -2012,7 +2012,7 @@ where
                     self.possible_sockets.insert(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::debug!(grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
+                    tracing::debug!(%cid, grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
 
                     self.disconnected_at = Some(now);
                 }
@@ -2024,7 +2024,7 @@ where
                     if let Some(disconnected_at) = existing {
                         let offline = now.duration_since(disconnected_at);
 
-                        tracing::debug!(?offline, "ICE agent reconnected");
+                        tracing::debug!(%cid, ?offline, "ICE agent reconnected");
                     }
                 }
                 IceAgentEvent::NominatedSend {
@@ -2038,6 +2038,7 @@ where
 
                     if source_relay.is_some_and(|r| self.relay != r) {
                         tracing::warn!(
+                            %cid,
                             "Nominated a relay different from what we set out to! Weird?"
                         );
                     }
@@ -2144,6 +2145,7 @@ where
                     let relay = self.relay;
 
                     tracing::info!(
+                        %cid,
                         old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
                         new = %remote_socket.fmt(relay),
                         duration_since_intent = ?self.duration_since_intent(now),
