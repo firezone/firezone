@@ -229,7 +229,6 @@ deny = [
 skip = [
   "base64",
   "bitflags",
-  "convert_case",
   "core-foundation",
   "core-graphics",
   "core-graphics-types",

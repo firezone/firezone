@@ -1,7 +1,7 @@
 import React from "react";
 import logo from "../logo.png";
-import { SessionViewModel } from "../generated/SessionViewModel";
 import { Button, Spinner } from "flowbite-react";
+import { SessionViewModel } from "../generated/bindings";
 
 interface OverviewPageProps {
   session: SessionViewModel | null;

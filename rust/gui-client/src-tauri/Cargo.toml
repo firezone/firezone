@@ -49,6 +49,8 @@ semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_variant = { workspace = true }
+specta = { workspace = true, features = ["url"] }
+specta-typescript = { workspace = true }
 strum = { workspace = true }
 subtle = { workspace = true }
 tauri = { workspace = true, features = ["tray-icon", "image-png"] }
@@ -57,6 +59,7 @@ tauri-plugin-notification = { workspace = true }
 tauri-plugin-opener = { workspace = true }
 tauri-plugin-shell = { workspace = true }
 tauri-runtime = { workspace = true }
+tauri-specta = { workspace = true }
 tauri-utils = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["signal", "time", "macros", "rt", "rt-multi-thread"] }
@@ -65,7 +68,6 @@ tokio-util = { workspace = true, features = ["codec"] }
 tracing = { workspace = true }
 tracing-log = { workspace = true }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tslink = "0.4.2"
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 zip = { workspace = true, features = ["deflate", "time"] }

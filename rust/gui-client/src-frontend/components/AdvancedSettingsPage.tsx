@@ -1,7 +1,7 @@
 import React, { useEffect, useId, useState } from "react";
 import { Button, Label } from "flowbite-react";
-import { AdvancedSettingsViewModel } from "../generated/AdvancedSettingsViewModel";
 import { ManagedTextInput } from "./ManagedInput";
+import { AdvancedSettingsViewModel } from "../generated/bindings";
 
 interface Props {
   settings: AdvancedSettingsViewModel | null;

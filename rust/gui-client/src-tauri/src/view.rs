@@ -3,12 +3,16 @@ use std::{path::PathBuf, time::Duration};
 use anyhow::Context as _;
 use firezone_logging::err_with_src;
 use serde::Serialize;
-use tauri::{Wry, ipc::Invoke};
 use tauri_plugin_dialog::DialogExt as _;
 
-use crate::{controller::ControllerRequest, gui::Managed, settings::AdvancedSettings};
+use crate::{
+    controller::ControllerRequest,
+    gui::Managed,
+    logging::FileCount,
+    settings::{AdvancedSettings, AdvancedSettingsViewModel, GeneralSettingsViewModel},
+};
 
-#[derive(Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize, specta::Type)]
 pub struct GeneralSettingsForm {
     pub start_minimized: bool,
     pub start_on_login: bool,
@@ -16,8 +20,7 @@ pub struct GeneralSettingsForm {
     pub account_slug: String,
 }
 
-#[tslink::tslink(target = "./gui-client/src-frontend/generated/SessionViewModel.ts")]
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, serde::Serialize, specta::Type)]
 pub enum SessionViewModel {
     SignedIn {
         account_slug: String,
@@ -27,22 +30,21 @@ pub enum SessionViewModel {
     SignedOut,
 }
 
-pub fn generate_handler() -> impl Fn(Invoke<Wry>) -> bool + Send + Sync + 'static {
-    tauri::generate_handler![
-        clear_logs,
-        export_logs,
-        apply_advanced_settings,
-        reset_advanced_settings,
-        apply_general_settings,
-        reset_general_settings,
-        sign_in,
-        sign_out,
-        update_state,
-    ]
-}
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct SessionChanged(pub SessionViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct GeneralSettingsChanged(pub GeneralSettingsViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct AdvancedSettingsChanged(pub AdvancedSettingsViewModel);
+
+#[derive(Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
+pub struct LogsRecounted(pub FileCount);
 
 #[tauri::command]
-async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
+#[specta::specta]
+pub async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
     let (tx, rx) = tokio::sync::oneshot::channel();
 
     managed
@@ -57,14 +59,16 @@ async fn clear_logs(managed: tauri::State<'_, Managed>) -> Result<()> {
 }
 
 #[tauri::command]
-async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) -> Result<()> {
+#[specta::specta]
+pub async fn export_logs(app: tauri::AppHandle, managed: tauri::State<'_, Managed>) -> Result<()> {
     show_export_dialog(&app, managed.inner().clone())?;
 
     Ok(())
 }
 
 #[tauri::command]
-async fn apply_general_settings(
+#[specta::specta]
+pub async fn apply_general_settings(
     managed: tauri::State<'_, Managed>,
     settings: GeneralSettingsForm,
 ) -> Result<()> {
@@ -80,7 +84,8 @@ async fn apply_general_settings(
 }
 
 #[tauri::command]
-async fn apply_advanced_settings(
+#[specta::specta]
+pub async fn apply_advanced_settings(
     managed: tauri::State<'_, Managed>,
     settings: AdvancedSettings,
 ) -> Result<()> {
@@ -96,14 +101,16 @@ async fn apply_advanced_settings(
 }
 
 #[tauri::command]
-async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
+#[specta::specta]
+pub async fn reset_advanced_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
     apply_advanced_settings(managed, AdvancedSettings::default()).await?;
 
     Ok(())
 }
 
 #[tauri::command]
-async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
+#[specta::specta]
+pub async fn reset_general_settings(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed
         .send_request(ControllerRequest::ResetGeneralSettings)
         .await?;
@@ -148,21 +155,24 @@ fn show_export_dialog(app: &tauri::AppHandle, managed: Managed) -> Result<()> {
 }
 
 #[tauri::command]
-async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
+#[specta::specta]
+pub async fn sign_in(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed.send_request(ControllerRequest::SignIn).await?;
 
     Ok(())
 }
 
 #[tauri::command]
-async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
+#[specta::specta]
+pub async fn sign_out(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed.send_request(ControllerRequest::SignOut).await?;
 
     Ok(())
 }
 
 #[tauri::command]
-async fn update_state(managed: tauri::State<'_, Managed>) -> Result<()> {
+#[specta::specta]
+pub async fn update_state(managed: tauri::State<'_, Managed>) -> Result<()> {
     managed.send_request(ControllerRequest::UpdateState).await?;
 
     Ok(())
@@ -170,20 +180,11 @@ async fn update_state(managed: tauri::State<'_, Managed>) -> Result<()> {
 
 type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug)]
-struct Error(anyhow::Error);
-
-impl Serialize for Error {
-    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        serializer.serialize_str(&format!("{:#}", self.0))
-    }
-}
+#[derive(Debug, specta::Type, Serialize)]
+pub struct Error(String);
 
 impl From<anyhow::Error> for Error {
-    fn from(value: anyhow::Error) -> Self {
-        Self(value)
+    fn from(error: anyhow::Error) -> Self {
+        Self(format!("{error:#}"))
     }
 }

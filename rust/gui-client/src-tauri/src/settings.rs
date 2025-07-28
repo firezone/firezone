@@ -52,7 +52,7 @@ pub struct AdvancedSettingsLegacy {
     pub log_filter: String,
 }
 
-#[derive(Clone, Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize, specta::Type)]
 pub struct AdvancedSettings {
     pub auth_url: Url,
     pub api_url: Url,
@@ -79,8 +79,7 @@ fn start_minimized_default() -> bool {
     true
 }
 
-#[tslink::tslink(target = "./gui-client/src-frontend/generated/GeneralSettingsViewModel.ts")]
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type)]
 pub struct GeneralSettingsViewModel {
     pub start_minimized: bool,
     pub start_on_login: bool,
@@ -109,8 +108,7 @@ impl GeneralSettingsViewModel {
     }
 }
 
-#[tslink::tslink(target = "./gui-client/src-frontend/generated/AdvancedSettingsViewModel.ts")]
-#[derive(Clone, Serialize)]
+#[derive(Clone, Serialize, specta::Type)]
 pub struct AdvancedSettingsViewModel {
     pub auth_url: String,
     pub auth_url_is_managed: bool,
