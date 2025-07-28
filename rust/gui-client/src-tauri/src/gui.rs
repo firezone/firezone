@@ -382,10 +382,8 @@ pub fn run(
 
     #[cfg(debug_assertions)]
     {
-        let bindings_path = std::path::Path::new(file!())
-            .parent()
-            .context("current file should always have a parent")?
-            .join("../../../src-frontend/generated/bindings.ts")
+        let bindings_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../src-frontend/generated/bindings.ts")
             .canonicalize()
             .context("Failed to create absolute path to bindings file")?;
 
@@ -395,7 +393,8 @@ pub fn run(
             .export(
                 specta_typescript::Typescript::default()
                     .bigint(specta_typescript::BigIntExportBehavior::BigInt)
-                    .header("/* eslint-disable */\n/* tslint:disable */\n"),
+                    .header("/* eslint-disable */\n/* tslint:disable */\n")
+                    .formatter(specta_typescript::formatter::prettier),
                 bindings_path,
             )
             .context("Failed to export TypeScript bindings")?;
