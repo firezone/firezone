@@ -397,7 +397,7 @@ pub fn run(
         tauri_specta_builder
             .export(
                 specta_typescript::Typescript::default()
-                    .bigint(specta_typescript::BigIntExportBehavior::BigInt)
+                    .bigint(specta_typescript::BigIntExportBehavior::Number)
                     .header("/* eslint-disable */\n/* tslint:disable */\n")
                     .formatter(specta_typescript::formatter::prettier),
                 bindings_path,

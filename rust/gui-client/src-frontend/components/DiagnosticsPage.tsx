@@ -14,10 +14,10 @@ export default function Diagnostics({
   exportLogs,
   clearLogs,
 }: DiagnosticsPageProps) {
-  const bytes = logCount?.bytes ?? 0n;
-  const files = logCount?.files ?? 0n;
+  const bytes = logCount?.bytes ?? 0;
+  const files = logCount?.files ?? 0;
 
-  const megabytes = Math.round(Number(bytes / 100000n)) / 10;
+  const megabytes = Math.round(Number(bytes / 100000)) / 10;
 
   return (
     <div className="container mx-auto p-4">
