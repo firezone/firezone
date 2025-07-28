@@ -1720,10 +1720,7 @@ impl ConnectionState {
         }
     }
 
-    fn handle_timeout<TId>(&mut self, cid: TId, agent: &mut IceAgent, now: Instant)
-    where
-        TId: fmt::Display,
-    {
+    fn handle_timeout(&mut self, agent: &mut IceAgent, now: Instant) {
         let Self::Connected {
             last_activity,
             peer_socket,
@@ -1742,7 +1739,7 @@ impl ConnectionState {
 
         let peer_socket = *peer_socket;
 
-        self.transition_to_idle(cid, peer_socket, agent);
+        self.transition_to_idle(peer_socket, agent);
     }
 
     fn on_upsert<TId>(&mut self, cid: TId, agent: &mut IceAgent, now: Instant)
@@ -1809,11 +1806,8 @@ impl ConnectionState {
         self.transition_to_connected(cid, peer_socket, agent, tracing::field::debug(packet), now);
     }
 
-    fn transition_to_idle<TId>(&mut self, cid: TId, peer_socket: PeerSocket, agent: &mut IceAgent)
-    where
-        TId: fmt::Display,
-    {
-        tracing::debug!(%cid, "Connection is idle");
+    fn transition_to_idle(&mut self, peer_socket: PeerSocket, agent: &mut IceAgent) {
+        tracing::debug!("Connection is idle");
         *self = Self::Idle { peer_socket };
         apply_idle_stun_timings(agent);
     }
@@ -1971,14 +1965,16 @@ where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
     {
+        let _guard = tracing::debug_span!("handle_timeout", %cid);
+
         self.agent.handle_timeout(now);
-        self.state.handle_timeout(cid, &mut self.agent, now);
+        self.state.handle_timeout(&mut self.agent, now);
 
         if self
             .candidate_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!(%cid, "Connection failed (no candidates received)");
+            tracing::info!("Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -1987,12 +1983,12 @@ where
             .disconnect_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!(%cid, "Connection failed (ICE timeout)");
+            tracing::info!("Connection failed (ICE timeout)");
             self.state = ConnectionState::Failed;
             return;
         }
 
-        self.handle_tunnel_timeout(cid, now, allocations, transmits);
+        self.handle_tunnel_timeout(now, allocations, transmits);
 
         // If this was a scheduled update, hop to the next interval.
         if now >= self.next_wg_timer_update {
@@ -2012,7 +2008,7 @@ where
                     self.possible_sockets.insert(source);
                 }
                 IceAgentEvent::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                    tracing::debug!(%cid, grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
+                    tracing::debug!(grace_period = ?DISCONNECT_TIMEOUT, "Received ICE disconnect");
 
                     self.disconnected_at = Some(now);
                 }
@@ -2024,7 +2020,7 @@ where
                     if let Some(disconnected_at) = existing {
                         let offline = now.duration_since(disconnected_at);
 
-                        tracing::debug!(%cid, ?offline, "ICE agent reconnected");
+                        tracing::debug!(?offline, "ICE agent reconnected");
                     }
                 }
                 IceAgentEvent::NominatedSend {
@@ -2038,7 +2034,6 @@ where
 
                     if source_relay.is_some_and(|r| self.relay != r) {
                         tracing::warn!(
-                            %cid,
                             "Nominated a relay different from what we set out to! Weird?"
                         );
                     }
@@ -2070,7 +2065,6 @@ where
                         } => {
                             tracing::debug!(
                                 num_buffered = %wg_buffer.len(),
-                                %cid,
                                 "Flushing WireGuard packets buffered during ICE"
                             );
 
@@ -2087,7 +2081,6 @@ where
 
                             tracing::debug!(
                                 num_buffered = %ip_buffer.len(),
-                                %cid,
                                 "Flushing IP packets buffered during ICE"
                             );
                             transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
@@ -2095,7 +2088,6 @@ where
                                     .encapsulate(cid, remote_socket, packet, now, allocations)
                                     .inspect_err(|e| {
                                         tracing::debug!(
-                                            %cid,
                                             "Failed to encapsulate buffered IP packet: {e:#}"
                                         )
                                     })
@@ -2145,7 +2137,6 @@ where
                     let relay = self.relay;
 
                     tracing::info!(
-                        %cid,
                         old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
                         new = %remote_socket.fmt(relay),
                         duration_since_intent = ?self.duration_since_intent(now),
@@ -2203,15 +2194,12 @@ where
         }
     }
 
-    fn handle_tunnel_timeout<TId>(
+    fn handle_tunnel_timeout(
         &mut self,
-        cid: TId,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
-    ) where
-        TId: fmt::Display,
-    {
+    ) {
         // Don't update wireguard timers until we are connected.
         let Some(peer_socket) = self.socket() else {
             return;
@@ -2227,11 +2215,11 @@ where
         match self.tunnel.update_timers_at(&mut buf, now) {
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                tracing::info!(%cid, "Connection failed (wireguard tunnel expired)");
+                tracing::info!("Connection failed (wireguard tunnel expired)");
                 self.state = ConnectionState::Failed;
             }
             TunnResult::Err(e) => {
-                tracing::warn!(%cid, "boringtun error: {e}");
+                tracing::warn!("boringtun error: {e}");
             }
             TunnResult::WriteToNetwork(b) => {
                 transmits.extend(make_owned_transmit(
