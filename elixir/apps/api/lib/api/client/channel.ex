@@ -5,6 +5,7 @@ defmodule API.Client.Channel do
   alias Domain.{
     Accounts,
     Clients,
+    Clients.Cache,
     Actors,
     PubSub,
     Resources,
@@ -75,11 +76,9 @@ defmodule API.Client.Channel do
       @recompute_authorized_resources_every
     )
 
-    # Initialize the cache.
-    socket =
-      socket
-      |> hydrate_policies_and_resources()
-      |> hydrate_memberships()
+    # Hydrate the cache
+    cache = Cache.hydrate(socket.assigns.subject.actor)
+    socket = assign(socket, cache: cache)
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -196,7 +195,8 @@ defmodule API.Client.Channel do
     # It's not ideal we're hitting the DB here, but in practice it shouldn't be an issue because
     # periods of bursty membership creation typically only happen for new accounts or new directory
     # syncs, which won't have any policies associated.
-    socket = hydrate_policies_and_resources(socket)
+    cache = Cache.hydrate(socket.assigns.subject.actor)
+    socket = assign(socket, cache: cache)
 
     # 3. Update our membership group IDs
     memberships = Map.put(socket.assigns.memberships, group_id, membership)
@@ -1221,49 +1221,6 @@ defmodule API.Client.Channel do
     {:stop, :shutdown, socket}
   end
 
-  # TODO: Optimization
-  # We can reduce memory usage of this cache by an order of magnitude by storing
-  # optimized versions of the fields we need to evaluate policy conditions and
-  # render data to the client.
-  defp hydrate_policies_and_resources(socket) do
-    OpenTelemetry.Tracer.with_span "client.hydrate_policies_and_resources",
-      attributes: %{
-        account_id: socket.assigns.client.account_id
-      } do
-      {_policies, acc} =
-        Policies.all_policies_for_actor!(socket.assigns.subject.actor)
-        |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, acc ->
-          resources = Map.put(acc.resources, policy.resource_id, policy.resource)
-
-          # Remove resource from policy to avoid storing twice
-          policies = Map.put(acc.policies, policy.id, Map.delete(policy, :resource))
-
-          {policy, Map.merge(acc, %{policies: policies, resources: resources})}
-        end)
-
-      assign(socket,
-        policies: acc.policies,
-        resources: acc.resources
-      )
-    end
-  end
-
-  defp hydrate_memberships(socket) do
-    OpenTelemetry.Tracer.with_span "client.hydrate_memberships",
-      attributes: %{
-        account_id: socket.assigns.client.account_id
-      } do
-      memberships =
-        Actors.all_memberships_for_actor!(socket.assigns.subject.actor)
-        |> Enum.map(fn membership ->
-          {membership.group_id, membership}
-        end)
-        |> Enum.into(%{})
-
-      assign(socket, memberships: memberships)
-    end
-  end
-
   defp authorized_resources(socket) do
     OpenTelemetry.Tracer.with_span "client.authorized_resources",
       attributes: %{
@@ -1287,34 +1244,29 @@ defmodule API.Client.Channel do
 
   # Returns either the authorized policy or an error tuple of violated properties
   defp authorize_resource(socket, resource_id) do
-    OpenTelemetry.Tracer.with_span "client.authorize_resource",
-      attributes: %{
-        account_id: socket.assigns.client.account_id
-      } do
-      socket.assigns.policies
-      |> Enum.filter(fn {_id, policy} -> policy.resource_id == resource_id end)
-      |> Enum.map(fn {_id, policy} -> policy end)
-      |> Enum.reduce_while({:error, []}, fn policy, {:error, acc} ->
-        case Policies.ensure_client_conforms_policy_conditions(socket.assigns.client, policy) do
-          {:ok, expires_at} ->
-            {:halt, {:ok, policy, expires_at}}
+    socket.assigns.policies
+    |> Enum.filter(fn {_id, policy} -> policy.resource_id == resource_id end)
+    |> Enum.map(fn {_id, policy} -> policy end)
+    |> Enum.reduce_while({:error, []}, fn policy, {:error, acc} ->
+      case Policies.ensure_client_conforms_policy_conditions(socket.assigns.client, policy) do
+        {:ok, expires_at} ->
+          {:halt, {:ok, policy, expires_at}}
 
-          {:error, {:forbidden, violated_properties: violated_properties}} ->
-            {:cont, {:error, violated_properties ++ acc}}
-        end
-      end)
-      |> case do
-        {:error, violated_properties} ->
-          {:error, {:forbidden, violated_properties: violated_properties}}
-
-        {:ok, policy, expires_at} ->
-          # Set a maximum expiration time for the authorization
-          expires_at =
-            expires_at || socket.assigns.subject.expires_at ||
-              DateTime.utc_now() |> DateTime.add(14, :day)
-
-          {:ok, policy, expires_at}
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          {:cont, {:error, violated_properties ++ acc}}
       end
+    end)
+    |> case do
+      {:error, violated_properties} ->
+        {:error, {:forbidden, violated_properties: violated_properties}}
+
+      {:ok, policy, expires_at} ->
+        # Set a maximum expiration time for the authorization
+        expires_at =
+          expires_at || socket.assigns.subject.expires_at ||
+            DateTime.utc_now() |> DateTime.add(14, :day)
+
+        {:ok, policy, expires_at}
     end
   end
 end

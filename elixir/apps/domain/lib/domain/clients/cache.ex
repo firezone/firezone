@@ -36,8 +36,7 @@ defmodule Domain.Clients.Cache do
             }]
           }},
 
-          actor_group_memberships:mapset<uuidv4>:(16 * 1.8 * 8 * len),
-          flow_ids:mapset<uuidv4>:(16 * 1.8 * 8 * len),
+          memberships: %{group_id:uuidv4:16 => membership_id:uuidv4:16}
         }
 
 
@@ -50,7 +49,69 @@ defmodule Domain.Clients.Cache do
 
   """
 
-  alias Domain.{Clients, Resources, Policies}
+  alias Domain.{Actors, Clients, Resources, Policies}
 
   require OpenTelemetry.Tracer
+
+  @doc """
+    Fetches relevant policies, resources, and memberships from the DB and transforms them into the cache format.
+    This is used to hydrate the cache when a client connects.
+  """
+  def hydrate(%Actors.Actor{} = actor) do
+    attributes = %{
+      actor_id: actor.id,
+      account_id: actor.account_id
+    }
+
+    OpenTelemetry.Tracer.with_span "Clients.Cache.hydrate", attributes: attributes do
+      {_policies, cache} =
+        Policies.all_policies_for_actor!(actor)
+        |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, cache ->
+          resource = resource_to_cache(policy.resource)
+          resources = Map.put(cache.resources, resource.id, resource)
+
+          policy = policy_to_cache(policy)
+          policies = Map.put(cache.policies, policy.id, policy)
+
+          {policy, Map.merge(cache, %{policies: policies, resources: resources})}
+        end)
+
+      memberships =
+        Actors.all_memberships_for_actor!(actor)
+        |> Enum.map(fn membership ->
+          {Ecto.UUID.dump!(membership.group_id), Ecto.UUID.dump!(membership.id)}
+        end)
+        |> Enum.into(%{})
+
+      Map.put(cache, :memberships, memberships)
+    end
+  end
+
+  defp resource_to_cache(%Resources.Resource{} = resource) do
+    %{
+      id: Ecto.UUID.dump!(resource.id),
+      name: resource.name,
+      address: resource.address,
+      address_description: resource.address_description,
+      ip_stack: resource.ip_stack,
+      filters: Enum.map(resource.filters, &Map.from_struct/1),
+      gateway_groups:
+        Enum.map(resource.gateway_groups, fn group ->
+          %{
+            id: Ecto.UUID.dump!(group.id),
+            name: group.name,
+            resource_id: Ecto.UUID.dump!(group.resource_id)
+          }
+        end)
+    }
+  end
+
+  defp policy_to_cache(%Policies.Policy{} = policy) do
+    %{
+      id: Ecto.UUID.dump!(policy.id),
+      resource_id: Ecto.UUID.dump!(policy.resource_id),
+      actor_group_id: Ecto.UUID.dump!(policy.actor_group_id),
+      conditions: Enum.map(policy.conditions, &Map.from_struct/1)
+    }
+  end
 end
