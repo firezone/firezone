@@ -198,8 +198,8 @@ function headless() {
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function gateway() {
-    current_gateway_version="1.4.13"
-    next_gateway_version="1.4.14"
+    current_gateway_version="1.4.14"
+    next_gateway_version="1.4.15"
 
     update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
