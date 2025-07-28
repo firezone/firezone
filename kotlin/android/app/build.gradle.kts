@@ -279,23 +279,12 @@ val generateUniffiBindings =
         doLast {
             // Execute uniffi-bindgen command from the rust directory
             project.exec {
-                // Set working directory to the rust directory which is outside the gradle project
-                workingDir(rustDir)
-
-                // Build the command
+                // Spawn a shell to run the command; fixes PATH race conditions that can cause
+                // the cargo executable to not be found even though it is in the PATH.
                 commandLine(
-                    "cargo",
-                    "run",
-                    "--bin",
-                    "uniffi-bindgen",
-                    "generate",
-                    "--library",
-                    "--language",
-                    "kotlin",
-                    input.asFile,
-                    "--out-dir",
-                    outDir.asFile,
-                    "--no-format",
+                    "sh",
+                    "-c",
+                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin ${input.asFile} --out-dir ${outDir.asFile} --no-format",
                 )
             }
         }
