@@ -14,8 +14,7 @@ export default function GUI({ os }: { os: OS }) {
       <Entry version="1.5.6" date={new Date("2025-07-28")}>
         <ChangeItem pull="9985">
           Fixes an issue where control plane messages could be stuck forever on
-          flaky connections, requiring signing out and signin back in to
-          recover.
+          flaky connections, requiring signing out and back in to recover.
         </ChangeItem>
         <ChangeItem pull="9891">
           Fixes an issue where connections would sometimes take up to 90s to
