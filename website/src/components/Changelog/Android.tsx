@@ -23,8 +23,7 @@ export default function Android() {
       <Unreleased>
         <ChangeItem pull="9985">
           Fixes an issue where control plane messages could be stuck forever on
-          flaky connections, requiring signing out and signin back in to
-          recover.
+          flaky connections, requiring signing out and back in to recover.
         </ChangeItem>
         <ChangeItem pull="9725">
           Fixes an issue where Firezone failed to sign-in on systems with
