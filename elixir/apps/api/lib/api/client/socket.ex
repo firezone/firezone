@@ -54,5 +54,6 @@ defmodule API.Client.Socket do
   end
 
   @impl true
+
   def id(socket), do: Tokens.socket_id(socket.assigns.subject.token_id)
 end

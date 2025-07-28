@@ -5,6 +5,11 @@ defmodule Domain.Types.IP do
   """
   @behaviour Ecto.Type
 
+  @type t :: %Postgrex.INET{
+          address: tuple(),
+          netmask: nil | integer()
+        }
+
   def type, do: :inet
 
   def embed_as(_), do: :self

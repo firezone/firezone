@@ -84,4 +84,18 @@ defmodule Domain.Fixtures.Resources do
     {:ok, resource} = Domain.Resources.delete_resource(resource, subject)
     resource
   end
+
+  def update_resource(resource, attrs) do
+    attrs = Enum.into(attrs, %{})
+    resource = Repo.preload(resource, :account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: resource.account,
+        actor: [type: :account_admin_user]
+      )
+
+    {:ok, resource} = Domain.Resources.update_resource(resource, attrs, subject)
+    resource
+  end
 end

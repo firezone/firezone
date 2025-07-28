@@ -65,6 +65,16 @@ defmodule Domain.Policies.Policy.Query do
     |> where([memberships: memberships], memberships.actor_id == ^actor_id)
   end
 
+  def by_gateway_group_id(queryable, gateway_group_id) do
+    queryable
+    |> with_joined_resource()
+    |> with_joined_resource_connections()
+    |> where(
+      [resource_connections: resource_connections],
+      resource_connections.gateway_group_id == ^gateway_group_id
+    )
+  end
+
   def count_by_resource_id(queryable) do
     queryable
     |> group_by([policies: policies], policies.resource_id)
@@ -95,6 +105,15 @@ defmodule Domain.Policies.Policy.Query do
   def with_joined_resource(queryable) do
     with_named_binding(queryable, :resource, fn queryable, binding ->
       join(queryable, :inner, [policies: policies], resource in assoc(policies, ^binding),
+        as: ^binding
+      )
+    end)
+  end
+
+  def with_joined_resource_connections(queryable) do
+    with_named_binding(queryable, :resource_connections, fn queryable, binding ->
+      join(queryable, :inner, [resource: resource], rc in Domain.Resources.Connection,
+        on: rc.resource_id == resource.id,
         as: ^binding
       )
     end)

@@ -1,6 +1,23 @@
 defmodule Domain.Policies.Policy do
   use Domain, :schema
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t(),
+          persistent_id: Ecto.UUID.t(),
+          description: String.t() | nil,
+          conditions: [Domain.Policies.Condition.t()],
+          actor_group_id: Ecto.UUID.t(),
+          resource_id: Ecto.UUID.t(),
+          account_id: Ecto.UUID.t(),
+          created_by: :actor | :identity,
+          created_by_subject: map(),
+          replaced_by_policy_id: Ecto.UUID.t() | nil,
+          disabled_at: DateTime.t() | nil,
+          deleted_at: DateTime.t() | nil,
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
   schema "policies" do
     field :persistent_id, Ecto.UUID
 
