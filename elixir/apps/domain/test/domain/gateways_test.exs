@@ -87,11 +87,15 @@ defmodule Domain.GatewaysTest do
     } do
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert fetch_group_by_id(Ecto.UUID.generate(), subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
+      assert {:error,
+              {:unauthorized,
+               reason: :missing_permissions, missing_permissions: [{:one_of, missing_permissions}]}} =
+               fetch_group_by_id(Ecto.UUID.generate(), subject)
+
+      assert Enum.sort(missing_permissions) == [
+               Gateways.Authorizer.connect_gateways_permission(),
+               Gateways.Authorizer.manage_gateways_permission()
+             ]
     end
   end
 

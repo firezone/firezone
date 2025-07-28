@@ -24,7 +24,14 @@ defmodule Domain.Gateways do
   end
 
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()),
+    required_permissions =
+      {:one_of,
+       [
+         Authorizer.manage_gateways_permission(),
+         Authorizer.connect_gateways_permission()
+       ]}
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Repo.valid_uuid?(id) do
       Group.Query.all()
       |> Group.Query.by_id(id)
