@@ -41,8 +41,7 @@ export default function Apple() {
         </ChangeItem>
         <ChangeItem pull="9985">
           Fixes an issue where control plane messages could be stuck forever on
-          flaky connections, requiring signing out and signin back in to
-          recover.
+          flaky connections, requiring signing out and back in to recover.
         </ChangeItem>
         <ChangeItem pull="9993">
           Fixes an issue where DNS resolvers could be lost upon waking from
@@ -67,7 +66,7 @@ export default function Apple() {
           logs were cleared.
         </ChangeItem>
         <ChangeItem pull="9536">
-          Uses `.zip` to compress logs instead of Apple Archive.
+          Uses <code>.zip</code> to compress logs instead of Apple Archive.
         </ChangeItem>
         <ChangeItem pull="9725">
           Fixes an issue where Firezone failed to sign-in on systems with
