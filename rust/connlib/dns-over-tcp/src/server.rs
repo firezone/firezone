@@ -112,6 +112,7 @@ impl Server {
     /// Only TCP packets targeted at one of sockets configured with [`Server::set_listen_addresses`] are accepted.
     pub fn accepts(&self, packet: &IpPacket) -> bool {
         let Some(tcp) = packet.as_tcp() else {
+            #[cfg(debug_assertions)]
             tracing::trace!(?packet, "Not a TCP packet");
 
             return false;
@@ -120,6 +121,7 @@ impl Server {
         let dst = SocketAddr::new(packet.destination(), tcp.destination_port());
         let is_listening = self.listen_endpoints.values().any(|s| s == &dst);
 
+        #[cfg(debug_assertions)]
         if !is_listening && tracing::enabled!(tracing::Level::TRACE) {
             let listen_endpoints = BTreeSet::from_iter(self.listen_endpoints.values().copied());
 
