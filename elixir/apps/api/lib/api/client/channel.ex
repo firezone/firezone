@@ -169,10 +169,11 @@ defmodule API.Client.Channel do
         {:updated, %Accounts.Account{} = old_account, %Accounts.Account{} = account},
         socket
       ) do
-    socket = assign(socket, client: %{socket.assigns.client | account: account})
+    # update our cached subject's account
+    socket = assign(socket, subject: %{socket.assigns.subject | account: account})
 
     if old_account.config != account.config do
-      payload = %{interface: Views.Interface.render(socket.assigns.client)}
+      payload = %{interface: Views.Interface.render(%{socket.assigns.client | account: account})}
       :ok = push(socket, "config_changed", payload)
     end
 
