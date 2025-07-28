@@ -323,12 +323,12 @@ defmodule Domain.Config.Definitions do
   @doc """
   Name of the replication slot used by Firezone.
   """
-  defconfig(:database_events_replication_slot_name, :string, default: "events_slot")
+  defconfig(:database_changes_replication_slot_name, :string, default: "changes_slot")
 
   @doc """
   Name of the publication used by Firezone.
   """
-  defconfig(:database_events_publication_name, :string, default: "events")
+  defconfig(:database_changes_publication_name, :string, default: "changes")
 
   @doc """
   Name of the replication slot used by Firezone.

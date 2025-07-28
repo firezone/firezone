@@ -1,6 +1,6 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.Clients
+  alias Domain.{Clients, Changes.Change}
 
   setup do
     account =
@@ -235,42 +235,6 @@ defmodule API.Client.ChannelTest do
       }
 
       assert topic == "sessions:#{token.id}"
-    end
-
-    test "selects compatible gateway versions", %{client: client, subject: subject} do
-      client = %{client | last_seen_version: "1.0.99"}
-
-      {:ok, _reply, socket} =
-        API.Client.Socket
-        |> socket("client:#{client.id}", %{
-          client: client,
-          subject: subject
-        })
-        |> subscribe_and_join(API.Client.Channel, "client")
-
-      assert socket.assigns.gateway_version_requirement == "> 0.0.0"
-
-      client = %{client | last_seen_version: "1.1.99"}
-
-      {:ok, _reply, socket} =
-        API.Client.Socket
-        |> socket("client:#{client.id}", %{
-          client: client,
-          subject: subject
-        })
-        |> subscribe_and_join(API.Client.Channel, "client")
-
-      assert socket.assigns.gateway_version_requirement == ">= 1.1.0"
-
-      client = %{client | last_seen_version: "development"}
-
-      assert API.Client.Socket
-             |> socket("client:#{client.id}", %{
-               client: client,
-               subject: subject
-             })
-             |> subscribe_and_join(API.Client.Channel, "client") ==
-               {:error, %{reason: :invalid_version}}
     end
 
     test "sends list of available resources after join", %{
@@ -698,7 +662,7 @@ defmodule API.Client.ChannelTest do
     #   }
     #
     #   data = Map.put(old_data, "name", "new name")
-    #   Events.Hooks.Resources.on_update(old_data, data)
+    #   Changes.Hooks.Resources.on_update(old_data, data)
     #
     #   assert_push "resource_created_or_updated", %{}
     # end
@@ -721,7 +685,7 @@ defmodule API.Client.ChannelTest do
     #   }
     #
     #   data = Map.put(old_data, "disabled_at", "2024-01-01T00:00:00Z")
-    #   Events.Hooks.Policies.on_update(old_data, data)
+    #   Changes.Hooks.Policies.on_update(old_data, data)
     #
     #   assert_push "resource_deleted", _payload
     #   refute_push "resource_created_or_updated", _payload
@@ -959,7 +923,7 @@ defmodule API.Client.ChannelTest do
     #     }
     #
     #     data = Map.put(old_data, "disabled_at", "2024-01-01T00:00:00Z")
-    #     Events.Hooks.Policies.on_update(old_data, data)
+    #     Changes.Hooks.Policies.on_update(old_data, data)
     #
     #     assert_push "resource_deleted", resource_id
     #     assert resource_id == resource.id
@@ -1146,7 +1110,11 @@ defmodule API.Client.ChannelTest do
       membership: membership,
       socket: socket
     } do
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Change{
+        lsn: 0,
+        op: :insert,
+        struct: membership
+      })
 
       resource =
         Fixtures.Resources.create_resource(
@@ -1154,7 +1122,11 @@ defmodule API.Client.ChannelTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      send(socket.channel_pid, {:created, resource})
+      send(socket.channel_pid, %Change{
+        lsn: 1,
+        op: :insert,
+        struct: resource
+      })
 
       policy =
         Fixtures.Policies.create_policy(
@@ -1170,7 +1142,11 @@ defmodule API.Client.ChannelTest do
           ]
         )
 
-      send(socket.channel_pid, {:created, policy})
+      send(socket.channel_pid, %Change{
+        lsn: 2,
+        op: :insert,
+        struct: policy
+      })
 
       attrs = %{
         "resource_id" => resource.id,
@@ -1263,7 +1239,7 @@ defmodule API.Client.ChannelTest do
              } = payload
 
       assert received_client.id == client.id
-      assert received_resource.id == resource.id
+      assert received_resource.id == Ecto.UUID.dump!(resource.id)
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
     end
@@ -1327,7 +1303,7 @@ defmodule API.Client.ChannelTest do
              } = payload
 
       assert recv_client.id == client.id
-      assert recv_resource.id == resource.id
+      assert recv_resource.id == Ecto.UUID.dump!(resource.id)
       assert authorization_expires_at == socket.assigns.subject.expires_at
       assert String.length(preshared_key) == 44
     end
@@ -1388,13 +1364,13 @@ defmodule API.Client.ChannelTest do
 
       assert flow = Repo.get_by(Domain.Flows.Flow, client_id: client.id, resource_id: resource.id)
       assert flow.client_id == client_id
-      assert flow.resource_id == resource_id
+      assert flow.resource_id == Ecto.UUID.load!(resource_id)
       assert flow.gateway_id == gateway.id
       assert flow.policy_id == policy.id
       assert flow.token_id == subject.token_id
 
       assert client_id == client.id
-      assert resource_id == resource.id
+      assert Ecto.UUID.load!(resource_id) == resource.id
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
       send(
@@ -1408,6 +1384,8 @@ defmodule API.Client.ChannelTest do
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
       gateway_ipv6 = gateway.ipv6
+
+      resource_id = Ecto.UUID.load!(resource_id)
 
       assert_push "flow_created", %{
         gateway_public_key: ^gateway_public_key,
@@ -1533,9 +1511,23 @@ defmodule API.Client.ChannelTest do
 
       :ok = Domain.PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Change{
+        lsn: 0,
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Change{
+        lsn: 1,
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Change{
+        lsn: 2,
+        op: :insert,
+        struct: membership
+      })
 
       {:ok, _reply, socket} =
         API.Client.Socket
@@ -1551,7 +1543,7 @@ defmodule API.Client.ChannelTest do
       })
 
       assert_push "flow_creation_failed", %{
-        reason: :not_found,
+        reason: :offline,
         resource_id: resource_id
       }
 
@@ -1823,9 +1815,23 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.Presence.connect(gateway)
       :ok = Domain.PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Change{
+        lsn: 0,
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Change{
+        lsn: 1,
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Change{
+        lsn: 2,
+        op: :insert,
+        struct: membership
+      })
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 

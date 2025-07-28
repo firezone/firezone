@@ -20,7 +20,7 @@ defmodule Domain.Flows do
           account_id: account_id
         },
         resource_id,
-        %Policies.Policy{} = policy,
+        policy_id,
         membership_id,
         %Auth.Subject{
           account: %{id: account_id},
@@ -42,7 +42,7 @@ defmodule Domain.Flows do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
-          policy_id: policy.id,
+          policy_id: policy_id,
           client_id: client_id,
           gateway_id: gateway_id,
           resource_id: resource_id,
@@ -238,14 +238,12 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_stale_flows_on_connect(%Clients.Client{} = client, resources)
-      when is_list(resources) do
-    authorized_resource_ids = Enum.map(resources, & &1.id)
-
+  def delete_stale_flows_on_connect(%Clients.Client{} = client, resource_ids)
+      when is_list(resource_ids) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(client.account_id)
     |> Flow.Query.by_client_id(client.id)
-    |> Flow.Query.by_not_in_resource_ids(authorized_resource_ids)
+    |> Flow.Query.by_not_in_resource_ids(resource_ids)
     |> Repo.delete_all()
   end
 end

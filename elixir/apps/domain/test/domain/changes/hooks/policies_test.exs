@@ -1,6 +1,6 @@
-defmodule Domain.Events.Hooks.PoliciesTest do
+defmodule Domain.Changes.Hooks.PoliciesTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.Policies
+  import Domain.Changes.Hooks.Policies
   alias Domain.{Policies, PubSub}
 
   describe "insert/1" do

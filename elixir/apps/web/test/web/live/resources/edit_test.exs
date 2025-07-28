@@ -1,6 +1,6 @@
 defmodule Web.Live.Resources.EditTest do
   use Web.ConnCase, async: true
-  alias Domain.{Events, PubSub, Resources}
+  alias Domain.{Changes, PubSub, Resources}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -245,7 +245,7 @@ defmodule Web.Live.Resources.EditTest do
     }
 
     data = Map.put(old_data, "filters", attrs.filters)
-    :ok = Events.Hooks.Resources.on_update(old_data, data)
+    :ok = Changes.Hooks.Resources.on_update(old_data, data)
 
     {:ok, _lv, html} =
       lv

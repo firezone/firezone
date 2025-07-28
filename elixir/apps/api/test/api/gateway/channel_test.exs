@@ -1,6 +1,6 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Accounts, Events, Gateways, PubSub}
+  alias Domain.{Accounts, Changes, Gateways, PubSub}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -106,7 +106,7 @@ defmodule API.Gateway.ChannelTest do
         "slug" => "new-slug"
       }
 
-      Events.Hooks.Accounts.on_update(old_data, data)
+      Changes.Hooks.Accounts.on_update(old_data, data)
 
       assert_receive {:updated, %Accounts.Account{}, %Accounts.Account{}}
 
@@ -134,7 +134,7 @@ defmodule API.Gateway.ChannelTest do
         "type" => "gateway_group"
       }
 
-      Events.Hooks.Tokens.on_delete(data)
+      Changes.Hooks.Tokens.on_delete(data)
 
       assert_receive {:deleted, deleted_token}
 
@@ -333,7 +333,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       refute_push "reject_access", %{}
     end
@@ -390,7 +390,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -497,13 +497,19 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      assert %{assigns: %{flows: flows}} =
+      assert %{assigns: %{cache: cache}} =
                :sys.get_state(socket.channel_pid)
 
-      assert flows == %{
-               {client.id, resource.id} => %{flow.id => expires_at},
-               {other_client.id, resource.id} => %{other_flow1.id => expires_at},
-               {client.id, other_resource.id} => %{other_flow2.id => expires_at}
+      assert cache == %{
+               {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(resource.id)} => %{
+                 Ecto.UUID.dump!(flow.id) => DateTime.to_unix(expires_at, :second)
+               },
+               {Ecto.UUID.dump!(other_client.id), Ecto.UUID.dump!(resource.id)} => %{
+                 Ecto.UUID.dump!(other_flow1.id) => DateTime.to_unix(expires_at, :second)
+               },
+               {Ecto.UUID.dump!(client.id), Ecto.UUID.dump!(other_resource.id)} => %{
+                 Ecto.UUID.dump!(other_flow2.id) => DateTime.to_unix(expires_at, :second)
+               }
              }
 
       data = %{
@@ -518,7 +524,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => other_flow1.expires_at
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -540,7 +546,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => other_flow2.expires_at
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -597,15 +603,16 @@ defmodule API.Gateway.ChannelTest do
 
       data = Map.put(old_data, "name", "New Resource Name")
 
-      Events.Hooks.Resources.on_update(old_data, data)
+      Changes.Hooks.Resources.on_update(old_data, data)
 
-      client_id = client.id
-      resource_id = resource.id
-      flow_id = flow.id
+      cid_bytes = Ecto.UUID.dump!(client.id)
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+      fid_bytes = Ecto.UUID.dump!(flow.id)
+      expires_at_unix = DateTime.to_unix(expires_at, :second)
 
       assert %{
                assigns: %{
-                 flows: %{{^client_id, ^resource_id} => %{^flow_id => ^expires_at}}
+                 cache: %{{^cid_bytes, ^rid_bytes} => %{^fid_bytes => ^expires_at_unix}}
                }
              } = :sys.get_state(socket.channel_pid)
 
@@ -667,7 +674,7 @@ defmodule API.Gateway.ChannelTest do
 
       data = Map.put(old_data, "filters", filters)
 
-      Events.Hooks.Resources.on_update(old_data, data)
+      Changes.Hooks.Resources.on_update(old_data, data)
 
       assert_push "resource_updated", payload
 
@@ -971,7 +978,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => flow.expires_at
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -1105,7 +1112,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => flow.expires_at
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,

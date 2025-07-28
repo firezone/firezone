@@ -1,6 +1,6 @@
-defmodule Domain.Events.Hooks.FlowsTest do
+defmodule Domain.Changes.Hooks.FlowsTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.Flows
+  import Domain.Changes.Hooks.Flows
   alias Domain.Flows
 
   describe "insert/1" do

@@ -1,13 +1,23 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Accounts, Flows, Gateways, PubSub, Relays, Resources}
+
+  alias Domain.{
+    Accounts,
+    Cache,
+    Changes.Change,
+    Flows,
+    Gateways,
+    PubSub,
+    Relays,
+    Resources,
+  }
+
   alias Domain.Relays.Presence.Debouncer
   require Logger
-  require OpenTelemetry.Tracer
 
   # The interval at which the flow cache is pruned.
-  @prune_flow_cache_every :timer.minutes(1)
+  @prune_cache_every :timer.minutes(1)
 
   # All relayed connections are dropped when this expires, so use
   # a long expiration time to avoid frequent disconnections.
@@ -26,8 +36,8 @@ defmodule API.Gateway.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     # Initialize the cache
-    socket = hydrate_flows(socket)
-    Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
+    socket = assign(socket, cache: Cache.Gateway.hydrate(socket.assigns.gateway))
+    Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
     :ok = Gateways.Presence.connect(socket.assigns.gateway)
@@ -50,30 +60,9 @@ defmodule API.Gateway.Channel do
     {:noreply, socket}
   end
 
-  def handle_info(:prune_flow_cache, socket) do
-    Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
-
-    now = DateTime.utc_now()
-
-    # 1. Remove individual flows older than 14 days, then remove access entry if no flows left
-    flows =
-      socket.assigns.flows
-      |> Enum.map(fn {tuple, flow_id_map} ->
-        flow_id_map =
-          Enum.reject(flow_id_map, fn {_flow_id, expires_at} ->
-            DateTime.compare(expires_at, now) == :lt
-          end)
-          |> Enum.into(%{})
-
-        {tuple, flow_id_map}
-      end)
-      |> Enum.into(%{})
-      |> Enum.reject(fn {_tuple, flow_id_map} -> map_size(flow_id_map) == 0 end)
-      |> Enum.into(%{})
-
-    # The gateway has its own flow expiration, so no need to send `reject_access`
-
-    {:noreply, assign(socket, flows: flows)}
+  def handle_info(:prune_cache, socket) do
+    Process.send_after(self(), :prune_cache, @prune_cache_every)
+    {:noreply, assign(socket, cache: Cache.Gateway.prune(socket.assigns.cache))}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the gateway
@@ -85,114 +74,22 @@ defmodule API.Gateway.Channel do
   ##### Reacting to domain events ####
   ####################################
 
-  # ACCOUNTS
+  def handle_info(%Change{lsn: lsn} = change, socket) do
+    last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
-  # Resend init when config changes so that new slug may be applied
-  def handle_info(
-        {:updated, %Accounts.Account{slug: old_slug}, %Accounts.Account{slug: slug} = account},
-        socket
+    if lsn <= last_lsn do
+      Logger.warning("Out of order or duplicate change received; ignoring",
+        change: change,
+        last_lsn: last_lsn
       )
-      when old_slug != slug do
-    {:ok, relays} = select_relays(socket)
-    init(socket, account, relays)
 
-    {:noreply, socket}
-  end
-
-  # FLOWS
-
-  def handle_info(
-        {:deleted, %Flows.Flow{gateway_id: gateway_id} = flow},
-        %{
-          assigns: %{gateway: %{id: id}}
-        } = socket
-      )
-      when gateway_id == id do
-    tuple = {flow.client_id, flow.resource_id}
-
-    if flows_map = Map.get(socket.assigns.flows, tuple) do
-      flow_map = Map.delete(flows_map, flow.id)
-      remaining = map_size(flow_map)
-
-      if remaining == 0 do
-        case Flows.reauthorize_flow(flow) do
-          {:ok, new_flow} ->
-            flow_map = %{
-              new_flow.id => new_flow.expires_at
-            }
-
-            Logger.info("Updated flow authorization",
-              old_flow_id: flow.id,
-              account_id: flow.account_id,
-              client_id: flow.client_id,
-              resource_id: flow.resource_id,
-              new_flow_id: new_flow.id
-            )
-
-            push(
-              socket,
-              "access_authorization_expiry_updated",
-              Views.Flow.render(new_flow, new_flow.expires_at)
-            )
-
-            {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
-
-          {:error, :forbidden} ->
-            Logger.info("Last flow deleted; revoking access",
-              flow_id: flow.id,
-              account_id: flow.account_id,
-              client_id: flow.client_id,
-              resource_id: flow.resource_id
-            )
-
-            # Send reject_access if access is no longer granted
-
-            # TODO: Verify that if the client's websocket connection flaps at the moment this
-            # message is received by the gateway, and the client still has access to this resource,
-            # the client will clear its state so it can request a new flow.
-            push(socket, "reject_access", %{
-              client_id: flow.client_id,
-              resource_id: flow.resource_id
-            })
-
-            {:noreply, assign(socket, flows: Map.delete(socket.assigns.flows, tuple))}
-        end
-      else
-        Logger.info("Flow deleted but still has remaining flows for client/resource",
-          flow_id: flow.id,
-          account_id: flow.account_id,
-          client_id: flow.client_id,
-          resource_id: flow.resource_id,
-          remaining: remaining
-        )
-
-        {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
-      end
-    else
       {:noreply, socket}
+    else
+      socket = assign(socket, last_lsn: lsn)
+      handle_change(change, socket)
     end
   end
 
-  # RESOURCES
-
-  # The gateway only handles filter changes. Other breaking changes are handled by deleting
-  # relevant flows for the resource.
-  def handle_info(
-        {:updated, %Resources.Resource{filters: old_filters},
-         %Resources.Resource{filters: filters, id: id} = resource},
-        socket
-      )
-      when old_filters != filters do
-    has_flows? =
-      socket.assigns.flows
-      |> Enum.any?(fn {{_client_id, resource_id}, _flow_map} -> resource_id == id end)
-
-    if has_flows? do
-      push(socket, "resource_updated", Views.Resource.render(resource))
-    end
-
-    {:noreply, socket}
-  end
 
   ####################################
   #### Reacting to relay presence ####
@@ -356,17 +253,16 @@ defmodule API.Gateway.Channel do
       expires_at: DateTime.to_unix(authorization_expires_at, :second)
     })
 
-    # Start tracking flow
-    tuple = {client.id, resource.id}
+    cache =
+      socket.assigns.cache
+      |> Cache.Gateway.put(
+        client.id,
+        resource.id,
+        flow_id,
+        authorization_expires_at
+      )
 
-    flow_map =
-      Map.get(socket.assigns.flows, tuple, %{})
-      |> Map.put(flow_id, authorization_expires_at)
-
-    flows = Map.put(socket.assigns.flows, tuple, flow_map)
-    socket = assign(socket, flows: flows)
-
-    {:noreply, socket}
+    {:noreply, assign(socket, cache: cache)}
   end
 
   # DEPRECATED IN 1.4
@@ -383,11 +279,14 @@ defmodule API.Gateway.Channel do
       client_payload: payload
     } = attrs
 
-    case API.Client.Channel.map_or_drop_compatible_resource(
-           resource,
+    case Resources.adapt_resources_for_version(
+           [resource],
            socket.assigns.gateway.last_seen_version
          ) do
-      {:cont, resource} ->
+      [] ->
+        {:noreply, socket}
+
+      [resource] ->
         ref =
           encode_ref(
             socket,
@@ -404,20 +303,16 @@ defmodule API.Gateway.Channel do
           client_ipv6: client.ipv6
         })
 
-        # Start tracking the flow
-        tuple = {client.id, resource.id}
+        cache =
+          socket.assigns.cache
+          |> Cache.Gateway.put(
+            client.id,
+            resource.id,
+            flow_id,
+            authorization_expires_at
+          )
 
-        flow_map =
-          Map.get(socket.assigns.flows, tuple, %{})
-          |> Map.put(flow_id, authorization_expires_at)
-
-        flows = Map.put(socket.assigns.flows, tuple, flow_map)
-        socket = assign(socket, flows: flows)
-
-        {:noreply, socket}
-
-      :drop ->
-        {:noreply, socket}
+        {:noreply, assign(socket, cache: cache)}
     end
   end
 
@@ -436,11 +331,14 @@ defmodule API.Gateway.Channel do
       client_preshared_key: preshared_key
     } = attrs
 
-    case API.Client.Channel.map_or_drop_compatible_resource(
-           resource,
+    case Resources.adapt_resources_for_version(
+           [resource],
            socket.assigns.gateway.last_seen_version
          ) do
-      {:cont, resource} ->
+      [] ->
+        {:noreply, socket}
+
+      [resource] ->
         ref =
           encode_ref(
             socket,
@@ -454,20 +352,16 @@ defmodule API.Gateway.Channel do
           expires_at: DateTime.to_unix(authorization_expires_at, :second)
         })
 
-        # Start tracking the flow
-        tuple = {client.id, resource.id}
+        cache =
+          socket.assigns.cache
+          |> Cache.Gateway.put(
+            client.id,
+            resource.id,
+            flow_id,
+            authorization_expires_at
+          )
 
-        flow_map =
-          Map.get(socket.assigns.flows, tuple, %{})
-          |> Map.put(flow_id, authorization_expires_at)
-
-        flows = Map.put(socket.assigns.flows, tuple, flow_map)
-        socket = assign(socket, flows: flows)
-
-        {:noreply, socket}
-
-      :drop ->
-        {:noreply, socket}
+        {:noreply, assign(socket, cache: cache)}
     end
   end
 
@@ -622,7 +516,7 @@ defmodule API.Gateway.Channel do
       DateTime.utc_now() |> DateTime.add(@relay_credentials_expire_in_hours, :hour)
 
     push(socket, "init", %{
-      authorizations: Views.Flow.render_many(socket.assigns.flows),
+      authorizations: Views.Flow.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
       relays:
@@ -647,28 +541,199 @@ defmodule API.Gateway.Channel do
     end
   end
 
-  defp hydrate_flows(socket) do
-    OpenTelemetry.Tracer.with_span "gateway.hydrate_flows",
-      attributes: %{
-        gateway_id: socket.assigns.gateway.id,
-        account_id: socket.assigns.gateway.account_id
-      } do
-      flows =
-        Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
-        # Reduces [ {client_id, resource_id}, {flow_id, inserted_at} ]
-        #
-        # to %{ {client_id, resource_id} => %{flow_id => expires_at} }
-        #
-        # This data structure is used to efficiently:
-        #   1. Check if there are any active flows remaining for this client/resource?
-        #   2. Remove a deleted flow
-        |> Enum.reduce(%{}, fn {{client_id, resource_id}, {flow_id, expires_at}}, acc ->
-          flow_id_map = Map.get(acc, {client_id, resource_id}, %{})
+  ##########################################
+  #### Handling changes from the domain ####
+  ##########################################
 
-          Map.put(acc, {client_id, resource_id}, Map.put(flow_id_map, flow_id, expires_at))
-        end)
+  # ACCOUNTS
 
-      assign(socket, flows: flows)
+  # Resend init when config changes so that new slug may be applied
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Accounts.Account{slug: old_slug},
+           struct: %Accounts.Account{slug: slug} = account
+         },
+         socket
+       )
+       when old_slug != slug do
+    {:ok, relays} = select_relays(socket)
+    init(socket, account, relays)
+
+    {:noreply, socket}
+  end
+
+  # FLOWS
+
+  def handle_info(
+        {:deleted, %Flows.Flow{gateway_id: gateway_id} = flow},
+        %{
+          assigns: %{gateway: %{id: id}}
+        } = socket
+      )
+      when gateway_id == id do
+    tuple = {flow.client_id, flow.resource_id}
+
+    if flows_map = Map.get(socket.assigns.flows, tuple) do
+      flow_map = Map.delete(flows_map, flow.id)
+      remaining = map_size(flow_map)
+
+      if remaining == 0 do
+        case Flows.reauthorize_flow(flow) do
+          {:ok, new_flow} ->
+            flow_map = %{
+              new_flow.id => new_flow.expires_at
+            }
+
+            Logger.info("Updated flow authorization",
+              old_flow_id: flow.id,
+              account_id: flow.account_id,
+              client_id: flow.client_id,
+              resource_id: flow.resource_id,
+              new_flow_id: new_flow.id
+            )
+
+            push(
+              socket,
+              "access_authorization_expiry_updated",
+              Views.Flow.render(new_flow, new_flow.expires_at)
+            )
+
+            {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
+
+          {:error, :forbidden} ->
+            Logger.info("Last flow deleted; revoking access",
+              flow_id: flow.id,
+              account_id: flow.account_id,
+              client_id: flow.client_id,
+              resource_id: flow.resource_id
+            )
+
+            # Send reject_access if access is no longer granted
+
+            # Note: There is an edge case here:
+            #   - Client authorizes flow for resource
+            #   - Client's websocket temporarily gets cut
+            #   - Admin deletes the policy
+            #   - We send reject_access to the gateway
+            #   - Admin recreates the same policy (same access)
+            #   - Client connection resumes
+            #   - Client sees exactly the same resource list
+            #   - Client now has lost the ability to recreate the flow because from its perspective, it is still connected
+            #     to this gateway.
+            #   - Packets to gateway are essentially blackholed until the client signs out and back in
+            #
+            # This has been fixed with the introduction of the `goodbye` control protocol message
+            # introduced in https://github.com/firezone/firezone/pull/10076 and shipped in:
+            #   - Gateway 1.4.15
+            #   - Apple 1.5.6
+            #   - Android 1.5.3
+            #   - Windows/Linux 1.5.7
+            #   - Headless 1.5.3
+            push(socket, "reject_access", %{
+              client_id: flow.client_id,
+              resource_id: flow.resource_id
+            })
+
+            {:noreply, assign(socket, flows: Map.delete(socket.assigns.flows, tuple))}
+        end
+      else
+        Logger.info("Flow deleted but still has remaining flows for client/resource",
+          flow_id: flow.id,
+          account_id: flow.account_id,
+          client_id: flow.client_id,
+          resource_id: flow.resource_id,
+          remaining: remaining
+        )
+
+        {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
+      end
+    else
+      {:noreply, socket}
     end
   end
+
+  # RESOURCES
+
+  # The gateway only handles filter changes. Other breaking changes are handled by deleting
+  # relevant flows for the resource.
+  def handle_info(
+        {:updated, %Resources.Resource{filters: old_filters},
+         %Resources.Resource{filters: filters, id: id} = resource},
+        socket
+      )
+      when old_filters != filters do
+    has_flows? =
+      socket.assigns.flows
+      |> Enum.any?(fn {{_client_id, resource_id}, _flow_map} -> resource_id == id end)
+
+    if has_flows? do
+      push(socket, "resource_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply, socket}
+  end
+
+  # FLOWS
+
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct:
+             %Flows.Flow{gateway_id: gateway_id, client_id: client_id, resource_id: resource_id} =
+               flow
+         },
+         %{
+           assigns: %{gateway: %{id: id}}
+         } = socket
+       )
+       when gateway_id == id do
+    # Delete old authorization and potentially reauthorize access
+    cache =
+      socket.assigns.cache
+      |> Cache.Gateway.delete(flow)
+      |> Cache.Gateway.rehydrate(flow)
+
+    if expires_at_unix = Cache.Gateway.get(cache, client_id, resource_id) do
+      # If the flow was rehydrated, we can push the new expiration time
+      push(
+        socket,
+        "access_authorization_expiry_updated",
+        Views.Flow.render(flow, expires_at_unix)
+      )
+    else
+      # Otherwise, access is no longer authorized
+      push(
+        socket,
+        "reject_access",
+        %{client_id: client_id, resource_id: resource_id}
+      )
+    end
+
+    {:noreply, assign(socket, cache: cache)}
+  end
+
+  # RESOURCES
+
+  # The gateway only handles filter changes. Other breaking changes are handled by deleting
+  # relevant flows for the resource.
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Resources.Resource{filters: old_filters},
+           struct: %Resources.Resource{filters: filters, id: id} = resource
+         },
+         socket
+       )
+       when old_filters != filters do
+    if Cache.Gateway.has_resource?(socket.assigns.cache, id) do
+      resource = Cache.Cacheable.to_cache(resource)
+      push(socket, "resource_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply, socket}
+  end
+
+
+  defp handle_change(%Change{}, socket), do: {:noreply, socket}
 end
