@@ -20,6 +20,28 @@ config :domain, Domain.Billing,
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
   webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111")
 
+config :domain, Oban,
+  plugins: [
+    # Keep the last 90 days of completed, cancelled, and discarded jobs
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
+
+    # Rescue jobs that may have failed due to transient errors like deploys
+    # or network issues. It's not guaranteed that the job won't be executed
+    # twice, so for now we disable it since all of our Oban jobs can be retried
+    # without loss.
+    # {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
+
+    # Periodic jobs
+    {Oban.Plugins.Cron,
+     crontab: [
+       # Delete expired flows every minute
+       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+     ]}
+  ],
+  queues: [default: 10],
+  engine: Oban.Engines.Basic,
+  repo: Domain.Repo
+
 ###############################
 ##### Web #####################
 ###############################
