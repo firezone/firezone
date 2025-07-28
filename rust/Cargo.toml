@@ -153,6 +153,8 @@ smoltcp = { version = "0.12", default-features = false }
 snownet = { path = "connlib/snownet" }
 socket-factory = { path = "connlib/socket-factory" }
 socket2 = { version = "0.5" }
+specta = "=2.0.0-rc.22"
+specta-typescript = "0.0.9"
 static_assertions = "1.1.0"
 str0m = { version = "0.9.0", default-features = false, features = ["sha1"] }
 strum = { version = "0.27.1", features = ["derive"] }
@@ -170,6 +172,7 @@ tauri-plugin-notification = "2.3.0"
 tauri-plugin-opener = "2.4.0"
 tauri-plugin-shell = "2.3.0"
 tauri-runtime = "2.5.0"
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = "2.2.0"
 tempfile = "3.20.0"
 test-case = "3.3.1"

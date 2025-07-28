@@ -360,6 +360,47 @@ pub fn run(
         anyhow::Ok(ctrl_task)
     });
 
+    let tauri_specta_builder = tauri_specta::Builder::<tauri::Wry>::new()
+        .events(tauri_specta::collect_events![
+            crate::view::SessionChanged,
+            crate::view::GeneralSettingsChanged,
+            crate::view::AdvancedSettingsChanged,
+            crate::view::LogsRecounted,
+        ])
+        .commands(tauri_specta::collect_commands![
+            crate::view::clear_logs,
+            crate::view::export_logs,
+            crate::view::apply_advanced_settings,
+            crate::view::reset_advanced_settings,
+            crate::view::apply_general_settings,
+            crate::view::reset_general_settings,
+            crate::view::sign_in,
+            crate::view::sign_out,
+            crate::view::update_state,
+        ])
+        .typ::<crate::view::Error>();
+
+    #[cfg(debug_assertions)]
+    {
+        let bindings_path = std::path::Path::new(file!())
+            .parent()
+            .context("current file should always have a parent")?
+            .join("../../../src-frontend/generated/bindings.ts")
+            .canonicalize()
+            .context("Failed to create absolute path to bindings file")?;
+
+        tracing::debug!(path = %bindings_path.display(), "Exporting TypeScript bindings");
+
+        tauri_specta_builder
+            .export(
+                specta_typescript::Typescript::default()
+                    .bigint(specta_typescript::BigIntExportBehavior::BigInt)
+                    .header("/* eslint-disable */\n/* tslint:disable */\n"),
+                bindings_path,
+            )
+            .context("Failed to export TypeScript bindings")?;
+    }
+
     tauri::Builder::default()
         .manage(Managed {
             req_tx,
@@ -377,7 +418,12 @@ pub fn run(
                 api.prevent_close();
             }
         })
-        .invoke_handler(crate::view::generate_handler())
+        .invoke_handler(tauri_specta_builder.invoke_handler())
+        .setup(move |app| {
+            tauri_specta_builder.mount_events(app);
+
+            Ok(())
+        })
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
