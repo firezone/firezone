@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.14" date={new Date("2025-07-28")}>
         <ChangeItem pull="9986">
           Fixes an issue where a Client could not establish a connection unless
           their first attempt succeeded.
@@ -31,7 +32,7 @@ export default function Gateway() {
           Fixes an issue where connections in low-latency networks (between
           Client and Gateway) would fail to establish reliably.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.13" date={new Date("2025-07-22")}>
         <ChangeItem pull="9834">
           Excludes ICMP errors from the ICMP traffic filter. Those are now
