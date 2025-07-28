@@ -20,6 +20,31 @@ config :domain, Domain.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   queue_target: 1000
 
+# Oban has its own config validation that prevents overriding config in runtime.exs,
+# so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
+config :domain, Oban,
+  # Periodic jobs don't make sense in tests
+  plugins: [
+    # Keep the last 90 days of completed, cancelled, and discarded jobs
+    # {Oban.Plugins.Pruner, max_age: 60 * 60 * 24 * 90},
+
+    # Rescue jobs that may have failed due to transient errors like deploys
+    # or network issues. It's not guaranteed that the job won't be executed
+    # twice, so for now we disable it since all of our Oban jobs can be retried
+    # without loss.
+    # {Oban.Plugins.Lifeline, rescue_after: :timer.minutes(30)}
+
+    # Periodic jobs
+    # {Oban.Plugins.Cron,
+    #  crontab: [
+    #    # Delete expired flows every minute
+    #    {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+    #  ]}
+  ],
+  queues: [default: 10],
+  engine: Oban.Engines.Basic,
+  repo: Domain.Repo
+
 config :domain, Domain.ChangeLogs.ReplicationConnection,
   replication_slot_name: "test_change_logs_slot",
   publication_name: "test_change_logs_publication",
