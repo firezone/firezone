@@ -1,13 +1,12 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Accounts, Flows, Gateways, PubSub, Relays, Resources, Tokens}
+  alias Domain.{Accounts, Flows, Gateways, Gateways.Cache, PubSub, Relays, Resources, Tokens}
   alias Domain.Relays.Presence.Debouncer
   require Logger
-  require OpenTelemetry.Tracer
 
   # The interval at which the flow cache is pruned.
-  @prune_flow_cache_every :timer.minutes(1)
+  @prune_cache_every :timer.minutes(1)
 
   # All relayed connections are dropped when this expires, so use
   # a long expiration time to avoid frequent disconnections.
@@ -26,8 +25,8 @@ defmodule API.Gateway.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     # Initialize the cache
-    socket = hydrate_flows(socket)
-    Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
+    socket = assign(socket, cache: Cache.hydrate(socket.assigns.gateway))
+    Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
     :ok = Gateways.Presence.connect(socket.assigns.gateway)
@@ -50,30 +49,9 @@ defmodule API.Gateway.Channel do
     {:noreply, socket}
   end
 
-  def handle_info(:prune_flow_cache, socket) do
-    Process.send_after(self(), :prune_flow_cache, @prune_flow_cache_every)
-
-    now = DateTime.utc_now()
-
-    # 1. Remove individual flows older than 14 days, then remove access entry if no flows left
-    flows =
-      socket.assigns.flows
-      |> Enum.map(fn {tuple, flow_id_map} ->
-        flow_id_map =
-          Enum.reject(flow_id_map, fn {_flow_id, expires_at} ->
-            DateTime.compare(expires_at, now) == :lt
-          end)
-          |> Enum.into(%{})
-
-        {tuple, flow_id_map}
-      end)
-      |> Enum.into(%{})
-      |> Enum.reject(fn {_tuple, flow_id_map} -> map_size(flow_id_map) == 0 end)
-      |> Enum.into(%{})
-
-    # The gateway has its own flow expiration, so no need to send `reject_access`
-
-    {:noreply, assign(socket, flows: flows)}
+  def handle_info(:prune_cache, socket) do
+    Process.send_after(self(), :prune_cache, @prune_cache_every)
+    {:noreply, assign(socket, cache: Cache.prune(socket.assigns.cache))}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the gateway
@@ -102,46 +80,37 @@ defmodule API.Gateway.Channel do
   # FLOWS
 
   def handle_info(
-        {:deleted, %Flows.Flow{gateway_id: gateway_id} = flow},
+        {:deleted,
+         %Flows.Flow{gateway_id: gateway_id, client_id: client_id, resource_id: resource_id} =
+           flow},
         %{
           assigns: %{gateway: %{id: id}}
         } = socket
       )
       when gateway_id == id do
-    tuple = {flow.client_id, flow.resource_id}
+    # Delete old authorization and potentially reauthorize access
+    cache =
+      socket.assigns.cache
+      |> Cache.delete(flow)
+      |> Cache.rehydrate(flow)
 
-    socket =
-      if flows_map = Map.get(socket.assigns.flows, tuple) do
-        flow_map = Map.delete(flows_map, flow.id)
+    if expires_at_unix = Cache.get(cache, client_id, resource_id) do
+      # If the flow was rehydrated, we can push the new expiration time
+      push(
+        socket,
+        "access_authorization_expiry_updated",
+        Views.Flow.render(flow, expires_at_unix)
+      )
+    else
+      # Otherwise, access is no longer authorized
+      push(
+        socket,
+        "reject_access",
+        %{client_id: client_id, resource_id: resource_id}
+      )
+    end
 
-        with 0 <- map_size(flow_map),
-             {:ok, new_flow} <- Flows.reauthorize_flow(flow) do
-          flow_map = %{
-            new_flow.id => new_flow.expires_at
-          }
-
-          push(
-            socket,
-            "access_authorization_expiry_updated",
-            Views.Flow.render(new_flow, new_flow.expires_at)
-          )
-
-          assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))
-        else
-          _ ->
-            # Send reject_access if access is no longer granted
-            push(socket, "reject_access", %{
-              client_id: flow.client_id,
-              resource_id: flow.resource_id
-            })
-
-            assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
-        end
-      else
-        socket
-      end
-
-    {:noreply, socket}
+    {:noreply, assign(socket, cache: cache)}
   end
 
   # RESOURCES
@@ -154,11 +123,7 @@ defmodule API.Gateway.Channel do
         socket
       )
       when old_filters != filters do
-    has_flows? =
-      socket.assigns.flows
-      |> Enum.any?(fn {{_client_id, resource_id}, _flow_map} -> resource_id == id end)
-
-    if has_flows? do
+    if Cache.has_resource?(socket.assigns.cache, id) do
       push(socket, "resource_updated", Views.Resource.render(resource))
     end
 
@@ -335,17 +300,16 @@ defmodule API.Gateway.Channel do
       expires_at: DateTime.to_unix(authorization_expires_at, :second)
     })
 
-    # Start tracking flow
-    tuple = {client.id, resource.id}
+    cache =
+      socket.assigns.cache
+      |> Cache.put(
+        client.id,
+        resource.id,
+        flow_id,
+        authorization_expires_at
+      )
 
-    flow_map =
-      Map.get(socket.assigns.flows, tuple, %{})
-      |> Map.put(flow_id, authorization_expires_at)
-
-    flows = Map.put(socket.assigns.flows, tuple, flow_map)
-    socket = assign(socket, flows: flows)
-
-    {:noreply, socket}
+    {:noreply, assign(socket, cache: cache)}
   end
 
   # DEPRECATED IN 1.4
@@ -383,17 +347,16 @@ defmodule API.Gateway.Channel do
           client_ipv6: client.ipv6
         })
 
-        # Start tracking the flow
-        tuple = {client.id, resource.id}
+        cache =
+          socket.assigns.cache
+          |> Cache.put(
+            client.id,
+            resource.id,
+            flow_id,
+            authorization_expires_at
+          )
 
-        flow_map =
-          Map.get(socket.assigns.flows, tuple, %{})
-          |> Map.put(flow_id, authorization_expires_at)
-
-        flows = Map.put(socket.assigns.flows, tuple, flow_map)
-        socket = assign(socket, flows: flows)
-
-        {:noreply, socket}
+        {:noreply, assign(socket, cache: cache)}
 
       :drop ->
         {:noreply, socket}
@@ -433,17 +396,16 @@ defmodule API.Gateway.Channel do
           expires_at: DateTime.to_unix(authorization_expires_at, :second)
         })
 
-        # Start tracking the flow
-        tuple = {client.id, resource.id}
+        cache =
+          socket.assigns.cache
+          |> Cache.put(
+            client.id,
+            resource.id,
+            flow_id,
+            authorization_expires_at
+          )
 
-        flow_map =
-          Map.get(socket.assigns.flows, tuple, %{})
-          |> Map.put(flow_id, authorization_expires_at)
-
-        flows = Map.put(socket.assigns.flows, tuple, flow_map)
-        socket = assign(socket, flows: flows)
-
-        {:noreply, socket}
+        {:noreply, assign(socket, cache: cache)}
 
       :drop ->
         {:noreply, socket}
@@ -601,7 +563,7 @@ defmodule API.Gateway.Channel do
       DateTime.utc_now() |> DateTime.add(@relay_credentials_expire_in_hours, :hour)
 
     push(socket, "init", %{
-      authorizations: Views.Flow.render_many(socket.assigns.flows),
+      authorizations: Views.Flow.render_many(socket.assigns.cache),
       account_slug: account.slug,
       interface: Views.Interface.render(socket.assigns.gateway),
       relays:
@@ -623,31 +585,6 @@ defmodule API.Gateway.Channel do
       :ok
     else
       Relays.subscribe_to_relays_presence_in_account(socket.assigns.gateway.account_id)
-    end
-  end
-
-  defp hydrate_flows(socket) do
-    OpenTelemetry.Tracer.with_span "gateway.hydrate_flows",
-      attributes: %{
-        gateway_id: socket.assigns.gateway.id,
-        account_id: socket.assigns.gateway.account_id
-      } do
-      flows =
-        Flows.all_gateway_flows_for_cache!(socket.assigns.gateway)
-        # Reduces [ {client_id, resource_id}, {flow_id, inserted_at} ]
-        #
-        # to %{ {client_id, resource_id} => %{flow_id => expires_at} }
-        #
-        # This data structure is used to efficiently:
-        #   1. Check if there are any active flows remaining for this client/resource?
-        #   2. Remove a deleted flow
-        |> Enum.reduce(%{}, fn {{client_id, resource_id}, {flow_id, expires_at}}, acc ->
-          flow_id_map = Map.get(acc, {client_id, resource_id}, %{})
-
-          Map.put(acc, {client_id, resource_id}, Map.put(flow_id_map, flow_id, expires_at))
-        end)
-
-      assign(socket, flows: flows)
     end
   end
 
