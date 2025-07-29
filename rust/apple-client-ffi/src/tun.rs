@@ -1,5 +1,5 @@
 use futures::SinkExt as _;
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
 use std::task::{Context, Poll};
 use std::{
@@ -129,9 +129,9 @@ fn read(fd: RawFd, dst: &mut IpPacketBuf) -> io::Result<usize> {
 }
 
 fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
-    let af = match src {
-        IpPacket::Ipv4(_) => AF_INET,
-        IpPacket::Ipv6(_) => AF_INET6,
+    let af = match src.version() {
+        IpVersion::V4 => AF_INET,
+        IpVersion::V6 => AF_INET6,
     };
     let src = src.packet();
 

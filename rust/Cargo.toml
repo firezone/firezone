@@ -27,6 +27,7 @@ members = [
     "relay/ebpf-turn-router",
     "relay/server",
     "telemetry",
+    "tests/fuzz",
     "tests/gui-smoke-test",
     "tests/http-test-server",
     "tools/uniffi-bindgen",
@@ -42,6 +43,7 @@ edition = "2024"
 admx-macro = { path = "gui-client/src-admx-macro" }
 anyhow = "1.0.98"
 apple-client-ffi = { path = "apple-client-ffi" }
+arbitrary = "1.4.1"
 arboard = { version = "3.6.0", default-features = false }
 async-trait = { version = "0.1", default-features = false }
 atomicwrites = "0.4.4"
@@ -102,6 +104,7 @@ l3-tcp = { path = "connlib/l3-tcp" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 libc = "0.2.174"
+libfuzzer-sys = "0.4"
 log = "0.4"
 lru = "0.12.5"
 mio = "1.0.4"
