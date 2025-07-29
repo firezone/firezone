@@ -193,15 +193,15 @@ impl GatewayState {
         self.drain_node_events();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource, %client))]
-    pub fn remove_access(&mut self, client: &ClientId, resource: &ResourceId) {
-        let Some(peer) = self.peers.get_mut(client) else {
+    #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
+    pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId) {
+        let Some(peer) = self.peers.get_mut(cid) else {
             return;
         };
 
-        peer.remove_resource(resource);
+        peer.remove_resource(rid);
         if peer.is_emptied() {
-            self.peers.remove(client);
+            self.peers.remove(cid);
         }
 
         tracing::debug!("Access removed");
@@ -230,11 +230,11 @@ impl GatewayState {
         })
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%client_id))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
     #[expect(clippy::too_many_arguments)]
     pub fn authorize_flow(
         &mut self,
-        client_id: ClientId,
+        cid: ClientId,
         client_key: PublicKey,
         preshared_key: SecretKey,
         client_ice: IceCredentials,
@@ -245,7 +245,7 @@ impl GatewayState {
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
-            client_id,
+            cid,
             client_key,
             Secret::new(preshared_key.expose_secret().0),
             Credentials {
@@ -259,7 +259,7 @@ impl GatewayState {
             now,
         )?;
 
-        let result = self.allow_access(client_id, client_tun, expires_at, resource, None);
+        let result = self.allow_access(cid, client_tun, expires_at, resource, None);
         debug_assert!(
             result.is_ok(),
             "`allow_access` should never fail without a `DnsResourceEntry`"
@@ -495,7 +495,7 @@ fn handle_p2p_control_packet(
             };
 
             if !peer.is_allowed(req.resource) {
-                tracing::warn!(cid = %peer.id(), resource = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
+                tracing::warn!(cid = %peer.id(), rid = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
 
                 let packet = dns_resource_nat::domain_status(
                     req.resource,

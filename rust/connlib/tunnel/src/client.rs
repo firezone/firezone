@@ -589,12 +589,12 @@ impl ClientState {
         self.drain_node_events();
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource_id))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
     #[expect(clippy::too_many_arguments)]
     pub fn handle_flow_created(
         &mut self,
-        resource_id: ResourceId,
-        gateway_id: GatewayId,
+        rid: ResourceId,
+        gid: GatewayId,
         gateway_key: PublicKey,
         gateway_tun: IpConfig,
         site_id: SiteId,
@@ -603,30 +603,27 @@ impl ClientState {
         gateway_ice: IceCredentials,
         now: Instant,
     ) -> anyhow::Result<Result<(), NoTurnServers>> {
-        tracing::debug!(%gateway_id, "New flow authorized for resource");
+        tracing::debug!(%gid, "New flow authorized for resource");
 
-        let resource = self
-            .resources_by_id
-            .get(&resource_id)
-            .context("Unknown resource")?;
+        let resource = self.resources_by_id.get(&rid).context("Unknown resource")?;
 
-        let Some(pending_flow) = self.pending_flows.remove(&resource_id) else {
+        let Some(pending_flow) = self.pending_flows.remove(&rid) else {
             tracing::debug!("No pending flow");
 
             return Ok(Ok(()));
         };
 
-        if let Some(old_gateway_id) = self.resources_gateways.insert(resource_id, gateway_id)
+        if let Some(old_gateway_id) = self.resources_gateways.insert(rid, gid)
             && self.peers.get(&old_gateway_id).is_some()
         {
             assert_eq!(
-                old_gateway_id, gateway_id,
-                "Resources are not expected to change gateways without a previous message, resource_id = {resource_id}"
+                old_gateway_id, gid,
+                "Resources are not expected to change gateways without a previous message, resource_id = {rid}"
             )
         }
 
         match self.node.upsert_connection(
-            gateway_id,
+            gid,
             gateway_key,
             Secret::new(preshared_key.expose_secret().0),
             snownet::Credentials {
@@ -642,19 +639,19 @@ impl ClientState {
             Ok(()) => {}
             Err(e) => return Ok(Err(e)),
         };
-        self.resources_gateways.insert(resource_id, gateway_id);
-        self.gateways_site.insert(gateway_id, site_id);
-        self.recently_connected_gateways.put(gateway_id, ());
+        self.resources_gateways.insert(rid, gid);
+        self.gateways_site.insert(gid, site_id);
+        self.recently_connected_gateways.put(gid, ());
 
-        if self.peers.get(&gateway_id).is_none() {
+        if self.peers.get(&gid).is_none() {
             self.peers
-                .insert(GatewayOnClient::new(gateway_id, gateway_tun), &[]);
+                .insert(GatewayOnClient::new(gid, gateway_tun), &[]);
         };
 
         // Allow looking up the Gateway via its TUN IP.
         // Resources are not allowed to be in our CG-NAT range, therefore in practise this cannot overlap with resources.
-        self.peers.add_ip(&gateway_id, &gateway_tun.v4.into());
-        self.peers.add_ip(&gateway_id, &gateway_tun.v6.into());
+        self.peers.add_ip(&gid, &gateway_tun.v4.into());
+        self.peers.add_ip(&gid, &gateway_tun.v6.into());
 
         // Deal with buffered packets
 
@@ -663,17 +660,14 @@ impl ClientState {
 
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
-                self.peers.add_ips_with_resource(
-                    &gateway_id,
-                    resource.addresses().into_iter(),
-                    &resource_id,
-                );
+                self.peers
+                    .add_ips_with_resource(&gid, resource.addresses().into_iter(), &rid);
 
                 // For CIDR and Internet resources, we can directly queue the buffered packets.
                 for packet in buffered_resource_packets {
                     encapsulate_and_buffer(
                         packet,
-                        gateway_id,
+                        gid,
                         now,
                         &mut self.node,
                         &mut self.buffered_transmits,
@@ -687,7 +681,7 @@ impl ClientState {
 
         // 2. Buffered UDP DNS queries for the Gateway
         for packet in pending_flow.udp_dns_queries {
-            let gateway = self.peers.get(&gateway_id).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
+            let gateway = self.peers.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
             let upstream = gateway.tun_dns_server_endpoint(packet.destination());
             let packet =
@@ -695,7 +689,7 @@ impl ClientState {
 
             encapsulate_and_buffer(
                 packet,
-                gateway_id,
+                gid,
                 now,
                 &mut self.node,
                 &mut self.buffered_transmits,
@@ -768,10 +762,10 @@ impl ClientState {
         self.cleanup_connected_gateway(&disconnected_gateway);
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%resource))]
+    #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
     fn on_not_connected_resource(
         &mut self,
-        resource: ResourceId,
+        rid: ResourceId,
         trigger: impl Into<ConnectionTrigger>,
         now: Instant,
     ) {
@@ -779,9 +773,9 @@ impl ClientState {
 
         let trigger = trigger.into();
 
-        debug_assert!(self.resources_by_id.contains_key(&resource));
+        debug_assert!(self.resources_by_id.contains_key(&rid));
 
-        match self.pending_flows.entry(resource) {
+        match self.pending_flows.entry(rid) {
             Entry::Vacant(v) => {
                 v.insert(PendingFlow::new(now, trigger));
             }
@@ -804,7 +798,7 @@ impl ClientState {
 
         self.buffered_events
             .push_back(ClientEvent::ConnectionIntent {
-                resource,
+                resource: rid,
                 connected_gateway_ids: self.connected_gateway_ids(),
             })
     }
@@ -915,7 +909,7 @@ impl ClientState {
             .map(|(_, r)| *r)
             .filter(|resource| self.is_resource_enabled(resource))
             .inspect(
-                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for DNS resource"),
+                |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for DNS resource"),
             );
 
         // We don't need to filter from here because resources are removed from the active_cidr_resources as soon as they are disabled.
@@ -924,7 +918,7 @@ impl ClientState {
             .longest_match(destination)
             .map(|(_, res)| res.id)
             .inspect(
-                |resource| tracing::trace!(target: "tunnel_test_coverage", %destination, %resource, "Packet for CIDR resource"),
+                |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for CIDR resource"),
             );
 
         maybe_dns_resource_id

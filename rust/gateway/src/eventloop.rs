@@ -416,17 +416,17 @@ impl Eventloop {
                         },
                     ));
                 for Authorization {
-                    client_id,
-                    resource_id,
+                    client_id: cid,
+                    resource_id: rid,
                     expires_at,
                 } in authorizations
                 {
-                    if let Err(e) = self.tunnel.state_mut().update_access_authorization_expiry(
-                        client_id,
-                        resource_id,
-                        expires_at,
-                    ) {
-                        tracing::debug!(%client_id, %resource_id, "Failed to update access authorization: {e:#}");
+                    if let Err(e) = self
+                        .tunnel
+                        .state_mut()
+                        .update_access_authorization_expiry(cid, rid, expires_at)
+                    {
+                        tracing::debug!(%cid, %rid, "Failed to update access authorization: {e:#}");
                     }
                 }
 
@@ -467,19 +467,19 @@ impl Eventloop {
                 msg:
                     IngressMessages::AccessAuthorizationExpiryUpdated(
                         AccessAuthorizationExpiryUpdated {
-                            client_id,
-                            resource_id,
+                            client_id: cid,
+                            resource_id: rid,
                             expires_at,
                         },
                     ),
                 ..
             } => {
-                if let Err(e) = self.tunnel.state_mut().update_access_authorization_expiry(
-                    client_id,
-                    resource_id,
-                    expires_at,
-                ) {
-                    tracing::warn!(%client_id, %resource_id, "Failed to update expiry of access authorization: {e:#}")
+                if let Err(e) = self
+                    .tunnel
+                    .state_mut()
+                    .update_access_authorization_expiry(cid, rid, expires_at)
+                {
+                    tracing::warn!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
                 };
             }
             phoenix_channel::Event::ErrorResponse { topic, req_id, res } => {
@@ -511,7 +511,7 @@ impl Eventloop {
         let addresses = match result {
             Ok(addresses) => addresses,
             Err(e) => {
-                tracing::debug!(client = %req.client.id, reference = %req.reference, "DNS resolution failed as part of connection request: {e:#}");
+                tracing::debug!(cid = %req.client.id, reference = %req.reference, "DNS resolution failed as part of connection request: {e:#}");
 
                 return; // Fail the connection so the client runs into a timeout.
             }
@@ -551,10 +551,10 @@ impl Eventloop {
                 .domain
                 .map(|r| DnsResourceNatEntry::new(r, addresses)),
         ) {
-            let client = req.client.id;
+            let cid = req.client.id;
 
-            self.tunnel.state_mut().cleanup_connection(&client);
-            tracing::debug!(%client, "Connection request failed: {e:#}");
+            self.tunnel.state_mut().cleanup_connection(&cid);
+            tracing::debug!(%cid, "Connection request failed: {e:#}");
             return;
         }
 
@@ -579,7 +579,7 @@ impl Eventloop {
         let addresses = match result {
             Ok(addresses) => addresses,
             Err(e) => {
-                tracing::debug!(client = %req.client_id, reference = %req.reference, "DNS resolution failed as part of allow access request: {e:#}");
+                tracing::debug!(cid = %req.client_id, reference = %req.reference, "DNS resolution failed as part of allow access request: {e:#}");
 
                 vec![]
             }
@@ -595,7 +595,7 @@ impl Eventloop {
             req.resource,
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
         ) {
-            tracing::warn!(client = %req.client_id, "Allow access request failed: {e:#}");
+            tracing::warn!(cid = %req.client_id, "Allow access request failed: {e:#}");
         };
     }
 
