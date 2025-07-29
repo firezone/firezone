@@ -106,6 +106,15 @@ impl Eventloop {
                         continue;
                     }
 
+                    // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
+                    if e.root_cause()
+                        .downcast_ref::<io::Error>()
+                        .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
+                    {
+                        tracing::debug!("{e:#}");
+                        continue;
+                    }
+
                     if e.root_cause()
                         .downcast_ref::<io::Error>()
                         .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -671,7 +680,4 @@ fn is_unreachable(e: &io::Error) -> bool {
     e.kind() == io::ErrorKind::NetworkUnreachable
         || e.kind() == io::ErrorKind::HostUnreachable
         || e.kind() == io::ErrorKind::AddrNotAvailable
-        // This is "Invalid argument" which can be a lot of things
-        // but pretty much all the ones we see in Sentry is from unreachable addresses.
-        || e.kind() == io::ErrorKind::InvalidInput
 }
