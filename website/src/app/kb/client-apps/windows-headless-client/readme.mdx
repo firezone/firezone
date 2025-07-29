@@ -1,5 +1,6 @@
 import Alert from "@/components/DocsAlert";
 import SupportOptions from "@/components/SupportOptions";
+import { TabsItem, TabsGroup } from "@/components/Tabs";
 
 # Windows Headless Client
 
@@ -21,6 +22,9 @@ your identity provider interactively.
 
 ## Installation
 
+<TabsGroup>
+<TabsItem title="msi" active>
+
 Download the Windows headless Client from our [changelog page](/changelog), or
 use the direct link below:
 
@@ -28,6 +32,18 @@ use the direct link below:
 
 The client can then be run from any elevated command prompt. No installation is
 necessary.
+
+</TabsItem>
+<TabsItem title="winget">
+
+From a terminal, run the following command to install the headless client.
+
+```pwsh
+winget install Firezone.Client.Headless
+```
+
+</TabsItem>
+</TabsGroup>
 
 ## Usage
 
