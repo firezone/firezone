@@ -87,6 +87,20 @@ defmodule Domain.Clients.Cache do
     end
   end
 
+  def authorized_resources(%{} = cache, %Clients.Client{} = client) do
+    resource_ids =
+      cache.policies
+      |> Map.values()
+      |> Policies.filter_by_conforming_policies_for_client(client)
+      |> Enum.map(& &1.resource_id)
+      |> Enum.uniq()
+
+    cache.resources
+    |> Map.take(resource_ids)
+    |> Map.values()
+    |> Resources.adapt_resources_for_version(client.last_seen_version)
+  end
+
   defp resource_to_cache(%Resources.Resource{} = resource) do
     %{
       id: Ecto.UUID.dump!(resource.id),

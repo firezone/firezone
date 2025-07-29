@@ -26,26 +26,13 @@ defmodule API.Client.Channel do
   # connlib state will be cleaned up so it can request a new connection.
   @recompute_authorized_resources_every :timer.minutes(1)
 
-  @gateway_compatibility [
-    # We introduced new websocket protocol and the clients of version 1.4+
-    # are only compatible with gateways of version 1.4+
-    {">= 1.4.0", ">= 1.4.0"},
-    # The clients of version of 1.1+ are compatible with gateways of version 1.1+,
-    # but the clients of versions prior to that can connect to any gateway
-    {">= 1.1.0", ">= 1.1.0"}
-  ]
-
   ####################################
   ##### Channel lifecycle events #####
   ####################################
 
   @impl true
   def join("client", _payload, socket) do
-    with {:ok, socket} <- schedule_expiration(socket),
-         {:ok, gateway_version_requirement} <-
-           select_gateway_version_requirement(socket.assigns.client) do
-      socket = assign(socket, gateway_version_requirement: gateway_version_requirement)
-
+    with {:ok, socket} <- schedule_expiration(socket) do
       send(self(), :after_join)
 
       {:ok, socket}
@@ -95,7 +82,7 @@ defmodule API.Client.Channel do
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
     # Initialize resources
-    resources = authorized_resources(socket)
+    resources = authorized_resources(socket.assigns.cache, socket.assigns.client)
 
     # Save list of authorized resources in the socket to check against in
     # the recompute_authorized_resources timer
@@ -123,34 +110,6 @@ defmodule API.Client.Channel do
     })
 
     {:noreply, socket}
-  end
-
-  # Needed to keep the client's resource list up to date for time-based policy conditions
-  def handle_info(:recompute_authorized_resources, socket) do
-    Process.send_after(
-      self(),
-      :recompute_authorized_resources,
-      @recompute_authorized_resources_every
-    )
-
-    old_authorized_resources =
-      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
-      |> Map.values()
-
-    new_authorized_resources = authorized_resources(socket)
-
-    for resource <- old_authorized_resources -- new_authorized_resources do
-      push(socket, "resource_deleted", resource.id)
-    end
-
-    for resource <- new_authorized_resources -- old_authorized_resources do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-    end
-
-    {:noreply,
-     assign(socket,
-       authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
-     )}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the client
@@ -556,6 +515,34 @@ defmodule API.Client.Channel do
   ##### Reacting to timed events #####
   ####################################
 
+  # Needed to keep the client's resource list up to date for time-based policy conditions
+  def handle_info(:recompute_authorized_resources, socket) do
+    Process.send_after(
+      self(),
+      :recompute_authorized_resources,
+      @recompute_authorized_resources_every
+    )
+
+    old_authorized_resources =
+      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
+      |> Map.values()
+
+    new_authorized_resources = authorized_resources(socket)
+
+    for resource <- old_authorized_resources -- new_authorized_resources do
+      push(socket, "resource_deleted", resource.id)
+    end
+
+    for resource <- new_authorized_resources -- old_authorized_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply,
+     assign(socket,
+       authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
+     )}
+  end
+
   # Message is scheduled by schedule_expiration/1 on topic join to be sent
   # when the client token/subject expires
   def handle_info(:token_expired, socket) do
@@ -752,19 +739,19 @@ defmodule API.Client.Channel do
         },
         socket
       ) do
-    location = {
-      socket.assigns.client.last_seen_remote_ip_location_lat,
-      socket.assigns.client.last_seen_remote_ip_location_lon
-    }
-
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
          {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
          {:ok, gateways} when gateways != [] <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
            ),
-         {:ok, gateways} <-
-           filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement) do
+         {:ok, gateways} when gateways != [] <-
+           Gateways.filter_compatible_gateways(gateways, socket.assigns.client.last_seen_version) do
+      location = {
+        socket.assigns.client.last_seen_remote_ip_location_lat,
+        socket.assigns.client.last_seen_remote_ip_location_lon
+      }
+
       gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
 
       # TODO: Optimization
@@ -864,16 +851,12 @@ defmodule API.Client.Channel do
     # Gateway selection and flow authorization shouldn't need to hit the DB
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
          {:ok, _policy, _expires_at} <- authorize_resource(socket, resource_id),
-         {:ok, [_ | _] = gateways} <-
+         {:ok, gateways} when gateways != [] <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
            ),
-         gateway_version_requirement =
-           maybe_update_gateway_version_requirement(
-             resource,
-             socket.assigns.gateway_version_requirement
-           ),
-         {:ok, gateways} <- filter_compatible_gateways(gateways, gateway_version_requirement) do
+         {:ok, gateways} when gateways != [] <-
+           Gateways.filter_compatible_gateways(gateways, socket.assigns.client.last_seen_version) do
       location = {
         socket.assigns.client.last_seen_remote_ip_location_lat,
         socket.assigns.client.last_seen_remote_ip_location_lon
@@ -1088,88 +1071,6 @@ defmodule API.Client.Channel do
     end
   end
 
-  defp select_gateway_version_requirement(client) do
-    case Version.parse(client.last_seen_version) do
-      {:ok, _version} ->
-        gateway_version_requirement =
-          Enum.find_value(
-            @gateway_compatibility,
-            fn {client_version_requirement, gateway_version_requirement} ->
-              if Version.match?(client.last_seen_version, client_version_requirement) do
-                gateway_version_requirement
-              end
-            end
-          )
-
-        {:ok, gateway_version_requirement || "> 0.0.0"}
-
-      :error ->
-        {:error, %{reason: :invalid_version}}
-    end
-  end
-
-  # DEPRECATED IN 1.4
-  defp maybe_update_gateway_version_requirement(resource, gateway_version_requirement) do
-    case map_or_drop_compatible_resource(resource, "1.0.0") do
-      {:cont, _resource} ->
-        gateway_version_requirement
-
-      :drop ->
-        if resource.type == :internet do
-          ">= 1.3.0"
-        else
-          ">= 1.2.0"
-        end
-    end
-  end
-
-  defp filter_compatible_gateways(gateways, gateway_version_requirement) do
-    gateways
-    |> Enum.filter(fn gateway ->
-      Version.match?(gateway.last_seen_version, gateway_version_requirement)
-    end)
-    |> case do
-      [] -> {:error, :not_found}
-      gateways -> {:ok, gateways}
-    end
-  end
-
-  # DEPRECATED IN 1.4
-  defp map_and_filter_compatible_resources(resources, client_version) do
-    Enum.flat_map(resources, fn resource ->
-      case map_or_drop_compatible_resource(resource, client_version) do
-        {:cont, resource} -> [resource]
-        :drop -> []
-      end
-    end)
-  end
-
-  # DEPRECATED IN 1.4
-  def map_or_drop_compatible_resource(resource, client_or_gateway_version) do
-    cond do
-      resource.gateway_groups == [] ->
-        :drop
-
-      resource.type == :internet and Version.match?(client_or_gateway_version, ">= 1.3.0") ->
-        {:cont, resource}
-
-      resource.type == :internet ->
-        :drop
-
-      Version.match?(client_or_gateway_version, ">= 1.2.0") ->
-        {:cont, resource}
-
-      true ->
-        resource.address
-        |> String.codepoints()
-        |> Resources.map_resource_address()
-        |> case do
-          {:cont, address} -> {:cont, %{resource | address: address}}
-          :drop -> :drop
-        end
-    end
-  end
-
   defp generate_preshared_key(client, gateway) do
     Domain.Crypto.psk(client, gateway)
   end
@@ -1226,19 +1127,6 @@ defmodule API.Client.Channel do
       attributes: %{
         account_id: socket.assigns.client.account_id
       } do
-      client = socket.assigns.client
-
-      resource_ids =
-        socket.assigns.policies
-        |> Map.values()
-        |> Policies.filter_by_conforming_policies_for_client(client)
-        |> Enum.map(& &1.resource_id)
-        |> Enum.uniq()
-
-      socket.assigns.resources
-      |> Map.take(resource_ids)
-      |> Map.values()
-      |> map_and_filter_compatible_resources(client.last_seen_version)
     end
   end
 

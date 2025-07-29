@@ -326,11 +326,14 @@ defmodule API.Gateway.Channel do
       client_payload: payload
     } = attrs
 
-    case API.Client.Channel.map_or_drop_compatible_resource(
-           resource,
+    case Resources.adapt_resources_for_version(
+           [resource],
            socket.assigns.gateway.last_seen_version
          ) do
-      {:cont, resource} ->
+      [] ->
+        {:noreply, socket}
+
+      [resource] ->
         ref =
           encode_ref(
             socket,
@@ -357,9 +360,6 @@ defmodule API.Gateway.Channel do
           )
 
         {:noreply, assign(socket, cache: cache)}
-
-      :drop ->
-        {:noreply, socket}
     end
   end
 

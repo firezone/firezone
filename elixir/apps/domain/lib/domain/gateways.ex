@@ -5,6 +5,8 @@ defmodule Domain.Gateways do
   alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
+  require Logger
+
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -412,5 +414,36 @@ defmodule Domain.Gateways do
       :lt -> true
       _ -> false
     end
+  end
+
+  @doc """
+    Filters gateways by the client version.
+
+    We support gateways running in the same and one greater minor version than the client.
+    So 1.1.x clients are compatible with 1.1.x and 1.2.x gateways, but not with 1.3.x or 1.0.x.
+  """
+  def filter_compatible_gateways(gateways, client_version) do
+    gateways =
+      case Version.parse(client_version) do
+        {:ok, version} ->
+          gateways
+          |> Enum.filter(fn gateway ->
+            case Version.parse(gateway.last_seen_version) do
+              {:ok, gateway_version} ->
+                Version.match?(gateway_version, ">= #{version.major}.#{version.minor}.0") and
+                  Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0")
+
+              _ ->
+                false
+            end
+          end)
+
+        :error ->
+          Logger.warning("Unable to parse client version: #{client_version}")
+
+          []
+      end
+
+    {:ok, gateways}
   end
 end
