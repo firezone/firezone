@@ -98,13 +98,20 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready(Err(e)) => {
-                    if e.root_cause().downcast_ref::<io::Error>().is_some_and(|e| {
-                        e.kind() == io::ErrorKind::NetworkUnreachable
-                            || e.kind() == io::ErrorKind::HostUnreachable
-                            || e.kind() == io::ErrorKind::AddrNotAvailable
-                    }) {
-                        // `NetworkUnreachable`, `HostUnreachable`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
+                    if e.root_cause()
+                        .downcast_ref::<io::Error>()
+                        .is_some_and(is_unreachable)
+                    {
                         tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
+                        continue;
+                    }
+
+                    // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
+                    if e.root_cause()
+                        .downcast_ref::<io::Error>()
+                        .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
+                    {
+                        tracing::debug!("{e:#}");
                         continue;
                     }
 
@@ -662,4 +669,15 @@ fn resolve_address_family(addr: &str, family: i32) -> Result<AddrInfoIter, Looku
             ..Default::default()
         }),
     )
+}
+
+fn is_unreachable(e: &io::Error) -> bool {
+    #[cfg(unix)]
+    if e.raw_os_error().is_some_and(|e| e == libc::EHOSTDOWN) {
+        return true;
+    }
+
+    e.kind() == io::ErrorKind::NetworkUnreachable
+        || e.kind() == io::ErrorKind::HostUnreachable
+        || e.kind() == io::ErrorKind::AddrNotAvailable
 }
