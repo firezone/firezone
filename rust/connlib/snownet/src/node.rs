@@ -1824,10 +1824,10 @@ impl PeerSocket {
                 format!("PeerToRelay {{ source: {source}, dest: {dest} }}")
             }
             PeerSocket::RelayToPeer { dest } => {
-                format!("PeerToRelay {{ relay: {relay}, dest: {dest} }}")
+                format!("RelayToPeer {{ relay: {relay}, dest: {dest} }}")
             }
             PeerSocket::RelayToRelay { dest } => {
-                format!("PeerToRelay {{ relay: {relay}, dest: {dest} }}")
+                format!("RelayToRelay {{ relay: {relay}, dest: {dest} }}")
             }
         }
     }
