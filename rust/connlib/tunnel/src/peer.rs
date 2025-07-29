@@ -175,16 +175,10 @@ impl ClientOnGateway {
         let cid = self.id;
         let mut any_expired = false;
 
-        self.resources.retain(|rid, r| {
-            let is_allowed = r.is_allowed(&now);
-
-            if !is_allowed {
-                any_expired = true;
-                tracing::info!(%cid, %rid, "Access to resource expired");
-            }
-
-            is_allowed
-        });
+        for (rid, _) in self.resources.extract_if(|_, r| !r.is_allowed(&now)) {
+            any_expired = true;
+            tracing::info!(%cid, %rid, "Access to resource expired");
+        }
 
         if any_expired {
             self.recalculate_filters();
