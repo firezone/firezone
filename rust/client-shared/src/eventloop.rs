@@ -201,15 +201,15 @@ impl Eventloop {
     fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) -> Option<Event> {
         match event {
             firezone_tunnel::ClientEvent::AddedIceCandidates {
-                conn_id: gateway,
+                conn_id: gid,
                 candidates,
             } => {
-                tracing::debug!(%gateway, ?candidates, "Sending new ICE candidates to gateway");
+                tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
-                        gateway_ids: vec![gateway],
+                        gateway_ids: vec![gid],
                         candidates,
                     }),
                 );
@@ -217,15 +217,15 @@ impl Eventloop {
                 None
             }
             firezone_tunnel::ClientEvent::RemovedIceCandidates {
-                conn_id: gateway,
+                conn_id: gid,
                 candidates,
             } => {
-                tracing::debug!(%gateway, ?candidates, "Sending invalidated ICE candidates to gateway");
+                tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
 
                 self.portal.send(
                     PHOENIX_TOPIC,
                     EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
-                        gateway_ids: vec![gateway],
+                        gateway_ids: vec![gid],
                         candidates,
                     }),
                 );

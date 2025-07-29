@@ -209,7 +209,7 @@ impl ClientOnGateway {
         resource: crate::messages::gateway::ResourceDescription,
         expires_at: Option<DateTime<Utc>>,
     ) {
-        tracing::info!(client = %self.id, resource = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
+        tracing::info!(cid = %self.id, rid = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
         match self.resources.entry(resource.id()) {
             hash_map::Entry::Vacant(v) => {
@@ -233,13 +233,9 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
-    pub(crate) fn update_resource_expiry(
-        &mut self,
-        resource: ResourceId,
-        new_expiry: DateTime<Utc>,
-    ) {
-        let Some(resource) = self.resources.get_mut(&resource) else {
-            tracing::debug!(%resource, "Unknown resource");
+    pub(crate) fn update_resource_expiry(&mut self, rid: ResourceId, new_expiry: DateTime<Utc>) {
+        let Some(resource) = self.resources.get_mut(&rid) else {
+            tracing::debug!(%rid, "Unknown resource");
 
             return;
         };
@@ -256,11 +252,11 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
-        for (resource, _) in self
+        for (rid, _) in self
             .resources
             .extract_if(|resource, _| !authorization.contains(resource))
         {
-            tracing::info!(%resource, "Revoking resource authorization");
+            tracing::info!(%rid, "Revoking resource authorization");
         }
 
         self.recalculate_filters();

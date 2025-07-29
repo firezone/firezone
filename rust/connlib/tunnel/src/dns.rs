@@ -283,7 +283,7 @@ impl StubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (RecordType::SRV | RecordType::TXT, Some(resource)) => {
-                tracing::debug!(%qtype, resource = %resource.id, "Forwarding query for DNS resource to corresponding site");
+                tracing::debug!(%qtype, rid = %resource.id, "Forwarding query for DNS resource to corresponding site");
 
                 return ResolveStrategy::RecurseSite(resource.id);
             }
@@ -323,11 +323,11 @@ impl StubResolver {
     }
 }
 
-pub fn is_subdomain(name: &dns_types::DomainName, resource: &str) -> bool {
-    let pattern = match Pattern::new(resource) {
+pub fn is_subdomain(name: &dns_types::DomainName, pattern: &str) -> bool {
+    let pattern = match Pattern::new(pattern) {
         Ok(p) => p,
         Err(e) => {
-            tracing::warn!(%resource, "Unable to parse pattern: {}", err_with_src(&e));
+            tracing::warn!(%pattern, "Unable to parse pattern: {}", err_with_src(&e));
             return false;
         }
     };
