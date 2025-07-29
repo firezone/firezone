@@ -525,12 +525,12 @@ impl RefClient {
             if let Some(overlapping_resource) = table.exact_match(resource.address)
                 && self.is_connected_to_internet_or_cidr(*overlapping_resource)
             {
-                tracing::debug!(%overlapping_resource, resource = %resource.id, address = %resource.address, "Already connected to resource with this exact address, retaining existing route");
+                tracing::debug!(%overlapping_resource, rid = %resource.id, address = %resource.address, "Already connected to resource with this exact address, retaining existing route");
 
                 continue;
             }
 
-            tracing::debug!(resource = %resource.id, address = %resource.address, "Adding CIDR route");
+            tracing::debug!(rid = %resource.id, address = %resource.address, "Adding CIDR route");
 
             table.insert(resource.address, resource.id);
         }
@@ -750,16 +750,16 @@ impl RefClient {
         }
     }
 
-    fn set_resource_online(&mut self, resource: ResourceId) {
-        let Some(site) = self.site_for_resource(resource) else {
-            tracing::error!(%resource, "Unknown resource or multi-site resource");
+    fn set_resource_online(&mut self, rid: ResourceId) {
+        let Some(site) = self.site_for_resource(rid) else {
+            tracing::error!(%rid, "Unknown resource or multi-site resource");
             return;
         };
 
         let previous = self.site_status.insert(site.id, ResourceStatus::Online);
 
         if previous.is_none_or(|s| s != ResourceStatus::Online) {
-            tracing::debug!(%resource, "Resource is now online");
+            tracing::debug!(%rid, "Resource is now online");
         }
     }
 
@@ -767,17 +767,17 @@ impl RefClient {
         self.is_connected_to_cidr(resource) || self.is_connected_to_internet(resource)
     }
 
-    fn connect_to_internet_or_cidr_resource(&mut self, resource: ResourceId) {
-        if self.internet_resource.is_some_and(|r| r == resource) {
+    fn connect_to_internet_or_cidr_resource(&mut self, rid: ResourceId) {
+        if self.internet_resource.is_some_and(|r| r == rid) {
             self.connected_internet_resource = true;
             return;
         }
 
-        if self.cidr_resources.iter().any(|(_, r)| *r == resource) {
-            let is_new = self.connected_cidr_resources.insert(resource);
+        if self.cidr_resources.iter().any(|(_, r)| *r == rid) {
+            let is_new = self.connected_cidr_resources.insert(rid);
 
             if is_new {
-                tracing::debug!(%resource, "Now connected to CIDR resource");
+                tracing::debug!(%rid, "Now connected to CIDR resource");
             }
         }
     }
