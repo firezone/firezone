@@ -1911,7 +1911,7 @@ where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
     {
-        let _guard = tracing::debug_span!("handle_timeout", %cid);
+        let _guard = tracing::info_span!("handle_timeout", %cid);
 
         self.agent.handle_timeout(now);
         self.state.handle_timeout(&mut self.agent, now);
