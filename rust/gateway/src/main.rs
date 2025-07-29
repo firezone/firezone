@@ -372,16 +372,9 @@ impl Tun for ValidateChecksumAdapter {
 
         if let Some(udp) = packet.as_udp() {
             let actual = udp.checksum();
-
-            let expected = match &packet {
-                IpPacket::Ipv4(ipv4) => udp
-                    .to_header()
-                    .calc_checksum_ipv4(&ipv4.header().to_header(), udp.payload()),
-                IpPacket::Ipv6(ipv6) => udp
-                    .to_header()
-                    .calc_checksum_ipv6(&ipv6.header().to_header(), udp.payload()),
-            }
-            .map_err(std::io::Error::other)?;
+            let expected = packet
+                .calculate_udp_checksum()
+                .map_err(std::io::Error::other)?;
 
             if expected != actual {
                 tracing::warn!(?packet, %expected, %actual, "UDP checksum invalid");
@@ -390,16 +383,9 @@ impl Tun for ValidateChecksumAdapter {
 
         if let Some(tcp) = packet.as_tcp() {
             let actual = tcp.checksum();
-
-            let expected = match &packet {
-                IpPacket::Ipv4(ipv4) => tcp
-                    .to_header()
-                    .calc_checksum_ipv4(&ipv4.header().to_header(), tcp.payload()),
-                IpPacket::Ipv6(ipv6) => tcp
-                    .to_header()
-                    .calc_checksum_ipv6(&ipv6.header().to_header(), tcp.payload()),
-            }
-            .map_err(std::io::Error::other)?;
+            let expected = packet
+                .calculate_tcp_checksum()
+                .map_err(std::io::Error::other)?;
 
             if expected != actual {
                 tracing::warn!(?packet, %expected, %actual, "TCP checksum invalid");

@@ -5,7 +5,7 @@ use opentelemetry_sdk::{
 };
 
 pub mod attr {
-    use ip_packet::IpPacket;
+    use ip_packet::{IpPacket, IpVersion};
     use opentelemetry::Value;
     use sha2::Digest as _;
     use std::{io, net::SocketAddr, str::FromStr as _};
@@ -44,9 +44,9 @@ pub mod attr {
     }
 
     pub fn network_type_for_packet(p: &IpPacket) -> KeyValue {
-        match p {
-            IpPacket::Ipv4(_) => network_type_ipv4(),
-            IpPacket::Ipv6(_) => network_type_ipv6(),
+        match p.version() {
+            IpVersion::V4 => network_type_ipv4(),
+            IpVersion::V6 => network_type_ipv6(),
         }
     }
 

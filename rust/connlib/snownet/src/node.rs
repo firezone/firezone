@@ -11,7 +11,7 @@ use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
-use ip_packet::{ConvertibleIpv4Packet, ConvertibleIpv6Packet, IpPacket, IpPacketBuf};
+use ip_packet::{IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
@@ -2282,22 +2282,27 @@ where
             // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
                 let packet_len = packet.len();
-                let ipv4_packet = ConvertibleIpv4Packet::new(ip_packet, packet_len)
-                    .expect("boringtun verifies validity");
-                debug_assert_eq!(ipv4_packet.get_source(), ip);
 
-                ControlFlow::Continue(ipv4_packet.into())
+                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
+                    Ok(p) => {
+                        debug_assert_eq!(p.source(), IpAddr::V4(ip));
+
+                        ControlFlow::Continue(p)
+                    }
+                    Err(e) => ControlFlow::Break(Err(e)),
+                }
             }
             TunnResult::WriteToTunnelV6(packet, ip) => {
-                // For ipv4 we need to use buffer to create the ip packet because we need the extra 20 bytes at the beginning
-                // for ipv6 we just need this to convince the borrow-checker that `packet`'s lifetime isn't `'b`, otherwise it's taken
-                // as `'b` for all branches.
                 let packet_len = packet.len();
-                let ipv6_packet = ConvertibleIpv6Packet::new(ip_packet, packet_len)
-                    .expect("boringtun verifies validity");
-                debug_assert_eq!(ipv6_packet.get_source(), ip);
 
-                ControlFlow::Continue(ipv6_packet.into())
+                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
+                    Ok(p) => {
+                        debug_assert_eq!(p.source(), IpAddr::V6(ip));
+
+                        ControlFlow::Continue(p)
+                    }
+                    Err(e) => ControlFlow::Break(Err(e)),
+                }
             }
 
             // During normal operation, i.e. when the tunnel is active, decapsulating a packet straight yields the decrypted packet.
