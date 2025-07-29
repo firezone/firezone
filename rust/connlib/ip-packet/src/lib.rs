@@ -469,7 +469,7 @@ impl IpPacket {
             .set_checksum(checksum);
     }
 
-    pub fn calculate_tcp_checksum(&self) -> Result<u16> {
+    pub fn calculate_tcp_checksum(&self) -> Result<u16, ChecksummingFailed> {
         let tcp = self
             .as_tcp()
             .ok_or(ChecksummingFailed::UnexpectedProtocol { protocol: "tcp" })?;
