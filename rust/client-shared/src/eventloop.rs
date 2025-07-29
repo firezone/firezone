@@ -147,7 +147,6 @@ impl Eventloop {
                         .downcast_ref::<io::Error>()
                         .is_some_and(is_unreachable)
                     {
-                        // `NetworkUnreachable`, `HostUnreachable`, `AddrNotAvailable` most likely means we don't have IPv4 or IPv6 connectivity.
                         tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
                         continue;
                     }
@@ -419,4 +418,7 @@ fn is_unreachable(e: &io::Error) -> bool {
     e.kind() == io::ErrorKind::NetworkUnreachable
         || e.kind() == io::ErrorKind::HostUnreachable
         || e.kind() == io::ErrorKind::AddrNotAvailable
+        // This is "Invalid argument" which can be a lot of things
+        // but pretty much all the ones we see in Sentry is from unreachable addresses.
+        || e.kind() == io::ErrorKind::InvalidInput
 }
