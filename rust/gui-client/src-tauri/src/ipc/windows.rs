@@ -88,7 +88,7 @@ impl Server {
             match create_pipe_server(&self.pipe_path) {
                 Ok(server) => return Ok(server),
                 Err(PipeError::AccessDenied) => {
-                    tracing::warn!("PipeError::AccessDenied, sleeping... (loop {i})");
+                    tracing::debug!("PipeError::AccessDenied, sleeping... (loop {i})");
                     tokio::time::sleep(Duration::from_secs(1)).await;
                 }
                 Err(error) => Err(error)?,
@@ -140,7 +140,6 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
         Ok(x) => Ok(x),
         Err(err) => {
             if err.kind() == std::io::ErrorKind::PermissionDenied {
-                tracing::warn!(?pipe_path, "Named pipe `PermissionDenied`");
                 Err(PipeError::AccessDenied)
             } else {
                 Err(anyhow::Error::from(err).into())
