@@ -3,6 +3,7 @@ defmodule API.GatewayGroupController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.{Gateways, Tokens}
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -20,7 +21,8 @@ defmodule API.GatewayGroupController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.ListResponse}
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List Gateway Groups / Sites
@@ -43,7 +45,9 @@ defmodule API.GatewayGroupController do
       ]
     ],
     responses: [
-      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Show a specific Gateway Group / Site
@@ -60,7 +64,8 @@ defmodule API.GatewayGroupController do
       {"Gateway Group Attributes", "application/json", API.Schemas.GatewayGroup.Request,
        required: true},
     responses: [
-      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+      created: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Create a new Gateway Group / Site
@@ -91,7 +96,9 @@ defmodule API.GatewayGroupController do
       {"Gateway Group Attributes", "application/json", API.Schemas.GatewayGroup.Request,
        required: true},
     responses: [
-      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Update a Gateway Group / Site
@@ -119,7 +126,9 @@ defmodule API.GatewayGroupController do
       ]
     ],
     responses: [
-      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response}
+      ok: {"Gateway Group Response", "application/json", API.Schemas.GatewayGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete a Gateway Group / Site
@@ -143,8 +152,10 @@ defmodule API.GatewayGroupController do
       ]
     ],
     responses: [
-      ok:
-        {"New Gateway Token Response", "application/json", API.Schemas.GatewayGroupToken.NewToken}
+      created:
+        {"New Gateway Token Response", "application/json", API.Schemas.GatewayGroupToken.NewToken},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Create a Gateway Group Token (used for deploying a gateway)
@@ -179,7 +190,9 @@ defmodule API.GatewayGroupController do
     responses: [
       ok:
         {"Deleted Gateway Token Response", "application/json",
-         API.Schemas.GatewayGroupToken.DeletedToken}
+         API.Schemas.GatewayGroupToken.DeletedToken},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete/Revoke a Gateway Group Token
@@ -205,7 +218,9 @@ defmodule API.GatewayGroupController do
     responses: [
       ok:
         {"Deleted Gateway Tokens Response", "application/json",
-         API.Schemas.GatewayGroupToken.DeletedTokens}
+         API.Schemas.GatewayGroupToken.DeletedTokens},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def delete_all_tokens(conn, %{"gateway_group_id" => gateway_group_id}) do

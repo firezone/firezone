@@ -1,5 +1,15 @@
 defmodule API.ApiSpec do
-  alias OpenApiSpex.{Components, Info, OpenApi, Paths, SecurityScheme, Server}
+  alias OpenApiSpex.{
+    Components,
+    Info,
+    OpenApi,
+    Paths,
+    SecurityScheme,
+    Server,
+    Response,
+    MediaType
+  }
+
   alias API.{Endpoint, Router}
   @behaviour OpenApi
 
@@ -17,7 +27,15 @@ defmodule API.ApiSpec do
       # Populate the paths from a phoenix router
       paths: Paths.from_router(Router),
       components: %Components{
-        securitySchemes: %{"authorization" => %SecurityScheme{type: "http", scheme: "bearer"}}
+        securitySchemes: %{"authorization" => %SecurityScheme{type: "http", scheme: "bearer"}},
+        responses: %{
+          JSONError: %Response{
+            description: "JSON Error",
+            content: %{
+              "application/json" => %MediaType{schema: API.Schemas.JSONError.schema()}
+            }
+          }
+        }
       },
       security: [%{"authorization" => []}]
     }

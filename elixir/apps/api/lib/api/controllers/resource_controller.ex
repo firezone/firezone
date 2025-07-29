@@ -3,6 +3,7 @@ defmodule API.ResourceController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Resources
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -15,7 +16,8 @@ defmodule API.ResourceController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.ListResponse}
+      ok: {"Resource Response", "application/json", API.Schemas.Resource.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def index(conn, params) do
@@ -38,7 +40,9 @@ defmodule API.ResourceController do
       ]
     ],
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -54,7 +58,8 @@ defmodule API.ResourceController do
     request_body:
       {"Resource Attributes", "application/json", API.Schemas.Resource.Request, required: true},
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      created: {"Resource Response", "application/json", API.Schemas.Resource.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def create(conn, %{"resource" => params}) do
@@ -85,7 +90,9 @@ defmodule API.ResourceController do
     request_body:
       {"Resource Attributes", "application/json", API.Schemas.Resource.Request, required: true},
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def update(conn, %{"id" => id, "resource" => params}) do
@@ -118,7 +125,9 @@ defmodule API.ResourceController do
       ]
     ],
     responses: [
-      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response}
+      ok: {"Resource Response", "application/json", API.Schemas.Resource.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def delete(conn, %{"id" => id}) do
