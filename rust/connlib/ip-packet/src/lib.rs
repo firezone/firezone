@@ -1066,4 +1066,24 @@ mod tests {
         let _: Option<_> = p.as_icmpv6_mut();
         let _: Option<_> = p.as_fz_p2p_control();
     }
+
+    #[test]
+    fn src_is_updated() {
+        let mut p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        p.set_src(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
+
+        assert_eq!(p.source(), IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
+    }
+
+    #[test]
+    fn dst_is_updated() {
+        let mut p = crate::make::udp_packet(Ipv4Addr::LOCALHOST, Ipv4Addr::LOCALHOST, 0, 0, vec![])
+            .unwrap();
+
+        p.set_dst(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))).unwrap();
+
+        assert_eq!(p.destination(), IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)));
+    }
 }
