@@ -11,6 +11,7 @@ mod icmp_error;
 pub mod proptest;
 
 use bufferpool::{Buffer, BufferPool};
+use etherparse::err::ValueTooBigError;
 pub use etherparse::*;
 pub use fz_p2p_control::EventType as FzP2pEventType;
 pub use fz_p2p_control_slice::FzP2pControlSlice;
@@ -439,8 +440,10 @@ impl IpPacket {
         self.as_ipv4_header_mut_unchecked().set_checksum(checksum);
     }
 
-    pub fn calculate_udp_checksum(&self) -> Result<u16> {
-        let udp = self.as_udp().context("Not a UDP packet")?;
+    pub fn calculate_udp_checksum(&self) -> Result<u16, ChecksummingFailed> {
+        let udp = self
+            .as_udp()
+            .ok_or(ChecksummingFailed::UnexpectedProtocol { protocol: "udp" })?;
 
         let checksum = match self.version {
             IpVersion::V4 => udp.to_header().calc_checksum_ipv4(
@@ -451,8 +454,7 @@ impl IpPacket {
                 &self.as_ipv6_unchecked().header().to_header(),
                 udp.payload(),
             ),
-        }
-        .context("Failed to calculate checksum")?;
+        }?;
 
         Ok(checksum)
     }
@@ -468,7 +470,9 @@ impl IpPacket {
     }
 
     pub fn calculate_tcp_checksum(&self) -> Result<u16> {
-        let tcp = self.as_tcp().context("Not a TCP packet")?;
+        let tcp = self
+            .as_tcp()
+            .ok_or(ChecksummingFailed::UnexpectedProtocol { protocol: "tcp" })?;
 
         let checksum = match self.version {
             IpVersion::V4 => tcp.to_header().calc_checksum_ipv4(
@@ -479,8 +483,7 @@ impl IpPacket {
                 &self.as_ipv6_unchecked().header().to_header(),
                 tcp.payload(),
             ),
-        }
-        .context("Failed to calculate checksum")?;
+        }?;
 
         Ok(checksum)
     }
@@ -935,6 +938,14 @@ fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol
         }
     };
     Ok(proto)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ChecksummingFailed {
+    #[error("Not a {protocol} packet")]
+    UnexpectedProtocol { protocol: &'static str },
+    #[error(transparent)]
+    ValueTooBig(#[from] ValueTooBigError<usize>),
 }
 
 /// Models the possible ECN states.
