@@ -24,7 +24,13 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10056">
+          Fixes an issue where Firezone's system resolvers may not be when the
+          system's DNS resolvers change unless there was also a network
+          connectivity change.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.5" date={new Date("2025-07-28")}>
         <ChangeItem pull="10022">
           Fixes a bug on iOS where network connectivity changes (such as from
