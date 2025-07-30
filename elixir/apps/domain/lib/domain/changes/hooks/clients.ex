@@ -18,7 +18,7 @@ defmodule Domain.Changes.Hooks.Clients do
   def on_update(lsn, old_data, data) do
     old_client = struct_from_params(Clients.Client, old_data)
     client = struct_from_params(Clients.Client, data)
-    change = %{lsn: lsn, op: :update, old_struct: old_client, struct: client}
+    change = %Change{lsn: lsn, op: :update, old_struct: old_client, struct: client}
 
     # Unverifying a client
     # This is a special case - we need to delete associated flows when unverifying a client since

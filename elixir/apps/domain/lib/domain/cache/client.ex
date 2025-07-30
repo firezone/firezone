@@ -444,6 +444,7 @@ defmodule Domain.Cache.Client do
       cache =
         if Map.has_key?(cache.resources, policy.resource_id) and
              Enum.all?(cache.policies, fn {_id, p} -> p.resource_id != policy.resource_id end) do
+
           %{
             cache
             | resources: Map.delete(cache.resources, policy.resource_id),
@@ -540,6 +541,8 @@ defmodule Domain.Cache.Client do
     rid_bytes = Ecto.UUID.dump!(connection.resource_id)
 
     if Map.has_key?(cache.resources, rid_bytes) do
+      old_authorized_ids = cache.authorized_resource_ids
+
       # Update the cache
       resources =
         cache.resources
@@ -553,13 +556,13 @@ defmodule Domain.Cache.Client do
         end)
 
       cache = %{cache | resources: resources}
-      {cache, authorized_resources} = authorized_resources(cache, client)
+      {cache, _resources} = authorized_resources(cache, client)
+
+      removed_ids = MapSet.difference(old_authorized_ids, cache.authorized_resource_ids)
 
       # Maybe call callback with the updated resource
-      for resource <- authorized_resources do
-        if resource.id == rid_bytes do
-          callback.(resource)
-        end
+      for removed_id <- removed_ids do
+        callback.(Ecto.UUID.load!(removed_id))
       end
 
       cache

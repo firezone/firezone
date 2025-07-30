@@ -970,10 +970,6 @@ defmodule API.Client.Channel do
     {:noreply, assign(socket, cache: cache)}
   end
 
-  # Resource connection is a required field on resources, so a delete will always be followed immediately by a create.
-  # This means connlib *should* never see a resource with no sites during normal operation, but we
-  # handle it gracefully just in case.
-
   defp handle_change(
          %Change{
            op: :delete,
@@ -986,12 +982,8 @@ defmodule API.Client.Channel do
         socket.assigns.cache,
         connection,
         socket.assigns.client,
-        fn resource ->
-          push(socket, "resource_deleted", Ecto.UUID.load!(resource.id))
-
-          if length(resource.gateway_groups) > 0 do
-            push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-          end
+        fn resource_id ->
+          push(socket, "resource_deleted", resource_id)
         end
       )
 
