@@ -1,6 +1,6 @@
-defmodule Domain.Events.Hooks.ResourceConnectionsTest do
+defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.ResourceConnections
+  import Domain.Changes.Hooks.ResourceConnections
 
   describe "insert/1" do
     test "broadcasts created resource connection" do

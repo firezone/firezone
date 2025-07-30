@@ -1,7 +1,7 @@
 defmodule Domain.Gateways.Cache do
   @moduledoc """
     This cache is used in the gateway channel processes to maintain a materialized view of the gateway flow state.
-    The cache is updated via WAL messages streamed from the Domain.Events.ReplicationConnection module.
+    The cache is updated via WAL messages streamed from the Domain.Changes.ReplicationConnection module.
 
     We use basic data structures and binary representations instead of full Ecto schema structs
     to minimize memory usage. The rough structure of the two cached data structures and some napkin math
@@ -24,10 +24,17 @@ defmodule Domain.Gateways.Cache do
 
   require OpenTelemetry.Tracer
 
+  # Type definitions
+  @type uuid_binary :: <<_::128>>
+  @type client_resource_key :: {client_id :: uuid_binary, resource_id :: uuid_binary}
+  @type flow_map :: %{(flow_id :: uuid_binary) => expires_at_unix :: non_neg_integer}
+  @type t :: %{client_resource_key() => flow_map()}
+
   @doc """
     Fetches relevant flows from the DB and transforms them into the cache format.
   """
-  def hydrate(%Gateways.Gateway{} = gateway) do
+  @spec hydrate(%Gateways.Gateway{}) :: t()
+  def hydrate(gateway) do
     OpenTelemetry.Tracer.with_span "Domain.Cache.hydrate_flows",
       attributes: %{
         gateway_id: gateway.id,
@@ -47,7 +54,11 @@ defmodule Domain.Gateways.Cache do
     end
   end
 
-  def prune(cache) when is_map(cache) do
+  @doc """
+    Removes expired flows from the cache.
+  """
+  @spec prune(t()) :: t()
+  def prune(cache) do
     now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
     # 1. Remove individual flows older than 14 days, then remove access entry if no flows left
@@ -69,7 +80,8 @@ defmodule Domain.Gateways.Cache do
   @doc """
     Fetches the max expiration for a client-resource from the cache, or nil if not found.
   """
-  def get(%{} = cache, client_id, resource_id) do
+  @spec get(t(), Ecto.UUID.t(), Ecto.UUID.t()) :: non_neg_integer() | nil
+  def get(cache, client_id, resource_id) do
     tuple = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
 
     case Map.get(cache, tuple) do
@@ -87,6 +99,7 @@ defmodule Domain.Gateways.Cache do
   @doc """
     Add a flow to the cache. Returns the updated cache.
   """
+  @spec put(t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: t()
   def put(%{} = cache, client_id, resource_id, flow_id, %DateTime{} = expires_at) do
     tuple = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
 
@@ -100,6 +113,7 @@ defmodule Domain.Gateways.Cache do
   @doc """
     Delete a flow from the cache.
   """
+  @spec delete(t(), %Flows.Flow{}) :: t()
   def delete(%{} = cache, %Flows.Flow{client_id: client_id, resource_id: resource_id} = flow) do
     tuple = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
 
@@ -120,6 +134,7 @@ defmodule Domain.Gateways.Cache do
     Check if the cache has a resource entry for the given resource_id.
     Returns true if the resource is present, false otherwise.
   """
+  @spec has_resource?(t(), Ecto.UUID.t()) :: boolean()
   def has_resource?(%{} = cache, resource_id) do
     rid_bytes = Ecto.UUID.dump!(resource_id)
 
@@ -133,6 +148,7 @@ defmodule Domain.Gateways.Cache do
   @doc """
     Rehydrate the cache with a new flow if access is still allowed.
   """
+  @spec rehydrate(t(), %Flows.Flow{}) :: t()
   def rehydrate(
         %{} = cache,
         %Flows.Flow{client_id: client_id, resource_id: resource_id} = flow

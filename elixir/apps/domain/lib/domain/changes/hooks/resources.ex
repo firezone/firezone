@@ -1,25 +1,29 @@
-defmodule Domain.Events.Hooks.Resources do
-  @behaviour Domain.Events.Hooks
-  alias Domain.{SchemaHelpers, PubSub, Resources}
+defmodule Domain.Changes.Hooks.Resources do
+  @behaviour Domain.Changes.Hooks
+  alias Domain.{Changes.Change, PubSub, Resources}
+  import Domain.SchemaHelpers
 
   @impl true
-  def on_insert(data) do
-    resource = SchemaHelpers.struct_from_params(Resources.Resource, data)
-    PubSub.Account.broadcast(resource.account_id, {:created, resource})
+  def on_insert(lsn, data) do
+    resource = struct_from_params(Resources.Resource, data)
+    change = %Change{lsn: lsn, op: :insert, struct: resource}
+
+    PubSub.Account.broadcast(resource.account_id, change)
   end
 
   @impl true
 
   # Soft-delete - process as delete
-  def on_update(%{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
+  def on_update(lsn, %{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
       when not is_nil(deleted_at) do
-    on_delete(old_data)
+    on_delete(lsn, old_data)
   end
 
   # Regular update
-  def on_update(old_data, data) do
-    old_resource = SchemaHelpers.struct_from_params(Resources.Resource, old_data)
-    resource = SchemaHelpers.struct_from_params(Resources.Resource, data)
+  def on_update(lsn, old_data, data) do
+    old_resource = struct_from_params(Resources.Resource, old_data)
+    resource = struct_from_params(Resources.Resource, data)
+    change = %Change{lsn: lsn, op: :update, old_struct: old_resource, struct: resource}
 
     # Breaking updates
 
@@ -36,17 +40,18 @@ defmodule Domain.Events.Hooks.Resources do
       Domain.Flows.delete_flows_for(resource)
     end
 
-    PubSub.Account.broadcast(resource.account_id, {:updated, old_resource, resource})
+    PubSub.Account.broadcast(resource.account_id, change)
   end
 
   @impl true
-  def on_delete(old_data) do
-    resource = SchemaHelpers.struct_from_params(Resources.Resource, old_data)
+  def on_delete(lsn, old_data) do
+    resource = struct_from_params(Resources.Resource, old_data)
+    change = %Change{lsn: lsn, op: :delete, old_struct: resource}
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
     Domain.Flows.delete_flows_for(resource)
 
-    PubSub.Account.broadcast(resource.account_id, {:deleted, resource})
+    PubSub.Account.broadcast(resource.account_id, change)
   end
 end

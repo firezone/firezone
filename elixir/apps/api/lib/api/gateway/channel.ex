@@ -1,7 +1,19 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Accounts, Flows, Gateways, Gateways.Cache, PubSub, Relays, Resources, Tokens}
+
+  alias Domain.{
+    Accounts,
+    Changes.Change,
+    Flows,
+    Gateways,
+    Gateways.Cache,
+    PubSub,
+    Relays,
+    Resources,
+    Tokens
+  }
+
   alias Domain.Relays.Presence.Debouncer
   require Logger
 
@@ -63,79 +75,21 @@ defmodule API.Gateway.Channel do
   ##### Reacting to domain events ####
   ####################################
 
-  # ACCOUNTS
+  def handle_info(%Change{lsn: lsn} = change, socket) do
+    last_lsn = socket.assigns.last_lsn || 0
 
-  # Resend init when config changes so that new slug may be applied
-  def handle_info(
-        {:updated, %Accounts.Account{slug: old_slug}, %Accounts.Account{slug: slug} = account},
-        socket
+    if lsn <= last_lsn do
+      Logger.warning("Out of order change received; ignoring",
+        change: change,
+        last_lsn: last_lsn
       )
-      when old_slug != slug do
-    {:ok, relays} = select_relays(socket)
-    init(socket, account, relays)
 
-    {:noreply, socket}
-  end
-
-  # FLOWS
-
-  def handle_info(
-        {:deleted,
-         %Flows.Flow{gateway_id: gateway_id, client_id: client_id, resource_id: resource_id} =
-           flow},
-        %{
-          assigns: %{gateway: %{id: id}}
-        } = socket
-      )
-      when gateway_id == id do
-    # Delete old authorization and potentially reauthorize access
-    cache =
-      socket.assigns.cache
-      |> Cache.delete(flow)
-      |> Cache.rehydrate(flow)
-
-    if expires_at_unix = Cache.get(cache, client_id, resource_id) do
-      # If the flow was rehydrated, we can push the new expiration time
-      push(
-        socket,
-        "access_authorization_expiry_updated",
-        Views.Flow.render(flow, expires_at_unix)
-      )
+      {:noreply, socket}
     else
-      # Otherwise, access is no longer authorized
-      push(
-        socket,
-        "reject_access",
-        %{client_id: client_id, resource_id: resource_id}
-      )
+      socket = assign(socket, last_lsn: lsn)
+
+      handle_change(change, socket)
     end
-
-    {:noreply, assign(socket, cache: cache)}
-  end
-
-  # RESOURCES
-
-  # The gateway only handles filter changes. Other breaking changes are handled by deleting
-  # relevant flows for the resource.
-  def handle_info(
-        {:updated, %Resources.Resource{filters: old_filters},
-         %Resources.Resource{filters: filters, id: id} = resource},
-        socket
-      )
-      when old_filters != filters do
-    if Cache.has_resource?(socket.assigns.cache, id) do
-      push(socket, "resource_updated", Views.Resource.render(resource))
-    end
-
-    {:noreply, socket}
-  end
-
-  # TOKENS
-
-  # Our gateway token was deleted - disconnect WebSocket
-  def handle_info({:deleted, %Tokens.Token{type: :gateway_group, id: id}}, socket)
-      when id == socket.assigns.token_id do
-    disconnect(socket)
   end
 
   ####################################
@@ -378,11 +332,14 @@ defmodule API.Gateway.Channel do
       client_preshared_key: preshared_key
     } = attrs
 
-    case API.Client.Channel.map_or_drop_compatible_resource(
-           resource,
+    case Resources.adapt_resources_for_version(
+           [resource],
            socket.assigns.gateway.last_seen_version
          ) do
-      {:cont, resource} ->
+      [] ->
+        {:noreply, socket}
+
+      [resource] ->
         ref =
           encode_ref(
             socket,
@@ -406,9 +363,6 @@ defmodule API.Gateway.Channel do
           )
 
         {:noreply, assign(socket, cache: cache)}
-
-      :drop ->
-        {:noreply, socket}
     end
   end
 
@@ -592,5 +546,97 @@ defmodule API.Gateway.Channel do
     push(socket, "disconnect", %{"reason" => "token_expired"})
     send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
     {:stop, :shutdown, socket}
+  end
+
+  ##########################################
+  #### Handling changes from the domain ####
+  ##########################################
+
+  # ACCOUNTS
+
+  # Resend init when config changes so that new slug may be applied
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Accounts.Account{slug: old_slug},
+           struct: %Accounts.Account{slug: slug} = account
+         },
+         socket
+       )
+       when old_slug != slug do
+    {:ok, relays} = select_relays(socket)
+    init(socket, account, relays)
+
+    {:noreply, socket}
+  end
+
+  # FLOWS
+
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct:
+             %Flows.Flow{gateway_id: gateway_id, client_id: client_id, resource_id: resource_id} =
+               flow
+         },
+         %{
+           assigns: %{gateway: %{id: id}}
+         } = socket
+       )
+       when gateway_id == id do
+    # Delete old authorization and potentially reauthorize access
+    cache =
+      socket.assigns.cache
+      |> Cache.delete(flow)
+      |> Cache.rehydrate(flow)
+
+    if expires_at_unix = Cache.get(cache, client_id, resource_id) do
+      # If the flow was rehydrated, we can push the new expiration time
+      push(
+        socket,
+        "access_authorization_expiry_updated",
+        Views.Flow.render(flow, expires_at_unix)
+      )
+    else
+      # Otherwise, access is no longer authorized
+      push(
+        socket,
+        "reject_access",
+        %{client_id: client_id, resource_id: resource_id}
+      )
+    end
+
+    {:noreply, assign(socket, cache: cache)}
+  end
+
+  # RESOURCES
+
+  # The gateway only handles filter changes. Other breaking changes are handled by deleting
+  # relevant flows for the resource.
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Resources.Resource{filters: old_filters},
+           struct: %Resources.Resource{filters: filters, id: id} = resource
+         },
+         socket
+       )
+       when old_filters != filters do
+    if Cache.has_resource?(socket.assigns.cache, id) do
+      push(socket, "resource_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply, socket}
+  end
+
+  # TOKENS
+
+  # Our gateway token was deleted - disconnect WebSocket
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Tokens.Token{id: id}},
+         socket
+       )
+       when id == socket.assigns.token_id do
+    disconnect(socket)
   end
 end

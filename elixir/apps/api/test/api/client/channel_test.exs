@@ -682,7 +682,7 @@ defmodule API.Client.ChannelTest do
     #   }
     #
     #   data = Map.put(old_data, "name", "new name")
-    #   Events.Hooks.Resources.on_update(old_data, data)
+    #   Changes.Hooks.Resources.on_update(old_data, data)
     #
     #   assert_push "resource_created_or_updated", %{}
     # end
@@ -705,7 +705,7 @@ defmodule API.Client.ChannelTest do
     #   }
     #
     #   data = Map.put(old_data, "disabled_at", "2024-01-01T00:00:00Z")
-    #   Events.Hooks.Policies.on_update(old_data, data)
+    #   Changes.Hooks.Policies.on_update(old_data, data)
     #
     #   assert_push "resource_deleted", _payload
     #   refute_push "resource_created_or_updated", _payload
@@ -943,7 +943,7 @@ defmodule API.Client.ChannelTest do
     #     }
     #
     #     data = Map.put(old_data, "disabled_at", "2024-01-01T00:00:00Z")
-    #     Events.Hooks.Policies.on_update(old_data, data)
+    #     Changes.Hooks.Policies.on_update(old_data, data)
     #
     #     assert_push "resource_deleted", resource_id
     #     assert resource_id == resource.id

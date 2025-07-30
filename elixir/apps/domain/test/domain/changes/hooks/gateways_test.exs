@@ -1,6 +1,6 @@
-defmodule Domain.Events.Hooks.GatewaysTest do
+defmodule Domain.Changes.Hooks.GatewaysTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.Gateways
+  import Domain.Changes.Hooks.Gateways
 
   describe "insert/1" do
     test "returns :ok" do

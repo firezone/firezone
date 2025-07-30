@@ -1,6 +1,6 @@
-defmodule Domain.Events.ReplicationConnection do
+defmodule Domain.Changes.ReplicationConnection do
   use Domain.Replication.Connection
-  alias Domain.Events.Hooks
+  alias Domain.Changes.Hooks
 
   @tables_to_hooks %{
     "accounts" => Hooks.Accounts,
@@ -15,12 +15,12 @@ defmodule Domain.Events.ReplicationConnection do
     "tokens" => Hooks.Tokens
   }
 
-  def on_write(state, _lsn, op, table, old_data, data) do
+  def on_write(state, lsn, op, table, old_data, data) do
     if hook = Map.get(@tables_to_hooks, table) do
       case op do
-        :insert -> :ok = hook.on_insert(data)
-        :update -> :ok = hook.on_update(old_data, data)
-        :delete -> :ok = hook.on_delete(old_data)
+        :insert -> :ok = hook.on_insert(lsn, data)
+        :update -> :ok = hook.on_update(lsn, old_data, data)
+        :delete -> :ok = hook.on_delete(lsn, old_data)
       end
     else
       log_warning(op, table)
@@ -31,7 +31,7 @@ defmodule Domain.Events.ReplicationConnection do
 
   defp log_warning(op, table) do
     Logger.warning(
-      "No hook defined for #{op} on table #{table}. Please implement Domain.Events.Hooks for this table."
+      "No hook defined for #{op} on table #{table}. Please implement Domain.Changes.Hooks for this table."
     )
   end
 end

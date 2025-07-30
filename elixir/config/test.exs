@@ -53,9 +53,9 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     database: "firezone_test#{partition_suffix}"
   ]
 
-config :domain, Domain.Events.ReplicationConnection,
-  replication_slot_name: "test_events_slot",
-  publication_name: "test_events_publication",
+config :domain, Domain.Changes.ReplicationConnection,
+  replication_slot_name: "test_changes_slot",
+  publication_name: "test_changes_publication",
   enabled: false,
   connection_opts: [
     database: "firezone_test#{partition_suffix}"

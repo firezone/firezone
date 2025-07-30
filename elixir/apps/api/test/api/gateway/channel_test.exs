@@ -1,6 +1,6 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Accounts, Events, Gateways, PubSub}
+  alias Domain.{Accounts, Changes, Gateways, PubSub}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -106,7 +106,7 @@ defmodule API.Gateway.ChannelTest do
         "slug" => "new-slug"
       }
 
-      Events.Hooks.Accounts.on_update(old_data, data)
+      Changes.Hooks.Accounts.on_update(old_data, data)
 
       assert_receive {:updated, %Accounts.Account{}, %Accounts.Account{}}
 
@@ -133,7 +133,7 @@ defmodule API.Gateway.ChannelTest do
         "type" => "gateway_group"
       }
 
-      Events.Hooks.Tokens.on_delete(data)
+      Changes.Hooks.Tokens.on_delete(data)
 
       assert_receive {:deleted, deleted_token}
       assert_push "disconnect", payload
@@ -325,7 +325,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       refute_push "reject_access", %{}
     end
@@ -378,7 +378,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -508,7 +508,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => other_flow1.gateway_id
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -526,7 +526,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => other_flow2.gateway_id
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -583,7 +583,7 @@ defmodule API.Gateway.ChannelTest do
 
       data = Map.put(old_data, "name", "New Resource Name")
 
-      Events.Hooks.Resources.on_update(old_data, data)
+      Changes.Hooks.Resources.on_update(old_data, data)
 
       cid_bytes = Ecto.UUID.dump!(client.id)
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -654,7 +654,7 @@ defmodule API.Gateway.ChannelTest do
 
       data = Map.put(old_data, "filters", filters)
 
-      Events.Hooks.Resources.on_update(old_data, data)
+      Changes.Hooks.Resources.on_update(old_data, data)
 
       assert_push "resource_updated", payload
 
@@ -954,7 +954,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => gateway.id
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -1084,7 +1084,7 @@ defmodule API.Gateway.ChannelTest do
         "gateway_id" => gateway.id
       }
 
-      Events.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(data)
 
       assert_push "reject_access", %{
         client_id: client_id,

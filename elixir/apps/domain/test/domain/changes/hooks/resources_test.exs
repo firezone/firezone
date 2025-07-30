@@ -1,6 +1,6 @@
-defmodule Domain.Events.Hooks.ResourcesTest do
+defmodule Domain.Changes.Hooks.ResourcesTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.Resources
+  import Domain.Changes.Hooks.Resources
   alias Domain.PubSub
 
   describe "insert/1" do
