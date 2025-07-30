@@ -58,10 +58,9 @@ defmodule Domain.Policies do
     end
   end
 
-  def all_policies_for_actor!(%Actors.Actor{} = actor) do
+  def all_policies_for_actor_id!(actor_id) do
     Policy.Query.not_disabled()
-    |> Policy.Query.by_account_id(actor.account_id)
-    |> Policy.Query.by_actor_id(actor.id)
+    |> Policy.Query.by_actor_id(actor_id)
     |> Policy.Query.with_preloaded_resource_gateway_groups()
     |> Repo.all()
   end
@@ -196,7 +195,10 @@ defmodule Domain.Policies do
     end)
   end
 
-  def ensure_client_conforms_policy_conditions(%Clients.Client{} = client, %Policy{} = policy) do
+  def ensure_client_conforms_policy_conditions(
+        %Clients.Client{} = client,
+        %Clients.Cache.Policy{} = policy
+      ) do
     case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
       {:ok, expires_at} ->
         {:ok, expires_at}

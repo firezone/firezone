@@ -2,7 +2,7 @@ defmodule Domain.Gateways do
   use Supervisor
   alias Domain.Accounts.Account
   alias Domain.{Repo, Auth, Geo}
-  alias Domain.{Accounts, Resources, Tokens, Billing}
+  alias Domain.{Accounts, Clients, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
   require Logger
@@ -261,7 +261,7 @@ defmodule Domain.Gateways do
   end
 
   def all_connected_gateways_for_resource(
-        %Resources.Resource{} = resource,
+        %Clients.Cache.Resource{} = resource,
         %Auth.Subject{} = subject,
         opts \\ []
       ) do

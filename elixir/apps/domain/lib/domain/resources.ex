@@ -80,12 +80,6 @@ defmodule Domain.Resources do
     end
   end
 
-  def fetch_resource_for_cache(id) do
-    Resource.Query.not_deleted()
-    |> Resource.Query.by_id(id)
-    |> Repo.fetch(Resource.Query, preload: :gateway_groups)
-  end
-
   def fetch_resource_by_id!(id) do
     if Repo.valid_uuid?(id) do
       Resource.Query.not_deleted()
