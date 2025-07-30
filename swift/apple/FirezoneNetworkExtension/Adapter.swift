@@ -136,9 +136,9 @@ class Adapter {
         // used anymore.
         session?.reset("primary network path changed")
         setSystemDefaultResolvers(path)
-      }
 
-      lastPath = path
+        lastPath = path
+      }
     }
   }
 
