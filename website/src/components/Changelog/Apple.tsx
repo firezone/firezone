@@ -26,9 +26,8 @@ export default function Apple() {
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
         <ChangeItem pull="10056">
-          Fixes an issue where Firezone's system resolvers may not be when the
-          system's DNS resolvers change unless there was also a network
-          connectivity change.
+          Fixes an issue where connectivity could be lost for up to 20 seconds
+          after waking from sleep.
         </ChangeItem>
       </Unreleased>
       <Entry version="1.5.5" date={new Date("2025-07-28")}>
