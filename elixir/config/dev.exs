@@ -15,6 +15,9 @@ config :domain, outbound_email_adapter_configured?: true
 
 config :domain, run_manual_migrations: true
 
+config :domain, Domain.ComponentVersions,
+  firezone_releases_url: "http://localhost:3000/api/releases"
+
 config :domain, Domain.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
