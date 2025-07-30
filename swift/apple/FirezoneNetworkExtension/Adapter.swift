@@ -135,8 +135,11 @@ class Adapter {
         // If our primary interface changes, we can be certain the old socket shouldn't be
         // used anymore.
         session?.reset("primary network path changed")
-        setSystemDefaultResolvers(path)
       }
+
+      // connectivityDifferentFrom does not report DNS server changes, so always set those here because connlib
+      // will no-op duplicate calls.
+      setSystemDefaultResolvers(path)
 
       lastPath = path
     }
@@ -510,9 +513,8 @@ extension Network.NWPath {
     return path.supportsIPv4 != self.supportsIPv4 || path.supportsIPv6 != self.supportsIPv6
       || path.supportsDNS != self.supportsDNS
       || path.status != self.status
-      || path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
-      // Apple provides no documentation on whether order is meaningful, so assume it isn't.
-      || Set(self.gateways) != Set(path.gateways)
+      || path.availableInterfaces.first != self.availableInterfaces.first
+      || path.gateways != self.gateways
   }
 }
 
