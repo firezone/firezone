@@ -118,6 +118,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
+  override func wake() {
+    adapter?.reset(reason: "awoke from sleep")
+  }
+
   // This can be called by the system, or initiated by connlib.
   // When called by the system, we call Adapter.stop() from here.
   // When initiated by connlib, we've already called stop() there.
