@@ -1,4 +1,4 @@
-defmodule Domain.Clients.Cache.Resource do
+defmodule Domain.Cache.Cacheable.Resource do
   defstruct [
     :id,
     :name,
@@ -12,17 +12,17 @@ defmodule Domain.Clients.Cache.Resource do
 
   @type filter :: %{
           protocol: :tcp | :udp | :icmp,
-          ports: [Domain.Types.Int4Range.t()]
+          ports: [String.t()]
         }
 
   @type t :: %__MODULE__{
-          id: Domain.Clients.Cache.uuid_binary(),
+          id: Domain.Cache.Cacheable.uuid_binary(),
           name: String.t(),
           type: :cidr | :ip | :dns | :internet,
           address: String.t(),
           address_description: String.t(),
           ip_stack: atom(),
           filters: [filter()],
-          gateway_groups: [GatewayGroup.t()]
+          gateway_groups: [Domain.Cache.Cacheable.GatewayGroup.t()]
         }
 end

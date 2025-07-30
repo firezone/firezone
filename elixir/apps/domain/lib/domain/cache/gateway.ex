@@ -1,4 +1,4 @@
-defmodule Domain.Gateways.Cache do
+defmodule Domain.Cache.Gateway do
   @moduledoc """
     This cache is used in the gateway channel processes to maintain a materialized view of the gateway flow state.
     The cache is updated via WAL messages streamed from the Domain.Changes.ReplicationConnection module.
@@ -20,14 +20,17 @@ defmodule Domain.Gateways.Cache do
     = ~ 7 MB
   """
 
-  alias Domain.{Flows, Gateways}
+  alias Domain.{Cache, Flows, Gateways}
 
   require OpenTelemetry.Tracer
 
   # Type definitions
-  @type uuid_binary :: <<_::128>>
-  @type client_resource_key :: {client_id :: uuid_binary, resource_id :: uuid_binary}
-  @type flow_map :: %{(flow_id :: uuid_binary) => expires_at_unix :: non_neg_integer}
+  @type client_resource_key ::
+          {client_id :: Cache.Cacheable.uuid_binary(),
+           resource_id :: Cache.Cacheable.uuid_binary()}
+  @type flow_map :: %{
+          (flow_id :: Cache.Cacheable.uuid_binary()) => expires_at_unix :: non_neg_integer
+        }
   @type t :: %{client_resource_key() => flow_map()}
 
   @doc """
@@ -99,9 +102,9 @@ defmodule Domain.Gateways.Cache do
   @doc """
     Add a flow to the cache. Returns the updated cache.
   """
-  @spec put(t(), Ecto.UUID.t(), Ecto.UUID.t(), Ecto.UUID.t(), DateTime.t()) :: t()
-  def put(%{} = cache, client_id, resource_id, flow_id, %DateTime{} = expires_at) do
-    tuple = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
+  @spec put(t(), Ecto.UUID.t(), Cache.Cacheable.uuid_binary(), Ecto.UUID.t(), DateTime.t()) :: t()
+  def put(%{} = cache, client_id, rid_bytes, flow_id, %DateTime{} = expires_at) do
+    tuple = {Ecto.UUID.dump!(client_id), rid_bytes}
 
     flow_id_map =
       Map.get(cache, tuple, %{})

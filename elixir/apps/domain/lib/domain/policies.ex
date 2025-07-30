@@ -1,6 +1,6 @@
 defmodule Domain.Policies do
   alias Domain.Repo
-  alias Domain.{Auth, Actors, Clients, Resources}
+  alias Domain.{Auth, Actors, Cache.Cacheable, Clients, Resources}
   alias Domain.Policies.{Authorizer, Policy, Condition}
 
   def fetch_policy_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
@@ -197,7 +197,7 @@ defmodule Domain.Policies do
 
   def ensure_client_conforms_policy_conditions(
         %Clients.Client{} = client,
-        %Clients.Cache.Policy{} = policy
+        %Cacheable.Policy{} = policy
       ) do
     case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
       {:ok, expires_at} ->

@@ -5,7 +5,7 @@ defmodule API.Client.Channel do
   alias Domain.{
     Accounts,
     Clients,
-    Clients.Cache,
+    Cache,
     Changes.Change,
     Actors,
     PubSub,
@@ -65,7 +65,7 @@ defmodule API.Client.Channel do
     )
 
     # Get initial list of authorized resources, hydrating the cache
-    {cache, authorized_resources} = Cache.authorized_resources(nil, socket.assigns.client)
+    {cache, authorized_resources} = Cache.Client.authorized_resources(nil, socket.assigns.client)
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -115,10 +115,10 @@ defmodule API.Client.Channel do
   ####################################
 
   def handle_info(%Change{lsn: lsn} = change, socket) do
-    last_lsn = socket.assigns.last_lsn || 0
+    last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
     if lsn <= last_lsn do
-      Logger.warning("Out of order change received; ignoring",
+      Logger.warning("Out of order or duplicate change received; ignoring",
         change: change,
         last_lsn: last_lsn
       )
@@ -145,7 +145,7 @@ defmodule API.Client.Channel do
     )
 
     cache =
-      Cache.recompute_authorized_resources(
+      Cache.Client.recompute_authorized_resources(
         socket.assigns.cache,
         socket.assigns.client,
         fn added_resources, removed_resource_ids ->
@@ -300,14 +300,14 @@ defmodule API.Client.Channel do
   # DEPRECATED IN 1.4
   # This message is sent by the gateway when it is ready to accept the connection from the client
   def handle_info(
-        {:connect, socket_ref, resource_id, gateway_public_key, payload},
+        {:connect, socket_ref, rid_bytes, gateway_public_key, payload},
         socket
       ) do
     reply(
       socket_ref,
       {:ok,
        %{
-         resource_id: resource_id,
+         resource_id: Ecto.UUID.load!(rid_bytes),
          persistent_keepalive: 25,
          gateway_public_key: gateway_public_key,
          gateway_payload: payload
@@ -318,12 +318,12 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(
-        {:connect, _socket_ref, resource_id, gateway_group_id, gateway_id, gateway_public_key,
+        {:connect, _socket_ref, rid_bytes, gateway_group_id, gateway_id, gateway_public_key,
          gateway_ipv4, gateway_ipv6, preshared_key, ice_credentials},
         socket
       ) do
     reply_payload = %{
-      resource_id: resource_id,
+      resource_id: Ecto.UUID.load!(rid_bytes),
       preshared_key: preshared_key,
       client_ice_credentials: ice_credentials.client,
       gateway_group_id: gateway_group_id,
@@ -358,19 +358,18 @@ defmodule API.Client.Channel do
         },
         socket
       ) do
-    with %Clients.Cache.Resource{} = resource <-
-           Cache.fetch_resource(socket.assigns.cache, resource_id),
+    with {:ok, resource} <- Cache.Client.fetch_resource(socket.assigns.cache, resource_id),
          {:ok, policy, expires_at} <-
-           Cache.authorize_resource(
+           Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
              resource_id,
              socket.assigns.subject
            ),
+         {:ok, membership_id} <-
+           Cache.Client.fetch_membership_id(socket.assigns.cache, policy.actor_group_id),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
-             preload: :group
-           ),
+           Gateways.all_connected_gateways_for_resource_id(resource_id, socket.assigns.subject),
          {:ok, gateways} when gateways != [] <-
            Gateways.filter_compatible_gateways(gateways, socket.assigns.client.last_seen_version) do
       location = {
@@ -387,8 +386,8 @@ defmodule API.Client.Channel do
           socket.assigns.client,
           gateway,
           resource_id,
-          policy,
-          Cache.fetch_membership_id(socket.assigns.cache, policy.actor_group_id),
+          Ecto.UUID.load!(policy.id),
+          membership_id,
           socket.assigns.subject,
           expires_at
         )
@@ -412,42 +411,10 @@ defmodule API.Client.Channel do
 
       {:noreply, socket}
     else
-      {:error, :not_found} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :not_found
-        })
-
-        {:noreply, socket}
-
-      {:error, :offline} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :offline
-        })
-
-        {:noreply, socket}
-
-      {:error, :forbidden} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :forbidden
-        })
-
-        {:noreply, socket}
-
       :error ->
         push(socket, "flow_creation_failed", %{
           resource_id: resource_id,
           reason: :not_found
-        })
-
-        {:noreply, socket}
-
-      {:ok, []} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :offline
         })
 
         {:noreply, socket}
@@ -457,6 +424,14 @@ defmodule API.Client.Channel do
           resource_id: resource_id,
           reason: :forbidden,
           violated_properties: violated_properties
+        })
+
+        {:noreply, socket}
+
+      {:ok, []} ->
+        push(socket, "flow_creation_failed", %{
+          resource_id: resource_id,
+          reason: :offline
         })
 
         {:noreply, socket}
@@ -475,19 +450,15 @@ defmodule API.Client.Channel do
 
     # TODO: Optimization
     # Gateway selection and flow authorization shouldn't need to hit the DB
-    with %Clients.Cache.Resource{} = resource <-
-           Cache.fetch_resource(socket.assigns.cache, resource_id),
-         {:ok, _policy, _expires_at} <-
-           Cache.authorize_resource(
+    with {:ok, _policy, _expires_at} <-
+           Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
              resource_id,
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
-             preload: :group
-           ),
+           Gateways.all_connected_gateways_for_resource_id(resource_id, socket.assigns.subject),
          {:ok, gateways} when gateways != [] <-
            Gateways.filter_compatible_gateways(gateways, socket.assigns.client.last_seen_version) do
       location = {
@@ -511,12 +482,6 @@ defmodule API.Client.Channel do
       {:ok, []} ->
         {:reply, {:error, %{reason: :offline}}, socket}
 
-      {:error, :not_found} ->
-        {:reply, {:error, %{reason: :not_found}}, socket}
-
-      :error ->
-        {:reply, {:error, %{reason: :not_found}}, socket}
-
       {:error, {:forbidden, violated_properties: violated_properties}} ->
         {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
          socket}
@@ -537,22 +502,24 @@ defmodule API.Client.Channel do
       ) do
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
          {:ok, policy, expires_at} <-
-           Cache.authorize_resource(
+           Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
              resource_id,
              socket.assigns.subject
            ),
+         {:ok, membership_id} <-
+           Cache.Client.fetch_membership_id(socket.assigns.cache, policy.actor_group_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
+         true <- Gateways.gateway_can_connect_to_resource_id?(gateway, resource_id) do
       # TODO: Optimization
       {:ok, flow} =
         Flows.create_flow(
           socket.assigns.client,
           gateway,
           resource_id,
-          policy,
-          Cache.fetch_membership_id(socket.assigns.cache, policy.actor_group_id),
+          Ecto.UUID.load!(policy.id),
+          membership_id,
           socket.assigns.subject,
           expires_at
         )
@@ -572,9 +539,6 @@ defmodule API.Client.Channel do
 
       {:noreply, socket}
     else
-      {:error, :not_found} ->
-        {:reply, {:error, %{reason: :not_found}}, socket}
-
       :error ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
@@ -601,25 +565,26 @@ defmodule API.Client.Channel do
         socket
       ) do
     # Flow authorization can happen out-of-band since we just authorized the resource above
-    with %Clients.Cache.Resource{} = resource <-
-           Cache.fetch_resource(socket.assigns.cache, resource_id),
+    with {:ok, resource} <- Cache.Client.fetch_resource(socket.assigns.cache, resource_id),
          {:ok, policy, expires_at} <-
-           Cache.authorize_resource(
+           Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
              resource_id,
              socket.assigns.subject
            ),
+         {:ok, membership_id} <-
+           Cache.Client.fetch_membership_id(socket.assigns.cache, policy.actor_group_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
+         true <- Gateways.gateway_can_connect_to_resource_id?(gateway, resource) do
       # TODO: Optimization
       {:ok, flow} =
         Flows.create_flow(
           socket.assigns.client,
           gateway,
           resource_id,
-          policy,
-          Cache.fetch_membership_id(socket.assigns.cache, policy.actor_group_id),
+          Ecto.UUID.load!(policy.id),
+          membership_id,
           socket.assigns.subject,
           expires_at
         )
@@ -640,9 +605,6 @@ defmodule API.Client.Channel do
 
       {:noreply, socket}
     else
-      {:error, :not_found} ->
-        {:reply, {:error, %{reason: :not_found}}, socket}
-
       :error ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
@@ -801,7 +763,7 @@ defmodule API.Client.Channel do
        )
        when id == actor_id do
     cache =
-      Cache.add_membership(
+      Cache.Client.add_membership(
         socket.assigns.cache,
         socket.assigns.client,
         fn resource ->
@@ -821,7 +783,7 @@ defmodule API.Client.Channel do
        )
        when id == actor_id do
     cache =
-      Cache.delete_membership(
+      Cache.Client.delete_membership(
         socket.assigns.cache,
         socket.assigns.client,
         membership,
@@ -852,7 +814,7 @@ defmodule API.Client.Channel do
 
     if old_client.verified_at != client.verified_at do
       cache =
-        Cache.update_client(
+        Cache.Client.update_client(
           socket.assigns.cache,
           socket.assigns.client,
           fn added_resources, removed_resource_ids ->
@@ -891,7 +853,7 @@ defmodule API.Client.Channel do
          socket
        ) do
     cache =
-      Cache.update_resources_with_group_name(
+      Cache.Client.update_resources_with_group_name(
         socket.assigns.cache,
         old_group,
         group,
@@ -912,7 +874,7 @@ defmodule API.Client.Channel do
          socket
        ) do
     cache =
-      Cache.add_policy(
+      Cache.Client.add_policy(
         socket.assigns.cache,
         policy,
         socket.assigns.client,
@@ -963,7 +925,7 @@ defmodule API.Client.Channel do
          },
          socket
        ) do
-    cache = Cache.update_policy(socket.assigns.cache, policy)
+    cache = Cache.Client.update_policy(socket.assigns.cache, policy)
 
     {:noreply, assign(socket, cache: cache)}
   end
@@ -973,7 +935,7 @@ defmodule API.Client.Channel do
          socket
        ) do
     cache =
-      Cache.delete_policy(socket.assigns.cache, policy, fn resource_ids ->
+      Cache.Client.delete_policy(socket.assigns.cache, policy, fn resource_ids ->
         for resource_id <- resource_ids do
           push(socket, "resource_deleted", resource_id)
         end
@@ -992,7 +954,7 @@ defmodule API.Client.Channel do
          socket
        ) do
     cache =
-      Cache.add_resource_connection(
+      Cache.Client.add_resource_connection(
         socket.assigns.cache,
         connection,
         socket.assigns.client,
@@ -1020,7 +982,7 @@ defmodule API.Client.Channel do
          socket
        ) do
     cache =
-      Cache.delete_resource_connection(
+      Cache.Client.delete_resource_connection(
         socket.assigns.cache,
         connection,
         socket.assigns.client,
@@ -1047,7 +1009,7 @@ defmodule API.Client.Channel do
          socket
        ) do
     cache =
-      Cache.update_resource(
+      Cache.Client.update_resource(
         socket.assigns.cache,
         old_resource,
         resource,
@@ -1069,4 +1031,6 @@ defmodule API.Client.Channel do
        when id == token_id do
     disconnect(socket)
   end
+
+  defp handle_change(%Change{}, socket), do: {:noreply, socket}
 end

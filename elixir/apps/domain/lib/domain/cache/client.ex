@@ -1,4 +1,4 @@
-defmodule Domain.Clients.Cache do
+defmodule Domain.Cache.Client do
   @moduledoc """
     This cache is used in the client channel to maintain a materialized view of the client access state.
     The cache is updated via WAL messages streamed from the Domain.Changes.ReplicationConnection module.
@@ -49,19 +49,18 @@ defmodule Domain.Clients.Cache do
 
   """
 
-  alias Domain.{Actors, Auth, Clients, Clients.Cacheable, Gateways, Resources, Policies}
+  alias Domain.{Actors, Auth, Clients, Cache, Gateways, Resources, Policies}
   require Logger
   require OpenTelemetry.Tracer
 
   defstruct [:policies, :resources, :memberships, :authorized_resource_ids]
 
   # Type definitions
-  @type uuid_binary :: <<_::128>>
   @type t :: %__MODULE__{
-          policies: %{uuid_binary() => Domain.Clients.Cache.Policy.t()},
-          resources: %{uuid_binary() => Domain.Clients.Cache.Resource.t()},
-          memberships: %{uuid_binary() => uuid_binary()},
-          authorized_resource_ids: MapSet.t(uuid_binary())
+          policies: %{Cache.Cacheable.uuid_binary() => Domain.Cache.Cacheable.Policy.t()},
+          resources: %{Cache.Cacheable.uuid_binary() => Domain.Cache.Cacheable.Resource.t()},
+          memberships: %{Cache.Cacheable.uuid_binary() => Cache.Cacheable.uuid_binary()},
+          authorized_resource_ids: MapSet.t(Cache.Cacheable.uuid_binary())
         }
 
   @doc """
@@ -70,7 +69,7 @@ defmodule Domain.Clients.Cache do
     what resources the client "sees", and is called when forming a new connection to the gateway.
   """
   @spec authorized_resources(t() | nil, %Clients.Client{}) ::
-          {t(), [Domain.Clients.Cache.Resource.t()]}
+          {t(), [Domain.Cache.Cacheable.Resource.t()]}
 
   def authorized_resources(nil, %Clients.Client{} = client) do
     authorized_resources(hydrate(client.actor_id), client)
@@ -101,7 +100,7 @@ defmodule Domain.Clients.Cache do
     the resource is not authorized for the client.
   """
   @spec authorize_resource(t(), %Clients.Client{}, Ecto.UUID.t(), %Auth.Subject{}) ::
-          {:ok, Cache.Policy.t(), non_neg_integer()}
+          {:ok, Cache.Cacheable.Policy.t(), non_neg_integer()}
           | {:error, {:forbidden, violated_properties: [atom()]}}
   def authorize_resource(cache, %Clients.Client{} = client, resource_id, subject) do
     rid_bytes = Ecto.UUID.dump!(resource_id)
@@ -140,7 +139,7 @@ defmodule Domain.Clients.Cache do
   @spec recompute_authorized_resources(
           t(),
           %Clients.Client{},
-          ([Domain.Clients.Cache.Resource.t()], [Ecto.UUID.t()] -> any())
+          ([Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()] -> any())
         ) :: t()
   def recompute_authorized_resources(cache, %Clients.Client{} = client, callback) do
     # Get the old authorized ids
@@ -169,22 +168,25 @@ defmodule Domain.Clients.Cache do
   @doc """
     Fetches a membership id by an actor_group_id.
   """
-  @spec fetch_membership_id(t(), Ecto.UUID.t()) :: Ecto.UUID.t()
+  @spec fetch_membership_id(t(), Cache.Cacheable.uuid_binary()) :: {:ok, Ecto.UUID.t()} | :error
   def fetch_membership_id(cache, gid_bytes) do
     cache.memberships
-    |> Map.fetch!(gid_bytes)
-    |> Ecto.UUID.load!()
+    |> Map.fetch(gid_bytes)
+    |> case do
+      {:ok, mid_bytes} -> {:ok, Ecto.UUID.load!(mid_bytes)}
+      error -> error
+    end
   end
 
   @doc """
     Fetches a resource by its id from the cache.
   """
-  @spec fetch_resource(t(), Ecto.UUID.t()) :: Domain.Clients.Cache.Resource.t()
+  @spec fetch_resource(t(), Ecto.UUID.t()) :: {:ok, Domain.Cache.Cacheable.Resource.t()} | :error
   def fetch_resource(cache, resource_id) do
     rid_bytes = Ecto.UUID.dump!(resource_id)
 
     cache.resources
-    |> Map.fetch!(rid_bytes)
+    |> Map.fetch(rid_bytes)
   end
 
   @doc """
@@ -196,7 +198,7 @@ defmodule Domain.Clients.Cache do
   @spec add_membership(
           t(),
           %Clients.Client{},
-          (Domain.Clients.Cache.Resource.t() -> any())
+          (Domain.Cache.Cacheable.Resource.t() -> any())
         ) :: t()
   def add_membership(cache, client, callback) do
     # Save previous authorized resource IDs
@@ -280,7 +282,7 @@ defmodule Domain.Clients.Cache do
 
     Invokes the callback with the added resources and removed resources ids.
   """
-  @spec update_client(t(), %Clients.Client{}, ([Domain.Clients.Cache.Resource.t()],
+  @spec update_client(t(), %Clients.Client{}, ([Domain.Cache.Cacheable.Resource.t()],
                                                [Ecto.UUID.t()] ->
                                                  any())) ::
           t()
@@ -316,7 +318,7 @@ defmodule Domain.Clients.Cache do
           t(),
           %Gateways.Group{},
           %Gateways.Group{},
-          ([Domain.Clients.Cache.Resource.t()] -> any())
+          ([Domain.Cache.Cacheable.Resource.t()] -> any())
         ) :: t()
   def update_resources_with_group_name(cache, old_group, group, callback) do
     gid_bytes = Ecto.UUID.dump!(group.id)
@@ -329,7 +331,7 @@ defmodule Domain.Clients.Cache do
           resource.gateway_groups
           |> Enum.map(fn gg ->
             if gg.id == gid_bytes do
-              Map.merge(gg, Cacheable.to_cache(group))
+              Map.merge(gg, Cache.Cacheable.to_cache(group))
             else
               gg
             end
@@ -364,10 +366,10 @@ defmodule Domain.Clients.Cache do
           %Policies.Policy{},
           %Clients.Client{},
           %Auth.Subject{},
-          (Domain.Clients.Cache.Resource.t() -> any())
+          (Domain.Cache.Cacheable.Resource.t() -> any())
         ) :: t()
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject, callback) do
-    policy = Domain.Clients.Cacheable.to_cache(policy)
+    policy = Domain.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.memberships, policy.actor_group_id) do
       # Snapshot existing authorized ids
@@ -384,7 +386,7 @@ defmodule Domain.Clients.Cache do
           {:ok, resource} =
             Resources.fetch_resource_by_id(resource_id, subject, preload: :gateway_groups)
 
-          resource = Domain.Clients.Cacheable.to_cache(resource)
+          resource = Domain.Cache.Cacheable.to_cache(resource)
           %{cache | resources: Map.put(cache.resources, resource.id, resource)}
         end
 
@@ -410,7 +412,7 @@ defmodule Domain.Clients.Cache do
   """
   @spec update_policy(t(), %Policies.Policy{}) :: t()
   def update_policy(cache, policy) do
-    policy = Domain.Clients.Cacheable.to_cache(policy)
+    policy = Domain.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.policies, policy.id) do
       %{cache | policies: Map.put(cache.policies, policy.id, policy)}
@@ -426,10 +428,10 @@ defmodule Domain.Clients.Cache do
   @spec delete_policy(
           t(),
           %Policies.Policy{},
-          (uuid_binary() -> any())
+          (Cache.Cacheable.uuid_binary() -> any())
         ) :: t()
   def delete_policy(cache, policy, callback) do
-    policy = Domain.Clients.Cacheable.to_cache(policy)
+    policy = Domain.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.policies, policy.id) do
       # Snapshot old authorized ids
@@ -442,7 +444,12 @@ defmodule Domain.Clients.Cache do
       cache =
         if Map.has_key?(cache.resources, policy.resource_id) and
              Enum.all?(cache.policies, fn {_id, p} -> p.resource_id != policy.resource_id end) do
-          %{cache | resources: Map.delete(cache.resources, policy.resource_id)}
+          %{
+            cache
+            | resources: Map.delete(cache.resources, policy.resource_id),
+              authorized_resource_ids:
+                MapSet.delete(cache.authorized_resource_ids, policy.resource_id)
+          }
         else
           cache
         end
@@ -474,7 +481,7 @@ defmodule Domain.Clients.Cache do
           %Resources.Connection{},
           %Clients.Client{},
           %Auth.Subject{},
-          (Domain.Clients.Cache.Resource.t() -> any())
+          (Domain.Cache.Cacheable.Resource.t() -> any())
         ) :: t()
   def add_resource_connection(cache, connection, client, subject, callback) do
     rid_bytes = Ecto.UUID.dump!(connection.resource_id)
@@ -482,7 +489,7 @@ defmodule Domain.Clients.Cache do
     if Map.has_key?(cache.resources, rid_bytes) do
       # We need the gateway group to add it
       {:ok, gateway_group} = Gateways.fetch_group_by_id(connection.gateway_group_id, subject)
-      gateway_group = Domain.Clients.Cacheable.to_cache(gateway_group)
+      gateway_group = Domain.Cache.Cacheable.to_cache(gateway_group)
 
       # Update the cache
       resources =
@@ -502,9 +509,10 @@ defmodule Domain.Clients.Cache do
         end)
 
       cache = %{cache | resources: resources}
+      {cache, authorized_resources} = authorized_resources(cache, client)
 
       # Maybe call callback with the updated resource
-      for resource <- authorized_resources(cache, client) do
+      for resource <- authorized_resources do
         if resource.id == rid_bytes do
           callback.(resource)
         end
@@ -526,7 +534,7 @@ defmodule Domain.Clients.Cache do
           t(),
           %Resources.Connection{},
           %Clients.Client{},
-          (Domain.Clients.Cache.Resource.t() -> any())
+          (Domain.Cache.Cacheable.Resource.t() -> any())
         ) :: t()
   def delete_resource_connection(cache, connection, client, callback) do
     rid_bytes = Ecto.UUID.dump!(connection.resource_id)
@@ -545,9 +553,10 @@ defmodule Domain.Clients.Cache do
         end)
 
       cache = %{cache | resources: resources}
+      {cache, authorized_resources} = authorized_resources(cache, client)
 
       # Maybe call callback with the updated resource
-      for resource <- authorized_resources(cache, client) do
+      for resource <- authorized_resources do
         if resource.id == rid_bytes do
           callback.(resource)
         end
@@ -568,21 +577,28 @@ defmodule Domain.Clients.Cache do
           %Resources.Resource{},
           %Resources.Resource{},
           %Clients.Client{},
-          (Domain.Clients.Cache.Resource.t() -> any())
+          (Domain.Cache.Cacheable.Resource.t() -> any())
         ) :: t()
   def update_resource(cache, old_resource, resource, client, callback) do
-    old_resource = Domain.Clients.Cacheable.to_cache(old_resource)
-    resource = Domain.Clients.Cacheable.to_cache(resource)
+    # Populate preloaded gateway groups
+    old_resource = Domain.Cache.Cacheable.to_cache(old_resource)
+    resource = Domain.Cache.Cacheable.to_cache(resource)
 
-    if Map.has_key?(cache.resources, old_resource.id) do
+    if Map.has_key?(cache.resources, resource.id) do
+      # Restore preloaded gateway groups - changes to these will be handled by
+      # that respective change handler
+      resource = %{
+        resource
+        | gateway_groups: Map.get(cache.resources, resource.id).gateway_groups
+      }
+
       # Update the cache
-      resources = Map.put(cache.resources, resource.id, resource)
-
-      cache = %{cache | resources: resources}
+      cache = %{cache | resources: Map.put(cache.resources, resource.id, resource)}
+      {cache, authorized_resources} = authorized_resources(cache, client)
 
       # Maybe call callback with the updated resource if it's meaningfully changed
       if old_resource != resource do
-        for r <- authorized_resources(cache, client) do
+        for r <- authorized_resources do
           if r.id == resource.id do
             callback.(r)
           end
@@ -600,14 +616,14 @@ defmodule Domain.Clients.Cache do
       actor_id: actor_id
     }
 
-    OpenTelemetry.Tracer.with_span "Clients.Cache.hydrate", attributes: attributes do
+    OpenTelemetry.Tracer.with_span "Cache.Cacheable.hydrate", attributes: attributes do
       {_policies, cache} =
         Policies.all_policies_for_actor_id!(actor_id)
         |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, cache ->
-          resource = Clients.Cacheable.to_cache(policy.resource)
+          resource = Cache.Cacheable.to_cache(policy.resource)
           resources = Map.put(cache.resources, resource.id, resource)
 
-          policy = Clients.Cacheable.to_cache(policy)
+          policy = Cache.Cacheable.to_cache(policy)
           policies = Map.put(cache.policies, policy.id, policy)
 
           {policy, Map.merge(cache, %{policies: policies, resources: resources})}

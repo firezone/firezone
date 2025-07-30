@@ -1,26 +1,21 @@
 defmodule API.Client.Views.Resource do
   alias API.Client.Views
-  alias Domain.{Clients.Cache, Resources}
+  alias Domain.Cache.Cacheable
 
   def render_many(resources) do
     Enum.map(resources, &render/1)
   end
 
-  def render(%Cache.Resource{} = resource) do
-    resource = Map.from_struct(resource)
-
-    render_resource(%{resource | id: Ecto.UUID.load(resource.id)})
-  end
-
-  def render(%Resources.Resource{} = resource) do
-    resource = Map.from_struct(resource)
-
-    render_resource(resource)
+  def render(%Cacheable.Resource{} = resource) do
+    resource
+    |> Map.from_struct()
+    |> Map.put(:id, Ecto.UUID.load!(resource.id))
+    |> render_resource()
   end
 
   defp render_resource(%{type: :internet} = resource) do
     %{
-      id: Ecto.UUID.load!(resource.id),
+      id: resource.id,
       type: :internet,
       gateway_groups: Views.GatewayGroup.render_many(resource.gateway_groups),
       can_be_disabled: true
@@ -33,7 +28,7 @@ defmodule API.Client.Views.Resource do
     address = to_string(%{inet | netmask: netmask})
 
     %{
-      id: Ecto.UUID.load!(resource.id),
+      id: resource.id,
       type: :cidr,
       address: address,
       address_description: resource.address_description,

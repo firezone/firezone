@@ -1,4 +1,4 @@
-defmodule Domain.Clients.Cache.Policy do
+defmodule Domain.Cache.Cacheable.Policy do
   defstruct [
     :id,
     :resource_id,
@@ -26,9 +26,9 @@ defmodule Domain.Clients.Cache.Policy do
         }
 
   @type t :: %__MODULE__{
-          id: Domain.Clients.Cache.uuid_binary(),
-          resource_id: Domain.Clients.Cache.uuid_binary(),
-          actor_group_id: Domain.Clients.Cache.uuid_binary(),
+          id: Domain.Cache.Cacheable.uuid_binary(),
+          resource_id: Domain.Cache.Cacheable.uuid_binary(),
+          actor_group_id: Domain.Cache.Cacheable.uuid_binary(),
           conditions: [condition()]
         }
 end

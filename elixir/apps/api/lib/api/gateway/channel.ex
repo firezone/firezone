@@ -4,10 +4,10 @@ defmodule API.Gateway.Channel do
 
   alias Domain.{
     Accounts,
+    Cache,
     Changes.Change,
     Flows,
     Gateways,
-    Gateways.Cache,
     PubSub,
     Relays,
     Resources,
@@ -37,7 +37,7 @@ defmodule API.Gateway.Channel do
   @impl true
   def handle_info(:after_join, socket) do
     # Initialize the cache
-    socket = assign(socket, cache: Cache.hydrate(socket.assigns.gateway))
+    socket = assign(socket, cache: Cache.Gateway.hydrate(socket.assigns.gateway))
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
@@ -63,7 +63,7 @@ defmodule API.Gateway.Channel do
 
   def handle_info(:prune_cache, socket) do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
-    {:noreply, assign(socket, cache: Cache.prune(socket.assigns.cache))}
+    {:noreply, assign(socket, cache: Cache.Gateway.prune(socket.assigns.cache))}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the gateway
@@ -76,10 +76,10 @@ defmodule API.Gateway.Channel do
   ####################################
 
   def handle_info(%Change{lsn: lsn} = change, socket) do
-    last_lsn = socket.assigns.last_lsn || 0
+    last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
     if lsn <= last_lsn do
-      Logger.warning("Out of order change received; ignoring",
+      Logger.warning("Out of order or duplicate change received; ignoring",
         change: change,
         last_lsn: last_lsn
       )
@@ -256,7 +256,7 @@ defmodule API.Gateway.Channel do
 
     cache =
       socket.assigns.cache
-      |> Cache.put(
+      |> Cache.Gateway.put(
         client.id,
         resource.id,
         flow_id,
@@ -306,7 +306,7 @@ defmodule API.Gateway.Channel do
 
         cache =
           socket.assigns.cache
-          |> Cache.put(
+          |> Cache.Gateway.put(
             client.id,
             resource.id,
             flow_id,
@@ -355,7 +355,7 @@ defmodule API.Gateway.Channel do
 
         cache =
           socket.assigns.cache
-          |> Cache.put(
+          |> Cache.Gateway.put(
             client.id,
             resource.id,
             flow_id,
@@ -587,10 +587,10 @@ defmodule API.Gateway.Channel do
     # Delete old authorization and potentially reauthorize access
     cache =
       socket.assigns.cache
-      |> Cache.delete(flow)
-      |> Cache.rehydrate(flow)
+      |> Cache.Gateway.delete(flow)
+      |> Cache.Gateway.rehydrate(flow)
 
-    if expires_at_unix = Cache.get(cache, client_id, resource_id) do
+    if expires_at_unix = Cache.Gateway.get(cache, client_id, resource_id) do
       # If the flow was rehydrated, we can push the new expiration time
       push(
         socket,
@@ -622,7 +622,8 @@ defmodule API.Gateway.Channel do
          socket
        )
        when old_filters != filters do
-    if Cache.has_resource?(socket.assigns.cache, id) do
+    if Cache.Gateway.has_resource?(socket.assigns.cache, id) do
+      resource = Cache.Cacheable.to_cache(resource)
       push(socket, "resource_updated", Views.Resource.render(resource))
     end
 
@@ -639,4 +640,6 @@ defmodule API.Gateway.Channel do
        when id == socket.assigns.token_id do
     disconnect(socket)
   end
+
+  defp handle_change(%Change{}, socket), do: {:noreply, socket}
 end

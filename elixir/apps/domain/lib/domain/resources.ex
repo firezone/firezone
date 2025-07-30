@@ -305,10 +305,10 @@ defmodule Domain.Resources do
   end
 
   def connected?(
-        %Resource{account_id: account_id} = resource,
-        %Gateways.Gateway{account_id: account_id} = gateway
+        resource_id,
+        %Gateways.Gateway{} = gateway
       ) do
-    Connection.Query.by_resource_id(resource.id)
+    Connection.Query.by_resource_id(resource_id)
     |> Connection.Query.by_gateway_group_id(gateway.group_id)
     |> Repo.exists?()
   end
