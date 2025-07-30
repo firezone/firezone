@@ -1,5 +1,6 @@
 import SupportOptions from "@/components/SupportOptions";
 import Alert from "@/components/DocsAlert";
+import { TabsItem, TabsGroup } from "@/components/Tabs";
 
 # Windows GUI Client
 
@@ -22,6 +23,9 @@ to authenticate with your identity provider interactively.
 
 ## Installation
 
+<TabsGroup>
+<TabsItem title="msi" active>
+
 Download the `.msi` installer from [our changelog page](/changelog) or from the
 direct link below:
 
@@ -29,8 +33,17 @@ direct link below:
 
 After downloading, run the `.msi` to install the Firezone GUI Client.
 
-To auto-start the Client when you log in, copy the "Firezone" shortcut from your
-desktop to `%APPDATA%/Microsoft/Windows/Start Menu/Programs/Startup/`
+</TabsItem>
+<TabsItem title="winget">
+
+From a terminal, run the following command to install the GUI client.
+
+```pwsh
+winget install Firezone.Client.GUI
+```
+
+</TabsItem>
+</TabsGroup>
 
 ## Usage
 
