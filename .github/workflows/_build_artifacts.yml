@@ -333,7 +333,6 @@ jobs:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }}
           # We only version client and gateway
           tags: |
-            type=raw,value=latest
             type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
       - name: Sanitize github.ref_name
@@ -424,7 +423,6 @@ jobs:
         with:
           images: ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}
           tags: |
-            type=raw,value=latest
             type=raw,value={{branch}}
             type=raw,value=${{ inputs.sha }}
       - name: Create manifest list and push
