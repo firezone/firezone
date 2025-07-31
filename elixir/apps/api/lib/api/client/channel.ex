@@ -828,7 +828,7 @@ defmodule API.Client.Channel do
     # TODO: Optimization
     # Gateway selection and flow authorization shouldn't need to hit the DB
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, _policy, _expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, _expires_at, _policy} <- authorize_resource(socket, resource_id),
          {:ok, [_ | _] = gateways} <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
@@ -885,7 +885,7 @@ defmodule API.Client.Channel do
         socket
       ) do
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization
@@ -945,7 +945,7 @@ defmodule API.Client.Channel do
       ) do
     # Flow authorization can happen out-of-band since we just authorized the resource above
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization

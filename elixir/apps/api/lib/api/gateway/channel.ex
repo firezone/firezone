@@ -670,10 +670,4 @@ defmodule API.Gateway.Channel do
       assign(socket, flows: flows)
     end
   end
-
-  defp disconnect(socket) do
-    push(socket, "disconnect", %{"reason" => "token_expired"})
-    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-    {:stop, :shutdown, socket}
-  end
 end

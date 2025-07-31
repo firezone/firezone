@@ -197,31 +197,46 @@ defmodule Domain.Policies do
   end
 
   @infinity ~U[9999-12-31 23:59:59.999999Z]
-  def longest_conforming_policy_for_client(policies, client, default_expires_at) do
+
+  def longest_conforming_policy_for_client(policies, client, token_expires_at) do
     policies
     |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
       case ensure_client_conforms_policy_conditions(client, policy) do
         {:ok, expires_at} ->
           %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
 
-        {:error, violated_properties} ->
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
           %{acc | failed: acc.failed ++ violated_properties}
       end
     end)
     |> case do
       %{succeeded: [], failed: failed} ->
-        {:error, {:forbidden, violated_properties: failed}}
+        {:error, {:forbidden, violated_properties: Enum.uniq(failed)}}
 
       %{succeeded: succeeded} ->
         {expires_at, policy} =
           succeeded
           |> Enum.max_by(fn {expires_at, _policy} -> expires_at || @infinity end)
 
-        {:ok, expires_at || default_expires_at, policy}
+        {:ok, min_expires_at(expires_at, token_expires_at), policy}
     end
   end
 
-  def ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
+  # All client tokens have *some* expiration
+  def min_expires_at(nil, nil),
+    do: raise("Both policy_expires_at and token_expires_at cannot be nil")
+
+  def min_expires_at(nil, token_expires_at), do: token_expires_at
+
+  def min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
+    if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
+      policy_expires_at
+    else
+      token_expires_at
+    end
+  end
+
+  defp ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
     if subject.account.id == policy.account_id do
       :ok
     else
