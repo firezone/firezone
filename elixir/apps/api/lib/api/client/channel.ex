@@ -549,6 +549,7 @@ defmodule API.Client.Channel do
         %{assigns: %{subject: %{token_id: token_id}}} = socket
       )
       when id == token_id do
+    dbg("Token deleted, disconnecting client socket")
     disconnect(socket)
   end
 
@@ -758,7 +759,7 @@ defmodule API.Client.Channel do
     }
 
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
          {:ok, gateways} when gateways != [] <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
@@ -1285,7 +1286,7 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Returns either the authorized policy or an error tuple of violated properties
+  # Returns either the longest authorized policy or an error tuple of violated properties
   defp authorize_resource(socket, resource_id) do
     OpenTelemetry.Tracer.with_span "client.authorize_resource",
       attributes: %{
@@ -1294,27 +1295,10 @@ defmodule API.Client.Channel do
       socket.assigns.policies
       |> Enum.filter(fn {_id, policy} -> policy.resource_id == resource_id end)
       |> Enum.map(fn {_id, policy} -> policy end)
-      |> Enum.reduce_while({:error, []}, fn policy, {:error, acc} ->
-        case Policies.ensure_client_conforms_policy_conditions(socket.assigns.client, policy) do
-          {:ok, expires_at} ->
-            {:halt, {:ok, policy, expires_at}}
-
-          {:error, {:forbidden, violated_properties: violated_properties}} ->
-            {:cont, {:error, violated_properties ++ acc}}
-        end
-      end)
-      |> case do
-        {:error, violated_properties} ->
-          {:error, {:forbidden, violated_properties: violated_properties}}
-
-        {:ok, policy, expires_at} ->
-          # Set a maximum expiration time for the authorization
-          expires_at =
-            expires_at || socket.assigns.subject.expires_at ||
-              DateTime.utc_now() |> DateTime.add(14, :day)
-
-          {:ok, policy, expires_at}
-      end
+      |> Policies.longest_conforming_policy_for_client(
+        socket.assigns.client,
+        socket.assigns.subject.expires_at
+      )
     end
   end
 end
