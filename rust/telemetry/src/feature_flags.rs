@@ -134,7 +134,6 @@ async fn decide(
     let decide_response =
         serde_json::from_str::<DecideResponse>(&body).context("Failed to deserialize response")?;
 
-
     Ok((
         decide_response.feature_flags,
         decide_response.feature_flag_payloads,
@@ -284,14 +283,14 @@ impl LogFilter {
         let directives = match serde_json::from_str::<String>(&directives) {
             Ok(directives) => directives,
             Err(e) => {
-                tracing::warn!("Failed to parse directives from JSON: {e}");
+                tracing::debug!("Failed to parse directives from JSON: {e}");
 
                 String::from("debug")
             }
         };
 
         let targets = Targets::from_str(&directives).unwrap_or_else(|e| {
-            tracing::warn!(%directives, "Failed to parse env-filter: {e}");
+            tracing::debug!(%directives, "Failed to parse env-filter: {e}");
 
             Targets::new().with_default(LevelFilter::DEBUG)
         });
