@@ -359,14 +359,14 @@ impl Allocation {
         let rtt = now.duration_since(backoff.start_time());
         Span::current().record("rtt", field::debug(rtt));
 
-        if tracing::enabled!(tracing::Level::DEBUG) {
+        if tracing::enabled!(target: "wire::turn", tracing::Level::DEBUG) {
             let request = original_request
                 .attributes()
                 .map(display_attr)
                 .collect::<Vec<_>>();
             let response = message.attributes().map(display_attr).collect::<Vec<_>>();
 
-            tracing::debug!(?request, ?response);
+            tracing::debug!(target: "wire::turn", ?request, ?response);
         }
 
         if let Some(error) = message.get_attribute::<ErrorCode>() {
