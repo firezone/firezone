@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Accounts, Flows, Gateways, PubSub, Relays, Resources, Tokens}
+  alias Domain.{Accounts, Flows, Gateways, PubSub, Relays, Resources}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -191,14 +191,6 @@ defmodule API.Gateway.Channel do
     end
 
     {:noreply, socket}
-  end
-
-  # TOKENS
-
-  # Our gateway token was deleted - disconnect WebSocket
-  def handle_info({:deleted, %Tokens.Token{type: :gateway_group, id: id}}, socket)
-      when id == socket.assigns.token_id do
-    disconnect(socket)
   end
 
   ####################################

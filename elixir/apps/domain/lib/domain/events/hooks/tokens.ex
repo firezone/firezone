@@ -38,7 +38,6 @@ defmodule Domain.Events.Hooks.Tokens do
   # This is a special message that disconnects all sockets using this token,
   # such as for LiveViews.
   defp disconnect_socket(token) do
-    dbg("Disconnecting sockets for token: #{token.id}")
     topic = Domain.Tokens.socket_id(token.id)
     payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
     Domain.PubSub.broadcast(topic, payload)

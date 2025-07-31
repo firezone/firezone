@@ -12,8 +12,7 @@ defmodule API.Client.Channel do
     Gateways,
     Relays,
     Policies,
-    Flows,
-    Tokens
+    Flows
   }
 
   alias Domain.Relays.Presence.Debouncer
@@ -40,27 +39,13 @@ defmodule API.Client.Channel do
 
   @impl true
   def join("client", _payload, socket) do
-    with {:ok, socket} <- schedule_expiration(socket),
-         {:ok, gateway_version_requirement} <-
+    with {:ok, gateway_version_requirement} <-
            select_gateway_version_requirement(socket.assigns.client) do
       socket = assign(socket, gateway_version_requirement: gateway_version_requirement)
 
       send(self(), :after_join)
 
       {:ok, socket}
-    end
-  end
-
-  defp schedule_expiration(%{assigns: %{subject: %{expires_at: expires_at}}} = socket) do
-    expires_in =
-      expires_at
-      |> DateTime.diff(DateTime.utc_now(), :millisecond)
-
-    if expires_in > 0 do
-      Process.send_after(self(), :token_expired, expires_in)
-      {:ok, socket}
-    else
-      {:error, %{reason: :token_expired}}
     end
   end
 
@@ -540,27 +525,6 @@ defmodule API.Client.Channel do
     else
       {:noreply, socket}
     end
-  end
-
-  # TOKENS
-
-  def handle_info(
-        {:deleted, %Tokens.Token{type: :client, id: id}},
-        %{assigns: %{subject: %{token_id: token_id}}} = socket
-      )
-      when id == token_id do
-    dbg("Token deleted, disconnecting client socket")
-    disconnect(socket)
-  end
-
-  ####################################
-  ##### Reacting to timed events #####
-  ####################################
-
-  # Message is scheduled by schedule_expiration/1 on topic join to be sent
-  # when the client token/subject expires
-  def handle_info(:token_expired, socket) do
-    disconnect(socket)
   end
 
   ####################################
