@@ -851,6 +851,8 @@ impl Allocation {
             return;
         };
 
+        tracing::debug!(number = %channel, "Binding new channel");
+
         self.authenticate_and_queue(
             make_channel_bind_request(peer, channel, self.software.clone()),
             None,
@@ -867,10 +869,15 @@ impl Allocation {
         let active_socket = self.active_socket?.addr;
         let payload_length = buffer.len() - 4;
 
-        let channel_number = match self.channel_bindings.connected_channel_to_peer(peer, now) {
+        let connected_channel_to_peer = self.channel_bindings.connected_channel_to_peer(peer, now);
+        let inflight_channel_to_peer = self.channel_bindings.inflight_channel_to_peer(peer, now);
+
+        // We use connected and in-flight channels in order to optimistically send data.
+        // Chances are, by the time the channel data message arrives, the channel will have been bound already.
+        // Whether or not we drop the packet here or on the relay if happened to not be bound does not matter.
+        let channel_number = match connected_channel_to_peer.or(inflight_channel_to_peer) {
             Some(cn) => cn,
             None => {
-                tracing::debug!(%peer, %active_socket, "No channel to peer, binding new one");
                 self.bind_channel(peer, now);
 
                 return None;
@@ -1498,6 +1505,13 @@ impl ChannelBindings {
             .map(|(n, _)| *n)
     }
 
+    fn inflight_channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
+        self.inner
+            .iter()
+            .find(|(_, c)| c.inflight_to_peer(peer, now))
+            .map(|(n, _)| *n)
+    }
+
     fn bound_channel_to_peer(&self, peer: SocketAddr, now: Instant) -> Option<u16> {
         self.inner
             .iter()
@@ -1551,6 +1565,13 @@ impl Channel {
     /// In case the channel is older than its lifetime (10 minutes), this returns false because the relay will have de-allocated the channel.
     fn connected_to_peer(&self, peer: SocketAddr, now: Instant) -> bool {
         self.peer == peer && self.age(now) < Self::CHANNEL_LIFETIME && self.bound
+    }
+
+    /// Check if this channel is to-be-bound to the given peer.
+    ///
+    /// In case the channel is older than its lifetime (10 minutes), this returns false because the relay will have de-allocated the channel.
+    fn inflight_to_peer(&self, peer: SocketAddr, now: Instant) -> bool {
+        self.peer == peer && self.age(now) < Self::CHANNEL_LIFETIME
     }
 
     /// Check if this channel is bound to the given peer.
