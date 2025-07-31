@@ -1127,7 +1127,7 @@ defmodule Domain.PoliciesTest do
       # Build relative time ranges based on current time
       now = DateTime.utc_now()
 
-      # Get current day of week as single letter
+      # Get tomorrow as a letter - allows for consistent testing
       day_letter =
         case Date.day_of_week(now) do
           # Monday
@@ -1146,19 +1146,10 @@ defmodule Domain.PoliciesTest do
           7 -> "U"
         end
 
-      # Create time ranges that include current time
-      current_hour = now.hour
-
-      # Policy1: 2-hour window (longer policy)
-      start_hour_1 = max(0, current_hour - 1)
-      end_hour_1 = min(23, current_hour + 1)
-
-      time_range_1 =
-        "#{day_letter}/#{String.pad_leading(Integer.to_string(start_hour_1), 2, "0")}:00-#{String.pad_leading(Integer.to_string(end_hour_1), 2, "0")}:59/UTC"
+      time_range_1 = "#{day_letter}/00:00:00-23:59:59/UTC"
+      time_range_2 = "#{day_letter}/00:00:00-23:59:58/UTC"
 
       # Policy2: 1-hour window (shorter policy)
-      time_range_2 =
-        "#{day_letter}/#{String.pad_leading(Integer.to_string(current_hour), 2, "0")}:00-#{String.pad_leading(Integer.to_string(current_hour), 2, "0")}:59/UTC"
 
       client = Fixtures.Clients.create_client(account: account, actor: actor)
       actor_group2 = Fixtures.Actors.create_group(account: account)
