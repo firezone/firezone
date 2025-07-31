@@ -129,12 +129,14 @@ class Adapter {
       }
 
       if lastPath?.connectivityDifferentFrom(path: path) != false {
-        // Tell connlib to reset network state, but only do so if our connectivity has
+        // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
         // meaningfully changed. On darwin, this is needed to send packets
         // out of a different interface even when 0.0.0.0 is used as the source.
         // If our primary interface changes, we can be certain the old socket shouldn't be
         // used anymore.
-        session?.reset("primary network path changed")
+        reset(reason: "primary network path changed", path: path)
+      } else {
+        // Reset only resolvers
         setSystemDefaultResolvers(path)
       }
 
@@ -256,6 +258,14 @@ class Adapter {
       } else {
         completionHandler(resourceListJSON)
       }
+    }
+  }
+
+  func reset(reason: String, path: Network.NWPath? = nil) {
+    session?.reset(reason)
+
+    if let path = (path ?? lastPath) {
+      setSystemDefaultResolvers(path)
     }
   }
 
@@ -510,9 +520,8 @@ extension Network.NWPath {
     return path.supportsIPv4 != self.supportsIPv4 || path.supportsIPv6 != self.supportsIPv6
       || path.supportsDNS != self.supportsDNS
       || path.status != self.status
-      || path.availableInterfaces.first?.name != self.availableInterfaces.first?.name
-      // Apple provides no documentation on whether order is meaningful, so assume it isn't.
-      || Set(self.gateways) != Set(path.gateways)
+      || path.availableInterfaces.first != self.availableInterfaces.first
+      || path.gateways != self.gateways
   }
 }
 
