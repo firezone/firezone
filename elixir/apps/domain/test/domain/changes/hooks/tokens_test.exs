@@ -1,6 +1,6 @@
-defmodule Domain.Events.Hooks.TokensTest do
+defmodule Domain.Changes.Hooks.TokensTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.Tokens
+  import Domain.Changes.Hooks.Tokens
 
   describe "insert/1" do
     test "returns :ok" do

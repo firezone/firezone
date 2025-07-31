@@ -32,3 +32,7 @@ apps/*/screenshots
 
 # Uploads
 apps/web/priv/static/uploads
+
+# ElixirLS
+# ElixirLS uses this directory to store its state.
+.elixir_ls/

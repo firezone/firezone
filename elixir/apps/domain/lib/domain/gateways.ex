@@ -5,6 +5,8 @@ defmodule Domain.Gateways do
   alias Domain.{Accounts, Resources, Tokens, Billing}
   alias Domain.Gateways.{Authorizer, Gateway, Group, Presence}
 
+  require Logger
+
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
   end
@@ -258,8 +260,8 @@ defmodule Domain.Gateways do
     |> Map.keys()
   end
 
-  def all_connected_gateways_for_resource(
-        %Resources.Resource{} = resource,
+  def all_connected_gateways_for_resource_id(
+        resource_id,
         %Auth.Subject{} = subject,
         opts \\ []
       ) do
@@ -267,14 +269,14 @@ defmodule Domain.Gateways do
       {preload, _opts} = Keyword.pop(opts, :preload, [])
 
       connected_gateway_ids =
-        Presence.Account.list(resource.account_id)
+        Presence.Account.list(subject.account.id)
         |> Map.keys()
 
       gateways =
         Gateway.Query.not_deleted()
         |> Gateway.Query.by_ids(connected_gateway_ids)
-        |> Gateway.Query.by_account_id(resource.account_id)
-        |> Gateway.Query.by_resource_id(resource.id)
+        |> Gateway.Query.by_account_id(subject.account.id)
+        |> Gateway.Query.by_resource_id(resource_id)
         |> Repo.all()
         |> Repo.preload(preload)
 
@@ -282,16 +284,16 @@ defmodule Domain.Gateways do
     end
   end
 
-  def gateway_can_connect_to_resource?(%Gateway{} = gateway, %Resources.Resource{} = resource) do
+  def gateway_can_connect_to_resource_id?(%Gateway{} = gateway, resource_id) do
     connected_gateway_ids =
-      Presence.Account.list(resource.account_id)
+      Presence.Account.list(gateway.account_id)
       |> Map.keys()
 
     cond do
       gateway.id not in connected_gateway_ids ->
         false
 
-      not Resources.connected?(resource, gateway) ->
+      not Resources.connected?(resource_id, gateway) ->
         false
 
       true ->
@@ -412,5 +414,38 @@ defmodule Domain.Gateways do
       :lt -> true
       _ -> false
     end
+  end
+
+  @doc """
+    Filters gateways by the client version.
+
+    We support gateways running in one less minor and one greater minor version than the client.
+    So 1.2.x clients are compatible with 1.1.x and 1.3.x gateways, but not with 1.0.x or 1.4.x.
+  """
+  def filter_compatible_gateways(gateways, client_version) do
+    gateways =
+      case Version.parse(client_version) do
+        {:ok, version} ->
+          gateways
+          |> Enum.filter(fn gateway ->
+            case Version.parse(gateway.last_seen_version) do
+              {:ok, gateway_version} ->
+                Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
+                  Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0")
+
+              _ ->
+                Logger.warning("Unable to parse client version: #{gateway.last_seen_version}")
+
+                false
+            end
+          end)
+
+        :error ->
+          Logger.warning("Unable to parse client version: #{client_version}")
+
+          []
+      end
+
+    {:ok, gateways}
   end
 end

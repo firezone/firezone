@@ -1,6 +1,5 @@
 defmodule Domain.Policies.Condition.Evaluator do
   alias Domain.Clients
-  alias Domain.Policies.Condition
 
   @days_of_week ~w[M T W R F S U]
 
@@ -8,7 +7,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   Returns `true` if the condition can be evaluated during connection (eg. for IP address matching
   it can't change while socket is open), otherwise `false`.
   """
-  def evaluable_on_connect?(%Condition{property: "current_utc_datetime"}), do: false
+  def evaluable_on_connect?(%{property: "current_utc_datetime"}), do: false
   def evaluable_on_connect?(_), do: true
 
   def ensure_conforms([], %Clients.Client{}) do
@@ -42,7 +41,7 @@ defmodule Domain.Policies.Condition.Evaluator do
     do: Enum.min([expires_at, min_expires_at], DateTime)
 
   def fetch_conformation_expiration(
-        %Condition{property: :remote_ip_location_region, operator: :is_in, values: values},
+        %{property: :remote_ip_location_region, operator: :is_in, values: values},
         %Clients.Client{} = client
       ) do
     if client.last_seen_remote_ip_location_region in values do
@@ -53,7 +52,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{property: :remote_ip_location_region, operator: :is_not_in, values: values},
+        %{property: :remote_ip_location_region, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
     if client.last_seen_remote_ip_location_region in values do
@@ -64,7 +63,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{property: :remote_ip, operator: :is_in_cidr, values: values},
+        %{property: :remote_ip, operator: :is_in_cidr, values: values},
         %Clients.Client{} = client
       ) do
     Enum.reduce_while(values, :error, fn cidr, :error ->
@@ -80,7 +79,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{property: :remote_ip, operator: :is_not_in_cidr, values: values},
+        %{property: :remote_ip, operator: :is_not_in_cidr, values: values},
         %Clients.Client{} = client
       ) do
     Enum.reduce_while(values, {:ok, nil}, fn cidr, {:ok, nil} ->
@@ -96,7 +95,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{property: :provider_id, operator: :is_in, values: values},
+        %{property: :provider_id, operator: :is_in, values: values},
         %Clients.Client{} = client
       ) do
     if client.identity.provider_id in values do
@@ -107,7 +106,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{property: :provider_id, operator: :is_not_in, values: values},
+        %{property: :provider_id, operator: :is_not_in, values: values},
         %Clients.Client{} = client
       ) do
     if client.identity.provider_id in values do
@@ -118,7 +117,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{
+        %{
           property: :client_verified,
           operator: :is,
           values: ["true"]
@@ -133,7 +132,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{
+        %{
           property: :client_verified,
           operator: :is,
           values: _other
@@ -144,7 +143,7 @@ defmodule Domain.Policies.Condition.Evaluator do
   end
 
   def fetch_conformation_expiration(
-        %Condition{
+        %{
           property: :current_utc_datetime,
           operator: :is_in_day_of_week_time_ranges,
           values: values

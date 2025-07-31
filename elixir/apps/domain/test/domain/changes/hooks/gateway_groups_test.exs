@@ -1,6 +1,6 @@
-defmodule Domain.Events.Hooks.GatewayGroupsTest do
+defmodule Domain.Changes.Hooks.GatewayGroupsTest do
   use ExUnit.Case, async: true
-  import Domain.Events.Hooks.GatewayGroups
+  import Domain.Changes.Hooks.GatewayGroups
   alias Domain.Gateways
 
   describe "insert/1" do
