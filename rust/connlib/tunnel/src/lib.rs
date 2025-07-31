@@ -8,7 +8,7 @@
 use anyhow::Result;
 use bimap::BiMap;
 use chrono::Utc;
-use connlib_model::{ClientId, GatewayId, PublicKey, ResourceId, ResourceView};
+use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
@@ -411,11 +411,11 @@ impl GatewayTunnel {
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: GatewayId,
-        candidates: BTreeSet<String>,
+        candidates: BTreeSet<IceCandidate>,
     },
     RemovedIceCandidates {
         conn_id: GatewayId,
-        candidates: BTreeSet<String>,
+        candidates: BTreeSet<IceCandidate>,
     },
     ConnectionIntent {
         resource: ResourceId,
@@ -465,11 +465,11 @@ impl IpConfig {
 pub enum GatewayEvent {
     AddedIceCandidates {
         conn_id: ClientId,
-        candidates: BTreeSet<String>,
+        candidates: BTreeSet<IceCandidate>,
     },
     RemovedIceCandidates {
         conn_id: ClientId,
-        candidates: BTreeSet<String>,
+        candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
 }

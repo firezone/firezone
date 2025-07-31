@@ -9,7 +9,6 @@ use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
-use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt;
 use ip_packet::{IpPacket, IpPacketBuf};
 use itertools::Itertools;
@@ -328,15 +327,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    pub fn add_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
-        let candidate = match Candidate::from_sdp_string(&candidate) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::debug!("Failed to parse candidate: {}", err_with_src(&e));
-                return;
-            }
-        };
-
+    pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
         let Some((agent, relay)) = self.connections.agent_mut(cid) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
@@ -377,15 +368,7 @@ where
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: String, now: Instant) {
-        let candidate = match Candidate::from_sdp_string(&candidate) {
-            Ok(c) => c,
-            Err(e) => {
-                tracing::debug!("Failed to parse candidate: {}", err_with_src(&e));
-                return;
-            }
-        };
-
+    pub fn remove_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
         if let Some((agent, _)) = self.connections.agent_mut(cid) {
             agent.invalidate_candidate(&candidate);
             agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
@@ -1151,7 +1134,12 @@ fn seed_agent_with_local_candidates<TId, RId>(
         .into_iter()
         .flat_map(|allocation| allocation.current_relay_candidates());
 
-    for candidate in shared_candidates.chain(relay_candidates) {
+    // Candidates with a higher priority are better, therefore: Reverse the ordering by priority.
+    for candidate in shared_candidates
+        .chain(relay_candidates)
+        .sorted_by_key(|c| c.prio())
+        .rev()
+    {
         add_local_candidate(connection, agent, candidate, pending_events);
     }
 }
@@ -1407,7 +1395,7 @@ fn signal_candidate_to_remote<TId>(
 
     pending_events.push_back(Event::NewIceCandidate {
         connection: id,
-        candidate: candidate.to_sdp_string(),
+        candidate: candidate.clone(),
     })
 }
 
@@ -1437,7 +1425,7 @@ fn remove_local_candidate<TId>(
     if candidate.kind() == CandidateKind::ServerReflexive {
         pending_events.push_back(Event::InvalidateIceCandidate {
             connection: id,
-            candidate: candidate.to_sdp_string(),
+            candidate: candidate.clone(),
         });
         return;
     }
@@ -1447,7 +1435,7 @@ fn remove_local_candidate<TId>(
     if was_present {
         pending_events.push_back(Event::InvalidateIceCandidate {
             connection: id,
-            candidate: candidate.to_sdp_string(),
+            candidate: candidate.clone(),
         })
     }
 }
@@ -1494,19 +1482,15 @@ impl From<str0m::IceCreds> for Credentials {
 #[derive(Debug, PartialEq, Clone)]
 pub enum Event<TId> {
     /// We created a new candidate for this connection and ask to signal it to the remote party.
-    ///
-    /// Candidates are in SDP format although this may change and should be considered an implementation detail of the application.
     NewIceCandidate {
         connection: TId,
-        candidate: String,
+        candidate: Candidate,
     },
 
     /// We invalidated a candidate for this connection and ask to signal that to the remote party.
-    ///
-    /// Candidates are in SDP format although this may change and should be considered an implementation detail of the application.
     InvalidateIceCandidate {
         connection: TId,
-        candidate: String,
+        candidate: Candidate,
     },
 
     ConnectionEstablished(TId),
