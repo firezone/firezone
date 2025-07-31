@@ -122,6 +122,7 @@ defmodule API.Gateway.Channel do
             }
 
             Logger.info("Updated flow authorization",
+              old_flow_id: flow.id,
               account_id: flow.account_id,
               client_id: flow.client_id,
               resource_id: flow.resource_id,
