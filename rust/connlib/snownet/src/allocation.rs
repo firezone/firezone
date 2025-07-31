@@ -1955,11 +1955,24 @@ mod tests {
     }
 
     #[test]
-    fn does_not_relay_to_with_unbound_channel() {
+    fn relays_to_inflight_channel() {
         let mut allocation = Allocation::for_test_ip4(Instant::now())
             .with_binding_response(PEER1, Instant::now())
             .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
         allocation.bind_channel(PEER2_IP4, Instant::now());
+
+        let mut buffer = channel_data_packet_buffer(b"foobar");
+        let encode_ok =
+            allocation.encode_channel_data_header(PEER2_IP4, &mut buffer, Instant::now());
+
+        assert!(encode_ok.is_some())
+    }
+
+    #[test]
+    fn does_not_relay_to_with_unbound_channel() {
+        let mut allocation = Allocation::for_test_ip4(Instant::now())
+            .with_binding_response(PEER1, Instant::now())
+            .with_allocate_response(&[RELAY_ADDR_IP4], Instant::now());
 
         let mut buffer = channel_data_packet_buffer(b"foobar");
         let encode_ok =
