@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="10075">
+          Fixes an issue on iOS where the tunnel may never fully come up after
+          signing in due to a network connectivity reset loop.
+        </ChangeItem>
         <ChangeItem pull="10056">
           Fixes an issue where connectivity could be lost for up to 20 seconds
           after waking from sleep.
