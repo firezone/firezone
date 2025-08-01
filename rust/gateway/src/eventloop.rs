@@ -369,7 +369,7 @@ impl Eventloop {
             } => {
                 self.tunnel
                     .state_mut()
-                    .remove_access(&client_id, &resource_id);
+                    .remove_access(&client_id, &resource_id, Instant::now());
             }
             phoenix_channel::Event::InboundMessage {
                 msg:
@@ -560,7 +560,9 @@ impl Eventloop {
         ) {
             let cid = req.client.id;
 
-            self.tunnel.state_mut().cleanup_connection(&cid);
+            self.tunnel
+                .state_mut()
+                .cleanup_connection(&cid, Instant::now());
             tracing::debug!(%cid, "Connection request failed: {e:#}");
             return;
         }
