@@ -3,7 +3,7 @@ use boringtun::x25519::PublicKey;
 #[cfg(not(target_os = "windows"))]
 use dns_lookup::{AddrInfoHints, AddrInfoIter, LookupError};
 use dns_types::DomainName;
-use firezone_bin_shared::TunDeviceManager;
+use firezone_bin_shared::{TunDeviceManager, signals};
 use firezone_telemetry::{Telemetry, analytics};
 
 use firezone_tunnel::messages::gateway::{
@@ -15,9 +15,10 @@ use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, 
 use firezone_tunnel::{
     DnsResourceNatEntry, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest,
 };
+use futures::FutureExt;
+use futures::future::BoxFuture;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
-use std::convert::Infallible;
 use std::future::Future;
 use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
 use std::sync::Arc;
@@ -50,7 +51,8 @@ enum ResolveTrigger {
 }
 
 pub struct Eventloop {
-    tunnel: GatewayTunnel,
+    // Tunnel is `Option` because we need to take ownership on shutdown.
+    tunnel: Option<GatewayTunnel>,
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     tun_device_manager: Arc<Mutex<TunDeviceManager>>,
 
@@ -60,6 +62,9 @@ pub struct Eventloop {
 
     set_interface_tasks: futures_bounded::FuturesSet<Result<Interface>>,
 
+    sigint: signals::Terminate,
+    shutdown: Option<BoxFuture<'static, Result<()>>>,
+
     logged_permission_denied: bool,
 }
 
@@ -68,11 +73,11 @@ impl Eventloop {
         tunnel: GatewayTunnel,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
-    ) -> Self {
+    ) -> Result<Self> {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
-        Self {
-            tunnel,
+        Ok(Self {
+            tunnel: Some(tunnel),
             portal,
             tun_device_manager: Arc::new(Mutex::new(tun_device_manager)),
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
@@ -85,19 +90,21 @@ impl Eventloop {
                     tracing::debug!(%domain, ?ips, ?cause, "DNS cache entry evicted");
                 })
                 .build(),
-        }
+            sigint: signals::Terminate::new()?,
+            shutdown: None,
+        })
     }
 }
 
 impl Eventloop {
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
+    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         loop {
-            match self.tunnel.poll_next_event(cx) {
-                Poll::Ready(Ok(event)) => {
+            match self.tunnel.as_mut().map(|t| t.poll_next_event(cx)) {
+                Some(Poll::Ready(Ok(event))) => {
                     self.handle_tunnel_event(event);
                     continue;
                 }
-                Poll::Ready(Err(e)) => {
+                Some(Poll::Ready(Err(e))) => {
                     if e.root_cause()
                         .downcast_ref::<io::Error>()
                         .is_some_and(is_unreachable)
@@ -143,7 +150,8 @@ impl Eventloop {
                     tracing::warn!("Tunnel error: {e:#}");
                     continue;
                 }
-                Poll::Pending => {}
+                Some(Poll::Pending) => {}
+                None => {}
             }
 
             match self.resolve_tasks.poll_unpin(cx).map(|(r, trigger)| {
@@ -165,11 +173,15 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Ready((result, ResolveTrigger::SetupNat(request))) => {
-                    if let Err(e) = self.tunnel.state_mut().handle_domain_resolved(
-                        request,
-                        result,
-                        Instant::now(),
-                    ) {
+                    let Some(tunnel) = self.tunnel.as_mut() else {
+                        continue;
+                    };
+
+                    if let Err(e) =
+                        tunnel
+                            .state_mut()
+                            .handle_domain_resolved(request, result, Instant::now())
+                    {
                         tracing::warn!("Failed to set DNS resource NAT: {e:#}");
                     };
 
@@ -187,14 +199,16 @@ impl Eventloop {
                     let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
                     let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
 
-                    let ipv4_result = self
-                        .tunnel
+                    let Some(tunnel) = self.tunnel.as_mut() else {
+                        continue;
+                    };
+
+                    let ipv4_result = tunnel
                         .rebind_dns_ipv4(ipv4_socket)
                         .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
                         .inspect_err(|e| tracing::debug!("{e:#}"));
 
-                    let ipv6_result = self
-                        .tunnel
+                    let ipv6_result = tunnel
                         .rebind_dns_ipv6(ipv6_socket)
                         .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
                         .inspect_err(|e| tracing::debug!("{e:#}"));
@@ -212,6 +226,28 @@ impl Eventloop {
                     continue;
                 }
                 Poll::Pending => {}
+            }
+
+            match self.sigint.poll_recv(cx) {
+                Poll::Ready(()) => {
+                    if self.shutdown.is_some() {
+                        tracing::info!("Forcing shutdown on repeated SIGINT/SIGTERM");
+
+                        return Poll::Ready(Ok(()));
+                    }
+
+                    tracing::info!("Received SIGINT/SIGTERM, initiating graceful shutdown");
+
+                    let _ = self.portal.close();
+                    self.shutdown = self.tunnel.take().map(|t| t.shutdown());
+                }
+                Poll::Pending => {}
+            }
+
+            match self.shutdown.as_mut().map(|s| s.poll_unpin(cx)) {
+                Some(Poll::Ready(Ok(()))) => return Poll::Ready(Ok(())),
+                Some(Poll::Ready(Err(e))) => return Poll::Ready(Err(e.context("Shutdown failed"))),
+                Some(Poll::Pending) | None => {}
             }
 
             return Poll::Pending;
@@ -260,12 +296,16 @@ impl Eventloop {
     }
 
     fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return;
+        };
+
         match event {
             phoenix_channel::Event::InboundMessage {
                 msg: IngressMessages::AuthorizeFlow(msg),
                 ..
             } => {
-                if let Err(snownet::NoTurnServers {}) = self.tunnel.state_mut().authorize_flow(
+                if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
                     msg.client.id,
                     PublicKey::from(msg.client.public_key.0),
                     msg.client.preshared_key,
@@ -283,7 +323,7 @@ impl Eventloop {
 
                     // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                     self.portal
-                        .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+                        .connect(PublicKeyParam(tunnel.public_key().to_bytes()));
                     return;
                 };
 
@@ -338,7 +378,7 @@ impl Eventloop {
                 ..
             } => {
                 for candidate in candidates {
-                    self.tunnel
+                    tunnel
                         .state_mut()
                         .add_ice_candidate(client_id, candidate, Instant::now());
                 }
@@ -352,11 +392,9 @@ impl Eventloop {
                 ..
             } => {
                 for candidate in candidates {
-                    self.tunnel.state_mut().remove_ice_candidate(
-                        client_id,
-                        candidate,
-                        Instant::now(),
-                    );
+                    tunnel
+                        .state_mut()
+                        .remove_ice_candidate(client_id, candidate, Instant::now());
                 }
             }
             phoenix_channel::Event::InboundMessage {
@@ -367,7 +405,7 @@ impl Eventloop {
                     }),
                 ..
             } => {
-                self.tunnel
+                tunnel
                     .state_mut()
                     .remove_access(&client_id, &resource_id, Instant::now());
             }
@@ -378,7 +416,7 @@ impl Eventloop {
                         connected,
                     }),
                 ..
-            } => self.tunnel.state_mut().update_relays(
+            } => tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
                 firezone_tunnel::turn(&connected),
                 Instant::now(),
@@ -400,16 +438,16 @@ impl Eventloop {
                     analytics::identify(RELEASE.to_owned(), Some(account_slug))
                 }
 
-                self.tunnel.state_mut().update_relays(
+                tunnel.state_mut().update_relays(
                     BTreeSet::default(),
                     firezone_tunnel::turn(&relays),
                     Instant::now(),
                 );
-                self.tunnel.state_mut().update_tun_device(IpConfig {
+                tunnel.state_mut().update_tun_device(IpConfig {
                     v4: interface.ipv4,
                     v6: interface.ipv6,
                 });
-                self.tunnel
+                tunnel
                     .state_mut()
                     .retain_authorizations(authorizations.iter().fold(
                         BTreeMap::new(),
@@ -428,8 +466,7 @@ impl Eventloop {
                     expires_at,
                 } in authorizations
                 {
-                    if let Err(e) = self
-                        .tunnel
+                    if let Err(e) = tunnel
                         .state_mut()
                         .update_access_authorization_expiry(cid, rid, expires_at)
                     {
@@ -466,9 +503,7 @@ impl Eventloop {
                 msg: IngressMessages::ResourceUpdated(resource_description),
                 ..
             } => {
-                self.tunnel
-                    .state_mut()
-                    .update_resource(resource_description);
+                tunnel.state_mut().update_resource(resource_description);
             }
             phoenix_channel::Event::InboundMessage {
                 msg:
@@ -481,8 +516,7 @@ impl Eventloop {
                     ),
                 ..
             } => {
-                if let Err(e) = self
-                    .tunnel
+                if let Err(e) = tunnel
                     .state_mut()
                     .update_access_authorization_expiry(cid, rid, expires_at)
                 {
@@ -492,9 +526,7 @@ impl Eventloop {
             phoenix_channel::Event::ErrorResponse { topic, req_id, res } => {
                 tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
             }
-            phoenix_channel::Event::Closed => {
-                unimplemented!("Gateway never actively closes the portal connection")
-            }
+            phoenix_channel::Event::Closed => {}
             phoenix_channel::Event::SuccessResponse { res: (), .. }
             | phoenix_channel::Event::HeartbeatSent
             | phoenix_channel::Event::JoinedRoom { .. } => {}
@@ -515,6 +547,10 @@ impl Eventloop {
         result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         req: RequestConnection,
     ) {
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return;
+        };
+
         let addresses = match result {
             Ok(addresses) => addresses,
             Err(e) => {
@@ -524,7 +560,7 @@ impl Eventloop {
             }
         };
 
-        let answer = match self.tunnel.state_mut().accept(
+        let answer = match tunnel.state_mut().accept(
             req.client.id,
             req.client
                 .payload
@@ -539,13 +575,13 @@ impl Eventloop {
 
                 // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                 self.portal
-                    .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+                    .connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
                 return;
             }
         };
 
-        if let Err(e) = self.tunnel.state_mut().allow_access(
+        if let Err(e) = tunnel.state_mut().allow_access(
             req.client.id,
             IpConfig {
                 v4: req.client.peer.ipv4,
@@ -560,9 +596,7 @@ impl Eventloop {
         ) {
             let cid = req.client.id;
 
-            self.tunnel
-                .state_mut()
-                .cleanup_connection(&cid, Instant::now());
+            tunnel.state_mut().cleanup_connection(&cid, Instant::now());
             tracing::debug!(%cid, "Connection request failed: {e:#}");
             return;
         }
@@ -583,6 +617,10 @@ impl Eventloop {
         result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         req: AllowAccess,
     ) {
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return;
+        };
+
         // "allow access" doesn't have a response so we can't tell the client that things failed.
         // It is legacy code so don't bother ...
         let addresses = match result {
@@ -594,7 +632,7 @@ impl Eventloop {
             }
         };
 
-        if let Err(e) = self.tunnel.state_mut().allow_access(
+        if let Err(e) = tunnel.state_mut().allow_access(
             req.client_id,
             IpConfig {
                 v4: req.client_ipv4,

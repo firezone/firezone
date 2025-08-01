@@ -79,6 +79,11 @@ impl GatewayState {
         self.node.public_key()
     }
 
+    pub fn shutdown(&mut self, now: Instant) {
+        self.peers.clear();
+        self.node.close_all(p2p_control::goodbye(), now);
+    }
+
     /// Handles packets received on the TUN device.
     pub(crate) fn handle_tun_input(
         &mut self,
