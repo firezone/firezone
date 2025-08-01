@@ -57,8 +57,8 @@ importers:
         specifier: ^3.1.2
         version: 3.1.2(rollup@4.40.1)
       flowbite-react:
-        specifier: ^0.11.9
-        version: 0.11.9(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tailwindcss@4.1.11)(typescript@5.8.3)
+        specifier: ^0.12.5
+        version: 0.12.5(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tailwindcss@4.1.11)(typescript@5.8.3)
       react:
         specifier: ^19.1.1
         version: 19.1.1
@@ -370,14 +370,14 @@ packages:
   '@floating-ui/core@1.6.9':
     resolution: {integrity: sha512-uMXCuQ3BItDUbAMhIXw7UPXRfAlOAvZzdK9BWpE60MCn+Svt3aLn9jsPTi/WNGlRUu2uI0v5S7JiIUsbsvh3fw==}
 
-  '@floating-ui/core@1.7.2':
-    resolution: {integrity: sha512-wNB5ooIKHQc+Kui96jE/n69rHFWAVoxn5CAzL1Xdd8FG03cgY3MLO+GF9U3W737fYDSgPWA6MReKhBQBop6Pcw==}
+  '@floating-ui/core@1.7.3':
+    resolution: {integrity: sha512-sGnvb5dmrJaKEZ+LDIpguvdX3bDlEllmv4/ClQ9awcmCZrlx5jQyyMWFM5kBI+EyNOCDDiKk8il0zeuX3Zlg/w==}
 
-  '@floating-ui/dom@1.7.2':
-    resolution: {integrity: sha512-7cfaOQuCS27HD7DX+6ib2OrnW+b4ZBwDNnCcT0uTyidcmyWb03FnQqJybDBoCnpdxwBSfA94UAYlRCt7mV+TbA==}
+  '@floating-ui/dom@1.7.3':
+    resolution: {integrity: sha512-uZA413QEpNuhtb3/iIKoYMSK07keHPYeXF02Zhd6e213j+d1NamLix/mCLxBUDW/Gx52sPH2m+chlUsyaBs/Ag==}
 
-  '@floating-ui/react-dom@2.1.4':
-    resolution: {integrity: sha512-JbbpPhp38UmXDDAu60RJmbeme37Jbgsm7NrHGgzYYFKmblzRUh6Pa641dII6LsjwF4XlScDrde2UAzDo/b9KPw==}
+  '@floating-ui/react-dom@2.1.5':
+    resolution: {integrity: sha512-HDO/1/1oH9fjj4eLgegrlH3dklZpHtUYYFiVwMUwfGvk9jWDRWqkklA2/NFScknrcNSspbV868WjXORvreDX+Q==}
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
@@ -1363,8 +1363,8 @@ packages:
   flowbite-datepicker@1.3.2:
     resolution: {integrity: sha512-6Nfm0MCVX3mpaR7YSCjmEO2GO8CDt6CX8ZpQnGdeu03WUCWtEPQ/uy0PUiNtIJjJZWnX0Cm3H55MOhbD1g+E/g==}
 
-  flowbite-react@0.11.9:
-    resolution: {integrity: sha512-S8KwzbR2PcVv+iJDpIp62NrIjSkKIm6ZrwdssK0k4mDU8SvYSuecKstATrIxdHAIL3/FiT4VGNuCoTUSj4OcEQ==}
+  flowbite-react@0.12.5:
+    resolution: {integrity: sha512-lZ8whSA0drHJqyO63jmC5kL02E8YZw9aWbzH7M17tlRXvDUKG5EDELvEtJiWb1tPL19rjd16+Tjc3jOS3IX6iw==}
     hasBin: true
     peerDependencies:
       react: ^18 || ^19
@@ -2489,24 +2489,24 @@ snapshots:
     dependencies:
       '@floating-ui/utils': 0.2.10
 
-  '@floating-ui/core@1.7.2':
+  '@floating-ui/core@1.7.3':
     dependencies:
       '@floating-ui/utils': 0.2.10
 
-  '@floating-ui/dom@1.7.2':
+  '@floating-ui/dom@1.7.3':
     dependencies:
-      '@floating-ui/core': 1.7.2
+      '@floating-ui/core': 1.7.3
       '@floating-ui/utils': 0.2.10
 
-  '@floating-ui/react-dom@2.1.4(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
+  '@floating-ui/react-dom@2.1.5(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
-      '@floating-ui/dom': 1.7.2
+      '@floating-ui/dom': 1.7.3
       react: 19.1.1
       react-dom: 19.1.1(react@19.1.1)
 
   '@floating-ui/react@0.27.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)':
     dependencies:
-      '@floating-ui/react-dom': 2.1.4(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
+      '@floating-ui/react-dom': 2.1.5(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
       '@floating-ui/utils': 0.2.10
       react: 19.1.1
       react-dom: 19.1.1(react@19.1.1)
@@ -3582,7 +3582,7 @@ snapshots:
     transitivePeerDependencies:
       - rollup
 
-  flowbite-react@0.11.9(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tailwindcss@4.1.11)(typescript@5.8.3):
+  flowbite-react@0.12.5(react-dom@19.1.1(react@19.1.1))(react@19.1.1)(tailwindcss@4.1.11)(typescript@5.8.3):
     dependencies:
       '@floating-ui/core': 1.6.9
       '@floating-ui/react': 0.27.3(react-dom@19.1.1(react@19.1.1))(react@19.1.1)
