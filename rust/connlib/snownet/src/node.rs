@@ -381,6 +381,12 @@ where
         }
     }
 
+    pub fn close_all(&mut self, goodbye: IpPacket, now: Instant) {
+        for id in self.connections.iter_ids().collect::<Vec<_>>() {
+            self.close_connection(id, goodbye.clone(), now);
+        }
+    }
+
     pub fn public_key(&self) -> PublicKey {
         self.public_key
     }
