@@ -23,7 +23,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
-    mem,
+    iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
     time::Instant,
@@ -494,6 +494,26 @@ impl RefClient {
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
+        }
+
+        let Some(site) = self.site_for_resource(*resource) else {
+            tracing::error!(%resource, "No site for resource");
+            return;
+        };
+
+        // If this was the last resource we were connected to for this site,
+        // the connection will be GC'd.
+        if self
+            .connected_resources()
+            .all(|r| self.site_for_resource(r).is_some_and(|s| s != site))
+        {
+            tracing::debug!(
+                last_resource = %resource,
+                site = %site.id,
+                "We are no longer connected to any resources in this site"
+            );
+
+            self.site_status.remove(&site.id);
         }
     }
 
