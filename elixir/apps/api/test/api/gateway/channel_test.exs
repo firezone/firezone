@@ -126,6 +126,7 @@ defmodule API.Gateway.ChannelTest do
       Process.flag(:trap_exit, true)
 
       :ok = Domain.PubSub.Account.subscribe(account.id)
+      :ok = Domain.PubSub.subscribe("sessions:#{token.id}")
 
       data = %{
         "id" => token.id,
@@ -136,11 +137,14 @@ defmodule API.Gateway.ChannelTest do
       Events.Hooks.Tokens.on_delete(data)
 
       assert_receive {:deleted, deleted_token}
-      assert_push "disconnect", payload
-      assert_receive {:EXIT, _pid, _}
-      assert_receive {:socket_close, _pid, _}
+
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: topic,
+        event: "disconnect"
+      }
+
+      assert topic == "sessions:#{token.id}"
       assert deleted_token.id == token.id
-      assert payload == %{"reason" => "token_expired"}
     end
 
     test "pushes allow_access message", %{
@@ -294,7 +298,11 @@ defmodule API.Gateway.ChannelTest do
         "id" => flow1.id,
         "client_id" => client.id,
         "resource_id" => resource.id,
-        "account_id" => account.id
+        "account_id" => account.id,
+        "token_id" => flow1.token_id,
+        "policy_id" => flow1.policy_id,
+        "actor_group_membership_id" => flow1.actor_group_membership_id,
+        "expires_at" => flow1.expires_at
       }
 
       send(
@@ -361,7 +369,11 @@ defmodule API.Gateway.ChannelTest do
         "client_id" => client.id,
         "resource_id" => resource.id,
         "account_id" => account.id,
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "token_id" => flow.token_id,
+        "actor_group_membership_id" => flow.actor_group_membership_id,
+        "policy_id" => flow.policy_id,
+        "expires_at" => flow.expires_at
       }
 
       send(
@@ -499,7 +511,11 @@ defmodule API.Gateway.ChannelTest do
         "client_id" => other_flow1.client_id,
         "resource_id" => other_flow1.resource_id,
         "account_id" => other_flow1.account_id,
-        "gateway_id" => other_flow1.gateway_id
+        "gateway_id" => other_flow1.gateway_id,
+        "token_id" => other_flow1.token_id,
+        "policy_id" => other_flow1.policy_id,
+        "actor_group_membership_id" => other_flow1.actor_group_membership_id,
+        "expires_at" => other_flow1.expires_at
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -517,7 +533,11 @@ defmodule API.Gateway.ChannelTest do
         "client_id" => other_flow2.client_id,
         "resource_id" => other_flow2.resource_id,
         "account_id" => other_flow2.account_id,
-        "gateway_id" => other_flow2.gateway_id
+        "gateway_id" => other_flow2.gateway_id,
+        "token_id" => other_flow2.token_id,
+        "policy_id" => other_flow2.policy_id,
+        "actor_group_membership_id" => other_flow2.actor_group_membership_id,
+        "expires_at" => other_flow2.expires_at
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -944,7 +964,11 @@ defmodule API.Gateway.ChannelTest do
         "client_id" => client.id,
         "resource_id" => resource.id,
         "account_id" => account.id,
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "token_id" => flow.token_id,
+        "actor_group_membership_id" => flow.actor_group_membership_id,
+        "policy_id" => flow.policy_id,
+        "expires_at" => flow.expires_at
       }
 
       Events.Hooks.Flows.on_delete(data)
@@ -1074,7 +1098,11 @@ defmodule API.Gateway.ChannelTest do
         "client_id" => client.id,
         "resource_id" => resource.id,
         "account_id" => account.id,
-        "gateway_id" => gateway.id
+        "gateway_id" => gateway.id,
+        "token_id" => flow.token_id,
+        "actor_group_membership_id" => flow.actor_group_membership_id,
+        "policy_id" => flow.policy_id,
+        "expires_at" => flow.expires_at
       }
 
       Events.Hooks.Flows.on_delete(data)

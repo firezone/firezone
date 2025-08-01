@@ -6,13 +6,23 @@ defmodule Domain.PoliciesTest do
   setup do
     account = Fixtures.Accounts.create_account()
     actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    actor_group = Fixtures.Actors.create_group(account: account)
     identity = Fixtures.Auth.create_identity(account: account, actor: actor)
     subject = Fixtures.Auth.create_subject(identity: identity)
+    resource = Fixtures.Resources.create_resource(account: account)
+
+    Fixtures.Actors.create_membership(
+      account: account,
+      actor: actor,
+      group: actor_group
+    )
 
     %{
       account: account,
       actor: actor,
+      actor_group: actor_group,
       identity: identity,
+      resource: resource,
       subject: subject
     }
   end
@@ -704,10 +714,7 @@ defmodule Domain.PoliciesTest do
   end
 
   describe "delete_policies_for/1" do
-    setup %{account: account, subject: subject} do
-      resource = Fixtures.Resources.create_resource(account: account)
-      actor_group = Fixtures.Actors.create_group(account: account)
-
+    setup %{resource: resource, actor_group: actor_group, account: account, subject: subject} do
       policy =
         Fixtures.Policies.create_policy(
           account: account,
@@ -843,42 +850,365 @@ defmodule Domain.PoliciesTest do
     end
   end
 
-  describe "ensure_client_conforms_policy_conditions/2" do
-    test "returns :ok when client conforms to policy conditions", %{} do
-      client = %Domain.Clients.Client{
-        last_seen_remote_ip_location_region: "US"
-      }
-
-      policy = %Policies.Policy{
-        conditions: [
-          %Policies.Condition{
-            property: :remote_ip_location_region,
-            operator: :is_in,
-            values: ["US"]
-          }
-        ]
-      }
-
-      assert ensure_client_conforms_policy_conditions(client, policy) == {:ok, nil}
+  describe "filter_by_conforming_policies_for_client/2" do
+    test "returns empty list when there are no policies", %{} do
+      client = Fixtures.Clients.create_client()
+      assert filter_by_conforming_policies_for_client([], client) == []
     end
 
-    test "returns error when client conforms to policy conditions", %{} do
-      client = %Domain.Clients.Client{
-        last_seen_remote_ip_location_region: "US"
-      }
+    test "filters based on policy conditions", %{
+      account: account,
+      resource: resource,
+      actor: actor,
+      actor_group: actor_group
+    } do
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      actor_group2 = Fixtures.Actors.create_group(account: account)
 
-      policy = %Policies.Policy{
-        conditions: [
-          %Policies.Condition{
-            property: :remote_ip_location_region,
-            operator: :is_in,
-            values: ["CA"]
-          }
-        ]
-      }
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group2
+      )
 
-      assert ensure_client_conforms_policy_conditions(client, policy) ==
-               {:error, {:forbidden, [violated_properties: [:remote_ip_location_region]]}}
+      actor_group3 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group3
+      )
+
+      actor_group4 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group4
+      )
+
+      actor_group5 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group5
+      )
+
+      actor_group6 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group6
+      )
+
+      policy1 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group,
+          conditions: [
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["CA"]
+            }
+          ]
+        )
+
+      policy2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group2,
+          conditions: [
+            %{
+              property: :remote_ip,
+              operator: :is_in_cidr,
+              values: ["1.1.1.1/32"]
+            }
+          ]
+        )
+
+      policy3 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group3,
+          conditions: [
+            %{
+              property: :provider_id,
+              operator: :is_in,
+              values: [Ecto.UUID.generate()]
+            }
+          ]
+        )
+
+      policy4 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group4,
+          conditions: [
+            %{
+              property: :current_utc_datetime,
+              operator: :is_in_day_of_week_time_ranges,
+              values: ["M/13:00:00-13:00:00/UTC"]
+            }
+          ]
+        )
+
+      policy5 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group5,
+          conditions: [
+            %{
+              property: :client_verified,
+              operator: :is,
+              values: ["true"]
+            }
+          ]
+        )
+
+      policy6 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group6,
+          conditions: []
+        )
+
+      assert filter_by_conforming_policies_for_client(
+               [policy1, policy2, policy3, policy4, policy5, policy6],
+               client
+             ) == [policy6]
+    end
+  end
+
+  describe "longest_conforming_policy_for_client/3" do
+    test "returns forbidden when there are no matching policies", %{
+      account: account,
+      actor: actor,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+      assert longest_conforming_policy_for_client([], client, subject.expires_at) ==
+               {:error, {:forbidden, violated_properties: []}}
+    end
+
+    test "accumulates and uniqs violated properties", %{
+      account: account,
+      actor: actor,
+      actor_group: actor_group,
+      resource: resource,
+      subject: subject
+    } do
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group,
+          conditions: [
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["MX"]
+            },
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["BR"]
+            },
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["TF"]
+            },
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["IT"]
+            }
+          ]
+        )
+
+      actor_group2 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group2
+      )
+
+      actor_group3 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group3
+      )
+
+      actor_group4 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group4
+      )
+
+      policy2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group2,
+          conditions: [
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["CA"]
+            }
+          ]
+        )
+
+      policy3 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group3,
+          conditions: [
+            %{
+              property: :remote_ip_location_region,
+              operator: :is_in,
+              values: ["RU"]
+            }
+          ]
+        )
+
+      policy4 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group4,
+          conditions: [
+            %{
+              property: :current_utc_datetime,
+              operator: :is_in_day_of_week_time_ranges,
+              values: ["M/13:00:00-13:00:00/UTC"]
+            }
+          ]
+        )
+
+      assert {:error, {:forbidden, violated_properties: violated_properties}} =
+               longest_conforming_policy_for_client(
+                 [policy, policy2, policy3, policy4],
+                 client,
+                 subject.expires_at
+               )
+
+      assert Enum.sort(violated_properties) ==
+               Enum.sort([
+                 :remote_ip_location_region,
+                 :current_utc_datetime
+               ])
+    end
+
+    test "returns expiration of longest conforming policy when less than passed default", %{
+      account: account,
+      actor: actor,
+      actor_group: actor_group,
+      resource: resource
+    } do
+      # Build relative time ranges based on current time
+      now = DateTime.utc_now()
+
+      # Get tomorrow as a letter - allows for consistent testing
+      day_letter =
+        case Date.day_of_week(now) do
+          # Monday
+          1 -> "M"
+          # Tuesday
+          2 -> "T"
+          # Wednesday
+          3 -> "W"
+          # Thursday
+          4 -> "R"
+          # Friday
+          5 -> "F"
+          # Saturday
+          6 -> "S"
+          # Sunday
+          7 -> "U"
+        end
+
+      time_range_1 = "#{day_letter}/00:00:00-23:59:59/UTC"
+      time_range_2 = "#{day_letter}/00:00:00-23:59:58/UTC"
+
+      # Policy2: 1-hour window (shorter policy)
+
+      client = Fixtures.Clients.create_client(account: account, actor: actor)
+      actor_group2 = Fixtures.Actors.create_group(account: account)
+
+      Fixtures.Actors.create_membership(
+        account: account,
+        actor: actor,
+        group: actor_group2
+      )
+
+      policy1 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group,
+          conditions: [
+            %{
+              property: :current_utc_datetime,
+              operator: :is_in_day_of_week_time_ranges,
+              values: [time_range_1]
+            }
+          ]
+        )
+
+      policy2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group2,
+          conditions: [
+            %{
+              property: :current_utc_datetime,
+              operator: :is_in_day_of_week_time_ranges,
+              values: [time_range_2]
+            }
+          ]
+        )
+
+      in_three_days = DateTime.utc_now() |> DateTime.add(3, :day)
+
+      assert {:ok, expires_at, ^policy1} =
+               longest_conforming_policy_for_client(
+                 [policy1, policy2],
+                 client,
+                 in_three_days
+               )
+
+      assert DateTime.compare(expires_at, in_three_days) == :lt
+
+      in_one_minute = DateTime.utc_now() |> DateTime.add(1, :minute)
+
+      assert {:ok, expires_at, ^policy1} =
+               longest_conforming_policy_for_client(
+                 [policy1, policy2],
+                 client,
+                 in_one_minute
+               )
+
+      assert DateTime.compare(expires_at, in_one_minute) == :eq
     end
   end
 end

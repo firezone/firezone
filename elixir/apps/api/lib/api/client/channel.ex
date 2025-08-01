@@ -12,8 +12,7 @@ defmodule API.Client.Channel do
     Gateways,
     Relays,
     Policies,
-    Flows,
-    Tokens
+    Flows
   }
 
   alias Domain.Relays.Presence.Debouncer
@@ -40,27 +39,13 @@ defmodule API.Client.Channel do
 
   @impl true
   def join("client", _payload, socket) do
-    with {:ok, socket} <- schedule_expiration(socket),
-         {:ok, gateway_version_requirement} <-
+    with {:ok, gateway_version_requirement} <-
            select_gateway_version_requirement(socket.assigns.client) do
       socket = assign(socket, gateway_version_requirement: gateway_version_requirement)
 
       send(self(), :after_join)
 
       {:ok, socket}
-    end
-  end
-
-  defp schedule_expiration(%{assigns: %{subject: %{expires_at: expires_at}}} = socket) do
-    expires_in =
-      expires_at
-      |> DateTime.diff(DateTime.utc_now(), :millisecond)
-
-    if expires_in > 0 do
-      Process.send_after(self(), :token_expired, expires_in)
-      {:ok, socket}
-    else
-      {:error, %{reason: :token_expired}}
     end
   end
 
@@ -542,26 +527,6 @@ defmodule API.Client.Channel do
     end
   end
 
-  # TOKENS
-
-  def handle_info(
-        {:deleted, %Tokens.Token{type: :client, id: id}},
-        %{assigns: %{subject: %{token_id: token_id}}} = socket
-      )
-      when id == token_id do
-    disconnect(socket)
-  end
-
-  ####################################
-  ##### Reacting to timed events #####
-  ####################################
-
-  # Message is scheduled by schedule_expiration/1 on topic join to be sent
-  # when the client token/subject expires
-  def handle_info(:token_expired, socket) do
-    disconnect(socket)
-  end
-
   ####################################
   #### Reacting to relay presence ####
   ####################################
@@ -758,7 +723,7 @@ defmodule API.Client.Channel do
     }
 
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
          {:ok, gateways} when gateways != [] <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
@@ -863,7 +828,7 @@ defmodule API.Client.Channel do
     # TODO: Optimization
     # Gateway selection and flow authorization shouldn't need to hit the DB
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, _policy, _expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, _expires_at, _policy} <- authorize_resource(socket, resource_id),
          {:ok, [_ | _] = gateways} <-
            Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
              preload: :group
@@ -920,7 +885,7 @@ defmodule API.Client.Channel do
         socket
       ) do
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization
@@ -980,7 +945,7 @@ defmodule API.Client.Channel do
       ) do
     # Flow authorization can happen out-of-band since we just authorized the resource above
     with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, policy, expires_at} <- authorize_resource(socket, resource_id),
+         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
          true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
       # TODO: Optimization
@@ -1285,7 +1250,7 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Returns either the authorized policy or an error tuple of violated properties
+  # Returns either the longest authorized policy or an error tuple of violated properties
   defp authorize_resource(socket, resource_id) do
     OpenTelemetry.Tracer.with_span "client.authorize_resource",
       attributes: %{
@@ -1294,27 +1259,10 @@ defmodule API.Client.Channel do
       socket.assigns.policies
       |> Enum.filter(fn {_id, policy} -> policy.resource_id == resource_id end)
       |> Enum.map(fn {_id, policy} -> policy end)
-      |> Enum.reduce_while({:error, []}, fn policy, {:error, acc} ->
-        case Policies.ensure_client_conforms_policy_conditions(socket.assigns.client, policy) do
-          {:ok, expires_at} ->
-            {:halt, {:ok, policy, expires_at}}
-
-          {:error, {:forbidden, violated_properties: violated_properties}} ->
-            {:cont, {:error, violated_properties ++ acc}}
-        end
-      end)
-      |> case do
-        {:error, violated_properties} ->
-          {:error, {:forbidden, violated_properties: violated_properties}}
-
-        {:ok, policy, expires_at} ->
-          # Set a maximum expiration time for the authorization
-          expires_at =
-            expires_at || socket.assigns.subject.expires_at ||
-              DateTime.utc_now() |> DateTime.add(14, :day)
-
-          {:ok, policy, expires_at}
-      end
+      |> Policies.longest_conforming_policy_for_client(
+        socket.assigns.client,
+        socket.assigns.subject.expires_at
+      )
     end
   end
 end

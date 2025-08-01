@@ -1,7 +1,7 @@
 defmodule API.Gateway.Channel do
   use API, :channel
   alias API.Gateway.Views
-  alias Domain.{Accounts, Flows, Gateways, PubSub, Relays, Resources, Tokens}
+  alias Domain.{Accounts, Flows, Gateways, PubSub, Relays, Resources}
   alias Domain.Relays.Presence.Debouncer
   require Logger
   require OpenTelemetry.Tracer
@@ -110,38 +110,67 @@ defmodule API.Gateway.Channel do
       when gateway_id == id do
     tuple = {flow.client_id, flow.resource_id}
 
-    socket =
-      if flows_map = Map.get(socket.assigns.flows, tuple) do
-        flow_map = Map.delete(flows_map, flow.id)
+    if flows_map = Map.get(socket.assigns.flows, tuple) do
+      flow_map = Map.delete(flows_map, flow.id)
+      remaining = map_size(flow_map)
 
-        with 0 <- map_size(flow_map),
-             {:ok, new_flow} <- Flows.reauthorize_flow(flow) do
-          flow_map = %{
-            new_flow.id => new_flow.expires_at
-          }
+      if remaining == 0 do
+        case Flows.reauthorize_flow(flow) do
+          {:ok, new_flow} ->
+            flow_map = %{
+              new_flow.id => new_flow.expires_at
+            }
 
-          push(
-            socket,
-            "access_authorization_expiry_updated",
-            Views.Flow.render(new_flow, new_flow.expires_at)
-          )
+            Logger.info("Updated flow authorization",
+              old_flow_id: flow.id,
+              account_id: flow.account_id,
+              client_id: flow.client_id,
+              resource_id: flow.resource_id,
+              new_flow_id: new_flow.id
+            )
 
-          assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))
-        else
-          _ ->
+            push(
+              socket,
+              "access_authorization_expiry_updated",
+              Views.Flow.render(new_flow, new_flow.expires_at)
+            )
+
+            {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
+
+          {:error, :forbidden} ->
+            Logger.info("Last flow deleted; revoking access",
+              flow_id: flow.id,
+              account_id: flow.account_id,
+              client_id: flow.client_id,
+              resource_id: flow.resource_id
+            )
+
             # Send reject_access if access is no longer granted
+
+            # TODO: Verify that if the client's websocket connection flaps at the moment this
+            # message is received by the gateway, and the client still has access to this resource,
+            # the client will clear its state so it can request a new flow.
             push(socket, "reject_access", %{
               client_id: flow.client_id,
               resource_id: flow.resource_id
             })
 
-            assign(socket, flows: Map.delete(socket.assigns.flows, tuple))
+            {:noreply, assign(socket, flows: Map.delete(socket.assigns.flows, tuple))}
         end
       else
-        socket
-      end
+        Logger.info("Flow deleted but still has remaining flows for client/resource",
+          flow_id: flow.id,
+          account_id: flow.account_id,
+          client_id: flow.client_id,
+          resource_id: flow.resource_id,
+          remaining: remaining
+        )
 
-    {:noreply, socket}
+        {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   # RESOURCES
@@ -163,14 +192,6 @@ defmodule API.Gateway.Channel do
     end
 
     {:noreply, socket}
-  end
-
-  # TOKENS
-
-  # Our gateway token was deleted - disconnect WebSocket
-  def handle_info({:deleted, %Tokens.Token{type: :gateway_group, id: id}}, socket)
-      when id == socket.assigns.token_id do
-    disconnect(socket)
   end
 
   ####################################
@@ -649,11 +670,5 @@ defmodule API.Gateway.Channel do
 
       assign(socket, flows: flows)
     end
-  end
-
-  defp disconnect(socket) do
-    push(socket, "disconnect", %{"reason" => "token_expired"})
-    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-    {:stop, :shutdown, socket}
   end
 end

@@ -4,13 +4,6 @@ defmodule Domain.Policies.Condition.Evaluator do
 
   @days_of_week ~w[M T W R F S U]
 
-  @doc """
-  Returns `true` if the condition can be evaluated during connection (eg. for IP address matching
-  it can't change while socket is open), otherwise `false`.
-  """
-  def evaluable_on_connect?(%Condition{property: "current_utc_datetime"}), do: false
-  def evaluable_on_connect?(_), do: true
-
   def ensure_conforms([], %Clients.Client{}) do
     {:ok, nil}
   end
