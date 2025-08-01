@@ -41,7 +41,7 @@ defmodule Web.MixProject do
       {:phoenix_html, "~> 4.0"},
       {:phoenix_ecto, "~> 4.4"},
       {:phoenix_live_reload, "~> 1.2", only: :dev},
-      {:phoenix_live_view, "~> 1.0.0-rc.0"},
+      {:phoenix_live_view, "~> 1.1.2"},
       {:plug_cowboy, "~> 2.7"},
       {:gettext, "~> 0.20"},
       {:remote_ip, "~> 1.0"},
