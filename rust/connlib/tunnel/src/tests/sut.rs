@@ -146,7 +146,7 @@ impl TunnelTest {
                 });
             }
             Transition::DeactivateResource(rid) => {
-                state.client.exec_mut(|c| c.sut.remove_resource(rid, now));
+                state.client.exec_mut(|c| c.sut.remove_resource(rid));
 
                 if let Some(gateway) = ref_state
                     .portal
