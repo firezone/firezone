@@ -2368,9 +2368,10 @@ where
             return;
         };
 
-        let socket = self
-            .socket()
-            .expect("cannot force handshake while not connected");
+        let Some(socket) = self.socket() else {
+            tracing::error!("Cannot initiate WG session without a socket");
+            return;
+        };
 
         transmits.extend(make_owned_transmit(
             self.relay,
