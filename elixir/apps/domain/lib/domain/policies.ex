@@ -74,10 +74,11 @@ defmodule Domain.Policies do
     |> Repo.all()
   end
 
-  def all_policies_for_resource_id!(account_id, resource_id) do
+  def all_policies_for_resource_id_and_actor_id!(account_id, resource_id, actor_id) do
     Policy.Query.not_disabled()
     |> Policy.Query.by_account_id(account_id)
     |> Policy.Query.by_resource_id(resource_id)
+    |> Policy.Query.by_actor_id(actor_id)
     |> Repo.all()
   end
 
@@ -187,7 +188,6 @@ defmodule Domain.Policies do
   def filter_by_conforming_policies_for_client(policies, %Clients.Client{} = client) do
     Enum.filter(policies, fn policy ->
       policy.conditions
-      |> Enum.filter(&Condition.Evaluator.evaluable_on_connect?/1)
       |> Condition.Evaluator.ensure_conforms(client)
       |> case do
         {:ok, _expires_at} -> true
@@ -196,21 +196,61 @@ defmodule Domain.Policies do
     end)
   end
 
-  def ensure_client_conforms_policy_conditions(%Clients.Client{} = client, %Policy{} = policy) do
+  @infinity ~U[9999-12-31 23:59:59.999999Z]
+
+  def longest_conforming_policy_for_client(policies, client, token_expires_at) do
+    policies
+    |> Enum.reduce(%{failed: [], succeeded: []}, fn policy, acc ->
+      case ensure_client_conforms_policy_conditions(client, policy) do
+        {:ok, expires_at} ->
+          %{acc | succeeded: [{expires_at, policy} | acc.succeeded]}
+
+        {:error, {:forbidden, violated_properties: violated_properties}} ->
+          %{acc | failed: acc.failed ++ violated_properties}
+      end
+    end)
+    |> case do
+      %{succeeded: [], failed: failed} ->
+        {:error, {:forbidden, violated_properties: Enum.uniq(failed)}}
+
+      %{succeeded: succeeded} ->
+        {expires_at, policy} =
+          succeeded
+          |> Enum.max_by(fn {expires_at, _policy} -> expires_at || @infinity end)
+
+        {:ok, min_expires_at(expires_at, token_expires_at), policy}
+    end
+  end
+
+  # All client tokens have *some* expiration
+  def min_expires_at(nil, nil),
+    do: raise("Both policy_expires_at and token_expires_at cannot be nil")
+
+  def min_expires_at(nil, token_expires_at), do: token_expires_at
+
+  def min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
+    if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
+      policy_expires_at
+    else
+      token_expires_at
+    end
+  end
+
+  defp ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
+    if subject.account.id == policy.account_id do
+      :ok
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  defp ensure_client_conforms_policy_conditions(%Clients.Client{} = client, %Policy{} = policy) do
     case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
       {:ok, expires_at} ->
         {:ok, expires_at}
 
       {:error, violated_properties} ->
         {:error, {:forbidden, violated_properties: violated_properties}}
-    end
-  end
-
-  def ensure_has_access_to(%Auth.Subject{} = subject, %Policy{} = policy) do
-    if subject.account.id == policy.account_id do
-      :ok
-    else
-      {:error, :unauthorized}
     end
   end
 end

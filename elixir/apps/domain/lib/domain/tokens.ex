@@ -19,6 +19,13 @@ defmodule Domain.Tokens do
     Supervisor.init(children, strategy: :one_for_one)
   end
 
+  def fetch_token_by_id(id) do
+    Token.Query.not_deleted()
+    |> Token.Query.not_expired()
+    |> Token.Query.by_id(id)
+    |> Repo.fetch(Token.Query, [])
+  end
+
   def fetch_token_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,

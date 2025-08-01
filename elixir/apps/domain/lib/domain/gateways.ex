@@ -23,6 +23,12 @@ defmodule Domain.Gateways do
     |> Repo.aggregate(:count)
   end
 
+  def fetch_gateway_by_id(id) do
+    Gateway.Query.not_deleted()
+    |> Gateway.Query.by_id(id)
+    |> Repo.fetch(Gateway.Query, [])
+  end
+
   def fetch_group_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,

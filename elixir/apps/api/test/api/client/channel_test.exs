@@ -200,13 +200,15 @@ defmodule API.Client.ChannelTest do
       refute_receive {:socket_close, _pid, _}
     end
 
-    test "expires the channel when token is expired", %{client: client, subject: subject} do
-      expires_at = DateTime.utc_now() |> DateTime.add(25, :millisecond)
-      subject = %{subject | expires_at: expires_at}
-
+    test "send disconnect broadcast when the token is deleted", %{
+      client: client,
+      subject: subject
+    } do
       # We need to trap exits to avoid test process termination
       # because it is linked to the created test channel process
       Process.flag(:trap_exit, true)
+
+      :ok = Domain.PubSub.subscribe("sessions:#{subject.token_id}")
 
       {:ok, _reply, _socket} =
         API.Client.Socket
@@ -216,9 +218,23 @@ defmodule API.Client.ChannelTest do
         })
         |> subscribe_and_join(API.Client.Channel, "client")
 
-      assert_push "disconnect", %{reason: :token_expired}, 250
-      assert_receive {:EXIT, _pid, :shutdown}
-      assert_receive {:socket_close, _pid, :shutdown}
+      token = Repo.get_by(Domain.Tokens.Token, id: subject.token_id)
+
+      data = %{
+        "id" => token.id,
+        "account_id" => token.account_id,
+        "type" => token.type,
+        "expires_at" => token.expires_at
+      }
+
+      Domain.Events.Hooks.Tokens.on_delete(data)
+
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: topic,
+        event: "disconnect"
+      }
+
+      assert topic == "sessions:#{token.id}"
     end
 
     test "selects compatible gateway versions", %{client: client, subject: subject} do
