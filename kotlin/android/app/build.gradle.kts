@@ -174,8 +174,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.9.2")
 
     // Navigation
-    implementation("androidx.navigation:navigation-fragment-ktx:2.9.2")
-    implementation("androidx.navigation:navigation-ui-ktx:2.9.2")
+    implementation("androidx.navigation:navigation-fragment-ktx:2.9.3")
+    implementation("androidx.navigation:navigation-ui-ktx:2.9.3")
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.57")
@@ -188,7 +188,7 @@ dependencies {
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.57")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.57")
     androidTestImplementation("androidx.test:runner:1.6.2")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.9.2")
+    androidTestImplementation("androidx.navigation:navigation-testing:2.9.3")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
