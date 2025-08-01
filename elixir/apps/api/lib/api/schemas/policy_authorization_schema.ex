@@ -6,7 +6,7 @@ defmodule API.Schemas.PolicyAuthorization do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "Policy Authorization",
+      title: "PolicyAuthorization",
       description: "Policy Authorization",
       type: :object,
       properties: %{

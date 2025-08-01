@@ -3,6 +3,7 @@ defmodule API.PolicyAuthorizationsController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Flows
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -64,7 +65,8 @@ defmodule API.PolicyAuthorizationsController do
     responses: [
       ok:
         {"Policy Authorization Response", "application/json",
-         API.Schemas.PolicyAuthorization.ListResponse}
+         API.Schemas.PolicyAuthorization.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def index(conn, params) do
@@ -90,7 +92,9 @@ defmodule API.PolicyAuthorizationsController do
     responses: [
       ok:
         {"Policy Authorization Response", "application/json",
-         API.Schemas.PolicyAuthorization.Response}
+         API.Schemas.PolicyAuthorization.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def show(conn, %{"id" => id}) do
