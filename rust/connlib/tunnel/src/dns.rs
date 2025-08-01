@@ -283,6 +283,12 @@ impl StubResolver {
                 self.get_or_assign_aaaa_records(domain.clone(), resource)
             }
             (RecordType::SRV | RecordType::TXT, Some(resource)) => {
+                // Also assign IPs for this resource.
+                // This isn't what the user asked for but it doesn't hurt (and might happen later).
+                // We may have to establish a new connection to send this query and without A/AAAA
+                // records, we don't have any "allowed IPs" that we can associate with this connection.
+                self.get_or_assign_aaaa_records(domain.clone(), resource);
+
                 tracing::debug!(%qtype, rid = %resource.id, "Forwarding query for DNS resource to corresponding site");
 
                 return ResolveStrategy::RecurseSite(resource.id);

@@ -1149,6 +1149,8 @@ impl ClientState {
                     .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
+                self.dns_resource_nat.recreate(message.domain());
+
                 let Some(gateway) =
                     peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
                 else {
@@ -1306,6 +1308,8 @@ impl ClientState {
                     ));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
+                self.dns_resource_nat.recreate(query.message.domain());
+
                 let Some(gateway) =
                     peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
                 else {
