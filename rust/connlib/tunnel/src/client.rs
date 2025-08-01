@@ -17,7 +17,9 @@ use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::Context;
 use bimap::BiMap;
-use connlib_model::{GatewayId, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView};
+use connlib_model::{
+    GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
+};
 use connlib_model::{Site, SiteId};
 use firezone_logging::{err_with_src, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -571,8 +573,14 @@ impl ClientState {
         Ok(())
     }
 
-    pub fn add_ice_candidate(&mut self, conn_id: GatewayId, ice_candidate: String, now: Instant) {
-        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+    pub fn add_ice_candidate(
+        &mut self,
+        conn_id: GatewayId,
+        ice_candidate: IceCandidate,
+        now: Instant,
+    ) {
+        self.node
+            .add_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
@@ -580,11 +588,11 @@ impl ClientState {
     pub fn remove_ice_candidate(
         &mut self,
         conn_id: GatewayId,
-        ice_candidate: String,
+        ice_candidate: IceCandidate,
         now: Instant,
     ) {
         self.node
-            .remove_remote_candidate(conn_id, ice_candidate, now);
+            .remove_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
@@ -1421,8 +1429,8 @@ impl ClientState {
 
     fn drain_node_events(&mut self) {
         let mut resources_changed = false; // Track this separately to batch together `ResourcesChanged` events.
-        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
-        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
+        let mut removed_ice_candidates = BTreeMap::<GatewayId, BTreeSet<IceCandidate>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -1437,7 +1445,7 @@ impl ClientState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .insert(candidate.into());
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -1446,7 +1454,7 @@ impl ClientState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(id) => {
                     self.update_site_status_by_gateway(&id, ResourceStatus::Online);

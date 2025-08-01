@@ -8,6 +8,7 @@ license = { workspace = true }
 boringtun = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive", "std"] }
+str0m = { workspace = true }
 uuid = { workspace = true, features = ["std", "v4", "serde"] }
 
 [dev-dependencies]

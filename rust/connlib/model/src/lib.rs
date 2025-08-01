@@ -209,3 +209,82 @@ impl IpStack {
         }
     }
 }
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IceCandidate(str0m::Candidate);
+
+impl From<str0m::Candidate> for IceCandidate {
+    fn from(value: str0m::Candidate) -> Self {
+        Self(value)
+    }
+}
+
+impl From<IceCandidate> for str0m::Candidate {
+    fn from(value: IceCandidate) -> Self {
+        value.0
+    }
+}
+
+impl PartialOrd for IceCandidate {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for IceCandidate {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.prio().cmp(&other.0.prio()).reverse()
+    }
+}
+
+impl Serialize for IceCandidate {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0.to_sdp_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for IceCandidate {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error as _;
+
+        let string = String::deserialize(deserializer)?;
+        let candidate = str0m::Candidate::from_sdp_string(&string).map_err(D::Error::custom)?;
+
+        Ok(IceCandidate(candidate))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{collections::BTreeSet, net::SocketAddr};
+
+    use super::*;
+
+    #[test]
+    fn ice_candidate_ordering() {
+        let host = IceCandidate::from(str0m::Candidate::host(sock("1.1.1.1:80"), "udp").unwrap());
+        let srflx = IceCandidate::from(
+            str0m::Candidate::server_reflexive(sock("1.1.1.1:80"), sock("3.3.3.3:80"), "udp")
+                .unwrap(),
+        );
+        let relay = IceCandidate::from(
+            str0m::Candidate::relayed(sock("1.1.1.1:80"), sock("2.2.2.2:80"), "udp").unwrap(),
+        );
+
+        let candidate_set = BTreeSet::from([relay.clone(), host.clone(), srflx.clone()]);
+
+        let candidate_list = Vec::from_iter(candidate_set);
+
+        assert_eq!(candidate_list, vec![host, srflx, relay]);
+    }
+
+    fn sock(s: &str) -> SocketAddr {
+        s.parse().unwrap()
+    }
+}

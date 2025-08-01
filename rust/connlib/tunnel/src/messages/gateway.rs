@@ -8,7 +8,7 @@ use chrono::{
     DateTime, Utc,
     serde::{ts_seconds, ts_seconds_option},
 };
-use connlib_model::{ClientId, ResourceId};
+use connlib_model::{ClientId, IceCandidate, ResourceId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -240,16 +240,18 @@ pub struct ClientsIceCandidates {
     /// Client's id the ice candidates are meant for
     pub client_ids: Vec<ClientId>,
     /// Actual RTC ice candidates
-    pub candidates: BTreeSet<String>,
+    pub candidates: BTreeSet<IceCandidate>,
 }
 
 /// A client's ice candidate message.
+#[serde_with::serde_as]
 #[derive(Debug, Deserialize, Clone)]
 pub struct ClientIceCandidates {
     /// Client's id the ice candidates came from
     pub client_id: ClientId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<String>,
+    #[serde_as(as = "serde_with::VecSkipError<_>")]
+    pub candidates: Vec<IceCandidate>,
 }
 
 // These messages can be sent from a gateway
@@ -589,5 +591,14 @@ mod tests {
         let message = serde_json::from_str::<IngressMessages>(json).unwrap();
 
         assert!(matches!(message, IngressMessages::AuthorizeFlow(_)));
+    }
+
+    #[test]
+    fn faulty_candidate_get_skipped() {
+        let bad_candidates = serde_json::json!({ "client_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3", "candidates": ["foo", "bar", "baz", "candidate:fffeff6435be70ddbf995982 1 udp 1694498559 87.121.72.60 57114 typ srflx raddr 0.0.0.0 rport 0"] });
+
+        let client_candidates = ClientIceCandidates::deserialize(bad_candidates).unwrap();
+
+        assert_eq!(client_candidates.candidates.len(), 1);
     }
 }
