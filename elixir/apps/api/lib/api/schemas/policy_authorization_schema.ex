@@ -1,4 +1,4 @@
-defmodule API.Schemas.Flow do
+defmodule API.Schemas.PolicyAuthorization do
   alias OpenApiSpex.Schema
 
   defmodule Schema do
@@ -6,11 +6,11 @@ defmodule API.Schemas.Flow do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "Flow",
-      description: "Flow",
+      title: "Policy Authorization",
+      description: "Policy Authorization",
       type: :object,
       properties: %{
-        id: %Schema{type: :string, description: "Flow ID"},
+        id: %Schema{type: :string, description: "Policy Authorization ID"},
         policy_id: %Schema{type: :string, description: "Policy ID"},
         client_id: %Schema{type: :string, description: "Client ID"},
         gateway_id: %Schema{type: :string, description: "Gateway ID"},
@@ -18,7 +18,7 @@ defmodule API.Schemas.Flow do
         token_id: %Schema{type: :string, description: "Token ID"},
         inserted_at: %Schema{
           type: :string,
-          description: "Flow create timestamp"
+          description: "Policy Authorization create timestamp"
         }
       },
       required: [
@@ -45,14 +45,14 @@ defmodule API.Schemas.Flow do
   defmodule Response do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Flow
+    alias API.Schemas.PolicyAuthorization
 
     OpenApiSpex.schema(%{
-      title: "FlowResponse",
-      description: "Response schema for single Flow",
+      title: "PolicyAuthorizationResponse",
+      description: "Response schema for single Policy Authorization",
       type: :object,
       properties: %{
-        data: Flow.Schema
+        data: PolicyAuthorization.Schema
       },
       example: %{
         "data" => %{
@@ -71,14 +71,18 @@ defmodule API.Schemas.Flow do
   defmodule ListResponse do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.Flow
+    alias API.Schemas.PolicyAuthorization
 
     OpenApiSpex.schema(%{
-      title: "FlowListResponse",
-      description: "Response schema for multiple Flows",
+      title: "PolicyAuthorizationListResponse",
+      description: "Response schema for multiple Policy Authorizations",
       type: :object,
       properties: %{
-        data: %Schema{description: "Flow details", type: :array, items: Flow.Schema},
+        data: %Schema{
+          description: "Policy Authorizations details",
+          type: :array,
+          items: PolicyAuthorization.Schema
+        },
         metadata: %Schema{description: "Pagination metadata", type: :object}
       },
       example: %{

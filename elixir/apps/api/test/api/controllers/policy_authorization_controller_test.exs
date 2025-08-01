@@ -1,4 +1,4 @@
-defmodule API.FlowControllerTest do
+defmodule API.PolicyAuthorizationControllerTest do
   use API.ConnCase, async: true
 
   setup do
@@ -17,17 +17,17 @@ defmodule API.FlowControllerTest do
 
   describe "index/2" do
     test "returns error when not authorized", %{conn: conn} do
-      conn = get(conn, "/flows")
+      conn = get(conn, "/policy_authorizations")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "lists all flows", %{
+    test "lists all policy authorizations", %{
       conn: conn,
       account: account,
       actor: actor,
       subject: subject
     } do
-      flows =
+      policy_authorizations =
         for _ <- 1..3,
             do:
               Fixtures.Flows.create_flow(
@@ -39,7 +39,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows")
+        |> get("/policy_authorizations")
 
       assert %{
                "data" => data,
@@ -57,12 +57,12 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
 
       data_ids = Enum.map(data, & &1["id"])
-      flows_ids = Enum.map(flows, & &1.id)
+      policy_authorizations_ids = Enum.map(policy_authorizations, & &1.id)
 
-      assert equal_ids?(data_ids, flows_ids)
+      assert equal_ids?(data_ids, policy_authorizations_ids)
     end
 
-    test "lists flows with range", %{
+    test "lists policy authorizations with range", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -79,7 +79,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows",
+        |> get("/policy_authorizations",
           min_datetime: "2025-01-01T00:00:00Z",
           max_datetime: "2025-01-02T00:00:00Z"
         )
@@ -100,7 +100,7 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
     end
 
-    test "lists all flows for a policy", %{
+    test "lists all policy authorizations for a policy", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -108,7 +108,7 @@ defmodule API.FlowControllerTest do
     } do
       policy = Fixtures.Policies.create_policy(%{account: account})
 
-      # Flows not matching filters
+      # Policy autorizations not matching filters
       for _ <- 1..3,
           do:
             Fixtures.Flows.create_flow(
@@ -116,7 +116,7 @@ defmodule API.FlowControllerTest do
               subject: subject
             )
 
-      flows =
+      policy_authorizations =
         for _ <- 1..3,
             do:
               Fixtures.Flows.create_flow(
@@ -129,7 +129,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows", policy_id: policy.id)
+        |> get("/policy_authorizations", policy_id: policy.id)
 
       assert %{
                "data" => data,
@@ -147,15 +147,15 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
 
       data_ids = Enum.map(data, & &1["id"])
-      flows_ids = Enum.map(flows, & &1.id)
-      assert equal_ids?(data_ids, flows_ids)
+      policy_authorizations_ids = Enum.map(policy_authorizations, & &1.id)
+      assert equal_ids?(data_ids, policy_authorizations_ids)
 
       data_policy_ids = Enum.map(data, & &1["policy_id"])
-      flows_policy_ids = Enum.map(flows, & &1.policy_id)
-      assert equal_ids?(data_policy_ids, flows_policy_ids)
+      policy_authorizations_policy_ids = Enum.map(policy_authorizations, & &1.policy_id)
+      assert equal_ids?(data_policy_ids, policy_authorizations_policy_ids)
     end
 
-    test "lists all flows for a resource", %{
+    test "lists all policy authorizations for a resource", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -163,7 +163,7 @@ defmodule API.FlowControllerTest do
     } do
       resource = Fixtures.Resources.create_resource(%{account: account})
 
-      # Flows not matching filters
+      # Policy autorizations not matching filters
       for _ <- 1..3,
           do:
             Fixtures.Flows.create_flow(
@@ -171,7 +171,7 @@ defmodule API.FlowControllerTest do
               subject: subject
             )
 
-      flows =
+      policy_authorizations =
         for _ <- 1..3,
             do:
               Fixtures.Flows.create_flow(
@@ -184,7 +184,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows", resource_id: resource.id)
+        |> get("/policy_authorizations", resource_id: resource.id)
 
       assert %{
                "data" => data,
@@ -202,15 +202,15 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
 
       data_ids = Enum.map(data, & &1["id"])
-      flows_ids = Enum.map(flows, & &1.id)
-      assert equal_ids?(data_ids, flows_ids)
+      policy_authorizations_ids = Enum.map(policy_authorizations, & &1.id)
+      assert equal_ids?(data_ids, policy_authorizations_ids)
 
       data_resource_ids = Enum.map(data, & &1["resource_id"])
-      flows_resource_ids = Enum.map(flows, & &1.resource_id)
-      assert equal_ids?(data_resource_ids, flows_resource_ids)
+      policy_authorizations_resource_ids = Enum.map(policy_authorizations, & &1.resource_id)
+      assert equal_ids?(data_resource_ids, policy_authorizations_resource_ids)
     end
 
-    test "lists all flows for a client", %{
+    test "lists all policy authorizations for a client", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -218,7 +218,7 @@ defmodule API.FlowControllerTest do
     } do
       client = Fixtures.Clients.create_client(account: account, actor: actor)
 
-      # Flows not matching filters
+      # Policy autorizations not matching filters
       for _ <- 1..3,
           do:
             Fixtures.Flows.create_flow(
@@ -226,7 +226,7 @@ defmodule API.FlowControllerTest do
               subject: subject
             )
 
-      flows =
+      policy_authorizations =
         for _ <- 1..3,
             do:
               Fixtures.Flows.create_flow(
@@ -239,7 +239,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows", client_id: client.id)
+        |> get("/policy_authorizations", client_id: client.id)
 
       assert %{
                "data" => data,
@@ -257,15 +257,15 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
 
       data_ids = Enum.map(data, & &1["id"])
-      flows_ids = Enum.map(flows, & &1.id)
-      assert equal_ids?(data_ids, flows_ids)
+      policy_authorizations_ids = Enum.map(policy_authorizations, & &1.id)
+      assert equal_ids?(data_ids, policy_authorizations_ids)
 
       data_client_ids = Enum.map(data, & &1["client_id"])
-      flows_client_ids = Enum.map(flows, & &1.client_id)
-      assert equal_ids?(data_client_ids, flows_client_ids)
+      policy_authorizations_client_ids = Enum.map(policy_authorizations, & &1.client_id)
+      assert equal_ids?(data_client_ids, policy_authorizations_client_ids)
     end
 
-    test "lists all flows for an actor", %{
+    test "lists all policy authorizations for an actor", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -274,7 +274,7 @@ defmodule API.FlowControllerTest do
       user_actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       client = Fixtures.Clients.create_client(account: account, actor: user_actor)
 
-      # Flows not matching filters
+      # Policy autorizations not matching filters
       for _ <- 1..3,
           do:
             Fixtures.Flows.create_flow(
@@ -282,7 +282,7 @@ defmodule API.FlowControllerTest do
               subject: subject
             )
 
-      flows =
+      policy_authorizations =
         for _ <- 1..3,
             do:
               Fixtures.Flows.create_flow(
@@ -295,7 +295,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows", actor_id: user_actor.id)
+        |> get("/policy_authorizations", actor_id: user_actor.id)
 
       assert %{
                "data" => data,
@@ -313,15 +313,15 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
 
       data_ids = Enum.map(data, & &1["id"])
-      flows_ids = Enum.map(flows, & &1.id)
-      assert equal_ids?(data_ids, flows_ids)
+      policy_authorizations_ids = Enum.map(policy_authorizations, & &1.id)
+      assert equal_ids?(data_ids, policy_authorizations_ids)
 
       data_client_ids = Enum.map(data, & &1["client_id"])
-      flows_client_ids = Enum.map(flows, & &1.client_id)
-      assert equal_ids?(data_client_ids, flows_client_ids)
+      policy_authorizations_client_ids = Enum.map(policy_authorizations, & &1.client_id)
+      assert equal_ids?(data_client_ids, policy_authorizations_client_ids)
     end
 
-    test "lists all flows for a gateway", %{
+    test "lists all policy authorizations for a gateway", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -329,7 +329,7 @@ defmodule API.FlowControllerTest do
     } do
       gateway = Fixtures.Gateways.create_gateway(%{account: account})
 
-      # Flows not matching filters
+      # Policy autorizations not matching filters
       for _ <- 1..3,
           do:
             Fixtures.Flows.create_flow(
@@ -337,7 +337,7 @@ defmodule API.FlowControllerTest do
               subject: subject
             )
 
-      flows =
+      policy_authorizations =
         for _ <- 1..3,
             do:
               Fixtures.Flows.create_flow(
@@ -350,7 +350,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows", gateway_id: gateway.id)
+        |> get("/policy_authorizations", gateway_id: gateway.id)
 
       assert %{
                "data" => data,
@@ -368,15 +368,15 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
 
       data_ids = Enum.map(data, & &1["id"])
-      flows_ids = Enum.map(flows, & &1.id)
-      assert equal_ids?(data_ids, flows_ids)
+      policy_authorizations_ids = Enum.map(policy_authorizations, & &1.id)
+      assert equal_ids?(data_ids, policy_authorizations_ids)
 
       data_gateway_ids = Enum.map(data, & &1["gateway_id"])
-      flows_gateway_ids = Enum.map(flows, & &1.gateway_id)
-      assert equal_ids?(data_gateway_ids, flows_gateway_ids)
+      policy_authorizations_gateway_ids = Enum.map(policy_authorizations, & &1.gateway_id)
+      assert equal_ids?(data_gateway_ids, policy_authorizations_gateway_ids)
     end
 
-    test "lists all flows with multiple filters", %{
+    test "lists all policy authorizations with multiple filters", %{
       conn: conn,
       account: account,
       actor: actor,
@@ -385,7 +385,7 @@ defmodule API.FlowControllerTest do
       client = Fixtures.Clients.create_client(account: account, actor: actor)
       gateway = Fixtures.Gateways.create_gateway(%{account: account})
 
-      # Flows not matching filters
+      # Policy autorizations not matching filters
       for _ <- 1..3 do
         Fixtures.Flows.create_flow(
           account: account,
@@ -405,7 +405,7 @@ defmodule API.FlowControllerTest do
         )
       end
 
-      flows =
+      policy_authorizations =
         for _ <- 1..3,
             do:
               Fixtures.Flows.create_flow(
@@ -419,7 +419,7 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows", gateway_id: gateway.id, client_id: client.id)
+        |> get("/policy_authorizations", gateway_id: gateway.id, client_id: client.id)
 
       assert %{
                "data" => data,
@@ -437,16 +437,16 @@ defmodule API.FlowControllerTest do
       assert is_nil(prev_page)
 
       data_ids = Enum.map(data, & &1["id"])
-      flows_ids = Enum.map(flows, & &1.id)
-      assert equal_ids?(data_ids, flows_ids)
+      policy_authorizations_ids = Enum.map(policy_authorizations, & &1.id)
+      assert equal_ids?(data_ids, policy_authorizations_ids)
 
       data_gateway_ids = Enum.map(data, & &1["gateway_id"])
-      flows_gateway_ids = Enum.map(flows, & &1.gateway_id)
-      assert equal_ids?(data_gateway_ids, flows_gateway_ids)
+      policy_authorizations_gateway_ids = Enum.map(policy_authorizations, & &1.gateway_id)
+      assert equal_ids?(data_gateway_ids, policy_authorizations_gateway_ids)
 
       data_client_ids = Enum.map(data, & &1["client_id"])
-      flows_client_ids = Enum.map(flows, & &1.client_id)
-      assert equal_ids?(data_client_ids, flows_client_ids)
+      policy_authorizations_client_ids = Enum.map(policy_authorizations, & &1.client_id)
+      assert equal_ids?(data_client_ids, policy_authorizations_client_ids)
     end
   end
 
@@ -456,23 +456,23 @@ defmodule API.FlowControllerTest do
       account: account,
       subject: subject
     } do
-      flow =
+      policy_authorization =
         Fixtures.Flows.create_flow(
           account: account,
           subject: subject
         )
 
-      conn = get(conn, "/flows/#{flow.id}")
+      conn = get(conn, "/policy_authorizations/#{policy_authorization.id}")
       assert json_response(conn, 401) == %{"error" => %{"reason" => "Unauthorized"}}
     end
 
-    test "returns a single flow", %{
+    test "returns a single policy authorization", %{
       conn: conn,
       account: account,
       actor: actor,
       subject: subject
     } do
-      flow =
+      policy_authorization =
         Fixtures.Flows.create_flow(
           account: account,
           subject: subject
@@ -482,17 +482,17 @@ defmodule API.FlowControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/flows/#{flow.id}")
+        |> get("/policy_authorizations/#{policy_authorization.id}")
 
       assert json_response(conn, 200) == %{
                "data" => %{
-                 "id" => flow.id,
-                 "policy_id" => flow.policy_id,
-                 "client_id" => flow.client_id,
-                 "gateway_id" => flow.gateway_id,
-                 "resource_id" => flow.resource_id,
+                 "id" => policy_authorization.id,
+                 "policy_id" => policy_authorization.policy_id,
+                 "client_id" => policy_authorization.client_id,
+                 "gateway_id" => policy_authorization.gateway_id,
+                 "resource_id" => policy_authorization.resource_id,
                  "token_id" => subject.token_id,
-                 "inserted_at" => DateTime.to_iso8601(flow.inserted_at)
+                 "inserted_at" => DateTime.to_iso8601(policy_authorization.inserted_at)
                }
              }
     end

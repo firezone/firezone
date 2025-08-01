@@ -1,4 +1,4 @@
-defmodule API.FlowController do
+defmodule API.PolicyAuthorizationsController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
@@ -6,10 +6,10 @@ defmodule API.FlowController do
 
   action_fallback API.FallbackController
 
-  tags ["Flows"]
+  tags ["Policy Authorizations"]
 
   operation :index,
-    summary: "List Flows",
+    summary: "List Policy Authorizations",
     parameters: [
       policy_id: [
         in: :query,
@@ -41,7 +41,12 @@ defmodule API.FlowController do
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ],
-      limit: [in: :query, description: "Limit Flows returned", type: :integer, example: 10],
+      limit: [
+        in: :query,
+        description: "Limit Policy Authorizations returned",
+        type: :integer,
+        example: 10
+      ],
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string],
       min_datetime: [
         in: :query,
@@ -57,36 +62,41 @@ defmodule API.FlowController do
       ]
     ],
     responses: [
-      ok: {"Flow Response", "application/json", API.Schemas.Flow.ListResponse}
+      ok:
+        {"Policy Authorization Response", "application/json",
+         API.Schemas.PolicyAuthorization.ListResponse}
     ]
 
   def index(conn, params) do
     with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
          {:ok, list_opts} <- time_filter_to_list_opts(list_opts, params),
-         {:ok, list_opts} <- flows_params_to_list_opts(list_opts, params),
-         {:ok, flows, metadata} <- Flows.list_flows(conn.assigns.subject, list_opts) do
-      render(conn, :index, flows: flows, metadata: metadata)
+         {:ok, list_opts} <- policy_authorizations_params_to_list_opts(list_opts, params),
+         {:ok, policy_authorizations, metadata} <-
+           Flows.list_flows(conn.assigns.subject, list_opts) do
+      render(conn, :index, policy_authorizations: policy_authorizations, metadata: metadata)
     end
   end
 
   operation :show,
-    summary: "Show Flow",
+    summary: "Show Policy Authorization",
     parameters: [
       id: [
         in: :path,
-        description: "Flow ID",
+        description: "Policy Authorization ID",
         type: :string,
         example: "00000000-0000-0000-0000-000000000000"
       ]
     ],
     responses: [
-      ok: {"Flow Response", "application/json", API.Schemas.Flow.Response}
+      ok:
+        {"Policy Authorization Response", "application/json",
+         API.Schemas.PolicyAuthorization.Response}
     ]
 
   def show(conn, %{"id" => id}) do
-    with {:ok, flow} <-
+    with {:ok, policy_authorization} <-
            Flows.fetch_flow_by_id(id, conn.assigns.subject) do
-      render(conn, :show, flow: flow)
+      render(conn, :show, policy_authorization: policy_authorization)
     end
   end
 
@@ -135,7 +145,7 @@ defmodule API.FlowController do
     end
   end
 
-  def flows_params_to_list_opts(list_opts, params, filter_name, param_name) do
+  def policy_authorizations_params_to_list_opts(list_opts, params, filter_name, param_name) do
     if param = params[param_name] do
       Keyword.update(list_opts, :filter, [{filter_name, param}], fn filter ->
         filter ++ [{filter_name, param}]
@@ -145,13 +155,13 @@ defmodule API.FlowController do
     end
   end
 
-  def flows_params_to_list_opts(list_opts, params) do
+  def policy_authorizations_params_to_list_opts(list_opts, params) do
     {:ok,
      list_opts
-     |> flows_params_to_list_opts(params, :policy_id, "policy_id")
-     |> flows_params_to_list_opts(params, :resource_id, "resource_id")
-     |> flows_params_to_list_opts(params, :client_id, "client_id")
-     |> flows_params_to_list_opts(params, :actor_id, "actor_id")
-     |> flows_params_to_list_opts(params, :gateway_id, "gateway_id")}
+     |> policy_authorizations_params_to_list_opts(params, :policy_id, "policy_id")
+     |> policy_authorizations_params_to_list_opts(params, :resource_id, "resource_id")
+     |> policy_authorizations_params_to_list_opts(params, :client_id, "client_id")
+     |> policy_authorizations_params_to_list_opts(params, :actor_id, "actor_id")
+     |> policy_authorizations_params_to_list_opts(params, :gateway_id, "gateway_id")}
   end
 end
