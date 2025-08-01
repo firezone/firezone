@@ -420,14 +420,33 @@ impl ClientState {
         }
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
-            handle_p2p_control_packet(
-                gid,
-                fz_p2p_control,
-                &mut self.dns_resource_nat,
-                &mut self.node,
-                &mut self.buffered_transmits,
-                now,
-            );
+            match fz_p2p_control.event_type() {
+                p2p_control::DOMAIN_STATUS_EVENT => {
+                    let res = p2p_control::dns_resource_nat::decode_domain_status(fz_p2p_control)
+                        .inspect_err(|e| tracing::debug!("{e:#}"))
+                        .ok()?;
+
+                    let buffered_packets = self.dns_resource_nat.on_domain_status(gid, res);
+
+                    for packet in buffered_packets {
+                        encapsulate_and_buffer(
+                            packet,
+                            gid,
+                            now,
+                            &mut self.node,
+                            &mut self.buffered_transmits,
+                        );
+                    }
+                }
+                p2p_control::GOODBYE_EVENT => {
+                    self.node.remove_connection(gid, "received `goodbye`");
+                    self.cleanup_connected_gateway(&gid);
+                }
+                code => {
+                    tracing::debug!(code = %code.into_u8(), "Unknown control protocol");
+                }
+            };
+
             return None;
         }
 
@@ -1840,36 +1859,6 @@ fn encapsulate_and_buffer(
     };
 
     buffered_transmits.push_back(transmit);
-}
-
-fn handle_p2p_control_packet(
-    gid: GatewayId,
-    fz_p2p_control: ip_packet::FzP2pControlSlice,
-    dns_resource_nat: &mut DnsResourceNat,
-    node: &mut ClientNode<GatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit>,
-    now: Instant,
-) {
-    use p2p_control::dns_resource_nat;
-
-    match fz_p2p_control.event_type() {
-        p2p_control::DOMAIN_STATUS_EVENT => {
-            let Ok(res) = dns_resource_nat::decode_domain_status(fz_p2p_control)
-                .inspect_err(|e| tracing::debug!("{e:#}"))
-            else {
-                return;
-            };
-
-            let buffered_packets = dns_resource_nat.on_domain_status(gid, res);
-
-            for packet in buffered_packets {
-                encapsulate_and_buffer(packet, gid, now, node, buffered_transmits);
-            }
-        }
-        code => {
-            tracing::debug!(code = %code.into_u8(), "Unknown control protocol");
-        }
-    }
 }
 
 fn peer_by_resource_mut<'p>(
