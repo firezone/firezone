@@ -2074,7 +2074,7 @@ where
                     );
 
                     if self.agent.controlling() {
-                        self.force_handshake(allocations, transmits, now);
+                        self.initiate_wg_session(allocations, transmits, now);
                     }
                 }
                 IceAgentEvent::IceRestart(_) | IceAgentEvent::IceConnectionStateChange(_) => {}
@@ -2346,7 +2346,7 @@ where
         control_flow
     }
 
-    fn force_handshake(
+    fn initiate_wg_session(
         &mut self,
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
