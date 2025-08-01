@@ -362,7 +362,7 @@ impl ClientState {
             }
 
             self.peers
-                .add_ips_with_resource(gid, proxy_ips.iter().copied(), rid);
+                .add_ips_with_resource(gid, proxy_ips.clone(), rid);
         }
     }
 
@@ -668,7 +668,7 @@ impl ClientState {
         match resource {
             Resource::Cidr(_) | Resource::Internet(_) => {
                 self.peers
-                    .add_ips_with_resource(&gid, resource.addresses().into_iter(), &rid);
+                    .add_ips_with_resource(&gid, resource.addresses(), &rid);
 
                 // For CIDR and Internet resources, we can directly queue the buffered packets.
                 for packet in buffered_resource_packets {
@@ -684,6 +684,19 @@ impl ClientState {
             Resource::Dns(_) => {
                 self.update_dns_resource_nat(now, buffered_resource_packets.into_iter())
             }
+        }
+
+        // If we are making this connection because we want to send a DNS query to the Gateway,
+        // mark it as "used" through the DNS resource ID.
+        if !pending_flow.udp_dns_queries.is_empty() || !pending_flow.tcp_dns_queries.is_empty() {
+            self.peers.add_ips_with_resource(
+                &gid,
+                [
+                    IpNetwork::from(gateway_tun.v4),
+                    IpNetwork::from(gateway_tun.v6),
+                ],
+                &rid,
+            );
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
