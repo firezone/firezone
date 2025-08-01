@@ -179,7 +179,7 @@ dependencies {
 
     // Hilt
     implementation("com.google.dagger:hilt-android:2.57")
-    implementation("androidx.browser:browser:1.8.0")
+    implementation("androidx.browser:browser:1.9.0")
     implementation("com.google.firebase:firebase-installations-ktx:18.0.0")
     implementation("com.google.android.gms:play-services-tasks:18.3.0")
     kapt("androidx.hilt:hilt-compiler:1.2.0")
@@ -215,7 +215,7 @@ dependencies {
 
     // JUnit
     testImplementation("junit:junit:4.13.2")
-    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.8")
 
     // Import the BoM for the Firebase platform
