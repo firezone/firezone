@@ -145,8 +145,16 @@ impl TunnelTest {
                     c.sut.add_resource(resource);
                 });
             }
-            Transition::DeactivateResource(id) => {
-                state.client.exec_mut(|c| c.sut.remove_resource(id))
+            Transition::DeactivateResource(rid) => {
+                state.client.exec_mut(|c| c.sut.remove_resource(rid, now));
+
+                if let Some(gateway) = ref_state
+                    .portal
+                    .gateway_for_resource(rid)
+                    .and_then(|gid| state.gateways.get_mut(gid))
+                {
+                    gateway.exec_mut(|g| g.sut.remove_access(&state.client.inner().id, &rid, now));
+                }
             }
             Transition::DisableResources(resources) => state
                 .client
