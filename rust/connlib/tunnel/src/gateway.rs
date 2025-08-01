@@ -6,7 +6,7 @@ use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, RelayId, ResourceId};
+use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
@@ -180,15 +180,26 @@ impl GatewayState {
         self.peers.remove(id);
     }
 
-    pub fn add_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {
-        self.node.add_remote_candidate(conn_id, ice_candidate, now);
+    pub fn add_ice_candidate(
+        &mut self,
+        conn_id: ClientId,
+        ice_candidate: IceCandidate,
+        now: Instant,
+    ) {
+        self.node
+            .add_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
 
-    pub fn remove_ice_candidate(&mut self, conn_id: ClientId, ice_candidate: String, now: Instant) {
+    pub fn remove_ice_candidate(
+        &mut self,
+        conn_id: ClientId,
+        ice_candidate: IceCandidate,
+        now: Instant,
+    ) {
         self.node
-            .remove_remote_candidate(conn_id, ice_candidate, now);
+            .remove_remote_candidate(conn_id, ice_candidate.into(), now);
         self.node.handle_timeout(now);
         self.drain_node_events();
     }
@@ -384,8 +395,8 @@ impl GatewayState {
     }
 
     fn drain_node_events(&mut self) {
-        let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
-        let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<String>>::default();
+        let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
+        let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
 
         while let Some(event) = self.node.poll_event() {
             match event {
@@ -399,7 +410,7 @@ impl GatewayState {
                     added_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .insert(candidate.into());
                 }
                 snownet::Event::InvalidateIceCandidate {
                     connection,
@@ -408,7 +419,7 @@ impl GatewayState {
                     removed_ice_candidates
                         .entry(connection)
                         .or_default()
-                        .insert(candidate);
+                        .insert(candidate.into());
                 }
                 snownet::Event::ConnectionEstablished(_) => {}
             }

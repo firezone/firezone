@@ -1,7 +1,7 @@
 //! Client related messages that are needed within connlib
 
 use crate::messages::{IceCredentials, Interface, Key, Relay, RelaysPresence, SecretKey};
-use connlib_model::{GatewayId, IpStack, ResourceId, Site, SiteId};
+use connlib_model::{GatewayId, IceCandidate, IpStack, ResourceId, Site, SiteId};
 use ip_network::IpNetwork;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -161,15 +161,17 @@ pub struct GatewaysIceCandidates {
     /// The list of gateway IDs these candidates will be broadcast to.
     pub gateway_ids: Vec<GatewayId>,
     /// Actual RTC ice candidates
-    pub candidates: BTreeSet<String>,
+    pub candidates: BTreeSet<IceCandidate>,
 }
 
+#[serde_with::serde_as]
 #[derive(Debug, Deserialize)]
 pub struct GatewayIceCandidates {
     /// Gateway's id the ice candidates are from
     pub gateway_id: GatewayId,
     /// Actual RTC ice candidates
-    pub candidates: Vec<String>,
+    #[serde_as(as = "serde_with::VecSkipError<_>")]
+    pub candidates: Vec<IceCandidate>,
 }
 
 // These messages can be sent from a client to a control pane
@@ -487,5 +489,14 @@ mod tests {
         let actual_json = serde_json::to_string(&message).unwrap();
 
         assert_eq!(actual_json, expected_json);
+    }
+
+    #[test]
+    fn faulty_candidate_get_skipped() {
+        let bad_candidates = serde_json::json!({ "gateway_id": "f16ecfa0-a94f-4bfd-a2ef-1cc1f2ef3da3", "candidates": ["foo", "bar", "baz", "candidate:fffeff6435be70ddbf995982 1 udp 1694498559 87.121.72.60 57114 typ srflx raddr 0.0.0.0 rport 0"] });
+
+        let gateway_candidates = GatewayIceCandidates::deserialize(bad_candidates).unwrap();
+
+        assert_eq!(gateway_candidates.candidates.len(), 1);
     }
 }
