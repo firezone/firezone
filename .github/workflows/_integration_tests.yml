@@ -102,6 +102,7 @@ jobs:
         test:
           - name: direct-curl-api-down
           - name: direct-curl-api-restart
+          - name: direct-curl-gateway-restart
           - name: direct-curl-ecn
           - name: direct-download-packet-loss
           - name: direct-dns-api-down
