@@ -1152,11 +1152,29 @@ impl ClientState {
                 let Some(gateway) =
                     peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
                 else {
+                    // Trigger connection establishment for future queries
                     self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::UdpDnsQueryForSite(packet),
+                        ConnectionTrigger::UdpDnsQueryForSite(packet.clone()),
                         now,
                     );
+                    
+                    // Fall back to local DNS resolution for this query to avoid timeout
+                    tracing::debug!(rid = %resource, "Gateway not connected for DNS resource, falling back to local resolution");
+                    
+                    if self.should_forward_dns_query_to_gateway(upstream.ip()) {
+                        let packet = self
+                            .mangle_udp_dns_query_to_new_upstream_through_tunnel(upstream, now, packet);
+
+                        return ControlFlow::Continue(packet);
+                    }
+                    let query_id = message.id();
+
+                    tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host (fallback)");
+
+                    self.buffered_dns_queries
+                        .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
+                    
                     return ControlFlow::Break(());
                 };
 
@@ -1309,11 +1327,31 @@ impl ClientState {
                 let Some(gateway) =
                     peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
                 else {
+                    // Trigger connection establishment for future queries
                     self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::TcpDnsQueryForSite(query),
+                        ConnectionTrigger::TcpDnsQueryForSite(query.clone()),
                         now,
                     );
+                    
+                    // Fall back to local DNS resolution for this query to avoid timeout
+                    tracing::debug!(rid = %resource, "Gateway not connected for DNS resource, falling back to local resolution");
+                    
+                    if self.should_forward_dns_query_to_gateway(server.ip()) {
+                        self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
+                        return;
+                    }
+
+                    tracing::trace!(%server, %query_id, "Forwarding TCP DNS query (fallback)");
+
+                    self.buffered_dns_queries
+                        .push_back(dns::RecursiveQuery::via_tcp(
+                            query.local,
+                            query.remote,
+                            server,
+                            query.message,
+                        ));
+                    
                     return;
                 };
 
