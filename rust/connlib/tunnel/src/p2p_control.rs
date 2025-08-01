@@ -10,10 +10,11 @@
 //! Usually, events will be grouped into a namespace.
 //! These namespaces are purely conventional and not represented on the protocol level.
 
-use ip_packet::FzP2pEventType;
+use ip_packet::{FzP2pEventType, IpPacket};
 
 pub const ASSIGNED_IPS_EVENT: FzP2pEventType = FzP2pEventType::new(0);
 pub const DOMAIN_STATUS_EVENT: FzP2pEventType = FzP2pEventType::new(1);
+pub const GOODBYE_EVENT: FzP2pEventType = FzP2pEventType::new(2);
 
 pub mod dns_resource_nat {
     use super::*;
@@ -213,4 +214,9 @@ pub mod dns_resource_nat {
             ]
         }
     }
+}
+
+pub fn goodbye() -> IpPacket {
+    ip_packet::make::fz_p2p_control([GOODBYE_EVENT.into_u8(), 0, 0, 0, 0, 0, 0, 0], &[])
+        .expect("should always be able to make a `goodbye` packet")
 }
