@@ -142,15 +142,23 @@ impl TunnelTest {
                         Resource::Internet(_) => {}
                     }
 
-                    c.sut.add_resource(resource);
+                    c.sut.add_resource(resource, now);
                 });
             }
-            Transition::DeactivateResource(id) => {
-                state.client.exec_mut(|c| c.sut.remove_resource(id))
+            Transition::DeactivateResource(rid) => {
+                state.client.exec_mut(|c| c.sut.remove_resource(rid, now));
+
+                if let Some(gateway) = ref_state
+                    .portal
+                    .gateway_for_resource(rid)
+                    .and_then(|gid| state.gateways.get_mut(gid))
+                {
+                    gateway.exec_mut(|g| g.sut.remove_access(&state.client.inner().id, &rid, now));
+                }
             }
             Transition::DisableResources(resources) => state
                 .client
-                .exec_mut(|c| c.sut.set_disabled_resources(resources)),
+                .exec_mut(|c| c.sut.set_disabled_resources(resources, now)),
             Transition::SendIcmpPacket {
                 src,
                 dst,
@@ -264,7 +272,7 @@ impl TunnelTest {
                     // In prod, we reconnect to the portal and receive a new `init` message.
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                     c.sut
-                        .set_resources(ref_state.client.inner().all_resources());
+                        .set_resources(ref_state.client.inner().all_resources(), now);
                 });
             }
             Transition::ReconnectPortal => {
@@ -282,7 +290,7 @@ impl TunnelTest {
                         search_domain: ref_state.client.inner().search_domain.clone(),
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
-                    c.sut.set_resources(all_resources);
+                    c.sut.set_resources(all_resources, now);
                 });
             }
             Transition::DeployNewRelays(new_relays) => {
@@ -340,7 +348,7 @@ impl TunnelTest {
                     all_resources
                 };
 
-                state.client.exec_mut(|c| c.sut.remove_resource(rid));
+                state.client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
                 if let Some(gid) = ref_state.portal.gateway_for_resource(rid)
                     && let Some(g) = state.gateways.get_mut(gid)

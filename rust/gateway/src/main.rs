@@ -17,14 +17,13 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 
-use futures::{TryFutureExt, future};
+use futures::future;
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
+use std::fmt;
 use std::{collections::BTreeSet, path::Path};
-use std::{fmt, pin::pin};
 use std::{process::ExitCode, str::FromStr};
 use std::{sync::Arc, time::Duration};
-use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
 use tun::Tun;
 use url::Url;
@@ -62,7 +61,7 @@ fn main() -> ExitCode {
         .context("Failed to start Gateway")
     {
         Ok(()) => {
-            tracing::info!("Received CTRL+C, goodbye!");
+            tracing::info!("Goodbye!");
             runtime.block_on(telemetry.stop());
 
             ExitCode::SUCCESS
@@ -195,24 +194,19 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     }
 
     let eventloop = future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
+        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager)?;
 
         move |cx| eventloop.poll(cx)
     });
-    let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
     tokio::spawn(http_health_check::serve(
         cli.health_check.health_check_addr,
         || true,
     ));
 
-    match future::try_select(eventloop, ctrl_c)
-        .await
-        .map_err(|e| e.factor_first().0)?
-    {
-        future::Either::Left((never, _)) => match never {},
-        future::Either::Right(((), _)) => Ok(()),
-    }
+    eventloop.await?;
+
+    Ok(())
 }
 
 fn tonic_otlp_exporter(
