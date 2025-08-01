@@ -276,6 +276,15 @@ where
                 &mut self.pending_events,
             );
 
+            // Initiate a new WG session.
+            //
+            // We can have up to 8 concurrent WireGuard sessions in boringtun before the oldest one get overwritten.
+            // Also, whilst we are are handshaking a new session, we won't send another handshake.
+            // Thus, even rapidely successive connection upserts should be handled just fine.
+            if c.agent.controlling() {
+                c.initiate_wg_session(&mut self.allocations, &mut self.buffered_transmits, now);
+            }
+
             return Ok(());
         }
 
