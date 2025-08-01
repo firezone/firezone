@@ -176,8 +176,9 @@ impl GatewayState {
         }
     }
 
-    pub fn cleanup_connection(&mut self, id: &ClientId) {
+    pub fn cleanup_connection(&mut self, id: &ClientId, now: Instant) {
         self.peers.remove(id);
+        self.node.close_connection(*id, p2p_control::goodbye(), now);
     }
 
     pub fn add_ice_candidate(
@@ -205,14 +206,16 @@ impl GatewayState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
-    pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId) {
+    pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId, now: Instant) {
         let Some(peer) = self.peers.get_mut(cid) else {
             return;
         };
 
         peer.remove_resource(rid);
-        if peer.is_emptied() {
+        if peer.is_empty() {
             self.peers.remove(cid);
+            self.node
+                .close_connection(*cid, p2p_control::goodbye(), now);
         }
 
         tracing::debug!("Access removed");
@@ -384,7 +387,13 @@ impl GatewayState {
                     p.expire_resources(utc_now);
                     p.handle_timeout(now)
                 });
-                self.peers.retain(|_, p| !p.is_emptied());
+                let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
+
+                for (id, _) in removed_peers {
+                    tracing::debug!(cid = %id, "Access to last resource for Client removed");
+
+                    self.node.close_connection(id, p2p_control::goodbye(), now);
+                }
 
                 self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
             }
