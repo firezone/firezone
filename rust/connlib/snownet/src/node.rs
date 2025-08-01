@@ -728,6 +728,7 @@ where
             disconnected_at: None,
             possible_sockets: BTreeSet::default(),
             buffer_pool: self.buffer_pool.clone(),
+            last_proactive_handshake_sent_at: None,
         }
     }
 
@@ -1595,6 +1596,8 @@ struct Connection<RId> {
     /// When to next update the [`Tunn`]'s timers.
     next_wg_timer_update: Instant,
 
+    last_proactive_handshake_sent_at: Option<Instant>,
+
     /// The relay we have selected for this connection.
     relay: RId,
 
@@ -2363,6 +2366,24 @@ where
     ) where
         RId: Copy,
     {
+        let Some(socket) = self.socket() else {
+            tracing::error!("Cannot initiate WG session without a socket");
+            return;
+        };
+
+        // If we have sent a handshake in the last 20s, don't bother making a new session.
+        // Our re-key timeout is 15s, meaning if more than 20s have passed and we are still
+        // here, we have a working connection and can refresh it.
+        if let Some(last_handshake) = self
+            .last_proactive_handshake_sent_at
+            .map(|last_sent_at| now.duration_since(last_sent_at))
+            && last_handshake < Duration::from_secs(20)
+        {
+            tracing::debug!(?last_handshake, "Suppressing repeated handshake");
+
+            return;
+        }
+
         /// [`boringtun`] requires us to pass buffers in where it can construct its packets.
         ///
         /// When updating the timers, the largest packet that we may have to send is `148` bytes as per `HANDSHAKE_INIT_SZ` constant in [`boringtun`].
@@ -2374,13 +2395,12 @@ where
             .tunnel
             .format_handshake_initiation_at(&mut buf, false, now)
         else {
+            tracing::debug!("Another handshake is already in progress");
+
             return;
         };
 
-        let Some(socket) = self.socket() else {
-            tracing::error!("Cannot initiate WG session without a socket");
-            return;
-        };
+        self.last_proactive_handshake_sent_at = Some(now);
 
         transmits.extend(make_owned_transmit(
             self.relay,
