@@ -128,17 +128,16 @@ class Adapter {
         self.packetTunnelProvider?.reasserting = false
       }
 
-      if lastPath?.connectivityDifferentFrom(path: path) != false {
+      if path.connectivityDifferentFrom(path: lastPath) {
         // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
         // meaningfully changed. On darwin, this is needed to send packets
         // out of a different interface even when 0.0.0.0 is used as the source.
         // If our primary interface changes, we can be certain the old socket shouldn't be
         // used anymore.
-        reset(reason: "primary network path changed", path: path)
-      } else {
-        // Reset only resolvers
-        setSystemDefaultResolvers(path)
+        session?.reset("primary network path changed")
       }
+
+      setSystemDefaultResolvers(path)
 
       lastPath = path
     }
@@ -419,6 +418,17 @@ extension Adapter: CallbackHandlerDelegate {
       let resolvers = self.systemConfigurationResolvers.getDefaultDNSServers(
         interfaceName: path.availableInterfaces.first?.name)
     #elseif os(iOS)
+
+      // DNS server updates don't necessarily trigger a connectivity change, but we'll get a path update callback
+      // nevertheless. Unfortunately there's no visible difference in instance properties between the two path
+      // objects. On macOS this isn't an issue because setting new resolvers here doesn't trigger a change.
+      // On iOS, however, we need to prevent path update loops by not reacting to path updates that we ourselves
+      // triggered by the network settings apply.
+
+      // TODO: Find a hackier hack to avoid this on iOS
+      if !path.connectivityDifferentFrom(path: lastPath) {
+        return
+      }
       let resolvers = resetToSystemDNSGettingBindResolvers()
     #endif
 
@@ -515,13 +525,13 @@ extension Adapter: CallbackHandlerDelegate {
 #endif
 
 extension Network.NWPath {
-  func connectivityDifferentFrom(path: Network.NWPath) -> Bool {
+  func connectivityDifferentFrom(path: Network.NWPath? = nil) -> Bool {
     // We define a path as different from another if the following properties change
-    return path.supportsIPv4 != self.supportsIPv4 || path.supportsIPv6 != self.supportsIPv6
-      || path.supportsDNS != self.supportsDNS
-      || path.status != self.status
-      || path.availableInterfaces.first != self.availableInterfaces.first
-      || path.gateways != self.gateways
+    return path?.supportsIPv4 != self.supportsIPv4 || path?.supportsIPv6 != self.supportsIPv6
+      || path?.supportsDNS != self.supportsDNS
+      || path?.status != self.status
+      || path?.availableInterfaces.first != self.availableInterfaces.first
+      || path?.gateways != self.gateways
   }
 }
 
