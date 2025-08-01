@@ -189,8 +189,8 @@ dependencies {
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.57")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.2")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-    androidTestImplementation("androidx.test.espresso:espresso-contrib:3.6.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
     // Unit Tests
     testImplementation("com.google.dagger:hilt-android-testing:2.57")
