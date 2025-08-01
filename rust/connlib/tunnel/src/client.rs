@@ -861,7 +861,11 @@ impl ClientState {
             .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(sentinel_sockets);
     }
 
-    pub fn set_disabled_resources(&mut self, new_disabled_resources: BTreeSet<ResourceId>) {
+    pub fn set_disabled_resources(
+        &mut self,
+        new_disabled_resources: BTreeSet<ResourceId>,
+        now: Instant,
+    ) {
         let current_disabled_resources = self.disabled_resources.clone();
 
         // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
@@ -872,16 +876,16 @@ impl ClientState {
                 continue;
             };
 
-            self.add_resource(resource.clone());
+            self.add_resource(resource.clone(), now);
         }
 
         for new_disabled_resource in new_disabled_resources.difference(&current_disabled_resources)
         {
-            self.disable_resource(*new_disabled_resource);
+            self.disable_resource(*new_disabled_resource, now);
         }
 
         self.active_cidr_resources = self.recalculate_active_cidr_resources();
-        self.maybe_update_tun_routes()
+        self.maybe_update_tun_routes();
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -1509,6 +1513,7 @@ impl ClientState {
             ),
             status,
         );
+        self.emit_resources_changed();
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
@@ -1551,7 +1556,7 @@ impl ClientState {
     ///
     /// TODO: Add a test that asserts the above.
     ///       That is tricky because we need to assert on state deleted by [`ClientState::remove_resource`] and check that it did in fact not get deleted.
-    pub fn set_resources<R>(&mut self, new_resources: Vec<R>)
+    pub fn set_resources<R>(&mut self, new_resources: Vec<R>, now: Instant)
     where
         R: TryInto<Resource, Error: std::error::Error>,
     {
@@ -1571,12 +1576,12 @@ impl ClientState {
 
         // First, remove all resources that are not present in the new resource list.
         for id in current_resource_ids.difference(&new_resource_ids).copied() {
-            self.remove_resource(id);
+            self.remove_resource(id, now);
         }
 
         // Second, add all resources.
         for resource in new_resources {
-            self.add_resource(resource)
+            self.add_resource(resource, now)
         }
 
         self.active_cidr_resources = self.recalculate_active_cidr_resources();
@@ -1584,7 +1589,11 @@ impl ClientState {
         self.emit_resources_changed();
     }
 
-    pub fn add_resource(&mut self, new_resource: impl TryInto<Resource, Error: std::error::Error>) {
+    pub fn add_resource(
+        &mut self,
+        new_resource: impl TryInto<Resource, Error: std::error::Error>,
+        now: Instant,
+    ) {
         let new_resource = match new_resource.try_into() {
             Ok(r) => r,
             Err(e) => {
@@ -1598,7 +1607,7 @@ impl ClientState {
                 || resource.has_different_ip_stack(&new_resource);
 
             if resource_addressability_changed {
-                self.remove_resource(resource.id());
+                self.remove_resource(resource.id(), now);
             }
         }
 
@@ -1655,8 +1664,8 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
-    pub fn remove_resource(&mut self, id: ResourceId) {
-        self.disable_resource(id);
+    pub fn remove_resource(&mut self, id: ResourceId, now: Instant) {
+        self.disable_resource(id, now);
 
         if self
             .resources_by_id
@@ -1683,7 +1692,7 @@ impl ClientState {
             });
     }
 
-    fn disable_resource(&mut self, id: ResourceId) {
+    fn disable_resource(&mut self, id: ResourceId, now: Instant) {
         let Some(resource) = self.resources_by_id.get(&id) else {
             return;
         };
@@ -1735,6 +1744,16 @@ impl ClientState {
             .filter_map(|(domain, candidate, _)| (candidate == &id).then_some(domain))
         {
             self.dns_resource_nat.clear_by_domain(domain);
+        }
+
+        let unused_gateways = self.peers.extract_if(|_, p| p.allowed_ips.is_empty());
+
+        for (gid, _) in unused_gateways {
+            tracing::debug!(%gid, "Disabled / deactivated last resource for peer");
+
+            self.node.close_connection(gid, p2p_control::goodbye(), now);
+            self.update_site_status_by_gateway(&gid, ResourceStatus::Unknown);
+            self.emit_resources_changed();
         }
     }
 
@@ -2155,8 +2174,8 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(Resource::Cidr(resource1.clone()));
-        client_state.add_resource(Resource::Cidr(resource2.clone()));
+        client_state.add_resource(Resource::Cidr(resource1.clone()), Instant::now());
+        client_state.add_resource(Resource::Cidr(resource2.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.routes()),
@@ -2172,8 +2191,8 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
 
-        client_state.add_resource(Resource::Cidr(resource1.clone()));
-        client_state.add_resource(Resource::Dns(resource2.clone()));
+        client_state.add_resource(Resource::Cidr(resource1.clone()), Instant::now());
+        client_state.add_resource(Resource::Dns(resource2.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -2183,7 +2202,7 @@ mod proptests {
             ])
         );
 
-        client_state.add_resource(Resource::Cidr(resource3.clone()));
+        client_state.add_resource(Resource::Cidr(resource3.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -2201,14 +2220,14 @@ mod proptests {
         #[strategy(any_ip_network(8))] new_address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Cidr(resource.clone()));
+        client_state.add_resource(Resource::Cidr(resource.clone()), Instant::now());
 
         let updated_resource = CidrResource {
             address: new_address,
             ..resource
         };
 
-        client_state.add_resource(Resource::Cidr(updated_resource.clone()));
+        client_state.add_resource(Resource::Cidr(updated_resource.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -2228,7 +2247,7 @@ mod proptests {
         #[strategy(any_ip_network(8))] address: IpNetwork,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Dns(resource.clone()));
+        client_state.add_resource(Resource::Dns(resource.clone()), Instant::now());
 
         let dns_as_cidr_resource = CidrResource {
             address,
@@ -2238,7 +2257,7 @@ mod proptests {
             sites: resource.sites,
         };
 
-        client_state.add_resource(Resource::Cidr(dns_as_cidr_resource.clone()));
+        client_state.add_resource(Resource::Cidr(dns_as_cidr_resource.clone()), Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -2258,10 +2277,10 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Dns(dns_resource.clone()));
-        client_state.add_resource(Resource::Cidr(cidr_resource.clone()));
+        client_state.add_resource(Resource::Dns(dns_resource.clone()), Instant::now());
+        client_state.add_resource(Resource::Cidr(cidr_resource.clone()), Instant::now());
 
-        client_state.remove_resource(dns_resource.id);
+        client_state.remove_resource(dns_resource.id, Instant::now());
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -2274,7 +2293,7 @@ mod proptests {
             expected_routes(vec![cidr_resource.address])
         );
 
-        client_state.remove_resource(cidr_resource.id);
+        client_state.remove_resource(cidr_resource.id, Instant::now());
 
         assert_eq!(hashset(client_state.resources().iter()), hashset(&[]));
         assert_eq!(hashset(client_state.routes()), expected_routes(vec![]));
@@ -2288,13 +2307,16 @@ mod proptests {
         #[strategy(cidr_resource())] cidr_resource2: CidrResource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(Resource::Dns(dns_resource1));
-        client_state.add_resource(Resource::Cidr(cidr_resource1));
+        client_state.add_resource(Resource::Dns(dns_resource1), Instant::now());
+        client_state.add_resource(Resource::Cidr(cidr_resource1), Instant::now());
 
-        client_state.set_resources(vec![
-            Resource::Dns(dns_resource2.clone()),
-            Resource::Cidr(cidr_resource2.clone()),
-        ]);
+        client_state.set_resources(
+            vec![
+                Resource::Dns(dns_resource2.clone()),
+                Resource::Cidr(cidr_resource2.clone()),
+            ],
+            Instant::now(),
+        );
 
         assert_eq!(
             hashset(client_state.resources()),
@@ -2318,7 +2340,7 @@ mod proptests {
         let mut client_state = ClientState::for_test();
 
         for r in resources_online.iter().chain(resources_unknown.iter()) {
-            client_state.add_resource(r.clone())
+            client_state.add_resource(r.clone(), Instant::now())
         }
 
         let first_resource = resources_online.first().unwrap();
@@ -2353,7 +2375,7 @@ mod proptests {
     ) {
         let mut client_state = ClientState::for_test();
         for r in &resources {
-            client_state.add_resource(r.clone())
+            client_state.add_resource(r.clone(), Instant::now());
         }
         let first_resources = resources.first().unwrap();
         client_state
@@ -2380,9 +2402,9 @@ mod proptests {
         #[strategy(resource())] single_site_resource: Resource,
     ) {
         let mut client_state = ClientState::for_test();
-        client_state.add_resource(single_site_resource.clone());
+        client_state.add_resource(single_site_resource.clone(), Instant::now());
         for r in &multi_site_resources {
-            client_state.add_resource(r.clone())
+            client_state.add_resource(r.clone(), Instant::now());
         }
 
         client_state.set_resource_offline(single_site_resource.id());
