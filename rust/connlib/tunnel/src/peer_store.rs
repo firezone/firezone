@@ -45,10 +45,16 @@ where
     TId: Hash + Eq + Copy + fmt::Debug + fmt::Display,
     P: Peer<Id = TId>,
 {
-    pub(crate) fn retain(&mut self, f: impl Fn(&TId, &mut P) -> bool) {
-        self.peer_by_id.retain(f);
+    pub(crate) fn extract_if(&mut self, f: impl Fn(&TId, &mut P) -> bool) -> Vec<(TId, P)> {
+        let removed_peers = self
+            .peer_by_id
+            .extract_if(|id, peer| f(id, peer))
+            .collect::<Vec<_>>();
+
         self.id_by_ip
             .retain(|_, id| self.peer_by_id.contains_key(id));
+
+        removed_peers
     }
 
     pub(crate) fn add_ip(&mut self, id: &TId, ip: &IpNetwork) -> Option<&mut P> {
