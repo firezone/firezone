@@ -26,7 +26,7 @@ impl PeerStore<GatewayId, GatewayOnClient> {
     pub(crate) fn add_ips_with_resource(
         &mut self,
         id: &GatewayId,
-        ips: impl Iterator<Item = impl Into<IpNetwork>>,
+        ips: impl IntoIterator<Item = impl Into<IpNetwork>>,
         resource: &ResourceId,
     ) {
         for ip in ips {
