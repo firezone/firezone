@@ -16,7 +16,7 @@ pub use allocation::RelaySocket;
 pub use node::{Answer, Offer};
 pub use node::{
     Client, ClientNode, Credentials, Event, HANDSHAKE_TIMEOUT, NoTurnServers, Node, Server,
-    ServerNode, Transmit,
+    ServerNode, Transmit, UnknownConnection,
 };
 pub use stats::{ConnectionStats, NodeStats};
 

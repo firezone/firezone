@@ -426,7 +426,7 @@ where
         let conn = self
             .connections
             .get_established_mut(&cid)
-            .with_context(|| format!("Unknown connection {cid}"))?;
+            .context(UnknownConnection(cid.to_string()))?;
 
         if self.mode.is_server() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -1439,6 +1439,10 @@ fn remove_local_candidate<TId>(
         })
     }
 }
+
+#[derive(thiserror::Error, Debug)]
+#[error("Unknown connection: {0}")]
+pub struct UnknownConnection(String);
 
 #[deprecated]
 pub struct Offer {

@@ -400,8 +400,10 @@ impl GatewayState {
 
         while let Some(event) = self.node.poll_event() {
             match event {
-                snownet::Event::ConnectionFailed(id) | snownet::Event::ConnectionClosed(id) => {
-                    self.peers.remove(&id);
+                snownet::Event::ConnectionFailed(_) | snownet::Event::ConnectionClosed(_) => {
+                    // We purposely don't clear the peer-state here.
+                    // The Client might re-establish the connection but if it hasn't cleared its local state too,
+                    // it will consider all its access authorizations to be still valid.
                 }
                 snownet::Event::NewIceCandidate {
                     connection,
