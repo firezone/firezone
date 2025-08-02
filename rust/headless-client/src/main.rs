@@ -5,9 +5,10 @@
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
+use client_shared::dns_resource_record_cache;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
-    known_dirs, new_dns_notifier, new_network_notifier,
+    new_dns_notifier, new_network_notifier,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
@@ -230,9 +231,6 @@ fn main() -> Result<()> {
 
     // The name matches that in `ipc_service.rs`
     let mut last_connlib_start_instant = Some(Instant::now());
-    let dns_resource_record_cache_path = known_dirs::runtime()
-        .context("No runtime dir")?
-        .join("dns_resource_records.json");
 
     rt.block_on(async {
         if let Some(MetricsExporter::Stdout) = cli.metrics {
@@ -250,13 +248,11 @@ fn main() -> Result<()> {
             opentelemetry::global::set_meter_provider(provider);
         }
 
-        let mut dns_resource_records = std::fs::read_to_string(&dns_resource_record_cache_path)
-            .context("Failed to read file")
-            .and_then(|json| client_shared::serde_dns_resource_records::deserialize(&json))
-            .unwrap_or_else(|e| {
-                tracing::debug!("Failed to load DNS resource record cache: {e:#}");
 
-                BTreeSet::default()
+        let mut dns_resource_records = dns_resource_record_cache::load().unwrap_or_else(|e| {
+            tracing::debug!("Failed to load DNS resource record cache: {e:#}");
+
+            BTreeSet::default()
         });
 
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
@@ -367,9 +363,9 @@ fn main() -> Result<()> {
             }
         };
 
-        let json = client_shared::serde_dns_resource_records::serialize(dns_resource_records)?;
-
-        std::fs::write(dns_resource_record_cache_path, json).context("Failed to write DNS resource record cache")?;
+        if let Err(e) = dns_resource_record_cache::save(dns_resource_records) {
+            tracing::debug!("Failed to save DNS resource record cache: {e:#}");
+        }
 
         telemetry.stop().await; // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
 
