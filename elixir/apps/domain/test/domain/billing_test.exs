@@ -2,6 +2,7 @@ defmodule Domain.BillingTest do
   use Domain.DataCase, async: true
   import Domain.Billing
   alias Domain.Billing
+  alias Domain.Billing.Stripe.ProcessedEvents
   alias Domain.Mocks.Stripe
 
   setup do
@@ -459,41 +460,30 @@ defmodule Domain.BillingTest do
     end
 
     test "does nothing on customer.created event when metadata is incomplete" do
-      customer_id = "cus_" <> Stripe.random_id()
-
-      event =
-        Stripe.build_event(
-          "customer.created",
-          Stripe.customer_object(
-            customer_id,
-            "New Account Name",
-            "iown@bigcompany.com",
-            %{}
-          )
-        )
+      account_name = "FooBarCompany"
+      customer = Stripe.build_customer(name: account_name, email: "foo@bar.com")
+      event = Stripe.build_event("customer.created", customer)
 
       assert handle_events([event]) == :ok
 
-      assert Repo.aggregate(Domain.Accounts.Account, :count) == 1
+      refute Repo.get_by(Domain.Accounts.Account, name: account_name)
     end
 
-    test "does nothing on customer.created event when metadata has account_id" do
-      customer_id = "cus_" <> Stripe.random_id()
-
-      event =
-        Stripe.build_event(
-          "customer.created",
-          Stripe.customer_object(
-            customer_id,
-            "New Account Name",
-            "iown@bigcompany.com",
-            %{"account_id" => Ecto.UUID.generate()}
-          )
+    test "does nothing on customer.created event when metadata has account_id", %{
+      account: account
+    } do
+      customer =
+        Stripe.build_customer(
+          name: "FooBarCompany",
+          email: "foo@bar.com",
+          metadata: %{"account_id" => account.id}
         )
+
+      event = Stripe.build_event("customer.created", customer)
 
       assert handle_events([event]) == :ok
 
-      assert Repo.aggregate(Domain.Accounts.Account, :count) == 1
+      refute Repo.get_by(Domain.Accounts.Account, name: "FooBarCompany")
     end
 
     test "syncs an account from stripe on customer.created event" do
@@ -904,7 +894,7 @@ defmodule Domain.BillingTest do
         )
 
       assert handle_events([team_event]) == :ok
-      assert Repo.all(Domain.Billing.Stripe.ProcessedEvent) |> length() == 1
+      assert Repo.all(ProcessedEvents.ProcessedEvent) |> length() == 1
 
       assert account = Repo.get(Domain.Accounts.Account, account.id)
 
@@ -1067,6 +1057,65 @@ defmodule Domain.BillingTest do
 
       assert account_after_expired_event = Repo.get(Domain.Accounts.Account, account.id)
       assert account_after_expired_event == account
+    end
+
+    test "allows processing of older events from different types", %{
+      account: account,
+      customer_id: customer_id
+    } do
+      orig_account = account
+      {team_product, _price, team_subscription} = Stripe.build_all(:team, customer_id, 5)
+
+      updated_customer =
+        Stripe.build_customer(
+          id: customer_id,
+          name: "Updated Customer",
+          email: "updated@customer.com",
+          metadata: %{
+            "account_id" => account.id,
+            "account_name" => account.name
+          }
+        )
+
+      Bypass.open()
+      |> Stripe.fetch_customer_endpoint(updated_customer)
+      |> Stripe.fetch_product_endpoint(team_product)
+
+      customer_update_time = System.os_time(:second) - 30
+      team_sub_update_time = System.os_time(:second)
+
+      customer_update_event =
+        Stripe.build_event(
+          "customer.updated",
+          updated_customer,
+          customer_update_time
+        )
+
+      team_event =
+        Stripe.build_event(
+          "customer.subscription.updated",
+          team_subscription,
+          team_sub_update_time
+        )
+
+      assert handle_events([team_event]) == :ok
+      assert Repo.all(ProcessedEvents.ProcessedEvent) |> length() == 1
+
+      assert account = Repo.get(Domain.Accounts.Account, account.id)
+
+      assert account.metadata.stripe.customer_id == customer_id
+      assert account.metadata.stripe.subscription_id == team_subscription["id"]
+      assert account.metadata.stripe.product_name == "Team"
+      assert account.metadata.stripe.support_type == "email"
+      assert account.legal_name == orig_account.legal_name
+
+      assert handle_events([customer_update_event]) == :ok
+
+      assert account = Repo.get(Domain.Accounts.Account, account.id)
+
+      assert account.metadata.stripe.product_name == "Team"
+      assert account.metadata.stripe.support_type == "email"
+      assert account.legal_name == updated_customer["name"]
     end
   end
 end

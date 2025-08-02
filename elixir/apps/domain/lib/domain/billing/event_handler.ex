@@ -56,24 +56,23 @@ defmodule Domain.Billing.EventHandler do
   defp check_event_processing_eligibility(event, customer_id) do
     %{
       "id" => event_id,
-      "created" => event_created
+      "created" => event_created,
+      "type" => event_type
     } = event
 
-    cond do
-      ProcessedEvents.event_processed?(event_id) ->
-        {:skip, :already_processed}
-
-      true ->
-        check_chronological_order(customer_id, event_created, event_id)
+    if ProcessedEvents.event_processed?(event_id) do
+      {:skip, :already_processed}
+    else
+      check_chronological_order(customer_id, event_created, event_type, event_id)
     end
   end
 
-  defp check_chronological_order(nil, _event_created, _event_id) do
+  defp check_chronological_order(nil, _event_created, _event_type, _event_id) do
     {:skip, :no_customer_id}
   end
 
-  defp check_chronological_order(customer_id, event_created, event_id) do
-    case ProcessedEvents.get_latest_for_stripe_customer(customer_id) do
+  defp check_chronological_order(customer_id, event_created, event_type, event_id) do
+    case ProcessedEvents.get_latest_for_stripe_customer(customer_id, event_type) do
       nil ->
         :ok
 

@@ -1,22 +1,5 @@
-defmodule Domain.Billing.Stripe.ProcessedEvent do
-  @moduledoc """
-  Schema for tracking processed Stripe webhook events.
-  Ensures idempotency and chronological ordering of event processing.
-  """
-
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key {:stripe_event_id, :string, []}
-  schema "processed_stripe_events" do
-    field :event_type, :string
-    field :processed_at, :utc_datetime
-    field :stripe_customer_id, :string
-    field :event_created_at, :utc_datetime
-    field :livemode, :boolean, default: false
-
-    timestamps()
-  end
+defmodule Domain.Billing.Stripe.ProcessedEvents.ProcessedEvent.Changeset do
+  use Domain, :changeset
 
   @required_fields [
     :stripe_event_id,
@@ -29,8 +12,6 @@ defmodule Domain.Billing.Stripe.ProcessedEvent do
   @optional_fields [
     :stripe_customer_id
   ]
-
-  @doc false
   def changeset(processed_event, attrs) do
     processed_event
     |> cast(attrs, @required_fields ++ @optional_fields)
