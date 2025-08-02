@@ -790,7 +790,6 @@ impl TunnelTest {
 
                 Ok(())
             }
-
             ClientEvent::ResourcesChanged { resources } => {
                 self.client.exec_mut(|c| {
                     c.resource_status = resources
@@ -827,6 +826,11 @@ impl TunnelTest {
                     c.ipv6_routes = config.ipv6_routes;
                     c.search_domain = config.search_domain
                 });
+
+                Ok(())
+            }
+            ClientEvent::DnsRecordsChanged { records } => {
+                tracing::error!("Persist resource records");
 
                 Ok(())
             }

@@ -7,7 +7,7 @@ pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use eventloop::{Command, Eventloop};
-use firezone_tunnel::ClientTunnel;
+use firezone_tunnel::{ClientTunnel, DnsResourceRecord};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::BTreeSet;
@@ -17,6 +17,8 @@ use std::task::{Context, Poll};
 use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tun::Tun;
+
+pub mod serde_dns_resource_records;
 
 mod eventloop;
 mod serde_routelist;
@@ -44,6 +46,7 @@ impl Session {
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        records: BTreeSet<DnsResourceRecord>,
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
@@ -53,6 +56,7 @@ impl Session {
         let connect_handle = handle.spawn(connect(
             tcp_socket_factory,
             udp_socket_factory,
+            records,
             portal,
             cmd_rx,
             event_tx.clone(),
@@ -134,11 +138,12 @@ impl Drop for Session {
 async fn connect(
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+    records: BTreeSet<DnsResourceRecord>,
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     cmd_rx: UnboundedReceiver<Command>,
     event_tx: Sender<Event>,
 ) -> Result<()> {
-    let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
+    let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory, records);
     let mut eventloop = Eventloop::new(tunnel, portal, cmd_rx, event_tx);
 
     std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
