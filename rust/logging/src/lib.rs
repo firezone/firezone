@@ -210,10 +210,10 @@ where
             let mut event_filter = match *md.level() {
                 Level::ERROR | Level::WARN => EventFilter::Event | EventFilter::Breadcrumb,
                 Level::INFO | Level::DEBUG => EventFilter::Breadcrumb,
-                _ => return EventFilter::Ignore,
+                Level::TRACE => EventFilter::Ignore,
             };
 
-            if feature_flags::stream_logs() {
+            if feature_flags::stream_logs(md) {
                 event_filter |= EventFilter::Log
             }
 
