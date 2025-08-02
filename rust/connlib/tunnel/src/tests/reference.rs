@@ -245,6 +245,7 @@ impl ReferenceState {
             )
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
+            .with(1, private_key().prop_map(Transition::RestartClient))
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
                 sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
                     |resources_id| Transition::DisableResources(BTreeSet::from_iter(resources_id)),
@@ -523,6 +524,9 @@ impl ReferenceState {
             Transition::DeauthorizeWhileGatewayIsPartitioned(resource) => state
                 .client
                 .exec_mut(|client| client.remove_resource(resource)),
+            Transition::RestartClient(key) => state.client.exec_mut(|c| {
+                c.restart(*key);
+            }),
         };
 
         state
@@ -709,6 +713,7 @@ impl ReferenceState {
                 !route_overlap
             }
             Transition::Idle => true,
+            Transition::RestartClient(_) => true,
             Transition::PartitionRelaysFromPortal => true,
             Transition::DeauthorizeWhileGatewayIsPartitioned(r) => {
                 let has_resource = state.client.inner().has_resource(*r);
