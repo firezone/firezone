@@ -17,8 +17,8 @@ libc = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
-snownet = { workspace = true }
 serde_json = { workspace = true }
+snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
