@@ -492,6 +492,9 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::OnUpdateResources(resources))
                     .await?;
             }
+            client_shared::Event::DnsRecordsChanged(_) => {
+                // TODO: Persist records to cache.
+            }
         }
         Ok(())
     }
@@ -637,6 +640,7 @@ impl<'a> Handler<'a> {
         let (connlib, event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
+            Default::default(), // TODO: Load records from cache.
             portal,
             tokio::runtime::Handle::current(),
         );

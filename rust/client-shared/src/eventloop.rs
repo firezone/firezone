@@ -7,7 +7,7 @@ use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use firezone_tunnel::{ClientTunnel, IpConfig};
+use firezone_tunnel::{ClientTunnel, DnsResourceRecord, IpConfig};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use std::mem;
@@ -51,6 +51,7 @@ pub enum Event {
         ipv6_routes: Vec<Ipv6Network>,
     },
     ResourcesUpdated(Vec<ResourceView>),
+    DnsRecordsChanged(BTreeSet<DnsResourceRecord>),
     Disconnected(DisconnectError),
 }
 
@@ -258,6 +259,9 @@ impl Eventloop {
                     ipv4_routes: Vec::from_iter(config.ipv4_routes),
                     ipv6_routes: Vec::from_iter(config.ipv6_routes),
                 })
+            }
+            firezone_tunnel::ClientEvent::DnsRecordsChanged { records } => {
+                Some(Event::DnsRecordsChanged(records))
             }
         }
     }
