@@ -30,6 +30,12 @@ pub fn tunnel_log_filter() -> Result<PathBuf> {
         .join("log-filter"))
 }
 
+pub fn dns_resource_records_cache() -> Result<PathBuf> {
+    Ok(runtime()
+        .context("No runtime dir")?
+        .join("dns_resource_records.json"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
