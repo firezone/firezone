@@ -217,7 +217,7 @@ defmodule Domain.Policies do
           succeeded
           |> Enum.max_by(fn {expires_at, _policy} -> expires_at || @infinity end)
 
-        {:ok, min_expires_at(expires_at, token_expires_at), policy}
+        {:ok, policy, min_expires_at(expires_at, token_expires_at)}
     end
   end
 
