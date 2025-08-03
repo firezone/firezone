@@ -137,9 +137,11 @@ defmodule Domain.Cache.Client do
     Recomputes the list of connectable resources, returning the newly connectable resources
     and the IDs of resources that are no longer connectable so that the client may update its
     state. This should be called periodically to handle differences due to time-based policy conditions.
+
+    If opts[:toggle] is set to true, we ensure that all added resources also have
   """
 
-  @spec recompute_connectable_resources(t() | nil, %Clients.Client{}) ::
+  @spec recompute_connectable_resources(t() | nil, %Clients.Client{}, Keyword.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def recompute_connectable_resources(nil, client) do
@@ -147,14 +149,29 @@ defmodule Domain.Cache.Client do
     |> recompute_connectable_resources(client)
   end
 
-  def recompute_connectable_resources(cache, client) do
+  def recompute_connectable_resources(cache, client, opts \\ []) do
+    {toggle, _opts} = Keyword.pop(opts, :toggle)
+
     connectable_resources =
       cache.policies
       |> conforming_resource_ids(client)
       |> adapted_resources(cache.resources, client)
 
-    removed = cache.connectable_resources -- connectable_resources
     added = connectable_resources -- cache.connectable_resources
+
+    added_ids = Enum.map(added, & &1.id)
+
+    # connlib can handle all resource attribute changes except for changing sites, so we can omit the deleted IDs
+    # of added resources since they'll be updated gracefully.
+    removed =
+      (cache.connectable_resources -- connectable_resources)
+      |> Enum.filter(fn r ->
+        if toggle do
+          r
+        else
+          r.id not in added_ids
+        end
+      end)
 
     cache = %{cache | connectable_resources: connectable_resources}
 
@@ -207,7 +224,7 @@ defmodule Domain.Cache.Client do
   """
 
   @spec delete_membership(t(), %Actors.Membership{}, %Clients.Client{}) ::
-          {:ok, [Ecto.UUID.t()], t()}
+          {:ok, [Cacche.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client) do
     gid_bytes = dump!(membership.group_id)
@@ -271,7 +288,9 @@ defmodule Domain.Cache.Client do
 
     cache = %{cache | resources: resources}
 
-    recompute_connectable_resources(cache, client)
+    # For these updates we need to make sure the resource is toggled deleted then created.
+    # See https://github.com/firezone/firezone/issues/9881
+    recompute_connectable_resources(cache, client, toggle: true)
   end
 
   @doc """
@@ -396,7 +415,9 @@ defmodule Domain.Cache.Client do
 
       cache = %{cache | resources: resources}
 
-      recompute_connectable_resources(cache, client)
+      # For these updates we need to make sure the resource is toggled deleted then created.
+      # See https://github.com/firezone/firezone/issues/9881
+      recompute_connectable_resources(cache, client, toggle: true)
     else
       {:ok, [], [], cache}
     end
@@ -429,7 +450,9 @@ defmodule Domain.Cache.Client do
 
       cache = %{cache | resources: resources}
 
-      recompute_connectable_resources(cache, client)
+      # For these updates we need to make sure the resource is toggled deleted then created.
+      # See https://github.com/firezone/firezone/issues/9881
+      recompute_connectable_resources(cache, client, toggle: true)
     else
       {:ok, [], [], cache}
     end

@@ -923,12 +923,17 @@ defmodule API.Client.Channel do
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 
   defp push_resource_updates({:ok, added_resources, removed_ids, cache}, socket) do
-    for resource <- added_resources do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-    end
-
+    # TODO: Multi-site resources
+    # Currently, connlib doesn't handle resources changing sites, so we need to delete then create.
+    # We handle that scenario by sending resource_deleted then resource_created_or_updated, so it's
+    # important that deletions are handled first.
+    # See https://github.com/firezone/firezone/issues/9881
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
+    end
+
+    for resource <- added_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
     end
 
     {:noreply, assign(socket, cache: cache)}
