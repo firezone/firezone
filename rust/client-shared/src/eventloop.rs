@@ -10,8 +10,10 @@ use firezone_tunnel::messages::client::{
 use firezone_tunnel::{ClientTunnel, DnsResourceRecord, IpConfig};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::sync::Arc;
 use std::time::Instant;
 use std::{
     collections::BTreeSet,
@@ -78,11 +80,14 @@ impl DisconnectError {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: ClientTunnel,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        records: BTreeSet<DnsResourceRecord>,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
         event_tx: tokio::sync::mpsc::Sender<Event>,
     ) -> Self {
+        let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory, records);
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
         Self {

@@ -7,7 +7,7 @@ pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use eventloop::{Command, Eventloop};
-use firezone_tunnel::{ClientTunnel, DnsResourceRecord};
+use firezone_tunnel::DnsResourceRecord;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::BTreeSet;
@@ -143,8 +143,14 @@ async fn connect(
     cmd_rx: UnboundedReceiver<Command>,
     event_tx: Sender<Event>,
 ) -> Result<()> {
-    let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory, records);
-    let mut eventloop = Eventloop::new(tunnel, portal, cmd_rx, event_tx);
+    let mut eventloop = Eventloop::new(
+        tcp_socket_factory,
+        udp_socket_factory,
+        records,
+        portal,
+        cmd_rx,
+        event_tx,
+    );
 
     std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
 
