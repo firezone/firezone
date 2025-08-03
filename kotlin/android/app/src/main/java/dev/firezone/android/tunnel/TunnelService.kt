@@ -545,10 +545,6 @@ class TunnelService : VpnService() {
                                 running = false
                             }
 
-                            is Event.DnsRecordsChanged -> {
-                                // TODO: Save cache.
-                            }
-
                             null -> {
                                 Log.i(TAG, "Event channel closed")
                                 running = false
