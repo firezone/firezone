@@ -90,6 +90,13 @@ defmodule Domain.Resources do
     end
   end
 
+  def fetch_all_resources_by_ids(ids) do
+    Resource.Query.not_deleted()
+    |> Resource.Query.by_id({:in, ids})
+    |> Repo.all()
+    |> Repo.preload(:gateway_groups)
+  end
+
   def fetch_resource_by_id_or_persistent_id!(id) do
     if Repo.valid_uuid?(id) do
       Resource.Query.not_deleted()
@@ -318,34 +325,26 @@ defmodule Domain.Resources do
     1. Filters out resources that are not compatible with the given client or gateway version.
     2. Converts DNS resource addresses back to the pre-1.2.0 format if the client or gateway version is < 1.2.0.
   """
-  def adapt_resources_for_version(resources, client_or_gateway_version) do
-    {_original_resources, adapted_resources} =
-      Enum.map_reduce(resources, [], fn resource, acc ->
-        cond do
-          resource.gateway_groups == [] ->
-            {resource, acc}
+  def adapt_resource_for_version(resource, client_or_gateway_version) do
+    cond do
+      # internet resources require client and gateway >= 1.3.0
+      resource.type == :internet and Version.match?(client_or_gateway_version, "< 1.3.0") ->
+        nil
 
-          # internet resources require client and gateway >= 1.3.0
-          resource.type == :internet and Version.match?(client_or_gateway_version, "< 1.3.0") ->
-            {resource, acc}
+      # non-internet resource, pass as-is
+      Version.match?(client_or_gateway_version, ">= 1.2.0") ->
+        resource
 
-          # non-internet resource, pass as-is
-          Version.match?(client_or_gateway_version, ">= 1.2.0") ->
-            {resource, [resource | acc]}
-
-          # we need convert dns resource addresses back to pre-1.2.0 format
-          true ->
-            resource.address
-            |> String.codepoints()
-            |> map_resource_address()
-            |> case do
-              {:cont, address} -> {resource, [%{resource | address: address} | acc]}
-              :drop -> {resource, acc}
-            end
+      # we need convert dns resource addresses back to pre-1.2.0 format
+      true ->
+        resource.address
+        |> String.codepoints()
+        |> map_resource_address()
+        |> case do
+          {:cont, address} -> %{resource | address: address}
+          :drop -> nil
         end
-      end)
-
-    adapted_resources
+    end
   end
 
   defp map_resource_address(address, acc \\ "")

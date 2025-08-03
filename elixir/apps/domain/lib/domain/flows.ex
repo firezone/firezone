@@ -106,14 +106,20 @@ defmodule Domain.Flows do
              expires_at: expires_at
            })
            |> Repo.insert() do
+      Logger.info("Reauthorized flow",
+        old_flow: inspect(flow),
+        new_flow: inspect(new_flow)
+      )
+
       {:ok, new_flow}
     else
       reason ->
         Logger.info("Failed to reauthorize flow",
+          old_flow: inspect(flow),
           reason: inspect(reason)
         )
 
-        {:error, :forbidden}
+        :error
     end
   end
 

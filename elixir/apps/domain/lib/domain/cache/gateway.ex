@@ -21,6 +21,7 @@ defmodule Domain.Cache.Gateway do
   """
 
   alias Domain.{Cache, Flows, Gateways}
+  import Ecto.UUID, only: [dump!: 1]
 
   require OpenTelemetry.Tracer
 
@@ -45,9 +46,9 @@ defmodule Domain.Cache.Gateway do
       } do
       Flows.all_gateway_flows_for_cache!(gateway)
       |> Enum.reduce(%{}, fn {{client_id, resource_id}, {flow_id, expires_at}}, acc ->
-        cid_bytes = Ecto.UUID.dump!(client_id)
-        rid_bytes = Ecto.UUID.dump!(resource_id)
-        fid_bytes = Ecto.UUID.dump!(flow_id)
+        cid_bytes = dump!(client_id)
+        rid_bytes = dump!(resource_id)
+        fid_bytes = dump!(flow_id)
         expires_at_unix = DateTime.to_unix(expires_at, :second)
 
         flow_id_map = Map.get(acc, {cid_bytes, rid_bytes}, %{})
@@ -85,7 +86,7 @@ defmodule Domain.Cache.Gateway do
   """
   @spec get(t(), Ecto.UUID.t(), Ecto.UUID.t()) :: non_neg_integer() | nil
   def get(cache, client_id, resource_id) do
-    tuple = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
+    tuple = {dump!(client_id), dump!(resource_id)}
 
     case Map.get(cache, tuple) do
       nil ->
@@ -104,32 +105,75 @@ defmodule Domain.Cache.Gateway do
   """
   @spec put(t(), Ecto.UUID.t(), Cache.Cacheable.uuid_binary(), Ecto.UUID.t(), DateTime.t()) :: t()
   def put(%{} = cache, client_id, rid_bytes, flow_id, %DateTime{} = expires_at) do
-    tuple = {Ecto.UUID.dump!(client_id), rid_bytes}
+    tuple = {dump!(client_id), rid_bytes}
 
     flow_id_map =
       Map.get(cache, tuple, %{})
-      |> Map.put(Ecto.UUID.dump!(flow_id), DateTime.to_unix(expires_at, :second))
+      |> Map.put(dump!(flow_id), DateTime.to_unix(expires_at, :second))
 
     Map.put(cache, tuple, flow_id_map)
   end
 
   @doc """
-    Delete a flow from the cache.
+    Delete a flow from the cache. If another flow exists for the same client/resource,
+    we return the max expiration for that resource.
+    If not, we optimistically try to reauthorize access by creating a new flow. This prevents
+    removal of access on the Gateway but not the client, which would cause connectivity issues.
+    If we can't create a new authorization, we send unauthorized so that access is removed.
   """
-  @spec delete(t(), %Flows.Flow{}) :: t()
-  def delete(%{} = cache, %Flows.Flow{client_id: client_id, resource_id: resource_id} = flow) do
-    tuple = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
+  @spec reauthorize_deleted_flow(t(), %Flows.Flow{}) ::
+          {:ok, non_neg_integer(), t()} | {:error, :unauthorized, t()} | {:error, :not_found}
+  def reauthorize_deleted_flow(cache, %Flows.Flow{} = flow) do
+    key = flow_key(flow)
+    flow_id = dump!(flow.id)
 
-    if flow_map = Map.get(cache, tuple) do
-      flow_id_map = Map.delete(flow_map, Ecto.UUID.dump!(flow.id))
+    case get_and_remove_flow(cache, key, flow_id) do
+      {:not_found, _cache} ->
+        {:error, :not_found}
 
-      if map_size(flow_id_map) == 0 do
-        Map.delete(cache, tuple)
-      else
-        Map.put(cache, tuple, flow_id_map)
-      end
-    else
-      cache
+      {:last_flow_removed, cache} ->
+        handle_last_flow_removal(cache, key, flow)
+
+      {:flow_removed, remaining_flows, cache} ->
+        max_expiration = remaining_flows |> Map.values() |> Enum.max()
+        {:ok, max_expiration, cache}
+    end
+  end
+
+  defp flow_key(%Flows.Flow{client_id: client_id, resource_id: resource_id}) do
+    {dump!(client_id), dump!(resource_id)}
+  end
+
+  defp get_and_remove_flow(cache, key, flow_id) do
+    case Map.fetch(cache, key) do
+      :error ->
+        {:not_found, cache}
+
+      {:ok, flow_map} ->
+        case Map.pop(flow_map, flow_id) do
+          {nil, _} ->
+            {:not_found, cache}
+
+          {_expiration, remaining_flows} when remaining_flows == %{} ->
+            {:last_flow_removed, Map.delete(cache, key)}
+
+          {_expiration, remaining_flows} ->
+            {:flow_removed, remaining_flows, Map.put(cache, key, remaining_flows)}
+        end
+    end
+  end
+
+  defp handle_last_flow_removal(cache, key, flow) do
+    case Flows.reauthorize_flow(flow) do
+      {:ok, new_flow} ->
+        new_flow_id = dump!(new_flow.id)
+        expires_at_unix = DateTime.to_unix(new_flow.expires_at, :second)
+        new_flow_map = %{new_flow_id => expires_at_unix}
+
+        {:ok, expires_at_unix, Map.put(cache, key, new_flow_map)}
+
+      :error ->
+        {:error, :unauthorized, cache}
     end
   end
 
@@ -139,39 +183,12 @@ defmodule Domain.Cache.Gateway do
   """
   @spec has_resource?(t(), Ecto.UUID.t()) :: boolean()
   def has_resource?(%{} = cache, resource_id) do
-    rid_bytes = Ecto.UUID.dump!(resource_id)
+    rid_bytes = dump!(resource_id)
 
     cache
     |> Map.keys()
     |> Enum.any?(fn {_, rid} ->
       rid == rid_bytes
     end)
-  end
-
-  @doc """
-    Rehydrate the cache with a new flow if access is still allowed.
-  """
-  @spec rehydrate(t(), %Flows.Flow{}) :: t()
-  def rehydrate(
-        %{} = cache,
-        %Flows.Flow{client_id: client_id, resource_id: resource_id} = flow
-      ) do
-    tuple = {Ecto.UUID.dump!(client_id), Ecto.UUID.dump!(resource_id)}
-
-    if Map.has_key?(cache, tuple) do
-      cache
-    else
-      case Flows.reauthorize_flow(flow) do
-        {:ok, new_flow} ->
-          flow_id_map = %{
-            Ecto.UUID.dump!(new_flow.id) => DateTime.to_unix(new_flow.expires_at, :second)
-          }
-
-          Map.put(cache, tuple, flow_id_map)
-
-        {:error, _reason} ->
-          cache
-      end
-    end
   end
 end

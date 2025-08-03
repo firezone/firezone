@@ -49,7 +49,8 @@ defmodule API.Client.Channel do
     )
 
     # Get initial list of authorized resources, hydrating the cache
-    {cache, authorized_resources} = Cache.Client.authorized_resources(nil, socket.assigns.client)
+    {:ok, resources, [], cache} =
+      Cache.Client.recompute_connectable_resources(nil, socket.assigns.client)
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -68,11 +69,11 @@ defmodule API.Client.Channel do
     # Delete any stale flows for resources we may not have access to anymore based on policy conditions
     Flows.delete_stale_flows_on_connect(
       socket.assigns.client,
-      Enum.map(authorized_resources, &Ecto.UUID.load!(&1.id))
+      Enum.map(resources, &Ecto.UUID.load!(&1.id))
     )
 
     push(socket, "init", %{
-      resources: Views.Resource.render_many(authorized_resources),
+      resources: Views.Resource.render_many(resources),
       relays:
         Views.Relay.render_many(
           relays,
@@ -128,20 +129,16 @@ defmodule API.Client.Channel do
       @recompute_authorized_resources_every
     )
 
-    cache =
-      Cache.Client.recompute_authorized_resources(
-        socket.assigns.cache,
-        socket.assigns.client,
-        fn added_resources, removed_resource_ids ->
-          for resource_id <- removed_resource_ids do
-            push(socket, "resource_deleted", resource_id)
-          end
+    {:ok, added_resources, removed_ids, cache} =
+      Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
 
-          for resource <- added_resources do
-            push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-          end
-        end
-      )
+    for resource_id <- removed_ids do
+      push(socket, "resource_deleted", resource_id)
+    end
+
+    for resource <- added_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+    end
 
     {:noreply, assign(socket, cache: cache)}
   end
@@ -390,7 +387,7 @@ defmodule API.Client.Channel do
 
       {:noreply, socket}
     else
-      :error ->
+      {:error, :not_found} ->
         push(socket, "flow_creation_failed", %{
           resource_id: resource_id,
           reason: :not_found
@@ -460,7 +457,7 @@ defmodule API.Client.Channel do
 
       {:reply, reply, socket}
     else
-      :error ->
+      {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
       {:ok, []} ->
@@ -590,7 +587,7 @@ defmodule API.Client.Channel do
 
       {:noreply, socket}
     else
-      :error ->
+      {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
@@ -730,10 +727,12 @@ defmodule API.Client.Channel do
          socket
        ) do
     # Update our subject's account
-    socket = assign(socket, subject: %{socket.assigns.subject | account: account})
+    subject = %{socket.assigns.subject | account: account}
+    socket = assign(socket, subject: subject)
 
     if old_account.config != account.config do
-      payload = %{interface: Views.Interface.render(%{socket.assigns.client | account: account})}
+      client = %{socket.assigns.client | account: account}
+      payload = %{interface: Views.Interface.render(client)}
       :ok = push(socket, "config_changed", payload)
     end
 
@@ -747,14 +746,16 @@ defmodule API.Client.Channel do
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    cache =
-      Cache.Client.add_membership(
-        socket.assigns.cache,
-        socket.assigns.client,
-        fn resource ->
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-        end
-      )
+    {:ok, added_resources, removed_ids, cache} =
+      Cache.Client.add_membership(socket.assigns.cache, socket.assigns.client)
+
+    for resource_id <- removed_ids do
+      push(socket, "resource_deleted", resource_id)
+    end
+
+    for resource <- added_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+    end
 
     {:noreply, assign(socket, cache: cache)}
   end
@@ -767,24 +768,17 @@ defmodule API.Client.Channel do
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    cache =
-      Cache.Client.delete_membership(
-        socket.assigns.cache,
-        socket.assigns.client,
-        membership,
-        fn deleted_resource_ids ->
-          for resource_id <- deleted_resource_ids do
-            push(socket, "resource_deleted", resource_id)
-          end
-        end
-      )
+    {:ok, deleted_ids, cache} = Cache.Client.delete_membership(socket.assigns.cache, membership)
+
+    for resource_id <- deleted_ids do
+      push(socket, "resource_deleted", resource_id)
+    end
 
     {:noreply, assign(socket, cache: cache)}
   end
 
   # CLIENTS
 
-  # Changes in client verification can affect the list of allowed resources - send diff of resources
   defp handle_change(
          %Change{
            op: :update,
@@ -795,23 +789,23 @@ defmodule API.Client.Channel do
        )
        when id == client_id do
     # Maintain our preloaded identity
-    socket = assign(socket, client: %{client | identity: socket.assigns.client.identity})
+    client = %{client | identity: socket.assigns.client.identity}
+    socket = assign(socket, client: client)
 
+    # Changes in client verification can affect the list of allowed resources
     if old_client.verified_at != client.verified_at do
-      cache =
-        Cache.Client.update_client(
-          socket.assigns.cache,
-          socket.assigns.client,
-          fn added_resources, removed_resource_ids ->
-            for resource_id <- removed_resource_ids do
-              push(socket, "resource_deleted", resource_id)
-            end
+      # Most policy conditions are scoped to the client's websocket connection, and so sending a
+      # diff mid-connection is not necessary. The exception to this is client verification status updates.
+      {:ok, added_resources, deleted_ids, cache} =
+        Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
 
-            for resource <- added_resources do
-              push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-            end
-          end
-        )
+      for id <- deleted_ids do
+        push(socket, "resource_deleted", id)
+      end
+
+      for resource <- added_resources do
+        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+      end
 
       {:noreply, assign(socket, cache: cache)}
     else
@@ -824,6 +818,9 @@ defmodule API.Client.Channel do
          %{assigns: %{client: %{id: client_id}}} = socket
        )
        when id == client_id do
+    # TODO: Hard delete
+    # Deleting a client should delete all its tokens, forcing the user to reauth.
+    # The global disconnect handler we have for token deletion should handle this case.
     disconnect(socket)
   end
 
@@ -832,22 +829,22 @@ defmodule API.Client.Channel do
   defp handle_change(
          %Change{
            op: :update,
-           old_struct: %Gateways.Group{} = old_group,
-           struct: %Gateways.Group{} = group
+           old_struct: %Gateways.Group{name: old_name},
+           struct: %Gateways.Group{name: name} = group
          },
          socket
-       ) do
-    cache =
+       )
+       when old_name != name do
+    {:ok, updated_resources, cache} =
       Cache.Client.update_resources_with_group_name(
         socket.assigns.cache,
-        old_group,
         group,
-        fn resources ->
-          for resource <- resources do
-            push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-          end
-        end
+        socket.assigns.client
       )
+
+    for updated_resource <- updated_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(updated_resource))
+    end
 
     {:noreply, assign(socket, cache: cache)}
   end
@@ -858,18 +855,22 @@ defmodule API.Client.Channel do
          %Change{op: :insert, struct: %Policies.Policy{} = policy},
          socket
        ) do
-    cache =
-      Cache.Client.add_policy(
-        socket.assigns.cache,
-        policy,
-        socket.assigns.client,
-        socket.assigns.subject,
-        fn resource ->
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-        end
-      )
+    case Cache.Client.add_policy(
+           socket.assigns.cache,
+           policy,
+           socket.assigns.client,
+           socket.assigns.subject
+         ) do
+      {:ok, cache} ->
+        {:noreply, assign(socket, cache: cache)}
 
-    {:noreply, assign(socket, cache: cache)}
+      {:ok, added_resource, cache} ->
+        push(socket, "resource_created_or_updated", Views.Resource.render(added_resource))
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
   end
 
   defp handle_change(
@@ -894,6 +895,7 @@ defmodule API.Client.Channel do
     # Breaking update - process this as a delete and then create
     {:noreply, socket} = handle_change(%{change | op: :delete}, socket)
 
+    # DO NOT re-add disabled policies
     if is_nil(disabled_at) do
       handle_change(%{change | op: :insert}, socket)
     else
@@ -901,7 +903,7 @@ defmodule API.Client.Channel do
     end
   end
 
-  # Other update - just update our state
+  # Other update, i.e. description - just update our state
   defp handle_change(
          %Change{
            op: :update,
@@ -910,23 +912,31 @@ defmodule API.Client.Channel do
          },
          socket
        ) do
-    cache = Cache.Client.update_policy(socket.assigns.cache, policy)
+    case Cache.Client.update_policy(socket.assigns.cache, policy) do
+      {:ok, cache} ->
+        {:noreply, assign(socket, cache: cache)}
 
-    {:noreply, assign(socket, cache: cache)}
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
   end
 
   defp handle_change(
          %Change{op: :delete, old_struct: %Policies.Policy{} = policy},
          socket
        ) do
-    cache =
-      Cache.Client.delete_policy(socket.assigns.cache, policy, fn resource_ids ->
-        for resource_id <- resource_ids do
-          push(socket, "resource_deleted", resource_id)
-        end
-      end)
+    case Cache.Client.delete_policy(socket.assigns.cache, policy, socket.assigns.client) do
+      {:ok, deleted_id, cache} ->
+        push(socket, "resource_deleted", deleted_id)
 
-    {:noreply, assign(socket, cache: cache)}
+        {:noreply, assign(socket, cache: cache)}
+
+      {:ok, cache} ->
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
   end
 
   # RESOURCE_CONNECTIONS
@@ -938,21 +948,27 @@ defmodule API.Client.Channel do
          },
          socket
        ) do
-    cache =
-      Cache.Client.add_resource_connection(
-        socket.assigns.cache,
-        connection,
-        socket.assigns.client,
-        socket.assigns.subject,
-        fn resource ->
-          # Connlib doesn't handle resources changing sites, so we need to delete then create
-          # See https://github.com/firezone/firezone/issues/9881
-          push(socket, "resource_deleted", Ecto.UUID.load!(resource.id))
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-        end
-      )
+    case Cache.Client.add_resource_connection(
+           socket.assigns.cache,
+           connection,
+           socket.assigns.subject,
+           socket.assigns.client
+         ) do
+      {:ok, %Cache.Cacheable.Resource{} = added_resource, cache} ->
+        push(socket, "resource_created_or_updated", Views.Resource.render(added_resource))
 
-    {:noreply, assign(socket, cache: cache)}
+        {:noreply, assign(socket, cache: cache)}
+
+      {:ok, removed_id, cache} ->
+        push(socket, "resource_deleted", removed_id)
+        {:noreply, assign(socket, cache: cache)}
+
+      {:ok, cache} ->
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
   end
 
   defp handle_change(
@@ -962,17 +978,27 @@ defmodule API.Client.Channel do
          },
          socket
        ) do
-    cache =
-      Cache.Client.delete_resource_connection(
-        socket.assigns.cache,
-        connection,
-        socket.assigns.client,
-        fn resource_id ->
-          push(socket, "resource_deleted", resource_id)
-        end
-      )
+    case Cache.Client.delete_resource_connection(
+           socket.assigns.cache,
+           connection,
+           socket.assigns.client
+         ) do
+      # TODO: Multi-site resources
+      # We likely won't be shipping multi-site resources any time soon (if ever), but this is here to prevent breakage.
+      {:ok, %Cache.Cacheable.Resource{} = updated_resource, cache} ->
+        push(socket, "resource_created_or_updated", Views.Resource.render(updated_resource))
+        {:noreply, assign(socket, cache: cache)}
 
-    {:noreply, assign(socket, cache: cache)}
+      {:ok, deleted_id, cache} ->
+        push(socket, "resource_deleted", deleted_id)
+        {:noreply, assign(socket, cache: cache)}
+
+      {:ok, cache} ->
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
   end
 
   # RESOURCES
@@ -985,18 +1011,23 @@ defmodule API.Client.Channel do
          },
          socket
        ) do
-    cache =
-      Cache.Client.update_resource(
-        socket.assigns.cache,
-        old_resource,
-        resource,
-        socket.assigns.client,
-        fn resource ->
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-        end
-      )
+    case Cache.Client.update_resource(
+           socket.assigns.cache,
+           old_resource,
+           resource,
+           socket.assigns.client
+         ) do
+      {:ok, updated_resource, cache} ->
+        push(socket, "resource_created_or_updated", Views.Resource.render(updated_resource))
 
-    {:noreply, assign(socket, cache: cache)}
+        {:noreply, assign(socket, cache: cache)}
+
+      {:ok, cache} ->
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
+    end
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}

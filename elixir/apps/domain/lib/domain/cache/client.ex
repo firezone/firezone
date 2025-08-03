@@ -52,204 +52,169 @@ defmodule Domain.Cache.Client do
   alias Domain.{Actors, Auth, Clients, Cache, Gateways, Resources, Policies}
   require Logger
   require OpenTelemetry.Tracer
+  import Ecto.UUID, only: [dump!: 1, load!: 1]
 
-  defstruct [:policies, :resources, :memberships, :authorized_resource_ids]
+  defstruct [
+    # A map of all the policies that match an actor group we're in.
+    :policies,
 
-  # Type definitions
+    # A map of all the resources associated to the policies above.
+    :resources,
+
+    # A map of actor group IDs to membership IDs we're in.
+    :memberships,
+
+    # The set of all resources we can currently connect to. This is defined as:
+    # 1. The resource is authorized based on policies and conditions
+    # 2. The resource is compatible with the client (i.e. the client can connect to it)
+    # 3. The resource has at least one gateway group associated with it
+    :connectable_resource_ids
+  ]
+
   @type t :: %__MODULE__{
           policies: %{Cache.Cacheable.uuid_binary() => Domain.Cache.Cacheable.Policy.t()},
           resources: %{Cache.Cacheable.uuid_binary() => Domain.Cache.Cacheable.Resource.t()},
           memberships: %{Cache.Cacheable.uuid_binary() => Cache.Cacheable.uuid_binary()},
-          authorized_resource_ids: MapSet.t(Cache.Cacheable.uuid_binary())
+          connectable_resource_ids: MapSet.t(Cache.Cacheable.uuid_binary())
         }
-
-  @doc """
-    Returns the new cache and full list of currently authorized resources for the given client.
-    It's important we avoid hitting the DB here because this function is called often to determine
-    what resources the client "sees", and is called when forming a new connection to the gateway.
-  """
-  @spec authorized_resources(t() | nil, %Clients.Client{}) ::
-          {t(), [Domain.Cache.Cacheable.Resource.t()]}
-
-  def authorized_resources(nil, %Clients.Client{} = client) do
-    authorized_resources(hydrate(client.actor_id), client)
-  end
-
-  def authorized_resources(cache, %Clients.Client{} = client) do
-    resource_ids =
-      cache.policies
-      |> Map.values()
-      |> Policies.filter_by_conforming_policies_for_client(client)
-      |> Enum.map(& &1.resource_id)
-      |> Enum.uniq()
-
-    resources =
-      cache.resources
-      |> Map.take(resource_ids)
-      |> Map.values()
-      |> Resources.adapt_resources_for_version(client.last_seen_version)
-
-    # Cache the most recent list of authorized resource IDs for invalidating later
-    cache = %{cache | authorized_resource_ids: MapSet.new(Enum.map(resources, & &1.id))}
-
-    {cache, resources}
-  end
 
   @doc """
     Authorizes a new flow for the given client and resource or returns a list of violated properties if
     the resource is not authorized for the client.
   """
+
   @spec authorize_resource(t(), %Clients.Client{}, Ecto.UUID.t(), %Auth.Subject{}) ::
           {:ok, Cache.Cacheable.Policy.t(), non_neg_integer()}
           | {:error, {:forbidden, violated_properties: [atom()]}}
-  def authorize_resource(cache, %Clients.Client{} = client, resource_id, subject) do
-    rid_bytes = Ecto.UUID.dump!(resource_id)
+
+  def authorize_resource(cache, client, resource_id, subject) do
+    rid_bytes = dump!(resource_id)
 
     cache.policies
     |> Enum.filter(fn {_id, policy} -> policy.resource_id == rid_bytes end)
     |> Enum.map(fn {_id, policy} -> policy end)
-    |> Enum.reduce_while({:error, []}, fn policy, {:error, acc} ->
-      case Policies.ensure_client_conforms_policy_conditions(client, policy) do
-        {:ok, expires_at} ->
-          {:halt, {:ok, policy, expires_at}}
-
-        {:error, {:forbidden, violated_properties: violated_properties}} ->
-          {:cont, {:error, violated_properties ++ acc}}
-      end
-    end)
-    |> case do
-      {:error, violated_properties} ->
-        {:error, {:forbidden, violated_properties: violated_properties}}
-
-      {:ok, policy, expires_at} ->
-        # Set a maximum expiration time for the authorization
-        expires_at =
-          expires_at || subject.expires_at ||
-            DateTime.utc_now() |> DateTime.add(14, :day)
-
-        {:ok, policy, expires_at}
-    end
+    |> Policies.longest_conforming_policy_for_client(client, subject.expires_at)
   end
 
   @doc """
-    Recomputes the list of authorized resources, invoking the callback with the diff since the
-    last authorized_resources call. Used to update the client with any authorization changes
-    that can occur without a prior change message, such as a time-based policy condition.
+    Recomputes the list of connectable resources, returning the newly connectable resources
+    and the IDs of resources that are no longer connectable so that the client may update its
+    state. This should be called periodically to handle differences due to time-based policy conditions.
   """
-  @spec recompute_authorized_resources(
-          t(),
-          %Clients.Client{},
-          ([Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()] -> any())
-        ) :: t()
-  def recompute_authorized_resources(cache, %Clients.Client{} = client, callback) do
-    # Get the old authorized ids
-    old_authorized_ids = cache.authorized_resource_ids
 
-    # Get the current authorized resources
-    {cache, _resources} = authorized_resources(cache, client)
+  @spec recompute_connectable_resources(t() | nil, %Clients.Client{}) ::
+          {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
-    # Get the removed resource IDs
-    removed_ids = MapSet.difference(old_authorized_ids, cache.authorized_resource_ids)
+  def recompute_connectable_resources(nil, client) do
+    hydrate(client)
+    |> recompute_connectable_resources(client)
+  end
 
-    # Get the new authorized resource IDs
-    added_ids = MapSet.difference(cache.authorized_resource_ids, old_authorized_ids)
+  def recompute_connectable_resources(cache, client) do
+    previous_ids = cache.connectable_resource_ids
 
-    added_resources =
-      cache.resources
-      |> Map.take(Enum.to_list(added_ids))
-      |> Map.values()
+    # Get the list of connectable resources based on policies this client conforms to
+    connectable_resources =
+      cache.policies
+      |> conforming_resource_ids(client)
+      |> adapted_resources(cache.resources, client)
 
-    # Call the callback with the added resources and removed IDs
-    callback.(added_resources, Enum.map(removed_ids, &Ecto.UUID.load!/1))
+    if connectable_resources == [] do
+      {:ok, [], Enum.map(previous_ids, &load!/1), cache}
+    else
+      # We have connectable resources, so we need to update the cache
+      connectable_ids = MapSet.new(Enum.map(connectable_resources, & &1.id))
 
-    cache
+      added_ids = MapSet.difference(connectable_ids, previous_ids)
+      removed_ids = MapSet.difference(previous_ids, connectable_ids)
+
+      added_resources =
+        Enum.filter(connectable_resources, fn r -> MapSet.member?(added_ids, r.id) end)
+
+      cache = %{cache | connectable_resource_ids: connectable_ids}
+
+      {:ok, added_resources, Enum.map(removed_ids, &load!/1), cache}
+    end
   end
 
   @doc """
     Fetches a membership id by an actor_group_id.
   """
-  @spec fetch_membership_id(t(), Cache.Cacheable.uuid_binary()) :: {:ok, Ecto.UUID.t()} | :error
+
+  @spec fetch_membership_id(t(), Cache.Cacheable.uuid_binary()) ::
+          {:ok, Ecto.UUID.t()} | {:error, :not_found}
+
   def fetch_membership_id(cache, gid_bytes) do
     cache.memberships
     |> Map.fetch(gid_bytes)
     |> case do
-      {:ok, mid_bytes} -> {:ok, Ecto.UUID.load!(mid_bytes)}
-      error -> error
+      {:ok, mid_bytes} -> {:ok, load!(mid_bytes)}
+      :error -> {:error, :not_found}
     end
   end
 
   @doc """
     Fetches an authorized resource by its id from the cache.
   """
-  @spec fetch_authorized_resource(t(), Ecto.UUID.t()) ::
-          {:ok, Domain.Cache.Cacheable.Resource.t()} | :error
-  def fetch_authorized_resource(cache, resource_id) do
-    rid_bytes = Ecto.UUID.dump!(resource_id)
 
-    if MapSet.member?(cache.authorized_resource_ids, rid_bytes) do
-      cache.resources
-      |> Map.fetch(rid_bytes)
+  @spec fetch_authorized_resource(t(), Ecto.UUID.t()) ::
+          {:ok, Domain.Cache.Cacheable.Resource.t()} | {:error, :not_found}
+
+  def fetch_authorized_resource(cache, resource_id) do
+    rid_bytes = dump!(resource_id)
+
+    with true <- MapSet.member?(cache.connectable_resource_ids, rid_bytes),
+         {:ok, resource} <- Map.fetch(cache.resources, rid_bytes) do
+      {:ok, resource}
     else
-      :error
+      false -> {:error, :not_found}
+      :error -> {:error, :not_found}
     end
   end
 
   @doc """
-    Adds a new membership to the cache, potentially fetching the new resource if we don't already have it.
+    Adds a new membership to the cache, potentially fetching the missing policies and resources
+    that we don't already have in our cache.
 
-    Invokes the callback with the newly added resource if it's now in the authorized resource list.
+    Since this affects connectable resources, we recompute the connectable resources, which could
+    yield deleted IDs, so we send those back.
   """
 
-  @spec add_membership(
-          t(),
-          %Clients.Client{},
-          (Domain.Cache.Cacheable.Resource.t() -> any())
-        ) :: t()
-  def add_membership(cache, client, callback) do
-    # Save previous authorized resource IDs
-    old_authorized_ids = cache.authorized_resource_ids
+  @spec add_membership(t(), %Clients.Client{}) ::
+          {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
+  def add_membership(cache, client) do
     # TODO: Optimization
-    # This could be improved to pass the existing policies we have, and only return *new* policies
-    # that we now have access to, instead of rehyrdating the entire cache. Unfortunately we have
-    # to go to the DB in some capacity because this new membership could have added new policies and
-    # resources we don't have in the cache yet.
-    cache = hydrate(client.actor_id)
+    # For simplicity, we rehydrate the cache here. This could be made more efficient by calculating which
+    # policies and resources we are missing, and selectively fetching, filtering, and updating the cache.
+    # This is not expected to cause an issue in production since in most cases, bulk new memberships would imply
+    # bulk new groups, which shouldn't have much if any policies associated to them.
+    previously_connectable_ids = cache.connectable_resource_ids
 
-    # Get the new authorized resources
-    {cache, resources} = authorized_resources(cache, client)
+    # Use the previous connectable IDs so that the recomputation yields the difference
+    cache = %{hydrate(client) | connectable_resource_ids: previously_connectable_ids}
 
-    # Invoke callback with any new resources that were added
-    for rid_bytes <- Enum.map(resources, & &1.id) do
-      unless MapSet.member?(old_authorized_ids, rid_bytes) do
-        callback.(Map.get(cache.resources, rid_bytes))
-      end
-    end
-
-    cache
+    recompute_connectable_resources(cache, client)
   end
 
   @doc """
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
-
-    Invokes the callback function with the deleted resource_ids.
   """
-  @spec delete_membership(t(), %Clients.Client{}, %Actors.Membership{}, ([Ecto.UUID.t()] -> any())) ::
-          t()
-  def delete_membership(cache, client, membership, callback) do
-    gid_bytes = Ecto.UUID.dump!(membership.group_id)
 
-    old_authorized_ids = cache.authorized_resource_ids
+  @spec delete_membership(t(), %Actors.Membership{}) :: {:ok, [Ecto.UUID.t()], t()}
+
+  def delete_membership(cache, membership) do
+    gid_bytes = dump!(membership.group_id)
 
     rid_bytes_to_remove =
       cache.policies
-      |> Enum.filter(fn {_id, policy} -> policy.actor_group_id == gid_bytes end)
-      |> Enum.map(fn {_id, policy} -> policy.resource_id end)
+      |> Enum.filter(fn {_id, p} -> p.actor_group_id == gid_bytes end)
+      |> Enum.map(fn {_id, p} -> p.resource_id end)
       |> Enum.uniq()
 
     updated_policies =
       cache.policies
-      |> Enum.reject(fn {_id, policy} -> policy.actor_group_id == gid_bytes end)
+      |> Enum.reject(fn {_id, p} -> p.actor_group_id == gid_bytes end)
       |> Enum.into(%{})
 
     updated_resources =
@@ -260,83 +225,54 @@ defmodule Domain.Cache.Client do
       cache.memberships
       |> Map.delete(gid_bytes)
 
+    updated_connectable_ids =
+      MapSet.difference(cache.connectable_resource_ids, MapSet.new(rid_bytes_to_remove))
+
+    # Get removed IDs to send client
+    removed_ids =
+      MapSet.difference(
+        cache.connectable_resource_ids,
+        updated_connectable_ids
+      )
+      |> Enum.map(&load!/1)
+
     cache = %{
       cache
       | policies: updated_policies,
         resources: updated_resources,
-        memberships: updated_memberships
+        memberships: updated_memberships,
+        connectable_resource_ids: updated_connectable_ids
     }
 
-    {cache, _resources} = authorized_resources(cache, client)
-
-    # Get the removed resource IDs
-    removed_ids =
-      MapSet.difference(old_authorized_ids, cache.authorized_resource_ids)
-      |> Enum.map(&Ecto.UUID.load!/1)
-
-    # Call the callback with the removed resource IDs
-    callback.(removed_ids)
-
-    cache
+    {:ok, removed_ids, cache}
   end
 
   @doc """
-    Determines the diff of authorized resources given an updated client. Most policy conditions are
-    scoped to the client's websocket connection, and so sending a diff mid-connection is not necessary.
-    The exception to this is during client verification status updates.
-
-    Invokes the callback with the added resources and removed resources ids.
+    Updates any relevant resources in the cache with the new group name.
   """
-  @spec update_client(t(), %Clients.Client{}, ([Domain.Cache.Cacheable.Resource.t()],
-                                               [Ecto.UUID.t()] ->
-                                                 any())) ::
-          t()
-  def update_client(cache, %Clients.Client{} = client, callback) do
-    # Save previous authorized resource IDs
-    old_authorized_ids = cache.authorized_resource_ids
 
-    # Get the current authorized resources
-    {cache, _resources} = authorized_resources(cache, client)
-
-    # Get the removed resource IDs
-    removed_ids = MapSet.difference(old_authorized_ids, cache.authorized_resource_ids)
-
-    # Get the new authorized resource IDs
-    added_ids = MapSet.difference(cache.authorized_resource_ids, old_authorized_ids)
-
-    added_resources =
-      cache.resources
-      |> Map.take(Enum.to_list(added_ids))
-      |> Map.values()
-
-    # Call the callback with the added resources and removed IDs
-    callback.(added_resources, Enum.map(removed_ids, &Ecto.UUID.load!/1))
-
-    cache
-  end
-
-  @doc """
-      Determines if any authorized, cached resources need to be updated with the group name.
-      If so, calls the provided callback function with all of the updated resources.
-  """
   @spec update_resources_with_group_name(
           t(),
           %Gateways.Group{},
-          %Gateways.Group{},
-          ([Domain.Cache.Cacheable.Resource.t()] -> any())
-        ) :: t()
-  def update_resources_with_group_name(cache, old_group, group, callback) do
-    gid_bytes = Ecto.UUID.dump!(group.id)
+          %Clients.Client{}
+        ) ::
+          {:ok, [Domain.Cache.Cacheable.Resource.t()], t()}
 
-    # Update resources
-    resources =
+  def update_resources_with_group_name(cache, group, client) do
+    group = Domain.Cache.Cacheable.to_cache(group)
+
+    # Get updated resources
+    updated_resources =
       cache.resources
+      |> Enum.filter(fn {_id, resource} ->
+        Enum.any?(resource.gateway_groups, fn gg -> gg.id == group.id end)
+      end)
       |> Enum.map(fn {id, resource} ->
+        # Replace old group with new
         gateway_groups =
-          resource.gateway_groups
-          |> Enum.map(fn gg ->
-            if gg.id == gid_bytes do
-              Map.merge(gg, Cache.Cacheable.to_cache(group))
+          Enum.map(resource.gateway_groups, fn gg ->
+            if gg.id == group.id do
+              group
             else
               gg
             end
@@ -346,130 +282,142 @@ defmodule Domain.Cache.Client do
       end)
       |> Enum.into(%{})
 
+    resources = Map.merge(cache.resources, updated_resources)
     cache = %{cache | resources: resources}
 
-    # Update the client's list with any resources that have the new group name
-    Enum.map(cache.authorized_resource_ids, fn rid_bytes ->
-      Map.get(cache.resources, rid_bytes)
-    end)
-    |> Enum.filter(fn resource ->
-      Enum.any?(resource.gateway_groups, fn gg ->
-        gg.id == gid_bytes and gg.name != old_group.name
-      end)
-    end)
-    |> callback.()
+    # Get client-compatible updated resources to return
+    updated_resources
+    |> Map.take(MapSet.to_list(cache.connectable_resource_ids))
+    |> Map.values()
+    |> Enum.map(fn r -> adapt(r, client) end)
+    |> case do
+      [] ->
+        {:ok, [], cache}
 
-    cache
+      resources ->
+        {:ok, resources, cache}
+    end
   end
 
   @doc """
-    Adds a new policy to the cache. If the policy grants additional access to resources that the client does not already have,
-    we call the callback with the new resource.
+    Adds a new policy to the cache. If the policy includes a resource we do not already have in the cache,
+    we fetch the resource from the database and add it to the cache.
+
+    If the resource is compatible with and authorized for the current client, we return the resource,
+    otherwise we just return the updated cache.
   """
-  @spec add_policy(
-          t(),
-          %Policies.Policy{},
-          %Clients.Client{},
-          %Auth.Subject{},
-          (Domain.Cache.Cacheable.Resource.t() -> any())
-        ) :: t()
-  def add_policy(cache, %{resource_id: resource_id} = policy, client, subject, callback) do
+
+  @spec add_policy(t(), %Policies.Policy{}, %Clients.Client{}, %Auth.Subject{}) ::
+          {:ok, Domain.Cache.Cacheable.Resource.t(), t()} | {:ok, t()} | {:error, :not_found}
+
+  def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.memberships, policy.actor_group_id) do
-      # Snapshot existing authorized ids
-      old_authorized_ids = cache.authorized_resource_ids
-
-      # Track added policy
+      # Add policy to the cache
       cache = %{cache | policies: Map.put(cache.policies, policy.id, policy)}
 
-      # Maybe track added resource
+      # Maybe add resource to the cache if we don't already have it
       cache =
         if Map.has_key?(cache.resources, policy.resource_id) do
           cache
         else
-          {:ok, resource} =
-            Resources.fetch_resource_by_id(resource_id, subject, preload: :gateway_groups)
+          # Need to fetch the resource from the DB
+          opts = [preload: :gateway_groups]
+          {:ok, resource} = Resources.fetch_resource_by_id(resource_id, subject, opts)
 
           resource = Domain.Cache.Cacheable.to_cache(resource)
+
           %{cache | resources: Map.put(cache.resources, resource.id, resource)}
         end
 
-      # Get new authorized resources
-      {cache, _resources} = authorized_resources(cache, client)
+      # If the resource is already connectable by the client, we just return the updated cache.
+      # Otherwise we check if it's connectable and return it if it is.
+      if MapSet.member?(cache.connectable_resource_ids, policy.resource_id) do
+        {:ok, cache}
+      else
+        [policy]
+        |> conforming_resource_ids(client)
+        |> adapted_resources(cache.resources, client)
+        |> case do
+          [] ->
+            {:ok, cache}
 
-      added_ids = MapSet.difference(cache.authorized_resource_ids, old_authorized_ids)
-
-      # Maybe send the new resource to the client
-      for rid_bytes <- added_ids do
-        callback.(Map.get(cache.resources, rid_bytes))
+          [resource] ->
+            connectable_ids = MapSet.put(cache.connectable_resource_ids, resource.id)
+            cache = %{cache | connectable_resource_ids: connectable_ids}
+            {:ok, resource, cache}
+        end
       end
-
-      cache
     else
-      # Doesn't affect us
-      cache
+      {:error, :not_found}
     end
   end
 
   @doc """
-    Updates policy in cache with given policy if it exists.
+    Updates policy in cache with given policy if it exists. Breaking policy changes are handled separately
+    with a delete and then add operation.
   """
-  @spec update_policy(t(), %Policies.Policy{}) :: t()
+
+  @spec update_policy(t(), %Policies.Policy{}) :: {:ok, t()} | {:error, :not_found}
+
   def update_policy(cache, policy) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.policies, policy.id) do
-      %{cache | policies: Map.put(cache.policies, policy.id, policy)}
+      # Update the cache with the new policy
+      cache = %{cache | policies: Map.put(cache.policies, policy.id, policy)}
+      {:ok, cache}
     else
-      cache
+      # Policy does not exist in the cache, so we return an error
+      {:error, :not_found}
     end
   end
 
   @doc """
-    Removes a policy from the cache. If the policy removal results in resources being removed from the cache,
-    we call the callback with the removed resource IDs.
+    Removes a policy from the cache. If we can't find another policy granting access to the resource,
+    we return the deleted resource ID.
   """
-  @spec delete_policy(
-          t(),
-          %Policies.Policy{},
-          (Cache.Cacheable.uuid_binary() -> any())
-        ) :: t()
-  def delete_policy(cache, policy, callback) do
+  @spec delete_policy(t(), %Policies.Policy{}, %Clients.Client{}) ::
+          {:ok, Ecto.UUID.t(), t()} | {:ok, t()} | {:error, :not_found}
+  def delete_policy(cache, policy, client) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
 
     if Map.has_key?(cache.policies, policy.id) do
-      # Snapshot old authorized ids
-      old_authorized_ids = cache.authorized_resource_ids
-
-      # Remove the policy
+      # Update the cache
       cache = %{cache | policies: Map.delete(cache.policies, policy.id)}
 
       # Remove the resource if no policies are left for it
-      cache =
-        if Map.has_key?(cache.resources, policy.resource_id) and
-             Enum.all?(cache.policies, fn {_id, p} -> p.resource_id != policy.resource_id end) do
-          %{
-            cache
-            | resources: Map.delete(cache.resources, policy.resource_id),
-              authorized_resource_ids:
-                MapSet.delete(cache.authorized_resource_ids, policy.resource_id)
-          }
+      no_more_policies? =
+        cache.policies
+        |> Enum.all?(fn {_id, p} -> p.resource_id != policy.resource_id end)
+
+      resources =
+        if no_more_policies? do
+          Map.delete(cache.resources, policy.resource_id)
         else
-          cache
+          cache.resources
         end
 
-      # Get removed authorized ids
-      removed_ids = MapSet.difference(old_authorized_ids, cache.authorized_resource_ids)
+      cache = %{cache | resources: resources}
 
-      # Maybe send the removed resource IDs to the client
-      Enum.map(removed_ids, &Ecto.UUID.load!/1)
-      |> callback.()
+      connectable_ids = cache.connectable_resource_ids
+      conforming_ids = conforming_resource_ids(cache.policies, client) |> MapSet.new()
+      difference = MapSet.difference(connectable_ids, conforming_ids)
 
-      cache
+      case MapSet.to_list(difference) do
+        [] ->
+          # No change
+          {:ok, cache}
+
+        [removed_id] ->
+          # Update the connectable resources
+          updated_ids = MapSet.delete(connectable_ids, removed_id)
+          cache = %{cache | connectable_resource_ids: updated_ids}
+          {:ok, load!(removed_id), cache}
+      end
     else
-      # Doesn't affect us
-      cache
+      {:error, :not_found}
     end
   end
 
@@ -478,25 +426,24 @@ defmodule Domain.Cache.Client do
 
     Since resource connection is a join record, we need to fetch the group from the DB to get its name.
 
-    For each resource in the client's list of authorized resources this affects, we invoke the callback
-    with the updated resource.
+    Since adding a gateway group requires re-evaluating policies, the resource could now be connectable or not connectable
+    so we return either the deleted resource ID or the updated resource if there's a change. Otherwise we simply
+    return the updated cache.
   """
-  @spec add_resource_connection(
-          t(),
-          %Resources.Connection{},
-          %Clients.Client{},
-          %Auth.Subject{},
-          (Domain.Cache.Cacheable.Resource.t() -> any())
-        ) :: t()
-  def add_resource_connection(cache, connection, client, subject, callback) do
-    rid_bytes = Ecto.UUID.dump!(connection.resource_id)
+  @spec add_resource_connection(t(), %Resources.Connection{}, %Auth.Subject{}, %Clients.Client{}) ::
+          {:ok, Ecto.UUID.t(), t()}
+          | {:ok, Domain.Cache.Cacheable.Resource.t(), t()}
+          | {:ok, t()}
+          | {:error, :not_found}
+  def add_resource_connection(cache, connection, subject, client) do
+    rid_bytes = dump!(connection.resource_id)
 
     if Map.has_key?(cache.resources, rid_bytes) do
       # We need the gateway group to add it
       {:ok, gateway_group} = Gateways.fetch_group_by_id(connection.gateway_group_id, subject)
       gateway_group = Domain.Cache.Cacheable.to_cache(gateway_group)
 
-      # Update the cache
+      # Update the cache - it could contain this resource, but with an empty gateway groups list
       resources =
         cache.resources
         |> Map.update!(rid_bytes, fn resource ->
@@ -514,118 +461,166 @@ defmodule Domain.Cache.Client do
         end)
 
       cache = %{cache | resources: resources}
-      {cache, authorized_resources} = authorized_resources(cache, client)
 
-      # Maybe call callback with the updated resource
-      for resource <- authorized_resources do
-        if resource.id == rid_bytes do
-          callback.(resource)
+      resource = Map.get(cache.resources, rid_bytes) |> adapt(client)
+
+      # Determine if this resource is now connectable.
+      # If it was connectable before, we simple return the updated resource since adding resource connections
+      # should never remove connectability.
+      # If it was not connectable before, we first need to check if this resource now conforms to policies and is compatible with the client.
+      if MapSet.member?(cache.connectable_resource_ids, rid_bytes) do
+        {:ok, resource, cache}
+      else
+        authorized? =
+          case authorize_resource(cache, client, connection.resource_id, subject) do
+            {:ok, _expires_at, _policy} -> true
+            {:error, _} -> false
+          end
+
+        if authorized? and not is_nil(resource) do
+          # Add to connectable resources
+          connectable_ids = MapSet.put(cache.connectable_resource_ids, rid_bytes)
+          cache = %{cache | connectable_resource_ids: connectable_ids}
+          {:ok, resource, cache}
+        else
+          # Not connectable, so we just return the updated cache
+          {:ok, cache}
         end
       end
-
-      cache
     else
-      cache
+      {:error, :not_found}
     end
   end
 
   @doc """
     Deletes a gateway group (by virtue of the deleted resource connection) from the appropriate resource in the cache.
-
-    For each resource in the client's list of authorized resources this affects, we invoke the callback with the updated
-    resource.
+    If the resource has no more gateway groups, we return the resource ID so the client can remove it. Otherwise, we
+    return the updated resource.
   """
-  @spec delete_resource_connection(
-          t(),
-          %Resources.Connection{},
-          %Clients.Client{},
-          (Domain.Cache.Cacheable.Resource.t() -> any())
-        ) :: t()
-  def delete_resource_connection(cache, connection, client, callback) do
-    rid_bytes = Ecto.UUID.dump!(connection.resource_id)
+
+  @spec delete_resource_connection(t(), %Resources.Connection{}, %Clients.Client{}) ::
+          {:ok, Ecto.UUID.t(), t()}
+          | {:ok, Domain.Cache.Cacheable.Resource.t(), t()}
+          | {:ok, t()}
+          | {:error, :not_found}
+
+  def delete_resource_connection(cache, connection, client) do
+    rid_bytes = dump!(connection.resource_id)
 
     if Map.has_key?(cache.resources, rid_bytes) do
-      old_authorized_ids = cache.authorized_resource_ids
-
       # Update the cache
       resources =
         cache.resources
         |> Map.update!(rid_bytes, fn resource ->
           gateway_groups =
             Enum.reject(resource.gateway_groups, fn gg ->
-              gg.id == Ecto.UUID.dump!(connection.gateway_group_id)
+              gg.id == dump!(connection.gateway_group_id)
             end)
 
           %{resource | gateway_groups: gateway_groups}
         end)
 
       cache = %{cache | resources: resources}
-      {cache, _resources} = authorized_resources(cache, client)
 
-      removed_ids = MapSet.difference(old_authorized_ids, cache.authorized_resource_ids)
+      cache.resources
+      |> Map.take(MapSet.to_list(cache.connectable_resource_ids))
+      |> Map.fetch(rid_bytes)
+      |> case do
+        {:ok, %{gateway_groups: []}} ->
+          # No more gateway groups - send deleted id to remove
+          connectable_ids = MapSet.delete(cache.connectable_resource_ids, rid_bytes)
+          cache = %{cache | connectable_resource_ids: connectable_ids}
+          {:ok, load!(rid_bytes), cache}
 
-      # Maybe call callback with the updated resource
-      for removed_id <- removed_ids do
-        callback.(Ecto.UUID.load!(removed_id))
+        {:ok, resource} ->
+          # Still has gateway groups, return the adapted, updated resource
+          {:ok, adapt(resource, client), cache}
+
+        :error ->
+          # Resource is not connectable, so just return the updated cache
+          {:ok, cache}
       end
-
-      cache
     else
-      cache
+      {:error, :not_found}
     end
   end
 
   @doc """
-    Updates a resource in the cache with the given resource if it exists. If the resource is authorized for the client
-    and there was a meaningful change, we call the callback with the updated resource.
+    Updates a resource in the cache with the given resource if it exists.
+
+    If the resource's address has changed and we are no longer compatible with it, we
+    need to remove it from the client's list of resources.
+
+    Otherwise, if the resource's address has changed and we are _now_ compatible with it, we need
+    to add it to the client's list of resources.
+
+    If the resource has not meaningfully changed (i.e. the cached versions are the same),
+    we return only the updated cache.
   """
-  @spec update_resource(
-          t(),
-          %Resources.Resource{},
-          %Resources.Resource{},
-          %Clients.Client{},
-          (Domain.Cache.Cacheable.Resource.t() -> any())
-        ) :: t()
-  def update_resource(cache, old_resource, resource, client, callback) do
-    # Populate preloaded gateway groups
+
+  @spec update_resource(t(), %Resources.Resource{}, %Resources.Resource{}, %Clients.Client{}) ::
+          {:ok, Ecto.UUID.t(), t()}
+          | {:ok, Domain.Cache.Cacheable.Resource.t(), t()}
+          | {:ok, t()}
+          | {:error, :not_found}
+
+  def update_resource(cache, old_resource, resource, client) do
     old_resource = Domain.Cache.Cacheable.to_cache(old_resource)
     resource = Domain.Cache.Cacheable.to_cache(resource)
 
     if Map.has_key?(cache.resources, resource.id) do
-      # Restore preloaded gateway groups - changes to these will be handled by
-      # that respective change handler
+      # Copy preloaded gateway groups
       resource = %{
         resource
         | gateway_groups: Map.get(cache.resources, resource.id).gateway_groups
       }
 
       # Update the cache
-      cache = %{cache | resources: Map.put(cache.resources, resource.id, resource)}
-      {cache, authorized_resources} = authorized_resources(cache, client)
+      resources = %{cache.resources | resource.id => resource}
+      cache = %{cache | resources: resources}
 
-      # Maybe call callback with the updated resource if it's meaningfully changed
-      if old_resource != resource do
-        for r <- authorized_resources do
-          if r.id == resource.id do
-            callback.(r)
-          end
+      if MapSet.member?(cache.connectable_resource_ids, resource.id) do
+        # Check if it's still connectable
+        case adapt(resource, client) do
+          nil ->
+            # Not compatible with the client anymore, so we remove it from the connectable resources
+            connectable_ids = MapSet.delete(cache.connectable_resource_ids, resource.id)
+            cache = %{cache | connectable_resource_ids: connectable_ids}
+            {:ok, load!(resource.id), cache}
+
+          ^old_resource ->
+            # Resource is effectively unchanged
+            {:ok, cache}
+
+          adapted_resource ->
+            {:ok, adapted_resource, cache}
+        end
+      else
+        case adapt(resource, client) do
+          nil ->
+            # Not compatible with the client, so we just return the updated cache
+            {:ok, cache}
+
+          adapted_resource ->
+            # Resource is now connectable, so we add it to the connectable resources
+            connectable_ids = MapSet.put(cache.connectable_resource_ids, adapted_resource.id)
+            cache = %{cache | connectable_resource_ids: connectable_ids}
+            {:ok, adapted_resource, cache}
         end
       end
-
-      cache
     else
-      cache
+      {:error, :not_found}
     end
   end
 
-  defp hydrate(actor_id) do
+  defp hydrate(client) do
     attributes = %{
-      actor_id: actor_id
+      actor_id: client.actor_id
     }
 
     OpenTelemetry.Tracer.with_span "Cache.Cacheable.hydrate", attributes: attributes do
       {_policies, cache} =
-        Policies.all_policies_for_actor_id!(actor_id)
+        Policies.all_policies_for_actor_id!(client.actor_id)
         |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, cache ->
           resource = Cache.Cacheable.to_cache(policy.resource)
           resources = Map.put(cache.resources, resource.id, resource)
@@ -633,19 +628,44 @@ defmodule Domain.Cache.Client do
           policy = Cache.Cacheable.to_cache(policy)
           policies = Map.put(cache.policies, policy.id, policy)
 
-          {policy, Map.merge(cache, %{policies: policies, resources: resources})}
+          {policy, %{cache | policies: policies, resources: resources}}
         end)
 
       memberships =
-        Actors.all_memberships_for_actor_id!(actor_id)
+        Actors.all_memberships_for_actor_id!(client.actor_id)
         |> Enum.map(fn membership ->
-          {Ecto.UUID.dump!(membership.group_id), Ecto.UUID.dump!(membership.id)}
+          {dump!(membership.group_id), dump!(membership.id)}
         end)
         |> Enum.into(%{})
 
       cache
       |> Map.put(:memberships, memberships)
-      |> Map.put(:authorized_resource_ids, MapSet.new())
+      |> Map.put(:connectable_resource_ids, MapSet.new())
     end
+  end
+
+  defp adapted_resources(conforming_resource_ids, resources, client) do
+    conforming_resource_ids
+    |> Enum.map(fn id -> Map.get(resources, id) end)
+    |> Enum.map(fn r -> adapt(r, client) end)
+    |> Enum.reject(fn r -> is_nil(r) end)
+    |> Enum.filter(fn r -> r.gateway_groups != [] end)
+  end
+
+  defp conforming_resource_ids(policies, client) when is_map(policies) do
+    policies
+    |> Map.values()
+    |> conforming_resource_ids(client)
+  end
+
+  defp conforming_resource_ids(policies, client) do
+    policies
+    |> Policies.filter_by_conforming_policies_for_client(client)
+    |> Enum.map(& &1.resource_id)
+    |> Enum.uniq()
+  end
+
+  defp adapt(resource, client) do
+    Resources.adapt_resource_for_version(resource, client.last_seen_version)
   end
 end

@@ -221,13 +221,25 @@ defmodule Domain.Policies do
     end
   end
 
-  # All client tokens have *some* expiration
-  def min_expires_at(nil, nil),
+  def ensure_client_conforms_policy_conditions(
+        %Clients.Client{} = client,
+        %Cacheable.Policy{} = policy
+      ) do
+    case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
+      {:ok, expires_at} ->
+        {:ok, expires_at}
+
+      {:error, violated_properties} ->
+        {:error, {:forbidden, violated_properties: violated_properties}}
+    end
+  end
+
+  defp min_expires_at(nil, nil),
     do: raise("Both policy_expires_at and token_expires_at cannot be nil")
 
-  def min_expires_at(nil, token_expires_at), do: token_expires_at
+  defp min_expires_at(nil, token_expires_at), do: token_expires_at
 
-  def min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
+  defp min_expires_at(%DateTime{} = policy_expires_at, %DateTime{} = token_expires_at) do
     if DateTime.compare(policy_expires_at, token_expires_at) == :lt do
       policy_expires_at
     else
@@ -240,19 +252,6 @@ defmodule Domain.Policies do
       :ok
     else
       {:error, :unauthorized}
-    end
-  end
-
-  defp ensure_client_conforms_policy_conditions(
-         %Clients.Client{} = client,
-         %Cacheable.Policy{} = policy
-       ) do
-    case Condition.Evaluator.ensure_conforms(policy.conditions, client) do
-      {:ok, expires_at} ->
-        {:ok, expires_at}
-
-      {:error, violated_properties} ->
-        {:error, {:forbidden, violated_properties: violated_properties}}
     end
   end
 end

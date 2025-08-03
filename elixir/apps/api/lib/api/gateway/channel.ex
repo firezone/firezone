@@ -10,7 +10,7 @@ defmodule API.Gateway.Channel do
     Gateways,
     PubSub,
     Relays,
-    Resources,
+    Resources
   }
 
   alias Domain.Relays.Presence.Debouncer
@@ -89,7 +89,6 @@ defmodule API.Gateway.Channel do
       handle_change(change, socket)
     end
   end
-
 
   ####################################
   #### Reacting to relay presence ####
@@ -279,14 +278,11 @@ defmodule API.Gateway.Channel do
       client_payload: payload
     } = attrs
 
-    case Resources.adapt_resources_for_version(
-           [resource],
-           socket.assigns.gateway.last_seen_version
-         ) do
-      [] ->
+    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+      nil ->
         {:noreply, socket}
 
-      [resource] ->
+      resource ->
         ref =
           encode_ref(
             socket,
@@ -331,14 +327,11 @@ defmodule API.Gateway.Channel do
       client_preshared_key: preshared_key
     } = attrs
 
-    case Resources.adapt_resources_for_version(
-           [resource],
-           socket.assigns.gateway.last_seen_version
-         ) do
-      [] ->
+    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+      nil ->
         {:noreply, socket}
 
-      [resource] ->
+      resource ->
         ref =
           encode_ref(
             socket,
@@ -565,117 +558,6 @@ defmodule API.Gateway.Channel do
 
   # FLOWS
 
-  def handle_info(
-        {:deleted, %Flows.Flow{gateway_id: gateway_id} = flow},
-        %{
-          assigns: %{gateway: %{id: id}}
-        } = socket
-      )
-      when gateway_id == id do
-    tuple = {flow.client_id, flow.resource_id}
-
-    if flows_map = Map.get(socket.assigns.flows, tuple) do
-      flow_map = Map.delete(flows_map, flow.id)
-      remaining = map_size(flow_map)
-
-      if remaining == 0 do
-        case Flows.reauthorize_flow(flow) do
-          {:ok, new_flow} ->
-            flow_map = %{
-              new_flow.id => new_flow.expires_at
-            }
-
-            Logger.info("Updated flow authorization",
-              old_flow_id: flow.id,
-              account_id: flow.account_id,
-              client_id: flow.client_id,
-              resource_id: flow.resource_id,
-              new_flow_id: new_flow.id
-            )
-
-            push(
-              socket,
-              "access_authorization_expiry_updated",
-              Views.Flow.render(new_flow, new_flow.expires_at)
-            )
-
-            {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
-
-          {:error, :forbidden} ->
-            Logger.info("Last flow deleted; revoking access",
-              flow_id: flow.id,
-              account_id: flow.account_id,
-              client_id: flow.client_id,
-              resource_id: flow.resource_id
-            )
-
-            # Send reject_access if access is no longer granted
-
-            # Note: There is an edge case here:
-            #   - Client authorizes flow for resource
-            #   - Client's websocket temporarily gets cut
-            #   - Admin deletes the policy
-            #   - We send reject_access to the gateway
-            #   - Admin recreates the same policy (same access)
-            #   - Client connection resumes
-            #   - Client sees exactly the same resource list
-            #   - Client now has lost the ability to recreate the flow because from its perspective, it is still connected
-            #     to this gateway.
-            #   - Packets to gateway are essentially blackholed until the client signs out and back in
-            #
-            # This has been fixed with the introduction of the `goodbye` control protocol message
-            # introduced in https://github.com/firezone/firezone/pull/10076 and shipped in:
-            #   - Gateway 1.4.15
-            #   - Apple 1.5.6
-            #   - Android 1.5.3
-            #   - Windows/Linux 1.5.7
-            #   - Headless 1.5.3
-            push(socket, "reject_access", %{
-              client_id: flow.client_id,
-              resource_id: flow.resource_id
-            })
-
-            {:noreply, assign(socket, flows: Map.delete(socket.assigns.flows, tuple))}
-        end
-      else
-        Logger.info("Flow deleted but still has remaining flows for client/resource",
-          flow_id: flow.id,
-          account_id: flow.account_id,
-          client_id: flow.client_id,
-          resource_id: flow.resource_id,
-          remaining: remaining
-        )
-
-        {:noreply, assign(socket, flows: Map.put(socket.assigns.flows, tuple, flow_map))}
-      end
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # RESOURCES
-
-  # The gateway only handles filter changes. Other breaking changes are handled by deleting
-  # relevant flows for the resource.
-  def handle_info(
-        {:updated, %Resources.Resource{filters: old_filters},
-         %Resources.Resource{filters: filters, id: id} = resource},
-        socket
-      )
-      when old_filters != filters do
-    has_flows? =
-      socket.assigns.flows
-      |> Enum.any?(fn {{_client_id, resource_id}, _flow_map} -> resource_id == id end)
-
-    if has_flows? do
-      push(socket, "resource_updated", Views.Resource.render(resource))
-    end
-
-    {:noreply, socket}
-  end
-
-  # FLOWS
-
   defp handle_change(
          %Change{
            op: :delete,
@@ -688,29 +570,58 @@ defmodule API.Gateway.Channel do
          } = socket
        )
        when gateway_id == id do
-    # Delete old authorization and potentially reauthorize access
-    cache =
-      socket.assigns.cache
-      |> Cache.Gateway.delete(flow)
-      |> Cache.Gateway.rehydrate(flow)
+    socket.assigns.cache
+    |> Cache.Gateway.reauthorize_deleted_flow(flow)
+    |> case do
+      {:ok, expires_at_unix, cache} ->
+        Logger.info("Updating authorization expiration for deleted flow",
+          deleted_flow: inspect(flow),
+          new_expires_at: DateTime.from_unix!(expires_at_unix, :second)
+        )
 
-    if expires_at_unix = Cache.Gateway.get(cache, client_id, resource_id) do
-      # If the flow was rehydrated, we can push the new expiration time
-      push(
-        socket,
-        "access_authorization_expiry_updated",
-        Views.Flow.render(flow, expires_at_unix)
-      )
-    else
-      # Otherwise, access is no longer authorized
-      push(
-        socket,
-        "reject_access",
-        %{client_id: client_id, resource_id: resource_id}
-      )
+        push(
+          socket,
+          "access_authorization_expiry_updated",
+          Views.Flow.render(flow, expires_at_unix)
+        )
+
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :unauthorized, cache} ->
+        Logger.info("No authorizations remaining for deleted flow, revoking access",
+          deleted_flow: inspect(flow)
+        )
+
+        # Note: There is an edge case here:
+        #   - Client authorizes flow for resource
+        #   - Client's websocket temporarily gets cut
+        #   - Admin deletes the policy
+        #   - We send reject_access to the gateway
+        #   - Admin recreates the same policy (same access)
+        #   - Client connection resumes
+        #   - Client sees exactly the same resource list
+        #   - Client now has lost the ability to recreate the flow because from its perspective, it is still connected
+        #     to this gateway.
+        #   - Packets to gateway are essentially blackholed until the client signs out and back in
+        #
+        # This has been fixed with the introduction of the `goodbye` control protocol message
+        # introduced in https://github.com/firezone/firezone/pull/10076 and shipped in:
+        #   - Gateway 1.4.15
+        #   - Apple 1.5.6
+        #   - Android 1.5.3
+        #   - Windows/Linux 1.5.7
+        #   - Headless 1.5.3
+        push(
+          socket,
+          "reject_access",
+          %{client_id: client_id, resource_id: resource_id}
+        )
+
+        {:noreply, assign(socket, cache: cache)}
+
+      {:error, :not_found} ->
+        {:noreply, socket}
     end
-
-    {:noreply, assign(socket, cache: cache)}
   end
 
   # RESOURCES
@@ -733,7 +644,6 @@ defmodule API.Gateway.Channel do
 
     {:noreply, socket}
   end
-
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
 end
