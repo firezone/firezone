@@ -7,7 +7,6 @@ pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use eventloop::{Command, Eventloop};
-use firezone_tunnel::DnsResourceRecord;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::BTreeSet;
@@ -46,7 +45,6 @@ impl Session {
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        records: BTreeSet<DnsResourceRecord>,
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
@@ -55,7 +53,6 @@ impl Session {
         let mut eventloop = Eventloop::new(
             tcp_socket_factory,
             udp_socket_factory,
-            records,
             portal,
             cmd_rx,
             event_tx.clone(),

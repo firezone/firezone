@@ -301,7 +301,6 @@ impl WrappedSession {
         let (session, mut event_stream) = Session::connect(
             Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
-            Default::default(), // TODO: Load records from cache.
             portal,
             runtime.handle().clone(),
         );
@@ -338,9 +337,6 @@ impl WrappedSession {
                     }
                     Event::Disconnected(error) => {
                         callback_handler.on_disconnect(error);
-                    }
-                    Event::DnsRecordsChanged(_) => {
-                        // TODO: Persist records to cache.
                     }
                 }
             }

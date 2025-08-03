@@ -7,7 +7,7 @@ use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use firezone_tunnel::{ClientTunnel, DnsResourceRecord, IpConfig};
+use firezone_tunnel::{ClientTunnel, IpConfig};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -53,7 +53,6 @@ pub enum Event {
         ipv6_routes: Vec<Ipv6Network>,
     },
     ResourcesUpdated(Vec<ResourceView>),
-    DnsRecordsChanged(BTreeSet<DnsResourceRecord>),
     Disconnected(DisconnectError),
 }
 
@@ -82,12 +81,11 @@ impl Eventloop {
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        records: BTreeSet<DnsResourceRecord>,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
         event_tx: tokio::sync::mpsc::Sender<Event>,
     ) -> Self {
-        let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory, records);
+        let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory, Default::default());
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
         Self {
@@ -265,8 +263,10 @@ impl Eventloop {
                     ipv6_routes: Vec::from_iter(config.ipv6_routes),
                 })
             }
-            firezone_tunnel::ClientEvent::DnsRecordsChanged { records } => {
-                Some(Event::DnsRecordsChanged(records))
+            firezone_tunnel::ClientEvent::DnsRecordsChanged { .. } => {
+                // TODO: Save cache.
+
+                None
             }
         }
     }

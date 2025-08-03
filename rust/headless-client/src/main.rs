@@ -5,7 +5,6 @@
 use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use client_shared::dns_resource_record_cache;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
     new_dns_notifier, new_network_notifier,
@@ -19,7 +18,6 @@ use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
 use secrecy::{Secret, SecretString};
 use std::{
-    collections::BTreeSet,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -248,13 +246,6 @@ fn main() -> Result<()> {
             opentelemetry::global::set_meter_provider(provider);
         }
 
-
-        let mut dns_resource_records = dns_resource_record_cache::load().unwrap_or_else(|e| {
-            tracing::debug!("Failed to load DNS resource record cache: {e:#}");
-
-            BTreeSet::default()
-        });
-
         // The Headless Client will bail out here if there's no Internet, because `PhoenixChannel` will try to
         // resolve the portal host and fail. This is intentional behavior. The Headless Client should always be running under a manager like `systemd` or Windows' Service Controller,
         // so when it fails it will be restarted with backoff. `systemd` can additionally make us wait
@@ -275,7 +266,6 @@ fn main() -> Result<()> {
         let (session, mut event_stream) = client_shared::Session::connect(
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
-            dns_resource_records.clone(),
             portal,
             rt.handle().clone(),
         );
@@ -357,15 +347,11 @@ fn main() -> Result<()> {
                         break Ok(());
                     }
                 }
-                client_shared::Event::DnsRecordsChanged(records) => {
-                    dns_resource_records = records;
-                }
+
             }
         };
 
-        if let Err(e) = dns_resource_record_cache::save(dns_resource_records) {
-            tracing::debug!("Failed to save DNS resource record cache: {e:#}");
-        }
+
 
         telemetry.stop().await; // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
 

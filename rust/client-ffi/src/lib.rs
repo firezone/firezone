@@ -55,19 +55,9 @@ pub enum Event {
     ResourcesUpdated {
         resources: String,
     },
-    DnsRecordsChanged {
-        records: Vec<DnsResourceRecord>,
-    },
     Disconnected {
         error: Arc<DisconnectError>,
     },
-}
-
-#[derive(uniffi::Record, Debug)]
-pub struct DnsResourceRecord {
-    pub domain_name: String,
-    pub resource_id: String,
-    pub ips: Vec<String>,
 }
 
 #[uniffi::export]
@@ -206,18 +196,6 @@ impl Session {
             Some(client_shared::Event::Disconnected(error)) => Ok(Some(Event::Disconnected {
                 error: Arc::new(DisconnectError(error)),
             })),
-            Some(client_shared::Event::DnsRecordsChanged(records)) => {
-                Ok(Some(Event::DnsRecordsChanged {
-                    records: records
-                        .into_iter()
-                        .map(|record| DnsResourceRecord {
-                            domain_name: record.domain.to_string(),
-                            resource_id: record.resource.to_string(),
-                            ips: record.ips.into_iter().map(|ip| ip.to_string()).collect(),
-                        })
-                        .collect(),
-                }))
-            }
             None => Ok(None),
         }
     }
@@ -291,7 +269,6 @@ fn connect(
     let (session, events) = client_shared::Session::connect(
         tcp_socket_factory,
         udp_socket_factory,
-        Default::default(), // TODO: Load records from cache.
         portal,
         runtime.handle().clone(),
     );
