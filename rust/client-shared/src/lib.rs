@@ -17,8 +17,7 @@ use tokio::sync::mpsc::{Receiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tun::Tun;
 
-pub mod dns_resource_record_cache;
-
+mod dns_resource_record_cache;
 mod eventloop;
 mod serde_routelist;
 

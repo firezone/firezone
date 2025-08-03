@@ -1,4 +1,4 @@
-use crate::PHOENIX_TOPIC;
+use crate::{PHOENIX_TOPIC, dns_resource_record_cache};
 use anyhow::{Context as _, Result};
 use connlib_model::{PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
@@ -7,7 +7,7 @@ use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use firezone_tunnel::{ClientTunnel, IpConfig};
+use firezone_tunnel::{ClientTunnel, DnsResourceRecord, IpConfig};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -30,6 +30,8 @@ pub struct Eventloop {
     portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
     event_tx: tokio::sync::mpsc::Sender<Event>,
+
+    dns_resource_records: BTreeSet<DnsResourceRecord>,
 
     logged_permission_denied: bool,
 }
@@ -85,7 +87,15 @@ impl Eventloop {
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
         event_tx: tokio::sync::mpsc::Sender<Event>,
     ) -> Self {
-        let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory, Default::default());
+        let dns_resource_records = dns_resource_record_cache::load()
+            .inspect_err(|e| tracing::debug!("Failed to load DNS resource records cache: {e:#}"))
+            .unwrap_or_default();
+
+        let tunnel = ClientTunnel::new(
+            tcp_socket_factory,
+            udp_socket_factory,
+            dns_resource_records.clone(),
+        );
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
         Self {
@@ -93,6 +103,7 @@ impl Eventloop {
             portal,
             cmd_rx,
             event_tx,
+            dns_resource_records,
             logged_permission_denied: false,
         }
     }
@@ -102,7 +113,16 @@ impl Eventloop {
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         loop {
             match self.cmd_rx.poll_recv(cx) {
-                Poll::Ready(None | Some(Command::Stop)) => return Poll::Ready(Ok(())),
+                Poll::Ready(None | Some(Command::Stop)) => {
+                    match dns_resource_record_cache::save(self.dns_resource_records.clone()) {
+                        Ok(()) => tracing::debug!("Saved DNS resource records cache"),
+                        Err(e) => {
+                            tracing::debug!("Failed to save DNS resource records cache: {e:#}")
+                        }
+                    }
+
+                    return Poll::Ready(Ok(()));
+                }
                 Poll::Ready(Some(Command::SetDns(dns))) => {
                     self.tunnel.state_mut().update_system_resolvers(dns);
 
@@ -263,8 +283,8 @@ impl Eventloop {
                     ipv6_routes: Vec::from_iter(config.ipv6_routes),
                 })
             }
-            firezone_tunnel::ClientEvent::DnsRecordsChanged { .. } => {
-                // TODO: Save cache.
+            firezone_tunnel::ClientEvent::DnsRecordsChanged { records } => {
+                self.dns_resource_records = records;
 
                 None
             }
