@@ -10,7 +10,9 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-pub use platform::{logs, runtime, session, settings, tunnel_service_config, tunnel_service_logs};
+pub use platform::{
+    cache, logs, runtime, session, settings, tunnel_service_config, tunnel_service_logs,
+};
 
 #[cfg(target_os = "linux")]
 #[path = "known_dirs/linux.rs"]

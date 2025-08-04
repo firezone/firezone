@@ -30,7 +30,11 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
 /// Logs are considered cache because they're not configs and it's technically okay
 /// if the system / user deletes them to free up space
 pub fn logs() -> Option<PathBuf> {
-    Some(dirs::cache_dir()?.join(BUNDLE_ID).join("data").join("logs"))
+    Some(cache()?.join("logs"))
+}
+
+pub fn cache() -> Option<PathBuf> {
+    Some(dirs::cache_dir()?.join(NAMESPACE).join("data"))
 }
 
 /// e.g. `/run/user/1000/dev.firezone.client/data`

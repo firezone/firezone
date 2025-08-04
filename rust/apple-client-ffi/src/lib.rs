@@ -62,7 +62,7 @@ mod ffi {
             account_slug: String,
             device_name_override: Option<String>,
             os_version_override: Option<String>,
-            log_dir: String,
+            cache_dir: String,
             log_filter: String,
             callback_handler: CallbackHandler,
             device_info: String,
@@ -252,7 +252,7 @@ impl WrappedSession {
         account_slug: String,
         device_name_override: Option<String>,
         os_version_override: Option<String>,
-        log_dir: String,
+        cache_dir: String,
         log_filter: String,
         callback_handler: ffi::CallbackHandler,
         device_info: String,
@@ -262,6 +262,7 @@ impl WrappedSession {
             .thread_name("connlib")
             .enable_all()
             .build()?;
+        let cache_dir = PathBuf::from(cache_dir);
 
         let mut telemetry = Telemetry::default();
         runtime.block_on(telemetry.start(&api_url, RELEASE, APPLE_DSN, device_id.clone()));
@@ -269,7 +270,7 @@ impl WrappedSession {
 
         analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
-        init_logging(log_dir.into(), log_filter)?;
+        init_logging(cache_dir.join("logs"), log_filter)?;
         install_rustls_crypto_provider();
 
         let secret = SecretString::from(token);
@@ -302,6 +303,7 @@ impl WrappedSession {
             Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
             portal,
+            cache_dir,
             runtime.handle().clone(),
         );
         session.set_tun(Box::new(Tun::new()?));

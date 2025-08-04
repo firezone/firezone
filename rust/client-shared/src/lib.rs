@@ -7,17 +7,18 @@ pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription
 use anyhow::{Context as _, Result};
 use connlib_model::ResourceId;
 use eventloop::{Command, Eventloop};
-use firezone_tunnel::ClientTunnel;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::BTreeSet;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Receiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tun::Tun;
 
+mod dns_resource_record_cache;
 mod eventloop;
 mod serde_routelist;
 
@@ -45,19 +46,22 @@ impl Session {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+        cache_dir: PathBuf,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1000);
-
-        let connect_handle = handle.spawn(connect(
+        let mut eventloop = Eventloop::new(
             tcp_socket_factory,
             udp_socket_factory,
             portal,
             cmd_rx,
             event_tx.clone(),
-        ));
-        handle.spawn(connect_supervisor(connect_handle, event_tx));
+            cache_dir,
+        );
+
+        let eventloop_handle = handle.spawn(std::future::poll_fn(move |cx| eventloop.poll(cx)));
+        handle.spawn(eventloop_supervisor(eventloop_handle, event_tx));
 
         (Self { channel: cmd_tx }, EventStream { channel: event_rx })
     }
@@ -128,31 +132,13 @@ impl Drop for Session {
     }
 }
 
-/// Connects to the portal and starts a tunnel.
-///
-/// When this function exits, the tunnel failed unrecoverably and you need to call it again.
-async fn connect(
-    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    cmd_rx: UnboundedReceiver<Command>,
-    event_tx: Sender<Event>,
-) -> Result<()> {
-    let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
-    let mut eventloop = Eventloop::new(tunnel, portal, cmd_rx, event_tx);
-
-    std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
-
-    Ok(())
-}
-
-/// A supervisor task that handles, when [`connect`] exits.
-async fn connect_supervisor(
-    connect_handle: JoinHandle<Result<()>>,
+/// A supervisor task that handles, when [`Eventloop`] exits.
+async fn eventloop_supervisor(
+    eventloop_handle: JoinHandle<Result<()>>,
     event_tx: tokio::sync::mpsc::Sender<Event>,
 ) {
     let task = async {
-        connect_handle.await.context("connlib crashed")??;
+        eventloop_handle.await.context("connlib crashed")??;
 
         Ok(())
     };

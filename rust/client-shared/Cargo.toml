@@ -10,6 +10,7 @@ backoff = { workspace = true }
 bimap = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
+firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-tunnel = { workspace = true }
 ip_network = { workspace = true }
@@ -17,6 +18,7 @@ libc = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }
+serde_json = { workspace = true }
 snownet = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }

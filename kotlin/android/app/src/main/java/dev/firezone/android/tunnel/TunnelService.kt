@@ -299,7 +299,7 @@ class TunnelService : VpnService() {
                         deviceId = deviceId(),
                         deviceName = getDeviceName(),
                         osVersion = Build.VERSION.RELEASE,
-                        logDir = getLogDir(),
+                        cacheDir = cacheDir.absolutePath,
                         logFilter = config.logFilter,
                         protectSocket = protectSocket,
                         deviceInfo = gson.toJson(deviceInfo),
@@ -420,13 +420,6 @@ class TunnelService : VpnService() {
             }
 
         return deviceId
-    }
-
-    private fun getLogDir(): String {
-        // Create log directory if it doesn't exist
-        val logDir = cacheDir.absolutePath + "/logs"
-        Files.createDirectories(Paths.get(logDir))
-        return logDir
     }
 
     fun updateStatusNotification(statusType: TunnelStatusNotification.StatusType) {

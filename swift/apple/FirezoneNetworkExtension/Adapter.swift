@@ -157,7 +157,7 @@ class Adapter {
   private let token: Token
   private let id: String
   private let logFilter: String
-  private let connlibLogFolderPath: String
+  private let cacheFolderPath: String
 
   init(
     apiURL: String,
@@ -175,7 +175,7 @@ class Adapter {
     self.callbackHandler = CallbackHandler()
     self.logFilter = logFilter
     self.accountSlug = accountSlug
-    self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
+    self.cacheFolderPath = SharedAccess.cacheFolderURL?.path ?? ""
     self.networkSettings = nil
     self.internetResourceEnabled = internetResourceEnabled
   }
@@ -211,7 +211,7 @@ class Adapter {
         accountSlug,
         DeviceMetadata.getDeviceName(),
         DeviceMetadata.getOSVersion(),
-        connlibLogFolderPath,
+        cacheFolderPath,
         logFilter,
         callbackHandler,
         String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!

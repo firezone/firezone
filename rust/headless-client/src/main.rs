@@ -267,6 +267,7 @@ fn main() -> Result<()> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
+            known_dirs::cache().context("No cache dir")?,
             rt.handle().clone(),
         );
 
@@ -347,8 +348,11 @@ fn main() -> Result<()> {
                         break Ok(());
                     }
                 }
+
             }
         };
+
+
 
         telemetry.stop().await; // Stop telemetry before dropping session. `connlib` needs to be active for this, otherwise we won't be able to resolve the DNS name for sentry.
 
