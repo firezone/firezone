@@ -7,7 +7,7 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
-    new_dns_notifier, new_network_notifier,
+    known_dirs, new_dns_notifier, new_network_notifier,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
@@ -113,7 +113,7 @@ struct Cli {
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
     // (Since we run as root and the env var on a headless system is probably stored
     // on disk somewhere anyway.)
-    #[arg(default_value = platform::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
+    #[arg(default_value = known_dirs::headless_client_token_path().expect("Failed to compute default token path").display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
 }
 

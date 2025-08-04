@@ -28,6 +28,14 @@ pub fn tunnel_service_config() -> Option<PathBuf> {
     )
 }
 
+pub fn headless_client_token_path() -> Option<PathBuf> {
+    Some(
+        get_known_folder_path(KnownFolder::ProgramData)?
+            .join(BUNDLE_ID)
+            .join("token.txt"),
+    )
+}
+
 pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(
         get_known_folder_path(KnownFolder::ProgramData)?

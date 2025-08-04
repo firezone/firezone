@@ -16,6 +16,11 @@ pub fn tunnel_service_config() -> Option<PathBuf> {
     )
 }
 
+#[expect(clippy::unnecessary_wraps)] // Signature must match Windows
+pub fn headless_client_token_path() -> Option<PathBuf> {
+    Some(PathBuf::from("/etc/dummy"))
+}
+
 /// Path for Tunnel service logs
 #[expect(clippy::unnecessary_wraps)] // Signature must match Windows
 pub fn tunnel_service_logs() -> Option<PathBuf> {
