@@ -2333,6 +2333,7 @@ where
         };
     }
 
+    #[expect(clippy::too_many_arguments, reason = "Don't care.")]
     fn encapsulate<TId>(
         &mut self,
         cid: TId,
