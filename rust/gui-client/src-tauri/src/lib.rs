@@ -23,6 +23,17 @@ pub const RELEASE: &str = concat!("gui-client@", env!("CARGO_PKG_VERSION"));
 
 pub const FIREZONE_CLIENT_GROUP: &str = "firezone-client";
 
+/// Bundle ID / App ID that the client uses to distinguish itself from other programs on the system
+///
+/// This should be identical to the `tauri.bundle.identifier` over in `tauri.conf.json`,
+/// but sometimes I need to use this before Tauri has booted up, or in a place where
+/// getting the Tauri app handle would be awkward.
+///
+/// Luckily this is also the AppUserModelId that Windows uses to label notifications,
+/// so if your dev system has Firezone installed by MSI, the notifications will look right.
+/// <https://learn.microsoft.com/en-us/windows/configuration/find-the-application-user-model-id-of-an-installed-app>
+pub const BUNDLE_ID: &str = "dev.firezone.client";
+
 #[cfg(target_os = "linux")]
 pub fn firezone_client_group() -> anyhow::Result<nix::unistd::Group> {
     use anyhow::Context as _;

@@ -27,6 +27,8 @@ pub mod platform;
 #[path = "known_dirs/windows.rs"]
 pub mod platform;
 
+const NAMESPACE: &str = "dev.firezone.client";
+
 pub fn tunnel_log_filter() -> Result<PathBuf> {
     Ok(tunnel_service_config()
         .context("Failed to compute `tunnel_service_config` directory")?

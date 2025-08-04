@@ -1,4 +1,4 @@
-use crate::BUNDLE_ID;
+use super::NAMESPACE;
 use std::path::PathBuf;
 
 /// Returns the user's home directory
@@ -11,7 +11,7 @@ fn home_dir() -> Option<PathBuf> {
 pub fn tunnel_service_config() -> Option<PathBuf> {
     Some(
         PathBuf::from("/Library/Application Support")
-            .join(BUNDLE_ID)
+            .join(NAMESPACE)
             .join("config"),
     )
 }
@@ -24,7 +24,7 @@ pub fn headless_client_token_path() -> Option<PathBuf> {
 /// Path for Tunnel service logs
 #[expect(clippy::unnecessary_wraps)] // Signature must match Windows
 pub fn tunnel_service_logs() -> Option<PathBuf> {
-    Some(PathBuf::from("/Library/Logs").join(BUNDLE_ID))
+    Some(PathBuf::from("/Library/Logs").join(NAMESPACE))
 }
 
 /// User-specific logs directory
@@ -32,7 +32,7 @@ pub fn logs() -> Option<PathBuf> {
     Some(
         home_dir()?
             .join("Library/Caches")
-            .join(BUNDLE_ID)
+            .join(NAMESPACE)
             .join("logs"),
     )
 }
@@ -40,7 +40,7 @@ pub fn logs() -> Option<PathBuf> {
 /// Runtime directory for temporary files
 pub fn runtime() -> Option<PathBuf> {
     let user = std::env::var("USER").ok()?;
-    Some(PathBuf::from("/tmp").join(format!("{BUNDLE_ID}-{user}")))
+    Some(PathBuf::from("/tmp").join(format!("{NAMESPACE}-{user}")))
 }
 
 /// User session data directory
@@ -48,7 +48,7 @@ pub fn session() -> Option<PathBuf> {
     Some(
         home_dir()?
             .join("Library/Application Support")
-            .join(BUNDLE_ID)
+            .join(NAMESPACE)
             .join("data"),
     )
 }
@@ -58,7 +58,7 @@ pub fn settings() -> Option<PathBuf> {
     Some(
         home_dir()?
             .join("Library/Preferences")
-            .join(BUNDLE_ID)
+            .join(NAMESPACE)
             .join("config"),
     )
 }

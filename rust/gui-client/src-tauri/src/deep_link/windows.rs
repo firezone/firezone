@@ -2,8 +2,8 @@
 //! Based on reading some of the Windows code from <https://github.com/FabianLars/tauri-plugin-deep-link>, which is licensed "MIT OR Apache-2.0"
 
 use super::FZ_SCHEME;
+use crate::BUNDLE_ID;
 use anyhow::{Context, Result};
-use firezone_bin_shared::BUNDLE_ID;
 use std::{
     io,
     path::{Path, PathBuf},
