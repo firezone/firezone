@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10109">
+          Fixes an issue where connections would fail to establish in
+          environments with a limited number of ports on the NAT.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.14" date={new Date("2025-07-28")}>
         <ChangeItem pull="9986">
           Fixes an issue where a Client could not establish a connection unless
