@@ -13,6 +13,7 @@ use crate::{
     messages::{DnsServer, Interface},
 };
 use bimap::BiMap;
+use bufferpool::BufferPool;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -68,6 +69,8 @@ pub(crate) struct SimClient {
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tests::tcp::Client,
     pub(crate) failed_tcp_packets: BTreeMap<(SPort, DPort), IpPacket>,
+
+    buffer_pool: BufferPool<Vec<u8>>,
 }
 
 impl SimClient {
@@ -95,6 +98,7 @@ impl SimClient {
             tcp_dns_client,
             tcp_client: crate::tests::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
+            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "sim-client"),
         }
     }
 
@@ -124,10 +128,10 @@ impl SimClient {
         upstream: SocketAddr,
         dns_transport: DnsTransport,
         now: Instant,
-    ) -> Option<Transmit> {
+    ) {
         let Some(sentinel) = self.dns_by_sentinel.get_by_right(&upstream).copied() else {
             tracing::error!(%upstream, "Unknown DNS server");
-            return None;
+            return;
         };
 
         tracing::debug!(%sentinel, %domain, "Sending DNS query");
@@ -152,15 +156,13 @@ impl SimClient {
 
                 self.sent_udp_dns_queries
                     .insert((upstream, query_id), packet.clone());
-                self.encapsulate(packet, now)
+                self.encapsulate(packet, now);
             }
             DnsTransport::Tcp => {
                 self.tcp_dns_client
                     .send_query(SocketAddr::new(sentinel, 53), query)
                     .unwrap();
                 self.sent_tcp_dns_queries.insert((upstream, query_id));
-
-                None
             }
         }
     }
@@ -174,19 +176,11 @@ impl SimClient {
         }
     }
 
-    pub(crate) fn encapsulate(
-        &mut self,
-        packet: IpPacket,
-        now: Instant,
-    ) -> Option<snownet::Transmit> {
+    pub(crate) fn encapsulate(&mut self, packet: IpPacket, now: Instant) {
         self.update_sent_requests(&packet);
-
-        let Some(transmit) = self.sut.handle_tun_input(packet, now) else {
-            self.sut.handle_timeout(now); // If we handled the packet internally, make sure to advance state.
-            return None;
-        };
-
-        Some(transmit)
+        self.sut
+            .handle_tun_input(packet, now, &mut self.buffer_pool);
+        self.sut.handle_timeout(now);
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {

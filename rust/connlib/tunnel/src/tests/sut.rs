@@ -170,9 +170,7 @@ impl TunnelTest {
                 )
                 .unwrap();
 
-                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
-
-                buffered_transmits.push_from(transmit, &state.client, now);
+                state.client.exec_mut(|sim| sim.encapsulate(packet, now));
             }
             Transition::SendUdpPacket {
                 src,
@@ -192,9 +190,7 @@ impl TunnelTest {
                 )
                 .unwrap();
 
-                let transmit = state.client.exec_mut(|sim| sim.encapsulate(packet, now));
-
-                buffered_transmits.push_from(transmit, &state.client, now);
+                state.client.exec_mut(|sim| sim.encapsulate(packet, now));
             }
             Transition::ConnectTcp {
                 src,
@@ -217,11 +213,9 @@ impl TunnelTest {
                     transport,
                 } in queries
                 {
-                    let transmit = state.client.exec_mut(|sim| {
+                    state.client.exec_mut(|sim| {
                         sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
                     });
-
-                    buffered_transmits.push_from(transmit, &state.client, now);
                 }
             }
             Transition::UpdateSystemDnsServers(servers) => {
@@ -586,13 +580,12 @@ impl TunnelTest {
                 }
             }
         });
-        while let Some(transmit) = self.client.exec_mut(|c| {
-            let packet = c.poll_outbound()?;
-            c.encapsulate(packet, now)
-        }) {
-            buffered_transmits.push_from(transmit, &self.client, now)
-        }
-        self.client.exec_mut(|c| c.handle_timeout(now));
+        self.client.exec_mut(|c| {
+            while let Some(packet) = c.poll_outbound() {
+                c.encapsulate(packet, now);
+            }
+            c.handle_timeout(now);
+        });
 
         // Handle the client's `Transmit`s.
         while let Some(transmit) = self.client.poll_inbox(now) {
@@ -601,18 +594,12 @@ impl TunnelTest {
 
         // Handle all gateway `Transmit`s and timeouts.
         for (_, gateway) in self.gateways.iter_mut() {
-            for transmit in gateway.exec_mut(|g| g.advance_resources(global_dns_records, now)) {
-                buffered_transmits.push_from(transmit, gateway, now);
-            }
+            gateway.exec_mut(|g| g.advance_resources(global_dns_records, now));
 
             while let Some(transmit) = gateway.poll_inbox(now) {
-                let Some(reply) = gateway.exec_mut(|g| {
+                gateway.exec_mut(|g| {
                     g.receive(transmit, icmp_error_hosts, now, self.flux_capacitor.now())
-                }) else {
-                    continue;
-                };
-
-                buffered_transmits.push_from(reply, gateway, now);
+                });
             }
 
             gateway.exec_mut(|g| {
