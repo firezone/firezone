@@ -9,6 +9,7 @@ use super::{
 };
 use crate::{GatewayState, IpConfig};
 use anyhow::{Result, bail};
+use bufferpool::BufferPool;
 use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
@@ -37,6 +38,7 @@ pub(crate) struct SimGateway {
     tcp_dns_server_resources: BTreeMap<SocketAddr, TcpDnsServerResource>,
 
     tcp_resources: BTreeMap<SocketAddr, crate::tests::tcp::Server>,
+    buffer_pool: BufferPool<Vec<u8>>,
 }
 
 impl SimGateway {
@@ -66,6 +68,7 @@ impl SimGateway {
                     (address, server)
                 })
                 .collect(),
+            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "sim-gateway"),
         }
     }
 
@@ -75,7 +78,7 @@ impl SimGateway {
         icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
         utc_now: DateTime<Utc>,
-    ) -> Option<Transmit> {
+    ) {
         let Some(packet) = self
             .sut
             .handle_network_input(transmit.dst, transmit.src.unwrap(), &transmit.payload, now)
@@ -84,20 +87,16 @@ impl SimGateway {
             .flatten()
         else {
             self.sut.handle_timeout(now, utc_now);
-            return None;
+            return;
         };
 
         self.on_received_packet(packet, icmp_error_hosts, now)
     }
 
-    pub(crate) fn advance_resources(
-        &mut self,
-        global_dns_records: &DnsRecords,
-        now: Instant,
-    ) -> Vec<Transmit> {
+    pub(crate) fn advance_resources(&mut self, global_dns_records: &DnsRecords, now: Instant) {
         let Some(ip_config) = self.sut.tunnel_ip_config() else {
             tracing::error!("Tunnel IP configuration not set");
-            return Vec::new();
+            return;
         };
 
         let udp_server_packets =
@@ -130,11 +129,14 @@ impl SimGateway {
             std::iter::from_fn(|| server.poll_outbound())
         });
 
-        udp_server_packets
+        for packet in udp_server_packets
             .chain(tcp_server_packets)
             .chain(tcp_resource_packets)
-            .filter_map(|packet| self.sut.handle_tun_input(packet, now).unwrap())
-            .collect()
+        {
+            self.sut
+                .handle_tun_input(packet, now, &mut self.buffer_pool)
+                .unwrap();
+        }
     }
 
     pub(crate) fn deploy_new_dns_servers(
@@ -174,7 +176,7 @@ impl SimGateway {
         packet: IpPacket,
         icmp_error_hosts: &IcmpErrorHosts,
         now: Instant,
-    ) -> Option<Transmit> {
+    ) {
         // TODO: Instead of handling these things inline, here, should we dispatch them via `RoutingTable`?
 
         let dst_ip = packet.destination();
@@ -194,7 +196,8 @@ impl SimGateway {
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
                 .insert(packet_id, packet.clone());
-            return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
+            self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
+            return;
         }
 
         if let Some(icmp) = packet.as_icmpv6()
@@ -204,7 +207,8 @@ impl SimGateway {
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
                 .insert(packet_id, packet.clone());
-            return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
+            self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
+            return;
         }
 
         if let Some(udp) = packet.as_udp() {
@@ -213,7 +217,7 @@ impl SimGateway {
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.udp_dns_server_resources.get_mut(&socket) {
                 server.handle_input(packet);
-                return None;
+                return;
             }
         }
 
@@ -222,25 +226,26 @@ impl SimGateway {
 
             if let Some(server) = self.tcp_resources.get_mut(&socket) {
                 server.handle_inbound(packet);
-                return None;
+                return;
             }
 
             // NOTE: we can make this assumption because port 53 is excluded from non-dns query packets
             if let Some(server) = self.tcp_dns_server_resources.get_mut(&socket) {
                 server.handle_input(packet);
-                return None;
+                return;
             }
         }
 
         if let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) {
             self.request_received(&packet);
-            let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
+            self.sut
+                .handle_tun_input(reply, now, &mut self.buffer_pool)
+                .unwrap();
 
-            return Some(transmit);
+            return;
         }
 
         tracing::error!(?packet, "Unhandled packet");
-        None
     }
 
     pub(crate) fn update_relays<'a>(
@@ -271,7 +276,7 @@ impl SimGateway {
         payload: &[u8],
         icmp_error: Option<IpPacket>,
         now: Instant,
-    ) -> Option<Transmit> {
+    ) {
         let reply = icmp_error.unwrap_or_else(|| {
             ip_packet::make::icmp_reply_packet(
                 packet.destination(),
@@ -283,9 +288,9 @@ impl SimGateway {
             .expect("src and dst are taken from incoming packet")
         });
 
-        let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
-
-        Some(transmit)
+        self.sut
+            .handle_tun_input(reply, now, &mut self.buffer_pool)
+            .unwrap();
     }
 }
 

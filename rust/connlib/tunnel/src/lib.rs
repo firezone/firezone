@@ -178,16 +178,11 @@ impl ClientTunnel {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
                         }
 
-                        let ecn = packet.ecn();
-
-                        let Some(transmit) = self.role_state.handle_tun_input(packet, now) else {
-                            self.role_state.handle_timeout(now);
-                            continue;
-                        };
-
-                        self.io
-                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
+                        self.role_state
+                            .handle_tun_input(packet, now, self.io.gso_queue_mut());
                     }
+
+                    self.role_state.handle_timeout(now);
 
                     continue;
                 }
@@ -314,16 +309,11 @@ impl GatewayTunnel {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
                         }
 
-                        let ecn = packet.ecn();
-
-                        let Some(transmit) = self.role_state.handle_tun_input(packet, now)? else {
-                            self.role_state.handle_timeout(now, Utc::now());
-                            continue;
-                        };
-
-                        self.io
-                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
+                        self.role_state
+                            .handle_tun_input(packet, now, self.io.gso_queue_mut())?;
                     }
+
+                    self.role_state.handle_timeout(now, Utc::now());
 
                     continue;
                 }

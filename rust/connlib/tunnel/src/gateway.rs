@@ -5,12 +5,13 @@ use crate::{GatewayEvent, IpConfig, p2p_control};
 use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;
+use bufferpool::BufferPool;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
+use snownet::{BufferProvider, Credentials, NoTurnServers, RelaySocket, ServerNode};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
@@ -37,8 +38,9 @@ pub struct GatewayState {
 
     tun_ip_config: Option<IpConfig>,
 
+    buffer_pool: BufferPool<Vec<u8>>,
+
     buffered_events: VecDeque<GatewayEvent>,
-    buffered_transmits: VecDeque<Transmit>,
 }
 
 #[derive(Debug)]
@@ -65,8 +67,8 @@ impl GatewayState {
             node: ServerNode::new(seed, now),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
-            buffered_transmits: VecDeque::default(),
             tun_ip_config: None,
+            buffer_pool: BufferPool::new(ip_packet::MAX_IP_SIZE, "gateway-state"),
         }
     }
 
@@ -84,16 +86,17 @@ impl GatewayState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
+        buffer_provider: &mut impl BufferProvider,
+    ) -> Result<()> {
         let dst = packet.destination();
 
         if !crate::is_peer(dst) {
-            return Ok(None);
+            return Ok(());
         }
 
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
             tracing::debug!(%dst, "Unknown client, perhaps already disconnected?");
-            return Ok(None);
+            return Ok(());
         };
         let cid = peer.id();
 
@@ -101,18 +104,14 @@ impl GatewayState {
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?
         else {
-            return Ok(None);
+            return Ok(());
         };
 
-        let Some(encrypted_packet) = self
-            .node
-            .encapsulate(cid, packet, now)
-            .context("Failed to encapsulate")?
-        else {
-            return Ok(None);
-        };
+        self.node
+            .encapsulate(cid, packet, now, buffer_provider)
+            .context("Failed to encapsulate")?;
 
-        Ok(Some(encrypted_packet))
+        Ok(())
     }
 
     /// Handles UDP packets received on the network interface.
@@ -148,12 +147,13 @@ impl GatewayState {
                 return Ok(None);
             };
 
-            let Some(transmit) = encrypt_packet(immediate_response, cid, &mut self.node, now)?
-            else {
-                return Ok(None);
-            };
-
-            self.buffered_transmits.push_back(transmit);
+            encrypt_packet(
+                immediate_response,
+                cid,
+                &mut self.node,
+                &mut self.buffer_pool.clone(),
+                now,
+            )?;
 
             return Ok(None);
         }
@@ -165,11 +165,13 @@ impl GatewayState {
             TranslateOutboundResult::Send(ip_packet) => Ok(Some(ip_packet)),
             TranslateOutboundResult::DestinationUnreachable(reply)
             | TranslateOutboundResult::Filtered(reply) => {
-                let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? else {
-                    return Ok(None);
-                };
-
-                self.buffered_transmits.push_back(transmit);
+                encrypt_packet(
+                    reply,
+                    cid,
+                    &mut self.node,
+                    &mut self.buffer_pool.clone(),
+                    now,
+                )?;
 
                 Ok(None)
             }
@@ -355,11 +357,13 @@ impl GatewayState {
 
         let packet = dns_resource_nat::domain_status(req.resource, req.domain, nat_status)?;
 
-        let Some(transmit) = encrypt_packet(packet, req.client, &mut self.node, now)? else {
-            return Ok(());
-        };
-
-        self.buffered_transmits.push_back(transmit);
+        encrypt_packet(
+            packet,
+            req.client,
+            &mut self.node,
+            &mut self.buffer_pool.clone(),
+            now,
+        )?;
 
         Ok(())
     }
@@ -445,9 +449,7 @@ impl GatewayState {
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
-        self.buffered_transmits
-            .pop_front()
-            .or_else(|| self.node.poll_transmit())
+        self.node.poll_transmit()
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<GatewayEvent> {
@@ -542,13 +544,13 @@ fn encrypt_packet(
     packet: IpPacket,
     cid: ClientId,
     node: &mut ServerNode<ClientId, RelayId>,
+    buffer_provider: &mut impl BufferProvider,
     now: Instant,
-) -> Result<Option<Transmit>> {
-    let transmit = node
-        .encapsulate(cid, packet, now)
+) -> Result<()> {
+    node.encapsulate(cid, packet, now, buffer_provider)
         .context("Failed to encapsulate")?;
 
-    Ok(transmit)
+    Ok(())
 }
 
 /// Opaque request struct for when a domain name needs to be resolved.
