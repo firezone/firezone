@@ -27,6 +27,9 @@ pub mod platform;
 #[path = "known_dirs/windows.rs"]
 pub mod platform;
 
+// TODO: Change this into something more idiomatic per platform.
+//
+// e.g. Linux typically doesn't use reverse domain notation.
 const NAMESPACE: &str = "dev.firezone.client";
 
 pub fn tunnel_log_filter() -> Result<PathBuf> {
