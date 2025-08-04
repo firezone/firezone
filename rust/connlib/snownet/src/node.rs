@@ -317,7 +317,7 @@ where
         let connection =
             self.init_connection(cid, agent, remote, preshared_key, selected_relay, now, now);
 
-        self.connections.insert_established(cid, remote, connection);
+        self.connections.insert_established(cid, connection);
 
         Ok(())
     }
@@ -1260,7 +1260,6 @@ struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
 
     established_by_wireguard_session_index: BTreeMap<u32, TId>,
-    established_by_public_key: BTreeMap<[u8; 32], TId>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -1269,7 +1268,6 @@ impl<TId, RId> Default for Connections<TId, RId> {
             initial: Default::default(),
             established: Default::default(),
             established_by_wireguard_session_index: Default::default(),
-            established_by_public_key: Default::default(),
         }
     }
 }
@@ -1294,7 +1292,6 @@ where
                 events.push_back(Event::ConnectionFailed(*id));
                 self.established_by_wireguard_session_index
                     .retain(|_, c| c != id);
-                self.established_by_public_key.retain(|_, c| c != id);
                 return false;
             }
 
@@ -1345,16 +1342,12 @@ where
         self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
 
-    fn insert_established(&mut self, id: TId, public_key: PublicKey, connection: Connection<RId>) {
+    fn insert_established(&mut self, id: TId, connection: Connection<RId>) {
         self.established.insert(id, connection);
 
         // Remove previous mappings for connection.
         self.established_by_wireguard_session_index
             .retain(|_, c| c != &id);
-        self.established_by_public_key.retain(|_, c| c != &id);
-
-        self.established_by_public_key
-            .insert(public_key.to_bytes(), id);
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, RId)> {
@@ -1408,10 +1401,12 @@ where
         &mut self,
         key: [u8; 32],
     ) -> Option<(TId, &mut Connection<RId>)> {
-        let id = self.established_by_public_key.get(&key)?;
-        let connection = self.established.get_mut(id)?;
+        let (id, conn) = self
+            .established
+            .iter_mut()
+            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)?;
 
-        Some((*id, connection))
+        Some((*id, conn))
     }
 
     fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
@@ -1433,7 +1428,6 @@ where
     fn clear(&mut self) {
         self.initial.clear();
         self.established.clear();
-        self.established_by_public_key.clear();
         self.established_by_wireguard_session_index.clear();
     }
 
