@@ -314,10 +314,10 @@ where
             &mut self.pending_events,
         );
 
-        let connection =
+        let (index, connection) =
             self.init_connection(cid, agent, remote, preshared_key, selected_relay, now, now);
 
-        self.connections.insert_established(cid, connection);
+        self.connections.insert_established(cid, index, connection);
 
         Ok(())
     }
@@ -520,14 +520,8 @@ where
 
         self.allocations_drain_events();
 
-        for (id, connection) in self.connections.established.iter_mut() {
-            connection.handle_timeout(
-                *id,
-                now,
-                &mut self.allocations,
-                &mut self.buffered_transmits,
-                &mut self.connections.established_by_wireguard_session_index,
-            );
+        for (id, connection) in self.connections.iter_established_mut() {
+            connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
         for (id, connection) in self.connections.initial.iter_mut() {
@@ -690,19 +684,20 @@ where
         relay: RId,
         intent_sent_at: Instant,
         now: Instant,
-    ) -> Connection<RId> {
+    ) -> (u32, Connection<RId>) {
         agent.handle_timeout(now);
 
         if self.allocations.is_empty() {
             tracing::warn!(%cid, "No TURN servers connected; connection may fail to establish");
         }
 
+        let index = self.index.next();
         let mut tunnel = Tunn::new_at(
             self.private_key.clone(),
             remote,
             Some(key),
             None,
-            self.index.next(),
+            index,
             Some(self.rate_limiter.clone()),
             self.rng.next_u64(),
             now,
@@ -719,25 +714,28 @@ where
         // until we have a WireGuard tunnel to send packets into.
         tunnel.set_rekey_attempt_time(Duration::from_secs(15));
 
-        Connection {
-            agent,
-            tunnel,
-            next_wg_timer_update: now,
-            stats: Default::default(),
-            buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
-            intent_sent_at,
-            signalling_completed_at: now,
-            remote_pub_key: remote,
-            relay,
-            state: ConnectionState::Connecting {
-                wg_buffer: AllocRingBuffer::new(128),
-                ip_buffer: AllocRingBuffer::new(128),
+        (
+            index,
+            Connection {
+                agent,
+                tunnel,
+                next_wg_timer_update: now,
+                stats: Default::default(),
+                buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
+                intent_sent_at,
+                signalling_completed_at: now,
+                remote_pub_key: remote,
+                relay,
+                state: ConnectionState::Connecting {
+                    wg_buffer: AllocRingBuffer::new(128),
+                    ip_buffer: AllocRingBuffer::new(128),
+                },
+                disconnected_at: None,
+                buffer_pool: self.buffer_pool.clone(),
+                last_proactive_handshake_sent_at: None,
+                first_handshake_completed_at: None,
             },
-            disconnected_at: None,
-            buffer_pool: self.buffer_pool.clone(),
-            last_proactive_handshake_sent_at: None,
-            first_handshake_completed_at: None,
-        }
+        )
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
@@ -1075,7 +1073,7 @@ where
             &mut self.pending_events,
         );
 
-        let connection = self.init_connection(
+        let (index, connection) = self.init_connection(
             cid,
             agent,
             remote,
@@ -1086,7 +1084,7 @@ where
         );
         let duration_since_intent = connection.duration_since_intent(now);
 
-        let existing = self.connections.established.insert(cid, connection);
+        let existing = self.connections.insert_established(cid, index, connection);
 
         tracing::info!(?duration_since_intent, remote = %hex::encode(remote.as_bytes()), "Signalling protocol completed");
 
@@ -1146,7 +1144,7 @@ where
             &mut self.pending_events,
         );
 
-        let connection = self.init_connection(
+        let (index, connection) = self.init_connection(
             cid,
             agent,
             remote,
@@ -1155,7 +1153,7 @@ where
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
         );
-        let existing = self.connections.established.insert(cid, connection);
+        let existing = self.connections.insert_established(cid, index, connection);
 
         debug_assert!(existing.is_none());
 
@@ -1342,12 +1340,27 @@ where
         self.established.iter().map(move |(id, c)| (*id, c.stats))
     }
 
-    fn insert_established(&mut self, id: TId, connection: Connection<RId>) {
-        self.established.insert(id, connection);
+    fn insert_established(
+        &mut self,
+        id: TId,
+        index: u32,
+        connection: Connection<RId>,
+    ) -> Option<Connection<RId>> {
+        let existing = self.established.insert(id, connection);
+
+        debug_assert_eq!(
+            index >> 24,
+            0,
+            "The 8 most-significant bits should always be zero."
+        );
 
         // Remove previous mappings for connection.
         self.established_by_wireguard_session_index
             .retain(|_, c| c != &id);
+        self.established_by_wireguard_session_index
+            .insert(index, id);
+
+        existing
     }
 
     fn agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, RId)> {
@@ -1391,6 +1404,10 @@ where
         &mut self,
         index: u32,
     ) -> Option<(TId, &mut Connection<RId>)> {
+        // Drop the 8 least-significant bits. Those are used by boringtun to identify individual sessions.
+        // In order to find the original `Tunn` instance, we just want to compare the higher 24 bits.
+        let index = index >> 8;
+
         let id = self.established_by_wireguard_session_index.get(&index)?;
         let connection = self.established.get_mut(id)?;
 
@@ -1956,7 +1973,6 @@ where
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
         transmits: &mut VecDeque<Transmit>,
-        established_by_wireguard_session_index: &mut BTreeMap<u32, TId>,
     ) where
         TId: Copy + Ord + fmt::Display,
         RId: Copy + Ord + fmt::Display,
@@ -2185,16 +2201,6 @@ where
                 dst: encode_ok.socket,
                 payload: self.buffer_pool.pull_initialised(&data_channel_packet),
             });
-        }
-
-        while let Some(event) = self.tunnel.poll_event() {
-            match event {
-                boringtun::noise::Event::NewLocalSessionIndex { local_idx } => {
-                    tracing::debug!(%cid, %local_idx, "Associating boringtun session with connection");
-
-                    established_by_wireguard_session_index.insert(local_idx, cid);
-                }
-            }
         }
     }
 
