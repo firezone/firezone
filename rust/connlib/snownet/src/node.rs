@@ -736,6 +736,7 @@ where
             disconnected_at: None,
             buffer_pool: self.buffer_pool.clone(),
             last_proactive_handshake_sent_at: None,
+            first_handshake_completed_at: None,
         }
     }
 
@@ -879,7 +880,7 @@ where
             return ControlFlow::Break(Err(anyhow::Error::msg("Not a WireGuard packet")));
         };
 
-        let (cid, conn) = match parsed_packet {
+        let (cid, conn) = match &parsed_packet {
             // When receiving a handshake, we need to look-up the peer by its public key because we don't have a session-index mapping yet.
             Packet::HandshakeInit(handshake_init) => {
                 let handshake = match boringtun::noise::handshake::parse_handshake_anon(
@@ -911,7 +912,7 @@ where
             | Packet::PacketData(PacketData { receiver_idx, .. }) => {
                 let Some((cid, connection)) = self
                     .connections
-                    .get_established_mut_session_index(receiver_idx)
+                    .get_established_mut_session_index(*receiver_idx)
                 else {
                     return ControlFlow::Break(Err(anyhow::Error::msg(format!(
                         "Received packet for unknown session index: {receiver_idx}"
@@ -922,8 +923,6 @@ where
             }
         };
 
-        let handshake_complete_before_decapsulate = conn.wg_handshake_complete(now);
-
         let control_flow = conn.decapsulate(
             cid,
             from.ip(),
@@ -933,10 +932,15 @@ where
             now,
         );
 
-        let handshake_complete_after_decapsulate = conn.wg_handshake_complete(now);
+        if let ControlFlow::Break(Ok(())) = &control_flow
+            && conn.first_handshake_completed_at.is_none()
+            && matches!(
+                parsed_packet,
+                Packet::HandshakeInit(_) | Packet::HandshakeResponse(_)
+            )
+        {
+            conn.first_handshake_completed_at = Some(now);
 
-        // I can't think of a better way to detect this ...
-        if !handshake_complete_before_decapsulate && handshake_complete_after_decapsulate {
             tracing::info!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 
             self.pending_events
@@ -1689,6 +1693,7 @@ struct Connection<RId> {
     stats: ConnectionStats,
     intent_sent_at: Instant,
     signalling_completed_at: Instant,
+    first_handshake_completed_at: Option<Instant>,
 
     buffer: Vec<u8>,
 
@@ -1912,10 +1917,6 @@ impl<RId> Connection<RId>
 where
     RId: PartialEq + Eq + Hash + fmt::Debug + fmt::Display + Copy + Ord,
 {
-    fn wg_handshake_complete(&self, now: Instant) -> bool {
-        self.tunnel.time_since_last_handshake_at(now).is_some()
-    }
-
     fn duration_since_intent(&self, now: Instant) -> Duration {
         now.duration_since(self.intent_sent_at)
     }
