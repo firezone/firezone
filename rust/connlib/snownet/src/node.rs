@@ -2371,7 +2371,7 @@ where
         RId: Copy,
     {
         let Some(socket) = self.socket() else {
-            tracing::error!("Cannot initiate WG session without a socket");
+            tracing::debug!("Cannot initiate WG session without a socket");
             return;
         };
 
