@@ -1,11 +1,11 @@
 defmodule Domain.Changes.Hooks.ClientsTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Clients
-  alias Domain.{Clients, PubSub}
+  alias Domain.{Changes.Change, Clients, Flows, PubSub}
 
   describe "insert/1" do
     test "returns :ok" do
-      assert :ok == on_insert(%{})
+      assert :ok == on_insert(0, %{})
     end
   end
 
@@ -22,8 +22,8 @@ defmodule Domain.Changes.Hooks.ClientsTest do
         "account_id" => client.account_id
       }
 
-      assert :ok == on_update(old_data, data)
-      assert_receive {:deleted, %Clients.Client{} = deleted_client}
+      assert :ok == on_update(0, old_data, data)
+      assert_receive %Change{op: :delete, old_struct: %Clients.Client{} = deleted_client, lsn: 0}
       assert deleted_client.id == client.id
     end
 
@@ -35,9 +35,15 @@ defmodule Domain.Changes.Hooks.ClientsTest do
       old_data = %{"id" => client.id, "name" => "Old Name", "account_id" => client.account_id}
       data = %{"id" => client.id, "name" => "New Name", "account_id" => client.account_id}
 
-      assert :ok == on_update(old_data, data)
+      assert :ok == on_update(0, old_data, data)
 
-      assert_receive {:updated, %Clients.Client{} = old_client, %Clients.Client{} = new_client}
+      assert_receive %Change{
+        op: :update,
+        old_struct: %Clients.Client{} = old_client,
+        struct: %Clients.Client{} = new_client,
+        lsn: 0
+      }
+
       assert old_client.name == "Old Name"
       assert new_client.name == "New Name"
       assert new_client.id == client.id
@@ -57,11 +63,18 @@ defmodule Domain.Changes.Hooks.ClientsTest do
       data = %{"id" => client.id, "verified_at" => nil, "account_id" => client.account_id}
 
       assert flow = Fixtures.Flows.create_flow(client: client, account: account)
-      assert :ok == on_update(old_data, data)
-      assert_receive {:updated, %Clients.Client{}, %Clients.Client{} = new_client}
+      assert :ok == on_update(0, old_data, data)
+
+      assert_receive %Change{
+        op: :update,
+        old_struct: %Clients.Client{},
+        struct: %Clients.Client{} = new_client,
+        lsn: 0
+      }
+
       assert is_nil(new_client.verified_at)
       assert new_client.id == client.id
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      refute Repo.get_by(Flows.Flow, id: flow.id)
     end
   end
 
@@ -73,8 +86,8 @@ defmodule Domain.Changes.Hooks.ClientsTest do
 
       old_data = %{"id" => client.id, "account_id" => client.account_id}
 
-      assert :ok == on_delete(old_data)
-      assert_receive {:deleted, %Clients.Client{} = deleted_client}
+      assert :ok == on_delete(0, old_data)
+      assert_receive %Change{op: :delete, old_struct: %Clients.Client{} = deleted_client, lsn: 0}
       assert deleted_client.id == client.id
     end
 
@@ -85,8 +98,8 @@ defmodule Domain.Changes.Hooks.ClientsTest do
       old_data = %{"id" => client.id, "account_id" => client.account_id}
 
       assert flow = Fixtures.Flows.create_flow(client: client, account: account)
-      assert :ok == on_delete(old_data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      assert :ok == on_delete(0, old_data)
+      refute Repo.get_by(Flows.Flow, id: flow.id)
     end
   end
 end

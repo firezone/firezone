@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Tokens do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, PubSub, Tokens}
+  alias Domain.{Flows, PubSub, Tokens}
   import Domain.SchemaHelpers
 
   @impl true
@@ -23,18 +23,18 @@ defmodule Domain.Changes.Hooks.Tokens do
   def on_update(_lsn, _old_data, _new_data), do: :ok
 
   @impl true
-  def on_delete(lsn, old_data) do
+  def on_delete(_lsn, old_data) do
     token = struct_from_params(Tokens.Token, old_data)
-    change = %Change{lsn: lsn, op: :delete, old_struct: token}
-
-    # Disconnect all sockets using this token
-    disconnect_socket(token)
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
-    Domain.Flows.delete_flows_for(token)
+    Flows.delete_flows_for(token)
 
-    PubSub.Account.broadcast(token.account_id, change)
+    # We don't need to broadcast deleted tokens since the disconnect_socket/1
+    # function will handle any disconnects for us directly.
+
+    # Disconnect all sockets using this token
+    disconnect_socket(token)
   end
 
   # This is a special message that disconnects all sockets using this token,
@@ -42,6 +42,6 @@ defmodule Domain.Changes.Hooks.Tokens do
   defp disconnect_socket(token) do
     topic = Domain.Tokens.socket_id(token.id)
     payload = %Phoenix.Socket.Broadcast{topic: topic, event: "disconnect"}
-    Domain.PubSub.broadcast(topic, payload)
+    PubSub.broadcast(topic, payload)
   end
 end

@@ -1,22 +1,24 @@
 defmodule Domain.Changes.Hooks.TokensTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Tokens
+  alias Domain.{Flows, PubSub}
 
   describe "insert/1" do
     test "returns :ok" do
-      assert :ok == on_insert(%{})
+      assert :ok == on_insert(0, %{})
     end
   end
 
   describe "update/2" do
     test "returns :ok for email token updates" do
-      assert :ok = on_update(%{"type" => "email"}, %{"type" => "email"})
+      assert :ok = on_update(0, %{"type" => "email"}, %{"type" => "email"})
     end
 
-    test "soft-delete broadcasts deleted token" do
+    test "soft-delete broadcasts disconnect" do
       account = Fixtures.Accounts.create_account()
       token = Fixtures.Tokens.create_token(account: account)
-      :ok = Domain.PubSub.Account.subscribe(account.id)
+
+      :ok = PubSub.subscribe("sessions:#{token.id}")
 
       old_data = %{
         "id" => token.id,
@@ -25,13 +27,14 @@ defmodule Domain.Changes.Hooks.TokensTest do
         "deleted_at" => nil
       }
 
-      data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
+      assert :ok == on_delete(0, old_data)
 
-      assert :ok == on_update(old_data, data)
-      assert_receive {:deleted, %Domain.Tokens.Token{} = deleted_token}
-      assert deleted_token.id == old_data["id"]
-      assert deleted_token.account_id == old_data["account_id"]
-      assert deleted_token.type == old_data["type"]
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: topic,
+        event: "disconnect"
+      }
+
+      assert topic == "sessions:#{token.id}"
     end
 
     test "soft-delete deletes flows" do
@@ -49,20 +52,21 @@ defmodule Domain.Changes.Hooks.TokensTest do
 
       assert flow = Fixtures.Flows.create_flow(account: account, token: token)
       assert flow.token_id == token.id
-      assert :ok = on_update(old_data, data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      assert :ok = on_update(0, old_data, data)
+      refute Repo.get_by(Flows.Flow, id: flow.id)
     end
 
     test "regular update returns :ok" do
-      assert :ok = on_update(%{}, %{})
+      assert :ok = on_update(0, %{}, %{})
     end
   end
 
   describe "delete/1" do
-    test "broadcasts deleted token" do
+    test "broadcasts disconnect message" do
       account = Fixtures.Accounts.create_account()
       token = Fixtures.Tokens.create_token(account: account)
-      :ok = Domain.PubSub.Account.subscribe(account.id)
+
+      :ok = PubSub.subscribe("sessions:#{token.id}")
 
       old_data = %{
         "id" => token.id,
@@ -71,12 +75,14 @@ defmodule Domain.Changes.Hooks.TokensTest do
         "deleted_at" => nil
       }
 
-      assert :ok == on_delete(old_data)
+      assert :ok == on_delete(0, old_data)
 
-      assert_receive {:deleted, %Domain.Tokens.Token{} = deleted_token}
-      assert deleted_token.id == old_data["id"]
-      assert deleted_token.account_id == old_data["account_id"]
-      assert deleted_token.type == old_data["type"]
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: topic,
+        event: "disconnect"
+      }
+
+      assert topic == "sessions:#{token.id}"
     end
 
     test "deletes flows" do
@@ -91,8 +97,8 @@ defmodule Domain.Changes.Hooks.TokensTest do
       }
 
       assert flow = Fixtures.Flows.create_flow(account: account, token: token)
-      assert :ok = on_delete(old_data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
+      assert :ok = on_delete(0, old_data)
+      refute Repo.get_by(Flows.Flow, id: flow.id)
     end
   end
 end
