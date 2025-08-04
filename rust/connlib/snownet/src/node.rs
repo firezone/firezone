@@ -886,7 +886,7 @@ where
                 let handshake = match boringtun::noise::handshake::parse_handshake_anon(
                     &self.private_key,
                     &self.public_key,
-                    &handshake_init,
+                    handshake_init,
                 )
                 .context("Failed to parse handshake init")
                 {
