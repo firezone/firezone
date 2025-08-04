@@ -113,8 +113,15 @@ struct Cli {
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
     // (Since we run as root and the env var on a headless system is probably stored
     // on disk somewhere anyway.)
-    #[arg(default_value = known_dirs::headless_client_token_path().expect("Failed to compute default token path").display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
+    #[arg(default_value = default_token_path(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
+}
+
+fn default_token_path() -> String {
+    known_dirs::headless_client_token_path()
+        .expect("Failed to compute default token path")
+        .display()
+        .to_string()
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
