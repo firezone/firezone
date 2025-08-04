@@ -1,6 +1,7 @@
 mod dns_resource_nat;
 mod resource;
 
+use bufferpool::BufferPool;
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
 pub(crate) use resource::{CidrResource, Resource};
@@ -31,7 +32,7 @@ use crate::ClientEvent;
 use crate::peer::GatewayOnClient;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
-use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
+use snownet::{BufferProvider, ClientNode, NoTurnServers, RelaySocket};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
@@ -133,6 +134,7 @@ pub struct ClientState {
 
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
+
     /// Tracks the TCP stream (i.e. socket-pair) on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
     tcp_dns_streams_by_upstream_and_query_id: HashMap<(SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
@@ -141,9 +143,10 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
+    buffer_pool: BufferPool<Vec<u8>>,
+
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
-    buffered_transmits: VecDeque<Transmit>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
 }
 
@@ -205,7 +208,6 @@ impl ClientState {
             udp_dns_sockets_by_upstream_and_query_id: Default::default(),
             stub_resolver: Default::default(),
             disabled_resources: Default::default(),
-            buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             upstream_dns: Default::default(),
@@ -215,6 +217,7 @@ impl ClientState {
             tcp_dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
+            buffer_pool: BufferPool::new(ip_packet::MAX_IP_SIZE, "client-state"),
         }
     }
 
@@ -378,18 +381,18 @@ impl ClientState {
     ///
     /// Most of these packets will be application traffic that needs to be encrypted and sent through a WireGuard tunnel.
     /// Some of it may be processed directly, for example DNS queries.
-    /// In that case, this function will return `None` and you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
     pub(crate) fn handle_tun_input(
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Option<snownet::Transmit> {
+        buffer_provider: &mut impl BufferProvider,
+    ) {
         let non_dns_packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => return None,
+            ControlFlow::Break(()) => return,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
         };
 
-        self.encapsulate(non_dns_packet, now)
+        self.encapsulate(non_dns_packet, now, buffer_provider);
     }
 
     /// Handles UDP packets received on the network interface.
@@ -425,7 +428,7 @@ impl ClientState {
                 fz_p2p_control,
                 &mut self.dns_resource_nat,
                 &mut self.node,
-                &mut self.buffered_transmits,
+                &mut self.buffer_pool.clone(),
                 now,
             );
             return None;
@@ -499,31 +502,36 @@ impl ClientState {
         }
     }
 
-    fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
+    fn encapsulate(
+        &mut self,
+        mut packet: IpPacket,
+        now: Instant,
+        buffer_provider: &mut impl BufferProvider,
+    ) {
         let dst = packet.destination();
 
         if is_definitely_not_a_resource(dst) {
-            return None;
+            return;
         }
 
         let peer = if is_peer(dst) {
             let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
                 tracing::trace!(?packet, "Unknown peer");
-                return None;
+                return;
             };
 
             peer
         } else {
             let Some(resource) = self.get_resource_by_destination(dst) else {
                 tracing::trace!(?packet, "Unknown resource");
-                return None;
+                return;
             };
 
             let Some(peer) =
                 peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
             else {
                 self.on_not_connected_resource(resource, packet, now);
-                return None;
+                return;
             };
 
             peer
@@ -533,20 +541,21 @@ impl ClientState {
         // Re-send if older than X.
 
         if let Some((domain, _)) = self.stub_resolver.resolve_resource_by_ip(&dst) {
-            packet = self
+            let Some(p) = self
                 .dns_resource_nat
-                .handle_outgoing(peer.id(), domain, packet, now)?;
+                .handle_outgoing(peer.id(), domain, packet, now)
+            else {
+                return;
+            };
+
+            packet = p
         }
 
         let gid = peer.id();
 
-        let transmit = self
-            .node
-            .encapsulate(gid, packet, now)
-            .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
-            .ok()??;
-
-        Some(transmit)
+        if let Err(e) = self.node.encapsulate(gid, packet, now, buffer_provider) {
+            tracing::debug!(%gid, "Failed to encapsulate: {e:#}")
+        }
     }
 
     fn try_queue_udp_dns_response(
@@ -678,7 +687,7 @@ impl ClientState {
                         gid,
                         now,
                         &mut self.node,
-                        &mut self.buffered_transmits,
+                        &mut self.buffer_pool.clone(),
                     );
                 }
             }
@@ -700,7 +709,7 @@ impl ClientState {
                 gid,
                 now,
                 &mut self.node,
-                &mut self.buffered_transmits,
+                &mut self.buffer_pool.clone(),
             )
         }
 
@@ -1045,11 +1054,7 @@ impl ClientState {
             // Check if the client wants to emit any packets.
             if let Some(packet) = self.tcp_dns_client.poll_outbound() {
                 // All packets from the TCP DNS client _should_ go through the tunnel.
-                let Some(transmit) = self.encapsulate(packet, now) else {
-                    continue;
-                };
-
-                self.buffered_transmits.push_back(transmit);
+                self.encapsulate(packet, now, &mut self.buffer_pool.clone());
                 continue;
             }
 
@@ -1089,7 +1094,7 @@ impl ClientState {
                 gid,
                 now,
                 &mut self.node,
-                &mut self.buffered_transmits,
+                &mut self.buffer_pool.clone(),
             );
         }
     }
@@ -1521,9 +1526,7 @@ impl ClientState {
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
-        self.buffered_transmits
-            .pop_front()
-            .or_else(|| self.node.poll_transmit())
+        self.node.poll_transmit()
     }
 
     pub(crate) fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
@@ -1797,18 +1800,11 @@ fn encapsulate_and_buffer(
     gid: GatewayId,
     now: Instant,
     node: &mut ClientNode<GatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit>,
+    buffer_provider: &mut impl BufferProvider,
 ) {
-    let Some(transmit) = node
-        .encapsulate(gid, packet, now)
-        .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
-        .ok()
-        .flatten()
-    else {
-        return;
-    };
-
-    buffered_transmits.push_back(transmit);
+    if let Err(e) = node.encapsulate(gid, packet, now, buffer_provider) {
+        tracing::debug!(%gid, "Failed to encapsulate: {e}")
+    }
 }
 
 fn handle_p2p_control_packet(
@@ -1816,7 +1812,7 @@ fn handle_p2p_control_packet(
     fz_p2p_control: ip_packet::FzP2pControlSlice,
     dns_resource_nat: &mut DnsResourceNat,
     node: &mut ClientNode<GatewayId, RelayId>,
-    buffered_transmits: &mut VecDeque<Transmit>,
+    buffer_provider: &mut impl BufferProvider,
     now: Instant,
 ) {
     use p2p_control::dns_resource_nat;
@@ -1832,7 +1828,7 @@ fn handle_p2p_control_packet(
             let buffered_packets = dns_resource_nat.on_domain_status(gid, res);
 
             for packet in buffered_packets {
-                encapsulate_and_buffer(packet, gid, now, node, buffered_transmits);
+                encapsulate_and_buffer(packet, gid, now, node, buffer_provider);
             }
         }
         code => {

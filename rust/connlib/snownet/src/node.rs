@@ -12,7 +12,7 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
@@ -24,7 +24,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::net::IpAddr;
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, DerefMut};
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use std::{iter, mem};
@@ -442,7 +442,8 @@ where
         cid: TId,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<Transmit>> {
+        buffer_provider: &mut impl BufferProvider,
+    ) -> Result<()> {
         let conn = self
             .connections
             .get_established_mut(&cid)
@@ -454,7 +455,7 @@ where
                 "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions"
             );
 
-            return Ok(None);
+            return Ok(());
         }
 
         let socket = match &mut conn.state {
@@ -464,7 +465,7 @@ where
 
                 tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
 
-                return Ok(None);
+                return Ok(());
             }
             ConnectionState::Connected { peer_socket, .. } => *peer_socket,
             ConnectionState::Idle { peer_socket } => *peer_socket,
@@ -473,11 +474,18 @@ where
             }
         };
 
-        let maybe_transmit = conn
-            .encapsulate(cid, socket, packet, now, &mut self.allocations)
-            .with_context(|| format!("cid={cid}"))?;
+        conn.encapsulate(
+            cid,
+            socket,
+            packet,
+            now,
+            &mut self.allocations,
+            &mut self.buffered_transmits,
+            buffer_provider,
+        )
+        .with_context(|| format!("cid={cid}"))?;
 
-        Ok(maybe_transmit)
+        Ok(())
     }
 
     /// Returns a pending [`Event`] from the pool.
@@ -1909,8 +1917,72 @@ enum PeerSocket {
 }
 
 impl PeerSocket {
-    fn send_from_relay(&self) -> bool {
-        matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
+    fn packet_src(&self) -> Option<SocketAddr> {
+        match self {
+            PeerSocket::PeerToPeer { source, .. } | PeerSocket::PeerToRelay { source, .. } => {
+                Some(*source)
+            }
+            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => None,
+        }
+    }
+
+    fn packet_dst<RId>(
+        &self,
+        relay: RId,
+        allocations: &BTreeMap<RId, Allocation>,
+    ) -> Result<SocketAddr>
+    where
+        RId: Ord,
+    {
+        let socket_addr = match self {
+            PeerSocket::PeerToPeer { dest, .. } | PeerSocket::PeerToRelay { dest, .. } => *dest,
+            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => allocations
+                .get(&relay)
+                .context("Unknown relay")?
+                .active_socket()
+                .context("No active socket")?,
+        };
+
+        Ok(socket_addr)
+    }
+
+    fn maybe_encode_channel_data_header<RId>(
+        &self,
+        relay: RId,
+        allocations: &mut BTreeMap<RId, Allocation>,
+        buffer: &mut [u8],
+        now: Instant,
+    ) -> Result<()>
+    where
+        RId: Ord,
+    {
+        match self {
+            PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => {}
+            PeerSocket::RelayToPeer { dest } | PeerSocket::RelayToRelay { dest } => {
+                allocations
+                    .get_mut(&relay)
+                    .context("Unknown relay")?
+                    .encode_channel_data_header(*dest, buffer, now);
+            }
+        };
+
+        Ok(())
+    }
+
+    fn packet_start(&self) -> usize {
+        match self {
+            PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => 0,
+            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => 4,
+        }
+    }
+
+    fn buffer_size(&self, packet: &[u8]) -> usize {
+        match self {
+            PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => packet.len() + 32,
+            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => {
+                packet.len() + 32 + 4
+            }
+        }
     }
 
     // TODO: Return `Arguments` here once we hit 1.89
@@ -2104,18 +2176,21 @@ where
                                 num_buffered = %ip_buffer.len(),
                                 "Flushing IP packets buffered during ICE"
                             );
-                            transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
-                                let transmit = self
-                                    .encapsulate(cid, remote_socket, packet, now, allocations)
-                                    .inspect_err(|e| {
-                                        tracing::debug!(
-                                            "Failed to encapsulate buffered IP packet: {e:#}"
-                                        )
-                                    })
-                                    .ok()??;
-
-                                Some(transmit)
-                            }));
+                            for packet in ip_buffer {
+                                if let Err(e) = self.encapsulate(
+                                    cid,
+                                    remote_socket,
+                                    packet,
+                                    now,
+                                    allocations,
+                                    transmits,
+                                    &mut self.buffer_pool.clone(),
+                                ) {
+                                    tracing::debug!(
+                                        "Failed to encapsulate buffered IP packet: {e:#}"
+                                    )
+                                }
+                            }
 
                             self.state = ConnectionState::Connected {
                                 peer_socket: remote_socket,
@@ -2265,66 +2340,66 @@ where
         packet: IpPacket,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
-    ) -> Result<Option<Transmit>>
+        transmits: &mut VecDeque<Transmit>,
+        buffer_provider: &mut impl BufferProvider,
+    ) -> Result<()>
     where
         TId: fmt::Display,
     {
         self.state.on_outgoing(cid, &mut self.agent, &packet, now);
 
-        let packet_start = if socket.send_from_relay() { 4 } else { 0 };
+        let packet_slice = packet.packet();
 
-        let mut buffer = self.buffer_pool.pull();
-        buffer.resize(ip_packet::MAX_FZ_PAYLOAD, 0);
+        let packet_src = socket.packet_src();
+        let packet_dst = socket.packet_dst(self.relay.id, allocations)?;
+        let packet_start = socket.packet_start();
+        let buffer_len = socket.buffer_size(packet_slice);
 
-        let len =
-            match self
-                .tunnel
-                .encapsulate_at(packet.packet(), &mut buffer[packet_start..], now)
-            {
-                TunnResult::Done => return Ok(None),
-                TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
-                TunnResult::WriteToNetwork(packet) => packet.len(),
-                TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
-                    unreachable!("never returned from encapsulate")
-                }
-            };
+        let mut buffer =
+            buffer_provider.get_buffer(packet_src, packet_dst, packet.ecn(), buffer_len);
 
-        let packet_end = packet_start + len;
-        buffer.truncate(packet_end);
-
-        match socket {
-            PeerSocket::PeerToPeer {
-                source,
-                dest: remote,
+        match self.tunnel.encapsulate_at(
+            packet_slice,
+            &mut buffer.as_slice_mut()[packet_start..],
+            now,
+        ) {
+            TunnResult::Done => {
+                socket.maybe_encode_channel_data_header(
+                    self.relay.id,
+                    allocations,
+                    buffer.as_slice_mut(),
+                    now,
+                )?;
             }
-            | PeerSocket::PeerToRelay {
-                source,
-                dest: remote,
-            } => Ok(Some(Transmit {
-                src: Some(source),
-                dst: remote,
-                payload: buffer,
-            })),
-            PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-                let Some(allocation) = allocations.get_mut(&self.relay.id) else {
-                    tracing::warn!(relay = %self.relay.id, "No allocation");
-                    return Ok(None);
-                };
-                let Some(encode_ok) =
-                    allocation.encode_channel_data_header(peer, &mut buffer[..packet_end], now)
-                else {
-                    return Ok(None);
+            TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
+            TunnResult::WriteToNetwork(packet) => {
+                let mut packet = if packet_start > 0 {
+                    channel_data_packet_buffer(packet)
+                } else {
+                    packet.to_vec()
                 };
 
-                buffer.truncate(packet_end);
+                socket.maybe_encode_channel_data_header(
+                    self.relay.id,
+                    allocations,
+                    &mut packet,
+                    now,
+                )?;
 
-                Ok(Some(Transmit {
-                    src: None,
-                    dst: encode_ok.socket,
-                    payload: buffer,
-                }))
+                buffer.discard(); // We ended up not using the buffer.
+
+                transmits.push_back(Transmit {
+                    src: packet_src,
+                    dst: packet_dst,
+                    payload: self.buffer_pool.pull_initialised(&packet),
+                });
             }
-        }
+            TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
+                unreachable!("never returned from encapsulate")
+            }
+        };
+
+        Ok(())
     }
 
     fn decapsulate<TId>(
@@ -2506,6 +2581,47 @@ where
     fn is_idle(&self) -> bool {
         matches!(self.state, ConnectionState::Idle { .. })
     }
+}
+
+pub trait BufferProvider {
+    type Buffer<'a>: BufferRef<'a>
+    where
+        Self: 'a;
+
+    fn get_buffer<'a>(
+        &'a mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        ecn: Ecn,
+        len: usize,
+    ) -> Self::Buffer<'a>;
+}
+
+pub trait BufferRef<'a>: Sized {
+    fn as_slice_mut(&mut self) -> &mut [u8];
+    fn discard(self);
+}
+
+impl BufferProvider for BufferPool<Vec<u8>> {
+    type Buffer<'a> = Buffer<Vec<u8>>;
+
+    fn get_buffer(
+        &mut self,
+        _: Option<SocketAddr>,
+        _: SocketAddr,
+        _: Ecn,
+        _: usize,
+    ) -> Self::Buffer<'_> {
+        self.pull()
+    }
+}
+
+impl BufferRef<'_> for Buffer<Vec<u8>> {
+    fn as_slice_mut(&mut self) -> &mut [u8] {
+        self.deref_mut()
+    }
+
+    fn discard(self) {}
 }
 
 #[must_use]

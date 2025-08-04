@@ -160,6 +160,10 @@ impl Io {
         self.nameservers.fastest()
     }
 
+    pub fn gso_queue_mut(&mut self) -> &mut GsoQueue {
+        &mut self.gso_queue
+    }
+
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
