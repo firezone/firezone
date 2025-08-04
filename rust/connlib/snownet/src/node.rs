@@ -2356,7 +2356,7 @@ where
         let buffer_len = socket.buffer_size(packet_slice);
 
         let mut buffer =
-            buffer_provider.get_buffer(packet_src, packet_dst, packet.ecn(), buffer_len);
+            buffer_provider.get_buffer(packet_src, packet_dst, packet.ecn(), buffer_len.max(148));
 
         match self.tunnel.encapsulate_at(
             packet_slice,
