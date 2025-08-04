@@ -45,6 +45,13 @@ pub fn runtime() -> Option<PathBuf> {
     Some(dirs::runtime_dir()?.join(BUNDLE_ID).join("data"))
 }
 
+/// e.g. `/run/dev.firezone.client`
+///
+/// Crash handler socket and other temp files go here
+pub fn global_runtime() -> PathBuf {
+    PathBuf::from("/run").join(BUNDLE_ID)
+}
+
 /// e.g. `/home/alice/.local/share/dev.firezone.client/data`
 ///
 /// Things like actor name are stored here because they're kind of config,
