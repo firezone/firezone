@@ -1,6 +1,5 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::known_dirs;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 

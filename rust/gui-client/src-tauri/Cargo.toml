@@ -36,6 +36,7 @@ hex = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
 keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", "windows-native"] }
+known-dirs = { workspace = true }
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
 phoenix-channel = { workspace = true }

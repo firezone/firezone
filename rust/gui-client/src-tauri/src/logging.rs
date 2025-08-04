@@ -1,7 +1,6 @@
 //! Everything for logging to files, zipping up the files for export, and counting the files
 
 use anyhow::{Context as _, Result, bail};
-use firezone_bin_shared::known_dirs;
 use firezone_logging::FilterReloadHandle;
 use serde::Serialize;
 use std::{
@@ -182,8 +181,7 @@ pub(crate) fn get_log_filter() -> Result<String> {
     }
 
     if let Ok(filter) =
-        std::fs::read_to_string(firezone_bin_shared::known_dirs::tunnel_log_filter()?)
-            .map(|s| s.trim().to_string())
+        std::fs::read_to_string(known_dirs::tunnel_log_filter()?).map(|s| s.trim().to_string())
     {
         return Ok(filter);
     }

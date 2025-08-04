@@ -7,7 +7,7 @@ use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TOKEN_ENV_KEY, TunDeviceManager, device_id, device_info,
-    known_dirs, new_dns_notifier, new_network_notifier,
+    new_dns_notifier, new_network_notifier,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };

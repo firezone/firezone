@@ -16,15 +16,15 @@ pub use platform::{
 };
 
 #[cfg(target_os = "linux")]
-#[path = "known_dirs/linux.rs"]
+#[path = "platform/linux.rs"]
 pub mod platform;
 
 #[cfg(target_os = "macos")]
-#[path = "known_dirs/macos.rs"]
+#[path = "platform/macos.rs"]
 pub mod platform;
 
 #[cfg(target_os = "windows")]
-#[path = "known_dirs/windows.rs"]
+#[path = "platform/windows.rs"]
 pub mod platform;
 
 // TODO: Change this into something more idiomatic per platform.
@@ -53,10 +53,9 @@ mod tests {
             settings(),
         ] {
             let dir = dir.expect("should have gotten Some(path)");
-            assert!(
-                dir.components()
-                    .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref()))
-            );
+            assert!(dir
+                .components()
+                .any(|x| x == std::path::Component::Normal("dev.firezone.client".as_ref())));
         }
     }
 }

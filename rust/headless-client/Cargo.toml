@@ -20,6 +20,7 @@ firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
+known-dirs = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
 opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }

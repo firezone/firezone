@@ -19,6 +19,7 @@ hex = { workspace = true }
 hex-literal = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
+known-dirs = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 sha2 = { workspace = true }

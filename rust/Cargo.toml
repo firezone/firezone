@@ -22,6 +22,7 @@ members = [
     "gui-client/src-admx-macro",
     "gui-client/src-tauri",
     "headless-client",
+    "known-dirs",
     "logging",
     "relay/ebpf-shared",
     "relay/ebpf-turn-router",
@@ -99,6 +100,7 @@ ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.14"
 jni = "0.21.1"
 keyring = "3.6.2"
+known-dirs = { path = "known-dirs" }
 known-folders = "1.2.0"
 l3-tcp = { path = "connlib/l3-tcp" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
