@@ -24,12 +24,11 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
 
 /// User-specific logs directory
 pub fn logs() -> Option<PathBuf> {
-    Some(
-        home_dir()?
-            .join("Library/Caches")
-            .join(BUNDLE_ID)
-            .join("logs"),
-    )
+    Some(cache()?.join("logs"))
+}
+
+pub fn cache() -> Option<PathBuf> {
+    Some(home_dir()?.join("Library/Caches").join(NAMESPACE))
 }
 
 /// Runtime directory for temporary files

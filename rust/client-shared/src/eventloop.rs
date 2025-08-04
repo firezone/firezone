@@ -13,6 +13,7 @@ use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyPa
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 use std::{
@@ -32,6 +33,7 @@ pub struct Eventloop {
     event_tx: tokio::sync::mpsc::Sender<Event>,
 
     dns_resource_records: BTreeSet<DnsResourceRecord>,
+    cache_dir: PathBuf,
 
     logged_permission_denied: bool,
 }
@@ -86,8 +88,9 @@ impl Eventloop {
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
         event_tx: tokio::sync::mpsc::Sender<Event>,
+        cache_dir: PathBuf,
     ) -> Self {
-        let dns_resource_records = dns_resource_record_cache::load()
+        let dns_resource_records = dns_resource_record_cache::load(cache_dir.clone())
             .inspect_err(|e| tracing::debug!("Failed to load DNS resource records cache: {e:#}"))
             .unwrap_or_default();
 
@@ -104,6 +107,7 @@ impl Eventloop {
             cmd_rx,
             event_tx,
             dns_resource_records,
+            cache_dir,
             logged_permission_denied: false,
         }
     }
@@ -114,7 +118,10 @@ impl Eventloop {
         loop {
             match self.cmd_rx.poll_recv(cx) {
                 Poll::Ready(None | Some(Command::Stop)) => {
-                    match dns_resource_record_cache::save(self.dns_resource_records.clone()) {
+                    match dns_resource_record_cache::save(
+                        self.dns_resource_records.clone(),
+                        self.cache_dir.clone(),
+                    ) {
                         Ok(()) => tracing::debug!("Saved DNS resource records cache"),
                         Err(e) => {
                             tracing::debug!("Failed to save DNS resource records cache: {e:#}")

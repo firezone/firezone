@@ -267,6 +267,7 @@ fn main() -> Result<()> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
+            known_dirs::cache().context("No cache dir")?,
             rt.handle().clone(),
         );
 

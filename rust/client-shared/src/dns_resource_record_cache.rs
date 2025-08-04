@@ -1,14 +1,14 @@
-use std::{collections::BTreeSet, net::IpAddr};
+use std::{collections::BTreeSet, net::IpAddr, path::PathBuf};
 
 use anyhow::{Context, Result};
 use connlib_model::ResourceId;
 use dns_types::DomainName;
-use firezone_bin_shared::known_dirs;
 use firezone_tunnel::DnsResourceRecord;
 use serde::{Deserialize, Serialize};
 
-pub fn load() -> Result<BTreeSet<DnsResourceRecord>> {
-    let path = known_dirs::dns_resource_records_cache()?;
+pub fn load(cache_dir: PathBuf) -> Result<BTreeSet<DnsResourceRecord>> {
+    let path = cache_dir.join("dns_resource_records.json");
+
     let json = std::fs::read_to_string(path).context("Failed to read file")?;
 
     let list = serde_json::from_str::<Vec<Format>>(&json)
@@ -26,8 +26,8 @@ pub fn load() -> Result<BTreeSet<DnsResourceRecord>> {
     Ok(records)
 }
 
-pub fn save(records: BTreeSet<DnsResourceRecord>) -> Result<()> {
-    let path = known_dirs::dns_resource_records_cache()?;
+pub fn save(records: BTreeSet<DnsResourceRecord>, cache_dir: PathBuf) -> Result<()> {
+    let path = cache_dir.join("dns_resource_records.json");
 
     let list = records
         .into_iter()

@@ -11,6 +11,7 @@ use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::BTreeSet;
 use std::net::IpAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use tokio::sync::mpsc::{Receiver, UnboundedSender};
@@ -45,6 +46,7 @@ impl Session {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+        cache_dir: PathBuf,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -55,6 +57,7 @@ impl Session {
             portal,
             cmd_rx,
             event_tx.clone(),
+            cache_dir,
         );
 
         let eventloop_handle = handle.spawn(std::future::poll_fn(move |cx| eventloop.poll(cx)));

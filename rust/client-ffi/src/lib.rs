@@ -90,7 +90,7 @@ impl Session {
         account_slug: String,
         device_name: String,
         os_version: String,
-        log_dir: String,
+        cache_dir: String,
         log_filter: String,
         device_info: String,
         protect_socket: Arc<dyn ProtectSocket>,
@@ -105,7 +105,7 @@ impl Session {
             account_slug,
             Some(device_name),
             Some(os_version),
-            log_dir,
+            cache_dir,
             log_filter,
             device_info,
             tcp_socket_factory,
@@ -216,7 +216,7 @@ fn connect(
     account_slug: String,
     device_name: Option<String>,
     os_version: Option<String>,
-    log_dir: String,
+    cache_dir: String,
     log_filter: String,
     device_info: String,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
@@ -225,6 +225,7 @@ fn connect(
     let device_info =
         serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
     let secret = SecretString::from(token);
+    let cache_dir = PathBuf::from(cache_dir);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(1)
@@ -239,7 +240,7 @@ fn connect(
 
     analytics::identify(RELEASE.to_owned(), Some(account_slug));
 
-    init_logging(&PathBuf::from(log_dir), log_filter)?;
+    init_logging(&cache_dir.join("logs"), log_filter)?;
     install_rustls_crypto_provider();
 
     let url = LoginUrl::client(
@@ -270,6 +271,7 @@ fn connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
+        cache_dir,
         runtime.handle().clone(),
     );
 

@@ -41,7 +41,11 @@ pub fn tunnel_service_logs() -> Option<PathBuf> {
 ///
 /// See connlib docs for details
 pub fn logs() -> Option<PathBuf> {
-    Some(app_local_data_dir().ok()?.join("data").join("logs"))
+    Some(cache()?.join("logs"))
+}
+
+pub fn cache() -> Option<PathBuf> {
+    Some(app_local_data_dir().ok()?.join("data"))
 }
 
 /// e.g. `C:\Users\Alice\AppData\Local\dev.firezone.client\data`

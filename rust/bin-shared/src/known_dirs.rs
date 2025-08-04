@@ -10,7 +10,9 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-pub use platform::{logs, runtime, session, settings, tunnel_service_config, tunnel_service_logs};
+pub use platform::{
+    cache, logs, runtime, session, settings, tunnel_service_config, tunnel_service_logs,
+};
 
 #[cfg(target_os = "linux")]
 #[path = "known_dirs/linux.rs"]
@@ -28,12 +30,6 @@ pub fn tunnel_log_filter() -> Result<PathBuf> {
     Ok(tunnel_service_config()
         .context("Failed to compute `tunnel_service_config` directory")?
         .join("log-filter"))
-}
-
-pub fn dns_resource_records_cache() -> Result<PathBuf> {
-    Ok(runtime()
-        .context("No runtime dir")?
-        .join("dns_resource_records.json"))
 }
 
 #[cfg(test)]
