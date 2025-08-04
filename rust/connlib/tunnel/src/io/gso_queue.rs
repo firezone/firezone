@@ -94,12 +94,12 @@ impl snownet::BufferProvider for GsoQueue {
 
         let (_, buffer) = batches.back_mut().expect("We just pushed an element");
 
-        return BufferRef {
+        BufferRef {
             inner: buffer,
             current_end: 0,
             chunk_size: payload_len,
             phantom_ref: PhantomData,
-        };
+        }
     }
 }
 
