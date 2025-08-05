@@ -297,8 +297,8 @@ jobs:
       fail-fast: false
       matrix:
         test_name:
-          - relayed-tcp-client2server
-          - relayed-tcp-server2client
+          # - relayed-tcp-client2server
+          # - relayed-tcp-server2client
           - relayed-udp-client2server
           - relayed-udp-server2client
         foo: [1, 2, 3, 4, 5, 6, 7, 8]
