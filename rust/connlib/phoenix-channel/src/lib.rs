@@ -3,10 +3,10 @@
 mod get_user_agent;
 mod login_url;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use std::{fmt, future, marker::PhantomData};
 use std::{io, mem};
 
@@ -47,7 +47,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TOutboundRes, TFinish> {
 
     _phantom: PhantomData<(TInboundMsg, TOutboundRes)>,
 
-    pending_join_requests: HashSet<OutboundRequestId>,
+    pending_join_requests: HashMap<OutboundRequestId, Instant>,
 
     // Stored here to allow re-connecting.
     url_prototype: Secret<LoginUrl<TFinish>>,
@@ -162,6 +162,7 @@ enum InternalError {
     Serde(serde_json::Error),
     CloseMessage,
     StreamClosed,
+    RoomJoinTimedOut,
     SocketConnection(Vec<(SocketAddr, std::io::Error)>),
     Timeout { duration: Duration },
 }
@@ -196,6 +197,7 @@ impl fmt::Display for InternalError {
             InternalError::Timeout { duration, .. } => {
                 write!(f, "operation timed out after {duration:?}")
             }
+            InternalError::RoomJoinTimedOut => write!(f, "room join timed out"),
         }
     }
 }
@@ -210,6 +212,7 @@ impl std::error::Error for InternalError {
             InternalError::CloseMessage => None,
             InternalError::StreamClosed => None,
             InternalError::Timeout { .. } => None,
+            InternalError::RoomJoinTimedOut => None,
         }
     }
 }
@@ -301,7 +304,8 @@ where
         let (request_id, msg) = self.make_message(topic, EgressControlMessage::PhxJoin(payload));
 
         self.pending_joins.push_back(msg);
-        self.pending_join_requests.insert(request_id);
+        self.pending_join_requests
+            .insert(request_id, Instant::now());
     }
 
     /// Send a message to a topic.
@@ -569,7 +573,7 @@ where
                         }
                         (Payload::Reply(Reply::Error { reason }), Some(req_id)) => {
                             if message.topic == self.login
-                                && self.pending_join_requests.contains(&req_id)
+                                && self.pending_join_requests.contains_key(&req_id)
                             {
                                 return Poll::Ready(Err(Error::LoginFailed(reason)));
                             }
@@ -588,7 +592,7 @@ where
                             }));
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
-                            if self.pending_join_requests.remove(&req_id) {
+                            if self.pending_join_requests.remove(&req_id).is_some() {
                                 tracing::info!("Joined {} room on portal", message.topic);
 
                                 // For `phx_join` requests, `reply` is empty so we can safely ignore it.
@@ -632,6 +636,15 @@ where
                     continue;
                 }
                 Poll::Pending => {}
+            }
+
+            if self
+                .pending_join_requests
+                .values()
+                .any(|sent_at| sent_at.elapsed() > Duration::from_secs(5))
+            {
+                self.reconnect_on_transient_error(InternalError::RoomJoinTimedOut);
+                continue;
             }
 
             // Priority 4: Handle heartbeats.
