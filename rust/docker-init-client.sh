@@ -5,4 +5,6 @@ if [ -f "${FIREZONE_TOKEN}" ]; then
     export FIREZONE_TOKEN
 fi
 
+export FIREZONE_DNS_CONTROL=${FIREZONE_DNS_CONTROL:-"etc-resolv-conf"}
+
 exec "$@"
