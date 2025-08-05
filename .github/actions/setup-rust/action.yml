@@ -34,7 +34,9 @@ runs:
   using: "composite"
   steps:
     - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-    - run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
+    - run: |
+        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
+        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
       shell: bash
     - name: Disable Windows Defender
       if: ${{ runner.os == 'Windows' }}
