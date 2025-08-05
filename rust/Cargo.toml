@@ -186,7 +186,7 @@ time = "0.3.37"
 tokio = "1.46"
 tokio-stream = "0.1.17"
 tokio-tungstenite = "0.27.0"
-tokio-util = "0.7.15"
+tokio-util = "0.7.16"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.3"
 tracing-core = "0.1.34"
