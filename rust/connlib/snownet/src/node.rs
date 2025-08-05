@@ -5,7 +5,7 @@ use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
-    HandshakeResponse, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
+    HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
 };
 use boringtun::x25519::PublicKey;
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
@@ -691,7 +691,7 @@ where
         remote: PublicKey,
         key: [u8; 32],
         relay: RId,
-        index: u32,
+        index: Index,
         intent_sent_at: Instant,
         now: Instant,
     ) -> Connection<RId> {
@@ -914,7 +914,7 @@ where
             | Packet::PacketCookieReply(PacketCookieReply { receiver_idx, .. })
             | Packet::PacketData(PacketData { receiver_idx, .. }) => match self
                 .connections
-                .get_established_mut_session_index(*receiver_idx)
+                .get_established_mut_session_index(Index::from_peer(*receiver_idx))
             {
                 Ok(c) => c,
                 Err(e) => return ControlFlow::Break(Err(e)),
@@ -1261,7 +1261,7 @@ struct Connections<TId, RId> {
     initial: BTreeMap<TId, InitialConnection<RId>>,
     established: BTreeMap<TId, Connection<RId>>,
 
-    established_by_wireguard_session_index: BTreeMap<u32, TId>,
+    established_by_wireguard_session_index: BTreeMap<usize, TId>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -1351,22 +1351,16 @@ where
     fn insert_established(
         &mut self,
         id: TId,
-        index: u32,
+        index: Index,
         connection: Connection<RId>,
     ) -> Option<Connection<RId>> {
         let existing = self.established.insert(id, connection);
-
-        debug_assert_eq!(
-            index >> 24,
-            0,
-            "The 8 most-significant bits should always be zero."
-        );
 
         // Remove previous mappings for connection.
         self.established_by_wireguard_session_index
             .retain(|_, c| c != &id);
         self.established_by_wireguard_session_index
-            .insert(index, id);
+            .insert(index.global(), id);
 
         existing
     }
@@ -1410,15 +1404,11 @@ where
 
     fn get_established_mut_session_index(
         &mut self,
-        index: u32,
+        index: Index,
     ) -> Result<(TId, &mut Connection<RId>)> {
-        // Drop the 8 least-significant bits. Those are used by boringtun to identify individual sessions.
-        // In order to find the original `Tunn` instance, we just want to compare the higher 24 bits.
-        let index = index >> 8;
-
         let id = self
             .established_by_wireguard_session_index
-            .get(&index)
+            .get(&index.global())
             .with_context(|| format!("No connection for with index {index}"))?;
         let connection = self
             .established

@@ -951,7 +951,7 @@ dependencies = [
 [[package]]
 name = "boringtun"
 version = "0.6.1"
-source = "git+https://github.com/firezone/boringtun?branch=master#bda7276b68396a591b454605eff30717e692a194"
+source = "git+https://github.com/firezone/boringtun?branch=master#ed1de7c6ddf071d2895309f0fb153e9afb82fc99"
 dependencies = [
  "aead",
  "base64 0.22.1",
