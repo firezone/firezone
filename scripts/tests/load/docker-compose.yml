@@ -1,6 +1,6 @@
 # Consolidate repetitive client config
 x-common-config: &common-config
-  image: ghcr.io/firezone/client:foobar
+  image: ${CLIENT_IMAGE}:${CLIENT_TAG}
   environment: &common-config-environment
     FIREZONE_DNS_CONTROL: etc-resolv-conf
     RUST_LOG: debug
