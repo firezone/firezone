@@ -1,31 +1,59 @@
 #!/bin/bash
 
-# Install `iptables` to have it available in the compatibility tests
-docker compose exec -it client /bin/sh -c 'apk add iptables'
+function run_test() {
+  local i=$1
+  local service="client-$i"
 
-# Execute within the client container because doing so from the host is not reliable in CI.
-docker compose exec -it client /bin/sh -c 'iptables -A OUTPUT -d 172.28.0.245 -j DROP'
+  # We'll use a single 'docker compose exec' command for each container.
+  # This chains all the commands together for efficiency.
+  docker compose exec -T "$service" sh -c "
+    set -e
 
-docker compose exec -T client sh -c \
-  "curl \
-        --fail \
-        --max-time 13 \
-        --keepalive-time 1 \
-        --limit-rate 1000000 \
-        --output download.file \
-        http://download.httpbin/bytes?num=10000000" &
+    # Install iptables if it isn't already there.
+    apk add --no-cache iptables
 
-DOWNLOAD_PID=$!
+    # Add the iptables rule.
+    iptables -A OUTPUT -d 172.28.0.245 -j DROP
 
-wait $DOWNLOAD_PID || {
-  echo "Download process failed"
-  exit 1
+    # Run curl in the background and capture its PID.
+    curl \
+      --fail \
+      --max-time 13 \
+      --keepalive-time 1 \
+      --limit-rate 1000000 \
+      --output download.file \
+      http://download.httpbin/bytes?num=10000000 &
+
+    DOWNLOAD_PID=\$!
+
+    # Wait for the curl process to finish and check its exit code.
+    wait \$DOWNLOAD_PID || {
+      echo 'Download process failed for service $service'
+      exit 1
+    }
+
+    # Verify the checksum.
+    known_checksum='f5e02aa71e67f41d79023a128ca35bad86cf7b6656967bfe0884b3a3c4325eaf'
+    computed_checksum=\$(sha256sum download.file | awk '{ print \$1 }')
+
+    if [[ \"\$computed_checksum\" != \"\$known_checksum\" ]]; then
+      echo \"Checksum of downloaded file does not match for service $service\"
+      exit 1
+    fi
+
+    # Clean up the iptables rule after the test.
+    iptables -D OUTPUT -d 172.28.0.245 -j DROP
+
+    echo 'Test for service $service passed successfully.'
+  " &
 }
 
-known_checksum="f5e02aa71e67f41d79023a128ca35bad86cf7b6656967bfe0884b3a3c4325eaf"
-computed_checksum=$(docker compose client sha256sum download.file | awk '{ print $1 }')
+# Run the tests in parallel.
+for i in {1..200}; do
+  run_test "$i" &
+done
 
-if [[ "$computed_checksum" != "$known_checksum" ]]; then
-  echo "Checksum of downloaded file does not match"
-  exit 1
-fi
+# This `wait` command will wait for all background jobs (all the `run_test` calls) to complete.
+wait
+
+echo "All tests have finished."

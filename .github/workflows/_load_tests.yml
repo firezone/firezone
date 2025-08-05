@@ -57,7 +57,7 @@ jobs:
           docker compose pull relay-1
           docker compose pull relay-2
           docker compose pull gateway
-          docker compose pull client
+          docker compose pull client-1
           docker compose pull elixir
 
           docker compose up -d postgres
