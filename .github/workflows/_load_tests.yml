@@ -6,7 +6,7 @@ on:
 jobs:
   load-tests:
     name: ${{ matrix.test.name }}
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-24.04-xtreme
     permissions:
       contents: read
       id-token: write
