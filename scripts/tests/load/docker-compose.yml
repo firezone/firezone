@@ -1,0 +1,1836 @@
+# Consolidate repetitive client config
+x-common-config: &common-config
+  image: ghcr.io/firezone/client:foobar
+  environment: &common-config-environment
+    FIREZONE_DNS_CONTROL: etc-resolv-conf
+    RUST_LOG: debug
+    FIREZONE_API_URL: wss://api.firez.one
+    FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAR_ywiZQBYgABUYA.PLNlzyqMSgZlbQb1QX5EzZgYNuY9oeOddP0qDkTwtGg"
+  devices:
+    - /dev/net/tun:/dev/net/tun
+  cap_add:
+    - NET_ADMIN
+  privileged: true
+  init: true
+  sysctls:
+    - net.ipv6.conf.all.disable_ipv6=0
+
+volumes:
+  postgres-data:
+
+networks:
+  resources:
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  app:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+services:
+  postgres:
+    image: postgres:17
+    command: ["postgres", "-c", "wal_level=logical"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: firezone_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}"]
+      start_period: 20s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    ports:
+      - 5432:5432/tcp
+    networks:
+      app:
+        ipv4_address: 172.28.0.240
+
+  # CONTROL PLANE
+  api:
+    image: ${API_IMAGE}:${API_TAG}
+    hostname: api.cluster.local
+    ports:
+      - 8081:8081/tcp
+    environment:
+      # Web Server
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_WEB_PORT: "8080"
+      PHOENIX_HTTP_API_PORT: "8081"
+      PHOENIX_SECURE_COOKIES: "false"
+      # Erlang
+      ERLANG_DISTRIBUTION_PORT: 9000
+      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local"]}'
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
+      RELEASE_HOSTNAME: "api.cluster.local"
+      RELEASE_NAME: "api"
+      # Database
+      RUN_CONDITIONAL_MIGRATIONS: "true"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
+      # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Debugging
+      LOG_LEVEL: "debug"
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
+      # Feature flags
+      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
+      FEATURE_IDP_SYNC_ENABLED: "true"
+      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: "service_healthy"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    networks:
+      app:
+        ipv4_address: 172.28.0.241
+
+  elixir:
+    image: ${ELIXIR_IMAGE}:${ELIXIR_TAG}
+    hostname: elixir
+    environment:
+      # Web Server
+      WEB_EXTERNAL_URL: http://localhost:8080/
+      API_EXTERNAL_URL: http://localhost:8081/
+      PHOENIX_HTTP_WEB_PORT: "8080"
+      PHOENIX_HTTP_API_PORT: "8081"
+      # Database
+      RUN_CONDITIONAL_MIGRATIONS: "true"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      # Auth
+      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
+      # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      # Higher log level not to make seeds output too verbose
+      LOG_LEVEL: "info"
+      # Mix env should be set to prod to use secrets declared above, otherwise seeds will generate invalid tokens
+      MIX_ENV: "prod"
+      STATIC_SEEDS: "true"
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
+      OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
+      # Feature flags
+      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
+      FEATURE_IDP_SYNC_ENABLED: "true"
+      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: "service_healthy"
+    networks:
+      app:
+        ipv4_address: 172.28.0.242
+
+  # RELAYS
+  relay-1:
+    environment:
+      PUBLIC_IP4_ADDR: 172.28.0.201
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
+      RUST_LOG: debug
+      RUST_BACKTRACE: 1
+      FIREZONE_API_URL: ws://api:8081
+    image: ${RELAY_IMAGE}:${RELAY_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    depends_on:
+      api:
+        condition: "service_healthy"
+    networks:
+      app:
+        ipv4_address: 172.28.0.243
+
+  relay-2:
+    environment:
+      PUBLIC_IP4_ADDR: 172.28.0.202
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
+      RUST_LOG: debug
+      RUST_BACKTRACE: 1
+      FIREZONE_API_URL: ws://api:8081
+    image: ${RELAY_IMAGE}:${RELAY_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    depends_on:
+      api:
+        condition: "service_healthy"
+    networks:
+      app:
+        ipv4_address: 172.28.0.244
+
+  # GATEWAY
+  gateway:
+    healthcheck:
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
+    environment:
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAAH8sImUAWIAAVGA.tAm2O9FcyF67VAF3rZdwQpeADrYOIs3S2l2K51G26OM"
+      RUST_LOG: debug
+      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
+    init: true
+    image: ${GATEWAY_IMAGE}:${GATEWAY_TAG}
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
+    devices:
+      - "/dev/net/tun:/dev/net/tun"
+    depends_on:
+      api:
+        condition: "service_healthy"
+    networks:
+      app:
+        ipv4_address: 172.28.0.245
+      resources:
+        ipv4_address: 172.20.0.200
+
+  download.httpbin:
+    image: ${HTTP_TEST_SERVER_IMAGE}:${HTTP_TEST_SERVER_TAG}
+    environment:
+      PORT: 80
+    networks:
+      resources:
+        ipv4_address: 172.20.0.101
+
+  # CLIENTS
+  client-1:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.1
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-1
+  client-2:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.2
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-2
+  client-3:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.3
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-3
+  client-4:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.4
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-4
+  client-5:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.5
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-5
+  client-6:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.6
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-6
+  client-7:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.7
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-7
+  client-8:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.8
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-8
+  client-9:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.9
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-9
+  client-10:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.10
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-10
+  client-11:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.11
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-11
+  client-12:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.12
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-12
+  client-13:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.13
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-13
+  client-14:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.14
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-14
+  client-15:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.15
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-15
+  client-16:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.16
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-16
+  client-17:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.17
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-17
+  client-18:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.18
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-18
+  client-19:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.19
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-19
+  client-20:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.20
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-20
+  client-21:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.21
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-21
+  client-22:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.22
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-22
+  client-23:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.23
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-23
+  client-24:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.24
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-24
+  client-25:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.25
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-25
+  client-26:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.26
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-26
+  client-27:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.27
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-27
+  client-28:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.28
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-28
+  client-29:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.29
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-29
+  client-30:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.30
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-30
+  client-31:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.31
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-31
+  client-32:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.32
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-32
+  client-33:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.33
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-33
+  client-34:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.34
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-34
+  client-35:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.35
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-35
+  client-36:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.36
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-36
+  client-37:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.37
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-37
+  client-38:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.38
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-38
+  client-39:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.39
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-39
+  client-40:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.40
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-40
+  client-41:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.41
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-41
+  client-42:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.42
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-42
+  client-43:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.43
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-43
+  client-44:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.44
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-44
+  client-45:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.45
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-45
+  client-46:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.46
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-46
+  client-47:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.47
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-47
+  client-48:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.48
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-48
+  client-49:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.49
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-49
+  client-50:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.50
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-50
+  client-51:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.51
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-51
+  client-52:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.52
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-52
+  client-53:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.53
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-53
+  client-54:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.54
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-54
+  client-55:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.55
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-55
+  client-56:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.56
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-56
+  client-57:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.57
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-57
+  client-58:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.58
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-58
+  client-59:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.59
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-59
+  client-60:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.60
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-60
+  client-61:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.61
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-61
+  client-62:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.62
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-62
+  client-63:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.63
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-63
+  client-64:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.64
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-64
+  client-65:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.65
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-65
+  client-66:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.66
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-66
+  client-67:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.67
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-67
+  client-68:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.68
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-68
+  client-69:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.69
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-69
+  client-70:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.70
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-70
+  client-71:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.71
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-71
+  client-72:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.72
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-72
+  client-73:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.73
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-73
+  client-74:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.74
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-74
+  client-75:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.75
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-75
+  client-76:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.76
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-76
+  client-77:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.77
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-77
+  client-78:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.78
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-78
+  client-79:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.79
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-79
+  client-80:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.80
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-80
+  client-81:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.81
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-81
+  client-82:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.82
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-82
+  client-83:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.83
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-83
+  client-84:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.84
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-84
+  client-85:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.85
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-85
+  client-86:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.86
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-86
+  client-87:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.87
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-87
+  client-88:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.88
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-88
+  client-89:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.89
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-89
+  client-90:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.90
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-90
+  client-91:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.91
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-91
+  client-92:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.92
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-92
+  client-93:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.93
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-93
+  client-94:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.94
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-94
+  client-95:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.95
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-95
+  client-96:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.96
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-96
+  client-97:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.97
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-97
+  client-98:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.98
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-98
+  client-99:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.99
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-99
+  client-100:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.100
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-100
+  client-101:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.101
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-101
+  client-102:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.102
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-102
+  client-103:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.103
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-103
+  client-104:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.104
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-104
+  client-105:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.105
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-105
+  client-106:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.106
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-106
+  client-107:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.107
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-107
+  client-108:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.108
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-108
+  client-109:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.109
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-109
+  client-110:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.110
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-110
+  client-111:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.111
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-111
+  client-112:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.112
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-112
+  client-113:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.113
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-113
+  client-114:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.114
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-114
+  client-115:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.115
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-115
+  client-116:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.116
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-116
+  client-117:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.117
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-117
+  client-118:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.118
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-118
+  client-119:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.119
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-119
+  client-120:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.120
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-120
+  client-121:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.121
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-121
+  client-122:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.122
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-122
+  client-123:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.123
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-123
+  client-124:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.124
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-124
+  client-125:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.125
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-125
+  client-126:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.126
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-126
+  client-127:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.127
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-127
+  client-128:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.128
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-128
+  client-129:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.129
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-129
+  client-130:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.130
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-130
+  client-131:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.131
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-131
+  client-132:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.132
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-132
+  client-133:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.133
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-133
+  client-134:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.134
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-134
+  client-135:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.135
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-135
+  client-136:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.136
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-136
+  client-137:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.137
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-137
+  client-138:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.138
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-138
+  client-139:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.139
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-139
+  client-140:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.140
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-140
+  client-141:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.141
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-141
+  client-142:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.142
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-142
+  client-143:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.143
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-143
+  client-144:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.144
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-144
+  client-145:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.145
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-145
+  client-146:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.146
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-146
+  client-147:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.147
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-147
+  client-148:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.148
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-148
+  client-149:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.149
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-149
+  client-150:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.150
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-150
+  client-151:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.151
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-151
+  client-152:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.152
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-152
+  client-153:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.153
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-153
+  client-154:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.154
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-154
+  client-155:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.155
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-155
+  client-156:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.156
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-156
+  client-157:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.157
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-157
+  client-158:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.158
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-158
+  client-159:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.159
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-159
+  client-160:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.160
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-160
+  client-161:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.161
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-161
+  client-162:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.162
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-162
+  client-163:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.163
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-163
+  client-164:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.164
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-164
+  client-165:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.165
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-165
+  client-166:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.166
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-166
+  client-167:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.167
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-167
+  client-168:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.168
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-168
+  client-169:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.169
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-169
+  client-170:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.170
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-170
+  client-171:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.171
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-171
+  client-172:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.172
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-172
+  client-173:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.173
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-173
+  client-174:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.174
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-174
+  client-175:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.175
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-175
+  client-176:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.176
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-176
+  client-177:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.177
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-177
+  client-178:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.178
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-178
+  client-179:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.179
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-179
+  client-180:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.180
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-180
+  client-181:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.181
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-181
+  client-182:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.182
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-182
+  client-183:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.183
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-183
+  client-184:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.184
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-184
+  client-185:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.185
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-185
+  client-186:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.186
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-186
+  client-187:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.187
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-187
+  client-188:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.188
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-188
+  client-189:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.189
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-189
+  client-190:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.190
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-190
+  client-191:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.191
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-191
+  client-192:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.192
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-192
+  client-193:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.193
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-193
+  client-194:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.194
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-194
+  client-195:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.195
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-195
+  client-196:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.196
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-196
+  client-197:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.197
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-197
+  client-198:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.198
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-198
+  client-199:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.199
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-199
+  client-200:
+    <<: *common-config
+    networks:
+      app:
+        ipv4_address: 172.28.0.200
+    environment:
+      <<: *common-config-environment
+      FIREZONE_ID: client-200
