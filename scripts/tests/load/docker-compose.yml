@@ -32,7 +32,8 @@ networks:
 services:
   postgres:
     image: postgres:17
-    command: ["postgres", "-c", "wal_level=logical", "-c", "max_connections=500"]
+    command:
+      ["postgres", "-c", "wal_level=logical", "-c", "max_connections=500"]
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
