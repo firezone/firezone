@@ -175,6 +175,8 @@ services:
       FEATURE_IDP_SYNC_ENABLED: "true"
       FEATURE_REST_API_ENABLED: "true"
       FEATURE_INTERNET_RESOURCE_ENABLED: "true"
+    cap_add:
+      - NET_ADMIN # Needed to run `tc` commands to add simulated delay
     depends_on:
       vault:
         condition: "service_healthy"
