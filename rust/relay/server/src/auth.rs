@@ -166,7 +166,7 @@ pub(crate) struct Nonces {
 
 impl Nonces {
     /// How many requests a client can perform with the same nonce.
-    const NUM_REQUESTS: u64 = 100;
+    const NUM_REQUESTS: u64 = 10_000;
 
     pub(crate) fn add_new(&mut self, nonce: Uuid) {
         self.inner.insert(nonce, Self::NUM_REQUESTS);
@@ -347,7 +347,7 @@ mod tests {
 
         nonces.add_new(nonce);
 
-        for _ in 0..100 {
+        for _ in 0..10_000 {
             nonces.handle_nonce_used(nonce).unwrap();
         }
 
