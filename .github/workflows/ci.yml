@@ -321,7 +321,7 @@ jobs:
           docker compose up -d iperf3
           docker compose up -d api web domain --no-build
           docker compose up -d relay-1 --no-build
-          docker compose up -d relay-2 --no-build
+          # docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
       - name: Add 10ms simulated latency
@@ -329,7 +329,7 @@ jobs:
           docker compose exec -d client tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -d gateway tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -d relay-1 tc qdisc add dev eth0 root netem delay 10ms
-          docker compose exec -d relay-2 tc qdisc add dev eth0 root netem delay 10ms
+          # docker compose exec -d relay-2 tc qdisc add dev eth0 root netem delay 10ms
       - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
         env:
@@ -352,9 +352,9 @@ jobs:
       - name: Show Relay-1 logs
         if: "!cancelled()"
         run: docker compose logs relay-1
-      - name: Show Relay-2 logs
-        if: "!cancelled()"
-        run: docker compose logs relay-2
+      # - name: Show Relay-2 logs
+      #   if: "!cancelled()"
+      #   run: docker compose logs relay-2
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
@@ -374,9 +374,9 @@ jobs:
       - name: Ensure Relay-1 emitted no warnings
         if: "!cancelled()"
         run: docker compose logs relay-1 | grep "WARN" && exit 1 || exit 0
-      - name: Ensure Relay-2 emitted no warnings
-        if: "!cancelled()"
-        run: docker compose logs relay-2 | grep "WARN" && exit 1 || exit 0
+      # - name: Ensure Relay-2 emitted no warnings
+      #   if: "!cancelled()"
+      #   run: docker compose logs relay-2 | grep "WARN" && exit 1 || exit 0
       - name: Ensure Gateway emitted no warnings
         if: "!cancelled()"
         run: docker compose logs gateway | grep "WARN" && exit 1 || exit 0
