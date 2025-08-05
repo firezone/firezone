@@ -248,11 +248,6 @@ jobs:
     uses: ./.github/workflows/_load_tests.yml
     needs: build-artifacts
     secrets: inherit
-    with:
-      relay_image: ${{ needs.build-artifacts.outputs.relay_image }}
-      gateway_image: ${{ needs.build-artifacts.outputs.gateway_image }}
-      client_image: ${{ needs.build-artifacts.outputs.client_image }}
-      http_test_server_image: ${{ needs.build-artifacts.outputs.http_test_server_image }}
 
   compatibility-tests:
     strategy:

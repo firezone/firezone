@@ -9,11 +9,12 @@ function run_test() {
   docker compose exec -T "$service" sh -c "
     set -e
 
-    # Install iptables if it isn't already there.
-    apk add --no-cache iptables
+    # Drop traffic tot he
+    iptables -A OUTPUT -d 172.28.0.6 -j DROP
 
-    # Add the iptables rule.
-    iptables -A OUTPUT -d 172.28.0.245 -j DROP
+    # Add a random amount of latency between 1 and 100ms
+    latency=\$((RANDOM % 100 + 1))
+    tc qdisc add dev eth0 root netem delay \${latency}ms
 
     # Run curl in the background and capture its PID.
     curl \
@@ -42,7 +43,7 @@ function run_test() {
     fi
 
     # Clean up the iptables rule after the test.
-    iptables -D OUTPUT -d 172.28.0.245 -j DROP
+    iptables -D OUTPUT -d 172.28.0.6 -j DROP
 
     echo 'Test for service $service passed successfully.'
   " &

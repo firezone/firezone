@@ -2,15 +2,6 @@ name: Load Tests
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
-    inputs:
-      relay_image:
-        type: string
-      gateway_image:
-        type: string
-      client_image:
-        type: string
-      http_test_server_image:
-        type: string
 
 jobs:
   load-tests:
@@ -25,13 +16,13 @@ jobs:
       API_TAG: ${{ github.sha }}
       ELIXIR_IMAGE: ghcr.io/firezone/elixir
       ELIXIR_TAG: ${{ github.sha }}
-      RELAY_IMAGE: ${{ inputs.relay_image }}
+      RELAY_IMAGE: ghcr.io/firezone/debug/relay
       RELAY_TAG: ${{ github.sha }}
-      GATEWAY_IMAGE: ${{ inputs.gateway_image }}
+      GATEWAY_IMAGE: ghcr.io/firezone/debug/gateway
       GATEWAY_TAG: ${{ github.sha }}
-      CLIENT_IMAGE: ${{ inputs.client_image }}
+      CLIENT_IMAGE: ghcr.io/firezone/debug/client
       CLIENT_TAG: ${{ github.sha }}
-      HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
+      HTTP_TEST_SERVER_IMAGE: ghcr.io/firezone/debug/http-test-server
       HTTP_TEST_SERVER_TAG: ${{ github.sha }}
     strategy:
       fail-fast: false
@@ -45,7 +36,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Seed database
         working-directory: ./scripts/tests/load
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+        run: docker compose run --rm elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Start docker compose in the background
         working-directory: ./scripts/tests/load
         run: |
@@ -58,7 +49,6 @@ jobs:
           docker compose pull relay-2
           docker compose pull gateway
           docker compose pull client-1
-          docker compose pull elixir
 
           docker compose up -d postgres
           docker compose up -d download.httpbin
@@ -70,7 +60,15 @@ jobs:
           # Up the clients
           docker compose up -d
 
-          sleep 3
+          sleep 5
+
+      - name: Add simulated latency
+        run: |
+          docker compose exec -T -u root api sh -c 'apk add --no-cache iproute2-tc'
+          docker compose exec -T -u root api sh -c 'tc qdisc add dev eth0 root netem delay 100ms'
+          docker compose exec -T relay-1 sh -c 'tc qdisc add dev eth0 root netem delay 10ms'
+          docker compose exec -T relay-2 sh -c 'tc qdisc add dev eth0 root netem delay 20ms'
+          docker compose exec -T gateway sh -c 'tc qdisc add dev eth0 root netem delay 10ms'
 
       - run: ./scripts/tests/load/${{ matrix.test.name }}.sh
 
