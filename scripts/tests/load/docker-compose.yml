@@ -44,8 +44,6 @@ services:
       interval: 30s
       retries: 5
       timeout: 5s
-    ports:
-      - 5432:5432/tcp
     networks:
       app:
         ipv4_address: 172.28.0.240
@@ -54,8 +52,6 @@ services:
   api:
     image: ${API_IMAGE}:${API_TAG}
     hostname: api.cluster.local
-    ports:
-      - 8081:8081/tcp
     environment:
       # Web Server
       WEB_EXTERNAL_URL: http://localhost:8080/
@@ -155,7 +151,7 @@ services:
   # RELAYS
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: 172.28.0.201
+      PUBLIC_IP4_ADDR: 172.28.0.243
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: debug
       RUST_BACKTRACE: 1
@@ -176,7 +172,7 @@ services:
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: 172.28.0.202
+      PUBLIC_IP4_ADDR: 172.28.0.244
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: debug
       RUST_BACKTRACE: 1
