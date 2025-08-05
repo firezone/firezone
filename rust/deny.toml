@@ -260,6 +260,7 @@ skip = [
   "regex-syntax",
   "rustix",
   "siphasher",
+  "socket2",
   "syn",
   "thiserror",
   "thiserror-impl",
