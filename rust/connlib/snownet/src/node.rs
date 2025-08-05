@@ -291,12 +291,13 @@ where
         }
 
         let existing = self.connections.established.remove(&cid);
+        let index = self.index.next();
 
         if let Some(existing) = existing {
             let current_local = existing.agent.local_credentials();
-            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, "Replacing existing connection");
+            tracing::info!(?current_local, new_local = ?local_creds, remote = ?remote_creds, %index, "Replacing existing connection");
         } else {
-            tracing::info!(local = ?local_creds, remote = ?remote_creds, "Creating new connection");
+            tracing::info!(local = ?local_creds, remote = ?remote_creds, %index, "Creating new connection");
         }
 
         let selected_relay = self.sample_relay()?;
@@ -314,8 +315,16 @@ where
             &mut self.pending_events,
         );
 
-        let (index, connection) =
-            self.init_connection(cid, agent, remote, preshared_key, selected_relay, now, now);
+        let connection = self.init_connection(
+            cid,
+            agent,
+            remote,
+            preshared_key,
+            selected_relay,
+            index,
+            now,
+            now,
+        );
 
         self.connections.insert_established(cid, index, connection);
 
@@ -682,16 +691,16 @@ where
         remote: PublicKey,
         key: [u8; 32],
         relay: RId,
+        index: u32,
         intent_sent_at: Instant,
         now: Instant,
-    ) -> (u32, Connection<RId>) {
+    ) -> Connection<RId> {
         agent.handle_timeout(now);
 
         if self.allocations.is_empty() {
             tracing::warn!(%cid, "No TURN servers connected; connection may fail to establish");
         }
 
-        let index = self.index.next();
         let mut tunnel = Tunn::new_at(
             self.private_key.clone(),
             remote,
@@ -714,31 +723,28 @@ where
         // until we have a WireGuard tunnel to send packets into.
         tunnel.set_rekey_attempt_time(Duration::from_secs(15));
 
-        (
-            index,
-            Connection {
-                agent,
-                tunnel,
-                next_wg_timer_update: now,
-                stats: Default::default(),
-                buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
-                intent_sent_at,
-                signalling_completed_at: now,
-                remote_pub_key: remote,
-                relay: SelectedRelay {
-                    id: relay,
-                    logged_sample_failure: false,
-                },
-                state: ConnectionState::Connecting {
-                    wg_buffer: AllocRingBuffer::new(128),
-                    ip_buffer: AllocRingBuffer::new(128),
-                },
-                disconnected_at: None,
-                buffer_pool: self.buffer_pool.clone(),
-                last_proactive_handshake_sent_at: None,
-                first_handshake_completed_at: None,
+        Connection {
+            agent,
+            tunnel,
+            next_wg_timer_update: now,
+            stats: Default::default(),
+            buffer: vec![0; ip_packet::MAX_FZ_PAYLOAD],
+            intent_sent_at,
+            signalling_completed_at: now,
+            remote_pub_key: remote,
+            relay: SelectedRelay {
+                id: relay,
+                logged_sample_failure: false,
             },
-        )
+            state: ConnectionState::Connecting {
+                wg_buffer: AllocRingBuffer::new(128),
+                ip_buffer: AllocRingBuffer::new(128),
+            },
+            disconnected_at: None,
+            buffer_pool: self.buffer_pool.clone(),
+            last_proactive_handshake_sent_at: None,
+            first_handshake_completed_at: None,
+        }
     }
 
     /// Tries to handle the packet using one of our [`Allocation`]s.
@@ -895,33 +901,24 @@ where
                     Err(e) => return ControlFlow::Break(Err(e)),
                 };
 
-                let Some((cid, connection)) = self
+                match self
                     .connections
                     .get_established_mut_by_public_key(handshake.peer_static_public)
-                else {
-                    return ControlFlow::Break(Err(anyhow::Error::msg(format!(
-                        "Received handshake for unknown public key: {}",
-                        hex::encode(handshake.peer_static_public)
-                    ))));
-                };
-
-                (cid, connection)
+                {
+                    Ok(c) => c,
+                    Err(e) => return ControlFlow::Break(Err(e)),
+                }
             }
             // For all other packets, grab the session index and look up the corresponding connection.
             Packet::HandshakeResponse(HandshakeResponse { receiver_idx, .. })
             | Packet::PacketCookieReply(PacketCookieReply { receiver_idx, .. })
-            | Packet::PacketData(PacketData { receiver_idx, .. }) => {
-                let Some((cid, connection)) = self
-                    .connections
-                    .get_established_mut_session_index(*receiver_idx)
-                else {
-                    return ControlFlow::Break(Err(anyhow::Error::msg(format!(
-                        "Received packet for unknown session index: {receiver_idx}"
-                    ))));
-                };
-
-                (cid, connection)
-            }
+            | Packet::PacketData(PacketData { receiver_idx, .. }) => match self
+                .connections
+                .get_established_mut_session_index(*receiver_idx)
+            {
+                Ok(c) => c,
+                Err(e) => return ControlFlow::Break(Err(e)),
+            },
         };
 
         let control_flow = conn.decapsulate(
@@ -1076,12 +1073,14 @@ where
             &mut self.pending_events,
         );
 
-        let (index, connection) = self.init_connection(
+        let index = self.index.next();
+        let connection = self.init_connection(
             cid,
             agent,
             remote,
             *initial.session_key.expose_secret(),
             selected_relay,
+            index,
             initial.intent_sent_at,
             now,
         );
@@ -1147,12 +1146,14 @@ where
             &mut self.pending_events,
         );
 
-        let (index, connection) = self.init_connection(
+        let index = self.index.next();
+        let connection = self.init_connection(
             cid,
             agent,
             remote,
             *offer.session_key.expose_secret(),
             selected_relay,
+            index,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
             now,
         );
@@ -1410,27 +1411,34 @@ where
     fn get_established_mut_session_index(
         &mut self,
         index: u32,
-    ) -> Option<(TId, &mut Connection<RId>)> {
+    ) -> Result<(TId, &mut Connection<RId>)> {
         // Drop the 8 least-significant bits. Those are used by boringtun to identify individual sessions.
         // In order to find the original `Tunn` instance, we just want to compare the higher 24 bits.
         let index = index >> 8;
 
-        let id = self.established_by_wireguard_session_index.get(&index)?;
-        let connection = self.established.get_mut(id)?;
+        let id = self
+            .established_by_wireguard_session_index
+            .get(&index)
+            .with_context(|| format!("No connection for with index {index}"))?;
+        let connection = self
+            .established
+            .get_mut(id)
+            .with_context(|| format!("No connection for ID {id}"))?;
 
-        Some((*id, connection))
+        Ok((*id, connection))
     }
 
     fn get_established_mut_by_public_key(
         &mut self,
         key: [u8; 32],
-    ) -> Option<(TId, &mut Connection<RId>)> {
+    ) -> Result<(TId, &mut Connection<RId>)> {
         let (id, conn) = self
             .established
             .iter_mut()
-            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)?;
+            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
+            .with_context(|| format!("No connection with public key {}", hex::encode(key)))?;
 
-        Some((*id, conn))
+        Ok((*id, conn))
     }
 
     fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
