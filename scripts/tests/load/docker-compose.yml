@@ -91,6 +91,8 @@ services:
       FEATURE_POLICY_CONDITIONS_ENABLED: "true"
       FEATURE_IDP_SYNC_ENABLED: "true"
       FEATURE_INTERNET_RESOURCE_ENABLED: "true"
+    cap_add:
+      - NET_ADMIN # For `tc` to simulate latency
     depends_on:
       postgres:
         condition: "service_healthy"
