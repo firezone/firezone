@@ -38,7 +38,7 @@ defmodule Web.Acceptance.AuthTest do
       |> visit(~p"/#{account}")
       |> Auth.authenticate(identity)
       |> visit(~p"/#{account}/actors")
-      |> assert_el(Query.css("#user-menu-button"))
+      |> assert_el(Query.css("#user-menu-button", visible: true))
       |> click(Query.css("#user-menu-button"))
       |> assert_el(Query.link("Sign out", visible: true))
       |> click(Query.link("Sign out"))
