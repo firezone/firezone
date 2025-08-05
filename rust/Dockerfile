@@ -31,7 +31,7 @@ COPY ./docker-init-client.sh ./docker-init.sh
 
 # HTTP test server specific runtime base image
 FROM runtime_base AS runtime_http-test-server
-COPY ./docker-init.sh ./docker-init.sh
+COPY ./docker-init-http-test-server.sh ./docker-init.sh
 
 # Funnel package specific base image back into `runtime`
 ARG PACKAGE
