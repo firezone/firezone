@@ -272,7 +272,7 @@ where
 
             seed_agent_with_local_candidates(
                 cid,
-                c.relay,
+                c.relay.id,
                 &mut c.agent,
                 &self.allocations,
                 &mut self.pending_events,
@@ -725,7 +725,10 @@ where
                 intent_sent_at,
                 signalling_completed_at: now,
                 remote_pub_key: remote,
-                relay,
+                relay: SelectedRelay {
+                    id: relay,
+                    logged_sample_failure: false,
+                },
                 state: ConnectionState::Connecting {
                     wg_buffer: AllocRingBuffer::new(128),
                     ip_buffer: AllocRingBuffer::new(128),
@@ -1317,18 +1320,22 @@ where
         }
 
         for (cid, c) in self.iter_established_mut() {
-            if allocations.contains_key(&c.relay) {
+            if allocations.contains_key(&c.relay.id) {
                 continue; // Our relay is still there, no problems.
             }
 
             let Some((rid, allocation)) = allocations.iter().choose(rng) else {
-                tracing::debug!(%cid, "Failed to sample new relay for connection");
+                if !c.relay.logged_sample_failure {
+                    tracing::debug!(%cid, "Failed to sample new relay for connection");
+                }
+                c.relay.logged_sample_failure = true;
+
                 continue;
             };
 
-            tracing::info!(%cid, old = %c.relay, new = %rid, "Attempting to migrate connection to new relay");
+            tracing::info!(%cid, old = %c.relay.id, new = %rid, "Attempting to migrate connection to new relay");
 
-            c.relay = *rid;
+            c.relay.id = *rid;
 
             for candidate in allocation.current_relay_candidates() {
                 add_local_candidate(cid, &mut c.agent, candidate, pending_events);
@@ -1368,7 +1375,7 @@ where
         let maybe_established_connection = self
             .established
             .get_mut(&id)
-            .map(|c| (&mut c.agent, c.relay));
+            .map(|c| (&mut c.agent, c.relay.id));
 
         maybe_initial_connection.or(maybe_established_connection)
     }
@@ -1381,7 +1388,7 @@ where
         let established_connections = self
             .established
             .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay == id).then_some((*cid, &mut c.agent)));
+            .filter_map(move |(cid, c)| (c.relay.id == id).then_some((*cid, &mut c.agent)));
 
         initial_connections.chain(established_connections)
     }
@@ -1696,7 +1703,7 @@ struct Connection<RId> {
     last_proactive_handshake_sent_at: Option<Instant>,
 
     /// The relay we have selected for this connection.
-    relay: RId,
+    relay: SelectedRelay<RId>,
 
     state: ConnectionState,
     disconnected_at: Option<Instant>,
@@ -1709,6 +1716,12 @@ struct Connection<RId> {
     buffer: Vec<u8>,
 
     buffer_pool: BufferPool<Vec<u8>>,
+}
+
+struct SelectedRelay<RId> {
+    id: RId,
+    /// Whether we've already logged failure to sample a new relay.
+    logged_sample_failure: bool,
 }
 
 enum ConnectionState {
@@ -2042,7 +2055,7 @@ where
                         allocation.has_socket(source).then_some(*relay)
                     });
 
-                    if source_relay.is_some_and(|r| self.relay != r) {
+                    if source_relay.is_some_and(|r| self.relay.id != r) {
                         tracing::warn!(
                             "Nominated a relay different from what we set out to! Weird?"
                         );
@@ -2080,7 +2093,7 @@ where
 
                             transmits.extend(wg_buffer.into_iter().flat_map(|packet| {
                                 make_owned_transmit(
-                                    self.relay,
+                                    self.relay.id,
                                     remote_socket,
                                     &packet,
                                     &self.buffer_pool,
@@ -2144,7 +2157,7 @@ where
                         ConnectionState::Failed => continue, // Failed connections are cleaned up, don't bother handling events.
                     };
 
-                    let relay = self.relay;
+                    let relay = self.relay.id;
 
                     tracing::info!(
                         old = old.map(|s| s.fmt(relay)).map(tracing::field::display),
@@ -2233,7 +2246,7 @@ where
             }
             TunnResult::WriteToNetwork(b) => {
                 transmits.extend(make_owned_transmit(
-                    self.relay,
+                    self.relay.id,
                     peer_socket,
                     b,
                     &self.buffer_pool,
@@ -2295,8 +2308,8 @@ where
                 payload: buffer,
             })),
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-                let Some(allocation) = allocations.get_mut(&self.relay) else {
-                    tracing::warn!(relay = %self.relay, "No allocation");
+                let Some(allocation) = allocations.get_mut(&self.relay.id) else {
+                    tracing::warn!(relay = %self.relay.id, "No allocation");
                     return Ok(None);
                 };
                 let Some(encode_ok) =
@@ -2390,7 +2403,7 @@ where
                     ConnectionState::Connected { peer_socket, .. }
                     | ConnectionState::Idle { peer_socket } => {
                         transmits.extend(make_owned_transmit(
-                            self.relay,
+                            self.relay.id,
                             *peer_socket,
                             bytes,
                             &self.buffer_pool,
@@ -2403,7 +2416,7 @@ where
                                 .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                         {
                             transmits.extend(make_owned_transmit(
-                                self.relay,
+                                self.relay.id,
                                 *peer_socket,
                                 packet,
                                 &self.buffer_pool,
@@ -2471,7 +2484,7 @@ where
         self.last_proactive_handshake_sent_at = Some(now);
 
         transmits.extend(make_owned_transmit(
-            self.relay,
+            self.relay.id,
             socket,
             bytes,
             &self.buffer_pool,
