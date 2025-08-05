@@ -24,7 +24,14 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10143">
+          Fixes an issue on iOS 17 and below that caused the tunnel to crash
+          after signing in. This was due to a change in how newer versions of
+          Xcode handle linking against referenced libraries. iOS 18 and higher
+          is unaffected.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.6" date={new Date("2025-08-02")}>
         <ChangeItem pull="10075">
           Fixes an issue on iOS where the tunnel may never fully come up after
