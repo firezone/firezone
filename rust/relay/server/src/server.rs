@@ -384,7 +384,7 @@ where
         self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
 
-        tracing::trace!(target: "wire", num_bytes = %msg.len());
+        tracing::trace!(target: "wire", num_bytes = %msg.len(), peer = %sender, %client);
 
         Some((*client, *channel_number))
     }
@@ -787,7 +787,7 @@ where
             return None;
         }
 
-        tracing::trace!(target: "wire", num_bytes = %data.len());
+        tracing::trace!(target: "wire", num_bytes = %data.len(), client = %sender, peer = %channel.peer_address);
 
         self.data_relayed_counter.add(data.len() as u64, &[]);
         self.data_relayed += data.len() as u64;
