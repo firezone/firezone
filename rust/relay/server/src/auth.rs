@@ -347,7 +347,7 @@ mod tests {
 
         nonces.add_new(nonce);
 
-        for _ in 0..100 {
+        for _ in 0..10_000 {
             nonces.handle_nonce_used(nonce).unwrap();
         }
 
