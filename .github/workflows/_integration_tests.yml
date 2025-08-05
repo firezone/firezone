@@ -148,7 +148,7 @@ jobs:
 
       - name: Add 50ms simulated API latency
         run: |
-          docker compose exec -d apk add iproute2-tc
+          docker compose exec -d api apk add --no-cache iproute2-tc
           docker compose exec -d api tc qdisc add dev eth0 root netem delay 50ms
 
       - run: ./scripts/tests/${{ matrix.test.name }}.sh
