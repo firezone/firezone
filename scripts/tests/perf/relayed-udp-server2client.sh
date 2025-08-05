@@ -6,6 +6,7 @@ source "./scripts/tests/lib.sh"
 install_iptables_drop_rules
 
 docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
+  --time 30 \
   --reverse \
   --udp \
   --bandwidth 500M \
