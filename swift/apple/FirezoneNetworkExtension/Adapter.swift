@@ -495,7 +495,7 @@ extension Adapter: CallbackHandlerDelegate {
         // the system's resolver and we can grab the system resolvers directly.
         // If we try to continue below without valid tunnel addresses assigned
         // to the interface, we'll crash.
-        return BindResolvers().getservers().map(BindResolvers.getnameinfo)
+        return BindResolvers.getServers()
       }
 
       var resolvers: [String] = []
@@ -511,7 +511,7 @@ extension Adapter: CallbackHandlerDelegate {
         guard let networkSettings = self.networkSettings else { return }
 
         // Only now can we get the system resolvers
-        resolvers = BindResolvers().getservers().map(BindResolvers.getnameinfo)
+        resolvers = BindResolvers.getServers()
 
         // Restore connlib's DNS resolvers
         networkSettings.clearDummyMatchDomain()
