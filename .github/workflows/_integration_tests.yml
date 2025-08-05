@@ -146,6 +146,10 @@ jobs:
           # Intended to mitigate <https://github.com/firezone/firezone/issues/5830>
           sleep 3
 
+      - name: Add 50ms simulated API latency
+        run: |
+          docker compose exec -d api tc qdisc add dev eth0 root netem delay 50ms
+
       - run: ./scripts/tests/${{ matrix.test.name }}.sh
 
       - name: Ensure Client emitted no warnings
