@@ -27,7 +27,7 @@ COPY ./docker-init-relay.sh ./docker-init.sh
 
 # Headless-client specific runtime base image
 FROM runtime_base AS runtime_firezone-headless-client
-COPY ./docker-init.sh ./docker-init.sh
+COPY ./docker-init-client.sh ./docker-init.sh
 
 # HTTP test server specific runtime base image
 FROM runtime_base AS runtime_http-test-server
