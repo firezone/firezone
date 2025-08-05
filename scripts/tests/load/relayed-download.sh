@@ -9,8 +9,8 @@ function run_test() {
   docker compose exec -T "$service" sh -c "
     set -e
 
-    # Drop traffic tot he
-    iptables -A OUTPUT -d 172.28.0.6 -j DROP
+    # Drop traffic to the gateway
+    iptables -A OUTPUT -d 172.28.0.7 -j DROP
 
     # Add a random amount of latency between 1 and 100ms
     latency=\$((RANDOM % 100 + 1))
@@ -43,7 +43,7 @@ function run_test() {
     fi
 
     # Clean up the iptables rule after the test.
-    iptables -D OUTPUT -d 172.28.0.6 -j DROP
+    iptables -D OUTPUT -d 172.28.0.7 -j DROP
 
     echo 'Test for service $service passed successfully.'
   " &

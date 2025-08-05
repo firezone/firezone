@@ -4,7 +4,7 @@ x-common-config: &common-config
   environment: &common-config-environment
     FIREZONE_DNS_CONTROL: etc-resolv-conf
     RUST_LOG: debug
-    FIREZONE_API_URL: wss://api.firez.one
+    FIREZONE_API_URL: ws://api:8081
     # This is the 'Backup Manager' service account token from seeds
     FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDU0bQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAAJDIXuYAWIAAVGA.kp5UsL75uiwUvNYRmXi3yiVvUQASFL9nvBNh8Dv3R8Q"
   devices:
@@ -156,27 +156,6 @@ services:
   # RELAYS
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: 172.28.0.4
-      FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
-      RUST_LOG: debug
-      RUST_BACKTRACE: 1
-      FIREZONE_API_URL: ws://api:8081
-    image: ${RELAY_IMAGE}:${RELAY_TAG}
-    healthcheck:
-      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
-      start_period: 10s
-      interval: 30s
-      retries: 5
-      timeout: 5s
-    depends_on:
-      api:
-        condition: "service_healthy"
-    networks:
-      app:
-        ipv4_address: 172.28.0.4
-
-  relay-2:
-    environment:
       PUBLIC_IP4_ADDR: 172.28.0.5
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: debug
@@ -195,6 +174,27 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.5
+
+  relay-2:
+    environment:
+      PUBLIC_IP4_ADDR: 172.28.0.6
+      FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
+      RUST_LOG: debug
+      RUST_BACKTRACE: 1
+      FIREZONE_API_URL: ws://api:8081
+    image: ${RELAY_IMAGE}:${RELAY_TAG}
+    healthcheck:
+      test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
+      start_period: 10s
+      interval: 30s
+      retries: 5
+      timeout: 5s
+    depends_on:
+      api:
+        condition: "service_healthy"
+    networks:
+      app:
+        ipv4_address: 172.28.0.6
 
   # GATEWAY
   gateway:
@@ -222,7 +222,7 @@ services:
         condition: "service_healthy"
     networks:
       app:
-        ipv4_address: 172.28.0.6
+        ipv4_address: 172.28.0.7
       resources:
         ipv4_address: 172.20.0.2
 
