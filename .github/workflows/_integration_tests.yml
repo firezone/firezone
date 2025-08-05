@@ -148,20 +148,20 @@ jobs:
 
       - name: Add 50ms simulated API latency
         run: |
-          docker compose exec -d api apk add --no-cache iproute2-tc
-          docker compose exec -d api tc qdisc add dev eth0 root netem delay 50ms
+          docker compose exec -T api apk add --no-cache iproute2
+          docker compose exec -T api tc qdisc add dev eth0 root netem delay 50ms
 
       - name: Add 5ms simulated client latency
         run: |
           # compatibility test images won't have the `tc` command
-          docker compose exec -d client apk add --no-cache iproute2-tc
-          docker compose exec -d client tc qdisc add dev eth0 root netem delay 50ms
+          docker compose exec -T client apk add --no-cache iproute2
+          docker compose exec -T client tc qdisc add dev eth0 root netem delay 50ms
 
       - name: Add 5ms simulated gateway latency
         run: |
           # compatibility test images won't have the `tc` command
-          docker compose exec -d gateway apk add --no-cache iproute2-tc
-          docker compose exec -d gateway tc qdisc add dev eth0 root netem delay 50ms
+          docker compose exec -T gateway apk add --no-cache iproute2
+          docker compose exec -T gateway tc qdisc add dev eth0 root netem delay 50ms
 
       - run: ./scripts/tests/${{ matrix.test.name }}.sh
 
