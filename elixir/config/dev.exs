@@ -21,7 +21,8 @@ config :domain, Domain.ComponentVersions,
 config :domain, Domain.Billing,
   enabled: System.get_env("BILLING_ENABLED", "false") == "true",
   secret_key: System.get_env("STRIPE_SECRET_KEY", "sk_dev_1111"),
-  webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111")
+  webhook_signing_secret: System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET", "whsec_dev_1111"),
+  default_price_id: System.get_env("STRIPE_DEFAULT_PRICE_ID", "price_1OkUIcADeNU9NGxvTNA4PPq6")
 
 # Oban has its own config validation that prevents overriding config in runtime.exs,
 # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
