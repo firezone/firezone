@@ -377,15 +377,31 @@ defmodule Domain.Repo.Seeds do
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
 
-    {:ok, service_account_actor_encoded_token} =
-      Auth.create_service_account_token(
-        service_account_actor,
+    {:ok, service_account_token} =
+      Tokens.create_token(
         %{
+          "type" => :client,
+          "secret_fragment" => Domain.Crypto.random_token(32, encoder: :hex32),
+          "account_id" => service_account_actor.account_id,
+          "actor_id" => service_account_actor.id,
           "name" => "tok-#{Ecto.UUID.generate()}",
-          "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day)
+          "expires_at" => DateTime.utc_now() |> DateTime.add(365, :day),
+          "created_by_user_agent" => "seeds/1.0.0",
+          "created_by_remote_ip" => {100, 64, 100, 58}
         },
         admin_subject
       )
+
+    service_account_token =
+      service_account_token
+      |> maybe_repo_update.(
+        id: "e82fcdc1-057a-4015-b90b-3b18f0f28054",
+        secret_salt: "lZWUdgh-syLGVDsZEu_29A",
+        secret_fragment: "C14NGA87EJRR03G4QPR07A9C6G784TSSTHSF4TI5T0GD8D6L0VRG====",
+        secret_hash: "c3c9a031ae98f111ada642fddae546de4e16ceb85214ab4f1c9d0de1fc472797"
+      )
+
+    service_account_actor_encoded_token = Tokens.encode_fragment!(service_account_token)
 
     {:ok, unprivileged_actor_email_identity} =
       Domain.Auth.Adapters.Email.request_sign_in_token(
@@ -419,7 +435,10 @@ defmodule Domain.Repo.Seeds do
       )
     end
 
-    IO.puts("  #{service_account_actor.name} token: #{service_account_actor_encoded_token}")
+    IO.puts(
+      "  Service account '#{service_account_actor.name}' token: #{service_account_actor_encoded_token}"
+    )
+
     IO.puts("")
 
     {:ok, user_iphone} =
