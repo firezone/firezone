@@ -13,10 +13,8 @@ defmodule Domain.Repo.Migrations.CreateProcessedStripeEvents do
       timestamps(type: :utc_datetime_usec)
     end
 
-    create(index(:processed_stripe_events, [:stripe_customer_id]))
-    create(index(:processed_stripe_events, [:event_type]))
-    create(index(:processed_stripe_events, [:event_created_at]))
-    create(index(:processed_stripe_events, [:stripe_customer_id, :event_type, :event_created_at]))
+    create(index(:processed_stripe_events, [:stripe_customer_id, :event_type]))
+    create(index(:processed_stripe_events, [:stripe_customer_id, :event_created_at]))
   end
 
   def down do
