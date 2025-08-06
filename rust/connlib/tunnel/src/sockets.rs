@@ -192,6 +192,9 @@ impl ThreadedUdpSocket {
                     }
                 };
 
+                // Enter guard to create UDP socket.
+                let _guard = runtime.enter();
+
                 let mut socket = match listen(
                     sf,
                     // Listen on the preferred address, fall back to picking a free port if that doesn't work
