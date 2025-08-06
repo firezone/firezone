@@ -2187,6 +2187,8 @@ where
             let Some((relay, allocation)) = allocation else {
                 self.stats.stun_bytes_to_peer_direct += stun_packet.len();
 
+                tracing::trace!(src = %source, %dst, "str0m wants to send a direct STUN message");
+
                 // `source` did not match any of our allocated sockets, must be a local one then!
                 transmits.push_back(Transmit {
                     src: Some(source),
@@ -2195,6 +2197,8 @@ where
                 });
                 continue;
             };
+
+            tracing::trace!(src = %source, %dst, "str0m wants to send a relayed STUN message");
 
             let mut data_channel_packet = channel_data_packet_buffer(&stun_packet);
 
