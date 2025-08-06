@@ -24,7 +24,7 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::net::IpAddr;
-use std::ops::ControlFlow;
+use std::ops::{ControlFlow, Deref};
 use std::time::{Duration, Instant};
 use std::{collections::VecDeque, net::SocketAddr, sync::Arc};
 use std::{iter, mem};
@@ -567,14 +567,18 @@ where
 
         if let Some(transmit) = allocation_transmits.next() {
             self.stats.stun_bytes_to_relays += transmit.payload.len();
-            tracing::trace!(?transmit);
+            if transmit.payload.len() < 200 {
+                tracing::trace!(src = ?transmit.src, dst = %transmit.dst, payload = hex::encode(transmit.payload.deref()));
+            }
 
             return Some(transmit);
         }
 
         let transmit = self.buffered_transmits.pop_front()?;
 
-        tracing::trace!(?transmit);
+        if transmit.payload.len() < 200 {
+            tracing::trace!(src = ?transmit.src, dst = %transmit.dst, payload = hex::encode(transmit.payload.deref()));
+        }
 
         Some(transmit)
     }
