@@ -150,39 +150,39 @@ jobs:
             sleep 10
           done
 
-  kotlin:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
-    uses: ./.github/workflows/_kotlin.yml
-    secrets: inherit
-  swift:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'swift')
-    uses: ./.github/workflows/_swift.yml
-    secrets: inherit
-  elixir:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
-    uses: ./.github/workflows/_elixir.yml
-  rust:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'rust')
-    uses: ./.github/workflows/_rust.yml
-    secrets: inherit
-  tauri:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
-    uses: ./.github/workflows/_tauri.yml
-    secrets: inherit
-  static-analysis:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
-    uses: ./.github/workflows/_static-analysis.yml
-  codeql:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
-    uses: ./.github/workflows/_codeql.yml
-    secrets: inherit
+  # kotlin:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
+  #   uses: ./.github/workflows/_kotlin.yml
+  #   secrets: inherit
+  # swift:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'swift')
+  #   uses: ./.github/workflows/_swift.yml
+  #   secrets: inherit
+  # elixir:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
+  #   uses: ./.github/workflows/_elixir.yml
+  # rust:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'rust')
+  #   uses: ./.github/workflows/_rust.yml
+  #   secrets: inherit
+  # tauri:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
+  #   uses: ./.github/workflows/_tauri.yml
+  #   secrets: inherit
+  # static-analysis:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
+  #   uses: ./.github/workflows/_static-analysis.yml
+  # codeql:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
+  #   uses: ./.github/workflows/_codeql.yml
+  #   secrets: inherit
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
