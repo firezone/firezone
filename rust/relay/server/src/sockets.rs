@@ -113,6 +113,8 @@ impl Sockets {
             };
         }
 
+        tracing::trace!("Flushed all buffered packets");
+
         Poll::Ready(Ok(()))
     }
 
@@ -120,6 +122,8 @@ impl Sockets {
         match self.try_send_internal(port, dest, msg.as_ref()) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                tracing::trace!(src = %port, dst = %dest, len = %msg.len(), "Buffering packet");
+
                 self.pending_packets.push_back(PendingPacket {
                     src: port,
                     dst: dest,
@@ -144,9 +148,9 @@ impl Sockets {
             .get(&token)
             .ok_or_else(|| not_connected(port, address_family))?;
 
-        tracing::trace!(token = %token.0, %port, ?address_family, %dest, len = %msg.len(), "Sending message");
-
         let num_sent = socket.send_to(msg, dest)?;
+
+        tracing::trace!(token = %token.0, %port, ?address_family, %dest, len = %msg.len(), "Sent message");
 
         debug_assert_eq!(num_sent, msg.len());
 
