@@ -325,7 +325,9 @@ where
     T: Subscriber + for<'a> tracing_subscriber::registry::LookupSpan<'a>,
 {
     match (args.log_format, args.google_cloud_project_id.clone()) {
-        (LogFormat::Human, _) => tracing_subscriber::fmt::layer().boxed(),
+        (LogFormat::Human, _) => tracing_subscriber::fmt::layer()
+            .with_ansi(firezone_logging::stdout_supports_ansi())
+            .boxed(),
         (LogFormat::Json, _) => tracing_subscriber::fmt::layer().json().boxed(),
         (LogFormat::GoogleCloud, None) => {
             tracing::warn!(target: "relay", "Emitting logs in Google Cloud format but without the project ID set. Spans will be emitted without IDs!");
