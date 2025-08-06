@@ -87,7 +87,7 @@ defmodule Domain.Cache.Client do
 
   @spec authorize_resource(t(), %Clients.Client{}, Ecto.UUID.t(), %Auth.Subject{}) ::
           {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t(), Ecto.UUID.t(), non_neg_integer()}
-          | {:eror, :not_found}
+          | {:error, :not_found}
           | {:error, {:forbidden, violated_properties: [atom()]}}
 
   def authorize_resource(cache, client, resource_id, subject) do
@@ -224,7 +224,7 @@ defmodule Domain.Cache.Client do
   """
 
   @spec delete_membership(t(), %Actors.Membership{}, %Clients.Client{}) ::
-          {:ok, [Cacche.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
+          {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client) do
     gid_bytes = dump!(membership.group_id)

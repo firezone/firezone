@@ -1,6 +1,7 @@
 defmodule API.Client.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Clients, Changes.Change}
+  alias Domain.{Clients, Changes}
+  import ExUnit.CaptureLog
 
   setup do
     account =
@@ -227,7 +228,7 @@ defmodule API.Client.ChannelTest do
         "expires_at" => token.expires_at
       }
 
-      Domain.Events.Hooks.Tokens.on_delete(data)
+      Domain.Changes.Hooks.Tokens.on_delete(100, data)
 
       assert_receive %Phoenix.Socket.Broadcast{
         topic: topic,
@@ -634,6 +635,24 @@ defmodule API.Client.ChannelTest do
   end
 
   describe "handle_info/2" do
+    test "logs warning and ignores out of order %Change{}", %{socket: socket} do
+      send(socket.channel_pid, %Changes.Change{lsn: 100})
+
+      assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
+
+      message =
+        capture_log(fn ->
+          send(socket.channel_pid, %Changes.Change{lsn: 50})
+
+          # Wait for the channel to process and emit the log
+          Process.sleep(1)
+        end)
+
+      assert message =~ "[warning] Out of order or duplicate change received; ignoring"
+
+      assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
+    end
+
     # test "subscribes for client events", %{
     #   client: client
     # } do
@@ -1081,7 +1100,7 @@ defmodule API.Client.ChannelTest do
       assert resource_id == resource.id
     end
 
-    test "returns error when client has no policy allowing access to resource", %{
+    test "returns :not_found when client has no policy allowing access to resource", %{
       account: account,
       socket: socket
     } do
@@ -1101,7 +1120,9 @@ defmodule API.Client.ChannelTest do
       assert resource_id == resource.id
     end
 
-    test "returns error when flow is not authorized due to failing conditions", %{
+    # In practice, this will only happen if a client maliciously sends a resource_id, because
+    # it won't have this resource in its resource list.
+    test "returns :not_found if resource isn't in connectable resources", %{
       account: account,
       client: client,
       actor_group: actor_group,
@@ -1110,8 +1131,8 @@ defmodule API.Client.ChannelTest do
       membership: membership,
       socket: socket
     } do
-      send(socket.channel_pid, %Change{
-        lsn: 0,
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
         op: :insert,
         struct: membership
       })
@@ -1122,8 +1143,8 @@ defmodule API.Client.ChannelTest do
           connections: [%{gateway_group_id: gateway_group.id}]
         )
 
-      send(socket.channel_pid, %Change{
-        lsn: 1,
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
         op: :insert,
         struct: resource
       })
@@ -1142,8 +1163,8 @@ defmodule API.Client.ChannelTest do
           ]
         )
 
-      send(socket.channel_pid, %Change{
-        lsn: 2,
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 300,
         op: :insert,
         struct: policy
       })
@@ -1158,8 +1179,7 @@ defmodule API.Client.ChannelTest do
       push(socket, "create_flow", attrs)
 
       assert_push "flow_creation_failed", %{
-        reason: :forbidden,
-        violated_properties: [:remote_ip_location_region],
+        reason: :not_found,
         resource_id: resource_id
       }
 
@@ -1511,19 +1531,19 @@ defmodule API.Client.ChannelTest do
 
       :ok = Domain.PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, %Change{
+      send(socket.channel_pid, %Changes.Change{
         lsn: 0,
         op: :insert,
         struct: resource
       })
 
-      send(socket.channel_pid, %Change{
+      send(socket.channel_pid, %Changes.Change{
         lsn: 1,
         op: :insert,
         struct: policy
       })
 
-      send(socket.channel_pid, %Change{
+      send(socket.channel_pid, %Changes.Change{
         lsn: 2,
         op: :insert,
         struct: membership
@@ -1815,19 +1835,19 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.Presence.connect(gateway)
       :ok = Domain.PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, %Change{
+      send(socket.channel_pid, %Changes.Change{
         lsn: 0,
         op: :insert,
         struct: resource
       })
 
-      send(socket.channel_pid, %Change{
+      send(socket.channel_pid, %Changes.Change{
         lsn: 1,
         op: :insert,
         struct: policy
       })
 
-      send(socket.channel_pid, %Change{
+      send(socket.channel_pid, %Changes.Change{
         lsn: 2,
         op: :insert,
         struct: membership
@@ -1881,7 +1901,7 @@ defmodule API.Client.ChannelTest do
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
       resource_id = resource.id
 
-      assert_reply ref, :error, %{reason: :not_found}
+      assert_reply ref, :error, %{reason: :offline}
 
       gateway =
         Fixtures.Gateways.create_gateway(
@@ -1975,7 +1995,7 @@ defmodule API.Client.ChannelTest do
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second)
       )
 
-      client = %{client | last_seen_version: "1.1.55"}
+      client = %{client | last_seen_version: "1.2.55"}
 
       gateway =
         Fixtures.Gateways.create_gateway(
@@ -2000,7 +2020,7 @@ defmodule API.Client.ChannelTest do
 
       ref = push(socket, "prepare_connection", %{"resource_id" => resource.id})
 
-      assert_reply ref, :error, %{reason: :not_found}
+      assert_reply ref, :error, %{reason: :offline}
 
       gateway =
         Fixtures.Gateways.create_gateway(
@@ -2044,7 +2064,7 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns error when gateway is not connected to resource", %{
+    test "returns not_found when gateway is not connected to resource", %{
       account: account,
       dns_resource: resource,
       socket: socket
@@ -2059,10 +2079,10 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "reuse_connection", attrs)
-      assert_reply ref, :error, %{reason: :offline}
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns error when flow is not authorized due to failing conditions", %{
+    test "returns :not_found when resource is not in connectable_resources", %{
       account: account,
       client: client,
       actor_group: actor_group,
@@ -2107,8 +2127,7 @@ defmodule API.Client.ChannelTest do
       ref = push(socket, "reuse_connection", attrs)
 
       assert_reply ref, :error, %{
-        reason: :forbidden,
-        violated_properties: [:remote_ip_location_region]
+        reason: :not_found
       }
     end
 
@@ -2161,9 +2180,23 @@ defmodule API.Client.ChannelTest do
       :ok = Domain.Gateways.Presence.connect(gateway)
       :ok = Domain.PubSub.Account.subscribe(resource.account_id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 101,
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 102,
+        op: :insert,
+        struct: membership
+      })
 
       attrs = %{
         "resource_id" => resource.id,
@@ -2184,13 +2217,13 @@ defmodule API.Client.ChannelTest do
                client_payload: "DNS_Q"
              } = payload
 
-      assert recv_resource.id == resource_id
+      assert recv_resource.id == Ecto.UUID.dump!(resource_id)
       assert recv_client.id == client_id
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
       send(
         channel_pid,
-        {:connect, socket_ref, resource.id, gateway.public_key, "DNS_RPL"}
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.public_key, "DNS_RPL"}
       )
 
       assert_reply ref, :ok, %{
@@ -2287,7 +2320,7 @@ defmodule API.Client.ChannelTest do
       }
 
       ref = push(socket, "request_connection", attrs)
-      assert_reply ref, :error, %{reason: :offline}
+      assert_reply ref, :error, %{reason: :not_found}
     end
 
     test "returns error when client has no policy allowing access to resource", %{
@@ -2310,7 +2343,7 @@ defmodule API.Client.ChannelTest do
       assert_reply ref, :error, %{reason: :not_found}
     end
 
-    test "returns error when flow is not authorized due to failing conditions", %{
+    test "returns not_found when resource is not in connectable_resources", %{
       account: account,
       client: client,
       actor_group: actor_group,
@@ -2350,15 +2383,28 @@ defmodule API.Client.ChannelTest do
 
       :ok = Domain.PubSub.Account.subscribe(account.id)
 
-      send(socket.channel_pid, {:created, resource})
-      send(socket.channel_pid, {:created, policy})
-      send(socket.channel_pid, {:created, membership})
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: resource
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 101,
+        op: :insert,
+        struct: policy
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 102,
+        op: :insert,
+        struct: membership
+      })
 
       ref = push(socket, "request_connection", attrs)
 
       assert_reply ref, :error, %{
-        reason: :forbidden,
-        violated_properties: [:remote_ip_location_region]
+        reason: :not_found
       }
     end
 
@@ -2415,14 +2461,14 @@ defmodule API.Client.ChannelTest do
                authorization_expires_at: authorization_expires_at
              } = payload
 
-      assert recv_resource.id == resource_id
+      assert recv_resource.id == Ecto.UUID.dump!(resource_id)
       assert recv_client.id == client_id
 
       assert authorization_expires_at == socket.assigns.subject.expires_at
 
       send(
         channel_pid,
-        {:connect, socket_ref, resource.id, gateway.public_key, "FULL_RTC_SD"}
+        {:connect, socket_ref, Ecto.UUID.dump!(resource.id), gateway.public_key, "FULL_RTC_SD"}
       )
 
       assert_reply ref, :ok, %{

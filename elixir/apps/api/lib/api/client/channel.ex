@@ -341,9 +341,11 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_connected_gateways_for_resource_id(resource_id, socket.assigns.subject),
-         {:ok, gateways} when gateways != [] <-
-           Gateways.filter_compatible_gateways(gateways, socket.assigns.client.last_seen_version) do
+           Gateways.all_compatible_gateways_for_client_and_resource(
+             socket.assigns.client,
+             resource,
+             socket.assigns.subject
+           ) do
       location = {
         socket.assigns.client.last_seen_remote_ip_location_lat,
         socket.assigns.client.last_seen_remote_ip_location_lon
@@ -422,7 +424,7 @@ defmodule API.Client.Channel do
 
     # TODO: Optimization
     # Gateway selection and flow authorization shouldn't need to hit the DB
-    with {:ok, _resource, _membership_id, _policy_id, _expires_at} <-
+    with {:ok, resource, _membership_id, _policy_id, _expires_at} <-
            Cache.Client.authorize_resource(
              socket.assigns.cache,
              socket.assigns.client,
@@ -430,9 +432,11 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateways} when gateways != [] <-
-           Gateways.all_connected_gateways_for_resource_id(resource_id, socket.assigns.subject),
-         {:ok, gateways} when gateways != [] <-
-           Gateways.filter_compatible_gateways(gateways, socket.assigns.client.last_seen_version) do
+           Gateways.all_compatible_gateways_for_client_and_resource(
+             socket.assigns.client,
+             resource,
+             socket.assigns.subject
+           ) do
       location = {
         socket.assigns.client.last_seen_remote_ip_location_lat,
         socket.assigns.client.last_seen_remote_ip_location_lon
@@ -482,7 +486,12 @@ defmodule API.Client.Channel do
              resource_id,
              socket.assigns.subject
            ),
-         {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+         {:ok, gateway} <-
+           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
+         %Cache.Cacheable.GatewayGroup{} <-
+           Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
+             g.id == Ecto.UUID.dump!(gateway.group_id)
+           end),
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =
@@ -544,7 +553,12 @@ defmodule API.Client.Channel do
              resource_id,
              socket.assigns.subject
            ),
-         {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
+         {:ok, gateway} <-
+           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
+         %Cache.Cacheable.GatewayGroup{} <-
+           Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
+             g.id == Ecto.UUID.dump!(gateway.group_id)
+           end),
          true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =

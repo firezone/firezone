@@ -2,6 +2,7 @@ defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
   alias Domain.{Accounts, Changes, Gateways, PubSub}
   import Domain.Cache.Cacheable, only: [to_cache: 1]
+  import ExUnit.CaptureLog
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -92,6 +93,24 @@ defmodule API.Gateway.ChannelTest do
   end
 
   describe "handle_info/2" do
+    test "logs warning and ignores out of order %Change{}", %{socket: socket} do
+      send(socket.channel_pid, %Changes.Change{lsn: 100})
+
+      assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
+
+      message =
+        capture_log(fn ->
+          send(socket.channel_pid, %Changes.Change{lsn: 50})
+
+          # Wait for the channel to process and emit the log
+          Process.sleep(1)
+        end)
+
+      assert message =~ "[warning] Out of order or duplicate change received; ignoring"
+
+      assert %{assigns: %{last_lsn: 100}} = :sys.get_state(socket.channel_pid)
+    end
+
     test ":prune_cache removes key completely when all flows are expired", %{
       account: account,
       client: client,
