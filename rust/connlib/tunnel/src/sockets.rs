@@ -8,7 +8,6 @@ use std::time::{Duration, Instant};
 use std::{
     io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    pin::pin,
     sync::Arc,
     task::{Context, Poll, Waker},
 };
@@ -179,22 +178,23 @@ impl ThreadedUdpSocket {
             SocketAddr::V4(_) => "UDP IPv4".to_owned(),
             SocketAddr::V6(_) => "UDP IPv6".to_owned(),
         };
-        let join_handle =
-            std::thread::Builder::new()
-                .name(thread_name.clone())
-                .spawn(move || {
-                    let runtime = match tokio::runtime::Builder::new_current_thread()
-                        .enable_all()
-                        .build()
-                    {
-                        Ok(r) => r,
-                        Err(e) => {
-                            let _ = error_tx.send(Err(e));
-                            return;
-                        }
-                    };
+        let join_handle = std::thread::Builder::new()
+            .name(thread_name.clone())
+            .spawn(move || {
+                let runtime = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        let _ = error_tx.send(Err(e));
+                        return;
+                    }
+                };
 
-                    runtime.block_on(async move {
+                // Enter guard to create UDP socket.
+                let _guard = runtime.enter();
+
                 let mut socket = match listen(
                     sf,
                     // Listen on the preferred address, fall back to picking a free port if that doesn't work
@@ -218,37 +218,51 @@ impl ThreadedUdpSocket {
                     socket_factory::RECV_BUFFER_SIZE,
                 ) {
                     tracing::warn!("Failed to set socket buffer sizes: {e}");
-                }
+                };
 
-                let send = pin!(async {
-                    while let Ok(datagram) = outbound_rx.recv_async().await {
-                        if let Err(e) = socket.send(datagram).await {
-                            if let Some(io) = e.downcast_ref::<io::Error>() {
-                                io_error_counter.add(
-                                    1,
-                                    &[
-                                        otel::attr::network_io_direction_transmit(),
-                                        otel::attr::network_type_for_addr(preferred_addr),
-                                        otel::attr::io_error_type(io),
-                                        otel::attr::io_error_code(io),
-                                    ],
-                                );
-                            }
+                let socket = Arc::new(socket);
 
-                            // We use the inbound_tx channel to send the error back to the main thread.
-                            if inbound_tx.send_async(Err(e)).await.is_err() {
-                                tracing::debug!(
-                                    "Channel for inbound datagrams closed; exiting UDP thread"
-                                );
-                                break;
-                            }
-                        };
+                let send = runtime.spawn({
+                    let io_error_counter = io_error_counter.clone();
+                    let inbound_tx = inbound_tx.clone();
+                    let socket = socket.clone();
+
+                    async move {
+                        while let Ok(datagram) = outbound_rx.recv_async().await {
+                            tokio::task::yield_now().await;
+
+                            if let Err(e) = socket.send(datagram).await {
+                                if let Some(io) = e.downcast_ref::<io::Error>() {
+                                    io_error_counter.add(
+                                        1,
+                                        &[
+                                            otel::attr::network_io_direction_transmit(),
+                                            otel::attr::network_type_for_addr(preferred_addr),
+                                            otel::attr::io_error_type(io),
+                                            otel::attr::io_error_code(io),
+                                        ],
+                                    );
+                                }
+
+                                // We use the inbound_tx channel to send the error back to the main thread.
+                                if inbound_tx.send_async(Err(e)).await.is_err() {
+                                    tracing::debug!(
+                                        "Channel for inbound datagrams closed; exiting UDP thread"
+                                    );
+                                    break;
+                                }
+                            };
+                        }
+
+                        tracing::debug!(
+                            "Channel for outbound datagrams closed; exiting UDP thread"
+                        );
                     }
-
-                    tracing::debug!("Channel for outbound datagrams closed; exiting UDP thread");
                 });
-                let receive = pin!(async {
+                let receive = runtime.spawn(async move {
                     loop {
+                        tokio::task::yield_now().await;
+
                         let result = socket.recv_from().await;
 
                         if let Some(io) = result
@@ -278,9 +292,8 @@ impl ThreadedUdpSocket {
 
                 let _ = error_tx.send(Ok(()));
 
-                futures::future::select(send, receive).await;
-            })
-                })?;
+                runtime.block_on(futures::future::select(send, receive));
+            })?;
 
         error_rx.recv().map_err(io::Error::other)??;
 
