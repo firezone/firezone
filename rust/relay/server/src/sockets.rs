@@ -144,6 +144,8 @@ impl Sockets {
             .get(&token)
             .ok_or_else(|| not_connected(port, address_family))?;
 
+        tracing::trace!(token = %token.0, %port, ?address_family, %dest, len = %msg.len(), "Sending message");
+
         let num_sent = socket.send_to(msg, dest)?;
 
         debug_assert_eq!(num_sent, msg.len());
