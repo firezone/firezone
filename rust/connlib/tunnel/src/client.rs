@@ -1357,7 +1357,11 @@ impl ClientState {
             .tcp_dns_streams_by_upstream_and_query_id
             .insert((server, query_id), (query.local, query.remote));
 
-        debug_assert!(existing.is_none(), "Query IDs should be unique");
+        if let Some((existing_local, existing_remote)) = existing
+            && (existing_local != query.local || existing_remote != query.remote)
+        {
+            debug_assert!(false, "Query IDs should be unique");
+        }
     }
 
     fn maybe_update_tun_routes(&mut self) {
