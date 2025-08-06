@@ -69,4 +69,17 @@ defmodule Domain.Fixtures.Policies do
     {:ok, policy} = Policies.delete_policy(policy, subject)
     policy
   end
+
+  def update_policy(policy, attrs) do
+    policy = Repo.preload(policy, :account)
+
+    subject =
+      Fixtures.Auth.create_subject(
+        account: policy.account,
+        actor: [type: :account_admin_user]
+      )
+
+    {:ok, policy} = Policies.update_policy(policy, Enum.into(attrs, %{}), subject)
+    policy
+  end
 end

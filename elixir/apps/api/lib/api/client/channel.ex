@@ -707,12 +707,6 @@ defmodule API.Client.Channel do
     }
   end
 
-  defp disconnect(socket) do
-    push(socket, "disconnect", %{reason: :token_expired})
-    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
-    {:stop, :shutdown, socket}
-  end
-
   ##########################################
   #### Handling changes from the domain ####
   ##########################################
@@ -793,9 +787,9 @@ defmodule API.Client.Channel do
        )
        when id == client_id do
     # TODO: Hard delete
-    # Deleting a client should delete all its tokens, forcing the user to reauth.
-    # The global disconnect handler we have for token deletion should handle this case.
-    disconnect(socket)
+    # Deleting a client won't necessary delete its tokens in the case of a headless client.
+    # So we explicitly handle the deleted client here by forcing it to reconnect.
+    {:stop, :shutdown, socket}
   end
 
   # GATEWAY_GROUPS
@@ -851,7 +845,11 @@ defmodule API.Client.Channel do
        )
        when old_resource_id != resource_id or old_actor_group_id != actor_group_id or
               old_conditions != conditions do
-    # Breaking update - process this as a delete and then create
+    # TODO: Optimization
+    # Breaking update - process this as a delete and then create to make our lives easier.
+    # We could be smarter here and process the individual side effects more cleverly to avoid
+    # sending resource_deleted and resource_created_or_updated if the policy is not actually changing
+    # the client's connectable_resources.
     {:noreply, socket} = handle_change(%{change | op: :delete}, socket)
 
     # DO NOT re-add disabled policies
@@ -940,7 +938,7 @@ defmodule API.Client.Channel do
     # TODO: Multi-site resources
     # Currently, connlib doesn't handle resources changing sites, so we need to delete then create.
     # We handle that scenario by sending resource_deleted then resource_created_or_updated, so it's
-    # important that deletions are handled first.
+    # important that deletions are processed first here.
     # See https://github.com/firezone/firezone/issues/9881
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)

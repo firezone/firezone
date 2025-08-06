@@ -196,9 +196,8 @@ defmodule API.Gateway.Channel do
 
   def handle_info(
         {{:ice_candidates, gateway_id}, client_id, candidates},
-        %{assigns: %{gateway: %{id: id}}} = socket
-      )
-      when gateway_id == id do
+        %{assigns: %{gateway: %{id: gateway_id}}} = socket
+      ) do
     push(socket, "ice_candidates", %{
       client_id: client_id,
       candidates: candidates
@@ -209,9 +208,8 @@ defmodule API.Gateway.Channel do
 
   def handle_info(
         {{:invalidate_ice_candidates, gateway_id}, client_id, candidates},
-        %{assigns: %{gateway: %{id: id}}} = socket
-      )
-      when gateway_id == id do
+        %{assigns: %{gateway: %{id: gateway_id}}} = socket
+      ) do
     push(socket, "invalidate_ice_candidates", %{
       client_id: client_id,
       candidates: candidates
@@ -222,9 +220,8 @@ defmodule API.Gateway.Channel do
 
   def handle_info(
         {{:authorize_flow, gateway_id}, {channel_pid, socket_ref}, payload},
-        %{assigns: %{gateway: %{id: id}}} = socket
-      )
-      when gateway_id == id do
+        %{assigns: %{gateway: %{id: gateway_id}}} = socket
+      ) do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
@@ -267,9 +264,8 @@ defmodule API.Gateway.Channel do
   # DEPRECATED IN 1.4
   def handle_info(
         {{:allow_access, gateway_id}, {channel_pid, socket_ref}, attrs},
-        %{assigns: %{gateway: %{id: id}}} = socket
-      )
-      when gateway_id == id do
+        %{assigns: %{gateway: %{id: gateway_id}}} = socket
+      ) do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
@@ -315,9 +311,8 @@ defmodule API.Gateway.Channel do
   # DEPRECATED IN 1.4
   def handle_info(
         {{:request_connection, gateway_id}, {channel_pid, socket_ref}, attrs},
-        %{assigns: %{gateway: %{id: id}}} = socket
-      )
-      when gateway_id == id do
+        %{assigns: %{gateway: %{id: gateway_id}}} = socket
+      ) do
     %{
       client: client,
       resource: %Cache.Cacheable.Resource{} = resource,
@@ -566,10 +561,9 @@ defmodule API.Gateway.Channel do
                flow
          },
          %{
-           assigns: %{gateway: %{id: id}}
+           assigns: %{gateway: %{id: gateway_id}}
          } = socket
-       )
-       when gateway_id == id do
+       ) do
     socket.assigns.cache
     |> Cache.Gateway.reauthorize_deleted_flow(flow)
     |> case do
@@ -622,6 +616,20 @@ defmodule API.Gateway.Channel do
       {:error, :not_found} ->
         {:noreply, socket}
     end
+  end
+
+  # GATEWAYS
+
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct: %Gateways.Gateway{id: gateway_id}
+         },
+         %{
+           assigns: %{gateway: %{id: gateway_id}}
+         } = socket
+       ) do
+    {:stop, :shutdown, socket}
   end
 
   # RESOURCES
