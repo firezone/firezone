@@ -453,7 +453,7 @@ where
                 ip_buffer.push(packet);
                 let num_buffered = ip_buffer.len();
 
-                tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
+                // tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
 
                 return Ok(None);
             }
