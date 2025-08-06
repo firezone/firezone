@@ -158,8 +158,6 @@ impl Sockets {
 
         let num_sent = socket.send_to(msg, dest)?;
 
-        tracing::trace!(token = %token.0, %port, ?address_family, %dest, len = %msg.len(), "Sent message");
-
         debug_assert_eq!(num_sent, msg.len());
 
         Ok(())
