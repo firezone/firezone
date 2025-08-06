@@ -15,7 +15,7 @@ defmodule Domain.ChangeLogs.ChangeLog.Query do
   # this likely is not a major issue since:
   #   (1) our replication lag should be fairly low
   #   (2) at worst, we will omit changes older than the cut
-  # 
+  #
   # The "fix" is to add a commit_timestamp to change_logs and use that instead.
   # However, that adds a non-trivial amount of complexity to the ingestion processor.
   def before_cutoff(queryable, %DateTime{} = cutoff) do
