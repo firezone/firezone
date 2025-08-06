@@ -26,3 +26,6 @@ gha-creds-*.json
 
 # Ignore local `direnv` cache
 .direnv
+
+*.img
+*.iso

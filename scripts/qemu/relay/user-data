@@ -1,0 +1,33 @@
+#cloud-config
+write_files:
+  - path: /etc/systemd/system/firezone-relay.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Firezone Relay
+
+      [Service]
+      Environment="PUBLIC_IP4_ADDR=192.168.100.10"
+      Environment="FIREZONE_TOKEN=.SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
+      Environment="RUST_LOG=info"
+      Environment="FIREZONE_API_URL=http://10.0.2.2:8000"
+      Environment="EBPF_OFFLOADING=ens3"
+      ExecStart=/usr/local/bin/firezone-relay
+      Restart=always
+      User=root
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl daemon-reload
+
+network:
+    version: 2
+    ethernets:
+      eth0:
+        dhcp4: false
+        addresses: [192.168.100.2/24]
+        gateway4: 192.168.100.1
+        nameservers:
+          addresses: [8.8.8.8]
