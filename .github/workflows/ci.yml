@@ -282,11 +282,11 @@ jobs:
       pull-requests: write
     env:
       API_IMAGE: "ghcr.io/firezone/api"
-      API_TAG: ${{ github.sha }}
+      API_TAG: main
       WEB_IMAGE: "ghcr.io/firezone/web"
-      WEB_TAG: ${{ github.sha }}
+      WEB_TAG: main
       ELIXIR_IMAGE: "ghcr.io/firezone/elixir"
-      ELIXIR_TAG: ${{ github.sha }}
+      ELIXIR_TAG: main
       GATEWAY_IMAGE: "ghcr.io/firezone/perf/gateway"
       GATEWAY_TAG: ${{ github.sha }}
       CLIENT_IMAGE: "ghcr.io/firezone/perf/client"
