@@ -104,8 +104,6 @@ impl Sockets {
 
     /// Flush all buffered packets.
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        let any_buffered = !self.pending_packets.is_empty();
-
         while let Some(packet) = self.pending_packets.pop_front() {
             match self.try_send_internal(packet.src, packet.dst, &packet.payload) {
                 Ok(()) => continue,
@@ -119,10 +117,6 @@ impl Sockets {
             };
         }
 
-        if any_buffered {
-            tracing::trace!("Flushed all buffered packets");
-        }
-
         Poll::Ready(Ok(()))
     }
 
@@ -130,8 +124,6 @@ impl Sockets {
         match self.try_send_internal(port, dest, msg.as_ref()) {
             Ok(()) => Ok(()),
             Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                tracing::trace!(src = %port, dst = %dest, len = %msg.len(), "Buffering packet");
-
                 self.pending_packets.push_back(PendingPacket {
                     src: port,
                     dst: dest,
