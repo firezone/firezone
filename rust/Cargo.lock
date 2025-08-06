@@ -7080,7 +7080,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "str0m"
 version = "0.9.0"
-source = "git+https://github.com/algesten/str0m?branch=chore%2Fprint-txid#4c8886aca2bb981718f25c9f7893329f7bff2277"
+source = "git+https://github.com/algesten/str0m?branch=chore%2Fprint-txid#31eb49a07f6fa390d0c34f68a1965b71fae735c2"
 dependencies = [
  "combine",
  "crc",
