@@ -758,6 +758,21 @@ defmodule Domain.FlowsTest do
     end
   end
 
+  describe "delete_expired_flows/0" do
+    test "deletes only expired flows", %{account: account} do
+      expired_at = DateTime.utc_now() |> DateTime.add(-1, :day)
+      flow1 = Fixtures.Flows.create_flow(account: account, expires_at: expired_at)
+
+      not_expired_at = DateTime.utc_now() |> DateTime.add(1, :day)
+      flow2 = Fixtures.Flows.create_flow(account: account, expires_at: not_expired_at)
+
+      delete_expired_flows()
+
+      assert Repo.get(Flows.Flow, flow1.id) == nil
+      assert [^flow2] = Repo.all(Flows.Flow)
+    end
+  end
+
   describe "delete_stale_flows_on_connect/2" do
     setup %{
       account: account
