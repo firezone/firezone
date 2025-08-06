@@ -36,7 +36,7 @@ impl UniquePacketBuffer {
             }
         }
 
-        tracing::debug!(tag = %self.tag, is_full = %self.buffer.is_full(), packet = ?new, "Buffering packet");
+        // tracing::debug!(tag = %self.tag, is_full = %self.buffer.is_full(), packet = ?new, "Buffering packet");
 
         if self.buffer.is_full() {
             self.num_dropped_packets.add(
