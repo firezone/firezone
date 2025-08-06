@@ -37,7 +37,7 @@ defmodule Domain.Cache.Gateway do
   @doc """
     Fetches relevant flows from the DB and transforms them into the cache format.
   """
-  @spec hydrate(%Gateways.Gateway{}) :: t()
+  @spec hydrate(Gateways.Gateway.t()) :: t()
   def hydrate(gateway) do
     OpenTelemetry.Tracer.with_span "Domain.Cache.hydrate_flows",
       attributes: %{
@@ -121,7 +121,7 @@ defmodule Domain.Cache.Gateway do
     removal of access on the Gateway but not the client, which would cause connectivity issues.
     If we can't create a new authorization, we send unauthorized so that access is removed.
   """
-  @spec reauthorize_deleted_flow(t(), %Flows.Flow{}) ::
+  @spec reauthorize_deleted_flow(t(), Flows.Flow.t()) ::
           {:ok, non_neg_integer(), t()} | {:error, :unauthorized, t()} | {:error, :not_found}
   def reauthorize_deleted_flow(cache, %Flows.Flow{} = flow) do
     key = flow_key(flow)

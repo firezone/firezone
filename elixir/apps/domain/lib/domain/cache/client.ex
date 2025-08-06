@@ -85,7 +85,7 @@ defmodule Domain.Cache.Client do
     the resource is not authorized for the client.
   """
 
-  @spec authorize_resource(t(), %Clients.Client{}, Ecto.UUID.t(), %Auth.Subject{}) ::
+  @spec authorize_resource(t(), Clients.Client.t(), Ecto.UUID.t(), Auth.Subject.t()) ::
           {:ok, Cache.Cacheable.Resource.t(), Ecto.UUID.t(), Ecto.UUID.t(), non_neg_integer()}
           | {:error, :not_found}
           | {:error, {:forbidden, violated_properties: [atom()]}}
@@ -141,7 +141,7 @@ defmodule Domain.Cache.Client do
     If opts[:toggle] is set to true, we ensure that all added resources also have
   """
 
-  @spec recompute_connectable_resources(t() | nil, %Clients.Client{}, Keyword.t()) ::
+  @spec recompute_connectable_resources(t() | nil, Clients.Client.t(), Keyword.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def recompute_connectable_resources(nil, client) do
@@ -202,7 +202,7 @@ defmodule Domain.Cache.Client do
     yield deleted IDs, so we send those back.
   """
 
-  @spec add_membership(t(), %Clients.Client{}) ::
+  @spec add_membership(t(), Clients.Client.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def add_membership(cache, client) do
@@ -223,7 +223,7 @@ defmodule Domain.Cache.Client do
     Removes all policies, resources, and memberships associated with the given group_id from the cache.
   """
 
-  @spec delete_membership(t(), %Actors.Membership{}, %Clients.Client{}) ::
+  @spec delete_membership(t(), Actors.Membership.t(), Clients.Client.t()) ::
           {:ok, [Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_membership(cache, membership, client) do
@@ -262,7 +262,7 @@ defmodule Domain.Cache.Client do
     Updates any relevant resources in the cache with the new group name.
   """
 
-  @spec update_resources_with_group_name(t(), %Gateways.Group{}, %Clients.Client{}) ::
+  @spec update_resources_with_group_name(t(), Gateways.Group.t(), Clients.Client.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def update_resources_with_group_name(cache, group, client) do
@@ -301,7 +301,7 @@ defmodule Domain.Cache.Client do
     otherwise we just return the updated cache.
   """
 
-  @spec add_policy(t(), %Policies.Policy{}, %Clients.Client{}, %Auth.Subject{}) ::
+  @spec add_policy(t(), Policies.Policy.t(), Clients.Client.t(), Auth.Subject.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def add_policy(cache, %{resource_id: resource_id} = policy, client, subject) do
@@ -336,7 +336,7 @@ defmodule Domain.Cache.Client do
     with a delete and then add operation.
   """
 
-  @spec update_policy(t(), %Policies.Policy{}) :: {:ok, [], [], t()}
+  @spec update_policy(t(), Policies.Policy.t()) :: {:ok, [], [], t()}
 
   def update_policy(cache, policy) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
@@ -348,7 +348,7 @@ defmodule Domain.Cache.Client do
     Removes a policy from the cache. If we can't find another policy granting access to the resource,
     we return the deleted resource ID.
   """
-  @spec delete_policy(t(), %Policies.Policy{}, %Clients.Client{}) ::
+  @spec delete_policy(t(), Policies.Policy.t(), Clients.Client.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
   def delete_policy(cache, policy, client) do
     policy = Domain.Cache.Cacheable.to_cache(policy)
@@ -386,7 +386,7 @@ defmodule Domain.Cache.Client do
     so we return either the deleted resource ID or the updated resource if there's a change. Otherwise we simply
     return the updated cache.
   """
-  @spec add_resource_connection(t(), %Resources.Connection{}, %Auth.Subject{}, %Clients.Client{}) ::
+  @spec add_resource_connection(t(), Resources.Connection.t(), Auth.Subject.t(), Clients.Client.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
   def add_resource_connection(cache, connection, subject, client) do
     rid_bytes = dump!(connection.resource_id)
@@ -429,7 +429,7 @@ defmodule Domain.Cache.Client do
     return the updated resource.
   """
 
-  @spec delete_resource_connection(t(), %Resources.Connection{}, %Clients.Client{}) ::
+  @spec delete_resource_connection(t(), Resources.Connection.t(), Clients.Client.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def delete_resource_connection(cache, connection, client) do
@@ -471,7 +471,7 @@ defmodule Domain.Cache.Client do
     we return only the updated cache.
   """
 
-  @spec update_resource(t(), %Resources.Resource{}, %Clients.Client{}) ::
+  @spec update_resource(t(), Resources.Resource.t(), Clients.Client.t()) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
 
   def update_resource(cache, resource, client) do
