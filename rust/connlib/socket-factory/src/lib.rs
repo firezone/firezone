@@ -328,7 +328,7 @@ impl UdpSocket {
                     let num_bytes = chunk.contents.len();
                     let batch_num = idx + 1;
 
-                    #[cfg(debug_assertions)]
+                    // #[cfg(debug_assertions)]
                     tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, num_packets = %(num_bytes / segment_size), %segment_size);
 
                     self.send_inner(chunk)
