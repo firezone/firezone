@@ -381,6 +381,8 @@ where
             return None;
         };
 
+        tracing::trace!(?self.channel_and_client_by_port_and_peer);
+
         self.data_relayed_counter.add(msg.len() as u64, &[]);
         self.data_relayed += msg.len() as u64;
 
@@ -782,6 +784,8 @@ where
             tracing::debug!(target: "relay", channel = %channel_number.value(), "Channel does not exist, refusing to forward data");
             return None;
         };
+
+        tracing::trace!(?self.channels_by_client_and_number);
 
         // TODO: Do we need to enforce that only the creator of the channel can relay data?
         // The sender of a UDP packet can be spoofed, so why would we bother?
