@@ -154,7 +154,7 @@ defmodule Domain.ChangeLogsTest do
           old_data: nil,
           data: %{"id" => "1"},
           vsn: 1,
-          inserted_at: now
+          inserted_at: now |> DateTime.add(-10, :second)
         },
         %{
           account_id: account1.id,
@@ -164,18 +164,11 @@ defmodule Domain.ChangeLogsTest do
           old_data: %{"id" => "1", "name" => "old"},
           data: %{"id" => "1", "name" => "new"},
           vsn: 1,
-          inserted_at: now
+          inserted_at: now |> DateTime.add(-10, :second)
         }
       ]
 
       assert {2, nil} = bulk_insert(old_attrs)
-
-      # Sleep to ensure time difference
-      Process.sleep(1)
-
-      cutoff = DateTime.utc_now()
-
-      Process.sleep(1)
 
       # Create some new records (after cutoff)
       new_attrs = %{
@@ -186,13 +179,13 @@ defmodule Domain.ChangeLogsTest do
         old_data: %{"id" => "1"},
         data: nil,
         vsn: 1,
-        inserted_at: DateTime.utc_now()
+        inserted_at: now |> DateTime.add(10, :second)
       }
 
       assert {1, nil} = bulk_insert([new_attrs])
 
       # Truncate old records
-      assert {2, nil} = truncate(account1, cutoff)
+      assert {2, nil} = truncate(account1, now)
 
       # Verify only the new record remains
       remaining = Repo.all(ChangeLog.Query.by_account_id(ChangeLog.Query.all(), account1.id))
@@ -201,6 +194,8 @@ defmodule Domain.ChangeLogsTest do
     end
 
     test "does not delete records from other accounts", %{account1: account1, account2: account2} do
+      now = DateTime.utc_now()
+
       # Create records for both accounts before cutoff
       account1_attrs = %{
         account_id: account1.id,
@@ -209,7 +204,8 @@ defmodule Domain.ChangeLogsTest do
         op: :insert,
         old_data: nil,
         data: %{"id" => "1"},
-        vsn: 1
+        vsn: 1,
+        inserted_at: now |> DateTime.add(-10, :second)
       }
 
       account2_attrs = %{
@@ -219,14 +215,12 @@ defmodule Domain.ChangeLogsTest do
         op: :insert,
         old_data: nil,
         data: %{"id" => "2"},
-        vsn: 1
+        vsn: 1,
+        inserted_at: now |> DateTime.add(-10, :second)
       }
 
       assert {1, nil} = bulk_insert([account1_attrs])
       assert {1, nil} = bulk_insert([account2_attrs])
-
-      # Sleep to ensure cutoff is after insertions
-      Process.sleep(10)
 
       # Truncate only account1's records
       assert {1, nil} = truncate(account1, DateTime.utc_now())
@@ -246,6 +240,8 @@ defmodule Domain.ChangeLogsTest do
     end
 
     test "does not delete records inserted after cutoff", %{account1: account1} do
+      now = DateTime.utc_now()
+
       # Create record before cutoff
       old_attrs = %{
         account_id: account1.id,
@@ -255,15 +251,10 @@ defmodule Domain.ChangeLogsTest do
         old_data: nil,
         data: %{"id" => "1"},
         vsn: 1,
-        inserted_at: DateTime.utc_now()
+        inserted_at: now |> DateTime.add(-10, :second)
       }
 
       assert {1, nil} = bulk_insert([old_attrs])
-
-      # Set cutoff
-      Process.sleep(1)
-      cutoff = DateTime.utc_now()
-      Process.sleep(1)
 
       # Create record after cutoff
       new_attrs = %{
@@ -274,13 +265,13 @@ defmodule Domain.ChangeLogsTest do
         old_data: nil,
         data: %{"id" => "2"},
         vsn: 1,
-        inserted_at: DateTime.utc_now()
+        inserted_at: now |> DateTime.add(10, :second)
       }
 
       assert {1, nil} = bulk_insert([new_attrs])
 
       # Truncate should only delete the old record
-      assert {1, nil} = truncate(account1, cutoff)
+      assert {1, nil} = truncate(account1, now)
 
       # Verify only the new record remains
       remaining = Repo.all(ChangeLog.Query.by_account_id(ChangeLog.Query.all(), account1.id))
@@ -289,11 +280,9 @@ defmodule Domain.ChangeLogsTest do
     end
 
     test "returns {0, nil} when no records match criteria", %{account1: account1} do
-      # Set cutoff before any records exist
-      cutoff = DateTime.utc_now()
-      Process.sleep(1)
+      now = DateTime.utc_now()
 
-      # Create record after cutoff
+      # Create record right at cutoff
       attrs = %{
         account_id: account1.id,
         lsn: 1,
@@ -302,13 +291,13 @@ defmodule Domain.ChangeLogsTest do
         old_data: nil,
         data: %{"id" => "1"},
         vsn: 1,
-        inserted_at: DateTime.utc_now()
+        inserted_at: now
       }
 
       assert {1, nil} = bulk_insert([attrs])
 
       # Truncate with cutoff before any records
-      assert {0, nil} = truncate(account1, cutoff)
+      assert {0, nil} = truncate(account1, now)
 
       # Verify record still exists
       remaining = Repo.all(ChangeLog.Query.by_account_id(ChangeLog.Query.all(), account1.id))
