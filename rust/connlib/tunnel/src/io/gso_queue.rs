@@ -65,6 +65,10 @@ impl GsoQueue {
     pub fn clear(&mut self) {
         self.inner.clear()
     }
+
+    pub fn is_empty(&self) -> bool {
+        self.inner.values().all(|batches| batches.is_empty())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]

@@ -166,6 +166,8 @@ impl Io {
     > {
         ready!(self.flush(cx)?);
 
+        assert!(self.gso_queue.is_empty());
+
         if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
             self.nameservers.evaluate();
         }
