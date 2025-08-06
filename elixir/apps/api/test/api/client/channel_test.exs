@@ -1394,7 +1394,7 @@ defmodule API.Client.ChannelTest do
       assert %{assigns: %{last_lsn: 200}} = :sys.get_state(socket.channel_pid)
     end
 
-    test "for resource site chages pushes resource_deleted followed by resource_created_or_updated",
+    test "for resource site changes pushes resource_deleted followed by resource_created_or_updated",
          %{
            socket: socket,
            account: account,
