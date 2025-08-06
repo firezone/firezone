@@ -329,7 +329,9 @@ impl UdpSocket {
                     let batch_num = idx + 1;
 
                     // #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, num_packets = %(num_bytes / segment_size), %segment_size);
+                    if segment_size < 100 {
+                        tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, num_packets = %(num_bytes / segment_size), %segment_size);
+                    }
 
                     self.send_inner(chunk)
                         .await
@@ -337,8 +339,11 @@ impl UdpSocket {
                 }
             }
             None => {
-                #[cfg(debug_assertions)]
-                tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, num_bytes = %transmit.contents.len());
+                // #[cfg(debug_assertions)]
+
+                if transmit.contents.len() < 100 {
+                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, num_bytes = %transmit.contents.len());
+                }
 
                 self.send_inner(transmit)
                     .await
@@ -609,8 +614,10 @@ where
 
             let segment_size = meta.stride;
 
-            #[cfg(debug_assertions)]
-            tracing::trace!(target: "wire::net::recv", num_p = %self._num_packets, tot_b = %self._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
+            // #[cfg(debug_assertions)]
+            if segment_size < 100 {
+                tracing::trace!(target: "wire::net::recv", num_p = %self._num_packets, tot_b = %self._total_bytes, src = %meta.addr, dst = %local, ecn = ?meta.ecn, len = %segment_size);
+            }
 
             let segment_start = self.segment_index;
             let segment_end = std::cmp::min(segment_start + segment_size, meta.len);
