@@ -18,7 +18,6 @@ defmodule Domain.ChangeLogs.ChangeLog.Query do
   # 
   # The "fix" is to add a commit_timestamp to change_logs and use that instead.
   # However, that adds a non-trivial amount of complexity to the ingestion processor.
-  # determine the commit_timestamp for each entry and save that as well.
   def before_cutoff(queryable, %DateTime{} = cutoff) do
     queryable
     |> where([c], c.inserted_at < ^cutoff)
