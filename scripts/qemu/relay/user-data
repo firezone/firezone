@@ -7,7 +7,7 @@ write_files:
       Description=Firezone Relay
 
       [Service]
-      Environment="PUBLIC_IP4_ADDR=192.168.100.10"
+      Environment="PUBLIC_IP4_ADDR=192.168.100.1"
       Environment="FIREZONE_TOKEN=.SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       Environment="RUST_LOG=info"
       Environment="FIREZONE_API_URL=http://10.0.2.2:8000"
@@ -20,14 +20,20 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
+  - systemctl disable systemd-networkd-wait-online.service
   - systemctl daemon-reload
 
 network:
     version: 2
     ethernets:
-      eth0:
+      ens3:
         dhcp4: false
         addresses: [192.168.100.2/24]
         gateway4: 192.168.100.1
         nameservers:
           addresses: [8.8.8.8]
+
+cloud_init:
+  network:
+    wait_on_network: false
+    network_wait_timeout: 10
