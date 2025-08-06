@@ -264,7 +264,7 @@ where
         sender: ClientSocket,
         now: Instant,
     ) -> Option<(AllocationPort, PeerSocket)> {
-        tracing::trace!(target: "wire", num_bytes = %bytes.len());
+        // tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         match client_message::decode(bytes) {
             Ok(Ok(message)) => {
@@ -389,7 +389,7 @@ where
         if msg.len() < 200 {
             tracing::trace!(target: "wire", msg = %hex::encode(msg), %allocation, peer = %sender, %client);
         } else {
-            tracing::trace!(target: "wire", num_bytes = %msg.len(), %allocation, peer = %sender, %client);
+            // tracing::trace!(target: "wire", num_bytes = %msg.len(), %allocation, peer = %sender, %client);
         }
 
         Some((*client, *channel_number))
@@ -798,7 +798,7 @@ where
         if data.len() < 200 {
             tracing::trace!(target: "wire", msg = %hex::encode(data), allocation = %channel.allocation, client = %sender, peer = %channel.peer_address);
         } else {
-            tracing::trace!(target: "wire", num_bytes = %data.len(), allocation = %channel.allocation, client = %sender, peer = %channel.peer_address);
+            // tracing::trace!(target: "wire", num_bytes = %data.len(), allocation = %channel.allocation, client = %sender, peer = %channel.peer_address);
         }
 
         self.data_relayed_counter.add(data.len() as u64, &[]);
