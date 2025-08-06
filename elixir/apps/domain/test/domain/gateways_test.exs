@@ -689,7 +689,7 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "all_connected_gateways_for_resource/3" do
+  describe "all_connected_gateways_for_resource_id/3" do
     test "returns empty list when there are no online gateways", %{
       account: account,
       subject: subject
@@ -701,7 +701,7 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_gateway(account: account)
       |> Fixtures.Gateways.delete_gateway()
 
-      assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
+      assert all_connected_gateways_for_resource_id(resource.id, subject) == {:ok, []}
     end
 
     test "returns list of connected gateways for a given resource", %{
@@ -718,7 +718,7 @@ defmodule Domain.GatewaysTest do
 
       assert Gateways.Presence.connect(gateway) == :ok
 
-      assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource(resource, subject)
+      assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource_id(resource.id, subject)
       assert connected_gateway.id == gateway.id
     end
 
@@ -731,38 +731,7 @@ defmodule Domain.GatewaysTest do
 
       assert Gateways.Presence.connect(gateway) == :ok
 
-      assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
-    end
-  end
-
-  describe "gateway_can_connect_to_resource?/2" do
-    test "returns true when gateway can connect to resource", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
-
-      resource =
-        Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: gateway.group_id}]
-        )
-
-      assert gateway_can_connect_to_resource?(gateway, resource)
-    end
-
-    test "returns false when gateway cannot connect to resource", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
-
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      refute gateway_can_connect_to_resource?(gateway, resource)
-    end
-
-    test "returns false when gateway is offline", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      refute gateway_can_connect_to_resource?(gateway, resource)
+      assert all_connected_gateways_for_resource_id(resource.id, subject) == {:ok, []}
     end
   end
 

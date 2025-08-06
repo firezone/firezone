@@ -483,7 +483,7 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         true <- Gateways.gateway_can_connect_to_resource_id?(gateway, resource_id) do
+         true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =
         Flows.create_flow(
@@ -511,7 +511,7 @@ defmodule API.Client.Channel do
 
       {:noreply, socket}
     else
-      :error ->
+      {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
@@ -545,7 +545,7 @@ defmodule API.Client.Channel do
              socket.assigns.subject
            ),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         true <- Gateways.gateway_can_connect_to_resource_id?(gateway, resource) do
+         true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =
         Flows.create_flow(

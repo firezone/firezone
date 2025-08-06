@@ -84,7 +84,7 @@ defmodule Domain.Flows do
              flow.resource_id,
              client.actor_id
            ),
-         {:ok, expires_at, policy} <-
+         {:ok, policy, expires_at} <-
            Policies.longest_conforming_policy_for_client(policies, client, flow.expires_at),
          {:ok, membership} <-
            Actors.fetch_membership_by_actor_id_and_group_id(

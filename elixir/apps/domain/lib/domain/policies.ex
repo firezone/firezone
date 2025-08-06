@@ -223,6 +223,13 @@ defmodule Domain.Policies do
 
   def ensure_client_conforms_policy_conditions(
         %Clients.Client{} = client,
+        %__MODULE__.Policy{} = policy
+      ) do
+    ensure_client_conforms_policy_conditions(client, Cacheable.to_cache(policy))
+  end
+
+  def ensure_client_conforms_policy_conditions(
+        %Clients.Client{} = client,
         %Cacheable.Policy{} = policy
       ) do
     case Condition.Evaluator.ensure_conforms(policy.conditions, client) do

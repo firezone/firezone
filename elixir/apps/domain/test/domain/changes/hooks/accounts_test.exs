@@ -4,7 +4,7 @@ defmodule Domain.Changes.Hooks.AccountsTest do
   import Domain.Changes.Hooks.Accounts
 
   describe "insert/1" do
-    test "returns :ok" do
+    test "returns :ok for empty data" do
       assert :ok == on_insert(0, %{})
     end
   end

@@ -290,23 +290,6 @@ defmodule Domain.Gateways do
     end
   end
 
-  def gateway_can_connect_to_resource_id?(%Gateway{} = gateway, resource_id) do
-    connected_gateway_ids =
-      Presence.Account.list(gateway.account_id)
-      |> Map.keys()
-
-    cond do
-      gateway.id not in connected_gateway_ids ->
-        false
-
-      not Resources.connected?(resource_id, gateway) ->
-        false
-
-      true ->
-        true
-    end
-  end
-
   def change_gateway(%Gateway{} = gateway, attrs \\ %{}) do
     Gateway.Changeset.update(gateway, attrs)
   end

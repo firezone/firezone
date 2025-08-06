@@ -266,7 +266,7 @@ defmodule Domain.FlowsTest do
                  client,
                  gateway,
                  resource.id,
-                 policy,
+                 policy.id,
                  membership.id,
                  subject,
                  subject.expires_at
@@ -306,7 +306,7 @@ defmodule Domain.FlowsTest do
                  client,
                  gateway,
                  resource.id,
-                 policy,
+                 policy.id,
                  membership.id,
                  subject,
                  subject.expires_at
@@ -448,7 +448,7 @@ defmodule Domain.FlowsTest do
         ]
       )
 
-      assert {:error, :forbidden} = reauthorize_flow(flow)
+      assert :error = reauthorize_flow(flow)
     end
   end
 
@@ -818,9 +818,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Only authorize resource1 and resource2, resource3 should be deleted
-      authorized_resources = [resource1, resource2]
+      authorized_resource_ids = [resource1.id, resource2.id]
 
-      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resources)
+      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resource_ids)
 
       # Verify flow3 was deleted but flow1 and flow2 remain
       assert {:ok, ^flow1} = fetch_flow_by_id(flow1.id, subject)
@@ -861,9 +861,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Authorize all resources
-      authorized_resources = [resource1, resource2]
+      authorized_resource_ids = [resource1.id, resource2.id]
 
-      assert {0, nil} = delete_stale_flows_on_connect(client, authorized_resources)
+      assert {0, nil} = delete_stale_flows_on_connect(client, authorized_resource_ids)
 
       # Verify both flows still exist
       assert {:ok, ^flow1} = fetch_flow_by_id(flow1.id, subject)
@@ -903,9 +903,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Empty authorized list - all flows should be deleted
-      authorized_resources = []
+      authorized_resource_ids = []
 
-      assert {2, nil} = delete_stale_flows_on_connect(client, authorized_resources)
+      assert {2, nil} = delete_stale_flows_on_connect(client, authorized_resource_ids)
 
       # Verify both flows were deleted
       assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
@@ -949,9 +949,9 @@ defmodule Domain.FlowsTest do
         )
 
       # Only authorize resource2 for the first client (resource1 should be deleted)
-      authorized_resources = [resource2]
+      authorized_resource_ids = [resource2.id]
 
-      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resources)
+      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resource_ids)
 
       # Verify only the first client's flow was deleted
       assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
@@ -983,9 +983,9 @@ defmodule Domain.FlowsTest do
       Fixtures.Flows.create_flow()
 
       # Empty authorized list for current account
-      authorized_resources = []
+      authorized_resource_ids = []
 
-      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resources)
+      assert {1, nil} = delete_stale_flows_on_connect(client, authorized_resource_ids)
 
       # Verify only the current account's flow was deleted
       assert {:error, :not_found} = fetch_flow_by_id(flow1.id, subject)
@@ -997,9 +997,9 @@ defmodule Domain.FlowsTest do
       client: client
     } do
       # Try to delete stale flows for a client with no flows
-      authorized_resources = []
+      authorized_resource_ids = []
 
-      assert {0, nil} = delete_stale_flows_on_connect(client, authorized_resources)
+      assert {0, nil} = delete_stale_flows_on_connect(client, authorized_resource_ids)
     end
 
     test "handles case when client has no flows but resources are provided", %{
@@ -1008,9 +1008,10 @@ defmodule Domain.FlowsTest do
     } do
       # Create a client with no flows
       client_with_no_flows = Fixtures.Clients.create_client(account: account)
-      authorized_resources = [resource]
+      authorized_resource_ids = [resource.id]
 
-      assert {0, nil} = delete_stale_flows_on_connect(client_with_no_flows, authorized_resources)
+      assert {0, nil} =
+               delete_stale_flows_on_connect(client_with_no_flows, authorized_resource_ids)
     end
   end
 end

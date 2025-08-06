@@ -1190,7 +1190,7 @@ defmodule Domain.PoliciesTest do
 
       in_three_days = DateTime.utc_now() |> DateTime.add(3, :day)
 
-      assert {:ok, expires_at, ^policy1} =
+      assert {:ok, ^policy1, expires_at} =
                longest_conforming_policy_for_client(
                  [policy1, policy2],
                  client,
@@ -1201,7 +1201,7 @@ defmodule Domain.PoliciesTest do
 
       in_one_minute = DateTime.utc_now() |> DateTime.add(1, :minute)
 
-      assert {:ok, expires_at, ^policy1} =
+      assert {:ok, ^policy1, expires_at} =
                longest_conforming_policy_for_client(
                  [policy1, policy2],
                  client,

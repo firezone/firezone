@@ -271,7 +271,7 @@ defmodule Web.Live.Resources.IndexTest do
       resource = Fixtures.Resources.create_resource(account: account)
 
       # Simulate WAL broadcast
-      Changes.Hooks.Resources.on_insert(%{
+      Changes.Hooks.Resources.on_insert(0, %{
         "id" => resource.id,
         "account_id" => account.id
       })
@@ -303,6 +303,7 @@ defmodule Web.Live.Resources.IndexTest do
       Domain.Resources.delete_resource(resource, subject)
 
       Changes.Hooks.Resources.on_update(
+        0,
         %{
           "id" => resource.id,
           "account_id" => account.id,

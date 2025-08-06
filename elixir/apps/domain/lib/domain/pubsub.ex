@@ -51,12 +51,6 @@ defmodule Domain.PubSub do
       |> Domain.PubSub.subscribe()
     end
 
-    def broadcast(nil, payload) do
-      Logger.warning("Broadcasting to nil account_id is not allowed",
-        payload: inspect(payload)
-      )
-    end
-
     def broadcast(account_id, payload) do
       account_id
       |> topic()

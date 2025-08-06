@@ -8,10 +8,14 @@ defmodule Domain.Changes.Hooks.Tokens do
 
   @impl true
 
-  # updates for email tokens have no side effects
+  # updates for email and relay_group tokens have no side effects
   def on_update(_lsn, %{"type" => "email"}, _data), do: :ok
 
   def on_update(_lsn, _old_data, %{"type" => "email"}), do: :ok
+
+  def on_update(_lsn, %{"type" => "relay_group"}, _data), do: :ok
+
+  def on_update(_lsn, _old_data, %{"type" => "relay_group"}), do: :ok
 
   # Soft-delete - process as delete
   def on_update(lsn, %{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
