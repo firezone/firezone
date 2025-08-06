@@ -202,31 +202,30 @@ impl Sockets {
                 Poll::Pending => {}
             }
 
-            if let Some((num_packets, current)) = self.current_ready_sockets.pop_first() {
-                if let Some(socket) = self.inner.get(&current) {
-                    let (num_bytes, from) = match socket.recv_from(buf) {
-                        Ok(ok) => ok,
-                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                            continue;
-                        }
-                        Err(e) => {
-                            return Poll::Ready(Err(Error::Io(e)));
-                        }
-                    };
+            // Read from all sockets in order of least packets read so far.
+            while let Some((num_packets, current)) = self.current_ready_sockets.pop_first() {
+                let Some(socket) = self.inner.get(&current) else {
+                    continue;
+                };
 
-                    // Bump the number of packets and return.
-                    self.current_ready_sockets
-                        .insert((num_packets + 1, current));
+                let (num_bytes, from) = match socket.recv_from(buf) {
+                    Ok(ok) => ok,
+                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => continue,
+                    Err(e) => return Poll::Ready(Err(Error::Io(e))),
+                };
 
-                    let (port, _) = token_to_port_and_address_family(current);
+                // Bump the number of packets and return.
+                self.current_ready_sockets
+                    .insert((num_packets + 1, current));
 
-                    return Poll::Ready(Ok(Received {
-                        port,
-                        from,
-                        packet: &buf[..num_bytes],
-                    }));
-                }
-            };
+                let (port, _) = token_to_port_and_address_family(current);
+
+                return Poll::Ready(Ok(Received {
+                    port,
+                    from,
+                    packet: &buf[..num_bytes],
+                }));
+            }
 
             return Poll::Pending; // This is okay because we only get here if `event_rx` returned pending.
         }
