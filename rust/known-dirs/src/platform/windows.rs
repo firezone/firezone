@@ -1,4 +1,4 @@
-use crate::BUNDLE_ID;
+use super::NAMESPACE;
 use anyhow::{Context as _, Result};
 use known_folders::{KnownFolder, get_known_folder_path};
 use std::path::PathBuf;
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub fn app_local_data_dir() -> Result<PathBuf> {
     let path = get_known_folder_path(KnownFolder::LocalAppData)
         .context("Can't find %LOCALAPPDATA% dir")?
-        .join(crate::BUNDLE_ID);
+        .join(crate::NAMESPACE);
     Ok(path)
 }
 
@@ -19,19 +19,27 @@ pub fn app_local_data_dir() -> Result<PathBuf> {
 ///
 /// All writes should use `atomicwrites`.
 ///
-/// On Windows, `C:/ProgramData/$BUNDLE_ID/config`
+/// On Windows, `C:/ProgramData/$NAMESPACE/config`
 pub fn tunnel_service_config() -> Option<PathBuf> {
     Some(
         get_known_folder_path(KnownFolder::ProgramData)?
-            .join(BUNDLE_ID)
+            .join(NAMESPACE)
             .join("config"),
+    )
+}
+
+pub fn headless_client_token_path() -> Option<PathBuf> {
+    Some(
+        get_known_folder_path(KnownFolder::ProgramData)?
+            .join(NAMESPACE)
+            .join("token.txt"),
     )
 }
 
 pub fn tunnel_service_logs() -> Option<PathBuf> {
     Some(
         get_known_folder_path(KnownFolder::ProgramData)?
-            .join(BUNDLE_ID)
+            .join(NAMESPACE)
             .join("data")
             .join("logs"),
     )

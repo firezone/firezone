@@ -1,6 +1,6 @@
 use super::{ControllerRequest, CtlrTx};
+use crate::BUNDLE_ID;
 use anyhow::{Context, Result};
-use firezone_bin_shared::BUNDLE_ID;
 use firezone_logging::err_with_src;
 use std::env;
 use tauri::AppHandle;

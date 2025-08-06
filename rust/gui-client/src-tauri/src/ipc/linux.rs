@@ -1,6 +1,5 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result};
-use firezone_bin_shared::BUNDLE_ID;
 use std::{io::ErrorKind, os::unix::fs::PermissionsExt, path::PathBuf};
 use tokio::net::{UnixListener, UnixStream};
 
@@ -11,7 +10,9 @@ pub(crate) struct Server {
 
 impl Drop for Server {
     fn drop(&mut self) {
-        let path = ipc_path(self.id);
+        let Ok(path) = ipc_path(self.id) else {
+            return;
+        };
 
         if let Err(e) = std::fs::remove_file(&path) {
             tracing::debug!(path = %path.display(), "Failed to delete IPC socket: {e}");
@@ -30,7 +31,7 @@ pub(crate) type ServerStream = UnixStream;
 /// Connect to the Tunnel service
 #[expect(clippy::wildcard_enum_match_arm)]
 pub async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
-    let path = ipc_path(id);
+    let path = ipc_path(id)?;
     let stream = UnixStream::connect(&path)
         .await
         .map_err(|error| match error.kind() {
@@ -53,7 +54,7 @@ pub async fn connect_to_socket(id: SocketId) -> Result<ClientStream> {
 impl Server {
     /// Platform-specific setup
     pub(crate) fn new(id: SocketId) -> Result<Self> {
-        let sock_path = ipc_path(id);
+        let sock_path = ipc_path(id)?;
 
         tracing::debug!(socket = %sock_path.display(), "Creating new IPC server");
 
@@ -97,15 +98,15 @@ impl Server {
 /// Also systemd can create this dir with the `RuntimeDir=` directive which is nice.
 ///
 /// Test sockets live in e.g. `/run/user/1000/dev.firezone.client/data/`
-fn ipc_path(id: SocketId) -> PathBuf {
-    match id {
-        SocketId::Tunnel => PathBuf::from("/run").join(BUNDLE_ID).join("tunnel.sock"),
-        SocketId::Gui => firezone_bin_shared::known_dirs::runtime()
-            .expect("`known_dirs::runtime()` should always work")
+fn ipc_path(id: SocketId) -> Result<PathBuf> {
+    Ok(match id {
+        SocketId::Tunnel => known_dirs::platform::global_runtime().join("tunnel.sock"),
+        SocketId::Gui => known_dirs::runtime()
+            .context("Failed to get runtime dir")?
             .join("gui.sock"),
         #[cfg(test)]
-        SocketId::Test(id) => firezone_bin_shared::known_dirs::runtime()
-            .expect("`known_dirs::runtime()` should always work")
+        SocketId::Test(id) => known_dirs::runtime()
+            .context("Failed to get runtime dir")?
             .join(format!("ipc_test_{id}.sock")),
-    }
+    })
 }

@@ -1,0 +1,18 @@
+[package]
+name = "known-dirs"
+version = "0.1.0"
+edition = { workspace = true }
+description = "Firezone-specific directory paths."
+license = { workspace = true }
+
+[dependencies]
+anyhow = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+dirs = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+known-folders = { workspace = true }
+
+[lints]
+workspace = true
