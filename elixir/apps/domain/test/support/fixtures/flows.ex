@@ -80,6 +80,8 @@ defmodule Domain.Fixtures.Flows do
         %{id: subject.token_id}
       end)
 
+    expires_at = Map.get(attrs, :expires_at, subject.expires_at)
+
     Flows.Flow.Changeset.create(%{
       token_id: token_id,
       policy_id: policy_id,
@@ -91,7 +93,7 @@ defmodule Domain.Fixtures.Flows do
       client_remote_ip: client.last_seen_remote_ip,
       client_user_agent: client.last_seen_user_agent,
       gateway_remote_ip: gateway.last_seen_remote_ip,
-      expires_at: subject.expires_at || DateTime.utc_now() |> DateTime.add(14, :day)
+      expires_at: expires_at
     })
     |> Repo.insert!()
   end
