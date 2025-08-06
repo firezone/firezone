@@ -386,7 +386,12 @@ defmodule Domain.Cache.Client do
     so we return either the deleted resource ID or the updated resource if there's a change. Otherwise we simply
     return the updated cache.
   """
-  @spec add_resource_connection(t(), Resources.Connection.t(), Auth.Subject.t(), Clients.Client.t()) ::
+  @spec add_resource_connection(
+          t(),
+          Resources.Connection.t(),
+          Auth.Subject.t(),
+          Clients.Client.t()
+        ) ::
           {:ok, [Domain.Cache.Cacheable.Resource.t()], [Ecto.UUID.t()], t()}
   def add_resource_connection(cache, connection, subject, client) do
     rid_bytes = dump!(connection.resource_id)

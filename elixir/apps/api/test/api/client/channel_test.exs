@@ -630,6 +630,85 @@ defmodule API.Client.ChannelTest do
     end
   end
 
+  describe "handle_info/2 recompute_authorized_resources" do
+    test "sends resource_created_or_updated for new connectable_resources", %{
+      account: account,
+      actor: actor,
+      socket: socket
+    } do
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      # Create a policy that becomes valid in one second
+      now = DateTime.utc_now()
+
+      day_letter =
+        case Date.day_of_week(now) do
+          # Monday
+          1 -> "M"
+          # Tuesday
+          2 -> "T"
+          # Wednesday
+          3 -> "W"
+          # Thursday
+          4 -> "R"
+          # Friday
+          5 -> "F"
+          # Saturday
+          6 -> "S"
+          # Sunday
+          7 -> "U"
+        end
+
+      # This test will flake if run within 1 second of midnight UTC. Sorry about that.
+      time_range = "#{day_letter}/#{now.hour}:#{now.minute}:#{now.second + 1}-23:59:59/UTC"
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource,
+        conditions: [
+          %{
+            property: :current_utc_datetime,
+            operator: :is_in_day_of_week_time_ranges,
+            values: [time_range]
+          }
+        ]
+      )
+
+      membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership
+      })
+
+      refute_push "resource_created_or_updated", _payload
+      refute_push "resource_deleted", _payload
+
+      Process.sleep(2000)
+
+      send(socket.channel_pid, :recompute_authorized_resources)
+
+      assert_push "resource_created_or_updated", payload
+
+      assert payload.id == resource.id
+    end
+  end
+
   describe "handle_info/2 for presence events" do
     test "push_leave cancels leave if reconnecting with the same stamp secret" do
       relay_group = Fixtures.Relays.create_global_group()
