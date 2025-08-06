@@ -92,6 +92,162 @@ defmodule API.Gateway.ChannelTest do
   end
 
   describe "handle_info/2" do
+    test ":prune_cache removes key completely when all flows are expired", %{
+      account: account,
+      client: client,
+      resource: resource,
+      socket: socket,
+      gateway: gateway
+    } do
+      expired_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource,
+          gateway: gateway
+        )
+
+      expired_expiration = DateTime.utc_now() |> DateTime.add(-30, :second)
+      channel_pid = self()
+      socket_ref = make_ref()
+      preshared_key = "PSK"
+
+      ice_credentials = %{
+        client: %{username: "A", password: "B"},
+        gateway: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: to_cache(resource),
+           flow_id: expired_flow.id,
+           authorization_expires_at: expired_expiration,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key
+         }}
+      )
+
+      assert_push "authorize_flow", _payload
+
+      cid_bytes = Ecto.UUID.dump!(client.id)
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+
+      assert %{
+               assigns: %{
+                 cache: %{
+                   {^cid_bytes, ^rid_bytes} => _flows
+                 }
+               }
+             } = :sys.get_state(socket.channel_pid)
+
+      send(socket.channel_pid, :prune_cache)
+
+      assert %{
+               assigns: %{
+                 cache: %{}
+               }
+             } = :sys.get_state(socket.channel_pid)
+    end
+
+    test ":prune_cache prunes only expired flows from the cache", %{
+      account: account,
+      client: client,
+      resource: resource,
+      socket: socket,
+      gateway: gateway
+    } do
+      expired_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource,
+          gateway: gateway
+        )
+
+      unexpired_flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource,
+          gateway: gateway
+        )
+
+      expired_expiration = DateTime.utc_now() |> DateTime.add(-30, :second)
+      unexpired_expiration = DateTime.utc_now() |> DateTime.add(30, :second)
+
+      channel_pid = self()
+      socket_ref = make_ref()
+      preshared_key = "PSK"
+
+      ice_credentials = %{
+        client: %{username: "A", password: "B"},
+        gateway: %{username: "C", password: "D"}
+      }
+
+      send(
+        socket.channel_pid,
+        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: to_cache(resource),
+           flow_id: expired_flow.id,
+           authorization_expires_at: expired_expiration,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key
+         }}
+      )
+
+      assert_push "authorize_flow", _payload
+
+      send(
+        socket.channel_pid,
+        {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: to_cache(resource),
+           flow_id: unexpired_flow.id,
+           authorization_expires_at: unexpired_expiration,
+           ice_credentials: ice_credentials,
+           preshared_key: preshared_key
+         }}
+      )
+
+      cid_bytes = Ecto.UUID.dump!(client.id)
+      rid_bytes = Ecto.UUID.dump!(resource.id)
+
+      assert %{
+               assigns: %{
+                 cache: %{
+                   {^cid_bytes, ^rid_bytes} => flows
+                 }
+               }
+             } = :sys.get_state(socket.channel_pid)
+
+      assert flows == %{
+               Ecto.UUID.dump!(expired_flow.id) => DateTime.to_unix(expired_expiration, :second),
+               Ecto.UUID.dump!(unexpired_flow.id) =>
+                 DateTime.to_unix(unexpired_expiration, :second)
+             }
+
+      send(socket.channel_pid, :prune_cache)
+
+      assert %{
+               assigns: %{
+                 cache: %{
+                   {^cid_bytes, ^rid_bytes} => flows
+                 }
+               }
+             } = :sys.get_state(socket.channel_pid)
+
+      assert flows == %{
+               Ecto.UUID.dump!(unexpired_flow.id) =>
+                 DateTime.to_unix(unexpired_expiration, :second)
+             }
+    end
+
     test "resends init when account slug changes", %{
       account: account
     } do
@@ -127,7 +283,6 @@ defmodule API.Gateway.ChannelTest do
       account: account,
       token: token
     } do
-
       :ok = Domain.PubSub.Account.subscribe(account.id)
       :ok = Domain.PubSub.subscribe("sessions:#{token.id}")
 
