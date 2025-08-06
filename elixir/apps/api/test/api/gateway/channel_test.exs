@@ -1,6 +1,7 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
   alias Domain.{Accounts, Changes, Gateways, PubSub}
+  import Domain.Cache.Cacheable, only: [to_cache: 1]
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -106,9 +107,13 @@ defmodule API.Gateway.ChannelTest do
         "slug" => "new-slug"
       }
 
-      Changes.Hooks.Accounts.on_update(old_data, data)
+      Changes.Hooks.Accounts.on_update(100, old_data, data)
 
-      assert_receive {:updated, %Accounts.Account{}, %Accounts.Account{}}
+      assert_receive %Changes.Change{
+        lsn: 100,
+        old_struct: %Accounts.Account{},
+        struct: %Accounts.Account{slug: "new-slug"}
+      }
 
       # Consume first init from join
       assert_push "init", _payload
@@ -122,8 +127,6 @@ defmodule API.Gateway.ChannelTest do
       account: account,
       token: token
     } do
-      # Prevents test from failing due to expected socket disconnect
-      Process.flag(:trap_exit, true)
 
       :ok = Domain.PubSub.Account.subscribe(account.id)
       :ok = Domain.PubSub.subscribe("sessions:#{token.id}")
@@ -134,9 +137,7 @@ defmodule API.Gateway.ChannelTest do
         "type" => "gateway_group"
       }
 
-      Changes.Hooks.Tokens.on_delete(data)
-
-      assert_receive {:deleted, deleted_token}
+      Changes.Hooks.Tokens.on_delete(100, data)
 
       assert_receive %Phoenix.Socket.Broadcast{
         topic: topic,
@@ -144,7 +145,6 @@ defmodule API.Gateway.ChannelTest do
       }
 
       assert topic == "sessions:#{token.id}"
-      assert deleted_token.id == token.id
     end
 
     test "pushes allow_access message", %{
@@ -175,7 +175,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -239,7 +239,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -310,7 +310,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow1.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -324,7 +324,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow2.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -333,7 +333,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Changes.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(100, data)
 
       refute_push "reject_access", %{}
     end
@@ -381,7 +381,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -390,7 +390,7 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "allow_access", %{}
 
-      Changes.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -460,7 +460,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -474,7 +474,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: other_client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: other_flow1.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -488,7 +488,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: other_resource,
+           resource: to_cache(other_resource),
            flow_id: other_flow2.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -524,7 +524,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => other_flow1.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -546,7 +546,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => other_flow2.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(200, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -586,7 +586,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -603,7 +603,7 @@ defmodule API.Gateway.ChannelTest do
 
       data = Map.put(old_data, "name", "New Resource Name")
 
-      Changes.Hooks.Resources.on_update(old_data, data)
+      Changes.Hooks.Resources.on_update(100, old_data, data)
 
       cid_bytes = Ecto.UUID.dump!(client.id)
       rid_bytes = Ecto.UUID.dump!(resource.id)
@@ -647,7 +647,7 @@ defmodule API.Gateway.ChannelTest do
         {{:allow_access, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload
@@ -674,7 +674,7 @@ defmodule API.Gateway.ChannelTest do
 
       data = Map.put(old_data, "filters", filters)
 
-      Changes.Hooks.Resources.on_update(old_data, data)
+      Changes.Hooks.Resources.on_update(100, old_data, data)
 
       assert_push "resource_updated", payload
 
@@ -883,7 +883,7 @@ defmodule API.Gateway.ChannelTest do
         {{:request_connection, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
@@ -956,7 +956,7 @@ defmodule API.Gateway.ChannelTest do
         {{:request_connection, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: client_payload,
@@ -978,7 +978,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => flow.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -1018,7 +1018,7 @@ defmodule API.Gateway.ChannelTest do
         {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
@@ -1090,7 +1090,7 @@ defmodule API.Gateway.ChannelTest do
         {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
@@ -1112,7 +1112,7 @@ defmodule API.Gateway.ChannelTest do
         "expires_at" => flow.expires_at
       }
 
-      Changes.Hooks.Flows.on_delete(data)
+      Changes.Hooks.Flows.on_delete(100, data)
 
       assert_push "reject_access", %{
         client_id: client_id,
@@ -1153,7 +1153,7 @@ defmodule API.Gateway.ChannelTest do
       gateway_public_key = gateway.public_key
       gateway_ipv4 = gateway.ipv4
       gateway_ipv6 = gateway.ipv6
-      resource_id = resource.id
+      rid_bytes = Ecto.UUID.dump!(resource.id)
 
       ice_credentials = %{
         client: %{username: "A", password: "B"},
@@ -1165,7 +1165,7 @@ defmodule API.Gateway.ChannelTest do
         {{:authorize_flow, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
@@ -1181,7 +1181,7 @@ defmodule API.Gateway.ChannelTest do
       assert_receive {
         :connect,
         ^socket_ref,
-        ^resource_id,
+        ^rid_bytes,
         ^gateway_group_id,
         ^gateway_id,
         ^gateway_public_key,
@@ -1233,7 +1233,7 @@ defmodule API.Gateway.ChannelTest do
         {{:request_connection, gateway.id}, {channel_pid, socket_ref},
          %{
            client: client,
-           resource: resource,
+           resource: to_cache(resource),
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            client_payload: payload,
@@ -1268,8 +1268,8 @@ defmodule API.Gateway.ChannelTest do
         })
 
       assert_reply push_ref, :ok
-      assert_receive {:connect, ^socket_ref, resource_id, ^gateway_public_key, ^payload}
-      assert resource_id == resource.id
+      assert_receive {:connect, ^socket_ref, rid_bytes, ^gateway_public_key, ^payload}
+      assert Ecto.UUID.load!(rid_bytes) == resource.id
     end
 
     test "connection_ready pushes an error when ref is invalid", %{

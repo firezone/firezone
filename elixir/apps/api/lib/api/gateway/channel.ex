@@ -227,7 +227,7 @@ defmodule API.Gateway.Channel do
       when gateway_id == id do
     %{
       client: client,
-      resource: resource,
+      resource: %Cache.Cacheable.Resource{} = resource,
       flow_id: flow_id,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
@@ -272,7 +272,7 @@ defmodule API.Gateway.Channel do
       when gateway_id == id do
     %{
       client: client,
-      resource: resource,
+      resource: %Cache.Cacheable.Resource{} = resource,
       flow_id: flow_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload
@@ -320,7 +320,7 @@ defmodule API.Gateway.Channel do
       when gateway_id == id do
     %{
       client: client,
-      resource: resource,
+      resource: %Cache.Cacheable.Resource{} = resource,
       flow_id: flow_id,
       authorization_expires_at: authorization_expires_at,
       client_payload: payload,
@@ -407,10 +407,10 @@ defmodule API.Gateway.Channel do
         socket
       ) do
     case decode_ref(socket, signed_ref) do
-      {:ok, {channel_pid, socket_ref, resource_id}} ->
+      {:ok, {channel_pid, socket_ref, rid_bytes}} ->
         send(
           channel_pid,
-          {:connect, socket_ref, resource_id, socket.assigns.gateway.public_key, payload}
+          {:connect, socket_ref, rid_bytes, socket.assigns.gateway.public_key, payload}
         )
 
         {:reply, :ok, socket}
