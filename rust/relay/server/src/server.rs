@@ -978,7 +978,7 @@ where
             return;
         };
 
-        tracing::trace!(target: "wire", num_bytes = %bytes.len());
+        // tracing::trace!(target: "wire", num_bytes = %bytes.len());
 
         self.pending_commands.push_back(Command::SendMessage {
             payload: bytes,
