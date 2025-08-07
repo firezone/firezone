@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Policies do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, Policies, PubSub}
+  alias Domain.{Changes.Change, Flows, Policies, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
@@ -44,7 +44,7 @@ defmodule Domain.Changes.Hooks.Policies do
     if old_policy.conditions != policy.conditions or
          old_policy.actor_group_id != policy.actor_group_id or
          old_policy.resource_id != policy.resource_id do
-      Domain.Flows.delete_flows_for(policy)
+      Flows.delete_flows_for(old_policy)
     end
 
     PubSub.Account.broadcast(policy.account_id, change)
@@ -57,7 +57,7 @@ defmodule Domain.Changes.Hooks.Policies do
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
-    Domain.Flows.delete_flows_for(policy)
+    Flows.delete_flows_for(policy)
 
     PubSub.Account.broadcast(policy.account_id, change)
   end

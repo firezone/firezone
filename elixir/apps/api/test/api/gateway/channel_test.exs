@@ -270,7 +270,7 @@ defmodule API.Gateway.ChannelTest do
     test "resends init when account slug changes", %{
       account: account
     } do
-      :ok = Domain.PubSub.Account.subscribe(account.id)
+      :ok = PubSub.Account.subscribe(account.id)
 
       old_data = %{
         "id" => account.id,
@@ -302,8 +302,7 @@ defmodule API.Gateway.ChannelTest do
       account: account,
       token: token
     } do
-      :ok = Domain.PubSub.Account.subscribe(account.id)
-      :ok = Domain.PubSub.subscribe("sessions:#{token.id}")
+      :ok = PubSub.subscribe("sessions:#{token.id}")
 
       data = %{
         "id" => token.id,
@@ -319,6 +318,29 @@ defmodule API.Gateway.ChannelTest do
       }
 
       assert topic == "sessions:#{token.id}"
+    end
+
+    test "disconnect socket when gateway is deleted", %{
+      account: account,
+      gateway: gateway
+    } do
+      Process.flag(:trap_exit, true)
+
+      :ok = PubSub.Account.subscribe(account.id)
+
+      data = %{
+        "id" => gateway.id,
+        "account_id" => account.id
+      }
+
+      Changes.Hooks.Gateways.on_delete(100, data)
+
+      assert_receive %Changes.Change{
+        lsn: 100,
+        old_struct: %Gateways.Gateway{}
+      }
+
+      assert_receive {:EXIT, _pid, _reason}
     end
 
     test "pushes allow_access message", %{
@@ -440,24 +462,26 @@ defmodule API.Gateway.ChannelTest do
            client: client,
            resource: resource,
            gateway: gateway,
-           relay: relay,
            socket: socket,
            subject: subject
          } do
       channel_pid = self()
       socket_ref = make_ref()
-      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
 
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      in_one_hour = DateTime.utc_now() |> DateTime.add(1, :hour)
+      in_one_day = DateTime.utc_now() |> DateTime.add(1, :day)
+
+      :ok = PubSub.Account.subscribe(account.id)
 
       flow1 =
         Fixtures.Flows.create_flow(
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          gateway: gateway,
+          resource: resource,
+          expires_at: in_one_hour
         )
 
       flow2 =
@@ -465,19 +489,10 @@ defmodule API.Gateway.ChannelTest do
           account: account,
           subject: subject,
           client: client,
-          resource: resource
+          gateway: gateway,
+          resource: resource,
+          expires_at: in_one_day
         )
-
-      data = %{
-        "id" => flow1.id,
-        "client_id" => client.id,
-        "resource_id" => resource.id,
-        "account_id" => account.id,
-        "token_id" => flow1.token_id,
-        "policy_id" => flow1.policy_id,
-        "actor_group_membership_id" => flow1.actor_group_membership_id,
-        "expires_at" => flow1.expires_at
-      }
 
       send(
         socket.channel_pid,
@@ -486,7 +501,7 @@ defmodule API.Gateway.ChannelTest do
            client: client,
            resource: to_cache(resource),
            flow_id: flow1.id,
-           authorization_expires_at: expires_at,
+           authorization_expires_at: flow1.expires_at,
            client_payload: client_payload
          }}
       )
@@ -500,16 +515,44 @@ defmodule API.Gateway.ChannelTest do
            client: client,
            resource: to_cache(resource),
            flow_id: flow2.id,
-           authorization_expires_at: expires_at,
+           authorization_expires_at: flow2.expires_at,
            client_payload: client_payload
          }}
       )
 
       assert_push "allow_access", %{}
 
+      data = %{
+        "id" => flow1.id,
+        "client_id" => client.id,
+        "resource_id" => resource.id,
+        "account_id" => account.id,
+        "token_id" => flow1.token_id,
+        "gateway_id" => gateway.id,
+        "policy_id" => flow1.policy_id,
+        "actor_group_membership_id" => flow1.actor_group_membership_id,
+        "expires_at" => flow1.expires_at
+      }
+
       Changes.Hooks.Flows.on_delete(100, data)
 
+      flow_id = flow1.id
+
+      assert_receive %Changes.Change{
+        lsn: 100,
+        old_struct: %Domain.Flows.Flow{id: ^flow_id}
+      }
+
+      refute_push "allow_access", _payload
       refute_push "reject_access", %{}
+
+      assert_push "access_authorization_expiry_updated", payload
+
+      assert payload == %{
+               client_id: client.id,
+               resource_id: resource.id,
+               expires_at: DateTime.to_unix(flow2.expires_at, :second)
+             }
     end
 
     test "handles flow deletion event when access is removed", %{
@@ -793,12 +836,85 @@ defmodule API.Gateway.ChannelTest do
       refute_push "resource_updated", _payload
     end
 
+    test "sends reject_access when resource addressability changes", %{
+      client: client,
+      gateway: gateway,
+      account: account,
+      resource: resource,
+      socket: socket
+    } do
+      channel_pid = self()
+      socket_ref = make_ref()
+      expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
+      client_payload = "RTC_SD_or_DNS_Q"
+
+      flow =
+        Fixtures.Flows.create_flow(
+          account: account,
+          client: client,
+          resource: resource,
+          gateway: gateway
+        )
+
+      :ok = PubSub.Account.subscribe(account.id)
+
+      send(
+        socket.channel_pid,
+        {{:allow_access, gateway.id}, {channel_pid, socket_ref},
+         %{
+           client: client,
+           resource: to_cache(resource),
+           flow_id: flow.id,
+           authorization_expires_at: expires_at,
+           client_payload: client_payload
+         }}
+      )
+
+      assert_push "allow_access", %{}
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => resource.address,
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => "new-address",
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      :ok = Changes.Hooks.Resources.on_update(100, old_data, data)
+
+      resource_id = resource.id
+
+      assert_receive %Changes.Change{
+        lsn: 100,
+        old_struct: %Domain.Resources.Resource{id: ^resource_id},
+        struct: %Domain.Resources.Resource{id: ^resource_id, address: "new-address"}
+      }
+
+      assert_push "reject_access", payload
+
+      assert payload == %{
+               client_id: client.id,
+               resource_id: resource.id
+             }
+    end
+
     test "sends resource_updated when filters change", %{
       client: client,
       gateway: gateway,
       account: account,
       resource: resource,
-      relay: relay,
       socket: socket
     } do
       flow =
@@ -812,9 +928,6 @@ defmodule API.Gateway.ChannelTest do
       socket_ref = make_ref()
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
-
-      stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
 
       send(
         socket.channel_pid,
@@ -1464,7 +1577,7 @@ defmodule API.Gateway.ChannelTest do
     } do
       candidates = ["foo", "bar"]
 
-      :ok = Domain.PubSub.Account.subscribe(account.id)
+      :ok = PubSub.Account.subscribe(account.id)
 
       attrs = %{
         "candidates" => candidates,
@@ -1490,7 +1603,7 @@ defmodule API.Gateway.ChannelTest do
 
       :ok = Domain.Clients.Presence.connect(client)
       PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
-      :ok = Domain.PubSub.Account.subscribe(gateway.account_id)
+      :ok = PubSub.Account.subscribe(gateway.account_id)
 
       push(socket, "broadcast_ice_candidates", attrs)
 
@@ -1507,7 +1620,7 @@ defmodule API.Gateway.ChannelTest do
     } do
       candidates = ["foo", "bar"]
 
-      :ok = Domain.PubSub.Account.subscribe(account.id)
+      :ok = PubSub.Account.subscribe(account.id)
 
       attrs = %{
         "candidates" => candidates,
@@ -1531,7 +1644,7 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Domain.PubSub.Account.subscribe(gateway.account_id)
+      :ok = PubSub.Account.subscribe(gateway.account_id)
       :ok = Domain.Clients.Presence.connect(client)
       PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
 

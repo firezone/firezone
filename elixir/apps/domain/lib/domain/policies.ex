@@ -73,10 +73,16 @@ defmodule Domain.Policies do
     |> Repo.all()
   end
 
-  def all_policies_for_resource_id_and_actor_id!(account_id, resource_id, actor_id) do
+  def all_policies_in_gateway_group_for_resource_id_and_actor_id!(
+        account_id,
+        gateway_group_id,
+        resource_id,
+        actor_id
+      ) do
     Policy.Query.not_disabled()
     |> Policy.Query.by_account_id(account_id)
     |> Policy.Query.by_resource_id(resource_id)
+    |> Policy.Query.by_gateway_group_id(gateway_group_id)
     |> Policy.Query.by_actor_id(actor_id)
     |> Repo.all()
   end

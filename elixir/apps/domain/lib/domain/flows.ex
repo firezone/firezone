@@ -71,16 +71,21 @@ defmodule Domain.Flows do
   # to the Resource beyond its intended expiration time.
   #
   # So, we use the minimum of either the policy condition or the origin flow's expiration time.
+  # This will be much smoother once https://github.com/firezone/firezone/issues/10074 is implemented,
+  # since we won't need to be so careful about reject_access messages to the gateway.
   def reauthorize_flow(%Flow{} = flow) do
     with {:ok, client} <- Clients.fetch_client_by_id(flow.client_id, preload: :identity),
          # TODO: Hard delete
          # We need to ensure token and gateway haven't been deleted after the initial flow was created
          # This can be removed after hard-delete since we'll get a DB error if these associations no longer exist
          {:ok, _token} <- Tokens.fetch_token_by_id(flow.token_id),
-         {:ok, _gateway} <- Gateways.fetch_gateway_by_id(flow.gateway_id),
+         {:ok, gateway} <- Gateways.fetch_gateway_by_id(flow.gateway_id),
+         # We only want to reauthorize the resource for this gateway if the resource is still connected to its
+         # gateway_group.
          policies when policies != [] <-
-           Policies.all_policies_for_resource_id_and_actor_id!(
+           Policies.all_policies_in_gateway_group_for_resource_id_and_actor_id!(
              flow.account_id,
+             gateway.group_id,
              flow.resource_id,
              client.actor_id
            ),
@@ -230,6 +235,13 @@ defmodule Domain.Flows do
     |> Flow.Query.by_account_id(resource.account_id)
     |> Flow.Query.by_resource_id(resource.id)
     |> Repo.delete_all()
+  end
+
+  def delete_flows_for(%Domain.Resources.Connection{} = connection) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(connection.account_id)
+    |> Flow.Query.by_resource_id(connection.resource_id)
+    |> Flow.Query.by_gateway_group_id(connection.gateway_group_id)
   end
 
   def delete_flows_for(%Domain.Tokens.Token{account_id: nil}) do

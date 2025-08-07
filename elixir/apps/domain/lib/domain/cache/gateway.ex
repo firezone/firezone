@@ -21,7 +21,7 @@ defmodule Domain.Cache.Gateway do
   """
 
   alias Domain.{Cache, Flows, Gateways}
-  import Ecto.UUID, only: [dump!: 1]
+  import Ecto.UUID, only: [dump!: 1, load!: 1]
 
   require OpenTelemetry.Tracer
 
@@ -190,5 +190,17 @@ defmodule Domain.Cache.Gateway do
     |> Enum.any?(fn {_, rid} ->
       rid == rid_bytes
     end)
+  end
+
+  @doc """
+    Return a list of all pairs matching the resource ID.
+  """
+  @spec all_pairs_for_resource(t(), Ecto.UUID.t()) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]
+  def all_pairs_for_resource(%{} = cache, resource_id) do
+    rid_bytes = dump!(resource_id)
+
+    cache
+    |> Enum.filter(fn {{_, rid}, _} -> rid == rid_bytes end)
+    |> Enum.map(fn {{cid, _}, _} -> {load!(cid), resource_id} end)
   end
 end

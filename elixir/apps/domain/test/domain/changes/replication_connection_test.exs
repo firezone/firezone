@@ -140,8 +140,11 @@ defmodule Domain.Changes.ReplicationConnectionTest do
     end
 
     test "handles known tables", %{tables: tables} do
+      # Fill in some dummy foreign keys
       old_data = %{
         "account_id" => Ecto.UUID.generate(),
+        "resource_id" => Ecto.UUID.generate(),
+        "gateway_group_id" => Ecto.UUID.generate(),
         "id" => Ecto.UUID.generate(),
         "name" => "deleted item"
       }

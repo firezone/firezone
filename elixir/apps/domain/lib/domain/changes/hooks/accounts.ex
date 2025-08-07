@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Accounts do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Accounts, Changes.Change, PubSub}
+  alias Domain.{Accounts, Changes.Change, Flows, PubSub}
   import Domain.SchemaHelpers
   require Logger
 
@@ -47,7 +47,7 @@ defmodule Domain.Changes.Hooks.Accounts do
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
-    Domain.Flows.delete_flows_for(account)
+    Flows.delete_flows_for(account)
 
     PubSub.Account.broadcast(account.id, change)
   end

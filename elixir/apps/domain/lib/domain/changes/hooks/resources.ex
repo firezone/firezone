@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Resources do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, PubSub, Resources}
+  alias Domain.{Changes.Change, Flows, PubSub, Resources}
   import Domain.SchemaHelpers
 
   @impl true
@@ -31,13 +31,13 @@ defmodule Domain.Changes.Hooks.Resources do
     # Gateway _does_ handle resource filter changes so we don't need to delete flows
     # for those changes - they're processed by the Gateway channel pid.
 
-    # The Gateway channel will process these flow deletions and end up sending reject_access for any
-    # affected flows. If the client is connected at the time of the update, it will handle this
-    # by toggling the resource deleted then created.
+    # The Gateway channel will process these flow deletions and re-authorize the flow.
+    # However, the gateway will also react to the resource update and send reject_access
+    # so that the Gateway's state is updated correctly, and the client can create a new flow.
     if old_resource.ip_stack != resource.ip_stack or
          old_resource.type != resource.type or
          old_resource.address != resource.address do
-      Domain.Flows.delete_flows_for(resource)
+      Flows.delete_flows_for(resource)
     end
 
     PubSub.Account.broadcast(resource.account_id, change)
@@ -50,7 +50,7 @@ defmodule Domain.Changes.Hooks.Resources do
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
-    Domain.Flows.delete_flows_for(resource)
+    Flows.delete_flows_for(resource)
 
     PubSub.Account.broadcast(resource.account_id, change)
   end

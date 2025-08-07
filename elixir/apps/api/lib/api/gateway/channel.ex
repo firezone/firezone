@@ -597,14 +597,9 @@ defmodule API.Gateway.Channel do
         #   - Client now has lost the ability to recreate the flow because from its perspective, it is still connected
         #     to this gateway.
         #   - Packets to gateway are essentially blackholed until the client signs out and back in
-        #
-        # This has been fixed with the introduction of the `goodbye` control protocol message
-        # introduced in https://github.com/firezone/firezone/pull/10076 and shipped in:
-        #   - Gateway 1.4.15
-        #   - Apple 1.5.6
-        #   - Android 1.5.3
-        #   - Windows/Linux 1.5.7
-        #   - Headless 1.5.3
+
+        # This will be fixed when the client responds to the ICMP prohibited by filter message:
+        # https://github.com/firezone/firezone/issues/10074
         push(
           socket,
           "reject_access",
@@ -634,8 +629,33 @@ defmodule API.Gateway.Channel do
 
   # RESOURCES
 
-  # The gateway only handles filter changes. Other breaking changes are handled by deleting
-  # relevant flows for the resource.
+  # The gateway only handles filter changes for resources. Other addressability changes like address,
+  # type, or ip_stack require sending reject_access to remove the resource state from the gateway.
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Resources.Resource{
+             address: old_address,
+             ip_stack: old_ip_stack,
+             type: old_type
+           },
+           struct: %Resources.Resource{address: address, ip_stack: ip_stack, type: type, id: id}
+         },
+         socket
+       )
+       when old_address != address or
+              old_ip_stack != ip_stack or
+              old_type != type do
+    for {client_id, resource_id} <- Cache.Gateway.all_pairs_for_resource(socket.assigns.cache, id) do
+      # Send reject_access to the gateway to reset state. Clients will need to reauthorize the resource.
+      push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
+    end
+
+    # The cache will be updated by the flow deletion handler.
+    {:noreply, socket}
+  end
+
   defp handle_change(
          %Change{
            op: :update,

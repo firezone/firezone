@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Clients do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, Clients, PubSub}
+  alias Domain.{Changes.Change, Clients, Flows, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
@@ -24,7 +24,7 @@ defmodule Domain.Changes.Hooks.Clients do
     # This is a special case - we need to delete associated flows when unverifying a client since
     # it could affect connectivity if any policies are based on the verified status.
     if not is_nil(old_client.verified_at) and is_nil(client.verified_at) do
-      Domain.Flows.delete_flows_for(client)
+      Flows.delete_flows_for(client)
     end
 
     PubSub.Account.broadcast(client.account_id, change)
@@ -37,7 +37,7 @@ defmodule Domain.Changes.Hooks.Clients do
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
-    Domain.Flows.delete_flows_for(client)
+    Flows.delete_flows_for(client)
 
     PubSub.Account.broadcast(client.account_id, change)
   end

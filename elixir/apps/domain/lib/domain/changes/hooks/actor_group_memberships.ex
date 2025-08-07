@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.ActorGroupMemberships do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Actors, Changes.Change, PubSub}
+  alias Domain.{Actors, Changes.Change, Flows, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
@@ -21,7 +21,7 @@ defmodule Domain.Changes.Hooks.ActorGroupMemberships do
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
-    Domain.Flows.delete_flows_for(membership)
+    Flows.delete_flows_for(membership)
 
     PubSub.Account.broadcast(membership.account_id, change)
   end

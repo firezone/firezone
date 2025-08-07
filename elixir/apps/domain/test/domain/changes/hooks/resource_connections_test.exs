@@ -14,8 +14,7 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
       data = %{
         "account_id" => account.id,
         "resource_id" => resource.id,
-        "gateway_group_id" => gateway_group.id,
-        "deleted_at" => nil
+        "gateway_group_id" => gateway_group.id
       }
 
       assert :ok == on_insert(0, data)
@@ -39,6 +38,9 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
   end
 
   describe "delete/1" do
+    test "deletes flows for resource and gateway group" do
+    end
+
     test "broadcasts deleted connection" do
       account = Fixtures.Accounts.create_account()
       resource = Fixtures.Resources.create_resource(account: account)
@@ -49,8 +51,7 @@ defmodule Domain.Changes.Hooks.ResourceConnectionsTest do
       old_data = %{
         "account_id" => account.id,
         "resource_id" => resource.id,
-        "gateway_group_id" => gateway_group.id,
-        "deleted_at" => nil
+        "gateway_group_id" => gateway_group.id
       }
 
       assert :ok == on_delete(0, old_data)

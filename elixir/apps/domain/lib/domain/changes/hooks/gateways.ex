@@ -1,6 +1,6 @@
 defmodule Domain.Changes.Hooks.Gateways do
   @behaviour Domain.Changes.Hooks
-  alias Domain.{Changes.Change, Gateways, PubSub}
+  alias Domain.{Changes.Change, Flows, Gateways, PubSub}
   import Domain.SchemaHelpers
 
   @impl true
@@ -23,7 +23,7 @@ defmodule Domain.Changes.Hooks.Gateways do
 
     # TODO: Hard delete
     # This can be removed upon implementation of hard delete
-    Domain.Flows.delete_flows_for(gateway)
+    Flows.delete_flows_for(gateway)
 
     PubSub.Account.broadcast(gateway.account_id, change)
   end
