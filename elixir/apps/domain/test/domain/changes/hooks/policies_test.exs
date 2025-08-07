@@ -1,7 +1,7 @@
-defmodule Domain.Events.Hooks.PoliciesTest do
+defmodule Domain.Changes.Hooks.PoliciesTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.Policies
-  alias Domain.{Policies, PubSub}
+  import Domain.Changes.Hooks.Policies
+  alias Domain.{Changes.Change, Policies, PubSub}
 
   describe "insert/1" do
     test "broadcasts created policy" do
@@ -18,8 +18,8 @@ defmodule Domain.Events.Hooks.PoliciesTest do
         "deleted_at" => nil
       }
 
-      assert :ok == on_insert(data)
-      assert_receive {:created, %Policies.Policy{} = policy}
+      assert :ok == on_insert(0, data)
+      assert_receive %Change{op: :insert, struct: %Policies.Policy{} = policy, lsn: 0}
 
       assert policy.id == data["id"]
       assert policy.account_id == data["account_id"]
@@ -49,8 +49,13 @@ defmodule Domain.Events.Hooks.PoliciesTest do
       # Create a flow that should be deleted
       flow = Fixtures.Flows.create_flow(policy: policy, resource: resource, account: account)
 
-      assert :ok == on_update(old_data, data)
-      assert_receive {:deleted, %Policies.Policy{} = broadcasted_policy}
+      assert :ok == on_update(0, old_data, data)
+
+      assert_receive %Change{
+        op: :delete,
+        old_struct: %Policies.Policy{} = broadcasted_policy,
+        lsn: 0
+      }
 
       assert broadcasted_policy.id == data["id"]
       assert broadcasted_policy.account_id == data["account_id"]
@@ -75,8 +80,8 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "disabled_at", nil)
 
-      assert :ok == on_update(old_data, data)
-      assert_receive {:created, %Policies.Policy{} = policy}
+      assert :ok == on_update(0, old_data, data)
+      assert_receive %Change{op: :insert, struct: %Policies.Policy{} = policy, lsn: 0}
 
       assert policy.id == data["id"]
       assert policy.account_id == data["account_id"]
@@ -100,8 +105,8 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
 
-      assert :ok == on_update(old_data, data)
-      assert_receive {:deleted, %Policies.Policy{} = policy}
+      assert :ok == on_update(0, old_data, data)
+      assert_receive %Change{op: :delete, old_struct: %Policies.Policy{} = policy, lsn: 0}
 
       assert policy.id == old_data["id"]
       assert policy.account_id == old_data["account_id"]
@@ -136,7 +141,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
                  account: account
                )
 
-      assert :ok = on_update(old_data, data)
+      assert :ok = on_update(0, old_data, data)
       refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
 
@@ -157,8 +162,15 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       data = Map.put(old_data, "description", "Updated description")
 
-      assert :ok == on_update(old_data, data)
-      assert_receive {:updated, %Policies.Policy{} = old_policy, %Policies.Policy{} = new_policy}
+      assert :ok == on_update(0, old_data, data)
+
+      assert_receive %Change{
+        op: :update,
+        old_struct: %Policies.Policy{} = old_policy,
+        struct: %Policies.Policy{} = new_policy,
+        lsn: 0
+      }
+
       assert old_policy.id == old_data["id"]
       assert new_policy.description == data["description"]
       assert new_policy.account_id == old_data["account_id"]
@@ -186,7 +198,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
                  account: account
                )
 
-      assert :ok = on_update(old_data, data)
+      assert :ok = on_update(0, old_data, data)
       refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
 
@@ -206,7 +218,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
 
-      assert :ok = on_update(old_data, data)
+      assert :ok = on_update(0, old_data, data)
       refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
 
@@ -232,7 +244,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
 
-      assert :ok = on_update(old_data, data)
+      assert :ok = on_update(0, old_data, data)
       refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end
@@ -250,8 +262,13 @@ defmodule Domain.Events.Hooks.PoliciesTest do
         "resource_id" => policy.resource_id
       }
 
-      assert :ok == on_delete(old_data)
-      assert_receive {:deleted, %Policies.Policy{} = policy}
+      assert :ok == on_delete(0, old_data)
+
+      assert_receive %Change{
+        op: :delete,
+        old_struct: %Policies.Policy{} = policy,
+        lsn: 0
+      }
 
       assert policy.id == old_data["id"]
       assert policy.account_id == old_data["account_id"]
@@ -273,7 +290,7 @@ defmodule Domain.Events.Hooks.PoliciesTest do
 
       assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
 
-      assert :ok = on_delete(old_data)
+      assert :ok = on_delete(0, old_data)
       refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
     end
   end

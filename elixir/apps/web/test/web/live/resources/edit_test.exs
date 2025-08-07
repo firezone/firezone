@@ -1,6 +1,6 @@
 defmodule Web.Live.Resources.EditTest do
   use Web.ConnCase, async: true
-  alias Domain.{Events, PubSub, Resources}
+  alias Domain.{Changes, PubSub, Resources}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -245,7 +245,7 @@ defmodule Web.Live.Resources.EditTest do
     }
 
     data = Map.put(old_data, "filters", attrs.filters)
-    :ok = Events.Hooks.Resources.on_update(old_data, data)
+    :ok = Changes.Hooks.Resources.on_update(0, old_data, data)
 
     {:ok, _lv, html} =
       lv
@@ -253,7 +253,11 @@ defmodule Web.Live.Resources.EditTest do
       |> render_submit()
       |> follow_redirect(conn, ~p"/#{account}/resources")
 
-    assert_receive {:updated, %Resources.Resource{}, %Resources.Resource{} = updated_resource}
+    assert_receive %Changes.Change{
+      lsn: 0,
+      old_struct: %Resources.Resource{},
+      struct: %Resources.Resource{} = updated_resource
+    }
 
     assert updated_resource.id == resource.id
 

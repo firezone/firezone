@@ -1,12 +1,12 @@
-defmodule Domain.Events.ReplicationConnectionTest do
+defmodule Domain.Changes.ReplicationConnectionTest do
   use Domain.DataCase, async: true
 
   import ExUnit.CaptureLog
-  alias Domain.Events.ReplicationConnection
+  alias Domain.Changes.ReplicationConnection
 
   setup do
     tables =
-      Application.fetch_env!(:domain, Domain.Events.ReplicationConnection)
+      Application.fetch_env!(:domain, Domain.Changes.ReplicationConnection)
       |> Keyword.fetch!(:table_subscriptions)
 
     %{tables: tables}
@@ -29,7 +29,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
         end)
 
       assert log_output =~ "No hook defined for insert on table unknown_table"
-      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
+      assert log_output =~ "Please implement Domain.Changes.Hooks for this table"
     end
 
     test "handles known tables without errors", %{tables: tables} do
@@ -94,7 +94,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
         end)
 
       assert log_output =~ "No hook defined for update on table unknown_table"
-      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
+      assert log_output =~ "Please implement Domain.Changes.Hooks for this table"
     end
 
     test "handles known tables", %{tables: tables} do
@@ -136,12 +136,15 @@ defmodule Domain.Events.ReplicationConnectionTest do
         end)
 
       assert log_output =~ "No hook defined for delete on table unknown_table"
-      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
+      assert log_output =~ "Please implement Domain.Changes.Hooks for this table"
     end
 
     test "handles known tables", %{tables: tables} do
+      # Fill in some dummy foreign keys
       old_data = %{
         "account_id" => Ecto.UUID.generate(),
+        "resource_id" => Ecto.UUID.generate(),
+        "gateway_group_id" => Ecto.UUID.generate(),
         "id" => Ecto.UUID.generate(),
         "name" => "deleted item"
       }
@@ -227,7 +230,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
         end)
 
       assert log_output =~ "No hook defined for insert on table test_table_insert"
-      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
+      assert log_output =~ "Please implement Domain.Changes.Hooks for this table"
 
       # Test update
       log_output =
@@ -236,7 +239,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
         end)
 
       assert log_output =~ "No hook defined for update on table test_table_update"
-      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
+      assert log_output =~ "Please implement Domain.Changes.Hooks for this table"
 
       # Test delete
       log_output =
@@ -245,7 +248,7 @@ defmodule Domain.Events.ReplicationConnectionTest do
         end)
 
       assert log_output =~ "No hook defined for delete on table test_table_delete"
-      assert log_output =~ "Please implement Domain.Events.Hooks for this table"
+      assert log_output =~ "Please implement Domain.Changes.Hooks for this table"
     end
   end
 
@@ -271,16 +274,16 @@ defmodule Domain.Events.ReplicationConnectionTest do
     test "all configured tables have hook modules" do
       # This test ensures our tables_to_hooks map is properly configured
       tables_to_hooks = %{
-        "accounts" => Domain.Events.Hooks.Accounts,
-        "actor_group_memberships" => Domain.Events.Hooks.ActorGroupMemberships,
-        "clients" => Domain.Events.Hooks.Clients,
-        "flows" => Domain.Events.Hooks.Flows,
-        "gateway_groups" => Domain.Events.Hooks.GatewayGroups,
-        "gateways" => Domain.Events.Hooks.Gateways,
-        "policies" => Domain.Events.Hooks.Policies,
-        "resource_connections" => Domain.Events.Hooks.ResourceConnections,
-        "resources" => Domain.Events.Hooks.Resources,
-        "tokens" => Domain.Events.Hooks.Tokens
+        "accounts" => Domain.Changes.Hooks.Accounts,
+        "actor_group_memberships" => Domain.Changes.Hooks.ActorGroupMemberships,
+        "clients" => Domain.Changes.Hooks.Clients,
+        "flows" => Domain.Changes.Hooks.Flows,
+        "gateway_groups" => Domain.Changes.Hooks.GatewayGroups,
+        "gateways" => Domain.Changes.Hooks.Gateways,
+        "policies" => Domain.Changes.Hooks.Policies,
+        "resource_connections" => Domain.Changes.Hooks.ResourceConnections,
+        "resources" => Domain.Changes.Hooks.Resources,
+        "tokens" => Domain.Changes.Hooks.Tokens
       }
 
       # Verify the mapping includes all expected tables

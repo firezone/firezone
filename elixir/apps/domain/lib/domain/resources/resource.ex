@@ -1,6 +1,29 @@
 defmodule Domain.Resources.Resource do
   use Domain, :schema
 
+  @type filter :: %{
+          protocol: :tcp | :udp | :icmp,
+          ports: [Domain.Types.Int4Range.t()]
+        }
+
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t(),
+          persistent_id: Ecto.UUID.t() | nil,
+          address: String.t(),
+          address_description: String.t() | nil,
+          name: String.t(),
+          type: :cidr | :ip | :dns | :internet,
+          ip_stack: :ipv4_only | :ipv6_only | :dual,
+          filters: [filter()],
+          account_id: Ecto.UUID.t(),
+          created_by: String.t(),
+          created_by_subject: map(),
+          replaced_by_resource_id: Ecto.UUID.t() | nil,
+          deleted_at: DateTime.t() | nil,
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
   schema "resources" do
     field :persistent_id, Ecto.UUID
 

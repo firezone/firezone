@@ -1,23 +1,23 @@
-defmodule Domain.Events.Hooks.FlowsTest do
+defmodule Domain.Changes.Hooks.FlowsTest do
   use Domain.DataCase, async: true
-  import Domain.Events.Hooks.Flows
-  alias Domain.Flows
+  import Domain.Changes.Hooks.Flows
+  alias Domain.{Changes.Change, Flows, PubSub}
 
   describe "insert/1" do
     test "returns :ok" do
-      assert :ok == on_insert(%{})
+      assert :ok == on_insert(0, %{})
     end
   end
 
   describe "update/2" do
     test "returns :ok" do
-      assert :ok == on_update(%{}, %{})
+      assert :ok == on_update(0, %{}, %{})
     end
   end
 
   describe "delete/1" do
     test "delete broadcasts deleted flow" do
-      :ok = Domain.PubSub.Account.subscribe("00000000-0000-0000-0000-000000000000")
+      :ok = PubSub.Account.subscribe("00000000-0000-0000-0000-000000000000")
 
       old_data = %{
         "id" => "00000000-0000-0000-0000-000000000001",
@@ -31,9 +31,9 @@ defmodule Domain.Events.Hooks.FlowsTest do
         "inserted_at" => "2023-01-01T00:00:00Z"
       }
 
-      assert :ok == on_delete(old_data)
+      assert :ok == on_delete(0, old_data)
 
-      assert_receive {:deleted, %Flows.Flow{} = flow}
+      assert_receive %Change{op: :delete, old_struct: %Flows.Flow{} = flow, lsn: 0}
 
       assert flow.id == "00000000-0000-0000-0000-000000000001"
       assert flow.account_id == "00000000-0000-0000-0000-000000000000"

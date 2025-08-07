@@ -81,7 +81,7 @@ defmodule Domain.Application do
 
   defp replication do
     connection_modules = [
-      Domain.Events.ReplicationConnection,
+      Domain.Changes.ReplicationConnection,
       Domain.ChangeLogs.ReplicationConnection
     ]
 

@@ -1501,37 +1501,145 @@ defmodule Domain.ResourcesTest do
     end
   end
 
-  describe "connected?/2" do
-    test "returns true when resource has a connection to a gateway", %{
-      account: account,
-      subject: subject
-    } do
-      group = Fixtures.Gateways.create_group(account: account, subject: subject)
-      gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
+  describe "adapt_resource_for_version/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
 
-      resource =
+      ip_resource =
+        Fixtures.Resources.create_resource(type: :ip, account: account, address: "1.1.1.1")
+
+      cidr_resource =
+        Fixtures.Resources.create_resource(type: :cidr, account: account, address: "1.1.1.1/32")
+
+      dns_resource =
         Fixtures.Resources.create_resource(
-          account: account,
-          connections: [%{gateway_group_id: group.id}]
+          type: :dns,
+          account: account
         )
 
-      assert connected?(resource, gateway)
+      internet_group = Fixtures.Gateways.create_internet_group(account: account)
+
+      internet_resource =
+        Fixtures.Resources.create_internet_resource(
+          connections: [%{gateway_group_id: internet_group.id}],
+          account: account
+        )
+
+      %{
+        account: account,
+        ip_resource: ip_resource,
+        cidr_resource: cidr_resource,
+        dns_resource: dns_resource,
+        internet_resource: internet_resource
+      }
     end
 
-    test "raises resource and gateway don't belong to the same account" do
-      gateway = Fixtures.Gateways.create_gateway()
-      resource = Fixtures.Resources.create_resource()
+    test "for ip resource returns the same resource for all versions", %{ip_resource: ip_resource} do
+      versions = ~w(
+        1.0.0
+        1.1.0
+        1.2.0
+        1.3.0
+        1.4.0
+        1.5.0
+        1.6.0
+      )
 
-      assert_raise FunctionClauseError, fn ->
-        connected?(resource, gateway)
+      for version <- versions do
+        assert adapt_resource_for_version(ip_resource, version) == ip_resource
       end
     end
 
-    test "returns false when resource has no connection to a gateway", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      resource = Fixtures.Resources.create_resource(account: account)
+    test "for cidr resource returns the same resource for all versions", %{
+      cidr_resource: cidr_resource
+    } do
+      versions = ~w(
+        1.0.0
+        1.1.0
+        1.2.0
+        1.3.0
+        1.4.0
+        1.5.0
+        1.6.0
+      )
 
-      refute connected?(resource, gateway)
+      for version <- versions do
+        assert adapt_resource_for_version(cidr_resource, version) == cidr_resource
+      end
+    end
+
+    test "for dns resource transforms the address for versions < 1.2.0", %{
+      dns_resource: dns_resource
+    } do
+      addresses = [
+        {"**.example.com", "*.example.com"},
+        {"*.example.com", "?.example.com"},
+        {"foo.bar.example.com", "foo.bar.example.com"}
+      ]
+
+      versions = ~w(
+        1.0.0
+        1.1.0
+      )
+
+      for version <- versions do
+        for address <- addresses do
+          dns_resource = %{dns_resource | address: elem(address, 0)}
+          adapted = adapt_resource_for_version(dns_resource, version)
+
+          assert adapted.address == elem(address, 1)
+        end
+      end
+    end
+
+    test "for dns resource returns nil for incompatible addresses", %{
+      dns_resource: dns_resource
+    } do
+      addresses = ~w(
+        foo.?.example.com
+        foo.bar*bar.example.com
+      )
+
+      versions = ~w(
+        1.0.0
+        1.1.0
+      )
+
+      for version <- versions do
+        for address <- addresses do
+          dns_resource = %{dns_resource | address: address}
+          assert nil == adapt_resource_for_version(dns_resource, version)
+        end
+      end
+    end
+
+    test "for internet resource returns nil for versions < 1.3.0", %{
+      internet_resource: internet_resource
+    } do
+      versions = ~w(
+        1.0.0
+        1.1.0
+        1.2.0
+      )
+
+      for version <- versions do
+        assert nil == adapt_resource_for_version(internet_resource, version)
+      end
+    end
+
+    test "for internet resource returns resource as-is for versions >= 1.3.0", %{
+      internet_resource: internet_resource
+    } do
+      versions = ~w(
+        1.3.0
+        1.4.0
+        1.5.0
+        1.6.0
+      )
+
+      for version <- versions do
+        assert adapt_resource_for_version(internet_resource, version) == internet_resource
+      end
     end
   end
 end

@@ -81,10 +81,9 @@ defmodule Domain.Actors do
     |> Repo.preload(preload)
   end
 
-  def all_memberships_for_actor!(%Actor{} = actor) do
+  def all_memberships_for_actor_id!(actor_id) do
     Membership.Query.all()
-    |> Membership.Query.by_account_id(actor.account_id)
-    |> Membership.Query.by_actor_id(actor.id)
+    |> Membership.Query.by_actor_id(actor_id)
     |> Repo.all()
   end
 

@@ -1,8 +1,7 @@
-defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
+defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
   use API.ChannelCase, async: true
-  import Domain.Events.Hooks.ActorGroupMemberships
-  alias Domain.Actors
-  alias Domain.PubSub
+  import Domain.Changes.Hooks.ActorGroupMemberships
+  alias Domain.{Actors, Changes.Change, Flows, PubSub}
 
   describe "insert/1" do
     test "broadcasts membership" do
@@ -18,8 +17,8 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
         "group_id" => group_id
       }
 
-      assert :ok == on_insert(data)
-      assert_receive {:created, %Actors.Membership{} = membership}
+      assert :ok == on_insert(0, data)
+      assert_receive %Change{op: :insert, struct: %Actors.Membership{} = membership, lsn: 0}
       assert membership.account_id == account_id
       assert membership.actor_id == actor_id
       assert membership.group_id == group_id
@@ -28,7 +27,7 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
 
   describe "update/2" do
     test "returns :ok" do
-      assert :ok == on_update(%{}, %{})
+      assert :ok == on_update(0, %{}, %{})
     end
   end
 
@@ -60,9 +59,9 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
         "group_id" => "00000000-0000-0000-0000-000000000003"
       }
 
-      assert :ok == on_delete(old_data)
+      assert :ok == on_delete(0, old_data)
 
-      assert_receive {:deleted, %Actors.Membership{} = membership}
+      assert_receive %Change{op: :delete, old_struct: %Actors.Membership{} = membership, lsn: 0}
       assert membership.id == "00000000-0000-0000-0000-000000000000"
       assert membership.account_id == "00000000-0000-0000-0000-000000000001"
       assert membership.actor_id == "00000000-0000-0000-0000-000000000002"
@@ -80,10 +79,10 @@ defmodule Domain.Events.Hooks.ActorGroupMembershipsTest do
         "group_id" => membership.group_id
       }
 
-      assert ^flow = Repo.get_by(Domain.Flows.Flow, actor_group_membership_id: membership.id)
-      assert :ok == on_delete(old_data)
-      assert nil == Repo.get_by(Domain.Flows.Flow, actor_group_membership_id: membership.id)
-      assert ^unrelated_flow = Repo.get_by(Domain.Flows.Flow, id: unrelated_flow.id)
+      assert ^flow = Repo.get_by(Flows.Flow, actor_group_membership_id: membership.id)
+      assert :ok == on_delete(0, old_data)
+      assert nil == Repo.get_by(Flows.Flow, actor_group_membership_id: membership.id)
+      assert ^unrelated_flow = Repo.get_by(Flows.Flow, id: unrelated_flow.id)
     end
   end
 end
