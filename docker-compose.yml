@@ -329,6 +329,7 @@ services:
       args:
         PACKAGE: firezone-headless-client
     image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
+    platform: linux/amd64
     privileged: true # Needed to tune `sysctl` inside container.
     cap_add:
       - NET_ADMIN
@@ -360,6 +361,7 @@ services:
       args:
         PACKAGE: firezone-gateway
     image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
+    platform: linux/amd64
     cap_add:
       - NET_ADMIN
     sysctls:
@@ -411,6 +413,7 @@ services:
 
   iperf3:
     image: mlabbe/iperf3
+    platform: linux/amd64
     healthcheck:
       test:
         [
@@ -436,6 +439,7 @@ services:
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
+      EBPF_OFFLOADING: eth0
     build:
       target: debug
       context: rust
@@ -443,6 +447,10 @@ services:
       args:
         PACKAGE: firezone-relay
     image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
+    platform: linux/amd64
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -475,6 +483,7 @@ services:
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
+      EBPF_OFFLOADING: eth0
     build:
       target: debug
       context: rust
@@ -482,6 +491,10 @@ services:
       args:
         PACKAGE: firezone-relay
     image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
+    platform: linux/amd64
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
