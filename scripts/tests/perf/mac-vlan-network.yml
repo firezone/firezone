@@ -1,0 +1,49 @@
+# A docker compose override file to use a mac-vlan network.
+#
+# Forcing the traffic out through the physical interface ensures that GSO/GRO are functioning correctly
+# and allows us to test the relay's eBPF module.
+# Without an actual physical interface, the eBPF module would pick up the non-segmented UDP traffic which it cannot handle.
+
+networks:
+  app:
+    driver: macvlan
+    driver_opts:
+      parent: eth0
+    ipam:
+      config:
+        - subnet: 10.0.0.0/22
+          gateway: 10.0.0.1
+          ip_range: 10.0.3.0/24
+
+services:
+  client:
+    networks:
+      app:
+        ipv4_address: ${CLIENT_IP4_ADDR:-MUST_BE_SET}
+
+  gateway:
+    networks:
+      app:
+        ipv4_address: ${GATEWAY_IP4_ADDR:-MUST_BE_SET}
+
+  relay-1:
+    environment:
+      PUBLIC_IP4_ADDR: ${RELAY_1_IP4_ADDR:-MUST_BE_SET}
+      EBPF_OFFLOADING: eth0
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
+    networks:
+      app:
+        ipv4_address: ${RELAY_1_IP4_ADDR:-MUST_BE_SET}
+
+  relay-2:
+    environment:
+      PUBLIC_IP4_ADDR: ${RELAY_2_IP4_ADDR:-MUST_BE_SET}
+      EBPF_OFFLOADING: eth0
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
+    networks:
+      app:
+        ipv4_address: ${RELAY_2_IP4_ADDR:-MUST_BE_SET}

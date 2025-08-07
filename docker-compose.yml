@@ -446,6 +446,8 @@ services:
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
+      EBPF_OFFLOADING: eth0
+      EBPF_ATTACH_MODE: generic
     build:
       target: debug
       context: rust
@@ -456,6 +458,9 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.default.disable_ipv6=0
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -490,6 +495,8 @@ services:
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
+      EBPF_OFFLOADING: eth0
+      EBPF_ATTACH_MODE: generic
     build:
       target: debug
       context: rust
@@ -500,6 +507,9 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.default.disable_ipv6=0
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s

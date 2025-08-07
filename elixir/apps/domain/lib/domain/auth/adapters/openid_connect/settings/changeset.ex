@@ -21,7 +21,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
       with {:ok, %URI{scheme: scheme, host: host}}
            when not is_nil(scheme) and not is_nil(host) and host != "" <-
              URI.new(value),
-           {:ok, _update_result} <- OpenIDConnect.Document.fetch_document(value) do
+           {:ok, _update_result} <- fetch_document(value) do
         []
       else
         {:ok, _uri} ->
@@ -43,5 +43,14 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
           [{:discovery_document_uri, "invalid URL"}]
       end
     end)
+  end
+
+  def fetch_document(value) do
+    if System.get_env("STATIC_SEEDS") == "true" do
+      # Skip actual fetches when generating consistent seeds
+      {:ok, %{}}
+    else
+      OpenIDConnect.Document.fetch_document(value)
+    end
   end
 end

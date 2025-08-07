@@ -46,7 +46,7 @@ CMD ${PACKAGE}
 # Build an image for GitHub Actions which includes debug asserts and more test utilities
 FROM runtime AS debug
 
-RUN apk add --no-cache iperf3 bind-tools iproute2 jq procps iptables
+RUN apk add --no-cache iperf3 bind-tools iproute2 jq procps iptables tcpdump xdp-tools
 
 ## Build first with `cargo build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/debug/${PACKAGE} .`
 ARG PACKAGE
