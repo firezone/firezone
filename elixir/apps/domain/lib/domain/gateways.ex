@@ -284,10 +284,7 @@ defmodule Domain.Gateways do
         |> Gateway.Query.by_account_id(subject.account.id)
         |> Gateway.Query.by_resource_id(resource_id)
         |> Repo.all()
-        |> filter_compatible_gateways(client.last_seen_version)
-        |> Enum.filter(fn gateway ->
-          Resources.adapt_resource_for_version(resource, gateway.last_seen_version)
-        end)
+        |> filter_compatible_gateways(resource, client.last_seen_version)
 
       {:ok, gateways}
     end
@@ -408,10 +405,11 @@ defmodule Domain.Gateways do
     end
   end
 
-  # Filters gateways by the client version.
+  # Filters gateways by the resource type, gateway version, and client version.
   # We support gateways running in one less minor and one greater minor version than the client.
   # So 1.2.x clients are compatible with 1.1.x and 1.3.x gateways, but not with 1.0.x or 1.4.x.
-  defp filter_compatible_gateways(gateways, client_version) do
+  # The internet resource requires gateway 1.3.0 or greater.
+  defp filter_compatible_gateways(gateways, resource, client_version) do
     case Version.parse(client_version) do
       {:ok, version} ->
         gateways
@@ -419,7 +417,10 @@ defmodule Domain.Gateways do
           case Version.parse(gateway.last_seen_version) do
             {:ok, gateway_version} ->
               Version.match?(gateway_version, ">= #{version.major}.#{version.minor - 1}.0") and
-                Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0")
+                Version.match?(gateway_version, "< #{version.major}.#{version.minor + 2}.0") and
+                not is_nil(
+                  Resources.adapt_resource_for_version(resource, gateway.last_seen_version)
+                )
 
             _ ->
               Logger.warning("Unable to parse client version: #{gateway.last_seen_version}")
