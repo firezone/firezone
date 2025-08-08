@@ -1235,7 +1235,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
         .iter()
         .filter_map(|c| (c.kind() == CandidateKind::Host).then_some(c.addr()));
 
-    let optimistic_candidates = public_ips
+    let _optimistic_candidates = public_ips
         .cartesian_product(host_candidates)
         .filter(|(ip, base)| ip.is_ipv4() == base.is_ipv4())
         .filter_map(|(ip, base)| {
@@ -1250,11 +1250,11 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
         .filter(|c| !remote_candidates.contains(c))
         .collect::<Vec<_>>();
 
-    for c in optimistic_candidates {
-        tracing::info!(candidate = ?c, "Adding optimistic candidate for remote");
-
-        agent.add_remote_candidate(c);
-    }
+    // for c in optimistic_candidates {
+    //     tracing::info!(candidate = ?c, "Adding optimistic candidate for remote");
+    //
+    //     agent.add_remote_candidate(c);
+    // }
 }
 
 struct Connections<TId, RId> {
