@@ -328,7 +328,8 @@ services:
       dockerfile: Dockerfile
       args:
         PACKAGE: firezone-headless-client
-    image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
+    # image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
+    image: ghcr.io/firezone/debug/client:02b694b8f74d743533af6d605cf621edd92ea004
     privileged: true # Needed to tune `sysctl` inside container.
     cap_add:
       - NET_ADMIN
@@ -359,7 +360,8 @@ services:
       dockerfile: Dockerfile
       args:
         PACKAGE: firezone-gateway
-    image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
+    # image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
+    image: ghcr.io/firezone/debug/gateway:02b694b8f74d743533af6d605cf621edd92ea004
     cap_add:
       - NET_ADMIN
     sysctls:
