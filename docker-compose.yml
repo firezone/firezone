@@ -328,13 +328,13 @@ services:
       dockerfile: Dockerfile
       args:
         PACKAGE: firezone-headless-client
-    # image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
-    image: ghcr.io/firezone/debug/client:02b694b8f74d743533af6d605cf621edd92ea004
+    image: ${CLIENT_IMAGE:-ghcr.io/firezone/debug/client}:${CLIENT_TAG:-main}
     privileged: true # Needed to tune `sysctl` inside container.
     cap_add:
       - NET_ADMIN
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
@@ -343,6 +343,7 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.100
+        ipv6_address: 172:28:0::100
 
   gateway:
     healthcheck:
@@ -368,6 +369,7 @@ services:
       - net.ipv4.ip_forward=1
       - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
       - net.ipv6.conf.all.forwarding=1
       - net.ipv6.conf.default.forwarding=1
     devices:
@@ -378,6 +380,7 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.105
+        ipv6_address: 172:28:0::105
       dns_resources:
       resources:
 
@@ -388,6 +391,7 @@ services:
     networks:
       resources:
         ipv4_address: 172.20.0.100
+        ipv6_address: 172:20:0::100
 
   download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
     build:
@@ -423,10 +427,12 @@ services:
     networks:
       resources:
         ipv4_address: 172.20.0.110
+        ipv6_address: 172:20:0::110
 
   relay-1:
     environment:
       PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}
+      PUBLIC_IP6_ADDR: ${RELAY_1_PUBLIC_IP6_ADDR:-172:28:0::101}
       # PUBLIC_IP6_ADDR: fcff:3990:3990::101
       # LOWEST_PORT: 55555
       # HIGHEST_PORT: 55666
@@ -445,6 +451,9 @@ services:
       args:
         PACKAGE: firezone-relay
     image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -464,10 +473,12 @@ services:
     networks:
       app:
         ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}
+        ipv6_address: ${RELAY_1_PUBLIC_IP6_ADDR:-172:28:0::101}
 
   relay-2:
     environment:
       PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
+      PUBLIC_IP6_ADDR: ${RELAY_2_PUBLIC_IP6_ADDR:-172:28:0::201}
       # PUBLIC_IP6_ADDR: fcff:3990:3990::101
       # Token for self-hosted Relay
       # FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkNTQ5YzQxMDctMTQ5Mi00ZjhmLWE0ZWMtYTlkMmE2NmQ4YWE5bQAAADhQVTVBSVRFMU84VkRWTk1ITU9BQzc3RElLTU9HVERJQTY3MlM2RzFBQjAyT1MzNEg1TUUwPT09PW4GAEngLBONAWIAAVGA.E-f2MFdGMX7JTL2jwoHBdWcUd2G3UNz2JRZLbQrlf0k"
@@ -484,6 +495,9 @@ services:
       args:
         PACKAGE: firezone-relay
     image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -496,6 +510,7 @@ services:
     networks:
       app:
         ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
+        ipv6_address: ${RELAY_2_PUBLIC_IP6_ADDR:-172:28:0::201}
 
   otel:
     image: otel/opentelemetry-collector:latest
@@ -595,18 +610,17 @@ networks:
       config:
         - subnet: 172.21.0.0/24
   resources:
-    # enable_ipv6: true
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 172.20.0.0/24
-          # - subnet: fc00:ff:1::/48
+        - subnet: 172:20:0::/64
   app:
-    # enable_ipv6: true
+    enable_ipv6: true
     ipam:
       config:
         - subnet: 172.28.0.0/24
-    # Currently not working on testbed
-    # - subnet: fc00:ff:2::/48
+        - subnet: 172:28:0::/64
   99-ghost-in-da-edge:
     name: ghost-in-da-edge
     internal: false
