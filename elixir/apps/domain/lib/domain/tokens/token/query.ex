@@ -5,6 +5,7 @@ defmodule Domain.Tokens.Token.Query do
     from(tokens in Domain.Tokens.Token, as: :tokens)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def not_deleted do
     all()
     |> where([tokens: tokens], is_nil(tokens.deleted_at))
@@ -78,6 +79,7 @@ defmodule Domain.Tokens.Token.Query do
     where(queryable, [tokens: tokens], tokens.gateway_group_id == ^gateway_group_id)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def delete(queryable) do
     queryable
     |> Ecto.Query.select([tokens: tokens], tokens)

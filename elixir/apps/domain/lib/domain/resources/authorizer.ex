@@ -36,6 +36,14 @@ defmodule Domain.Resources.Authorizer do
     []
   end
 
+  def ensure_has_access_to(%Resource{} = resource, %Subject{} = subject) do
+    if resource.account_id == subject.account.id do
+      Domain.Auth.ensure_has_permissions(subject, manage_resources_permission())
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   def for_subject(queryable, Connection, %Subject{} = subject) do
     cond do
       has_permission?(subject, manage_resources_permission()) ->

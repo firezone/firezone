@@ -37,7 +37,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
                }}}
   end
 
-  test "renders deleted relay without action buttons", %{
+  test "raises NotFoundError for deleted relay", %{
     account: account,
     group: group,
     identity: identity,
@@ -45,13 +45,11 @@ defmodule Web.Live.RelayGroups.ShowTest do
   } do
     group = Fixtures.Relays.delete_group(group)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relay_groups/#{group}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -201,7 +199,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/relay_groups")
 
-    assert Repo.get(Domain.Relays.Group, group.id).deleted_at
+    refute Repo.get(Domain.Relays.Group, group.id)
   end
 
   test "allows revoking all tokens", %{
@@ -219,7 +217,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
            |> element("button[type=submit]", "Revoke All")
            |> render_click() =~ "1 token(s) were revoked."
 
-    assert Repo.get_by(Domain.Tokens.Token, relay_group_id: group.id).deleted_at
+    refute Repo.get_by(Domain.Tokens.Token, relay_group_id: group.id)
   end
 
   test "renders not found error when self_hosted_relays feature flag is false", %{

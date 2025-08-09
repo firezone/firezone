@@ -70,6 +70,7 @@ defmodule Domain.Auth do
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role}
   alias Domain.Auth.{Adapters, Provider}
   alias Domain.Auth.Identity
+  require Logger
 
   # This session duration is used when IdP doesn't return the token expiration date,
   # or no IdP is used (eg. sign in via email or userpass).
@@ -252,7 +253,7 @@ defmodule Domain.Auth do
   def disable_provider(%Provider{} = provider, %Subject{} = subject) do
     mutate_provider(provider, subject, fn provider ->
       if other_active_providers_exist?(provider) do
-        {:ok, _tokens} = Tokens.delete_tokens_for(provider, subject)
+        {:ok, _num_tokens} = Tokens.delete_tokens_for(provider, subject)
         Provider.Changeset.disable_provider(provider)
       else
         :cant_disable_the_last_provider
@@ -297,12 +298,33 @@ defmodule Domain.Auth do
   end
 
   def delete_provider(%Provider{} = provider, %Subject{} = subject) do
+    with :ok <- Authorizer.ensure_has_access_to(provider, subject),
+         :ok <- can_safely_delete?(provider) do
+      case Repo.delete(provider, stale_error_field: false) do
+        {:ok, provider} ->
+          Adapters.ensure_deprovisioned(provider)
+          {:ok, provider}
+
+        {:error, %Ecto.Changeset{errors: errors} = changeset} ->
+          if Enum.any?(errors, fn {_field, {_message, opts}} -> Keyword.get(opts, :stale, false) end) do
+            {:error, :not_found}
+          else
+            {:error, changeset}
+          end
+
+        other ->
+          other
+      end
+    end
+  end
+
+  def soft_delete_provider(%Provider{} = provider, %Subject{} = subject) do
     provider
     |> mutate_provider(subject, fn provider ->
       if other_active_providers_exist?(provider) do
-        :ok = delete_identities_for(provider, subject)
-        {:ok, _groups} = Actors.delete_groups_for(provider, subject)
-        Provider.Changeset.delete_provider(provider)
+        :ok = soft_delete_identities_for(provider, subject)
+        {:ok, _groups} = Actors.soft_delete_groups_for(provider, subject)
+        Provider.Changeset.soft_delete_provider(provider)
       else
         :cant_delete_the_last_provider
       end
@@ -323,6 +345,14 @@ defmodule Domain.Auth do
       |> Provider.Query.by_id(provider.id)
       |> Authorizer.for_subject(Provider, subject)
       |> Repo.fetch_and_update(Provider.Query, with: callback)
+    end
+  end
+
+  defp can_safely_delete?(%Provider{} = provider) do
+    if other_active_providers_exist?(provider) do
+      :ok
+    else
+      {:error, :cant_delete_the_last_provider}
     end
   end
 
@@ -425,6 +455,7 @@ defmodule Domain.Auth do
   end
 
   # used by IdP adapters
+  # TODO: HARD-DELETE - Remove `unsafe_fragment` after `deleted_at` column is removed from DB
   def upsert_identity(%Actors.Actor{} = actor, %Provider{} = provider, attrs) do
     Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
@@ -471,6 +502,64 @@ defmodule Domain.Auth do
   end
 
   def delete_identity(%Identity{} = identity, %Subject{} = subject) do
+    with :ok <- Authorizer.ensure_has_access_to(identity, subject) do
+      Repo.delete(identity, stale_error_field: false)
+    end
+  end
+
+  def delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      Identity.Query.all()
+      |> Identity.Query.by_actor_id(actor.id)
+      |> Identity.Query.by_account_id(actor.account_id)
+      |> Authorizer.for_subject(Identity, subject)
+      |> Repo.delete_all()
+      |> case do
+        {n, nil} when is_integer(n) ->
+          {:ok, n}
+
+        error ->
+          Logger.error("Unknown error deleting identities for actor",
+            account_id: actor.account_id,
+            subject_actor_id: subject.actor.id,
+            actor_id: actor.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error while deleting identities for actor"}
+      end
+    end
+  end
+
+  # TODO: HARD-DELETE
+  # This function should not be necessary after hard delete because deleting a provider
+  # will delete all of it's identities using a cascading delete in the DB
+  def delete_identities_for(%Provider{} = provider, %Subject{} = subject) do
+    with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
+      Identity.Query.all()
+      |> Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_account_id(provider.account_id)
+      |> Authorizer.for_subject(Identity, subject)
+      |> Repo.delete_all()
+      |> case do
+        {n, nil} when is_integer(n) ->
+          {:ok, n}
+
+        error ->
+          Logger.error("Unknown error deleting identities for provider",
+            account_id: provider.account_id,
+            actor_id: subject.actor.id,
+            provider_id: provider.id,
+            reason: inspect(error)
+          )
+
+          {:error, "unknown error while deleting identities for provider"}
+      end
+    end
+  end
+
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
+  def soft_delete_identity(%Identity{} = identity, %Subject{} = subject) do
     required_permissions =
       {:one_of,
        [
@@ -484,30 +573,33 @@ defmodule Domain.Auth do
       |> Authorizer.for_subject(Identity, subject)
       |> Repo.fetch_and_update(Identity.Query,
         with: fn identity ->
-          {:ok, _tokens} = Tokens.delete_tokens_for(identity, subject)
+          {:ok, _tokens} = Tokens.soft_delete_tokens_for(identity, subject)
           Identity.Changeset.delete_identity(identity)
         end
       )
     end
   end
 
-  def delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
+  def soft_delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do
     Identity.Query.not_deleted()
     |> Identity.Query.by_actor_id(actor.id)
     |> Identity.Query.by_account_id(actor.account_id)
-    |> delete_identities(actor, subject)
+    |> soft_delete_identities(actor, subject)
   end
 
-  def delete_identities_for(%Provider{} = provider, %Subject{} = subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
+  def soft_delete_identities_for(%Provider{} = provider, %Subject{} = subject) do
     Identity.Query.not_deleted()
     |> Identity.Query.by_provider_id(provider.id)
     |> Identity.Query.by_account_id(provider.account_id)
-    |> delete_identities(provider, subject)
+    |> soft_delete_identities(provider, subject)
   end
 
-  defp delete_identities(queryable, assoc, subject) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
+  defp soft_delete_identities(queryable, assoc, subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
-      {:ok, _tokens} = Tokens.delete_tokens_for(assoc, subject)
+      {:ok, _tokens} = Tokens.soft_delete_tokens_for(assoc, subject)
 
       {_count, nil} =
         queryable
@@ -518,8 +610,9 @@ defmodule Domain.Auth do
     end
   end
 
-  def identity_deleted?(%{deleted_at: nil}), do: false
-  def identity_deleted?(_identity), do: true
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
+  def identity_soft_deleted?(%{deleted_at: nil}), do: false
+  def identity_soft_deleted?(_identity), do: true
 
   # Sign Up / In / Off
 
@@ -537,6 +630,7 @@ defmodule Domain.Auth do
     {:error, :unauthorized}
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
   def sign_in(
         %Provider{deleted_at: deleted_at},
         _id_or_provider_identifier,
@@ -580,6 +674,7 @@ defmodule Domain.Auth do
     {:error, :unauthorized}
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
   def sign_in(%Provider{deleted_at: deleted_at}, _token_nonce, _payload, %Context{})
       when not is_nil(deleted_at) do
     {:error, :unauthorized}
@@ -661,7 +756,7 @@ defmodule Domain.Auth do
   if IdP was used for Sign In, revokes the IdP token too by redirecting user to IdP logout endpoint.
   """
   def sign_out(%Subject{} = subject, redirect_url) do
-    {:ok, _token} = Tokens.delete_token_for(subject)
+    {:ok, _num_deleted} = Tokens.delete_token_for(subject)
     identity = Repo.preload(subject.identity, :provider)
     Adapters.sign_out(identity.provider, identity, redirect_url)
   end
@@ -837,6 +932,7 @@ defmodule Domain.Auth do
       {:error, :unauthorized}
     end
   end
+
 
   def ensure_has_permissions(%Subject{} = subject, required_permissions) do
     with :ok <- ensure_permissions_are_not_expired(subject) do

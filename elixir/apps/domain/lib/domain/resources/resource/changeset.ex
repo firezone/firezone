@@ -67,6 +67,7 @@ defmodule Domain.Resources.Resource.Changeset do
     )
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def delete(%Resource{} = resource) do
     resource
     |> change()

@@ -37,6 +37,14 @@ defmodule Domain.Policies.Authorizer do
     []
   end
 
+  def ensure_has_access_to(%Policy{} = policy, %Subject{} = subject) do
+    if policy.account_id == subject.account.id do
+      Domain.Auth.ensure_has_permissions(subject, manage_policies_permission())
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   @impl Domain.Auth.Authorizer
   def for_subject(queryable, %Subject{} = subject) do
     cond do
