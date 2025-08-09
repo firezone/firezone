@@ -14,7 +14,7 @@ sleep 2 # Closing websocket isn't instant.
 
 # Assert: Dataplane still works
 client_curl_resource "172.20.0.100/get"
-client_curl_resource "172:20:0::100/get"
+client_curl_resource "[172:20:0::100]/get"
 
 # Assert: Websocket connection is cut
 OPEN_SOCKETS=$(relay1 netstat -tn | grep "ESTABLISHED" | grep 8081 || true) # Portal listens on port 8081
