@@ -361,8 +361,7 @@ services:
       dockerfile: Dockerfile
       args:
         PACKAGE: firezone-gateway
-    # image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
-    image: ghcr.io/firezone/debug/gateway:02b694b8f74d743533af6d605cf621edd92ea004
+    image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
     sysctls:
