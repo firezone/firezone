@@ -51,7 +51,7 @@ runs:
 
     # PRs: read-only (no uploads)
     - name: Configure sccache (PR, read-only)
-      if: ${{ github.event_name == 'pull_request' }}
+      if: ${{ github.ref_name != 'main' }}
       shell: bash
       run: |
         echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
@@ -59,7 +59,7 @@ runs:
 
     # main: read/write
     - name: Configure sccache (main, read/write)
-      if: ${{ github.ref == 'refs/heads/main' }}
+      if: ${{ github.ref_name == 'main' }}
       shell: bash
       run: |
         echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
