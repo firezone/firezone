@@ -5,7 +5,7 @@ source "./scripts/tests/lib.sh"
 # Arrange: Setup a relayed connection
 install_iptables_drop_rules
 client_curl_resource "172.20.0.100/get"
-client_curl_resource "172:20:0::100/get"
+client_curl_resource "[172:20:0::100]/get"
 
 # Act: Send SIGTERM
 docker compose kill relay-1 --signal SIGTERM
