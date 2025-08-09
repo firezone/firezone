@@ -35,7 +35,11 @@ runs:
   steps:
     - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
 
-    # Extract Rust version early so we can use it in the cache key
+    - name: Disable Windows Defender
+      if: ${{ runner.os == 'Windows' }}
+      run: Set-MpPreference -DisableRealtimeMonitoring $true
+      shell: powershell
+
     - name: Extract Rust version
       run: |
         RUST_TOOLCHAIN=$(grep 'channel' rust-toolchain.toml | awk -F '"' '{print $2}')
@@ -43,11 +47,11 @@ runs:
       shell: bash
       working-directory: ./rust
 
-    # Build a cache key
-    - name: Compute sccache cache key
-      id: sccache_keys
-      shell: bash
-      run: echo "key=sccache-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}" >> "$GITHUB_OUTPUT"
+    - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+      id: toolchain
+      with:
+        toolchain: ${{ env.RUST_TOOLCHAIN }}
+        components: rustfmt,clippy
 
     # PRs: read-only (no uploads)
     - name: Configure sccache (PR, read-only)
@@ -55,7 +59,7 @@ runs:
       shell: bash
       run: |
         echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-        echo "SCCACHE_GHA_CACHE_FROM=${{ steps.sccache_keys.outputs.key }}" >> $GITHUB_ENV
+        echo "SCCACHE_GHA_CACHE_FROM=${{ steps.toolchain.outputs.cachekey }}" >> $GITHUB_ENV
 
     # main: read/write
     - name: Configure sccache (main, read/write)
@@ -63,22 +67,12 @@ runs:
       shell: bash
       run: |
         echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-        echo "SCCACHE_GHA_CACHE_FROM=${{ steps.sccache_keys.outputs.key }}" >> $GITHUB_ENV
-        echo "SCCACHE_GHA_CACHE_TO=${{ steps.sccache_keys.outputs.key }}" >> $GITHUB_ENV
+        echo "SCCACHE_GHA_CACHE_FROM=${{ steps.toolchain.outputs.cachekey }}" >> $GITHUB_ENV
+        echo "SCCACHE_GHA_CACHE_TO=${{ steps.toolchain.outputs.cachekey }}" >> $GITHUB_ENV
 
     # Common wrapper
     - run: echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
       shell: bash
-
-    - name: Disable Windows Defender
-      if: ${{ runner.os == 'Windows' }}
-      run: Set-MpPreference -DisableRealtimeMonitoring $true
-      shell: powershell
-
-    - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
-      with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy
 
     - if: inputs.targets != ''
       run: rustup target add ${{ inputs.targets }}
