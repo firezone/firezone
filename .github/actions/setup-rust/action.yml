@@ -2,6 +2,8 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
 inputs:
+  sccache_azure_connection_string:
+    description: "Azure connection string for sccache"
   targets:
     description: "Additional targets to install"
     required: false
@@ -63,7 +65,7 @@ runs:
       shell: bash
       run: |
         echo "SCCACHE_GHA_ENABLED=false" >> $GITHUB_ENV
-        echo "SCCACHE_AZURE_CONNECTION_STRING=${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}" >> $GITHUB_ENV
+        echo "SCCACHE_AZURE_CONNECTION_STRING=${{ inputs.sccache_azure_connection_string }}" >> $GITHUB_ENV
         echo "SCCACHE_AZURE_BLOB_CONTAINER=sccache" >> $GITHUB_ENV
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
 
