@@ -94,8 +94,26 @@ jobs:
           REF="${{ github.ref_name }}"
           CACHE_TAG="${REF//[\/_=]/-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-      - name: Build and push control plane images
-        id: build
+      # PRs & non-main branches: read-only cache
+      - name: Build and push control plane images (read-only cache)
+        if: ${{ github.ref != 'refs/heads/main' }}
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          build-args: ${{ matrix.build-args }}
+          target: ${{ matrix.target }}
+          context: elixir
+          cache-from: |
+            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+            type=gha,scope=${{ matrix.image_name }}:main
+          # no cache-to here -> read-only
+          push: true
+          tags: |
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
+            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+
+      # main: read/write cache
+      - name: Build and push control plane images (read/write cache)
+        if: ${{ github.ref == 'refs/heads/main' }}
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           build-args: ${{ matrix.build-args }}
@@ -340,8 +358,27 @@ jobs:
           REF="${{ github.ref_name }}"
           CACHE_TAG="${REF//[\/_=]/-}"
           echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-      - name: Build Docker images
-        id: build
+      # PRs & non-main branches: read-only cache
+      - name: Build Docker images (read-only cache)
+        if: ${{ github.ref != 'refs/heads/main' }}
+        id: build_ro
+        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+        with:
+          platforms: ${{ matrix.arch.platform }}
+          build-args: |
+            PACKAGE=${{ matrix.name.package }}
+            TARGET=${{ matrix.arch.target }}
+          context: rust
+          cache-from: |
+            type=gha,scope=${{ matrix.name.image_name }}:${{ env.CACHE_TAG }}
+            type=gha,scope=${{ matrix.name.image_name }}:main
+          # no cache-to -> read-only
+          target: ${{ matrix.stage }}
+          outputs: type=image,name=${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.name.image_name }},push-by-digest=true,name-canonical=true,push=true
+      # main: read/write cache
+      - name: Build Docker images (read/write cache)
+        if: ${{ github.ref == 'refs/heads/main' }}
+        id: build_rw
         uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
         with:
           platforms: ${{ matrix.arch.platform }}
@@ -359,7 +396,7 @@ jobs:
       - name: Export digest
         run: |
           mkdir -p /tmp/digests/${{ matrix.name.image_name }}
-          digest="${{ steps.build.outputs.digest }}"
+          digest="${{ github.ref == 'refs/heads/main' && steps.build_rw.outputs.digest || steps.build_ro.outputs.digest }}"
           touch "/tmp/digests/${{ matrix.name.image_name }}/${digest#sha256:}"
       - name: Upload digest artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
