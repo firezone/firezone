@@ -386,6 +386,8 @@ services:
 
   httpbin:
     image: kennethreitz/httpbin
+    # Needed to bind to IPv6
+    command: ["gunicorn", "-b", "[::]:80", "httpbin:app"]
     healthcheck:
       test: ["CMD-SHELL", "ps -C gunicorn"]
     networks:
