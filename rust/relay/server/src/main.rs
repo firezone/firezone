@@ -88,6 +88,12 @@ struct Args {
     #[arg(long, env, hide = true)]
     ebpf_offloading: Option<String>,
 
+    /// eBPF attachment mode: "generic" for SKB_MODE or "driver" for DRV_MODE.
+    ///
+    /// Only relevant when ebpf_offloading is enabled.
+    #[arg(long, env, hide = true, default_value = "driver")]
+    ebpf_attach_mode: ebpf::AttachMode,
+
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
@@ -146,7 +152,7 @@ async fn try_main(args: Args) -> Result<()> {
     let mut ebpf = args
         .ebpf_offloading
         .as_deref()
-        .map(ebpf::Program::try_load)
+        .map(|interface| ebpf::Program::try_load(interface, args.ebpf_attach_mode))
         .transpose()
         .context("Failed to load eBPF TURN router")?;
 

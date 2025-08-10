@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use firezone_relay::{AllocationPort, ClientSocket, PeerSocket};
+use firezone_relay::{AllocationPort, ClientSocket, PeerSocket, ebpf};
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::{
     InMemoryMetricExporter, PeriodicReader, SdkMeterProvider, data::Sum,
@@ -18,7 +18,8 @@ async fn ping_pong() {
 
     let (_meter_provider, exporter) = init_meter_provider();
 
-    let mut program = firezone_relay::ebpf::Program::try_load("lo").unwrap();
+    let mut program =
+        firezone_relay::ebpf::Program::try_load("lo", ebpf::AttachMode::Generic).unwrap();
 
     // Linux does not set the correct UDP checksum when sending the packet, so our updated checksum in the eBPF code will be wrong and later dropped.
     // To make the test work, we therefore need to tell the eBPF program to disable UDP checksumming by just setting it to 0.
