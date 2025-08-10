@@ -254,7 +254,7 @@ defmodule Domain.Actors do
       {:ok, [group]} ->
         {:ok, _policies} = Policies.delete_policies_for(group, subject)
 
-        # TODO: WAL
+        # TODO: Hard delete
         # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
         {_count, _memberships} =
           Membership.Query.all()
@@ -281,7 +281,7 @@ defmodule Domain.Actors do
       |> Group.Query.by_provider_id(provider.id)
       |> Group.Query.by_account_id(provider.account_id)
 
-    # TODO: WAL
+    # TODO: Hard delete
     # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
     {_count, _memberships} =
       Membership.Query.by_group_provider_id(provider.id)
@@ -318,7 +318,7 @@ defmodule Domain.Actors do
         {:ok, _policies} = Domain.Policies.delete_policies_for(group)
       end)
 
-    # TODO: WAL
+    # TODO: Hard delete
     # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
     {_count, _memberships} =
       Membership.Query.by_group_id({:in, Enum.map(groups, & &1.id)})
@@ -597,7 +597,7 @@ defmodule Domain.Actors do
             :ok = Auth.delete_identities_for(actor, subject)
             :ok = Clients.delete_clients_for(actor, subject)
 
-            # TODO: WAL
+            # TODO: Hard delete
             # Consider using a trigger or transaction to handle the side effects of soft-deletions to ensure consistency
             {_count, _memberships} =
               Membership.Query.by_actor_id(actor.id)

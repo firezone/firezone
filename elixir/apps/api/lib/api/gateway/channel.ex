@@ -112,8 +112,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(relays, fn relay ->
-          # TODO: WAL
-          # Why are we unsubscribing and subscribing again?
+          # TODO: Why are we unsubscribing and subscribing again?
           :ok = Domain.Relays.unsubscribe_from_relay_presence(relay)
           :ok = Domain.Relays.subscribe_to_relay_presence(relay)
         end)
@@ -155,8 +154,7 @@ defmodule API.Gateway.Channel do
 
       :ok =
         Enum.each(relays, fn relay ->
-          # TODO: WAL
-          # Why are we unsubscribing and subscribing again?
+          # TODO: Why are we unsubscribing and subscribing again?
           :ok = Relays.unsubscribe_from_relay_presence(relay)
           :ok = Relays.subscribe_to_relay_presence(relay)
         end)
