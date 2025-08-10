@@ -34,7 +34,7 @@ SystemCallArchitectures=native
 SystemCallFilter=@aio @basic-io @file-system @io-event @network-io @signal @system-service
 UMask=077
 
-Environment="FIREZONE_API_URL=ws://localhost:8081"
+Environment="FIREZONE_API_URL=ws://127.0.0.1:8081"
 # TODO: Remove after #6163 gets into a release
 Environment="FIREZONE_DNS_CONTROL=systemd-resolved"
 Environment="RUST_LOG=info"
