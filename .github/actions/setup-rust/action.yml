@@ -2,6 +2,8 @@
 name: "Setup Rust"
 description: "Sets up the correct Rust version and caching via sccache and a GCP backend"
 inputs:
+  sccache_azure_connection_string:
+    description: "Azure connection string for sccache"
   targets:
     description: "Additional targets to install"
     required: false
@@ -34,10 +36,7 @@ runs:
   using: "composite"
   steps:
     - uses: mozilla-actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
-    - run: |
-        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
-        echo "SCCACHE_GHA_ENABLED=true" >> $GITHUB_ENV
-      shell: bash
+
     - name: Disable Windows Defender
       if: ${{ runner.os == 'Windows' }}
       run: Set-MpPreference -DisableRealtimeMonitoring $true
@@ -49,10 +48,24 @@ runs:
         echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
       shell: bash
       working-directory: ./rust
+
     - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+      id: toolchain
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
+
+    # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
+    # For this to work, you need an Azure Storage account and a blob container named `sccache`.
+    # The connection string here can be found under Storage Account -> Settings -> Security + networking -> Access keys.
+    - name: Configure sccache
+      shell: bash
+      run: |
+        echo "SCCACHE_GHA_ENABLED=false" >> $GITHUB_ENV
+        echo "SCCACHE_AZURE_CONNECTION_STRING=${{ inputs.sccache_azure_connection_string }}" >> $GITHUB_ENV
+        echo "SCCACHE_AZURE_BLOB_CONTAINER=sccache" >> $GITHUB_ENV
+        echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
+
     - if: inputs.targets != ''
       run: rustup target add ${{ inputs.targets }}
       shell: bash
@@ -61,10 +74,8 @@ runs:
       id: nightly
       run: |
         NIGHTLY="nightly-2025-05-30"
-
         rustup toolchain install $NIGHTLY
         rustup component add rust-src --toolchain $NIGHTLY
-
         echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
       shell: bash
 
