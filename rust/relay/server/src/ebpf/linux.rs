@@ -30,7 +30,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn try_load(interface: &str) -> Result<Self> {
+    pub fn try_load(interface: &str, attach_mode: &str) -> Result<Self> {
         let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/ebpf-turn-router-main"
@@ -41,8 +41,18 @@ impl Program {
             .context("No program")?
             .try_into()?;
         program.load().context("Failed to load program")?;
+
+        let xdp_flags = match attach_mode {
+            "generic" => XdpFlags::SKB_MODE,
+            "driver" => XdpFlags::DRV_MODE,
+            _ => anyhow::bail!(
+                "Invalid EBPF_ATTACH_MODE '{}'. Must be 'generic' or 'driver'.",
+                attach_mode
+            ),
+        };
+
         program
-            .attach(interface, XdpFlags::SKB_MODE)
+            .attach(interface, xdp_flags)
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
 
         let mut stats = AsyncPerfEventArray::try_from(

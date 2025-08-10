@@ -73,6 +73,10 @@ jobs:
             windows-2022-xlarge,
             windows-2025-xlarge,
           ]
+        include:
+          # Skip eBPF ping_pong test on Ubuntu 22.04 due to kernel 6.8 verifier issues
+          - runs-on: ubuntu-22.04-xlarge
+            test-skip: "--skip ping_pong"
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -99,7 +103,7 @@ jobs:
           set -x
 
           # First, run all tests.
-          cargo test --all-features ${{ steps.setup-rust.outputs.test-packages }} -- --include-ignored --nocapture
+          cargo test --all-features ${{ steps.setup-rust.outputs.test-packages }} -- --include-ignored --nocapture ${{ matrix.test-skip || '' }}
 
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
           rg --count --no-ignore SendIcmpPacket "$TESTCASES_DIR"

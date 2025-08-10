@@ -12,7 +12,7 @@ use crate::{AllocationPort, ClientSocket, PeerSocket};
 pub struct Program {}
 
 impl Program {
-    pub fn try_load(_: &str) -> Result<Self> {
+    pub fn try_load(_: &str, _: &str) -> Result<Self> {
         Err(anyhow::anyhow!("Platform not supported"))
     }
 
