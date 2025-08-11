@@ -316,7 +316,9 @@ jobs:
           sudo apt install nmap
           sudo nmap -sn "10.0.3.*"
       - name: Seed database
-        run: docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan-network.yml run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
+        run: |
+          docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan-network.yml up -d postgres
+          docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
       - name: Start docker compose in the background
         run: |
           # We need to increase the log level to make sure that they don't hold off storm of packets
