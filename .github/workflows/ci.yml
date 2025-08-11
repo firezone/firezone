@@ -329,12 +329,12 @@ jobs:
           export FIREZONE_API_URL="ws://$host_ip:8081"
 
           # Start services in the same order each time for the tests
-          docker compose -f docker-compose.yml up -d iperf3
-          docker compose -f docker-compose.yml up -d api web domain postgres --no-build
+          docker compose up -d iperf3
+          docker compose up -d api web domain postgres --no-build
           docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan-network.yml up -d relay-1 --no-build
           docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan-network.yml up -d relay-2 --no-build
-          docker compose -f docker-compose.yml up -d gateway --no-build
-          docker compose -f docker-compose.yml up -d client --no-build
+          docker compose up -d gateway --no-build
+          docker compose up -d client --no-build
       - name: Add 10ms simulated latency
         run: |
           docker compose exec -d client tc qdisc add dev eth0 root netem delay 10ms
@@ -345,8 +345,8 @@ jobs:
         run: |
           docker compose exec -d client sh -c 'tcpdump -i eth0 -w /tmp/client.pcap'
           docker compose exec -d gateway sh -c 'tcpdump -i eth0 -w /tmp/gateway.pcap'
-          docker compose exec -d relay-1 sh -c 'tcpdump -i eth0 -w /tmp/relay-1.pcap'
-          docker compose exec -d relay-2 sh -c 'tcpdump -i eth0 -w /tmp/relay-2.pcap'
+          docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan.network.yml exec -d relay-1 sh -c 'tcpdump -i eth0 -w /tmp/relay-1.pcap'
+          docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan.network.yml exec -d relay-2 sh -c 'tcpdump -i eth0 -w /tmp/relay-2.pcap'
       - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
         env:
@@ -359,8 +359,8 @@ jobs:
           mkdir -p pcap
           docker compose cp client:/tmp/client.pcap ./pcap/
           docker compose cp gateway:/tmp/gateway.pcap ./pcap/
-          docker compose cp relay-1:/tmp/relay-1.pcap ./pcap/
-          docker compose cp relay-2:/tmp/relay-2.pcap ./pcap/
+          docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan.network.yml cp relay-1:/tmp/relay-1.pcap ./pcap/
+          docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan.network.yml cp relay-2:/tmp/relay-2.pcap ./pcap/
           tar czf pcap.tar.gz pcap
       - name: Save packet captures
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
