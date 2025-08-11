@@ -7,7 +7,7 @@ networks:
   app:
     driver: macvlan
     driver_opts:
-      parent: wlp192s0
+      parent: eth0 # Matches what is setup in GitHub actions VMs.
     ipam:
       config:
         - subnet: 10.0.0.0/22
@@ -17,21 +17,12 @@ networks:
           ip_range: 10.0.3.0/24
 
 services:
-  api:
-    networks:
-      app:
-        ipv4_address: 10.0.3.1
-
   client:
-    environment:
-      FIREZONE_API_URL: ws://10.0.3.1:8081
     networks:
       app:
         ipv4_address: 10.0.3.100
 
   gateway:
-    environment:
-      FIREZONE_API_URL: ws://10.0.3.1:8081
     networks:
       app:
         ipv4_address: 10.0.3.105
@@ -39,7 +30,6 @@ services:
   relay-1:
     environment:
       PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.3.101}
-      FIREZONE_API_URL: ws://10.0.3.1:8081
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
@@ -51,7 +41,6 @@ services:
   relay-2:
     environment:
       PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.3.201}
-      FIREZONE_API_URL: ws://10.0.3.1:8081
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
