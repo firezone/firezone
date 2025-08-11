@@ -331,6 +331,9 @@ jobs:
           host_ip=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
           export FIREZONE_API_URL="ws://${host_ip}:8081"
 
+          # Add a network for the relays
+          sudo ip addr add 192.168.100.1/24 dev eth0
+
           # Start services in the same order each time for the tests
           docker compose up -d iperf3
           docker compose up -d api web domain postgres --no-build

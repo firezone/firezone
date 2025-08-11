@@ -15,9 +15,8 @@ networks:
         # Observation has shown that GitHub's runners usually have IPs in the 10.0.0.0/24 subnet.
         # We use the 10.0.3.0 subnet here for our containers and hope that there is no conflict ...
         # VLANs require an existing network to attach to (Docker doesn't create them automatically).
-        - subnet: 10.0.0.0/22
-          gateway: 10.0.0.1
-          ip_range: 10.0.3.0/24
+        - subnet: 192.168.100.0/24
+          gateway: 192.168.100.1
 
 services:
   # client:
@@ -32,7 +31,7 @@ services:
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.3.101}
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-192.168.100.101}
       EBPF_OFFLOADING: eth0
       FIREZONE_API_URL: "${FIREZONE_API_URL:-MUST_BE_SET}"
     privileged: true # Needed to load eBPF prog
@@ -40,11 +39,11 @@ services:
       - NET_ADMIN
     networks:
       relays:
-        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.3.101}
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-192.168.100.101}
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.3.201}
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-192.168.100.201}
       EBPF_OFFLOADING: eth0
       FIREZONE_API_URL: "${FIREZONE_API_URL:-MUST_BE_SET}"
     privileged: true # Needed to load eBPF prog
@@ -52,4 +51,4 @@ services:
       - NET_ADMIN
     networks:
       relays:
-        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.3.201}
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-192.168.100.201}
