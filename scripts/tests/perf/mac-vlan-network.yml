@@ -1,7 +1,8 @@
 # A docker compose override file to use a mac-vlan network.
 #
-# Forcing the traffic out through the physical interface ensures that GSO/GRO are correctly applied
+# Forcing the traffic out through the physical interface ensures that GSO/GRO are functioning correctly
 # and allows us to test the relay's eBPF module.
+# Without an actual physical interface, the eBPF module would pick up the non-segmented UDP traffic which it cannot handle.
 
 networks:
   app:
