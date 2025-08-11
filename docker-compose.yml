@@ -439,7 +439,6 @@ services:
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
-      EBPF_OFFLOADING: eth0
     build:
       target: debug
       context: rust
@@ -483,7 +482,6 @@ services:
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
-      EBPF_OFFLOADING: eth0
     build:
       target: debug
       context: rust
