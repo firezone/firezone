@@ -5,47 +5,50 @@
 # Without an actual physical interface, the eBPF module would pick up the non-segmented UDP traffic which it cannot handle.
 
 networks:
-  app:
+  relays:
     driver: macvlan
     driver_opts:
       parent: eth0 # Matches what is setup in GitHub actions VMs.
+      ipvlan_mode: l2 # Populate MAC addresses.
     ipam:
       config:
-        - subnet: 10.0.0.0/22
-          gateway: 10.0.0.1
+        - subnet: 10.100.100.0/24
+          gateway: 10.100.100.1
           # Observation has shown that GitHub's runners usually have IPs in the 10.0.0.0/24 subnet.
           # We use the 10.0.3.0 subnet here for our containers and hope that there is no conflict ...
-          ip_range: 10.0.3.0/24
+          # ip_range: 10.0.3.0/24
 
 services:
-  client:
-    networks:
-      app:
-        ipv4_address: 10.0.3.100
-
-  gateway:
-    networks:
-      app:
-        ipv4_address: 10.0.3.105
+  # client:
+  #   networks:
+  #     app:
+  #       ipv4_address: 10.0.3.100
+  #
+  # gateway:
+  #   networks:
+  #     app:
+  #       ipv4_address: 10.0.3.105
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.3.101}
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.100.100.101}
       EBPF_OFFLOADING: eth0
+      FIREZONE_API_URL: ws://127.0.0.1:8081
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
     networks:
-      app:
-        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.3.101}
+      relays:
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.100.100.101}
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.3.201}
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.100.100.201}
       EBPF_OFFLOADING: eth0
+      FIREZONE_API_URL: ws://127.0.0.1:8081
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
     networks:
-      app:
-        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.3.201}
+      relays:
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.100.100.201}
