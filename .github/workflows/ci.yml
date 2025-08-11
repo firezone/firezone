@@ -318,6 +318,7 @@ jobs:
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
       - name: Start docker compose in the background
+        timeout-minutes: 5
         run: |
           set -x
 
