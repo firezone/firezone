@@ -327,7 +327,7 @@ jobs:
           grep RUST_LOG docker-compose.yml
 
           # Relays are in a different docker network - use the host IP to reach the API
-          host_ip=$(ip addr show eth0 | grep inet | awk '{print $2}' | cut -d'/' -f1)
+          host_ip=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
           export FIREZONE_API_URL="ws://${host_ip}:8081"
 
           # Start services in the same order each time for the tests
