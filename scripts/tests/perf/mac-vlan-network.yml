@@ -12,8 +12,8 @@ networks:
       ipvlan_mode: l2 # Populate MAC addresses.
     ipam:
       config:
-        - subnet: 10.100.100.0/24
-          gateway: 10.100.100.1
+        - subnet: 172.16.31.0/24
+          gateway: 172.16.31.1
           # Observation has shown that GitHub's runners usually have IPs in the 10.0.0.0/24 subnet.
           # We use the 10.0.3.0 subnet here for our containers and hope that there is no conflict ...
           # ip_range: 10.0.3.0/24
@@ -31,7 +31,7 @@ services:
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.100.100.101}
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-172.16.31.101}
       EBPF_OFFLOADING: eth0
       FIREZONE_API_URL: ws://127.0.0.1:8081
     privileged: true # Needed to load eBPF prog
@@ -39,11 +39,11 @@ services:
       - NET_ADMIN
     networks:
       relays:
-        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.100.100.101}
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.16.31.101}
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.100.100.201}
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-172.16.31.201}
       EBPF_OFFLOADING: eth0
       FIREZONE_API_URL: ws://127.0.0.1:8081
     privileged: true # Needed to load eBPF prog
@@ -51,4 +51,4 @@ services:
       - NET_ADMIN
     networks:
       relays:
-        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.100.100.201}
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.16.31.201}
