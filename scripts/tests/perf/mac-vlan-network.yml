@@ -35,6 +35,9 @@ services:
       EBPF_OFFLOADING: eth0
       FIREZONE_API_URL: "${FIREZONE_API_URL:-MUST_BE_SET}"
     privileged: true # Needed to load eBPF prog
+    ports:
+      - "3478:3478/udp"
+      - "49152-65535:49152-65535/udp"
     cap_add:
       - NET_ADMIN
     networks:
@@ -47,6 +50,9 @@ services:
       EBPF_OFFLOADING: eth0
       FIREZONE_API_URL: "${FIREZONE_API_URL:-MUST_BE_SET}"
     privileged: true # Needed to load eBPF prog
+    ports:
+      - "3478:3478/udp"
+      - "49152-65535:49152-65535/udp"
     cap_add:
       - NET_ADMIN
     networks:
