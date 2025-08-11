@@ -48,6 +48,9 @@ services:
       PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.0.101}
       FIREZONE_API_URL: ws://10.0.0.52:8081
       EBPF_OFFLOADING: eth0
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
     networks:
       app:
         ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.0.101}
@@ -57,6 +60,9 @@ services:
       PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.0.201}
       FIREZONE_API_URL: ws://10.0.0.52:8081
       EBPF_OFFLOADING: eth0
+    privileged: true # Needed to load eBPF prog
+    cap_add:
+      - NET_ADMIN
     networks:
       app:
         ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.0.201}

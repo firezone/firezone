@@ -447,9 +447,6 @@ services:
         PACKAGE: firezone-relay
     image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
     platform: linux/amd64
-    privileged: true # Needed to load eBPF prog
-    cap_add:
-      - NET_ADMIN
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
@@ -490,9 +487,6 @@ services:
         PACKAGE: firezone-relay
     image: ${RELAY_IMAGE:-ghcr.io/firezone/debug/relay}:${RELAY_TAG:-main}
     platform: linux/amd64
-    privileged: true # Needed to load eBPF prog
-    cap_add:
-      - NET_ADMIN
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
       start_period: 10s
