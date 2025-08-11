@@ -316,12 +316,12 @@ jobs:
         run: |
           ip addr
           arp -a
-          apt install nmap
+          sudo apt install nmap
 
-          nmap -sn "10.0.0.*"
-          nmap -sn "10.0.1.*"
-          nmap -sn "10.0.2.*"
-          nmap -sn "10.0.3.*"
+          sudo nmap -sn "10.0.0.*"
+          sudo nmap -sn "10.0.1.*"
+          sudo nmap -sn "10.0.2.*"
+          sudo nmap -sn "10.0.3.*"
 
 
           # We need to increase the log level to make sure that they don't hold off storm of packets
