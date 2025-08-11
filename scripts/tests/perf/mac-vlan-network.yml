@@ -1,0 +1,57 @@
+networks:
+  app:
+    driver: macvlan
+    driver_opts:
+      parent: wlp192s0
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+          gateway: 192.168.1.1
+
+services:
+  web:
+    networks:
+      app:
+        ipv4_address: 192.168.1.53
+
+  api:
+    networks:
+      app:
+        ipv4_address: 192.168.1.52
+
+  domain:
+    networks:
+      app:
+        ipv4_address: 192.168.1.51
+
+  client:
+    environment:
+      FIREZONE_API_URL: ws://192.168.1.52:8081
+    networks:
+      app:
+        ipv4_address: 192.168.1.100
+
+  gateway:
+    environment:
+      FIREZONE_API_URL: ws://192.168.1.52:8081
+    networks:
+      app:
+        ipv4_address: 192.168.1.105
+
+  relay-1:
+    environment:
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-192.168.1.101}
+      FIREZONE_API_URL: ws://192.168.1.52:8081
+      EBPF_OFFLOADING: eth0
+    networks:
+      app:
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-192.168.1.101}
+
+  relay-2:
+    environment:
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-192.168.1.201}
+      FIREZONE_API_URL: ws://192.168.1.52:8081
+      EBPF_OFFLOADING: eth0
+    networks:
+      app:
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-192.168.1.201}
