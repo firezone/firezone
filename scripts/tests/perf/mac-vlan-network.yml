@@ -1,3 +1,8 @@
+# A docker compose override file to use a mac-vlan network.
+#
+# Forcing the traffic out through the physical interface ensures that GSO/GRO are correctly applied
+# and allows us to test the relay's eBPF module.
+
 networks:
   app:
     driver: macvlan
@@ -5,53 +10,53 @@ networks:
       parent: wlp192s0
     ipam:
       config:
-        - subnet: 192.168.1.0/24
-          gateway: 192.168.1.1
+        - subnet: 10.0.0.1/22
+          gateway: 10.0.0.1
 
 services:
   web:
     networks:
       app:
-        ipv4_address: 192.168.1.53
+        ipv4_address: 10.0.0.53
 
   api:
     networks:
       app:
-        ipv4_address: 192.168.1.52
+        ipv4_address: 10.0.0.52
 
   domain:
     networks:
       app:
-        ipv4_address: 192.168.1.51
+        ipv4_address: 10.0.0.51
 
   client:
     environment:
-      FIREZONE_API_URL: ws://192.168.1.52:8081
+      FIREZONE_API_URL: ws://10.0.0.52:8081
     networks:
       app:
-        ipv4_address: 192.168.1.100
+        ipv4_address: 10.0.0.100
 
   gateway:
     environment:
-      FIREZONE_API_URL: ws://192.168.1.52:8081
+      FIREZONE_API_URL: ws://10.0.0.52:8081
     networks:
       app:
-        ipv4_address: 192.168.1.105
+        ipv4_address: 10.0.0.105
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-192.168.1.101}
-      FIREZONE_API_URL: ws://192.168.1.52:8081
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.0.101}
+      FIREZONE_API_URL: ws://10.0.0.52:8081
       EBPF_OFFLOADING: eth0
     networks:
       app:
-        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-192.168.1.101}
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.0.101}
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-192.168.1.201}
-      FIREZONE_API_URL: ws://192.168.1.52:8081
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.0.201}
+      FIREZONE_API_URL: ws://10.0.0.52:8081
       EBPF_OFFLOADING: eth0
     networks:
       app:
-        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-192.168.1.201}
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.0.201}
