@@ -33,7 +33,7 @@ services:
     environment:
       PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-172.16.31.101}
       EBPF_OFFLOADING: eth0
-      FIREZONE_API_URL: ${FIREZONE_API_URL:-MUST_BE_SET}
+      FIREZONE_API_URL: "${FIREZONE_API_URL:-MUST_BE_SET}"
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
@@ -45,7 +45,7 @@ services:
     environment:
       PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-172.16.31.201}
       EBPF_OFFLOADING: eth0
-      FIREZONE_API_URL: ${FIREZONE_API_URL:-MUST_BE_SET}
+      FIREZONE_API_URL: "${FIREZONE_API_URL:-MUST_BE_SET}"
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
