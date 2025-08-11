@@ -10,59 +10,50 @@ networks:
       parent: wlp192s0
     ipam:
       config:
-        - subnet: 10.0.0.1/22
+        - subnet: 10.0.0.0/22
           gateway: 10.0.0.1
+          ip_range: 10.0.3.0/24
 
 services:
-  web:
-    networks:
-      app:
-        ipv4_address: 10.0.0.53
-
   api:
     networks:
       app:
-        ipv4_address: 10.0.0.52
-
-  domain:
-    networks:
-      app:
-        ipv4_address: 10.0.0.51
+        ipv4_address: 10.0.3.1
 
   client:
     environment:
-      FIREZONE_API_URL: ws://10.0.0.52:8081
+      FIREZONE_API_URL: ws://10.0.3.1:8081
     networks:
       app:
-        ipv4_address: 10.0.0.100
+        ipv4_address: 10.0.3.100
 
   gateway:
     environment:
-      FIREZONE_API_URL: ws://10.0.0.52:8081
+      FIREZONE_API_URL: ws://10.0.3.1:8081
     networks:
       app:
-        ipv4_address: 10.0.0.105
+        ipv4_address: 10.0.3.105
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.0.101}
-      FIREZONE_API_URL: ws://10.0.0.52:8081
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.3.101}
+      FIREZONE_API_URL: ws://10.0.3.1:8081
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
     networks:
       app:
-        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.0.101}
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-10.0.3.101}
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.0.201}
-      FIREZONE_API_URL: ws://10.0.0.52:8081
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.3.201}
+      FIREZONE_API_URL: ws://10.0.3.1:8081
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
     networks:
       app:
-        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.0.201}
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-10.0.3.201}
