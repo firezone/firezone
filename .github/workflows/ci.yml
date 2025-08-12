@@ -331,7 +331,7 @@ jobs:
 
           # Enable alias expansion
           shopt -s expand_aliases
-          alias dc='docker compose -f docker-compose.yml -f scripts/tests/perf.mac-vlan-network.yml'
+          alias dc='docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan-network.yml'
 
           # Seed database
           dc up -d postgres
