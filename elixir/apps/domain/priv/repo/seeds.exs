@@ -126,6 +126,7 @@ defmodule Domain.Repo.Seeds do
     {:ok, oidc_provider} =
       Auth.create_provider(account, %{
         name: "OIDC",
+        skip_discovery_document_fetch: true,
         adapter: :openid_connect,
         adapter_config: %{
           "client_id" => "CLIENT_ID",
