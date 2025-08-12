@@ -315,8 +315,6 @@ jobs:
       #   run: |
       #     sudo apt install nmap
       #     sudo nmap -sn "10.0.3.*"
-      - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
       - name: Start docker compose in the background
         timeout-minutes: 5
         run: |
@@ -327,20 +325,19 @@ jobs:
           sed -i 's/^\(\s*\)RUST_LOG:.*$/\1RUST_LOG: wire=error,opentelemetry_sdk=error,debug/' docker-compose.yml
           grep RUST_LOG docker-compose.yml
 
-          # Relays are in a different docker network - use the host IP to reach the API
-          host_ip=$(ip -4 addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-          export FIREZONE_API_URL="ws://${host_ip}:8081"
+          alias dc='docker compose -f docker-compose.yml -f scripts/tests/perf.mac-vlan-network.yml'
 
-          # Add a network for the relays
-          sudo ip addr add 192.168.100.1/24 dev eth0
+          # Seed database
+          dc up -d postgres
+          dc run --rm elixir sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
 
           # Start services in the same order each time for the tests
-          docker compose up -d iperf3
-          docker compose up -d api web domain postgres --no-build
-          docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan-network.yml up -d relay-1 --no-build
-          docker compose -f docker-compose.yml -f scripts/tests/perf/mac-vlan-network.yml up -d relay-2 --no-build
-          docker compose up -d gateway --no-build
-          docker compose up -d client --no-build
+          dc up -d iperf3
+          dc up -d api web domain --no-build
+          dc up -d relay-1 --no-build
+          dc up -d relay-2 --no-build
+          dc up -d gateway --no-build
+          dc up -d client --no-build
       - name: Add 10ms simulated latency
         run: |
           docker compose exec -d client tc qdisc add dev eth0 root netem delay 10ms
