@@ -28,7 +28,7 @@ services:
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-MUST_BE_SET}
+      PUBLIC_IP4_ADDR: ${RELAY_1_IP4_ADDR:-MUST_BE_SET}
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
@@ -39,7 +39,7 @@ services:
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-MUST_BE_SET}
+      PUBLIC_IP4_ADDR: ${RELAY_2_IP4_ADDR:-MUST_BE_SET}
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
