@@ -47,8 +47,10 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
       end)
     end
   else
-    def validate_discovery_document_uri(_changeset) do
-      []
+    def validate_discovery_document_uri(changeset) do
+      validate_change(changeset, :discovery_document_uri, fn :discovery_document_uri, _value ->
+        []
+      end)
     end
   end
 end
