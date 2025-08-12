@@ -305,6 +305,11 @@ jobs:
           - relayed-tcp-server2client
           - relayed-udp-client2server
           - relayed-udp-server2client
+    env:
+      RELAY_1_IP4_ADDR: 10.0.3.101
+      RELAY_2_IP4_ADDR: 10.0.3.201
+      CLIENT_IP4_ADDR:  10.0.3.100
+      GATEWAY_IP4_ADDR: 10.0.3.105
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/ghcr-docker-login
@@ -325,6 +330,8 @@ jobs:
           sed -i 's/^\(\s*\)RUST_LOG:.*$/\1RUST_LOG: wire=error,opentelemetry_sdk=error,debug/' docker-compose.yml
           grep RUST_LOG docker-compose.yml
 
+          # Enable alias expansion
+          shopt -s expand_aliases
           alias dc='docker compose -f docker-compose.yml -f scripts/tests/perf.mac-vlan-network.yml'
 
           # Seed database

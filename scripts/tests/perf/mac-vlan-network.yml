@@ -19,31 +19,31 @@ services:
   client:
     networks:
       app:
-        ipv4_address: 10.0.3.100
+        ipv4_address: ${CLIENT_IP4_ADDR:-MUST_BE_SET}
 
   gateway:
     networks:
       app:
-        ipv4_address: 10.0.3.105
+        ipv4_address: ${GATEWAY_IP4_ADDR:-MUST_BE_SET}
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: 10.0.3.101
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-MUST_BE_SET}
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
     networks:
       app:
-        ipv4_address: 10.0.3.101
+        ipv4_address: ${RELAY_1_IP4_ADDR:-MUST_BE_SET}
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: 10.0.3.201
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-MUST_BE_SET}
       EBPF_OFFLOADING: eth0
     privileged: true # Needed to load eBPF prog
     cap_add:
       - NET_ADMIN
     networks:
       app:
-        ipv4_address: 10.0.3.201
+        ipv4_address: ${RELAY_2_IP4_ADDR:-MUST_BE_SET}

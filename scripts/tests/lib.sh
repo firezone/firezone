@@ -23,7 +23,7 @@ function install_iptables_drop_rules() {
     docker compose exec -it client /bin/sh -c 'apk add iptables'
 
     # Execute within the client container because doing so from the host is not reliable in CI.
-    docker compose exec -it client /bin/sh -c 'iptables -A OUTPUT -d 172.28.0.105 -j DROP'
+    docker compose exec -it client /bin/sh -c "iptables -A OUTPUT -d ${GATEWAY_IP4_ADDR:-172.28.0.105} -j DROP"
 }
 
 function client_curl_resource() {
