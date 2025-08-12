@@ -295,7 +295,7 @@ jobs:
       RELAY_TAG: ${{ github.sha }}
       RELAY_1_IP4_ADDR: 10.0.3.101
       RELAY_2_IP4_ADDR: 10.0.3.201
-      CLIENT_IP4_ADDR:  10.0.3.100
+      CLIENT_IP4_ADDR: 10.0.3.100
       GATEWAY_IP4_ADDR: 10.0.3.105
     strategy:
       fail-fast: false
