@@ -6,7 +6,6 @@ pub enum Error {
     NotUdp,
     NotTurn,
     NotIp,
-    NoMacAddress,
     Ipv4PacketWithOptions,
     NotAChannelDataMessage,
     BadChannelDataLength,
@@ -41,7 +40,6 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::NotUdp => "Not a UDP packet".write(buf),
             Error::NotTurn => "Not TURN traffic".write(buf),
             Error::NotIp => "Not an IP packet".write(buf),
-            Error::NoMacAddress => "No MAC address".write(buf),
             Error::Ipv4PacketWithOptions => "IPv4 packet has options".write(buf),
             Error::NotAChannelDataMessage => "Not a channel data message".write(buf),
             Error::BadChannelDataLength => {
