@@ -88,7 +88,6 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         | Error::NotTurn
         | Error::NotAChannelDataMessage
         | Error::Ipv4PacketWithOptions
-        | Error::NoMacAddress
         | Error::UnsupportedChannel(_)
         | Error::NoEntry(_) => {
             debug!(&ctx, "Passing packet to userspace: {}", e);
@@ -127,9 +126,6 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     // Safety: This is the only instance of `Ip4`.
     let ipv4 = unsafe { Ip4::parse(ctx) }?;
-
-    eth::save_mac_for_ipv4(ipv4.src(), eth.src());
-    eth::save_mac_for_ipv4(ipv4.dst(), eth.dst());
 
     if ipv4.protocol() != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -191,7 +187,7 @@ fn try_handle_ipv4_channel_data_to_udp(
     let new_dst = port_and_peer.peer_ip();
     let new_ipv4_total_len = ipv4.total_len() - CdHdr::LEN as u16;
 
-    eth.update(new_dst)?;
+    eth.swap_macs()?;
 
     let pseudo_header = ipv4.update(new_src, new_dst, new_ipv4_total_len);
 
@@ -231,7 +227,7 @@ fn try_handle_ipv4_udp_to_channel_data(
     let new_dst = client_and_channel.client_ip();
     let new_ipv4_total_len = ipv4.total_len() + CdHdr::LEN as u16;
 
-    eth.update(new_dst)?;
+    eth.swap_macs()?;
 
     let pseudo_header = ipv4.update(new_src, new_dst, new_ipv4_total_len);
 
@@ -265,9 +261,6 @@ fn try_handle_ipv4_udp_to_channel_data(
 fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     // Safety: This is the only instance of `Ip6` in this scope.
     let ipv6 = unsafe { Ip6::parse(ctx) }?;
-
-    eth::save_mac_for_ipv6(ipv6.src(), eth.src());
-    eth::save_mac_for_ipv6(ipv6.dst(), eth.dst());
 
     if ipv6.protocol() != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -324,7 +317,7 @@ fn try_handle_ipv6_udp_to_channel_data(
     let new_dst = client_and_channel.client_ip();
     let new_ipv6_total_len = ipv6.payload_len() + CdHdr::LEN as u16;
 
-    eth.update(new_dst)?;
+    eth.swap_macs()?;
 
     let pseudo_header = ipv6.update(new_src, new_dst, new_ipv6_total_len);
 
@@ -378,7 +371,7 @@ fn try_handle_ipv6_channel_data_to_udp(
     let new_dst = port_and_peer.peer_ip();
     let new_ipv6_payload_len = ipv6.payload_len() - CdHdr::LEN as u16;
 
-    eth.update(new_dst)?;
+    eth.swap_macs()?;
 
     let pseudo_header = ipv6.update(new_src, new_dst, new_ipv6_payload_len);
 
