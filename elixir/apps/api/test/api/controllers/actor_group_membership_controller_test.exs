@@ -119,7 +119,7 @@ defmodule API.ActorGroupMembershipControllerTest do
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
-    test "returns error on invalid group id", %{conn: conn, account: account, actor: api_actor} do
+    test "returns error on invalid group id", %{conn: conn, actor: api_actor} do
       attrs = %{"add" => ["00000000-0000-0000-0000-000000000000"]}
 
       conn =
