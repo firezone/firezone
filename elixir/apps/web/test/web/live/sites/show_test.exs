@@ -140,7 +140,8 @@ defmodule Web.Live.Sites.ShowTest do
       gateway: gateway,
       conn: conn
     } do
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, group: group)
 
       {:ok, lv, _html} =
@@ -178,7 +179,8 @@ defmodule Web.Live.Sites.ShowTest do
         |> live(~p"/#{account}/sites/#{group}")
 
       :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       wait_for(fn ->
@@ -375,7 +377,8 @@ defmodule Web.Live.Sites.ShowTest do
       gateway: gateway,
       conn: conn
     } do
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, group: group)
 
       {:ok, lv, _html} =
@@ -412,7 +415,8 @@ defmodule Web.Live.Sites.ShowTest do
         |> live(~p"/#{account}/sites/#{group}")
 
       :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       wait_for(fn ->
@@ -563,7 +567,7 @@ defmodule Web.Live.Sites.ShowTest do
   end
 
   describe "for internet sites" do
-    setup %{account: account} do
+    setup %{account: account, subject: subject} do
       {:ok, group} = Domain.Gateways.create_internet_group(account)
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
       gateway = Repo.preload(gateway, :group)
@@ -573,7 +577,8 @@ defmodule Web.Live.Sites.ShowTest do
       %{
         group: group,
         gateway: gateway,
-        resource: resource
+        resource: resource,
+        subject: subject
       }
     end
 
@@ -598,7 +603,8 @@ defmodule Web.Live.Sites.ShowTest do
       gateway: gateway,
       conn: conn
     } do
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, group: group)
 
       {:ok, lv, _html} =
@@ -635,7 +641,8 @@ defmodule Web.Live.Sites.ShowTest do
         |> live(~p"/#{account}/sites/#{group}")
 
       :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       wait_for(fn ->

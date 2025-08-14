@@ -103,10 +103,7 @@ defmodule Web.Actors.Show do
 
   def handle_tokens_update!(socket, list_opts) do
     list_opts =
-      Keyword.put(list_opts, :preload,
-        identity: [:provider],
-        clients: []
-      )
+      Keyword.put(list_opts, :preload, identity: [:provider])
 
     with {:ok, tokens, metadata} <-
            Tokens.list_tokens_for(socket.assigns.actor, socket.assigns.subject, list_opts) do
@@ -397,20 +394,6 @@ defmodule Web.Actors.Show do
           </:col>
           <:col :let={token} :if={@actor.type != :service_account} label="identity" class="w-3/12">
             <.identity_identifier account={@account} identity={token.identity} />
-          </:col>
-          <:col :let={token} label="client" class="w-1/12">
-            <.intersperse_blocks :if={token.type == :client}>
-              <:separator>,&nbsp;</:separator>
-
-              <:empty>None</:empty>
-
-              <:item :for={client <- token.clients}>
-                <.link navigate={~p"/#{@account}/clients/#{client.id}"} class={[link_style()]}>
-                  {client.name}
-                </.link>
-              </:item>
-            </.intersperse_blocks>
-            <span :if={token.type != :client}>N/A</span>
           </:col>
           <:col :let={token} :if={@actor.type == :service_account} label="name" class="w-2/12">
             {token.name}

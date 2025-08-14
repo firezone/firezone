@@ -18,8 +18,6 @@ defmodule Domain.Relays.Relay do
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
 
-    belongs_to :last_used_token, Domain.Tokens.Token
-
     field :stamp_secret, :string, virtual: true
 
     field :online?, :boolean, virtual: true

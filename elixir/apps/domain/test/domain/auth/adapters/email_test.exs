@@ -175,10 +175,10 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
       assert {:ok, identity, nil} = verify_secret(identity, context, token)
 
-      assert %{last_used_token_id: token_id} = identity.provider_state
+      assert identity.provider_state == %{}
       assert identity.provider_virtual_state == %{}
 
-      refute Repo.get(Domain.Tokens.Token, token_id)
+      # Email verification tokens are cleaned up automatically
       refute Repo.get(Domain.Tokens.Token, other_token.id)
     end
 

@@ -643,7 +643,12 @@ defmodule Domain.GatewaysTest do
     } do
       offline_gateway = Fixtures.Gateways.create_gateway(account: account)
       online_gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(online_gateway)
+      online_gateway = Repo.preload(online_gateway, :group)
+
+      gateway_token =
+        Fixtures.Gateways.create_token(group: online_gateway.group, account: account)
+
+      :ok = Gateways.Presence.connect(online_gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway()
 
       assert {:ok, gateways, _metadata} = list_gateways(subject, preload: :online?)
@@ -710,7 +715,9 @@ defmodule Domain.GatewaysTest do
           connections: [%{gateway_group_id: gateway.group_id}]
         )
 
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource(resource, subject)
       assert connected_gateway.id == gateway.id
@@ -723,7 +730,9 @@ defmodule Domain.GatewaysTest do
       resource = Fixtures.Resources.create_resource(account: account)
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
@@ -732,7 +741,9 @@ defmodule Domain.GatewaysTest do
   describe "gateway_can_connect_to_resource?/2" do
     test "returns true when gateway can connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
 
       resource =
         Fixtures.Resources.create_resource(
@@ -745,7 +756,9 @@ defmodule Domain.GatewaysTest do
 
     test "returns false when gateway cannot connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
 
       resource = Fixtures.Resources.create_resource(account: account)
 
@@ -775,14 +788,12 @@ defmodule Domain.GatewaysTest do
   describe "upsert_gateway/3" do
     setup %{account: account} do
       group = Fixtures.Gateways.create_group(account: account)
-      token = Fixtures.Gateways.create_token(account: account, group: group)
 
       user_agent = Fixtures.Auth.user_agent()
       remote_ip = Fixtures.Auth.remote_ip()
 
       %{
         group: group,
-        token: token,
         context: %Domain.Auth.Context{
           type: :gateway_group,
           remote_ip: remote_ip,
@@ -797,15 +808,14 @@ defmodule Domain.GatewaysTest do
 
     test "returns errors on invalid attrs", %{
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       attrs = %{
         external_id: nil,
         public_key: "x"
       }
 
-      assert {:error, changeset} = upsert_gateway(group, token, attrs, context)
+      assert {:error, changeset} = upsert_gateway(group, attrs, context)
 
       assert errors_on(changeset) == %{
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
@@ -815,14 +825,13 @@ defmodule Domain.GatewaysTest do
 
     test "allows creating gateway with just required attributes", %{
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       attrs =
         Fixtures.Gateways.gateway_attrs()
         |> Map.delete(:name)
 
-      assert {:ok, gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, gateway} = upsert_gateway(group, attrs, context)
 
       assert gateway.name
       assert gateway.public_key == attrs.public_key
@@ -845,8 +854,7 @@ defmodule Domain.GatewaysTest do
     test "updates gateway when it already exists", %{
       account: account,
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
       attrs = Fixtures.Gateways.gateway_attrs(external_id: gateway.external_id)
@@ -857,7 +865,7 @@ defmodule Domain.GatewaysTest do
           user_agent: "iOS/12.5 (iPhone) connlib/0.7.413"
       }
 
-      assert {:ok, updated_gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, updated_gateway} = upsert_gateway(group, attrs, context)
 
       assert Repo.aggregate(Gateways.Gateway, :count, :id) == 1
 
@@ -893,8 +901,7 @@ defmodule Domain.GatewaysTest do
     test "does not reserve additional addresses on update", %{
       account: account,
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
@@ -905,7 +912,7 @@ defmodule Domain.GatewaysTest do
           last_seen_remote_ip: %Postgrex.INET{address: {100, 64, 100, 100}}
         )
 
-      assert {:ok, updated_gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, updated_gateway} = upsert_gateway(group, attrs, context)
 
       addresses =
         Domain.Network.Address
@@ -922,11 +929,10 @@ defmodule Domain.GatewaysTest do
     test "does not allow to reuse IP addresses", %{
       account: account,
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       attrs = Fixtures.Gateways.gateway_attrs()
-      assert {:ok, gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, gateway} = upsert_gateway(group, attrs, context)
 
       addresses =
         Domain.Network.Address
@@ -1227,15 +1233,19 @@ defmodule Domain.GatewaysTest do
     test "does not allow duplicate presence", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       assert {:error, {:already_tracked, _pid, _topic, _key}} =
-               Gateways.Presence.connect(gateway)
+               Gateways.Presence.connect(gateway, gateway_token.id)
     end
 
     test "tracks gateway presence for account", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       gateway = fetch_gateway_by_id!(gateway.id, preload: [:online?])
       assert gateway.online? == true

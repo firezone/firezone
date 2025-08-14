@@ -114,14 +114,21 @@ defmodule Domain.ClientsTest do
                {:ok, client}
     end
 
-    test "preloads online status", %{unprivileged_actor: actor, unprivileged_subject: subject} do
-      client = Fixtures.Clients.create_client(actor: actor)
+    test "preloads online status", %{account: account, unprivileged_subject: subject} do
+      client = Fixtures.Clients.create_client(actor: subject.actor)
+
+      client_token =
+        Fixtures.Tokens.create_client_token(
+          account: account,
+          actor: subject.actor,
+          identity: subject.identity
+        )
 
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == false
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
-      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
+      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id, client_token.id)
 
       assert {:ok, client} = fetch_client_by_id(client.id, subject, preload: [:online?])
       assert client.online? == true
@@ -222,14 +229,21 @@ defmodule Domain.ClientsTest do
       assert fetch_client_by_id!(client.id, preload: [:online?, :identity]) == client
     end
 
-    test "preloads online status", %{unprivileged_actor: actor} do
-      client = Fixtures.Clients.create_client(actor: actor)
+    test "preloads online status", %{account: account, unprivileged_subject: subject} do
+      client = Fixtures.Clients.create_client(actor: subject.actor)
+
+      client_token =
+        Fixtures.Tokens.create_client_token(
+          account: account,
+          actor: subject.actor,
+          identity: subject.identity
+        )
 
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == false
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
-      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
+      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id, client_token.id)
 
       assert client = fetch_client_by_id!(client.id, preload: [:online?])
       assert client.online? == true
@@ -283,14 +297,21 @@ defmodule Domain.ClientsTest do
       assert length(clients) == 2
     end
 
-    test "preloads online status", %{unprivileged_actor: actor, unprivileged_subject: subject} do
-      Fixtures.Clients.create_client(actor: actor)
+    test "preloads online status", %{account: account, unprivileged_subject: subject} do
+      Fixtures.Clients.create_client(actor: subject.actor)
+
+      client_token =
+        Fixtures.Tokens.create_client_token(
+          account: account,
+          actor: subject.actor,
+          identity: subject.identity
+        )
 
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == false
 
       {:ok, _} = Clients.Presence.Account.track(client.account_id, client.id)
-      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id)
+      {:ok, _} = Clients.Presence.Actor.track(client.actor_id, client.id, client_token.id)
 
       assert {:ok, [client], _metadata} = list_clients(subject, preload: [:online?])
       assert client.online? == true

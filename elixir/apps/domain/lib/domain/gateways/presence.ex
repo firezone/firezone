@@ -6,8 +6,8 @@ defmodule Domain.Gateways.Presence do
   alias Domain.Gateways.Gateway
   alias Domain.PubSub
 
-  def connect(%Gateway{} = gateway) do
-    with {:ok, _} <- __MODULE__.Group.track(gateway.group_id, gateway.id),
+  def connect(%Gateway{} = gateway, token_id) do
+    with {:ok, _} <- __MODULE__.Group.track(gateway.group_id, gateway.id, token_id),
          {:ok, _} <- __MODULE__.Account.track(gateway.account_id, gateway.id) do
       :ok
     end
@@ -47,12 +47,12 @@ defmodule Domain.Gateways.Presence do
   end
 
   defmodule Group do
-    def track(gateway_group_id, gateway_id) do
+    def track(gateway_group_id, gateway_id, token_id) do
       Domain.Gateways.Presence.track(
         self(),
         topic(gateway_group_id),
         gateway_id,
-        %{}
+        %{token_id: token_id}
       )
     end
 
