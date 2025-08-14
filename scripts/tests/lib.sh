@@ -20,10 +20,11 @@ function relay2() {
 
 function install_iptables_drop_rules() {
     # Install `iptables` to have it available in the compatibility tests
-    docker compose exec -it client /bin/sh -c 'apk add iptables'
+    client apk add iptables
 
     # Execute within the client container because doing so from the host is not reliable in CI.
-    docker compose exec -it client /bin/sh -c 'iptables -A OUTPUT -d 172.28.0.105 -j DROP'
+    client iptables -A OUTPUT -d 172.28.0.105 -j DROP
+    client ip6tables -A OUTPUT -d 172:28:0::105 -j DROP
 }
 
 function client_curl_resource() {

@@ -10,6 +10,7 @@ SERVICE_NAME=firezone-client-headless
 debug_exit() {
     echo "Bailing out. Waiting a couple seconds for things to settle..."
     sleep 5
+    docker compose ps -a
     resolvectl dns tun-firezone || true
     systemctl status "$SERVICE_NAME" || true
     exit 1
