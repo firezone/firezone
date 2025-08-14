@@ -167,7 +167,7 @@ impl ClientOnGateway {
         Ok(())
     }
 
-    pub(crate) fn is_emptied(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.resources.is_empty()
     }
 
