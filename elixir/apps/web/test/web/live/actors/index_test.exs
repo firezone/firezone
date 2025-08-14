@@ -4,11 +4,15 @@ defmodule Web.Live.Actors.IndexTest do
 
   setup do
     account = Fixtures.Accounts.create_account()
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
     %{
       account: account,
-      identity: identity
+      actor: actor,
+      identity: identity,
+      subject: subject
     }
   end
 
@@ -59,9 +63,19 @@ defmodule Web.Live.Actors.IndexTest do
     conn: conn
   } do
     admin_actor = Fixtures.Actors.create_actor(account: account, type: :account_admin_user)
+    admin_identity = Fixtures.Auth.create_identity(account: account, actor: admin_actor)
     Fixtures.Actors.create_membership(account: account, actor: admin_actor)
+
     client = Fixtures.Clients.create_client(account: account, actor: admin_actor)
-    :ok = Clients.Presence.connect(client)
+
+    client_token =
+      Fixtures.Tokens.create_client_token(
+        account: account,
+        actor: admin_actor,
+        identity: admin_identity
+      )
+
+    :ok = Clients.Presence.connect(client, client_token.id)
     admin_actor = Repo.preload(admin_actor, identities: [:provider], groups: [])
 
     user_actor = Fixtures.Actors.create_actor(account: account, type: :account_user)

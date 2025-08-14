@@ -35,10 +35,6 @@ defmodule Domain.Clients.Client.Query do
     where(queryable, [clients: clients], clients.account_id == ^account_id)
   end
 
-  def by_last_used_token_id(queryable, last_used_token_id) do
-    where(queryable, [clients: clients], clients.last_used_token_id == ^last_used_token_id)
-  end
-
   def by_last_seen_within(queryable, period, unit) do
     where(queryable, [clients: clients], clients.last_seen_at > ago(^period, ^unit))
   end

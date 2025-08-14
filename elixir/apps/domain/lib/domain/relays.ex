@@ -293,8 +293,8 @@ defmodule Domain.Relays do
     |> Base.encode64(padding: false)
   end
 
-  def upsert_relay(%Group{} = group, %Tokens.Token{} = token, attrs, %Auth.Context{} = context) do
-    changeset = Relay.Changeset.upsert(group, token, attrs, context)
+  def upsert_relay(%Group{} = group, attrs, %Auth.Context{} = context) do
+    changeset = Relay.Changeset.upsert(group, attrs, context)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:relay, changeset,
@@ -358,10 +358,12 @@ defmodule Domain.Relays do
     |> Enum.map(&Enum.random(elem(&1, 1)))
   end
 
-  # TODO: Refactor to use new conventions
-  def connect_relay(%Relay{} = relay, secret) do
+  # Refactor to use new conventions
+  def connect_relay(%Relay{} = relay, secret, token_id) do
     with {:ok, _} <-
-           Presence.track(self(), group_presence_topic(relay.group_id), relay.id, %{}),
+           Presence.track(self(), group_presence_topic(relay.group_id), relay.id, %{
+             token_id: token_id
+           }),
          {:ok, _} <-
            Presence.track(self(), account_or_global_presence_topic(relay), relay.id, %{
              online_at: System.system_time(:second),

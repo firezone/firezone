@@ -279,8 +279,8 @@ defmodule Domain.Gateways do
     Gateway.Changeset.update(gateway, attrs)
   end
 
-  def upsert_gateway(%Group{} = group, %Tokens.Token{} = token, attrs, %Auth.Context{} = context) do
-    changeset = Gateway.Changeset.upsert(group, token, attrs, context)
+  def upsert_gateway(%Group{} = group, attrs, %Auth.Context{} = context) do
+    changeset = Gateway.Changeset.upsert(group, attrs, context)
 
     Ecto.Multi.new()
     |> Ecto.Multi.insert(:gateway, changeset,

@@ -77,7 +77,6 @@ defmodule Web.Acceptance.Auth.UserPassTest do
         provider: provider,
         provider_identifier: provider_identifier
       )
-      |> Fixtures.Actors.delete()
 
     password = "Firezone1234"
 
@@ -88,6 +87,8 @@ defmodule Web.Acceptance.Auth.UserPassTest do
         actor: actor,
         provider_virtual_state: %{"password" => password, "password_confirmation" => password}
       )
+
+    Fixtures.Actors.delete(actor)
 
     session
     |> password_login_flow(account, identity.provider_identifier, password)

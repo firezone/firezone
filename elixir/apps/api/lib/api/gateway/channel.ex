@@ -40,7 +40,7 @@ defmodule API.Gateway.Channel do
     Process.send_after(self(), :prune_cache, @prune_cache_every)
 
     # Track gateway's presence
-    :ok = Gateways.Presence.connect(socket.assigns.gateway)
+    :ok = Gateways.Presence.connect(socket.assigns.gateway, socket.assigns.token_id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.gateway.account_id)

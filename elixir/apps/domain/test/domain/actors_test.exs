@@ -603,8 +603,19 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       actor = Fixtures.Actors.create_actor(account: account)
-      client = Fixtures.Clients.create_client(account: account, actor: actor)
-      Clients.Presence.connect(client)
+      actor_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      client =
+        Fixtures.Clients.create_client(account: account, actor: actor, identity: actor_identity)
+
+      client_token =
+        Fixtures.Tokens.create_client_token(
+          account: account,
+          actor: actor,
+          identity: actor_identity
+        )
+
+      Clients.Presence.connect(client, client_token.id)
 
       assert {:ok, peek} = peek_actor_clients([actor], 3, subject)
       assert [%Clients.Client{} = client] = peek[actor.id].items

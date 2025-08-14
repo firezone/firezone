@@ -1,6 +1,6 @@
 defmodule Domain.Gateways.Gateway.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth, Tokens}
+  alias Domain.{Version, Auth}
   alias Domain.Gateways
 
   @upsert_fields ~w[external_id name public_key
@@ -20,7 +20,6 @@ defmodule Domain.Gateways.Gateway.Changeset do
                               last_seen_remote_ip_location_lon
                               last_seen_version
                               last_seen_at
-                              last_used_token_id
                               updated_at]a
   @update_fields ~w[name]a
   @required_fields ~w[external_id name public_key]a
@@ -34,7 +33,7 @@ defmodule Domain.Gateways.Gateway.Changeset do
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert(%Gateways.Group{} = group, %Tokens.Token{} = token, attrs, %Auth.Context{} = context) do
+  def upsert(%Gateways.Group{} = group, attrs, %Auth.Context{} = context) do
     %Gateways.Gateway{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, fn ->
@@ -57,7 +56,6 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> put_gateway_version()
     |> put_change(:account_id, group.account_id)
     |> put_change(:group_id, group.id)
-    |> put_change(:last_used_token_id, token.id)
   end
 
   def finalize_upsert(%Gateways.Gateway{} = gateway, ipv4, ipv6) do

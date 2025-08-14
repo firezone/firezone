@@ -99,9 +99,11 @@ defmodule Web.Live.Relays.ShowTest do
     account: account,
     relay: relay,
     identity: identity,
+    subject: _subject,
     conn: conn
   } do
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -121,6 +123,7 @@ defmodule Web.Live.Relays.ShowTest do
     account: account,
     relay: relay,
     identity: identity,
+    subject: _subject,
     conn: conn
   } do
     {:ok, lv, _html} =
@@ -129,7 +132,8 @@ defmodule Web.Live.Relays.ShowTest do
       |> live(~p"/#{account}/relays/#{relay}")
 
     :ok = Domain.Relays.subscribe_to_relays_presence_in_group(relay.group_id)
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
 
     wait_for(fn ->

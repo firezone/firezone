@@ -9,18 +9,20 @@ defmodule Web.Clients.Show do
            Clients.fetch_client_by_id(id, socket.assigns.subject,
              preload: [
                :online?,
-               :actor,
-               last_used_token: [identity: [:provider]]
+               :actor
              ]
            ) do
       if connected?(socket) do
         :ok = Clients.Presence.Actor.subscribe(client.actor_id)
       end
 
+      current_token = get_current_token_from_presence(client, socket.assigns.subject)
+
       socket =
         assign(
           socket,
           client: client,
+          current_token: current_token,
           page_title: "Client #{client.name}"
         )
         |> assign_live_table("flows",
@@ -112,32 +114,31 @@ defmodule Web.Clients.Show do
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
-            <:label>Last used sign in method</:label>
+            <:label>Current sign in method</:label>
             <:value>
-              <div :if={@client.actor.type != :service_account} class="flex items-center">
-                <.identity_identifier account={@account} identity={@client.last_used_token.identity} />
+              <div
+                :if={@current_token && @client.actor.type != :service_account}
+                class="flex items-center"
+              >
+                <.identity_identifier account={@account} identity={@current_token.identity} />
                 <.link
-                  navigate={
-                    ~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@client.last_used_token_id}"
-                  }
+                  navigate={~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@current_token.id}"}
                   class={[link_style(), "text-xs"]}
                 >
                   show tokens
                 </.link>
               </div>
-              <div :if={@client.actor.type == :service_account}>
+              <div :if={@current_token && @client.actor.type == :service_account}>
                 token
                 <.link
-                  navigate={
-                    ~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@client.last_used_token_id}"
-                  }
+                  navigate={~p"/#{@account}/actors/#{@client.actor_id}?#tokens-#{@current_token.id}"}
                   class={[link_style()]}
                 >
-                  {@client.last_used_token.name}
+                  {@current_token.name}
                 </.link>
-                <span :if={not is_nil(@client.last_used_token.deleted_at)}>
-                  (deleted)
-                </span>
+              </div>
+              <div :if={!@current_token} class="text-gray-500">
+                Client is offline - sign in method unavailable
               </div>
             </:value>
           </.vertical_table_row>
@@ -416,8 +417,7 @@ defmodule Web.Clients.Show do
           {:ok, client} =
             Clients.fetch_client_by_id(client.id, socket.assigns.subject,
               preload: [
-                :actor,
-                last_used_token: [identity: [:provider]]
+                :actor
               ]
             )
 
@@ -442,8 +442,7 @@ defmodule Web.Clients.Show do
     client = %{
       client
       | online?: socket.assigns.client.online?,
-        actor: socket.assigns.client.actor,
-        last_used_token: socket.assigns.client.last_used_token
+        actor: socket.assigns.client.actor
     }
 
     {:noreply, assign(socket, :client, client)}
@@ -456,8 +455,7 @@ defmodule Web.Clients.Show do
     client = %{
       client
       | online?: socket.assigns.client.online?,
-        actor: socket.assigns.client.actor,
-        last_used_token: socket.assigns.client.last_used_token
+        actor: socket.assigns.client.actor
     }
 
     {:noreply, assign(socket, :client, client)}
@@ -472,5 +470,36 @@ defmodule Web.Clients.Show do
       |> push_navigate(to: ~p"/#{socket.assigns.account}/clients")
 
     {:noreply, socket}
+  end
+
+  defp get_current_token_from_presence(client, subject) do
+    case Clients.Presence.Actor.get(client.actor_id, client.id) do
+      [] ->
+        nil
+
+      presence_data ->
+        metas = get_in(presence_data, ["metas"])
+
+        case metas do
+          nil ->
+            nil
+
+          metas when is_list(metas) ->
+            case List.first(metas) do
+              %{token_id: token_id} -> fetch_token(token_id, subject)
+              _ -> nil
+            end
+
+          _ ->
+            nil
+        end
+    end
+  end
+
+  defp fetch_token(token_id, subject) do
+    case Domain.Tokens.fetch_token_by_id(token_id, subject, preload: [identity: [:provider]]) do
+      {:ok, token} -> token
+      _ -> nil
+    end
   end
 end

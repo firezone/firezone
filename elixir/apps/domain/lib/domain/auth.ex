@@ -306,7 +306,9 @@ defmodule Domain.Auth do
           {:ok, provider}
 
         {:error, %Ecto.Changeset{errors: errors} = changeset} ->
-          if Enum.any?(errors, fn {_field, {_message, opts}} -> Keyword.get(opts, :stale, false) end) do
+          if Enum.any?(errors, fn {_field, {_message, opts}} ->
+               Keyword.get(opts, :stale, false)
+             end) do
             {:error, :not_found}
           else
             {:error, changeset}
@@ -932,7 +934,6 @@ defmodule Domain.Auth do
       {:error, :unauthorized}
     end
   end
-
 
   def ensure_has_permissions(%Subject{} = subject, required_permissions) do
     with :ok <- ensure_permissions_are_not_expired(subject) do

@@ -137,7 +137,10 @@ defmodule Web.Live.RelayGroups.ShowTest do
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay = Repo.preload(relay, :group)
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -167,7 +170,10 @@ defmodule Web.Live.RelayGroups.ShowTest do
 
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Relays.subscribe_to_relays_presence_in_group(group)
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay = Repo.preload(relay, :group)
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
     assert_receive {:live_table_reloaded, "relays"}, 250
 

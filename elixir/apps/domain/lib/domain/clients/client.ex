@@ -59,7 +59,6 @@ defmodule Domain.Clients.Client do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :actor, Domain.Actors.Actor
     belongs_to :identity, Domain.Auth.Identity
-    belongs_to :last_used_token, Domain.Tokens.Token
 
     # Hardware Identifiers
     field :device_serial, :string
