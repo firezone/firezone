@@ -1,6 +1,6 @@
 defmodule Web.Live.Policies.IndexTest do
   use Web.ConnCase, async: true
-  alias Domain.Events
+  alias Domain.Changes
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -95,7 +95,7 @@ defmodule Web.Live.Policies.IndexTest do
 
       policy = Fixtures.Policies.create_policy(account: account, description: "foo bar")
 
-      Events.Hooks.Policies.on_insert(%{
+      Changes.Hooks.Policies.on_insert(0, %{
         "id" => policy.id,
         "actor_group_id" => policy.actor_group_id,
         "resource_id" => policy.resource_id,
@@ -128,16 +128,12 @@ defmodule Web.Live.Policies.IndexTest do
 
       Domain.Policies.delete_policy(policy, subject)
 
-      Events.Hooks.Policies.on_delete(%{
+      Changes.Hooks.Policies.on_delete(0, %{
         "id" => policy.id,
         "actor_group_id" => policy.actor_group_id,
         "resource_id" => policy.resource_id,
         "account_id" => account.id
       })
-
-      # TODO: WAL
-      # Remove this after direct broadcast
-      Process.sleep(100)
 
       reload_btn =
         lv

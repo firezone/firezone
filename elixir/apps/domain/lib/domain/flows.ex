@@ -20,7 +20,7 @@ defmodule Domain.Flows do
           account_id: account_id
         },
         resource_id,
-        %Policies.Policy{} = policy,
+        policy_id,
         membership_id,
         %Auth.Subject{
           account: %{id: account_id},
@@ -42,7 +42,7 @@ defmodule Domain.Flows do
       flow =
         Flow.Changeset.create(%{
           token_id: token_id,
-          policy_id: policy.id,
+          policy_id: policy_id,
           client_id: client_id,
           gateway_id: gateway_id,
           resource_id: resource_id,
@@ -71,20 +71,25 @@ defmodule Domain.Flows do
   # to the Resource beyond its intended expiration time.
   #
   # So, we use the minimum of either the policy condition or the origin flow's expiration time.
+  # This will be much smoother once https://github.com/firezone/firezone/issues/10074 is implemented,
+  # since we won't need to be so careful about reject_access messages to the gateway.
   def reauthorize_flow(%Flow{} = flow) do
     with {:ok, client} <- Clients.fetch_client_by_id(flow.client_id, preload: :identity),
          # TODO: Hard delete
          # We need to ensure token and gateway haven't been deleted after the initial flow was created
          # This can be removed after hard-delete since we'll get a DB error if these associations no longer exist
          {:ok, _token} <- Tokens.fetch_token_by_id(flow.token_id),
-         {:ok, _gateway} <- Gateways.fetch_gateway_by_id(flow.gateway_id),
+         {:ok, gateway} <- Gateways.fetch_gateway_by_id(flow.gateway_id),
+         # We only want to reauthorize the resource for this gateway if the resource is still connected to its
+         # gateway_group.
          policies when policies != [] <-
-           Policies.all_policies_for_resource_id_and_actor_id!(
+           Policies.all_policies_in_gateway_group_for_resource_id_and_actor_id!(
              flow.account_id,
+             gateway.group_id,
              flow.resource_id,
              client.actor_id
            ),
-         {:ok, expires_at, policy} <-
+         {:ok, policy, expires_at} <-
            Policies.longest_conforming_policy_for_client(policies, client, flow.expires_at),
          {:ok, membership} <-
            Actors.fetch_membership_by_actor_id_and_group_id(
@@ -106,14 +111,20 @@ defmodule Domain.Flows do
              expires_at: expires_at
            })
            |> Repo.insert() do
+      Logger.info("Reauthorized flow",
+        old_flow: inspect(flow),
+        new_flow: inspect(new_flow)
+      )
+
       {:ok, new_flow}
     else
       reason ->
         Logger.info("Failed to reauthorize flow",
+          old_flow: inspect(flow),
           reason: inspect(reason)
         )
 
-        {:error, :forbidden}
+        :error
     end
   end
 
@@ -226,6 +237,13 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
+  def delete_flows_for(%Domain.Resources.Connection{} = connection) do
+    Flow.Query.all()
+    |> Flow.Query.by_account_id(connection.account_id)
+    |> Flow.Query.by_resource_id(connection.resource_id)
+    |> Flow.Query.by_gateway_group_id(connection.gateway_group_id)
+  end
+
   def delete_flows_for(%Domain.Tokens.Token{account_id: nil}) do
     # Tokens without an account_id are not associated with any flows. I.e. global relay tokens
     {0, []}
@@ -238,14 +256,12 @@ defmodule Domain.Flows do
     |> Repo.delete_all()
   end
 
-  def delete_stale_flows_on_connect(%Clients.Client{} = client, resources)
-      when is_list(resources) do
-    authorized_resource_ids = Enum.map(resources, & &1.id)
-
+  def delete_stale_flows_on_connect(%Clients.Client{} = client, resource_ids)
+      when is_list(resource_ids) do
     Flow.Query.all()
     |> Flow.Query.by_account_id(client.account_id)
     |> Flow.Query.by_client_id(client.id)
-    |> Flow.Query.by_not_in_resource_ids(authorized_resource_ids)
+    |> Flow.Query.by_not_in_resource_ids(resource_ids)
     |> Repo.delete_all()
   end
 end

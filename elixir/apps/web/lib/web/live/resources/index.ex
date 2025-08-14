@@ -1,7 +1,6 @@
 defmodule Web.Resources.Index do
   use Web, :live_view
-  alias Domain.PubSub
-  alias Domain.Resources
+  alias Domain.{Changes.Change, PubSub, Resources}
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -170,11 +169,11 @@ defmodule Web.Resources.Index do
       when event in ["paginate", "order_by", "filter", "reload"],
       do: handle_live_table_event(event, params, socket)
 
-  def handle_info({_action, %Resources.Resource{}, %Resources.Resource{}}, socket) do
+  def handle_info(%Change{old_struct: %Resources.Resource{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 
-  def handle_info({_action, %Resources.Resource{}}, socket) do
+  def handle_info(%Change{struct: %Resources.Resource{}}, socket) do
     {:noreply, assign(socket, stale: true)}
   end
 

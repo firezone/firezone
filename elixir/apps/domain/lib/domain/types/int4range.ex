@@ -9,6 +9,8 @@ defmodule Domain.Types.Int4Range do
   @format_error "bad format"
   @cast_error "lower value cannot be higher than upper value"
 
+  @type t :: [String.t()]
+
   def type, do: :int4range
 
   def cast(str) when is_binary(str) do
