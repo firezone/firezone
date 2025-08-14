@@ -186,7 +186,7 @@ defmodule Domain.Clients do
   end
 
   def update_client(%Client{} = client, attrs, %Auth.Subject{} = subject) do
-    with :ok <- authorize_actor_client_management(client.actor_id, subject) do
+    with :ok <- Authorizer.ensure_has_access_to(client, subject) do
       Client.Query.not_deleted()
       |> Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
@@ -198,7 +198,7 @@ defmodule Domain.Clients do
   end
 
   def verify_client(%Client{} = client, %Auth.Subject{} = subject) do
-    with :ok <- authorize_actor_client_management(client.actor_id, subject),
+    with :ok <- Authorizer.ensure_has_access_to(client, subject),
          :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
       Client.Query.not_deleted()
       |> Client.Query.by_id(client.id)
@@ -211,7 +211,7 @@ defmodule Domain.Clients do
   end
 
   def remove_client_verification(%Client{} = client, %Auth.Subject{} = subject) do
-    with :ok <- authorize_actor_client_management(client.actor_id, subject),
+    with :ok <- Authorizer.ensure_has_access_to(client, subject),
          :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
       Client.Query.not_deleted()
       |> Client.Query.by_id(client.id)
@@ -224,18 +224,8 @@ defmodule Domain.Clients do
   end
 
   def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
-    queryable =
-      Client.Query.not_deleted()
-      |> Client.Query.by_id(client.id)
-
-    with :ok <- authorize_actor_client_management(client.actor_id, subject) do
-      case delete_clients(queryable, subject) do
-        {:ok, [client]} ->
-          {:ok, client}
-
-        {:ok, []} ->
-          {:error, :not_found}
-      end
+    with :ok <- Authorizer.ensure_has_access_to(client, subject) do
+      Repo.delete(client, stale_error_field: false)
     end
   end
 
@@ -245,35 +235,24 @@ defmodule Domain.Clients do
       |> Client.Query.by_actor_id(actor.id)
       |> Client.Query.by_account_id(actor.account_id)
 
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()) do
-      {:ok, _clients} = delete_clients(queryable, subject)
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission()),
+         :ok <- delete_clients(queryable, subject) do
       :ok
+    else
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  # TODO: Hard delete
+  # TODO: HARD-DELETE
   # We don't necessarily want to delete associated tokens when deleting a client because
   # that token could be a multi-owner token in the case of a headless client.
   # Instead we need to introduce the concept of ephemeral clients/gateways and permanent ones.
   defp delete_clients(queryable, subject) do
-    {_count, clients} =
+    {_count, nil} =
       queryable
       |> Authorizer.for_subject(subject)
-      |> Client.Query.delete()
-      |> Repo.update_all([])
+      |> Repo.delete_all()
 
-    {:ok, clients}
-  end
-
-  defp authorize_actor_client_management(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    authorize_actor_client_management(actor.id, subject)
-  end
-
-  defp authorize_actor_client_management(id, %Auth.Subject{actor: %{id: id}} = subject) do
-    Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission())
-  end
-
-  defp authorize_actor_client_management(_actor_id, %Auth.Subject{} = subject) do
-    Auth.ensure_has_permissions(subject, Authorizer.manage_clients_permission())
+    :ok
   end
 end

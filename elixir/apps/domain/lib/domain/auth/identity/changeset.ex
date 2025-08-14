@@ -82,6 +82,7 @@ defmodule Domain.Auth.Identity.Changeset do
     |> put_change(:provider_virtual_state, virtual_state)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def delete_identity(%Identity{} = identity) do
     identity
     |> change()

@@ -16,6 +16,24 @@ defmodule Domain.Relays.Authorizer do
     []
   end
 
+  def ensure_has_access_to(%Group{} = group, %Subject{} = subject) do
+    # Allow access to global relay groups or account-specific groups
+    if group.account_id == subject.account.id or is_nil(group.account_id) do
+      Domain.Auth.ensure_has_permissions(subject, manage_relays_permission())
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  def ensure_has_access_to(%Relay{} = relay, %Subject{} = subject) do
+    # Allow access to global relays or account-specific relays
+    if relay.account_id == subject.account.id or is_nil(relay.account_id) do
+      Domain.Auth.ensure_has_permissions(subject, manage_relays_permission())
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   @impl Domain.Auth.Authorizer
   def for_subject(queryable, %Subject{} = subject) do
     cond do

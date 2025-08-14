@@ -37,21 +37,19 @@ defmodule Web.Live.Sites.ShowTest do
                }}}
   end
 
-  test "renders deleted gateway group without action buttons", %{
+  test "raises NotFoundError for deleted gateway group", %{
     account: account,
     group: group,
     identity: identity,
     conn: conn
   } do
-    group = Fixtures.Gateways.delete_group(group)
+    {:ok, deleted_group} = Fixtures.Gateways.delete_group(group)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/sites/#{group}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+      |> live(~p"/#{account}/sites/#{deleted_group}")
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -209,7 +207,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
     end
 
     test "renders resources table", %{
@@ -326,7 +324,7 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      assert Repo.get(Domain.Gateways.Group, group.id).deleted_at
+      refute Repo.get(Domain.Gateways.Group, group.id)
     end
   end
 
@@ -443,7 +441,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
     end
 
     test "renders resources table", %{
@@ -560,7 +558,7 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      assert Repo.get(Domain.Gateways.Group, group.id).deleted_at
+      refute Repo.get(Domain.Gateways.Group, group.id)
     end
   end
 
@@ -666,7 +664,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
     end
 
     test "does not render resources table", %{

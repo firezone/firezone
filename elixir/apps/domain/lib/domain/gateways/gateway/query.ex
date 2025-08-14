@@ -5,6 +5,7 @@ defmodule Domain.Gateways.Gateway.Query do
     from(gateways in Domain.Gateways.Gateway, as: :gateways)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def not_deleted do
     all()
     |> where([gateways: gateways], is_nil(gateways.deleted_at))
@@ -107,6 +108,7 @@ defmodule Domain.Gateways.Gateway.Query do
     {queryable, dynamic([gateways: gateways], gateways.id in ^ids)}
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def filter_deleted(queryable) do
     {queryable, dynamic([gateways: gateways], not is_nil(gateways.deleted_at))}
   end
