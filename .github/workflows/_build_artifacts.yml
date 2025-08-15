@@ -330,6 +330,7 @@ jobs:
       - name: Copy relay to Google Cloud Storage
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         run: |
+          set -e
           gcloud storage cp \
             "$BINARY_DEST_PATH" \
             gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
