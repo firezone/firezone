@@ -318,6 +318,25 @@ jobs:
 
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
+      # For pushing built images to Google Cloud Storage
+      - uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        continue-on-error: true
+        with:
+          token_format: access_token
+          workload_identity_provider: "projects/85623168602/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
+          service_account: "github-account@firezone-staging.iam.gserviceaccount.com"
+          export_environment_variables: true
+          create_credentials_file: true
+      - name: Copy relay to Google Cloud Storage
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
+        run: |
+          gcloud storage cp \
+            "$BINARY_DEST_PATH" \
+            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
+
+          gcloud storage cp \
+            "$BINARY_DEST_PATH".sha256sum.txt \
+            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name }}
         env:
