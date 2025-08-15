@@ -40,7 +40,10 @@ mod udp;
 
 const NUM_ENTRIES: u32 = 0x10000;
 
-// TODO: Update flags to `BPF_F_NO_PREALLOC` to guarantee atomicity? Needs research.
+// SAFETY: Testing has shown that these maps are safe to use as long as we aren't
+// writing to them from multiple threads at the same time. Since we only update these
+// from the single-threaded eventloop in userspace, we are ok.
+// See https://github.com/firezone/firezone/issues/10138#issuecomment-3186074350
 
 #[map]
 static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
@@ -174,7 +177,7 @@ fn try_handle_ipv4_channel_data_to_udp(
 
     let key = ClientAndChannelV4::new(ipv4.src(), udp.src(), cd.number());
 
-    // SAFETY: ???
+    // SAFETY: We only write to these using a single thread in userspace.
     let port_and_peer = unsafe { CHAN_TO_UDP_44.get(&key) }.ok_or_else(|| {
         if unsafe { CHAN_TO_UDP_46.get(&key) }.is_some() {
             return Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp46);
@@ -215,6 +218,7 @@ fn try_handle_ipv4_udp_to_channel_data(
 ) -> Result<(), Error> {
     let key = PortAndPeerV4::new(ipv4.src(), udp.dst(), udp.src());
 
+    // SAFETY: We only write to these using a single thread in userspace.
     let client_and_channel = unsafe { UDP_TO_CHAN_44.get(&key) }.ok_or_else(|| {
         if unsafe { UDP_TO_CHAN_46.get(&key) }.is_some() {
             return Error::UnsupportedChannel(UnsupportedChannel::UdpToChan46);
@@ -305,6 +309,7 @@ fn try_handle_ipv6_udp_to_channel_data(
 ) -> Result<(), Error> {
     let key = PortAndPeerV6::new(ipv6.src(), udp.dst(), udp.src());
 
+    // SAFETY: We only write to these using a single thread in userspace.
     let client_and_channel = unsafe { UDP_TO_CHAN_66.get(&key) }.ok_or_else(|| {
         if unsafe { UDP_TO_CHAN_64.get(&key) }.is_some() {
             return Error::UnsupportedChannel(UnsupportedChannel::UdpToChan64);
@@ -358,7 +363,7 @@ fn try_handle_ipv6_channel_data_to_udp(
 
     let key = ClientAndChannelV6::new(ipv6.src(), udp.src(), cd.number());
 
-    // SAFETY: ???
+    // SAFETY: We only write to these using a single thread in userspace.
     let port_and_peer = unsafe { CHAN_TO_UDP_66.get(&key) }.ok_or_else(|| {
         if unsafe { CHAN_TO_UDP_64.get(&key) }.is_some() {
             return Error::UnsupportedChannel(UnsupportedChannel::ChanToUdp64);
