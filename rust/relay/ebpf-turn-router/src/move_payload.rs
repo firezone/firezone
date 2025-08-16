@@ -47,18 +47,16 @@ fn adjust_header<const IP_HEADER_LEN: usize>(
 
         let data_start = ctx.data();
         let data_end = ctx.data_end();
+        let data_size = data_end - data_start;
+        let payload_size = data_size - offset - CdHdr::LEN;
 
-        if data_end - data_start - offset - CdHdr::LEN > MAX_PAYLOAD {
+        if payload_size > MAX_PAYLOAD {
             return Err(Error::PacketTooLong);
         }
 
-        // Copy payload backward (avoid calculating with data_end)
+        // Copy payload backward starting at end
         copy_bytes(
-            data_start,
-            data_end,
-            offset,
-            offset + CdHdr::LEN,
-            true, // backward
+            data_start, data_end, offset, true, // backward
         );
 
         // Write header byte by byte
@@ -79,18 +77,16 @@ fn adjust_header<const IP_HEADER_LEN: usize>(
         // Removing header - copy first, then shrink
         let data_start = ctx.data();
         let data_end = ctx.data_end();
+        let data_size = data_end - data_start;
+        let payload_size = data_size - offset - CdHdr::LEN;
 
-        if data_end - data_start - offset - CdHdr::LEN > MAX_PAYLOAD {
+        if payload_size > MAX_PAYLOAD {
             return Err(Error::PacketTooLong);
         }
 
         // Copy payload forward
         copy_bytes(
-            data_start,
-            data_end,
-            offset + CdHdr::LEN,
-            offset,
-            false, // forward
+            data_start, data_end, offset, false, // forward
         );
 
         // Now shrink
@@ -107,69 +103,63 @@ fn adjust_header<const IP_HEADER_LEN: usize>(
 /// Bounds are checked often to appease the verifier. This implementation
 /// is used over core::ptr::copy because it avoids LLVM from unrolling the
 /// loop which can create large code that the verifier struggles with.
-#[inline(never)]
-fn copy_bytes(
-    data_start: usize,
-    data_end: usize,
-    src_offset: usize,
-    dst_offset: usize,
-    backward: bool,
-) {
-    // Verify basic bounds
-    if src_offset >= MAX_MTU || dst_offset >= MAX_MTU {
-        return;
-    }
-
+#[inline(always)]
+fn copy_bytes(data_start: usize, data_end: usize, offset: usize, backward: bool) {
     if backward {
-        // Copy from end to beginning to handle overlap
-        let mut i = 0usize;
+        // First we need to walk the data to determine the location of the destination offset
+        let mut dst_offset = offset + CdHdr::LEN;
         loop {
-            if i >= MAX_PAYLOAD {
-                break;
+            if data_start + dst_offset >= data_end {
+                break; // Prevent writing out of bounds
             }
 
-            // Check if we've copied enough
-            let src_pos = data_start + src_offset + (MAX_PAYLOAD - 1 - i);
-            let dst_pos = data_start + dst_offset + (MAX_PAYLOAD - 1 - i);
+            dst_offset += 1;
+        }
 
-            // Bounds checks
-            if src_pos < data_start + src_offset || src_pos >= data_end || dst_pos >= data_end {
-                break;
+        // From there, we know the src offset
+        let mut src_offset = dst_offset - CdHdr::LEN;
+
+        loop {
+            // Now copy bytes from src to dst
+            let src_ptr = (data_start + src_offset) as *const u8;
+            let dst_ptr = (data_start + dst_offset) as *mut u8;
+
+            if data_start + dst_offset >= data_end {
+                return; // Prevent writing out of bounds
             }
-
-            let src_ptr = src_pos as *const u8;
-            let dst_ptr = dst_pos as *mut u8;
 
             unsafe {
                 *dst_ptr = *src_ptr;
             }
 
-            i += 1;
+            src_offset -= 1;
+            dst_offset -= 1;
         }
     } else {
         // Copy forward
-        let mut i = 0usize;
+        let mut src_offset = offset + CdHdr::LEN;
+        let mut dst_offset = offset;
+
         loop {
-            if i >= MAX_PAYLOAD {
-                break;
+            // Quick sanity check to avoid verifier issues
+            if src_offset >= MAX_PAYLOAD {
+                return;
             }
 
-            let src_pos = data_start + src_offset + i;
-            let dst_pos = data_start + dst_offset + i;
+            // Now copy bytes from src to dst
+            let src_ptr = (data_start + src_offset) as *const u8;
+            let dst_ptr = (data_start + dst_offset) as *mut u8;
 
-            // Bounds checks
-            if src_pos >= data_end || dst_pos >= data_end {
-                break;
+            if data_start + src_offset >= data_end {
+                return; // Prevent writing out of bounds
             }
-
-            let src_ptr = src_pos as *const u8;
-            let dst_ptr = dst_pos as *mut u8;
 
             unsafe {
                 *dst_ptr = *src_ptr;
             }
 
-            i += 1;
+            src_offset += 1;
+            dst_offset += 1;
         }
     }
 }
