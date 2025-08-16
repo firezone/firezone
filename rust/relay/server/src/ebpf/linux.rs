@@ -13,7 +13,7 @@ use ebpf_shared::{
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
-use crate::EbpfAttachMode;
+use crate::ebpf::AttachMode;
 
 use crate::{AllocationPort, ClientSocket, PeerSocket};
 
@@ -32,7 +32,7 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn try_load(interface: &str, attach_mode: EbpfAttachMode) -> Result<Self> {
+    pub fn try_load(interface: &str, attach_mode: AttachMode) -> Result<Self> {
         let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/ebpf-turn-router-main"
@@ -45,8 +45,8 @@ impl Program {
         program.load().context("Failed to load program")?;
 
         let xdp_flags = match attach_mode {
-            EbpfAttachMode::Generic => XdpFlags::SKB_MODE,
-            EbpfAttachMode::Driver => XdpFlags::DRV_MODE,
+            AttachMode::Generic => XdpFlags::SKB_MODE,
+            AttachMode::Driver => XdpFlags::DRV_MODE,
         };
 
         program

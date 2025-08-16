@@ -8,8 +8,8 @@ use firezone_bin_shared::http_health_check;
 use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
-    AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, EbpfAttachMode, IpStack,
-    PeerSocket, Server, Sleep, VERSION, control_endpoint, ebpf, sockets,
+    AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
+    Sleep, VERSION, control_endpoint, ebpf, sockets,
 };
 use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
@@ -92,7 +92,7 @@ struct Args {
     ///
     /// Only relevant when ebpf_offloading is enabled.
     #[arg(long, env, hide = true, default_value = "driver")]
-    ebpf_attach_mode: EbpfAttachMode,
+    ebpf_attach_mode: ebpf::AttachMode,
 
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
