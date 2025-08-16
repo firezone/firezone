@@ -220,13 +220,9 @@ fn copy_n<const N: usize>(
     src_off: i32,
     dst_off: i32,
 ) -> Result<(), Error> {
-    // Cast to usize for offset calculations
-    let src_off = src_off as usize;
-    let dst_off = dst_off as usize;
-
     // Appeases the verifier 🤷🏻‍♂️
-    let bounded_src_off = src_off & 0x7ff;
-    let bounded_dst_off = dst_off & 0x7ff;
+    let bounded_src_off = (src_off as usize) & 0x7ff;
+    let bounded_dst_off = (dst_off as usize) & 0x7ff;
 
     // Maximum bounds check to help the verifier
     if bounded_src_off > MAX_PAYLOAD || bounded_dst_off > MAX_PAYLOAD {
