@@ -320,6 +320,7 @@ jobs:
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
       # For pushing built images to Google Cloud Storage
       - uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
+        # if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         with:
           token_format: access_token
           workload_identity_provider: "projects/85623168602/locations/global/workloadIdentityPools/github-pool/providers/github-provider"
@@ -327,7 +328,7 @@ jobs:
           export_environment_variables: true
           create_credentials_file: true
       - name: Copy relay to Google Cloud Storage
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
+        # if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         run: |
           set -e
           gcloud storage cp \
