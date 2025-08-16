@@ -1,42 +1,5 @@
 use core::num::NonZeroUsize;
 
-// Helper function to map Linux/eBPF error codes to human-readable strings
-// This avoids integer formatting which can cause pointer arithmetic verifier issues
-#[inline(always)]
-fn errno_to_str(errno: i64) -> &'static str {
-    match errno {
-        -1 => "EPERM (Operation not permitted)",
-        -2 => "ENOENT (No such file or directory)",
-        -3 => "ESRCH (No such process)",
-        -4 => "EINTR (Interrupted system call)",
-        -5 => "EIO (I/O error)",
-        -6 => "ENXIO (No such device or address)",
-        -7 => "E2BIG (Argument list too long)",
-        -8 => "ENOEXEC (Exec format error)",
-        -9 => "EBADF (Bad file number)",
-        -10 => "ECHILD (No child processes)",
-        -11 => "EAGAIN (Try again)",
-        -12 => "ENOMEM (Out of memory)",
-        -13 => "EACCES (Permission denied)",
-        -14 => "EFAULT (Bad address)",
-        -16 => "EBUSY (Device or resource busy)",
-        -17 => "EEXIST (File exists)",
-        -19 => "ENODEV (No such device)",
-        -22 => "EINVAL (Invalid argument)",
-        -24 => "EMFILE (Too many open files)",
-        -28 => "ENOSPC (No space left on device)",
-        -32 => "EPIPE (Broken pipe)",
-        -34 => "ERANGE (Math result not representable)",
-        -61 => "ENODATA (No data available)",
-        -75 => "EOVERFLOW (Value too large for defined data type)",
-        -84 => "EILSEQ (Illegal byte sequence)",
-        -90 => "EMSGSIZE (Message too long)",
-        -95 => "ENOTSUP (Operation not supported)",
-        -105 => "ENOBUFS (No buffer space available)",
-        _ => "Unknown error",
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     PacketTooShort,
@@ -115,3 +78,40 @@ impl aya_log_ebpf::WriteToBuf for Error {
 }
 
 impl aya_log_ebpf::macro_support::DefaultFormatter for Error {}
+
+/// Helper function to map Linux/eBPF error codes to human-readable strings
+/// This avoids integer formatting which can cause pointer arithmetic verifier issues
+#[inline(always)]
+fn errno_to_str(errno: i64) -> &'static str {
+    match errno {
+        -1 => "EPERM (Operation not permitted)",
+        -2 => "ENOENT (No such file or directory)",
+        -3 => "ESRCH (No such process)",
+        -4 => "EINTR (Interrupted system call)",
+        -5 => "EIO (I/O error)",
+        -6 => "ENXIO (No such device or address)",
+        -7 => "E2BIG (Argument list too long)",
+        -8 => "ENOEXEC (Exec format error)",
+        -9 => "EBADF (Bad file number)",
+        -10 => "ECHILD (No child processes)",
+        -11 => "EAGAIN (Try again)",
+        -12 => "ENOMEM (Out of memory)",
+        -13 => "EACCES (Permission denied)",
+        -14 => "EFAULT (Bad address)",
+        -16 => "EBUSY (Device or resource busy)",
+        -17 => "EEXIST (File exists)",
+        -19 => "ENODEV (No such device)",
+        -22 => "EINVAL (Invalid argument)",
+        -24 => "EMFILE (Too many open files)",
+        -28 => "ENOSPC (No space left on device)",
+        -32 => "EPIPE (Broken pipe)",
+        -34 => "ERANGE (Math result not representable)",
+        -61 => "ENODATA (No data available)",
+        -75 => "EOVERFLOW (Value too large for defined data type)",
+        -84 => "EILSEQ (Illegal byte sequence)",
+        -90 => "EMSGSIZE (Message too long)",
+        -95 => "ENOTSUP (Operation not supported)",
+        -105 => "ENOBUFS (No buffer space available)",
+        _ => "Unknown error",
+    }
+}

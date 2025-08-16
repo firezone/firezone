@@ -31,8 +31,7 @@ pub fn remove_channel_data_header_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     shift_forward_and_shrink::<{ Ipv6Hdr::LEN }>(ctx)
 }
 
-/// Extend tail by channel data header length and write channel data header at the front of the
-/// payload.
+/// Extend tail by `CdHdr::LEN` and write `CdHdr` at the front of the payload.
 #[inline(never)]
 fn extend_and_shift_backward<const IP_HEADER_LEN: usize>(
     ctx: &XdpContext,
@@ -79,7 +78,7 @@ fn extend_and_shift_backward<const IP_HEADER_LEN: usize>(
     Ok(())
 }
 
-/// Slide payload toward head by `delta` and shrink tail by `delta`.
+/// Slide payload toward head by `CdHdr::LEN` and shrink tail by `CdHdr::LEN`.
 #[inline(never)]
 fn shift_forward_and_shrink<const IP_HEADER_LEN: usize>(ctx: &XdpContext) -> Result<(), Error> {
     let off = payload_offset::<IP_HEADER_LEN>();
