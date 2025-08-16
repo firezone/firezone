@@ -8,8 +8,8 @@ use firezone_bin_shared::http_health_check;
 use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
-    AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, IpStack, PeerSocket, Server,
-    Sleep, VERSION, control_endpoint, ebpf, sockets,
+    AddressFamily, AllocationPort, ChannelData, ClientSocket, Command, EbpfAttachMode, IpStack,
+    PeerSocket, Server, Sleep, VERSION, control_endpoint, ebpf, sockets,
 };
 use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
@@ -113,23 +113,6 @@ enum LogFormat {
     GoogleCloud,
 }
 
-#[derive(clap::ValueEnum, Debug, Clone, Copy)]
-enum EbpfAttachMode {
-    /// Attach in generic mode (SKB_MODE)
-    Generic,
-    /// Attach in driver mode (DRV_MODE)
-    Driver,
-}
-
-impl EbpfAttachMode {
-    fn as_str(&self) -> &'static str {
-        match self {
-            EbpfAttachMode::Generic => "generic",
-            EbpfAttachMode::Driver => "driver",
-        }
-    }
-}
-
 fn main() {
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -169,7 +152,7 @@ async fn try_main(args: Args) -> Result<()> {
     let mut ebpf = args
         .ebpf_offloading
         .as_deref()
-        .map(|interface| ebpf::Program::try_load(interface, args.ebpf_attach_mode.as_str()))
+        .map(|interface| ebpf::Program::try_load(interface, args.ebpf_attach_mode))
         .transpose()
         .context("Failed to load eBPF TURN router")?;
 

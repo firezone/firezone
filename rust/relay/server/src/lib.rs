@@ -161,3 +161,20 @@ impl fmt::Display for PeerSocket {
         self.0.fmt(f)
     }
 }
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+pub enum EbpfAttachMode {
+    /// Attach in generic mode (SKB_MODE)
+    Generic,
+    /// Attach in driver mode (DRV_MODE)
+    Driver,
+}
+
+impl EbpfAttachMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EbpfAttachMode::Generic => "generic",
+            EbpfAttachMode::Driver => "driver",
+        }
+    }
+}
