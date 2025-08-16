@@ -15,7 +15,7 @@ use error::{SupportedChannel, UnsupportedChannel};
 use eth::Eth;
 use ip4::Ip4;
 use ip6::Ip6;
-use move_headers::{
+use move_payload::{
     add_channel_data_header_ipv4, add_channel_data_header_ipv6, remove_channel_data_header_ipv4,
     remove_channel_data_header_ipv6,
 };
@@ -33,7 +33,7 @@ mod error;
 mod eth;
 mod ip4;
 mod ip6;
-mod move_headers;
+mod move_payload;
 mod ref_mut_at;
 mod stats;
 mod udp;
@@ -72,18 +72,6 @@ static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
 
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
-    trace!(
-        &ctx,
-        "udp-checksumming = {}, allocation-range = {}..={}",
-        if config::udp_checksum_enabled() {
-            "true"
-        } else {
-            "false"
-        },
-        *config::allocation_range().start(),
-        *config::allocation_range().end(),
-    );
-
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
 
@@ -98,10 +86,7 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
             xdp_action::XDP_PASS
         }
 
-        Error::BadChannelDataLength
-        | Error::XdpStoreBytesFailed(_)
-        | Error::XdpAdjustHeadFailed(_)
-        | Error::XdpLoadBytesFailed(_) => {
+        Error::BadChannelDataLength | Error::XdpAdjustTailFailed(_) => {
             warn!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP

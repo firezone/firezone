@@ -7,12 +7,13 @@ use anyhow::Result;
 use ebpf_shared::Config;
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
+use crate::ebpf::AttachMode;
 use crate::{AllocationPort, ClientSocket, PeerSocket};
 
 pub struct Program {}
 
 impl Program {
-    pub fn try_load(_: &str) -> Result<Self> {
+    pub fn try_load(_: &str, _: AttachMode) -> Result<Self> {
         Err(anyhow::anyhow!("Platform not supported"))
     }
 
