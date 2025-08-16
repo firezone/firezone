@@ -332,11 +332,11 @@ jobs:
         run: |
           set -e
           gcloud storage cp \
-            "$BINARY_DEST_PATH" \
+            "${{ matrix.name.package }}" \
             gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
 
           gcloud storage cp \
-            "$BINARY_DEST_PATH".sha256sum.txt \
+            "${{ matrix.name.package }}".sha256sum.txt \
             gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name }}
