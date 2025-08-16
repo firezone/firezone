@@ -47,12 +47,6 @@ fn adjust_header<const IP_HEADER_LEN: usize>(
 
         let data_start = ctx.data();
         let data_end = ctx.data_end();
-        let data_size = data_end - data_start;
-        let payload_size = data_size - offset - CdHdr::LEN;
-
-        if payload_size > MAX_PAYLOAD {
-            return Err(Error::PacketTooLong);
-        }
 
         // Copy payload backward starting at end
         copy_bytes(
@@ -77,12 +71,6 @@ fn adjust_header<const IP_HEADER_LEN: usize>(
         // Removing header - copy first, then shrink
         let data_start = ctx.data();
         let data_end = ctx.data_end();
-        let data_size = data_end - data_start;
-        let payload_size = data_size - offset - CdHdr::LEN;
-
-        if payload_size > MAX_PAYLOAD {
-            return Err(Error::PacketTooLong);
-        }
 
         // Copy payload forward
         copy_bytes(
@@ -107,7 +95,7 @@ fn adjust_header<const IP_HEADER_LEN: usize>(
 fn copy_bytes(data_start: usize, data_end: usize, offset: usize, backward: bool) {
     if backward {
         // First we need to walk the data to determine the location of the destination offset
-        let mut dst_offset = offset + CdHdr::LEN;
+        let mut dst_offset = offset + CdHdr::LEN - 1;
         loop {
             if data_start + dst_offset >= data_end {
                 break; // Prevent writing out of bounds

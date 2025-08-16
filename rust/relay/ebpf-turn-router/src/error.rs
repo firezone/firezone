@@ -3,7 +3,6 @@ use core::num::NonZeroUsize;
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     PacketTooShort,
-    PacketTooLong,
     NotUdp,
     NotTurn,
     NotIp,
@@ -37,7 +36,6 @@ impl aya_log_ebpf::WriteToBuf for Error {
         // Use a simpler match structure to help the verifier
         let msg = match self {
             Error::PacketTooShort => "Packet is too short",
-            Error::PacketTooLong => "Packet is too long",
             Error::NotUdp => "Not a UDP packet",
             Error::NotTurn => "Not TURN traffic",
             Error::NotIp => "Not an IP packet",

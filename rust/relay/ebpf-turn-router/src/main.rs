@@ -76,7 +76,6 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
 
         Error::PacketTooShort
-        | Error::PacketTooLong
         | Error::NotTurn
         | Error::NotAChannelDataMessage
         | Error::Ipv4PacketWithOptions
