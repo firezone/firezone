@@ -72,20 +72,6 @@ static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
 
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
-    // Can cause verifier issues on some older kernls. Uncomment if you really need to print this
-    // on each packet.
-    // trace!(
-    //     &ctx,
-    //     "udp-checksumming = {}, allocation-range = {}..={}",
-    //     if config::udp_checksum_enabled() {
-    //         "true"
-    //     } else {
-    //         "false"
-    //     },
-    //     *config::allocation_range().start(),
-    //     *config::allocation_range().end(),
-    // );
-
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
 

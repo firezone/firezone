@@ -92,7 +92,7 @@ struct Args {
     ///
     /// Only relevant when ebpf_offloading is enabled.
     #[arg(long, env, hide = true, default_value = "driver")]
-    ebpf_attach_mode: String,
+    ebpf_attach_mode: EbpfAttachMode,
 
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
@@ -111,6 +111,23 @@ enum LogFormat {
     Human,
     Json,
     GoogleCloud,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy)]
+enum EbpfAttachMode {
+    /// Attach in generic mode (SKB_MODE)
+    Generic,
+    /// Attach in driver mode (DRV_MODE)
+    Driver,
+}
+
+impl EbpfAttachMode {
+    fn as_str(&self) -> &'static str {
+        match self {
+            EbpfAttachMode::Generic => "generic",
+            EbpfAttachMode::Driver => "driver",
+        }
+    }
 }
 
 fn main() {
@@ -152,7 +169,7 @@ async fn try_main(args: Args) -> Result<()> {
     let mut ebpf = args
         .ebpf_offloading
         .as_deref()
-        .map(|interface| ebpf::Program::try_load(interface, &args.ebpf_attach_mode))
+        .map(|interface| ebpf::Program::try_load(interface, args.ebpf_attach_mode.as_str()))
         .transpose()
         .context("Failed to load eBPF TURN router")?;
 
