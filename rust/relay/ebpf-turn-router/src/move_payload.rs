@@ -203,7 +203,7 @@ fn copy_payload(
         copy_n::<2>(data_start, data_end, src_off, dst_off)?;
     }
     if (m & 1) != 0 {
-        let step = 1 * dir;
+        let step = dir;
         src_off += step;
         dst_off += step;
         copy_n::<1>(data_start, data_end, src_off, dst_off)?;
