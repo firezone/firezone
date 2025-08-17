@@ -84,7 +84,9 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
 
-        Error::PacketTooShort
+        Error::InterfaceIpv4AddressAccessFailed
+        | Error::InterfaceIpv6AddressAccessFailed
+        | Error::PacketTooShort
         | Error::NotTurn
         | Error::NotAChannelDataMessage
         | Error::Ipv4PacketWithOptions
@@ -132,8 +134,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     let udp = unsafe { Udp::parse(ctx, Ipv4Hdr::LEN) }?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
     let udp_payload_len = udp.payload_len();
 
-    // Learn interface IPv4 address from incoming packets
-    learn_interface_ipv4_address(&ipv4);
+    learn_interface_ipv4_address(&ipv4)?;
 
     trace!(
         ctx,
@@ -271,7 +272,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     let udp = unsafe { Udp::parse(ctx, Ipv6Hdr::LEN) }?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
     let udp_payload_len = udp.payload_len();
 
-    learn_interface_ipv6_address(&ipv6);
+    learn_interface_ipv6_address(&ipv6)?;
 
     trace!(
         ctx,
@@ -395,39 +396,37 @@ fn try_handle_ipv6_channel_data_to_udp(
 }
 
 #[inline(always)]
-fn learn_interface_ipv4_address(ipv4: &Ip4) {
-    // Get or initialize per-CPU IPv4 interface address
+fn learn_interface_ipv4_address(ipv4: &Ip4) -> Result<(), Error> {
     let interface_addr = match INT_ADDR_V4.get_ptr_mut(0) {
         Some(addr) => addr,
-        None => return, // Skip learning if map access fails
+        None => return Err(Error::InterfaceIpv4AddressAccessFailed),
     };
 
-    // Learn IPv4 address from destination (the relay interface IP)
     let dst_ip = ipv4.dst();
     unsafe {
-        let mut addr = *interface_addr;
-        if !addr.is_learned() {
-            addr.set(dst_ip);
+        if !(*interface_addr).is_learned() {
+            (*interface_addr).set(dst_ip);
         }
     }
+
+    Ok(())
 }
 
 #[inline(always)]
-fn learn_interface_ipv6_address(ipv6: &Ip6) {
-    // Get or initialize per-CPU IPv6 interface address
+fn learn_interface_ipv6_address(ipv6: &Ip6) -> Result<(), Error> {
     let interface_addr = match INT_ADDR_V6.get_ptr_mut(0) {
         Some(addr) => addr,
-        None => return, // Skip learning if map access fails
+        None => return Err(Error::InterfaceIpv6AddressAccessFailed),
     };
 
-    // Learn IPv6 address from destination (the relay interface IP)
     let dst_ip = ipv6.dst();
     unsafe {
-        let mut addr = *interface_addr;
-        if !addr.is_learned() {
-            addr.set(dst_ip);
+        if !(*interface_addr).is_learned() {
+            (*interface_addr).set(dst_ip);
         }
     }
+
+    Ok(())
 }
 
 /// Defines our panic handler.
