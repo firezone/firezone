@@ -5,12 +5,15 @@ use crate::error::Error;
 use aya_ebpf::{
     bindings::xdp_action,
     macros::{map, xdp},
-    maps::HashMap,
+    maps::{HashMap, PerCpuArray},
     programs::XdpContext,
 };
 use aya_log_ebpf::*;
 use channel_data::{CdHdr, ChannelData};
-use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
+use ebpf_shared::{
+    ClientAndChannelV4, ClientAndChannelV6, InterfaceAddressV4, InterfaceAddressV6, PortAndPeerV4,
+    PortAndPeerV6,
+};
 use error::{SupportedChannel, UnsupportedChannel};
 use eth::Eth;
 use ip4::Ip4;
@@ -70,6 +73,12 @@ static CHAN_TO_UDP_64: HashMap<ClientAndChannelV6, PortAndPeerV4> =
 static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
     HashMap::with_max_entries(NUM_ENTRIES, 0);
 
+// Per-CPU data structures to learn relay interface addresses
+#[map]
+static INT_ADDR_V4: PerCpuArray<InterfaceAddressV4> = PerCpuArray::with_max_entries(1, 0);
+#[map]
+static INT_ADDR_V6: PerCpuArray<InterfaceAddressV6> = PerCpuArray::with_max_entries(1, 0);
+
 #[xdp]
 pub fn handle_turn(ctx: XdpContext) -> u32 {
     try_handle_turn(&ctx).unwrap_or_else(|e| match e {
@@ -122,6 +131,9 @@ fn try_handle_turn_ipv4(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     // Safety: This is the only instance of `Udp` in this scope.
     let udp = unsafe { Udp::parse(ctx, Ipv4Hdr::LEN) }?; // TODO: Change the API so we parse the UDP header _from_ the ipv4 struct?
     let udp_payload_len = udp.payload_len();
+
+    // Learn interface IPv4 address from incoming packets
+    learn_interface_ipv4_address(&ipv4);
 
     trace!(
         ctx,
@@ -259,6 +271,8 @@ fn try_handle_turn_ipv6(ctx: &XdpContext, eth: Eth) -> Result<(), Error> {
     let udp = unsafe { Udp::parse(ctx, Ipv6Hdr::LEN) }?; // TODO: Change the API so we parse the UDP header _from_ the ipv6 struct?
     let udp_payload_len = udp.payload_len();
 
+    learn_interface_ipv6_address(&ipv6);
+
     trace!(
         ctx,
         "New packet from {:i}:{} for {:i}:{} with UDP payload {}",
@@ -378,6 +392,42 @@ fn try_handle_ipv6_channel_data_to_udp(
     remove_channel_data_header_ipv6(ctx)?;
 
     Ok(())
+}
+
+#[inline(always)]
+fn learn_interface_ipv4_address(ipv4: &Ip4) {
+    // Get or initialize per-CPU IPv4 interface address
+    let interface_addr = match INT_ADDR_V4.get_ptr_mut(0) {
+        Some(addr) => addr,
+        None => return, // Skip learning if map access fails
+    };
+
+    // Learn IPv4 address from destination (the relay interface IP)
+    let dst_ip = ipv4.dst();
+    unsafe {
+        let mut addr = *interface_addr;
+        if !addr.is_learned() {
+            addr.set(dst_ip);
+        }
+    }
+}
+
+#[inline(always)]
+fn learn_interface_ipv6_address(ipv6: &Ip6) {
+    // Get or initialize per-CPU IPv6 interface address
+    let interface_addr = match INT_ADDR_V6.get_ptr_mut(0) {
+        Some(addr) => addr,
+        None => return, // Skip learning if map access fails
+    };
+
+    // Learn IPv6 address from destination (the relay interface IP)
+    let dst_ip = ipv6.dst();
+    unsafe {
+        let mut addr = *interface_addr;
+        if !addr.is_learned() {
+            addr.set(dst_ip);
+        }
+    }
 }
 
 /// Defines our panic handler.
