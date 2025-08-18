@@ -41,7 +41,7 @@ edition = "2024"
 
 [workspace.dependencies]
 admx-macro = { path = "gui-client/src-admx-macro" }
-anyhow = "1.0.98"
+anyhow = "1.0.99"
 apple-client-ffi = { path = "apple-client-ffi" }
 arbitrary = "1.4.1"
 arboard = { version = "3.6.0", default-features = false }
