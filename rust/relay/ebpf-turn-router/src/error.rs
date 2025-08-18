@@ -37,8 +37,12 @@ impl aya_log_ebpf::WriteToBuf for Error {
     fn write(self, buf: &mut [u8]) -> Option<NonZeroUsize> {
         // Use a simpler match structure to help the verifier
         let msg = match self {
-            Error::InterfaceIpv4AddressAccessFailed => "Failed to access interface IPv4 address",
-            Error::InterfaceIpv6AddressAccessFailed => "Failed to access interface IPv6 address",
+            Error::InterfaceIpv4AddressAccessFailed => {
+                "Failed to get pointer to interface IPv4 address map"
+            }
+            Error::InterfaceIpv6AddressAccessFailed => {
+                "Failed to get pointer to interface IPv6 address map"
+            }
             Error::PacketTooShort => "Packet is too short",
             Error::NotUdp => "Not a UDP packet",
             Error::NotTurn => "Not TURN traffic",
