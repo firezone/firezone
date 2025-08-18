@@ -158,7 +158,7 @@ impl Session {
     }
 
     pub fn set_tun(&self, fd: RawFd) -> Result<(), Error> {
-        let _guard = self.runtime.enter();
+        let _guard = self.runtime.as_ref().context("No runtime")?.enter();
         // SAFETY: FD must be open.
         let tun = unsafe { platform::Tun::from_fd(fd).context("Failed to create new Tun")? };
 
