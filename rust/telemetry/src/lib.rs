@@ -428,10 +428,7 @@ impl sentry::TransportFactory for TransportFactory {
             .http2_keep_alive_while_idle(true)
             .http2_keep_alive_timeout(Duration::from_secs(1))
             .http2_keep_alive_interval(Duration::from_secs(5)) // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
-            .resolve_to_addrs(
-                "o4507971108339712.ingest.us.sentry.io",
-                &self.ingest_domain_addresses,
-            )
+            .resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses)
             .build()
             .expect("Failed to build HTTP client");
 
