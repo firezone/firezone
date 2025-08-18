@@ -7,11 +7,11 @@ use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use firezone_tunnel::{ClientTunnel, IpConfig};
+use firezone_tunnel::{ClientEvent, ClientTunnel, IpConfig, TunConfig};
 use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
-use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::ops::ControlFlow;
 use std::pin::pin;
 use std::time::Instant;
 use std::{
@@ -20,8 +20,8 @@ use std::{
     net::IpAddr,
     task::{Context, Poll},
 };
+use std::{future, mem};
 use tokio::sync::mpsc;
-use tokio::sync::mpsc::error::TrySendError;
 use tun::Tun;
 
 pub struct Eventloop {
@@ -56,6 +56,19 @@ pub enum Event {
     },
     ResourcesUpdated(Vec<ResourceView>),
     Disconnected(DisconnectError),
+}
+
+impl Event {
+    fn tun_interface_updated(config: TunConfig) -> Self {
+        Self::TunInterfaceUpdated {
+            ipv4: config.ip.v4,
+            ipv6: config.ip.v6,
+            dns: config.dns_by_sentinel.left_values().copied().collect(),
+            search_domain: config.search_domain,
+            ipv4_routes: Vec::from_iter(config.ipv4_routes),
+            ipv6_routes: Vec::from_iter(config.ipv6_routes),
+        }
+    }
 }
 
 enum PortalCommand {
@@ -96,16 +109,14 @@ impl DisconnectError {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: ClientTunnel,
-        portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         event_tx: mpsc::Sender<Event>,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
 
-        let _ = portal_cmd_tx.try_send(PortalCommand::Connect(PublicKeyParam(
-            tunnel.public_key().to_bytes(),
-        )));
+        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
         tokio::spawn(phoenix_channel_event_loop(
             portal,
@@ -124,178 +135,168 @@ impl Eventloop {
     }
 }
 
+enum CombinedEvent {
+    Command(Option<Command>),
+    Tunnel(Result<ClientEvent>),
+    Portal(Option<PortalEvent>),
+}
+
 impl Eventloop {
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    pub async fn run(mut self) -> Result<()> {
         loop {
-            match self.cmd_rx.poll_recv(cx) {
-                Poll::Ready(None | Some(Command::Stop)) => return Poll::Ready(Ok(())),
-                Poll::Ready(Some(Command::SetDns(dns))) => {
-                    self.tunnel.state_mut().update_system_resolvers(dns);
-
-                    continue;
+            match future::poll_fn(|cx| self.next_event(cx)).await {
+                CombinedEvent::Command(None) => return Ok(()),
+                CombinedEvent::Command(Some(cmd)) => {
+                    match self.handle_eventloop_command(cmd).await? {
+                        ControlFlow::Continue(()) => {}
+                        ControlFlow::Break(()) => return Ok(()),
+                    }
                 }
-                Poll::Ready(Some(Command::SetDisabledResources(resources))) => {
-                    self.tunnel.state_mut().set_disabled_resources(resources);
-                    continue;
+                CombinedEvent::Tunnel(Ok(event)) => self.handle_tunnel_event(event).await?,
+                CombinedEvent::Tunnel(Err(e)) => self.handle_tunnel_error(e)?,
+                CombinedEvent::Portal(Some(PortalEvent::Received(msg))) => {
+                    self.handle_portal_message(msg).await?;
                 }
-                Poll::Ready(Some(Command::SetTun(tun))) => {
-                    self.tunnel.set_tun(tun);
-                    continue;
+                CombinedEvent::Portal(Some(PortalEvent::Error(e))) => {
+                    return Err(e).context("Connection to portal failed");
                 }
-                Poll::Ready(Some(Command::Reset(reason))) => {
-                    self.tunnel.reset(&reason);
-                    self.portal_cmd_tx
-                        .try_send(PortalCommand::Connect(PublicKeyParam(
-                            self.tunnel.public_key().to_bytes(),
-                        )));
-
-                    continue;
+                CombinedEvent::Portal(None) => {
+                    return Err(anyhow::Error::msg("portal task exited unexpectedly"));
                 }
-                Poll::Pending => {}
             }
-
-            match self.tunnel.poll_next_event(cx) {
-                Poll::Ready(Ok(event)) => {
-                    let Some(e) = self.handle_tunnel_event(event) else {
-                        continue;
-                    };
-
-                    match self.event_tx.try_send(e) {
-                        Ok(()) => {}
-                        Err(TrySendError::Closed(_)) => {
-                            tracing::debug!("Event receiver dropped, exiting event loop");
-
-                            return Poll::Ready(Ok(()));
-                        }
-                        Err(TrySendError::Full(_)) => {
-                            tracing::warn!("App cannot keep up with connlib events, dropping");
-                        }
-                    };
-
-                    continue;
-                }
-                Poll::Ready(Err(e)) => {
-                    if e.root_cause()
-                        .downcast_ref::<io::Error>()
-                        .is_some_and(is_unreachable)
-                    {
-                        tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
-                        continue;
-                    }
-
-                    // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-                    if e.root_cause()
-                        .downcast_ref::<io::Error>()
-                        .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
-                    {
-                        tracing::debug!("{e:#}");
-                        continue;
-                    }
-
-                    if e.root_cause()
-                        .is::<firezone_tunnel::UdpSocketThreadStopped>()
-                    {
-                        return Poll::Ready(Err(e));
-                    }
-
-                    if e.root_cause()
-                        .downcast_ref::<io::Error>()
-                        .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
-                    {
-                        if !mem::replace(&mut self.logged_permission_denied, true) {
-                            tracing::info!(
-                                "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
-                            )
-                        }
-
-                        continue;
-                    }
-
-                    tracing::warn!("Tunnel error: {e:#}");
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            match self.portal_event_rx.poll_recv(cx) {
-                Poll::Ready(Some(PortalEvent::Received(msg))) => {
-                    self.handle_portal_inbound_message(msg);
-                    continue;
-                }
-                Poll::Ready(Some(PortalEvent::Error(e))) => {
-                    return Poll::Ready(Err(e).context("Connection to portal failed"));
-                }
-                Poll::Ready(None) => {
-                    return Poll::Ready(Err(anyhow::Error::msg("portal task exited unexpectedly")));
-                }
-                Poll::Pending => {}
-            }
-
-            return Poll::Pending;
         }
     }
 
-    fn handle_tunnel_event(&mut self, event: firezone_tunnel::ClientEvent) -> Option<Event> {
+    async fn handle_eventloop_command(&mut self, command: Command) -> Result<ControlFlow<(), ()>> {
+        match command {
+            Command::Stop => return Ok(ControlFlow::Break(())),
+            Command::SetDns(dns) => self.tunnel.state_mut().update_system_resolvers(dns),
+            Command::SetDisabledResources(resources) => {
+                self.tunnel.state_mut().set_disabled_resources(resources)
+            }
+            Command::SetTun(tun) => {
+                self.tunnel.set_tun(tun);
+            }
+            Command::Reset(reason) => {
+                self.tunnel.reset(&reason);
+                self.portal_cmd_tx
+                    .send(PortalCommand::Connect(PublicKeyParam(
+                        self.tunnel.public_key().to_bytes(),
+                    )))
+                    .await
+                    .context("Failed to connect phoenix-channel")?;
+            }
+        }
+
+        Ok(ControlFlow::Continue(()))
+    }
+
+    async fn handle_tunnel_event(&mut self, event: ClientEvent) -> Result<()> {
         match event {
-            firezone_tunnel::ClientEvent::AddedIceCandidates {
+            ClientEvent::AddedIceCandidates {
                 conn_id: gid,
                 candidates,
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
 
-                self.portal_cmd_tx.try_send(PortalCommand::Send(
-                    EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
-                        gateway_ids: vec![gid],
-                        candidates,
-                    }),
-                ));
-
-                None
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::BroadcastIceCandidates(
+                        GatewaysIceCandidates {
+                            gateway_ids: vec![gid],
+                            candidates,
+                        },
+                    )))
+                    .await
+                    .context("Failed to send message to portal")?;
             }
-            firezone_tunnel::ClientEvent::RemovedIceCandidates {
+            ClientEvent::RemovedIceCandidates {
                 conn_id: gid,
                 candidates,
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
 
-                self.portal_cmd_tx.try_send(PortalCommand::Send(
-                    EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
-                        gateway_ids: vec![gid],
-                        candidates,
-                    }),
-                ));
-
-                None
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(
+                        EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
+                            gateway_ids: vec![gid],
+                            candidates,
+                        }),
+                    ))
+                    .await
+                    .context("Failed to send message to portal")?;
             }
-            firezone_tunnel::ClientEvent::ConnectionIntent {
+            ClientEvent::ConnectionIntent {
                 connected_gateway_ids,
                 resource,
             } => {
                 self.portal_cmd_tx
-                    .try_send(PortalCommand::Send(EgressMessages::CreateFlow {
+                    .send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
                         connected_gateway_ids,
-                    }));
-
-                None
+                    }))
+                    .await
+                    .context("Failed to send message to portal")?;
             }
-            firezone_tunnel::ClientEvent::ResourcesChanged { resources } => {
-                Some(Event::ResourcesUpdated(resources))
+            ClientEvent::ResourcesChanged { resources } => {
+                self.event_tx
+                    .send(Event::ResourcesUpdated(resources))
+                    .await
+                    .context("Failed to emit event")?;
             }
-            firezone_tunnel::ClientEvent::TunInterfaceUpdated(config) => {
-                Some(Event::TunInterfaceUpdated {
-                    ipv4: config.ip.v4,
-                    ipv6: config.ip.v6,
-                    dns: config.dns_by_sentinel.left_values().copied().collect(),
-                    search_domain: config.search_domain,
-                    ipv4_routes: Vec::from_iter(config.ipv4_routes),
-                    ipv6_routes: Vec::from_iter(config.ipv6_routes),
-                })
+            ClientEvent::TunInterfaceUpdated(config) => {
+                self.event_tx
+                    .send(Event::tun_interface_updated(config))
+                    .await
+                    .context("Failed to emit event")?;
             }
         }
+
+        Ok(())
     }
 
-    fn handle_portal_inbound_message(&mut self, msg: IngressMessages) {
+    fn handle_tunnel_error(&mut self, e: anyhow::Error) -> Result<()> {
+        if e.root_cause()
+            .downcast_ref::<io::Error>()
+            .is_some_and(is_unreachable)
+        {
+            tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
+            return Ok(());
+        }
+
+        // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
+        if e.root_cause()
+            .downcast_ref::<io::Error>()
+            .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
+        {
+            tracing::debug!("{e:#}");
+            return Ok(());
+        }
+
+        if e.root_cause()
+            .is::<firezone_tunnel::UdpSocketThreadStopped>()
+        {
+            return Err(e);
+        }
+
+        if e.root_cause()
+            .downcast_ref::<io::Error>()
+            .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
+        {
+            if !mem::replace(&mut self.logged_permission_denied, true) {
+                tracing::info!(
+                    "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                )
+            }
+
+            return Ok(());
+        }
+
+        tracing::warn!("Tunnel error: {e:#}");
+
+        Ok(())
+    }
+
+    async fn handle_portal_message(&mut self, msg: IngressMessages) -> Result<()> {
         match msg {
             IngressMessages::ConfigChanged(config) => self
                 .tunnel
@@ -385,9 +386,11 @@ impl Eventloop {
 
                         // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                         self.portal_cmd_tx
-                            .try_send(PortalCommand::Connect(PublicKeyParam(
+                            .send(PortalCommand::Connect(PublicKeyParam(
                                 self.tunnel.public_key().to_bytes(),
-                            )));
+                            )))
+                            .await
+                            .context("Failed to connect phoenix-channel")?;
                     }
                     Err(e) => {
                         tracing::warn!("Failed to request new connection: {e:#}");
@@ -405,6 +408,24 @@ impl Eventloop {
                 tracing::debug!("Failed to create flow: {reason:?}")
             }
         }
+
+        Ok(())
+    }
+
+    fn next_event(&mut self, cx: &mut Context) -> Poll<CombinedEvent> {
+        if let Poll::Ready(cmd) = self.cmd_rx.poll_recv(cx) {
+            return Poll::Ready(CombinedEvent::Command(cmd));
+        }
+
+        if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
+            return Poll::Ready(CombinedEvent::Portal(event));
+        }
+
+        if let Poll::Ready(event) = self.tunnel.poll_next_event(cx) {
+            return Poll::Ready(CombinedEvent::Tunnel(event));
+        }
+
+        Poll::Pending
     }
 }
 
