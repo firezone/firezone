@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use anyhow::{Result, bail};
 use firezone_bin_shared::{DnsControlMethod, signals};
