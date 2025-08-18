@@ -208,25 +208,21 @@ impl Default for Config {
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct InterfaceAddressV4 {
     address: [u8; 4],
-    learned: bool,
 }
 
 impl InterfaceAddressV4 {
+    const ZERO: [u8; 4] = [0; 4];
+
     pub fn set(&mut self, addr: Ipv4Addr) {
         self.address = addr.octets();
-        self.learned = true;
     }
 
-    pub fn get(&self) -> Option<Ipv4Addr> {
-        if self.learned {
-            Some(self.address.into())
-        } else {
-            None
-        }
+    pub fn get(&self) -> Ipv4Addr {
+        self.address.into()
     }
 
     pub fn is_learned(&self) -> bool {
-        self.learned
+        self.address != Self::ZERO
     }
 }
 
@@ -235,25 +231,21 @@ impl InterfaceAddressV4 {
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct InterfaceAddressV6 {
     address: [u8; 16],
-    learned: bool,
 }
 
 impl InterfaceAddressV6 {
+    const ZERO: [u8; 16] = [0; 16];
+
     pub fn set(&mut self, addr: Ipv6Addr) {
         self.address = addr.octets();
-        self.learned = true;
     }
 
-    pub fn get(&self) -> Option<Ipv6Addr> {
-        if self.learned {
-            Some(self.address.into())
-        } else {
-            None
-        }
+    pub fn get(&self) -> Ipv6Addr {
+        self.address.into()
     }
 
     pub fn is_learned(&self) -> bool {
-        self.learned
+        self.address != Self::ZERO
     }
 }
 
