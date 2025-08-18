@@ -194,11 +194,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         tunnel.set_tun(tun);
     }
 
-    let eventloop = future::poll_fn({
-        let mut eventloop = Eventloop::new(tunnel, portal, tun_device_manager);
-
-        move |cx| eventloop.poll(cx)
-    });
+    let eventloop = pin!(Eventloop::new(tunnel, portal, tun_device_manager).run());
     let ctrl_c = pin!(ctrl_c().map_err(anyhow::Error::new));
 
     tokio::spawn(http_health_check::serve(

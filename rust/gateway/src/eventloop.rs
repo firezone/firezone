@@ -11,20 +11,22 @@ use firezone_tunnel::messages::gateway::{
     ClientsIceCandidates, ConnectionReady, EgressMessages, IngressMessages, InitGateway,
     RejectAccess, RequestConnection,
 };
-use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, Interface, RelaysPresence};
+use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
 use firezone_tunnel::{
-    DnsResourceNatEntry, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, ResolveDnsRequest,
+    DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
+    ResolveDnsRequest,
 };
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
-use std::future::Future;
+use std::future::{self, Future, poll_fn};
 use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
+use std::pin::pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use std::{io, mem};
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 
 use crate::RELEASE;
 
@@ -51,16 +53,21 @@ enum ResolveTrigger {
 
 pub struct Eventloop {
     tunnel: GatewayTunnel,
-    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    tun_device_manager: Arc<Mutex<TunDeviceManager>>,
+    tun_device_manager: TunDeviceManager,
 
     resolve_tasks:
         futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
+    portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
+    portal_cmd_tx: mpsc::Sender<PortalCommand>,
+
     dns_cache: moka::future::Cache<DomainName, Vec<IpAddr>>,
 
-    set_interface_tasks: futures_bounded::FuturesSet<Result<Interface>>,
-
     logged_permission_denied: bool,
+}
+
+enum PortalCommand {
+    Send(EgressMessages),
+    Connect(PublicKeyParam),
 }
 
 impl Eventloop {
@@ -71,12 +78,19 @@ impl Eventloop {
     ) -> Self {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
+        let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
+        let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
+
+        tokio::spawn(phoenix_channel_event_loop(
+            portal,
+            portal_event_tx,
+            portal_cmd_rx,
+        ));
+
         Self {
             tunnel,
-            portal,
-            tun_device_manager: Arc::new(Mutex::new(tun_device_manager)),
+            tun_device_manager,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
-            set_interface_tasks: futures_bounded::FuturesSet::new(Duration::from_secs(5), 10),
             logged_permission_denied: false,
             dns_cache: moka::future::Cache::builder()
                 .name("DNS queries")
@@ -85,170 +99,107 @@ impl Eventloop {
                     tracing::debug!(%domain, ?ips, ?cause, "DNS cache entry evicted");
                 })
                 .build(),
+            portal_event_rx,
+            portal_cmd_tx,
         }
     }
 }
 
+enum CombinedEvent {
+    Tunnel(Result<GatewayEvent>),
+    Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
+    DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger)),
+}
+
 impl Eventloop {
-    pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<Result<Infallible>> {
+    pub async fn run(mut self) -> Result<Infallible> {
         loop {
-            match self.tunnel.poll_next_event(cx) {
-                Poll::Ready(Ok(event)) => {
-                    self.handle_tunnel_event(event);
-                    continue;
+            match future::poll_fn(|cx| self.next_event(cx)).await {
+                CombinedEvent::Tunnel(Ok(event)) => {
+                    self.handle_tunnel_event(event).await?;
                 }
-                Poll::Ready(Err(e)) => {
-                    if e.root_cause()
-                        .downcast_ref::<io::Error>()
-                        .is_some_and(is_unreachable)
-                    {
-                        tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
-                        continue;
-                    }
-
-                    // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-                    if e.root_cause()
-                        .downcast_ref::<io::Error>()
-                        .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
-                    {
-                        tracing::debug!("{e:#}");
-                        continue;
-                    }
-
-                    // Unknown connection just means packets are bouncing on the TUN device because the Client disconnected.
-                    if e.root_cause().is::<snownet::UnknownConnection>() {
-                        tracing::debug!("{e:#}");
-                        continue;
-                    }
-
-                    if e.root_cause()
-                        .downcast_ref::<io::Error>()
-                        .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
-                    {
-                        if !mem::replace(&mut self.logged_permission_denied, true) {
-                            tracing::info!(
-                                "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
-                            )
-                        }
-
-                        continue;
-                    }
-
-                    if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
-                        // Some IP packets cannot be translated and should be dropped "silently".
-                        // Do so by ignoring the error here.
-                        continue;
-                    }
-
-                    if e.root_cause()
-                        .is::<firezone_tunnel::UdpSocketThreadStopped>()
-                    {
-                        return Poll::Ready(Err(e));
-                    }
-
-                    tracing::warn!("Tunnel error: {e:#}");
-                    continue;
+                CombinedEvent::Tunnel(Err(e)) => {
+                    self.handle_tunnel_error(e)?;
                 }
-                Poll::Pending => {}
-            }
-
-            match self.resolve_tasks.poll_unpin(cx).map(|(r, trigger)| {
-                (
-                    r.unwrap_or_else(|e| {
-                        Err(Arc::new(
-                            anyhow::Error::new(e).context("DNS resolution timed out"),
-                        ))
-                    }),
-                    trigger,
-                )
-            }) {
-                Poll::Ready((result, ResolveTrigger::RequestConnection(req))) => {
-                    self.accept_connection(result, req);
-                    continue;
+                CombinedEvent::Portal(Some(Ok(msg))) => {
+                    self.handle_portal_message(msg).await?;
                 }
-                Poll::Ready((result, ResolveTrigger::AllowAccess(req))) => {
+                CombinedEvent::Portal(None) => {
+                    return Err(anyhow::Error::msg(
+                        "phoenix channel task stopped unexpectedly",
+                    ));
+                }
+                CombinedEvent::Portal(Some(Err(e))) => {
+                    return Err(e).context("Failed to login to portal");
+                }
+                CombinedEvent::DomainResolved((result, ResolveTrigger::RequestConnection(req))) => {
+                    self.accept_connection(result, req).await?;
+                }
+                CombinedEvent::DomainResolved((result, ResolveTrigger::AllowAccess(req))) => {
                     self.allow_access(result, req);
-                    continue;
                 }
-                Poll::Ready((result, ResolveTrigger::SetupNat(request))) => {
-                    if let Err(e) = self.tunnel.state_mut().handle_domain_resolved(
-                        request,
-                        result,
-                        Instant::now(),
-                    ) {
+                CombinedEvent::DomainResolved((result, ResolveTrigger::SetupNat(req))) => {
+                    if let Err(e) =
+                        self.tunnel
+                            .state_mut()
+                            .handle_domain_resolved(req, result, Instant::now())
+                    {
                         tracing::warn!("Failed to set DNS resource NAT: {e:#}");
                     };
-
-                    continue;
                 }
-                Poll::Pending => {}
             }
-
-            match self.set_interface_tasks.poll_unpin(cx) {
-                Poll::Ready(result) => {
-                    let interface = result
-                        .unwrap_or_else(|e| Err(anyhow::Error::new(e)))
-                        .context("Failed to update TUN interface")?;
-
-                    let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
-                    let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
-
-                    let ipv4_result = self
-                        .tunnel
-                        .rebind_dns_ipv4(ipv4_socket)
-                        .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
-                        .inspect_err(|e| tracing::debug!("{e:#}"));
-
-                    let ipv6_result = self
-                        .tunnel
-                        .rebind_dns_ipv6(ipv6_socket)
-                        .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
-                        .inspect_err(|e| tracing::debug!("{e:#}"));
-
-                    ipv4_result.or(ipv6_result)?;
-                }
-                Poll::Pending => {}
-            }
-
-            match self.portal.poll(cx) {
-                Poll::Ready(result) => {
-                    let event = result.context("Failed to login to portal")?;
-                    self.handle_portal_event(event);
-
-                    continue;
-                }
-                Poll::Pending => {}
-            }
-
-            return Poll::Pending;
         }
     }
 
-    fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) {
+    fn next_event(&mut self, cx: &mut Context<'_>) -> Poll<CombinedEvent> {
+        if let Poll::Ready(event) = self.portal_event_rx.poll_recv(cx) {
+            return Poll::Ready(CombinedEvent::Portal(event));
+        }
+
+        if let Poll::Ready((result, trigger)) = self.resolve_tasks.poll_unpin(cx) {
+            let result = result.unwrap_or_else(|e| {
+                Err(Arc::new(
+                    anyhow::Error::new(e).context("DNS resolution timed out"),
+                ))
+            });
+
+            return Poll::Ready(CombinedEvent::DomainResolved((result, trigger)));
+        }
+
+        if let Poll::Ready(event) = self.tunnel.poll_next_event(cx) {
+            return Poll::Ready(CombinedEvent::Tunnel(event));
+        }
+
+        Poll::Pending
+    }
+
+    async fn handle_tunnel_event(&mut self, event: firezone_tunnel::GatewayEvent) -> Result<()> {
         match event {
             firezone_tunnel::GatewayEvent::AddedIceCandidates {
                 conn_id: client,
                 candidates,
             } => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::BroadcastIceCandidates(ClientsIceCandidates {
-                        client_ids: vec![client],
-                        candidates,
-                    }),
-                );
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::BroadcastIceCandidates(
+                        ClientsIceCandidates {
+                            client_ids: vec![client],
+                            candidates,
+                        },
+                    )))
+                    .await?;
             }
             firezone_tunnel::GatewayEvent::RemovedIceCandidates {
                 conn_id: client,
                 candidates,
             } => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
-                        client_ids: vec![client],
-                        candidates,
-                    }),
-                );
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(
+                        EgressMessages::BroadcastInvalidatedIceCandidates(ClientsIceCandidates {
+                            client_ids: vec![client],
+                            candidates,
+                        }),
+                    ))
+                    .await?;
             }
             firezone_tunnel::GatewayEvent::ResolveDns(setup_nat) => {
                 if self
@@ -263,14 +214,67 @@ impl Eventloop {
                 };
             }
         }
+
+        Ok(())
     }
 
-    fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
-        match event {
-            phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::AuthorizeFlow(msg),
-                ..
-            } => {
+    fn handle_tunnel_error(&mut self, e: anyhow::Error) -> Result<()> {
+        if e.root_cause()
+            .downcast_ref::<io::Error>()
+            .is_some_and(is_unreachable)
+        {
+            tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
+            return Ok(());
+        }
+
+        // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
+        if e.root_cause()
+            .downcast_ref::<io::Error>()
+            .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
+        {
+            tracing::debug!("{e:#}");
+            return Ok(());
+        }
+
+        // Unknown connection just means packets are bouncing on the TUN device because the Client disconnected.
+        if e.root_cause().is::<snownet::UnknownConnection>() {
+            tracing::debug!("{e:#}");
+            return Ok(());
+        }
+
+        if e.root_cause()
+            .downcast_ref::<io::Error>()
+            .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
+        {
+            if !mem::replace(&mut self.logged_permission_denied, true) {
+                tracing::info!(
+                    "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                )
+            }
+
+            return Ok(());
+        }
+
+        if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
+            // Some IP packets cannot be translated and should be dropped "silently".
+            // Do so by ignoring the error here.
+            return Ok(());
+        }
+
+        if e.root_cause()
+            .is::<firezone_tunnel::UdpSocketThreadStopped>()
+        {
+            return Err(e);
+        }
+
+        tracing::warn!("Tunnel error: {e:#}");
+
+        Ok(())
+    }
+
+    async fn handle_portal_message(&mut self, msg: IngressMessages) -> Result<()> {
+        match msg {
+            IngressMessages::AuthorizeFlow(msg) => {
                 if let Err(snownet::NoTurnServers {}) = self.tunnel.state_mut().authorize_flow(
                     msg.client.id,
                     PublicKey::from(msg.client.public_key.0),
@@ -288,26 +292,26 @@ impl Eventloop {
                     tracing::debug!("Failed to authorise flow: No TURN servers available");
 
                     // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
-                    self.portal
-                        .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
-                    return;
+                    self.portal_cmd_tx
+                        .send(PortalCommand::Connect(PublicKeyParam(
+                            self.tunnel.public_key().to_bytes(),
+                        )))
+                        .await?;
+
+                    return Ok(());
                 };
 
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::FlowAuthorized {
+                self.portal_cmd_tx
+                    .send(PortalCommand::Send(EgressMessages::FlowAuthorized {
                         reference: msg.reference,
-                    },
-                );
+                    }))
+                    .await?;
             }
-            phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::RequestConnection(req),
-                ..
-            } => {
+            IngressMessages::RequestConnection(req) => {
                 let Some(domain) = req.client.payload.domain.as_ref().map(|r| r.name.clone())
                 else {
-                    self.accept_connection(Ok(vec![]), req);
-                    return;
+                    self.accept_connection(Ok(vec![]), req).await?;
+                    return Ok(());
                 };
 
                 if self
@@ -318,13 +322,10 @@ impl Eventloop {
                     tracing::warn!("Too many connections requests, dropping existing one");
                 };
             }
-            phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::AllowAccess(req),
-                ..
-            } => {
+            IngressMessages::AllowAccess(req) => {
                 let Some(domain) = req.payload.as_ref().map(|r| r.name.clone()) else {
                     self.allow_access(Ok(vec![]), req);
-                    return;
+                    return Ok(());
                 };
 
                 if self
@@ -335,28 +336,20 @@ impl Eventloop {
                     tracing::warn!("Too many allow access requests, dropping existing one");
                 };
             }
-            phoenix_channel::Event::InboundMessage {
-                msg:
-                    IngressMessages::IceCandidates(ClientIceCandidates {
-                        client_id,
-                        candidates,
-                    }),
-                ..
-            } => {
+            IngressMessages::IceCandidates(ClientIceCandidates {
+                client_id,
+                candidates,
+            }) => {
                 for candidate in candidates {
                     self.tunnel
                         .state_mut()
                         .add_ice_candidate(client_id, candidate, Instant::now());
                 }
             }
-            phoenix_channel::Event::InboundMessage {
-                msg:
-                    IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
-                        client_id,
-                        candidates,
-                    }),
-                ..
-            } => {
+            IngressMessages::InvalidateIceCandidates(ClientIceCandidates {
+                client_id,
+                candidates,
+            }) => {
                 for candidate in candidates {
                     self.tunnel.state_mut().remove_ice_candidate(
                         client_id,
@@ -365,41 +358,29 @@ impl Eventloop {
                     );
                 }
             }
-            phoenix_channel::Event::InboundMessage {
-                msg:
-                    IngressMessages::RejectAccess(RejectAccess {
-                        client_id,
-                        resource_id,
-                    }),
-                ..
-            } => {
+            IngressMessages::RejectAccess(RejectAccess {
+                client_id,
+                resource_id,
+            }) => {
                 self.tunnel
                     .state_mut()
                     .remove_access(&client_id, &resource_id);
             }
-            phoenix_channel::Event::InboundMessage {
-                msg:
-                    IngressMessages::RelaysPresence(RelaysPresence {
-                        disconnected_ids,
-                        connected,
-                    }),
-                ..
-            } => self.tunnel.state_mut().update_relays(
+            IngressMessages::RelaysPresence(RelaysPresence {
+                disconnected_ids,
+                connected,
+            }) => self.tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
                 firezone_tunnel::turn(&connected),
                 Instant::now(),
             ),
-            phoenix_channel::Event::InboundMessage {
-                msg:
-                    IngressMessages::Init(InitGateway {
-                        interface,
-                        config: _,
-                        account_slug,
-                        relays,
-                        authorizations,
-                    }),
-                ..
-            } => {
+            IngressMessages::Init(InitGateway {
+                interface,
+                config: _,
+                account_slug,
+                relays,
+                authorizations,
+            }) => {
                 if let Some(account_slug) = account_slug {
                     Telemetry::set_account_slug(account_slug.clone());
 
@@ -443,50 +424,44 @@ impl Eventloop {
                     }
                 }
 
-                if self
-                    .set_interface_tasks
-                    .try_push({
-                        let tun_device_manager = self.tun_device_manager.clone();
+                self.tun_device_manager
+                    .set_ips(interface.ipv4, interface.ipv6)
+                    .await
+                    .context("Failed to set TUN interface IPs")?;
+                self.tun_device_manager
+                    .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
+                    .await
+                    .context("Failed to set TUN routes")?;
 
-                        async move {
-                            let mut tun_device_manager = tun_device_manager.lock().await;
+                let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
+                let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
 
-                            tun_device_manager
-                                .set_ips(interface.ipv4, interface.ipv6)
-                                .await
-                                .context("Failed to set TUN interface IPs")?;
-                            tun_device_manager
-                                .set_routes(vec![IPV4_TUNNEL], vec![IPV6_TUNNEL])
-                                .await
-                                .context("Failed to set TUN routes")?;
+                let ipv4_result = self
+                    .tunnel
+                    .rebind_dns_ipv4(ipv4_socket)
+                    .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
+                    .inspect_err(|e| tracing::debug!("{e:#}"));
 
-                            Ok(interface)
-                        }
-                    })
-                    .is_err()
-                {
-                    tracing::warn!("Too many 'Update TUN device' tasks");
-                };
+                let ipv6_result = self
+                    .tunnel
+                    .rebind_dns_ipv6(ipv6_socket)
+                    .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
+                    .inspect_err(|e| tracing::debug!("{e:#}"));
+
+                ipv4_result.or(ipv6_result)?;
             }
-            phoenix_channel::Event::InboundMessage {
-                msg: IngressMessages::ResourceUpdated(resource_description),
-                ..
-            } => {
+            IngressMessages::ResourceUpdated(resource_description) => {
                 self.tunnel
                     .state_mut()
                     .update_resource(resource_description);
             }
-            phoenix_channel::Event::InboundMessage {
-                msg:
-                    IngressMessages::AccessAuthorizationExpiryUpdated(
-                        AccessAuthorizationExpiryUpdated {
-                            client_id: cid,
-                            resource_id: rid,
-                            expires_at,
-                        },
-                    ),
-                ..
-            } => {
+            IngressMessages::AccessAuthorizationExpiryUpdated(
+                AccessAuthorizationExpiryUpdated {
+                    client_id: cid,
+                    resource_id: rid,
+                    expires_at,
+                },
+            ) => {
                 if let Err(e) = self
                     .tunnel
                     .state_mut()
@@ -495,38 +470,22 @@ impl Eventloop {
                     tracing::warn!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
                 };
             }
-            phoenix_channel::Event::ErrorResponse { topic, req_id, res } => {
-                tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
-            }
-            phoenix_channel::Event::Closed => {
-                unimplemented!("Gateway never actively closes the portal connection")
-            }
-            phoenix_channel::Event::SuccessResponse { res: (), .. }
-            | phoenix_channel::Event::HeartbeatSent
-            | phoenix_channel::Event::JoinedRoom { .. } => {}
-            phoenix_channel::Event::Hiccup {
-                backoff,
-                max_elapsed_time,
-                error,
-            } => tracing::info!(
-                ?backoff,
-                ?max_elapsed_time,
-                "Hiccup in portal connection: {error:#}"
-            ),
         }
+
+        Ok(())
     }
 
-    pub fn accept_connection(
+    pub async fn accept_connection(
         &mut self,
         result: Result<Vec<IpAddr>, Arc<anyhow::Error>>,
         req: RequestConnection,
-    ) {
+    ) -> Result<()> {
         let addresses = match result {
             Ok(addresses) => addresses,
             Err(e) => {
                 tracing::debug!(cid = %req.client.id, reference = %req.reference, "DNS resolution failed as part of connection request: {e:#}");
 
-                return; // Fail the connection so the client runs into a timeout.
+                return Ok(()); // Fail the connection so the client runs into a timeout.
             }
         };
 
@@ -544,10 +503,13 @@ impl Eventloop {
                 tracing::debug!("Failed to accept new connection: No TURN servers available");
 
                 // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
-                self.portal
-                    .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+                self.portal_cmd_tx
+                    .send(PortalCommand::Connect(PublicKeyParam(
+                        self.tunnel.public_key().to_bytes(),
+                    )))
+                    .await?;
 
-                return;
+                return Ok(());
             }
         };
 
@@ -568,18 +530,22 @@ impl Eventloop {
 
             self.tunnel.state_mut().cleanup_connection(&cid);
             tracing::debug!(%cid, "Connection request failed: {e:#}");
-            return;
+
+            return Ok(());
         }
 
-        self.portal.send(
-            PHOENIX_TOPIC,
-            EgressMessages::ConnectionReady(ConnectionReady {
-                reference: req.reference,
-                gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
-                    ice_parameters: answer,
-                }),
-            }),
-        );
+        self.portal_cmd_tx
+            .send(PortalCommand::Send(EgressMessages::ConnectionReady(
+                ConnectionReady {
+                    reference: req.reference,
+                    gateway_payload: GatewayResponse::ConnectionAccepted(ConnectionAccepted {
+                        ice_parameters: answer,
+                    }),
+                },
+            )))
+            .await?;
+
+        Ok(())
     }
 
     pub fn allow_access(
@@ -620,6 +586,68 @@ impl Eventloop {
         let cache = self.dns_cache.clone();
 
         async move { cache.try_get_with(domain, do_resolve).await }
+    }
+}
+
+async fn phoenix_channel_event_loop(
+    mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+    event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
+    mut cmd_rx: mpsc::Receiver<PortalCommand>,
+) {
+    use futures::future::Either;
+    use futures::future::select;
+
+    loop {
+        match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
+            Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
+                if event_tx.send(Ok(msg)).await.is_err() {
+                    tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
+                    break;
+                }
+            }
+            Either::Left((Ok(phoenix_channel::Event::ErrorResponse { topic, req_id, res }), _)) => {
+                tracing::warn!(%topic, %req_id, "Request failed: {res:?}");
+            }
+            Either::Left((Ok(phoenix_channel::Event::Closed), _)) => {
+                unimplemented!("Gateway never actively closes the portal connection")
+            }
+            Either::Left((
+                Ok(
+                    phoenix_channel::Event::SuccessResponse { res: (), .. }
+                    | phoenix_channel::Event::HeartbeatSent
+                    | phoenix_channel::Event::JoinedRoom { .. },
+                ),
+                _,
+            )) => {}
+            Either::Left((
+                Ok(phoenix_channel::Event::Hiccup {
+                    backoff,
+                    max_elapsed_time,
+                    error,
+                }),
+                _,
+            )) => tracing::info!(
+                ?backoff,
+                ?max_elapsed_time,
+                "Hiccup in portal connection: {error:#}"
+            ),
+            Either::Left((Err(e), _)) => {
+                if event_tx.send(Err(e)).await.is_err() {
+                    tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
+                    break;
+                }
+            }
+            Either::Right((Some(PortalCommand::Send(msg)), _)) => {
+                portal.send(PHOENIX_TOPIC, msg);
+            }
+            Either::Right((Some(PortalCommand::Connect(param)), _)) => {
+                portal.connect(param);
+            }
+            Either::Right((None, _)) => {
+                tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
+                break;
+            }
+        }
     }
 }
 
