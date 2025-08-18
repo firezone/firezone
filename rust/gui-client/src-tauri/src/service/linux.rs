@@ -24,7 +24,7 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
     ))
     .inspect_err(|e| tracing::error!("IPC service failed: {e:#}"))?;
 
-    runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
+    rt.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
 
     Ok(())
 }
