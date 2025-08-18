@@ -1001,6 +1001,19 @@ defmodule Domain.Repo.Seeds do
         admin_subject
       )
 
+    {:ok, ipv6_resource} =
+      Resources.create_resource(
+        %{
+          type: :cidr,
+          name: "MyCorp Network (IPv6)",
+          address: "172:20:0::1/64",
+          address_description: "172:20:0::1/64",
+          connections: [%{gateway_group_id: gateway_group.id}],
+          filters: []
+        },
+        admin_subject
+      )
+
     {:ok, dns_httpbin_resource} =
       Resources.create_resource(
         %{
@@ -1044,6 +1057,7 @@ defmodule Domain.Repo.Seeds do
     IO.puts("  #{example_dns.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{ip_resource.address} - IP - gateways: #{gateway_name}")
     IO.puts("  #{cidr_resource.address} - CIDR - gateways: #{gateway_name}")
+    IO.puts("  #{ipv6_resource.address} - CIDR - gateways: #{gateway_name}")
     IO.puts("  #{dns_httpbin_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("  #{search_domain_resource.address} - DNS - gateways: #{gateway_name}")
     IO.puts("")
@@ -1124,6 +1138,16 @@ defmodule Domain.Repo.Seeds do
           name: "All Access To Network",
           actor_group_id: synced_group.id,
           resource_id: cidr_resource.id
+        },
+        admin_subject
+      )
+
+    {:ok, _} =
+      Policies.create_policy(
+        %{
+          name: "All Access To Network",
+          actor_group_id: synced_group.id,
+          resource_id: ipv6_resource.id
         },
         admin_subject
       )
