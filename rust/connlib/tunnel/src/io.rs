@@ -243,20 +243,20 @@ impl Io {
             Poll::Pending => {}
         }
 
-        if let Some(timeout) = self.timeout.as_mut() {
-            if timeout.poll_unpin(cx).is_ready() {
-                // Always emit `now` as the timeout value.
-                // This ensures that time within our state machine is always monotonic.
-                // If we were to use the `deadline` of the timer instead, time may go backwards.
-                // That is because it is valid to set a `Sleep` to a timestamp in the past.
-                // It will resolve immediately but it will still report the old timestamp as its deadline.
-                // To guard against this case, specifically call `Instant::now` here.
-                let now = Instant::now();
+        if let Some(timeout) = self.timeout.as_mut()
+            && timeout.poll_unpin(cx).is_ready()
+        {
+            // Always emit `now` as the timeout value.
+            // This ensures that time within our state machine is always monotonic.
+            // If we were to use the `deadline` of the timer instead, time may go backwards.
+            // That is because it is valid to set a `Sleep` to a timestamp in the past.
+            // It will resolve immediately but it will still report the old timestamp as its deadline.
+            // To guard against this case, specifically call `Instant::now` here.
+            let now = Instant::now();
 
-                self.timeout = None; // Clear the timeout.
+            self.timeout = None; // Clear the timeout.
 
-                return Poll::Ready(Ok(Input::Timeout(now)));
-            }
+            return Poll::Ready(Ok(Input::Timeout(now)));
         }
 
         Poll::Pending

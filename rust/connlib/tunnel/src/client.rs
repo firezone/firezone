@@ -1395,10 +1395,10 @@ impl ClientState {
                 continue;
             }
 
-            if let Some(active_resource) = active_cidr_resources.exact_match(resource.address) {
-                if self.is_cidr_resource_connected(&active_resource.id) {
-                    continue;
-                }
+            if let Some(active_resource) = active_cidr_resources.exact_match(resource.address)
+                && self.is_cidr_resource_connected(&active_resource.id)
+            {
+                continue;
             }
 
             active_cidr_resources.insert(resource.address, resource.clone());

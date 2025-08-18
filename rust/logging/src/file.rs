@@ -149,13 +149,13 @@ impl Appender {
         open_options.append(true).create(true);
 
         let new_file = open_options.open(path.as_path());
-        if new_file.is_err() {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-                let file = open_options.open(path)?;
+        if new_file.is_err()
+            && let Some(parent) = path.parent()
+        {
+            fs::create_dir_all(parent)?;
+            let file = open_options.open(path)?;
 
-                return Ok((file, filename));
-            }
+            return Ok((file, filename));
         }
 
         let file = new_file?;

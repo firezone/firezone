@@ -394,11 +394,11 @@ impl Allocation {
                     let _ = nonce.insert(new_nonce.clone());
                 };
 
-                if let Some(offered_realm) = message.get_attribute::<Realm>() {
-                    if offered_realm != realm {
-                        tracing::warn!(allowed_realm = %realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
-                        return true; // We still handled our message correctly.
-                    }
+                if let Some(offered_realm) = message.get_attribute::<Realm>()
+                    && offered_realm != realm
+                {
+                    tracing::warn!(allowed_realm = %realm.text(), server_realm = %offered_realm.text(), "Refusing to authenticate with server");
+                    return true; // We still handled our message correctly.
                 };
 
                 tracing::debug!(
@@ -702,14 +702,13 @@ impl Allocation {
             self.invalidate_allocation();
         }
 
-        if self.has_allocation() {
-            if let Some(addr) = self
+        if self.has_allocation()
+            && let Some(addr) = self
                 .active_socket
                 .as_mut()
                 .and_then(|a| a.handle_timeout(now))
-            {
-                self.queue(addr, make_binding_request(self.software.clone()), None, now);
-            }
+        {
+            self.queue(addr, make_binding_request(self.software.clone()), None, now);
         }
 
         while let Some(timed_out_request) = self
@@ -753,11 +752,12 @@ impl Allocation {
             backoff.handle_timeout(now);
         }
 
-        if let Some(refresh_at) = self.refresh_allocation_at() {
-            if (now >= refresh_at) && !self.refresh_in_flight() {
-                tracing::debug!("Allocation is due for a refresh");
-                self.authenticate_and_queue(make_refresh_request(self.software.clone()), None, now);
-            }
+        if let Some(refresh_at) = self.refresh_allocation_at()
+            && (now >= refresh_at)
+            && !self.refresh_in_flight()
+        {
+            tracing::debug!("Allocation is due for a refresh");
+            self.authenticate_and_queue(make_refresh_request(self.software.clone()), None, now);
         }
 
         let channel_refresh_messages = self

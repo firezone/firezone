@@ -175,10 +175,8 @@ impl Sockets {
                         self.current_ready_sockets.insert((0, token));
                     }
 
-                    if writeable {
-                        if let Some(waker) = self.flush_waker.take() {
-                            waker.wake();
-                        }
+                    if writeable && let Some(waker) = self.flush_waker.take() {
+                        waker.wake();
                     }
 
                     continue;

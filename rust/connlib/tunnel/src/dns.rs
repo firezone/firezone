@@ -479,10 +479,10 @@ mod pattern {
         pub fn matches(&self, domain: &Candidate) -> bool {
             let domain = domain.0.as_str();
 
-            if let Some(rem) = self.inner.as_str().strip_prefix("*/") {
-                if domain == rem {
-                    return true;
-                }
+            if let Some(rem) = self.inner.as_str().strip_prefix("*/")
+                && domain == rem
+            {
+                return true;
             }
 
             self.inner.matches_with(

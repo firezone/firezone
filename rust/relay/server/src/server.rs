@@ -676,14 +676,13 @@ where
         if let Some(number) = self
             .channel_numbers_by_client_and_peer
             .get(&(sender, peer_address))
+            && number != &requested_channel
         {
-            if number != &requested_channel {
-                let (error_response, msg) = make_error_response(BadRequest, request);
+            let (error_response, msg) = make_error_response(BadRequest, request);
 
-                tracing::warn!(target: "relay", existing_channel = %number.value(), allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is already bound to another channel");
+            tracing::warn!(target: "relay", existing_channel = %number.value(), allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "{msg}: Peer is already bound to another channel");
 
-                return Err(error_response);
-            }
+            return Err(error_response);
         }
 
         // Ensure the channel is not already bound to a different address.

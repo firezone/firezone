@@ -2019,10 +2019,10 @@ where
         }
 
         // If `boringtun` wants to be called earlier than the scheduled interval, move it forward.
-        if let Some(next_update) = self.tunnel.next_timer_update() {
-            if next_update < self.next_wg_timer_update {
-                self.next_wg_timer_update = next_update;
-            }
+        if let Some(next_update) = self.tunnel.next_timer_update()
+            && next_update < self.next_wg_timer_update
+        {
+            self.next_wg_timer_update = next_update;
         }
 
         while let Some(event) = self.agent.poll_event() {

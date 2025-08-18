@@ -18,7 +18,7 @@ impl<'a> Packet<'a> {
     }
 }
 
-pub fn decode(data: &[u8]) -> Result<Packet, io::Error> {
+pub fn decode(data: &[u8]) -> Result<Packet<'_>, io::Error> {
     if data.len() < HEADER_LEN {
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,

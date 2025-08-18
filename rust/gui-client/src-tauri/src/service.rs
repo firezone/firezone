@@ -447,13 +447,13 @@ impl<'a> Handler<'a> {
             });
         }
 
-        if let Some(event_stream) = self.session.as_event_stream() {
-            if let Poll::Ready(option) = event_stream.poll_next(cx) {
-                return Poll::Ready(match option {
-                    Some(x) => Event::Connlib(x),
-                    None => Event::CallbackChannelClosed,
-                });
-            }
+        if let Some(event_stream) = self.session.as_event_stream()
+            && let Poll::Ready(option) = event_stream.poll_next(cx)
+        {
+            return Poll::Ready(match option {
+                Some(x) => Event::Connlib(x),
+                None => Event::CallbackChannelClosed,
+            });
         }
 
         Poll::Pending

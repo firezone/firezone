@@ -75,15 +75,13 @@ impl Client {
 
     pub fn handle_inbound(&mut self, packet: IpPacket) {
         // TODO: Upstream ICMP error handling to `smoltcp`.
-        if let Ok(Some((failed_packet, _))) = packet.icmp_error() {
-            if let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol() {
-                if let Some(handle) = self
-                    .sockets_by_remote
-                    .get(&SocketAddr::new(failed_packet.dst(), dst))
-                {
-                    self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
-                }
-            }
+        if let Ok(Some((failed_packet, _))) = packet.icmp_error()
+            && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
+            && let Some(handle) = self
+                .sockets_by_remote
+                .get(&SocketAddr::new(failed_packet.dst(), dst))
+        {
+            self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
         }
 
         self.device.receive(packet);
@@ -111,7 +109,7 @@ impl Client {
         Some(self.last_now + Duration::from(poll_in))
     }
 
-    pub fn iter_sockets(&self) -> impl Iterator<Item = &Socket> {
+    pub fn iter_sockets(&self) -> impl Iterator<Item = &Socket<'_>> {
         self.sockets.iter().map(|(_, s)| match s {
             l3_tcp::AnySocket::Tcp(socket) => socket,
         })
