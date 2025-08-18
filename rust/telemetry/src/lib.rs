@@ -208,7 +208,7 @@ impl Telemetry {
 
         // Sentry uses blocking IO for flushing ..
         let task = tokio::task::spawn_blocking(move || {
-            if !inner.flush(Some(Duration::from_secs(2))) {
+            if !inner.flush(Some(Duration::from_secs(1))) {
                 return Err(anyhow!("Failed to flush telemetry events to sentry.io"));
             };
 
@@ -219,9 +219,9 @@ impl Telemetry {
             Ok(())
         });
 
-        tokio::time::timeout(Duration::from_secs(2), task)
+        tokio::time::timeout(Duration::from_secs(1), task)
             .await
-            .context("Failed to end session within 2s")???;
+            .context("Failed to end session within 1s")???;
 
         Ok(())
     }
