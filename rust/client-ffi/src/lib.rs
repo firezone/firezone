@@ -5,6 +5,7 @@ use std::{
     os::fd::{AsRawFd as _, RawFd},
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 
 use anyhow::{Context as _, Result};
@@ -26,7 +27,7 @@ pub struct Session {
     inner: client_shared::Session,
     events: Mutex<client_shared::EventStream>,
     telemetry: Mutex<Telemetry>,
-    runtime: tokio::runtime::Runtime,
+    runtime: Option<tokio::runtime::Runtime>,
 }
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
@@ -113,11 +114,15 @@ impl Session {
         )
     }
 
-    pub fn disconnect(&self) {
-        self.runtime.block_on(async {
+    pub fn disconnect(&self) -> Result<(), Error> {
+        let runtime = self.runtime.as_ref().context("No runtime")?;
+
+        runtime.block_on(async {
             self.telemetry.lock().await.stop().await;
         });
         self.inner.stop();
+
+        Ok(())
     }
 
     pub fn set_disabled_resources(&self, disabled_resources: String) -> Result<(), Error> {
@@ -153,7 +158,7 @@ impl Session {
     }
 
     pub fn set_tun(&self, fd: RawFd) -> Result<(), Error> {
-        let _guard = self.runtime.enter();
+        let _guard = self.runtime.as_ref().context("No runtime")?.enter();
         // SAFETY: FD must be open.
         let tun = unsafe { platform::Tun::from_fd(fd).context("Failed to create new Tun")? };
 
@@ -203,8 +208,12 @@ impl Session {
 
 impl Drop for Session {
     fn drop(&mut self) {
-        self.runtime
-            .block_on(async { self.telemetry.lock().await.stop_on_crash().await })
+        let Some(runtime) = self.runtime.take() else {
+            return;
+        };
+
+        runtime.block_on(async { self.telemetry.lock().await.stop_on_crash().await });
+        runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
     }
 }
 
@@ -279,7 +288,7 @@ fn connect(
         inner: session,
         events: Mutex::new(events),
         telemetry: Mutex::new(telemetry),
-        runtime,
+        runtime: Some(runtime),
     })
 }
 

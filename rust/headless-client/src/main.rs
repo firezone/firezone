@@ -20,6 +20,7 @@ use secrecy::{Secret, SecretString};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 use tokio::time::Instant;
 
@@ -355,7 +356,11 @@ fn main() -> Result<()> {
         drop(session);
 
         result
-    })
+    })?;
+
+    rt.shutdown_timeout(Duration::from_secs(1));
+
+    Ok(())
 }
 
 /// Read the token from disk if it was not in the environment

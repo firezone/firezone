@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use anyhow::{Result, bail};
 use firezone_bin_shared::{DnsControlMethod, signals};
@@ -22,7 +22,11 @@ pub fn run(log_dir: Option<PathBuf>, dns_control: DnsControlMethod) -> Result<()
         &log_filter_reloader,
         &mut signals,
     ))
-    .inspect_err(|e| tracing::error!("IPC service failed: {e:#}"))
+    .inspect_err(|e| tracing::error!("IPC service failed: {e:#}"))?;
+
+    rt.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
+
+    Ok(())
 }
 
 /// Returns true if the Tunnel service can run properly
