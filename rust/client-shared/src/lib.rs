@@ -138,10 +138,14 @@ async fn connect(
     cmd_rx: UnboundedReceiver<Command>,
     event_tx: Sender<Event>,
 ) -> Result<()> {
-    let tunnel = ClientTunnel::new(tcp_socket_factory, udp_socket_factory);
-    let mut eventloop = Eventloop::new(tunnel, portal, cmd_rx, event_tx);
-
-    std::future::poll_fn(|cx| eventloop.poll(cx)).await?;
+    Eventloop::new(
+        ClientTunnel::new(tcp_socket_factory, udp_socket_factory),
+        portal,
+        cmd_rx,
+        event_tx,
+    )
+    .run()
+    .await?;
 
     Ok(())
 }
