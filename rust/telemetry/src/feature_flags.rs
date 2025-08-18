@@ -114,7 +114,7 @@ async fn decide(
 
     let response = reqwest::ClientBuilder::new()
         .connection_verbose(true)
-        .pool_idle_timeout(RE_EVAL_DURATION * 2) // Ensure we re-use the same connection if possible.
+        .pool_idle_timeout(RE_EVAL_DURATION * 2) // Ensure we reuse the same connection if possible.
         .pool_max_idle_per_host(1)
         .build()?
         .post("https://us.i.posthog.com/decide?v=3")
