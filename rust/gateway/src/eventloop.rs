@@ -126,7 +126,7 @@ impl Eventloop {
                 }
                 CombinedEvent::Portal(None) => {
                     return Err(anyhow::Error::msg(
-                        "phoenix channel task stoppe unexpectedly",
+                        "phoenix channel task stopped unexpectedly",
                     ));
                 }
                 CombinedEvent::Portal(Some(Err(e))) => {
