@@ -217,12 +217,12 @@ impl InterfaceAddressV4 {
         self.address = addr.octets();
     }
 
-    pub fn get(&self) -> Ipv4Addr {
-        self.address.into()
-    }
-
-    pub fn is_learned(&self) -> bool {
-        self.address != Self::ZERO
+    pub fn get(&self) -> Option<Ipv4Addr> {
+        if self.address != Self::ZERO {
+            Some(self.address.into())
+        } else {
+            None
+        }
     }
 }
 
@@ -240,12 +240,12 @@ impl InterfaceAddressV6 {
         self.address = addr.octets();
     }
 
-    pub fn get(&self) -> Ipv6Addr {
-        self.address.into()
-    }
-
-    pub fn is_learned(&self) -> bool {
-        self.address != Self::ZERO
+    pub fn get(&self) -> Option<Ipv6Addr> {
+        if self.address != Self::ZERO {
+            Some(self.address.into())
+        } else {
+            None
+        }
     }
 }
 

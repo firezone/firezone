@@ -405,7 +405,7 @@ fn learn_interface_ipv4_address(ipv4: &Ip4) -> Result<(), Error> {
 
     // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
     unsafe {
-        if !(*interface_addr).is_learned() {
+        if (*interface_addr).get().is_none() {
             (*interface_addr).set(dst_ip);
         }
     }
@@ -423,7 +423,7 @@ fn learn_interface_ipv6_address(ipv6: &Ip6) -> Result<(), Error> {
 
     // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
     unsafe {
-        if !(*interface_addr).is_learned() {
+        if (*interface_addr).get().is_none() {
             (*interface_addr).set(dst_ip);
         }
     }
