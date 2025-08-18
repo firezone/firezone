@@ -1,19 +1,22 @@
-use std::sync::LazyLock;
+use std::{net::ToSocketAddrs as _, sync::LazyLock, time::Duration};
 use tokio::runtime::Runtime;
 
 use crate::Env;
 
-pub(crate) const POSTHOG_API_KEY_PROD: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
-pub(crate) const POSTHOG_API_KEY_STAGING: &str = "phc_tHOVtq183RpfKmzadJb4bxNpLM5jzeeb1Gu8YSH3nsK";
-pub(crate) const POSTHOG_API_KEY_ON_PREM: &str = "phc_4R9Ii6q4SEofVkH7LvajwuJ3nsGFhCj0ZlfysS2FNc";
+pub(crate) const API_KEY_PROD: &str = "phc_uXXl56plyvIBHj81WwXBLtdPElIRbm7keRTdUCmk8ll";
+pub(crate) const API_KEY_STAGING: &str = "phc_tHOVtq183RpfKmzadJb4bxNpLM5jzeeb1Gu8YSH3nsK";
+pub(crate) const API_KEY_ON_PREM: &str = "phc_4R9Ii6q4SEofVkH7LvajwuJ3nsGFhCj0ZlfysS2FNc";
 
 pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
+pub(crate) static CLIENT: LazyLock<reqwest::Result<reqwest::Client>> = LazyLock::new(init_client);
+
+pub(crate) const INGEST_HOST: &str = "us.i.posthog.com";
 
 pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
     match env {
-        Env::Production => Some(POSTHOG_API_KEY_PROD),
-        Env::Staging => Some(POSTHOG_API_KEY_STAGING),
-        Env::OnPrem => Some(POSTHOG_API_KEY_ON_PREM),
+        Env::Production => Some(API_KEY_PROD),
+        Env::Staging => Some(API_KEY_STAGING),
+        Env::OnPrem => Some(API_KEY_ON_PREM),
         Env::DockerCompose | Env::Localhost => None,
     }
 }
@@ -31,4 +34,27 @@ fn init_runtime() -> Runtime {
     runtime.spawn(crate::feature_flags::reeval_timer());
 
     runtime
+}
+
+/// Initialize the client to use for evaluating feature flags.
+fn init_client() -> reqwest::Result<reqwest::Client> {
+    let ingest_host_addresses = (INGEST_HOST, 443u16)
+        .to_socket_addrs()
+        .inspect_err(|e| {
+            tracing::error!("Failed to resolve ingest host (`{INGEST_HOST}`) IPs: {e:#}")
+        })
+        .unwrap_or_default()
+        .collect::<Vec<_>>();
+
+    tracing::debug!(host = %INGEST_HOST, addresses = ?ingest_host_addresses, "Resolved PostHog ingest host addresses");
+
+    reqwest::ClientBuilder::new()
+        .connection_verbose(true)
+        .pool_idle_timeout(None) // Never remove idle connections.
+        .pool_max_idle_per_host(1)
+        .http2_prior_knowledge() // We know PostHog supports HTTP/2.
+        .http2_keep_alive_timeout(Duration::from_secs(1))
+        .http2_keep_alive_interval(Duration::from_secs(5)) // Use keep-alives to detect broken connections.
+        .resolve_to_addrs(INGEST_HOST, &ingest_host_addresses)
+        .build()
 }

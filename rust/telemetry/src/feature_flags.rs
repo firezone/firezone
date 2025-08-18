@@ -15,10 +15,7 @@ use sha2::Digest as _;
 use tracing::{Metadata, level_filters::LevelFilter};
 use tracing_subscriber::filter::Targets;
 
-use crate::{
-    Env,
-    posthog::{POSTHOG_API_KEY_PROD, POSTHOG_API_KEY_STAGING, RUNTIME},
-};
+use crate::{Env, posthog};
 
 pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
@@ -53,8 +50,8 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
     }
 
     let api_key = match env {
-        Env::Production => POSTHOG_API_KEY_PROD,
-        Env::Staging => POSTHOG_API_KEY_STAGING,
+        Env::Production => posthog::API_KEY_PROD,
+        Env::Staging => posthog::API_KEY_STAGING,
         Env::OnPrem | Env::DockerCompose | Env::Localhost => return,
     };
 
@@ -77,7 +74,7 @@ pub(crate) fn reevaluate(user_id: String, env: &str) {
         return;
     };
 
-    RUNTIME.spawn(evaluate_now(user_id, env));
+    posthog::RUNTIME.spawn(evaluate_now(user_id, env));
 }
 
 pub(crate) async fn reeval_timer() {
@@ -112,12 +109,9 @@ async fn decide(
         maybe_legacy_id
     };
 
-    let response = reqwest::ClientBuilder::new()
-        .connection_verbose(true)
-        .pool_idle_timeout(RE_EVAL_DURATION * 2) // Ensure we reuse the same connection if possible.
-        .pool_max_idle_per_host(1)
-        .build()?
-        .post("https://us.i.posthog.com/decide?v=3")
+    let response = posthog::CLIENT
+        .as_ref()?
+        .post(format!("https://{}/decide?v=3", posthog::INGEST_HOST))
         .json(&DecideRequest {
             api_key,
             distinct_id,
