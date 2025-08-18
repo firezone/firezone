@@ -1,12 +1,21 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::{borrow::Cow, collections::BTreeMap, fmt, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    borrow::Cow,
+    collections::BTreeMap,
+    fmt,
+    net::{SocketAddr, ToSocketAddrs as _},
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, SessionStatus},
+    transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
 
@@ -22,34 +31,56 @@ mod posthog;
 pub use maybe_push_metrics_exporter::MaybePushMetricsExporter;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 
-pub struct Dsn(&'static str);
+pub struct Dsn {
+    public_key: &'static str,
+    project_id: u64,
+}
 
 // TODO: Dynamic DSN
 // Sentry docs say this does not need to be protected:
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
-pub const ANDROID_DSN: Dsn = Dsn(
-    "https://928a6ee1f6af9734100b8bc89b2dc87d@o4507971108339712.ingest.us.sentry.io/4508175126233088",
-);
-pub const APPLE_DSN: Dsn = Dsn(
-    "https://66c71f83675f01abfffa8eb977bcbbf7@o4507971108339712.ingest.us.sentry.io/4508175177023488",
-);
-pub const GATEWAY_DSN: Dsn = Dsn(
-    "https://f763102cc3937199ec483fbdae63dfdc@o4507971108339712.ingest.us.sentry.io/4508162914451456",
-);
-pub const GUI_DSN: Dsn = Dsn(
-    "https://2e17bf5ed24a78c0ac9e84a5de2bd6fc@o4507971108339712.ingest.us.sentry.io/4508008945549312",
-);
-pub const HEADLESS_DSN: Dsn = Dsn(
-    "https://bc27dca8bb37be0142c48c4f89647c13@o4507971108339712.ingest.us.sentry.io/4508010028728320",
-);
-pub const RELAY_DSN: Dsn = Dsn(
-    "https://9d5f664d8f8f7f1716d4b63a58bcafd5@o4507971108339712.ingest.us.sentry.io/4508373298970624",
-);
-pub const TESTING: Dsn = Dsn(
-    "https://55ef451fca9054179a11f5d132c02f45@o4507971108339712.ingest.us.sentry.io/4508792604852224",
-);
+const INGEST_HOST: &str = "o4507971108339712.ingest.us.sentry.io";
+
+pub const ANDROID_DSN: Dsn = Dsn {
+    public_key: "928a6ee1f6af9734100b8bc89b2dc87d",
+    project_id: 4508175126233088,
+};
+pub const APPLE_DSN: Dsn = Dsn {
+    public_key: "66c71f83675f01abfffa8eb977bcbbf7",
+    project_id: 4508175177023488,
+};
+pub const GATEWAY_DSN: Dsn = Dsn {
+    public_key: "f763102cc3937199ec483fbdae63dfdc",
+    project_id: 4508162914451456,
+};
+pub const GUI_DSN: Dsn = Dsn {
+    public_key: "2e17bf5ed24a78c0ac9e84a5de2bd6fc",
+    project_id: 4508008945549312,
+};
+pub const HEADLESS_DSN: Dsn = Dsn {
+    public_key: "bc27dca8bb37be0142c48c4f89647c13",
+    project_id: 4508010028728320,
+};
+pub const RELAY_DSN: Dsn = Dsn {
+    public_key: "9d5f664d8f8f7f1716d4b63a58bcafd5",
+    project_id: 4508373298970624,
+};
+pub const TESTING: Dsn = Dsn {
+    public_key: "55ef451fca9054179a11f5d132c02f45",
+    project_id: 4508792604852224,
+};
+
+impl fmt::Display for Dsn {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "https://{}@{INGEST_HOST}/{}",
+            self.public_key, self.project_id
+        )
+    }
+}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub(crate) enum Env {
@@ -104,9 +135,24 @@ impl fmt::Display for Env {
     }
 }
 
-#[derive(Default)]
 pub struct Telemetry {
     inner: Option<sentry::ClientInitGuard>,
+    transport: TransportFactory,
+}
+
+impl Default for Telemetry {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            // The instances for `Telemetry` get created at the very beginning of each program entry-point.
+            // Therefore, it is safe to perform DNS resolution there right away before the tunnel is up.
+            transport: TransportFactory::resolve_ingest_host().unwrap_or_else(|e| {
+                tracing::error!("Failed to resolve ingest host: {e:#}");
+
+                TransportFactory::without_addresses()
+            }),
+        }
+    }
 }
 
 impl Drop for Telemetry {
@@ -156,17 +202,21 @@ impl Telemetry {
         feature_flags::evaluate_now(firezone_id.clone(), environment).await;
         tracing::info!(%environment, "Starting telemetry");
 
+        let client_options = sentry::ClientOptions {
+            environment: Some(Cow::Borrowed(environment.as_str())),
+            // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
+            release: Some(release.to_owned().into()),
+            max_breadcrumbs: 500,
+            before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
+            enable_logs: true,
+            before_send_log: Some(Arc::new(append_tracing_fields_to_message)),
+            ..Default::default()
+        };
         let inner = sentry::init((
-            dsn.0,
+            dsn.to_string(),
             sentry::ClientOptions {
-                environment: Some(Cow::Borrowed(environment.as_str())),
-                // We can't get the release number ourselves because we don't know if we're embedded in a GUI Client or a Headless Client.
-                release: Some(release.to_owned().into()),
-                max_breadcrumbs: 500,
-                before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
-                enable_logs: true,
-                before_send_log: Some(Arc::new(append_tracing_fields_to_message)),
-                ..Default::default()
+                transport: Some(Arc::new(self.transport.clone())),
+                ..client_options
             },
         ));
         // Configure scope on the main hub so that all threads will get the tags
@@ -343,6 +393,50 @@ fn update_user(update: impl FnOnce(&mut sentry::User)) {
 
 fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
+}
+
+#[derive(Debug, Clone)]
+pub struct TransportFactory {
+    ingest_domain_addresses: Vec<SocketAddr>,
+}
+
+impl TransportFactory {
+    pub fn resolve_ingest_host() -> Result<Self> {
+        let resolved_addresses = (INGEST_HOST, 443u16)
+            .to_socket_addrs()
+            .with_context(|| format!("Failed to resolve {INGEST_HOST}"))?
+            .collect();
+
+        tracing::debug!(host = %INGEST_HOST, addresses = ?resolved_addresses, "Resolved ingest host IPs");
+
+        Ok(Self {
+            ingest_domain_addresses: resolved_addresses,
+        })
+    }
+
+    fn without_addresses() -> Self {
+        Self {
+            ingest_domain_addresses: Default::default(),
+        }
+    }
+}
+
+impl sentry::TransportFactory for TransportFactory {
+    fn create_transport(&self, options: &sentry::ClientOptions) -> Arc<dyn sentry::Transport> {
+        let client = reqwest::ClientBuilder::new()
+            .http2_prior_knowledge()
+            .http2_keep_alive_while_idle(true)
+            .http2_keep_alive_timeout(Duration::from_secs(1))
+            .http2_keep_alive_interval(Duration::from_secs(5)) // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
+            .resolve_to_addrs(
+                "o4507971108339712.ingest.us.sentry.io",
+                &self.ingest_domain_addresses,
+            )
+            .build()
+            .expect("Failed to build HTTP client");
+
+        Arc::new(ReqwestHttpTransport::with_client(options, client))
+    }
 }
 
 #[cfg(test)]
