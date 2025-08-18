@@ -118,7 +118,7 @@ mod ffi {
 /// This is used by the apple client to interact with our code.
 pub struct WrappedSession {
     inner: Session,
-    runtime: Runtime,
+    runtime: Option<Runtime>,
 
     telemetry: Telemetry,
 }
@@ -344,7 +344,7 @@ impl WrappedSession {
 
         Ok(Self {
             inner: session,
-            runtime,
+            runtime: Some(runtime),
             telemetry,
         })
     }
@@ -386,7 +386,12 @@ impl WrappedSession {
 
 impl Drop for WrappedSession {
     fn drop(&mut self) {
-        self.runtime.block_on(self.telemetry.stop());
+        let Some(runtime) = self.runtime.take() else {
+            return;
+        };
+
+        runtime.block_on(self.telemetry.stop());
+        runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
     }
 }
 
