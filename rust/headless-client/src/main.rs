@@ -187,8 +187,9 @@ fn main() -> Result<()> {
         None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
-    let mut telemetry = Telemetry::default();
-    if cli.is_telemetry_allowed() {
+    let mut telemetry = if cli.is_telemetry_allowed() {
+        let mut telemetry = Telemetry::new().context("Failed to create telemetry client")?;
+
         rt.block_on(telemetry.start(
             cli.api_url.as_ref(),
             RELEASE,
@@ -197,7 +198,11 @@ fn main() -> Result<()> {
         ));
 
         analytics::identify(RELEASE.to_owned(), None);
-    }
+
+        telemetry
+    } else {
+        Telemetry::disabled()
+    };
 
     tracing::info!(arch = std::env::consts::ARCH, version = VERSION);
 

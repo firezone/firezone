@@ -26,10 +26,17 @@ fn main() -> ExitCode {
         std::env::set_var("GDK_BACKEND", "x11");
     }
 
-    let mut telemetry = Telemetry::default();
+    let cli = Cli::parse();
+
+    let mut telemetry = if cli.is_telemetry_allowed() {
+        Telemetry::new().expect("Failed to create telemetry client")
+    } else {
+        Telemetry::disabled()
+    };
+
     let rt = tokio::runtime::Runtime::new().expect("failed to build runtime");
 
-    match try_main(&rt, &mut bootstrap_log_guard, &mut telemetry) {
+    match try_main(cli, &rt, &mut bootstrap_log_guard, &mut telemetry) {
         Ok(()) => {
             rt.block_on(telemetry.stop());
 
@@ -46,12 +53,11 @@ fn main() -> ExitCode {
 }
 
 fn try_main(
+    cli: Cli,
     rt: &Runtime,
     bootstrap_log_guard: &mut Option<DefaultGuard>,
     telemetry: &mut Telemetry,
 ) -> Result<()> {
-    let cli = Cli::parse();
-
     let config = gui::RunConfig {
         inject_faults: cli.inject_faults,
         debug_update_check: cli.debug_update_check,

@@ -140,21 +140,6 @@ pub struct Telemetry {
     transport: TransportFactory,
 }
 
-impl Default for Telemetry {
-    fn default() -> Self {
-        Self {
-            inner: Default::default(),
-            // The instances for `Telemetry` get created at the very beginning of each program entry-point.
-            // Therefore, it is safe to perform DNS resolution there right away before the tunnel is up.
-            transport: TransportFactory::resolve_ingest_host().unwrap_or_else(|e| {
-                tracing::error!("Failed to resolve ingest host: {e:#}");
-
-                TransportFactory::without_addresses()
-            }),
-        }
-    }
-}
-
 impl Drop for Telemetry {
     fn drop(&mut self) {
         if self.inner.is_none() {
@@ -167,6 +152,22 @@ impl Drop for Telemetry {
 }
 
 impl Telemetry {
+    pub fn new() -> Result<Self> {
+        Ok(Self {
+            inner: Default::default(),
+            // The instances for `Telemetry` get created at the very beginning of each program entry-point.
+            // Therefore, it is safe to perform DNS resolution there right away before the tunnel is up.
+            transport: TransportFactory::resolve_ingest_host()?,
+        })
+    }
+
+    pub fn disabled() -> Self {
+        Self {
+            inner: None,
+            transport: TransportFactory::without_addresses(),
+        }
+    }
+
     pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
         // Can't use URLs as `environment` directly, because Sentry doesn't allow slashes in environments.
         // <https://docs.sentry.io/platforms/rust/configuration/environments/>
@@ -444,7 +445,7 @@ mod tests {
 
     #[tokio::test]
     async fn starting_session_for_unsupported_env_disables_current_one() {
-        let mut telemetry = Telemetry::default();
+        let mut telemetry = Telemetry::new().unwrap();
         telemetry
             .start("wss://api.firez.one", "1.0.0", TESTING, String::new())
             .await;
