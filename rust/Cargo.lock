@@ -1347,6 +1347,7 @@ dependencies = [
  "dns-types",
  "firezone-logging",
  "firezone-tunnel",
+ "futures",
  "ip_network",
  "libc",
  "phoenix-channel",
