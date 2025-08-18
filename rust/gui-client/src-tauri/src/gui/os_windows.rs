@@ -108,13 +108,13 @@ pub(crate) fn show_clickable_notification(
         .text1(body)
         .scenario(tauri_winrt_notification::Scenario::Reminder)
         .on_activated(move |_| {
-            if let Some(req) = req.take() {
-                if let Err(error) = tx.blocking_send(req) {
-                    tracing::error!(
-                        "User clicked on notification, but we couldn't tell `Controller`: {}",
-                        err_with_src(&error)
-                    );
-                }
+            if let Some(req) = req.take()
+                && let Err(error) = tx.blocking_send(req)
+            {
+                tracing::error!(
+                    "User clicked on notification, but we couldn't tell `Controller`: {}",
+                    err_with_src(&error)
+                );
             }
             Ok(())
         })

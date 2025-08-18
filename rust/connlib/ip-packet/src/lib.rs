@@ -360,26 +360,26 @@ impl IpPacket {
     }
 
     fn set_icmp_identifier(&mut self, v: u16) {
-        if let Some(icmpv4) = self.as_icmpv4() {
-            if matches!(
+        if let Some(icmpv4) = self.as_icmpv4()
+            && matches!(
                 icmpv4.icmp_type(),
                 Icmpv4Type::EchoRequest(_) | Icmpv4Type::EchoReply(_)
-            ) {
-                self.as_icmpv4_mut()
-                    .expect("Not an ICMPv4 packet")
-                    .set_identifier(v);
-            }
+            )
+        {
+            self.as_icmpv4_mut()
+                .expect("Not an ICMPv4 packet")
+                .set_identifier(v);
         }
 
-        if let Some(icmpv6) = self.as_icmpv6() {
-            if matches!(
+        if let Some(icmpv6) = self.as_icmpv6()
+            && matches!(
                 icmpv6.icmp_type(),
                 Icmpv6Type::EchoRequest(_) | Icmpv6Type::EchoReply(_)
-            ) {
-                self.as_icmpv6_mut()
-                    .expect("Not an ICMPv6 packet")
-                    .set_identifier(v);
-            }
+            )
+        {
+            self.as_icmpv6_mut()
+                .expect("Not an ICMPv6 packet")
+                .set_identifier(v);
         }
     }
 
