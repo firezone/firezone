@@ -9,9 +9,10 @@ use firezone_tunnel::messages::client::{
 };
 use firezone_tunnel::{ClientTunnel, IpConfig};
 use ip_network::{Ipv4Network, Ipv6Network};
-use phoenix_channel::{ErrorReply, OutboundRequestId, PhoenixChannel, PublicKeyParam};
+use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
 use std::mem;
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::pin::pin;
 use std::time::Instant;
 use std::{
     collections::BTreeSet,
@@ -19,15 +20,18 @@ use std::{
     net::IpAddr,
     task::{Context, Poll},
 };
+use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tun::Tun;
 
 pub struct Eventloop {
     tunnel: ClientTunnel,
 
-    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
-    event_tx: tokio::sync::mpsc::Sender<Event>,
+    cmd_rx: mpsc::UnboundedReceiver<Command>,
+    event_tx: mpsc::Sender<Event>,
+
+    portal_event_rx: mpsc::Receiver<PortalEvent>,
+    portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
 }
@@ -54,6 +58,20 @@ pub enum Event {
     Disconnected(DisconnectError),
 }
 
+enum PortalCommand {
+    Connect(PublicKeyParam),
+    Send(EgressMessages),
+}
+
+#[expect(
+    clippy::large_enum_variant,
+    reason = "This type is only sent through a channel so the stack-size doesn't matter much."
+)]
+enum PortalEvent {
+    Received(IngressMessages),
+    Error(phoenix_channel::Error),
+}
+
 /// Unified error type to use across connlib.
 #[derive(thiserror::Error, Debug)]
 #[error("{0:#}")]
@@ -78,18 +96,30 @@ impl DisconnectError {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: ClientTunnel,
-        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<Command>,
-        event_tx: tokio::sync::mpsc::Sender<Event>,
+        portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+        cmd_rx: mpsc::UnboundedReceiver<Command>,
+        event_tx: mpsc::Sender<Event>,
     ) -> Self {
-        portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
+        let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
+        let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
+
+        let _ = portal_cmd_tx.try_send(PortalCommand::Connect(PublicKeyParam(
+            tunnel.public_key().to_bytes(),
+        )));
+
+        tokio::spawn(phoenix_channel_event_loop(
+            portal,
+            portal_event_tx,
+            portal_cmd_rx,
+        ));
 
         Self {
             tunnel,
-            portal,
             cmd_rx,
             event_tx,
             logged_permission_denied: false,
+            portal_event_rx,
+            portal_cmd_tx,
         }
     }
 }
@@ -114,8 +144,10 @@ impl Eventloop {
                 }
                 Poll::Ready(Some(Command::Reset(reason))) => {
                     self.tunnel.reset(&reason);
-                    self.portal
-                        .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+                    self.portal_cmd_tx
+                        .try_send(PortalCommand::Connect(PublicKeyParam(
+                            self.tunnel.public_key().to_bytes(),
+                        )));
 
                     continue;
                 }
@@ -185,11 +217,16 @@ impl Eventloop {
                 Poll::Pending => {}
             }
 
-            match self.portal.poll(cx) {
-                Poll::Ready(result) => {
-                    let event = result.context("connection to the portal failed")?;
-                    self.handle_portal_event(event);
+            match self.portal_event_rx.poll_recv(cx) {
+                Poll::Ready(Some(PortalEvent::Received(msg))) => {
+                    self.handle_portal_inbound_message(msg);
                     continue;
+                }
+                Poll::Ready(Some(PortalEvent::Error(e))) => {
+                    return Poll::Ready(Err(e).context("Connection to portal failed"));
+                }
+                Poll::Ready(None) => {
+                    return Poll::Ready(Err(anyhow::Error::msg("portal task exited unexpectedly")));
                 }
                 Poll::Pending => {}
             }
@@ -206,13 +243,12 @@ impl Eventloop {
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending new ICE candidates to gateway");
 
-                self.portal.send(
-                    PHOENIX_TOPIC,
+                self.portal_cmd_tx.try_send(PortalCommand::Send(
                     EgressMessages::BroadcastIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gid],
                         candidates,
                     }),
-                );
+                ));
 
                 None
             }
@@ -222,13 +258,12 @@ impl Eventloop {
             } => {
                 tracing::debug!(%gid, ?candidates, "Sending invalidated ICE candidates to gateway");
 
-                self.portal.send(
-                    PHOENIX_TOPIC,
+                self.portal_cmd_tx.try_send(PortalCommand::Send(
                     EgressMessages::BroadcastInvalidatedIceCandidates(GatewaysIceCandidates {
                         gateway_ids: vec![gid],
                         candidates,
                     }),
-                );
+                ));
 
                 None
             }
@@ -236,13 +271,11 @@ impl Eventloop {
                 connected_gateway_ids,
                 resource,
             } => {
-                self.portal.send(
-                    PHOENIX_TOPIC,
-                    EgressMessages::CreateFlow {
+                self.portal_cmd_tx
+                    .try_send(PortalCommand::Send(EgressMessages::CreateFlow {
                         resource_id: resource,
                         connected_gateway_ids,
-                    },
-                );
+                    }));
 
                 None
             }
@@ -259,32 +292,6 @@ impl Eventloop {
                     ipv6_routes: Vec::from_iter(config.ipv6_routes),
                 })
             }
-        }
-    }
-
-    fn handle_portal_event(&mut self, event: phoenix_channel::Event<IngressMessages, ()>) {
-        match event {
-            phoenix_channel::Event::InboundMessage { msg, .. } => {
-                self.handle_portal_inbound_message(msg);
-            }
-            phoenix_channel::Event::SuccessResponse { res: (), .. } => {}
-            phoenix_channel::Event::ErrorResponse { res, req_id, topic } => {
-                self.handle_portal_error_reply(res, topic, req_id);
-            }
-            phoenix_channel::Event::HeartbeatSent => {}
-            phoenix_channel::Event::JoinedRoom { .. } => {}
-            phoenix_channel::Event::Closed => {
-                unimplemented!("Client never actively closes the portal connection")
-            }
-            phoenix_channel::Event::Hiccup {
-                backoff,
-                max_elapsed_time,
-                error,
-            } => tracing::info!(
-                ?backoff,
-                ?max_elapsed_time,
-                "Hiccup in portal connection: {error:#}"
-            ),
         }
     }
 
@@ -377,8 +384,10 @@ impl Eventloop {
                         );
 
                         // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
-                        self.portal
-                            .connect(PublicKeyParam(self.tunnel.public_key().to_bytes()));
+                        self.portal_cmd_tx
+                            .try_send(PortalCommand::Connect(PublicKeyParam(
+                                self.tunnel.public_key().to_bytes(),
+                            )));
                     }
                     Err(e) => {
                         tracing::warn!("Failed to request new connection: {e:#}");
@@ -397,22 +406,73 @@ impl Eventloop {
             }
         }
     }
+}
 
-    fn handle_portal_error_reply(
-        &mut self,
-        res: ErrorReply,
-        topic: String,
-        req_id: OutboundRequestId,
-    ) {
-        match res {
-            ErrorReply::Disabled => {
-                tracing::debug!(%req_id, "Functionality is disabled");
+async fn phoenix_channel_event_loop(
+    mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+    event_tx: mpsc::Sender<PortalEvent>,
+    mut cmd_rx: mpsc::Receiver<PortalCommand>,
+) {
+    use futures::future::Either;
+    use futures::future::select;
+    use std::future::poll_fn;
+
+    loop {
+        match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
+            Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
+                if event_tx.send(PortalEvent::Received(msg)).await.is_err() {
+                    tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
+
+                    break;
+                }
             }
-            ErrorReply::UnmatchedTopic => {
-                self.portal.join(topic, ());
+            Either::Left((Ok(phoenix_channel::Event::SuccessResponse { res: (), .. }), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }), _)) => {
+                match res {
+                    ErrorReply::Disabled => {
+                        tracing::debug!(%req_id, "Functionality is disabled");
+                    }
+                    ErrorReply::UnmatchedTopic => {
+                        portal.join(topic, ());
+                    }
+                    reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
+                        tracing::debug!(%req_id, %reason, "Request failed");
+                    }
+                }
             }
-            reason @ (ErrorReply::InvalidVersion | ErrorReply::Other) => {
-                tracing::debug!(%req_id, %reason, "Request failed");
+            Either::Left((Ok(phoenix_channel::Event::HeartbeatSent), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::JoinedRoom { .. }), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::Closed), _)) => {
+                unimplemented!("Client never actively closes the portal connection")
+            }
+            Either::Left((
+                Ok(phoenix_channel::Event::Hiccup {
+                    backoff,
+                    max_elapsed_time,
+                    error,
+                }),
+                _,
+            )) => tracing::info!(
+                ?backoff,
+                ?max_elapsed_time,
+                "Hiccup in portal connection: {error:#}"
+            ),
+            Either::Left((Err(e), _)) => {
+                if event_tx.send(PortalEvent::Error(e)).await.is_err() {
+                    tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
+                    break;
+                }
+            }
+            Either::Right((Some(PortalCommand::Send(msg)), _)) => {
+                portal.send(PHOENIX_TOPIC, msg);
+            }
+            Either::Right((Some(PortalCommand::Connect(param)), _)) => {
+                portal.connect(param);
+            }
+            Either::Right((None, _)) => {
+                tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
+
+                break;
             }
         }
     }
