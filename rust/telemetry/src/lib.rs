@@ -2,7 +2,7 @@
 
 use std::{borrow::Cow, collections::BTreeMap, fmt, str::FromStr, sync::Arc, time::Duration};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
 use sentry::{
     BeforeCallback, User,
@@ -189,31 +189,41 @@ impl Telemetry {
 
     /// Flushes events to sentry.io and drops the guard
     pub async fn stop(&mut self) {
-        self.end_session(SessionStatus::Exited).await;
+        if let Err(e) = self.end_session(SessionStatus::Exited).await {
+            tracing::error!("Failed to stop Sentry session on graceful exit: {e:#}")
+        }
     }
 
     pub async fn stop_on_crash(&mut self) {
-        self.end_session(SessionStatus::Crashed).await;
+        if let Err(e) = self.end_session(SessionStatus::Crashed).await {
+            tracing::error!("Failed to stop Sentry session on crash: {e:#}")
+        }
     }
 
-    async fn end_session(&mut self, status: SessionStatus) {
+    async fn end_session(&mut self, status: SessionStatus) -> Result<()> {
         let Some(inner) = self.inner.take() else {
-            return;
+            return Ok(());
         };
         tracing::info!("Stopping telemetry");
 
         // Sentry uses blocking IO for flushing ..
-        let _ = tokio::task::spawn_blocking(move || {
-            if !inner.flush(Some(Duration::from_secs(5))) {
-                tracing::error!("Failed to flush telemetry events to sentry.io");
-                return;
+        let task = tokio::task::spawn_blocking(move || {
+            if !inner.flush(Some(Duration::from_secs(2))) {
+                return Err(anyhow!("Failed to flush telemetry events to sentry.io"));
             };
 
             tracing::debug!("Flushed telemetry");
-        })
-        .await;
 
-        sentry::end_session_with_status(status);
+            sentry::end_session_with_status(status);
+
+            Ok(())
+        });
+
+        tokio::time::timeout(Duration::from_secs(2), task)
+            .await
+            .context("Failed to end session within 2s")???;
+
+        Ok(())
     }
 
     pub fn set_account_slug(slug: String) {
