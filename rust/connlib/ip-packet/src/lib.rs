@@ -395,39 +395,39 @@ impl IpPacket {
         self.set_ipv4_checksum();
     }
 
-    fn as_ipv4(&self) -> Option<Ipv4Slice> {
+    fn as_ipv4(&self) -> Option<Ipv4Slice<'_>> {
         Ipv4Slice::from_slice(&self.buf[..self.len]).ok()
     }
 
-    fn as_ipv4_header_mut(&mut self) -> Option<Ipv4HeaderSliceMut> {
+    fn as_ipv4_header_mut(&mut self) -> Option<Ipv4HeaderSliceMut<'_>> {
         Ipv4HeaderSliceMut::from_slice(&mut self.buf[..self.len]).ok()
     }
 
     #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv4_unchecked(&self) -> Ipv4Slice {
+    fn as_ipv4_unchecked(&self) -> Ipv4Slice<'_> {
         self.as_ipv4().unwrap()
     }
 
     #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv4_header_mut_unchecked(&mut self) -> Ipv4HeaderSliceMut {
+    fn as_ipv4_header_mut_unchecked(&mut self) -> Ipv4HeaderSliceMut<'_> {
         self.as_ipv4_header_mut().unwrap()
     }
 
-    fn as_ipv6(&self) -> Option<Ipv6Slice> {
+    fn as_ipv6(&self) -> Option<Ipv6Slice<'_>> {
         Ipv6Slice::from_slice(&self.buf[..self.len]).ok()
     }
 
-    fn as_ipv6_header_mut(&mut self) -> Option<Ipv6HeaderSliceMut> {
+    fn as_ipv6_header_mut(&mut self) -> Option<Ipv6HeaderSliceMut<'_>> {
         Ipv6HeaderSliceMut::from_slice(&mut self.buf[..self.len]).ok()
     }
 
     #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv6_unchecked(&self) -> Ipv6Slice {
+    fn as_ipv6_unchecked(&self) -> Ipv6Slice<'_> {
         self.as_ipv6().unwrap()
     }
 
     #[expect(clippy::unwrap_used, reason = "The function is marked as `unchecked`.")]
-    fn as_ipv6_header_mut_unchecked(&mut self) -> Ipv6HeaderSliceMut {
+    fn as_ipv6_header_mut_unchecked(&mut self) -> Ipv6HeaderSliceMut<'_> {
         self.as_ipv6_header_mut().unwrap()
     }
 
@@ -498,7 +498,7 @@ impl IpPacket {
             .set_checksum(checksum);
     }
 
-    pub fn as_udp(&self) -> Option<UdpSlice> {
+    pub fn as_udp(&self) -> Option<UdpSlice<'_>> {
         if !self.is_udp() {
             return None;
         }
@@ -506,7 +506,7 @@ impl IpPacket {
         UdpSlice::from_slice(self.payload()).ok()
     }
 
-    pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut> {
+    pub fn as_udp_mut(&mut self) -> Option<UdpHeaderSliceMut<'_>> {
         if !self.is_udp() {
             return None;
         }
@@ -514,7 +514,7 @@ impl IpPacket {
         UdpHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
-    pub fn as_tcp(&self) -> Option<TcpSlice> {
+    pub fn as_tcp(&self) -> Option<TcpSlice<'_>> {
         if !self.is_tcp() {
             return None;
         }
@@ -522,7 +522,7 @@ impl IpPacket {
         TcpSlice::from_slice(self.payload()).ok()
     }
 
-    pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut> {
+    pub fn as_tcp_mut(&mut self) -> Option<TcpHeaderSliceMut<'_>> {
         if !self.is_tcp() {
             return None;
         }
@@ -567,7 +567,7 @@ impl IpPacket {
         i.set_checksum(checksum);
     }
 
-    pub fn as_icmpv4(&self) -> Option<Icmpv4Slice> {
+    pub fn as_icmpv4(&self) -> Option<Icmpv4Slice<'_>> {
         if !self.is_icmp() {
             return None;
         }
@@ -577,7 +577,7 @@ impl IpPacket {
             .ok()
     }
 
-    pub fn as_icmpv4_mut(&mut self) -> Option<Icmpv4HeaderSliceMut> {
+    pub fn as_icmpv4_mut(&mut self) -> Option<Icmpv4HeaderSliceMut<'_>> {
         if !self.is_icmp() {
             return None;
         }
@@ -675,7 +675,7 @@ impl IpPacket {
         Ok(None)
     }
 
-    pub fn as_icmpv6(&self) -> Option<Icmpv6Slice> {
+    pub fn as_icmpv6(&self) -> Option<Icmpv6Slice<'_>> {
         if !self.is_icmpv6() {
             return None;
         }
@@ -683,7 +683,7 @@ impl IpPacket {
         Icmpv6Slice::from_slice(self.payload()).ok()
     }
 
-    pub fn as_icmpv6_mut(&mut self) -> Option<Icmpv6EchoHeaderSliceMut> {
+    pub fn as_icmpv6_mut(&mut self) -> Option<Icmpv6EchoHeaderSliceMut<'_>> {
         if !self.is_icmpv6() {
             return None;
         }
@@ -691,7 +691,7 @@ impl IpPacket {
         Icmpv6EchoHeaderSliceMut::from_slice(self.payload_mut()).ok()
     }
 
-    pub fn as_fz_p2p_control(&self) -> Option<FzP2pControlSlice> {
+    pub fn as_fz_p2p_control(&self) -> Option<FzP2pControlSlice<'_>> {
         if !self.is_fz_p2p_control() {
             return None;
         }

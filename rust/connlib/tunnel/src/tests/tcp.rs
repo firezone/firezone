@@ -111,7 +111,7 @@ impl Client {
         Some(self.last_now + Duration::from(poll_in))
     }
 
-    pub fn iter_sockets(&self) -> impl Iterator<Item = &Socket> {
+    pub fn iter_sockets(&self) -> impl Iterator<Item = &Socket<'_>> {
         self.sockets.iter().map(|(_, s)| match s {
             l3_tcp::AnySocket::Tcp(socket) => socket,
         })
