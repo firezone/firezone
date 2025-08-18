@@ -298,6 +298,8 @@ fn run_service(arguments: Vec<OsString>) {
         wait_hint: Duration::default(),
         process_id: None,
     });
+
+    rt.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
 }
 
 #[cfg(test)]
