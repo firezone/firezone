@@ -397,12 +397,13 @@ fn try_handle_ipv6_channel_data_to_udp(
 
 #[inline(always)]
 fn learn_interface_ipv4_address(ipv4: &Ip4) -> Result<(), Error> {
-    let interface_addr = match INT_ADDR_V4.get_ptr_mut(0) {
-        Some(addr) => addr,
-        None => return Err(Error::InterfaceIpv4AddressAccessFailed),
-    };
+    let interface_addr = INT_ADDR_V4
+        .get_ptr_mut(0)
+        .ok_or(Error::InterfaceIpv4AddressAccessFailed)?;
 
     let dst_ip = ipv4.dst();
+
+    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
     unsafe {
         if !(*interface_addr).is_learned() {
             (*interface_addr).set(dst_ip);
@@ -414,12 +415,13 @@ fn learn_interface_ipv4_address(ipv4: &Ip4) -> Result<(), Error> {
 
 #[inline(always)]
 fn learn_interface_ipv6_address(ipv6: &Ip6) -> Result<(), Error> {
-    let interface_addr = match INT_ADDR_V6.get_ptr_mut(0) {
-        Some(addr) => addr,
-        None => return Err(Error::InterfaceIpv6AddressAccessFailed),
-    };
+    let interface_addr = INT_ADDR_V6
+        .get_ptr_mut(0)
+        .ok_or(Error::InterfaceIpv6AddressAccessFailed)?;
 
     let dst_ip = ipv6.dst();
+
+    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
     unsafe {
         if !(*interface_addr).is_learned() {
             (*interface_addr).set(dst_ip);
