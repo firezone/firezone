@@ -204,6 +204,60 @@ impl Default for Config {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct InterfaceAddressV4 {
+    address: [u8; 4],
+    learned: bool,
+}
+
+impl InterfaceAddressV4 {
+    pub fn set(&mut self, addr: Ipv4Addr) {
+        self.address = addr.octets();
+        self.learned = true;
+    }
+
+    pub fn get(&self) -> Option<Ipv4Addr> {
+        if self.learned {
+            Some(self.address.into())
+        } else {
+            None
+        }
+    }
+
+    pub fn is_learned(&self) -> bool {
+        self.learned
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Default)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub struct InterfaceAddressV6 {
+    address: [u8; 16],
+    learned: bool,
+}
+
+impl InterfaceAddressV6 {
+    pub fn set(&mut self, addr: Ipv6Addr) {
+        self.address = addr.octets();
+        self.learned = true;
+    }
+
+    pub fn get(&self) -> Option<Ipv6Addr> {
+        if self.learned {
+            Some(self.address.into())
+        } else {
+            None
+        }
+    }
+
+    pub fn is_learned(&self) -> bool {
+        self.learned
+    }
+}
+
+#[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct StatsEvent {
@@ -233,4 +287,8 @@ mod userspace {
     unsafe impl aya::Pod for PortAndPeerV6 {}
 
     unsafe impl aya::Pod for Config {}
+
+    unsafe impl aya::Pod for InterfaceAddressV4 {}
+
+    unsafe impl aya::Pod for InterfaceAddressV6 {}
 }
