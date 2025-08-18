@@ -115,7 +115,7 @@ impl Session {
     }
 
     pub fn disconnect(&self) -> Result<(), Error> {
-        let runtime = self.runtime.as_mut().context("No runtime")?;
+        let runtime = self.runtime.as_ref().context("No runtime")?;
 
         runtime.block_on(async {
             self.telemetry.lock().await.stop().await;
