@@ -156,7 +156,7 @@ smbios-lib = "0.9.2"
 smoltcp = { version = "0.12", default-features = false }
 snownet = { path = "connlib/snownet" }
 socket-factory = { path = "connlib/socket-factory" }
-socket2 = { version = "0.5" }
+socket2 = { version = "0.6" }
 specta = "=2.0.0-rc.22"
 specta-typescript = "0.0.9"
 static_assertions = "1.1.0"
