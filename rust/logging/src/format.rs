@@ -134,10 +134,10 @@ where
             .flat_map(tracing_subscriber::registry::Scope::from_root)
         {
             let exts = span.extensions();
-            if let Some(fields) = exts.get::<FormattedFields<N>>() {
-                if !fields.is_empty() {
-                    write!(writer, " {}", fields.fields)?;
-                }
+            if let Some(fields) = exts.get::<FormattedFields<N>>()
+                && !fields.is_empty()
+            {
+                write!(writer, " {}", fields.fields)?;
             }
         }
         writeln!(writer)

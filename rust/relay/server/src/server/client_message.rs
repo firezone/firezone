@@ -28,7 +28,7 @@ const MAX_ALLOCATION_LIFETIME: Duration = Duration::from_secs(3600);
 /// See <https://www.rfc-editor.org/rfc/rfc8656#name-allocations-2>.
 const DEFAULT_ALLOCATION_LIFETIME: Duration = Duration::from_secs(600);
 
-pub fn decode(input: &[u8]) -> Result<Result<ClientMessage, Message<Attribute>>, Error> {
+pub fn decode(input: &[u8]) -> Result<Result<ClientMessage<'_>, Message<Attribute>>, Error> {
     let mut decoder = stun_codec::MessageDecoder::default();
 
     // De-multiplex as per <https://www.rfc-editor.org/rfc/rfc8656#name-channels-2>.
