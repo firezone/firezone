@@ -24,7 +24,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10224">
+          Fixes a minor DNS cache bug where newly-added DNS resources may not
+          resolve for a few seconds after showing up in the Resource List.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-08-07")}>
         <ChangeItem pull="10143">
           Fixes an issue on iOS 17 and below that caused the tunnel to crash
