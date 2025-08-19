@@ -2164,6 +2164,23 @@ where
                         "Updating remote socket"
                     );
 
+                    let source_relay_addr = source_relay
+                        .and_then(|r| allocations.get(&r))
+                        .and_then(|a| a.active_socket());
+                    let destination_relay_addr = dest_is_relay.then_some(destination);
+
+                    if let Some(source) = source_relay_addr
+                        && source.is_ipv4() != destination.is_ipv4()
+                    {
+                        tracing::warn!(%source, %destination, "Relaying across IP-stack!");
+                    }
+
+                    if let Some(destination) = destination_relay_addr
+                        && source.is_ipv4() != destination.is_ipv4()
+                    {
+                        tracing::warn!(%source, %destination, "Relaying across IP-stack!");
+                    }
+
                     if self.agent.controlling() {
                         self.initiate_wg_session(allocations, transmits, now);
                     }

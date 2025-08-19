@@ -993,6 +993,10 @@ impl Allocation {
         self.server
     }
 
+    pub fn active_socket(&self) -> Option<SocketAddr> {
+        Some(self.active_socket?.addr)
+    }
+
     pub fn ip4_socket(&self) -> Option<Socket> {
         let address = self.ip4_allocation.as_ref().map(|c| c.addr())?;
 
