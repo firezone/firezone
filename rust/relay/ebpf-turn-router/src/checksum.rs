@@ -12,7 +12,10 @@
 //!
 //! This allows us to e.g. take an existing IP header checksum and update it to account for just the destination address changing.
 
+use network_types::ip::Ipv4Hdr;
+
 #[derive(Default)]
+#[repr(transparent)]
 pub struct ChecksumUpdate {
     inner: u16,
 }
@@ -44,10 +47,6 @@ impl ChecksumUpdate {
 
     pub fn add_u128(self, val: u128) -> Self {
         self.add_u16(fold_u128_into_u16(val))
-    }
-
-    pub fn add_update(self, update: ChecksumUpdate) -> Self {
-        self.add_u16(update.inner)
     }
 
     #[inline(always)]
@@ -84,6 +83,34 @@ fn fold_u128_into_u16(mut csum: u128) -> u16 {
     csum = (csum & 0xffff) + (csum >> 16);
 
     csum as u16
+}
+
+/// Calculate a fresh IPv4 header checksum
+#[inline(always)]
+pub fn new_ipv4(ipv4: &mut Ipv4Hdr) -> u16 {
+    // Zero the checksum field before calculation
+    ipv4.set_checksum(0);
+
+    // Cast the IPv4 header to bytes and process as u16 words
+    let header_bytes =
+        unsafe { core::slice::from_raw_parts(ipv4 as *const _ as *const u8, Ipv4Hdr::LEN) };
+
+    let mut sum = 0u32;
+    let mut i = 0;
+    while i < Ipv4Hdr::LEN {
+        // Read two bytes as a u16 in network byte order
+        let word = ((header_bytes[i] as u16) << 8) | (header_bytes[i + 1] as u16);
+        sum += word as u32;
+        i += 2;
+    }
+
+    // Fold carries
+    while sum > 0xffff {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+
+    // One's complement
+    !(sum as u16)
 }
 
 #[cfg(test)]

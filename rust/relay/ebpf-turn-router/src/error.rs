@@ -3,7 +3,10 @@ use core::num::NonZeroUsize;
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     InterfaceIpv4AddressAccessFailed,
+    InterfaceIpv4AddressNotLearned,
     InterfaceIpv6AddressAccessFailed,
+    InterfaceIpv6AddressNotLearned,
+    Ipv4ChecksumMissing,
     PacketTooShort,
     NotUdp,
     NotTurn,
@@ -12,24 +15,15 @@ pub enum Error {
     NotAChannelDataMessage,
     BadChannelDataLength,
     NoEntry(SupportedChannel),
-    UnsupportedChannel(UnsupportedChannel),
-    XdpAdjustTailFailed(i64),
+    XdpAdjustHeadFailed(i64),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum SupportedChannel {
-    UdpToChan44,
-    ChanToUdp44,
-    UdpToChan66,
-    ChanToUdp66,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum UnsupportedChannel {
-    UdpToChan46,
-    ChanToUdp46,
-    UdpToChan64,
-    ChanToUdp64,
+    Udp4ToChan,
+    Chan4ToUdp,
+    Udp6ToChan,
+    Chan6ToUdp,
 }
 
 impl aya_log_ebpf::WriteToBuf for Error {
@@ -40,9 +34,12 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::InterfaceIpv4AddressAccessFailed => {
                 "Failed to get pointer to interface IPv4 address map"
             }
+            Error::InterfaceIpv4AddressNotLearned => "Interface IPv4 address not learned",
             Error::InterfaceIpv6AddressAccessFailed => {
                 "Failed to get pointer to interface IPv6 address map"
             }
+            Error::InterfaceIpv6AddressNotLearned => "Interface IPv6 address not learned",
+            Error::Ipv4ChecksumMissing => "IPv4 checksum is missing",
             Error::PacketTooShort => "Packet is too short",
             Error::NotUdp => "Not a UDP packet",
             Error::NotTurn => "Not TURN traffic",
@@ -51,26 +48,12 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
             Error::NoEntry(ch) => match ch {
-                SupportedChannel::UdpToChan44 => "No entry in UDPv4 to channel IPv4 map",
-                SupportedChannel::ChanToUdp44 => "No entry in channel IPv4 to UDPv4 map",
-                SupportedChannel::UdpToChan66 => "No entry in UDPv6 to channel IPv6 map",
-                SupportedChannel::ChanToUdp66 => "No entry in channel IPv6 to UDPv6 map",
+                SupportedChannel::Udp4ToChan => "No entry in UDPv4 to channel IPv4 or IPv6 map",
+                SupportedChannel::Chan4ToUdp => "No entry in channel IPv4 to UDPv4 or UDPv6 map",
+                SupportedChannel::Udp6ToChan => "No entry in UDPv6 to channel IPv4 or IPv6 map",
+                SupportedChannel::Chan6ToUdp => "No entry in channel IPv6 to UDPv4 or UDPv6 map",
             },
-            Error::UnsupportedChannel(ch) => match ch {
-                UnsupportedChannel::UdpToChan46 => {
-                    "Relaying UDPv4 to channel IPv6 is not supported"
-                }
-                UnsupportedChannel::ChanToUdp46 => {
-                    "Relaying channel IPv4 to UDPv6 is not supported"
-                }
-                UnsupportedChannel::UdpToChan64 => {
-                    "Relaying UDPv6 to channel IPv4 is not supported"
-                }
-                UnsupportedChannel::ChanToUdp64 => {
-                    "Relaying channel IPv6 to UDPv4 is not supported"
-                }
-            },
-            Error::XdpAdjustTailFailed(ret) => {
+            Error::XdpAdjustHeadFailed(ret) => {
                 // Handle this case separately to avoid complex control flow
                 let mut written = 0;
                 written += "Failed to adjust tail: ".write(buf)?.get();
