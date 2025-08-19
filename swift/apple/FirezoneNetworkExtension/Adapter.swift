@@ -372,8 +372,15 @@ extension Adapter: CallbackHandlerDelegate {
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      // Update resource List. We don't care what's inside.
-      resourceListJSON = resourceList
+      if resourceListJSON != resourceList, let networkSettings = self.networkSettings {
+        // Update resource List. We don't care what's inside.
+        resourceListJSON = resourceList
+
+        // Apply network settings to flush DNS cache when resources change
+        // This ensures new DNS resources are immediately resolvable
+        Log.log("Reapplying network settings to flush DNS cache after resource update")
+        networkSettings.apply()
+      }
 
       self.resourcesUpdated()
     }
