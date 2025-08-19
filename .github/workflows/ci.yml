@@ -341,12 +341,12 @@ jobs:
         run: |
           ./scripts/tests/perf/${{ matrix.test_name }}.sh
           jq '{ "${{ matrix.test_name }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
-      - name: "Save performance test results: ${{ matrix.test_name }}"
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          overwrite: true
-          name: ${{ matrix.test_name }}-${{ github.sha }}-iperf3results
-          path: ./${{ matrix.test_name }}.bmf.json
+      # - name: "Save performance test results: ${{ matrix.test_name }}"
+      #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      #   with:
+      #     overwrite: true
+      #     name: ${{ matrix.test_name }}-${{ github.sha }}-iperf3results
+      #     path: ./${{ matrix.test_name }}.bmf.json
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
@@ -385,37 +385,37 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs gateway | grep "WARN" && exit 1 || exit 0
 
-  upload-bencher:
-    continue-on-error: true
-    needs: perf-tests
-    runs-on: ubuntu-22.04-xlarge
-    permissions:
-      contents: read
-      id-token: write
-      pull-requests: write
-      checks: write
-    steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      - uses: bencherdev/bencher@main
-      - name: Download performance test results
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
-        with:
-          pattern: "*-${{ github.sha }}-iperf3results"
-          merge-multiple: true
-          path: ./${{ github.sha }}
-      - name: Merge benchmarks results into one report
-        run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
-      - name: Report results to bencher
-        run: |
-          bencher run \
-            --project firezone-1l75jv1z \
-            --testbed github-actions \
-            --file bmf.json \
-            --adapter json \
-            --branch "${{ env.BRANCH }}" \
-            --branch-start-point "${{ github.base_ref }}" \
-            --github-actions ${{ secrets.GITHUB_TOKEN }} \
-            --ci-only-on-alert
-        env:
-          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
-          BRANCH: "${{ github.head_ref || github.ref_name }}"
+  # upload-bencher:
+  #   continue-on-error: true
+  #   needs: perf-tests
+  #   runs-on: ubuntu-22.04-xlarge
+  #   permissions:
+  #     contents: read
+  #     id-token: write
+  #     pull-requests: write
+  #     checks: write
+  #   steps:
+  #     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+  #     - uses: bencherdev/bencher@main
+  #     - name: Download performance test results
+  #       uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+  #       with:
+  #         pattern: "*-${{ github.sha }}-iperf3results"
+  #         merge-multiple: true
+  #         path: ./${{ github.sha }}
+  #     - name: Merge benchmarks results into one report
+  #       run: jq -s 'reduce .[] as $item ({}; . * $item)' ./${{ github.sha }}/*.bmf.json > bmf.json
+  #     - name: Report results to bencher
+  #       run: |
+  #         bencher run \
+  #           --project firezone-1l75jv1z \
+  #           --testbed github-actions \
+  #           --file bmf.json \
+  #           --adapter json \
+  #           --branch "${{ env.BRANCH }}" \
+  #           --branch-start-point "${{ github.base_ref }}" \
+  #           --github-actions ${{ secrets.GITHUB_TOKEN }} \
+  #           --ci-only-on-alert
+  #       env:
+  #         BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+  #         BRANCH: "${{ github.head_ref || github.ref_name }}"
