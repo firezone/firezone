@@ -99,6 +99,7 @@ impl TunDeviceManager {
         Ok(())
     }
 
+    #[expect(clippy::unused_async, reason = "Must match Linux API")]
     pub async fn set_routes(
         &mut self,
         v4: impl IntoIterator<Item = Ipv4Network>,
