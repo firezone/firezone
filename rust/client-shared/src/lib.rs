@@ -15,7 +15,7 @@ use std::collections::BTreeSet;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::mpsc::{Receiver, Sender, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{Receiver, UnboundedSender};
 use tokio::task::JoinHandle;
 use tun::Tun;
 
@@ -51,14 +51,16 @@ impl Session {
         let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (event_tx, event_rx) = tokio::sync::mpsc::channel(1000);
 
-        let connect_handle = handle.spawn(connect(
-            tcp_socket_factory,
-            udp_socket_factory,
-            portal,
-            cmd_rx,
-            event_tx.clone(),
-        ));
-        handle.spawn(connect_supervisor(connect_handle, event_tx));
+        let eventloop_handle = handle.spawn(
+            Eventloop::new(
+                ClientTunnel::new(tcp_socket_factory, udp_socket_factory),
+                portal,
+                cmd_rx,
+                event_tx.clone(),
+            )
+            .run(),
+        );
+        handle.spawn(connect_supervisor(eventloop_handle, event_tx));
 
         (Self { channel: cmd_tx }, EventStream { channel: event_rx })
     }
@@ -127,28 +129,6 @@ impl Drop for Session {
     fn drop(&mut self) {
         tracing::debug!("`Session` dropped")
     }
-}
-
-/// Connects to the portal and starts a tunnel.
-///
-/// When this function exits, the tunnel failed unrecoverably and you need to call it again.
-async fn connect(
-    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
-    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    cmd_rx: UnboundedReceiver<Command>,
-    event_tx: Sender<Event>,
-) -> Result<()> {
-    Eventloop::new(
-        ClientTunnel::new(tcp_socket_factory, udp_socket_factory),
-        portal,
-        cmd_rx,
-        event_tx,
-    )
-    .run()
-    .await?;
-
-    Ok(())
 }
 
 /// A supervisor task that handles, when [`connect`] exits.
