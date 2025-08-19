@@ -30,7 +30,7 @@ pub struct Eventloop {
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     event_tx: mpsc::Sender<Event>,
 
-    portal_event_rx: mpsc::Receiver<PortalEvent>,
+    portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
@@ -74,15 +74,6 @@ impl Event {
 enum PortalCommand {
     Connect(PublicKeyParam),
     Send(EgressMessages),
-}
-
-#[expect(
-    clippy::large_enum_variant,
-    reason = "This type is only sent through a channel so the stack-size doesn't matter much."
-)]
-enum PortalEvent {
-    Received(IngressMessages),
-    Error(phoenix_channel::Error),
 }
 
 /// Unified error type to use across connlib.
@@ -138,7 +129,7 @@ impl Eventloop {
 enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent>),
-    Portal(Option<PortalEvent>),
+    Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
 }
 
 impl Eventloop {
@@ -154,11 +145,10 @@ impl Eventloop {
                 }
                 CombinedEvent::Tunnel(Ok(event)) => self.handle_tunnel_event(event).await?,
                 CombinedEvent::Tunnel(Err(e)) => self.handle_tunnel_error(e)?,
-                CombinedEvent::Portal(Some(PortalEvent::Received(msg))) => {
+                CombinedEvent::Portal(Some(event)) => {
+                    let msg = event.context("Connection to portal failed")?;
+
                     self.handle_portal_message(msg).await?;
-                }
-                CombinedEvent::Portal(Some(PortalEvent::Error(e))) => {
-                    return Err(e).context("Connection to portal failed");
                 }
                 CombinedEvent::Portal(None) => {
                     return Err(anyhow::Error::msg("portal task exited unexpectedly"));
@@ -431,7 +421,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    event_tx: mpsc::Sender<PortalEvent>,
+    event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
 ) {
     use futures::future::Either;
@@ -441,7 +431,7 @@ async fn phoenix_channel_event_loop(
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
             Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
-                if event_tx.send(PortalEvent::Received(msg)).await.is_err() {
+                if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
 
                     break;
