@@ -343,7 +343,6 @@ services:
     networks:
       app:
         ipv4_address: 172.28.0.100
-        ipv6_address: 172:28:0::100
 
   gateway:
     healthcheck:
