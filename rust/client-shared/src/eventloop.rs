@@ -110,7 +110,7 @@ enum CombinedEvent {
 }
 
 impl Eventloop {
-    pub async fn run(mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<(), DisconnectError> {
         loop {
             match future::poll_fn(|cx| self.next_event(cx)).await {
                 CombinedEvent::Command(None) => return Ok(()),
@@ -128,7 +128,9 @@ impl Eventloop {
                     self.handle_portal_message(msg).await?;
                 }
                 CombinedEvent::Portal(None) => {
-                    return Err(anyhow::Error::msg("portal task exited unexpectedly"));
+                    return Err(DisconnectError(anyhow::Error::msg(
+                        "portal task exited unexpectedly",
+                    )));
                 }
             }
         }

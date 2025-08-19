@@ -133,7 +133,7 @@ impl Drop for Session {
 
 /// A supervisor task that handles, when [`connect`] exits.
 async fn connect_supervisor(
-    connect_handle: JoinHandle<Result<()>>,
+    connect_handle: JoinHandle<Result<(), DisconnectError>>,
     event_tx: tokio::sync::mpsc::Sender<Event>,
 ) {
     let task = async {
