@@ -1,22 +1,26 @@
 //! Main connlib library for clients.
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use connlib_model::StaticSecret;
-pub use eventloop::{DisconnectError, Event};
+pub use eventloop::DisconnectError;
 pub use firezone_tunnel::TunConfig;
 pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
 
-use anyhow::{Context as _, Result};
-use connlib_model::ResourceId;
+use anyhow::Result;
+use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
 use firezone_tunnel::ClientTunnel;
+use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::collections::BTreeSet;
+use std::future;
 use std::net::IpAddr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::mpsc::{Receiver, UnboundedSender};
+use tokio::sync::mpsc;
+use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use tokio_stream::wrappers::WatchStream;
 use tun::Tun;
 
 mod eventloop;
@@ -30,12 +34,21 @@ const PHOENIX_TOPIC: &str = "client";
 /// To stop the session, simply drop this struct.
 #[derive(Clone, Debug)]
 pub struct Session {
-    channel: UnboundedSender<Command>,
+    channel: mpsc::UnboundedSender<Command>,
 }
 
 #[derive(Debug)]
 pub struct EventStream {
-    channel: Receiver<Event>,
+    eventloop: JoinHandle<Result<(), DisconnectError>>,
+    resource_list_receiver: WatchStream<Vec<ResourceView>>,
+    tun_config_receiver: WatchStream<Option<TunConfig>>,
+}
+
+#[derive(Debug)]
+pub enum Event {
+    TunInterfaceUpdated(TunConfig),
+    ResourcesUpdated(Vec<ResourceView>),
+    Disconnected(DisconnectError),
 }
 
 impl Session {
@@ -48,21 +61,31 @@ impl Session {
         portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
-        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (event_tx, event_rx) = tokio::sync::mpsc::channel(1000);
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
 
-        let eventloop_handle = handle.spawn(
+        // Use `watch` channels for resource list and TUN config because we are only ever interested in the last value and don't care about intermediate updates.
+        let (tun_config_sender, tun_config_receiver) = watch::channel(None);
+        let (resource_list_sender, resource_list_receiver) = watch::channel(Vec::default());
+
+        let eventloop = handle.spawn(
             Eventloop::new(
                 ClientTunnel::new(tcp_socket_factory, udp_socket_factory),
                 portal,
                 cmd_rx,
-                event_tx.clone(),
+                resource_list_sender,
+                tun_config_sender,
             )
             .run(),
         );
-        handle.spawn(connect_supervisor(eventloop_handle, event_tx));
 
-        (Self { channel: cmd_tx }, EventStream { channel: event_rx })
+        (
+            Self { channel: cmd_tx },
+            EventStream {
+                eventloop,
+                resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
+                tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
+            },
+        )
     }
 
     /// Reset a [`Session`].
@@ -117,42 +140,35 @@ impl Session {
 
 impl EventStream {
     pub fn poll_next(&mut self, cx: &mut Context) -> Poll<Option<Event>> {
-        self.channel.poll_recv(cx)
+        match self.eventloop.poll_unpin(cx) {
+            Poll::Ready(Ok(Ok(()))) => return Poll::Ready(None),
+            Poll::Ready(Ok(Err(e))) => return Poll::Ready(Some(Event::Disconnected(e))),
+            Poll::Ready(Err(e)) => {
+                return Poll::Ready(Some(Event::Disconnected(DisconnectError::from(
+                    anyhow::Error::new(e).context("connlib crashed"),
+                ))));
+            }
+            Poll::Pending => {}
+        }
+
+        if let Poll::Ready(Some(resources)) = self.resource_list_receiver.poll_next_unpin(cx) {
+            return Poll::Ready(Some(Event::ResourcesUpdated(resources)));
+        }
+
+        if let Poll::Ready(Some(Some(config))) = self.tun_config_receiver.poll_next_unpin(cx) {
+            return Poll::Ready(Some(Event::TunInterfaceUpdated(config)));
+        }
+
+        Poll::Pending
     }
 
     pub async fn next(&mut self) -> Option<Event> {
-        self.channel.recv().await
+        future::poll_fn(|cx| self.poll_next(cx)).await
     }
 }
 
 impl Drop for Session {
     fn drop(&mut self) {
         tracing::debug!("`Session` dropped")
-    }
-}
-
-/// A supervisor task that handles, when [`connect`] exits.
-async fn connect_supervisor(
-    connect_handle: JoinHandle<Result<(), DisconnectError>>,
-    event_tx: tokio::sync::mpsc::Sender<Event>,
-) {
-    let task = async {
-        connect_handle.await.context("connlib crashed")??;
-
-        Ok(())
-    };
-
-    let error = match task.await {
-        Ok(()) => {
-            tracing::info!("connlib exited gracefully");
-
-            return;
-        }
-        Err(e) => e,
-    };
-
-    match event_tx.send(Event::Disconnected(error)).await {
-        Ok(()) => (),
-        Err(_) => tracing::debug!("Event stream closed before we could send disconnected event"),
     }
 }

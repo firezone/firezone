@@ -18,14 +18,15 @@ use std::{
     task::{Context, Poll},
 };
 use std::{future, mem};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tun::Tun;
 
 pub struct Eventloop {
     tunnel: ClientTunnel,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
-    event_tx: mpsc::Sender<Event>,
+    resource_list_sender: watch::Sender<Vec<ResourceView>>,
+    tun_config_sender: watch::Sender<Option<TunConfig>>,
 
     portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
@@ -40,12 +41,6 @@ pub enum Command {
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetDisabledResources(BTreeSet<ResourceId>),
-}
-
-pub enum Event {
-    TunInterfaceUpdated(TunConfig),
-    ResourcesUpdated(Vec<ResourceView>),
-    Disconnected(DisconnectError),
 }
 
 enum PortalCommand {
@@ -79,7 +74,8 @@ impl Eventloop {
         tunnel: ClientTunnel,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
-        event_tx: mpsc::Sender<Event>,
+        resource_list_sender: watch::Sender<Vec<ResourceView>>,
+        tun_config_sender: watch::Sender<Option<TunConfig>>,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -95,10 +91,11 @@ impl Eventloop {
         Self {
             tunnel,
             cmd_rx,
-            event_tx,
             logged_permission_denied: false,
             portal_event_rx,
             portal_cmd_tx,
+            resource_list_sender,
+            tun_config_sender,
         }
     }
 }
@@ -207,15 +204,13 @@ impl Eventloop {
                     .context("Failed to send message to portal")?;
             }
             ClientEvent::ResourcesChanged { resources } => {
-                self.event_tx
-                    .send(Event::ResourcesUpdated(resources))
-                    .await
+                self.resource_list_sender
+                    .send(resources)
                     .context("Failed to emit event")?;
             }
             ClientEvent::TunInterfaceUpdated(config) => {
-                self.event_tx
-                    .send(Event::TunInterfaceUpdated(config))
-                    .await
+                self.tun_config_sender
+                    .send(Some(config))
                     .context("Failed to emit event")?;
             }
         }
