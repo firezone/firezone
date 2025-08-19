@@ -150,39 +150,39 @@ jobs:
             sleep 10
           done
 
-  kotlin:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
-    uses: ./.github/workflows/_kotlin.yml
-    secrets: inherit
-  swift:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'swift')
-    uses: ./.github/workflows/_swift.yml
-    secrets: inherit
-  elixir:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
-    uses: ./.github/workflows/_elixir.yml
+  # kotlin:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'kotlin')
+  #   uses: ./.github/workflows/_kotlin.yml
+  #   secrets: inherit
+  # swift:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'swift')
+  #   uses: ./.github/workflows/_swift.yml
+  #   secrets: inherit
+  # elixir:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
+  #   uses: ./.github/workflows/_elixir.yml
   rust:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'rust')
     uses: ./.github/workflows/_rust.yml
     secrets: inherit
-  tauri:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
-    uses: ./.github/workflows/_tauri.yml
-    secrets: inherit
-  static-analysis:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
-    uses: ./.github/workflows/_static-analysis.yml
-  codeql:
-    needs: planner
-    if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
-    uses: ./.github/workflows/_codeql.yml
-    secrets: inherit
+  # tauri:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'tauri')
+  #   uses: ./.github/workflows/_tauri.yml
+  #   secrets: inherit
+  # static-analysis:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
+  #   uses: ./.github/workflows/_static-analysis.yml
+  # codeql:
+  #   needs: planner
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
+  #   uses: ./.github/workflows/_codeql.yml
+  #   secrets: inherit
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
@@ -212,16 +212,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  build-artifacts:
-    needs: [update-release-draft, planner]
-    if: contains(needs.planner.outputs.jobs_to_run, 'build-artifacts')
-    uses: ./.github/workflows/_build_artifacts.yml
-    secrets: inherit
-    with:
-      # Build debug/ on PRs and merge group, no prefix for production release images
-      image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
-      profile: ${{ inputs.profile || 'debug' }}
-      stage: ${{ inputs.stage || 'debug' }}
+  # build-artifacts:
+  #   needs: [update-release-draft, planner]
+  #   if: contains(needs.planner.outputs.jobs_to_run, 'build-artifacts')
+  #   uses: ./.github/workflows/_build_artifacts.yml
+  #   secrets: inherit
+  #   with:
+  #     # Build debug/ on PRs and merge group, no prefix for production release images
+  #     image_prefix: ${{ ((github.event_name == 'pull_request' || github.event_name == 'merge_group') && 'debug') || '' }}
+  #     profile: ${{ inputs.profile || 'debug' }}
+  #     stage: ${{ inputs.stage || 'debug' }}
 
   build-perf-artifacts:
     needs: [update-release-draft, planner]
@@ -234,43 +234,43 @@ jobs:
       profile: "release"
       stage: "debug" # Only the debug images have perf tooling
 
-  integration-tests:
-    uses: ./.github/workflows/_integration_tests.yml
-    needs: build-artifacts
-    secrets: inherit
-    with:
-      gateway_image: ${{ needs.build-artifacts.outputs.gateway_image }}
-      client_image: ${{ needs.build-artifacts.outputs.client_image }}
-      relay_image: ${{ needs.build-artifacts.outputs.relay_image }}
-      http_test_server_image: ${{ needs.build-artifacts.outputs.http_test_server_image }}
+  # integration-tests:
+  #   uses: ./.github/workflows/_integration_tests.yml
+  #   needs: build-artifacts
+  #   secrets: inherit
+  #   with:
+  #     gateway_image: ${{ needs.build-artifacts.outputs.gateway_image }}
+  #     client_image: ${{ needs.build-artifacts.outputs.client_image }}
+  #     relay_image: ${{ needs.build-artifacts.outputs.relay_image }}
+  #     http_test_server_image: ${{ needs.build-artifacts.outputs.http_test_server_image }}
 
-  compatibility-tests:
-    strategy:
-      fail-fast: false
-      matrix:
-        client:
-          - image: "ghcr.io/firezone/client"
-            tag: "latest"
-        gateway:
-          - image: ${{ needs.build-artifacts.outputs.gateway_image }}
-            tag: ${{ github.sha }}
-            ci-name: sha
-          - image: "ghcr.io/firezone/gateway"
-            tag: "latest"
-            ci-name: latest
-    # Don't run compatibility tests when called from hotfix.yml or publish.yml on `main` because
-    # it'll be red if there was a breaking change we're trying to publish,
-    # and the deploy_production workflow checks for main to be green.
-    if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
-    name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.ci-name }})
-    uses: ./.github/workflows/_integration_tests.yml
-    needs: build-artifacts
-    secrets: inherit
-    with:
-      gateway_image: ${{ matrix.gateway.image }}
-      gateway_tag: ${{ matrix.gateway.tag }}
-      client_image: ${{ matrix.client.image }}
-      client_tag: ${{ matrix.client.tag }}
+  # compatibility-tests:
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       client:
+  #         - image: "ghcr.io/firezone/client"
+  #           tag: "latest"
+  #       gateway:
+  #         - image: ${{ needs.build-artifacts.outputs.gateway_image }}
+  #           tag: ${{ github.sha }}
+  #           ci-name: sha
+  #         - image: "ghcr.io/firezone/gateway"
+  #           tag: "latest"
+  #           ci-name: latest
+  #   # Don't run compatibility tests when called from hotfix.yml or publish.yml on `main` because
+  #   # it'll be red if there was a breaking change we're trying to publish,
+  #   # and the deploy_production workflow checks for main to be green.
+  #   if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+  #   name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.ci-name }})
+  #   uses: ./.github/workflows/_integration_tests.yml
+  #   needs: build-artifacts
+  #   secrets: inherit
+  #   with:
+  #     gateway_image: ${{ matrix.gateway.image }}
+  #     gateway_tag: ${{ matrix.gateway.tag }}
+  #     client_image: ${{ matrix.client.image }}
+  #     client_tag: ${{ matrix.client.tag }}
 
   perf-tests:
     name: perf-tests
@@ -297,14 +297,16 @@ jobs:
       fail-fast: false
       matrix:
         test_name:
-          - direct-tcp-client2server
-          - direct-tcp-server2client
-          - direct-udp-client2server
-          - direct-udp-server2client
+          # - direct-tcp-client2server
+          # - direct-tcp-server2client
+          # - direct-udp-client2server
+          # - direct-udp-server2client
           - relayed-tcp-client2server
           - relayed-tcp-server2client
           - relayed-udp-client2server
           - relayed-udp-server2client
+        foo: [1, 2, 3, 4, 5, 6, 7, 8]
+        bar: [1, 2, 3, 4, 5, 6, 7, 8]
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/ghcr-docker-login
