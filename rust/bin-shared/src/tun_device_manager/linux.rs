@@ -175,8 +175,8 @@ impl TunDeviceManager {
 
     pub async fn set_routes(
         &mut self,
-        ipv4: Vec<Ipv4Network>,
-        ipv6: Vec<Ipv6Network>,
+        ipv4: impl IntoIterator<Item = Ipv4Network>,
+        ipv6: impl IntoIterator<Item = Ipv6Network>,
     ) -> Result<()> {
         let new_routes: HashSet<IpNetwork> = ipv4
             .into_iter()

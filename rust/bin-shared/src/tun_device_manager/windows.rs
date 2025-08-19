@@ -99,8 +99,11 @@ impl TunDeviceManager {
         Ok(())
     }
 
-    #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_routes(&mut self, v4: Vec<Ipv4Network>, v6: Vec<Ipv6Network>) -> Result<()> {
+    pub async fn set_routes(
+        &mut self,
+        v4: impl IntoIterator<Item = Ipv4Network>,
+        v6: impl IntoIterator<Item = Ipv6Network>,
+    ) -> Result<()> {
         let iface_idx = self
             .iface_idx
             .context("Cannot set routes without having created TUN device")?;

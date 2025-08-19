@@ -473,19 +473,16 @@ impl<'a> Handler<'a> {
                 })
                 .await?
             }
-            client_shared::Event::TunInterfaceUpdated {
-                ipv4,
-                ipv6,
-                dns,
-                search_domain,
-                ipv4_routes,
-                ipv6_routes,
-            } => {
+            client_shared::Event::TunInterfaceUpdated(config) => {
                 self.session.transition_to_connected()?;
 
-                self.tun_device.set_ips(ipv4, ipv6).await?;
-                self.dns_controller.set_dns(dns, search_domain).await?;
-                self.tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
+                self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
+                self.dns_controller
+                    .set_dns(config.dns_sentinel_ips(), config.search_domain)
+                    .await?;
+                self.tun_device
+                    .set_routes(config.ipv4_routes, config.ipv6_routes)
+                    .await?;
                 self.dns_controller.flush()?;
             }
             client_shared::Event::ResourcesUpdated(resources) => {

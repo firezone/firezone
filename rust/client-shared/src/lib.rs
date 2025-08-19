@@ -2,6 +2,7 @@
 pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use connlib_model::StaticSecret;
 pub use eventloop::{DisconnectError, Event};
+pub use firezone_tunnel::TunConfig;
 pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::{Context as _, Result};

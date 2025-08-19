@@ -13,7 +13,7 @@ struct Cidr<T> {
 pub struct V4RouteList(Vec<Cidr<Ipv4Addr>>);
 
 impl V4RouteList {
-    pub fn new(route: Vec<Ipv4Network>) -> Self {
+    pub fn new(route: impl IntoIterator<Item = Ipv4Network>) -> Self {
         Self(
             route
                 .into_iter()
@@ -32,7 +32,7 @@ impl V4RouteList {
 pub struct V6RouteList(Vec<Cidr<Ipv6Addr>>);
 
 impl V6RouteList {
-    pub fn new(route: Vec<Ipv6Network>) -> Self {
+    pub fn new(route: impl IntoIterator<Item = Ipv6Network>) -> Self {
         Self(
             route
                 .into_iter()

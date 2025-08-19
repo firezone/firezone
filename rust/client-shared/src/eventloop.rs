@@ -1,16 +1,13 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, Result};
 use connlib_model::{PublicKey, ResourceId, ResourceView};
-use dns_types::DomainName;
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
 use firezone_tunnel::{ClientEvent, ClientTunnel, IpConfig, TunConfig};
-use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::time::Instant;
@@ -46,29 +43,9 @@ pub enum Command {
 }
 
 pub enum Event {
-    TunInterfaceUpdated {
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-        search_domain: Option<DomainName>,
-        ipv4_routes: Vec<Ipv4Network>,
-        ipv6_routes: Vec<Ipv6Network>,
-    },
+    TunInterfaceUpdated(TunConfig),
     ResourcesUpdated(Vec<ResourceView>),
     Disconnected(DisconnectError),
-}
-
-impl Event {
-    fn tun_interface_updated(config: TunConfig) -> Self {
-        Self::TunInterfaceUpdated {
-            ipv4: config.ip.v4,
-            ipv6: config.ip.v6,
-            dns: config.dns_by_sentinel.left_values().copied().collect(),
-            search_domain: config.search_domain,
-            ipv4_routes: Vec::from_iter(config.ipv4_routes),
-            ipv6_routes: Vec::from_iter(config.ipv6_routes),
-        }
-    }
 }
 
 enum PortalCommand {
@@ -235,7 +212,7 @@ impl Eventloop {
             }
             ClientEvent::TunInterfaceUpdated(config) => {
                 self.event_tx
-                    .send(Event::tun_interface_updated(config))
+                    .send(Event::TunInterfaceUpdated(config))
                     .await
                     .context("Failed to emit event")?;
             }

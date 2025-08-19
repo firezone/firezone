@@ -142,8 +142,8 @@ impl CallbackHandler {
         tunnel_address_v6: Ipv6Addr,
         dns_addresses: Vec<IpAddr>,
         search_domain: Option<DomainName>,
-        route_list_v4: Vec<Ipv4Network>,
-        route_list_v6: Vec<Ipv6Network>,
+        route_list_v4: impl IntoIterator<Item = Ipv4Network>,
+        route_list_v6: impl IntoIterator<Item = Ipv6Network>,
     ) {
         match (
             serde_json::to_string(&dns_addresses),
@@ -315,21 +315,14 @@ impl WrappedSession {
 
             while let Some(event) = event_stream.next().await {
                 match event {
-                    Event::TunInterfaceUpdated {
-                        ipv4,
-                        ipv6,
-                        dns,
-                        search_domain,
-                        ipv4_routes,
-                        ipv6_routes,
-                    } => {
+                    Event::TunInterfaceUpdated(config) => {
                         callback_handler.on_set_interface_config(
-                            ipv4,
-                            ipv6,
-                            dns,
-                            search_domain,
-                            ipv4_routes,
-                            ipv6_routes,
+                            config.ip.v4,
+                            config.ip.v6,
+                            config.dns_sentinel_ips(),
+                            config.search_domain,
+                            config.ipv4_routes,
+                            config.ipv6_routes,
                         );
                     }
                     Event::ResourcesUpdated(resource_views) => {
