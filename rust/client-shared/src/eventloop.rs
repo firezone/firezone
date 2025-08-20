@@ -479,10 +479,9 @@ async fn phoenix_channel_event_loop(
                 "Hiccup in portal connection: {error:#}"
             ),
             Either::Left((Err(e), _)) => {
-                if event_tx.send(PortalEvent::Error(e)).await.is_err() {
-                    tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
-                    break;
-                }
+                let _ = event_tx.send(PortalEvent::Error(e)).await; // We don't care about the result because we ar exiting anyway.
+
+                break;
             }
             Either::Right((Some(PortalCommand::Send(msg)), _)) => {
                 portal.send(PHOENIX_TOPIC, msg);
