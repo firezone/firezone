@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10076">
+          Introduces graceful shutdown, allowing Clients to immediately switch
+          over a new Gateway instead of waiting for the ICE timeout (~15s).
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.15" date={new Date("2025-08-05")}>
         <ChangeItem pull="10109">
           Fixes an issue where connections would fail to establish in
