@@ -359,6 +359,13 @@ impl tun::Tun for Tun {
 
         Ok(())
     }
+
+    fn queue_lengths(&self) -> (usize, usize) {
+        self.state
+            .as_ref()
+            .map(|s| (s.inbound_rx.len(), s.outbound_tx.len()))
+            .unwrap_or_default()
+    }
 }
 
 // Moves packets from Internet towards the user

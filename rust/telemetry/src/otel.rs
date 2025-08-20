@@ -85,6 +85,18 @@ pub mod attr {
         KeyValue::new("error.type", value)
     }
 
+    pub fn queue_item_ip_packet() -> KeyValue {
+        KeyValue::new("queue.item", "ip-packet")
+    }
+
+    pub fn queue_item_gro_batch() -> KeyValue {
+        KeyValue::new("queue.item", "udp-gro-batch")
+    }
+
+    pub fn queue_item_gso_batch() -> KeyValue {
+        KeyValue::new("queue.item", "udp-gso-batch")
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;

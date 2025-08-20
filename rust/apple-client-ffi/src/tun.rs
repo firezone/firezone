@@ -78,6 +78,10 @@ impl tun::Tun for Tun {
     ) -> Poll<usize> {
         self.inbound_rx.poll_recv_many(cx, buf, max)
     }
+
+    fn queue_lengths(&self) -> (usize, usize) {
+        (self.inbound_rx.len(), self.outbound_tx.len())
+    }
 }
 
 fn get_last_error() -> io::Error {

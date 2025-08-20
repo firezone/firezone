@@ -61,6 +61,7 @@ pub struct Io {
     tun: Device,
     outbound_packet_buffer: VecDeque<IpPacket>,
     packet_counter: opentelemetry::metrics::Counter<u64>,
+    queue_lengths: opentelemetry::metrics::Histogram<u64>,
 }
 
 #[derive(Debug)]
@@ -127,6 +128,14 @@ impl Io {
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
                 .build(),
+            queue_lengths: opentelemetry::global::meter("connlib")
+                .u64_histogram("system.queue.length")
+                .with_description("The length of a queue.")
+                .with_boundaries(vec![
+                    1.0, 2.0, 5.0, 10.0, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0,
+                    900.0, 1000.0,
+                ])
+                .build(),
         }
     }
 
@@ -165,6 +174,8 @@ impl Io {
         >,
     > {
         ready!(self.flush(cx)?);
+
+        self.record_queue_lengths();
 
         if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
             self.nameservers.evaluate();
@@ -421,6 +432,33 @@ impl Io {
     ) -> io::Result<()> {
         self.tcp_dns_server.send_response(to, message)
     }
+
+    /// Records the lengths of our RX und TX queues in a histogram.
+    fn record_queue_lengths(&self) {
+        let (tun_rx, tun_tx) = self.tun.queue_lengths();
+
+        self.queue_lengths.record(
+            tun_rx as u64,
+            &[
+                otel::attr::network_io_direction_receive(),
+                otel::attr::queue_item_ip_packet(),
+            ],
+        );
+        self.queue_lengths.record(
+            tun_tx as u64,
+            &[
+                otel::attr::network_io_direction_transmit(),
+                otel::attr::queue_item_ip_packet(),
+            ],
+        );
+
+        let (udp_rx, udp_tx) = self.sockets.queue_lengths();
+
+        self.queue_lengths
+            .record(udp_rx as u64, &[otel::attr::queue_item_gro_batch()]);
+        self.queue_lengths
+            .record(udp_tx as u64, &[otel::attr::queue_item_gso_batch()]);
+    }
 }
 
 fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
@@ -544,6 +582,10 @@ mod tests {
 
         fn name(&self) -> &str {
             "dummy"
+        }
+
+        fn queue_lengths(&self) -> (usize, usize) {
+            (0, 0)
         }
     }
 }

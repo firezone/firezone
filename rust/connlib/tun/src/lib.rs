@@ -26,4 +26,7 @@ pub trait Tun: Send + Sync + 'static {
 
     /// The name of the TUN device.
     fn name(&self) -> &str;
+
+    /// The number of inbounds and outbound packets sitting in queues.
+    fn queue_lengths(&self) -> (usize, usize);
 }

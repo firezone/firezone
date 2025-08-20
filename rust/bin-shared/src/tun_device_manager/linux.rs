@@ -400,6 +400,10 @@ impl tun::Tun for Tun {
     fn name(&self) -> &str {
         TunDeviceManager::IFACE_NAME
     }
+
+    fn queue_lengths(&self) -> (usize, usize) {
+        (self.inbound_rx.len(), self.outbound_tx.len())
+    }
 }
 
 fn get_last_error() -> io::Error {
