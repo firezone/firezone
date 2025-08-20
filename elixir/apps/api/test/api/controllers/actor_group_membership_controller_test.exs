@@ -119,6 +119,35 @@ defmodule API.ActorGroupMembershipControllerTest do
       assert resp == %{"error" => %{"reason" => "Bad Request"}}
     end
 
+    test "returns error on invalid group id", %{conn: conn, actor: api_actor} do
+      attrs = %{"add" => ["00000000-0000-0000-0000-000000000000"]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/actor_groups/00000000-0000-0000-0000-000000000000/memberships",
+          memberships: attrs
+        )
+
+      assert resp = json_response(conn, 404)
+      assert resp == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns error on invalid actor id", %{conn: conn, account: account, actor: api_actor} do
+      actor_group = Fixtures.Actors.create_group(%{account: account})
+      attrs = %{"add" => ["00000000-0000-0000-0000-000000000000"]}
+
+      conn =
+        conn
+        |> authorize_conn(api_actor)
+        |> put_req_header("content-type", "application/json")
+        |> patch("/actor_groups/#{actor_group.id}/memberships", memberships: attrs)
+
+      assert resp = json_response(conn, 422)
+      assert resp == %{"error" => %{"reason" => "Invalid payload"}}
+    end
+
     test "removes actor from group", %{conn: conn, account: account, actor: api_actor} do
       actor_group = Fixtures.Actors.create_group(%{account: account})
       actor1 = Fixtures.Actors.create_actor(%{account: account})
