@@ -291,7 +291,7 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
     tracing::warn!(%route, "Failed to remove route: {}", err_with_src(&err));
 }
 
-const QUEUE_SIZE: usize = 1000;
+const QUEUE_SIZE: usize = 10_000;
 
 #[derive(Debug)]
 pub struct Tun {

@@ -132,8 +132,7 @@ impl Io {
                 .u64_histogram("system.queue.length")
                 .with_description("The length of a queue.")
                 .with_boundaries(vec![
-                    1.0, 2.0, 5.0, 10.0, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0,
-                    900.0, 1000.0,
+                    1.0, 2.0, 5.0, 10.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0,
                 ])
                 .build(),
         }
