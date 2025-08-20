@@ -1,3 +1,4 @@
+# Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
 services:
   # Dependencies
   postgres:
@@ -329,6 +330,7 @@ services:
     networks:
       - app
 
+  # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
   client:
     environment:
       FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
@@ -353,7 +355,7 @@ services:
         firezone-headless-client
     init: true
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -405,7 +407,7 @@ services:
         firezone-gateway
     init: true
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -447,7 +449,7 @@ services:
 
   download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -510,7 +512,7 @@ services:
     privileged: true
     init: true
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -569,7 +571,7 @@ services:
     privileged: true
     init: true
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
