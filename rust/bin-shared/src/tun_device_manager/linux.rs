@@ -10,6 +10,7 @@ use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
 };
+use netlink_packet_route::link::LinkAttribute;
 use netlink_packet_route::route::{RouteMessage, RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
@@ -76,7 +77,22 @@ impl TunDeviceManager {
     }
 
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
-        Ok(Box::new(Tun::new()?))
+        let tun = Box::new(Tun::new()?);
+
+        // Do this in a separate task because:
+        // a) We want it to be infallible.
+        // b) We don't want `async` to creep into the API.
+        tokio::spawn({
+            let handle = self.connection.handle.clone();
+
+            async move {
+                if let Err(e) = set_txqueue_length(handle, 10_000).await {
+                    tracing::warn!("Failed to set TX queue length: {e}")
+                }
+            }
+        });
+
+        Ok(tun)
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -194,6 +210,31 @@ impl TunDeviceManager {
         self.routes = new_routes;
         Ok(())
     }
+}
+
+async fn set_txqueue_length(handle: Handle, queue_len: u32) -> Result<()> {
+    let index = handle
+        .link()
+        .get()
+        .match_name(TunDeviceManager::IFACE_NAME.to_string())
+        .execute()
+        .try_next()
+        .await?
+        .context("No interface")?
+        .header
+        .index;
+
+    handle
+        .link()
+        .set(
+            LinkUnspec::new_with_index(index)
+                .append_extra_attribute(LinkAttribute::TxQueueLen(queue_len))
+                .build(),
+        )
+        .execute()
+        .await?;
+
+    Ok(())
 }
 
 fn make_rule(handle: &Handle) -> RuleAddRequest {
