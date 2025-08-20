@@ -9,7 +9,7 @@ use std::{
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
 
-const QUEUE_SIZE: usize = 1000;
+const QUEUE_SIZE: usize = 10_000;
 
 #[derive(Debug)]
 pub struct Tun {
