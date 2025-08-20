@@ -58,4 +58,18 @@ defmodule API.FallbackController do
     |> put_view(json: API.ChangesetJSON)
     |> render(:error, status: 422, changeset: changeset)
   end
+
+  def call(conn, {:error, :rollback}) do
+    conn
+    |> put_status(:unprocessable_entity)
+    |> put_view(json: API.ErrorJSON)
+    |> render(:error, status: 422, reason: "Invalid payload")
+  end
+
+  def call(conn, {:error, :invalid_cursor}) do
+    conn
+    |> put_status(:bad_request)
+    |> put_view(json: API.ErrorJSON)
+    |> render(:error, reason: "Invalid cursor")
+  end
 end

@@ -14,7 +14,11 @@ defmodule API.Schemas.Resource do
         name: %Schema{type: :string, description: "Resource name"},
         address: %Schema{type: :string, description: "Resource address"},
         address_description: %Schema{type: :string, description: "Resource address description"},
-        type: %Schema{type: :string, description: "Resource type"},
+        type: %Schema{
+          type: :string,
+          description: "Resource type",
+          enum: ["cidr", "ip", "dns"]
+        },
         ip_stack: %Schema{
           type: :string,
           description: "IP stack type. Only supported for DNS resources.",
@@ -62,7 +66,6 @@ defmodule API.Schemas.Resource do
       required: [:resource],
       example: %{
         "resource" => %{
-          "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "name" => "Prod DB",
           "address" => "10.0.0.10",
           "address_description" => "Production Database",
