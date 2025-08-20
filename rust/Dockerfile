@@ -46,7 +46,7 @@ CMD ${PACKAGE}
 # Build an image for GitHub Actions which includes debug asserts and more test utilities
 FROM runtime AS debug
 
-RUN apk add --no-cache --update iperf3 bind-tools iproute2 jq procps iptables
+RUN apk add --no-cache --update iperf3 bind-tools iproute2 jq procps iptables ethtool
 
 ## Build first with `cargo build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/debug/${PACKAGE} .`
 ARG PACKAGE
@@ -58,3 +58,20 @@ FROM runtime AS release
 ## Build first with `cargo build --target ${TARGET} -p ${PACKAGE} --release && mv /target/${TARGET}/release/${PACKAGE} .`
 ARG PACKAGE
 COPY ${PACKAGE} .
+
+FROM runtime as dev
+
+ARG PACKAGE
+ARG RUST_VERSION="1.89.0" # Keep in sync with `rust-toolchain.toml`
+
+WORKDIR /app
+
+RUN apk add --no-cache rustup
+RUN /usr/bin/rustup-init -y --default-toolchain ${RUST_VERSION} --profile minimal
+
+COPY . .
+
+RUN --mount=type=cache,target=./target /root/.cargo/bin/cargo build -p ${PACKAGE}
+RUN cp target/debug/${PACKAGE} /bin
+
+WORKDIR /bin
