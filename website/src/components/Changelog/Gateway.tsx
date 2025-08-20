@@ -22,7 +22,13 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10231">
+          Remove the FIREZONE_NUM_TUN_THREADS env variable. The Gateway will now
+          always default to a single TUN thread. Using multiple threads can
+          cause packet reordering which hurts TCP throughput performance.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.15" date={new Date("2025-08-05")}>
         <ChangeItem pull="10109">
           Fixes an issue where connections would fail to establish in

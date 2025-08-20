@@ -65,4 +65,8 @@ impl tun::Tun for Tun {
     fn name(&self) -> &str {
         todo!()
     }
+
+    fn queue_lengths(&self) -> (usize, usize) {
+        todo!()
+    }
 }

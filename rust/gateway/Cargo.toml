@@ -25,7 +25,6 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true, features = ["std", "const-extern-fn", "extra_traits"] }
 moka = { workspace = true, features = ["future"] }
-num_cpus = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
