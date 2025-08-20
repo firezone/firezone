@@ -137,26 +137,6 @@ defmodule Domain.Auth.Identity.Sync do
     end
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  defp soft_delete_identities(provider, provider_identifiers_to_delete) do
-    provider_identifiers_to_delete = Enum.uniq(provider_identifiers_to_delete)
-
-    {_count, identities} =
-      Identity.Query.not_deleted()
-      |> Identity.Query.by_account_id(provider.account_id)
-      |> Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
-      |> Identity.Query.delete()
-      |> Repo.update_all([])
-
-    :ok =
-      Enum.each(identities, fn identity ->
-        {:ok, _tokens} = Domain.Tokens.soft_delete_tokens_for(identity)
-      end)
-
-    {:ok, identities}
-  end
-
   defp insert_identities(provider, attrs_by_provider_identifier, provider_identifiers_to_insert) do
     provider_identifiers_to_insert
     |> Enum.uniq()
