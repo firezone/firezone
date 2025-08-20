@@ -23,7 +23,7 @@ export default function Gateway() {
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
       <Unreleased>
-        <ChangeItem pull="XXXXX">
+        <ChangeItem pull="10231">
           Remove the FIREZONE_NUM_TUN_THREADS env variable. The Gateway will now
           always default to a single TUN thread. Using multiple threads can
           cause packet reordering which hurts TCP throughput performance.
