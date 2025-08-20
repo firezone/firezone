@@ -20,9 +20,9 @@ use phoenix_channel::get_user_agent;
 use futures::{TryFutureExt, future};
 use phoenix_channel::PhoenixChannel;
 use secrecy::Secret;
+use std::pin::pin;
+use std::process::ExitCode;
 use std::{collections::BTreeSet, path::Path};
-use std::{fmt, pin::pin};
-use std::{process::ExitCode, str::FromStr};
 use std::{sync::Arc, time::Duration};
 use tokio::signal::ctrl_c;
 use tracing_subscriber::layer;
@@ -182,7 +182,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     )
     .context("Failed to resolve portal URL")?;
 
-    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, cli.tun_threads.0)
+    let mut tun_device_manager = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)
         .context("Failed to create TUN device manager")?;
     let tun = tun_device_manager
         .make_tun()
@@ -274,10 +274,6 @@ struct Cli {
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
     firezone_id: Option<String>,
 
-    /// How many threads to use for reading and writing to the TUN device.
-    #[arg(long, env = "FIREZONE_NUM_TUN_THREADS", default_value_t)]
-    tun_threads: NumThreads,
-
     /// Where to export metrics to.
     ///
     /// This configuration option is private API and has no stability guarantees.
@@ -313,33 +309,6 @@ enum MetricsExporter {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-struct NumThreads(pub usize);
-
-impl Default for NumThreads {
-    fn default() -> Self {
-        if num_cpus::get() < 4 {
-            return Self(1);
-        }
-
-        Self(2)
-    }
-}
-
-impl fmt::Display for NumThreads {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl FromStr for NumThreads {
-    type Err = <usize as FromStr>::Err;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Self(s.parse()?))
     }
 }
 

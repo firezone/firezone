@@ -7,7 +7,7 @@ use tun::Tun;
 pub struct TunDeviceManager {}
 
 impl TunDeviceManager {
-    pub fn new(_mtu: usize, _num_threads: usize) -> Result<Self> {
+    pub fn new(_mtu: usize) -> Result<Self> {
         bail!("Not implemented")
     }
 

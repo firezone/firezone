@@ -24,7 +24,7 @@ async fn no_packet_loops_udp() {
 
     let bufferpool = BufferPool::<BytesMut>::new(0, "test");
 
-    let mut device_manager = TunDeviceManager::new(1280, 1).unwrap();
+    let mut device_manager = TunDeviceManager::new(1280).unwrap();
     let _tun = device_manager.make_tun().unwrap();
     device_manager.set_ips(ipv4, ipv6).await.unwrap();
 

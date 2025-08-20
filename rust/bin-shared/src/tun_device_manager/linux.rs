@@ -28,6 +28,7 @@ use std::{
     os::{fd::RawFd, unix::fs::PermissionsExt},
 };
 use tokio::sync::mpsc;
+use tokio_util::sync::PollSender;
 use tun::ioctl;
 
 const TUNSETIFF: libc::c_ulong = 0x4004_54ca;
@@ -41,7 +42,6 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 /// For lack of a better name
 pub struct TunDeviceManager {
     mtu: u32,
-    num_threads: usize,
     connection: Connection,
     routes: HashSet<IpNetwork>,
 }
@@ -63,7 +63,7 @@ impl TunDeviceManager {
     /// Creates a new managed tunnel device.
     ///
     /// Panics if called without a Tokio runtime.
-    pub fn new(mtu: usize, num_threads: usize) -> Result<Self> {
+    pub fn new(mtu: usize) -> Result<Self> {
         let (cxn, handle, _) = new_connection().context("Failed to create netlink connection")?;
         let task = tokio::spawn(cxn);
         let connection = Connection { handle, task };
@@ -72,12 +72,11 @@ impl TunDeviceManager {
             connection,
             routes: Default::default(),
             mtu: mtu as u32,
-            num_threads,
         })
     }
 
     pub fn make_tun(&mut self) -> Result<Box<dyn tun::Tun>> {
-        Ok(Box::new(Tun::new(self.num_threads)?))
+        Ok(Box::new(Tun::new()?))
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
@@ -292,54 +291,48 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
     tracing::warn!(%route, "Failed to remove route: {}", err_with_src(&err));
 }
 
+const QUEUE_SIZE: usize = 1000;
+
 #[derive(Debug)]
 pub struct Tun {
-    outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
+    outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
 }
 
 impl Tun {
-    pub fn new(num_threads: usize) -> Result<Self> {
+    pub fn new() -> Result<Self> {
         create_tun_device()?;
 
-        let (inbound_tx, inbound_rx) = mpsc::channel(1000);
-        let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
+        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
-        for n in 0..num_threads {
-            let fd = Arc::new(open_tun()?);
-            let outbound_rx = outbound_rx.clone().into_stream();
-            let inbound_tx = inbound_tx.clone();
+        let fd = Arc::new(open_tun()?);
 
-            std::thread::Builder::new()
-                .name(format!("TUN send {n}/{num_threads}"))
-                .spawn({
-                    let fd = fd.clone();
+        std::thread::Builder::new()
+            .name("TUN send".to_owned())
+            .spawn({
+                let fd = fd.clone();
 
-                    move || {
-                        firezone_logging::unwrap_or_warn!(
-                            tun::unix::tun_send(fd, outbound_rx, write),
-                            "Failed to send to TUN device: {}"
-                        )
-                    }
-                })
-                .map_err(io::Error::other)?;
-            std::thread::Builder::new()
-                .name(format!("TUN recv {n}/{num_threads}"))
-                .spawn({
-                    let fd = fd.clone();
-
-                    move || {
-                        firezone_logging::unwrap_or_warn!(
-                            tun::unix::tun_recv(fd, inbound_tx, read),
-                            "Failed to recv from TUN device: {}"
-                        )
-                    }
-                })
-                .map_err(io::Error::other)?;
-        }
+                move || {
+                    firezone_logging::unwrap_or_warn!(
+                        tun::unix::tun_send(fd, outbound_rx, write),
+                        "Failed to send to TUN device: {}"
+                    )
+                }
+            })
+            .map_err(io::Error::other)?;
+        std::thread::Builder::new()
+            .name("TUN recv".to_owned())
+            .spawn(move || {
+                firezone_logging::unwrap_or_warn!(
+                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    "Failed to recv from TUN device: {}"
+                )
+            })
+            .map_err(io::Error::other)?;
 
         Ok(Self {
-            outbound_tx: outbound_tx.into_sink(),
+            outbound_tx: PollSender::new(outbound_tx),
             inbound_rx,
         })
     }
@@ -402,7 +395,13 @@ impl tun::Tun for Tun {
     }
 
     fn queue_lengths(&self) -> (usize, usize) {
-        (self.inbound_rx.len(), self.outbound_tx.len())
+        (
+            self.inbound_rx.len(),
+            self.outbound_tx
+                .get_ref()
+                .map(|s| QUEUE_SIZE - s.capacity())
+                .unwrap_or_default(),
+        )
     }
 }
 

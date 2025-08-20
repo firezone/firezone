@@ -9,7 +9,7 @@ use firezone_bin_shared::TunDeviceManager;
 async fn tunnel_drop() {
     firezone_logging::test_global("debug"); // `Tun` uses threads and we want to see the logs of all threads.
 
-    let mut tun_device_manager = TunDeviceManager::new(1280, 1).unwrap();
+    let mut tun_device_manager = TunDeviceManager::new(1280).unwrap();
 
     // Each cycle takes about half a second, so this will take a fair bit to run.
     for _ in 0..50 {

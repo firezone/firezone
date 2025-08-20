@@ -30,6 +30,7 @@ serde_json = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "sync"] }
+tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }

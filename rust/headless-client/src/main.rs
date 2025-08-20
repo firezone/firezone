@@ -276,7 +276,7 @@ fn main() -> Result<()> {
         let mut terminate = signals::Terminate::new()?;
         let mut hangup = signals::Hangup::new()?;
 
-        let mut tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, 1)?;
+        let mut tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)?;
 
         let tokio_handle = tokio::runtime::Handle::current();
 
