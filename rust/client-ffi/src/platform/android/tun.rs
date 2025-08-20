@@ -67,7 +67,7 @@ impl Tun {
         let name = unsafe { interface_name(fd)? };
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
-        let (outbound_tx, outbound_rx) = mpsc::bounded(QUEUE_SIZE);
+        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())
