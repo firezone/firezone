@@ -15,7 +15,7 @@ async fn no_packet_loops_tcp() {
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
 
-    let mut device_manager = TunDeviceManager::new(1280, 1).unwrap();
+    let mut device_manager = TunDeviceManager::new(1280).unwrap();
     let _tun = device_manager.make_tun().unwrap();
     device_manager.set_ips(ipv4, ipv6).await.unwrap();
 

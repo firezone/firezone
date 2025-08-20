@@ -163,7 +163,7 @@ pub struct UdpSocket {
     /// A buffer pool for batches of incoming UDP packets.
     buffer_pool: BufferPool<Vec<u8>>,
 
-    gro_batch_histogram: opentelemetry::metrics::Histogram<u64>,
+    batch_histogram: opentelemetry::metrics::Histogram<u64>,
     port: u16,
 }
 
@@ -184,7 +184,7 @@ impl UdpSocket {
                     IpAddr::V6(_) => "udp-socket-v6",
                 },
             ),
-            gro_batch_histogram: opentelemetry::global::meter("connlib")
+            batch_histogram: opentelemetry::global::meter("connlib")
                 .u64_histogram("system.network.packets.batch_count")
                 .with_description(
                     "How many batches of packets we have processed in a single syscall.",
@@ -286,7 +286,7 @@ impl UdpSocket {
             .await
             .context("Failed to read from socket")?;
 
-        self.gro_batch_histogram.record(
+        self.batch_histogram.record(
             len as u64,
             &[
                 KeyValue::new("network.transport", "udp"),
@@ -350,6 +350,16 @@ impl UdpSocket {
     }
 
     async fn send_inner(&self, chunk: Transmit<'_>) -> io::Result<()> {
+        let batch_size = chunk.contents.len() / chunk.segment_size.unwrap_or(chunk.contents.len());
+
+        self.batch_histogram.record(
+            batch_size as u64,
+            &[
+                KeyValue::new("network.transport", "udp"),
+                KeyValue::new("network.io.direction", "transmit"),
+            ],
+        );
+
         self.inner
             .async_io(Interest::WRITABLE, || {
                 match self.state.try_send((&self.inner).into(), &chunk) {

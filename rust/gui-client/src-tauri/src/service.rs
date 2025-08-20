@@ -290,7 +290,7 @@ impl<'a> Handler<'a> {
             .next_client_split()
             .await
             .context("Failed to wait for incoming IPC connection from a GUI")?;
-        let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE, 1)?;
+        let tun_device = TunDeviceManager::new(ip_packet::MAX_IP_SIZE)?;
         let dns_notifier = new_dns_notifier().await?.boxed();
         let network_notifier = new_network_notifier().await?.boxed();
 

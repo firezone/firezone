@@ -85,6 +85,13 @@ impl Device {
         Ok(())
     }
 
+    pub fn queue_lengths(&self) -> (usize, usize) {
+        self.tun
+            .as_ref()
+            .map(|t| t.queue_lengths())
+            .unwrap_or_default()
+    }
+
     fn tun(&mut self) -> io::Result<&mut dyn Tun> {
         Ok(self
             .tun

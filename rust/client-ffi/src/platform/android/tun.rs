@@ -4,12 +4,15 @@ use std::os::fd::{FromRawFd, OwnedFd};
 use std::task::{Context, Poll};
 use std::{io, os::fd::RawFd};
 use tokio::sync::mpsc;
+use tokio_util::sync::PollSender;
 use tun::ioctl;
+
+const QUEUE_SIZE: usize = 1000;
 
 #[derive(Debug)]
 pub struct Tun {
     name: String,
-    outbound_tx: flume::r#async::SendSink<'static, IpPacket>,
+    outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
     _fd: OwnedFd,
 }
@@ -41,6 +44,16 @@ impl tun::Tun for Tun {
     ) -> Poll<usize> {
         self.inbound_rx.poll_recv_many(cx, buf, max)
     }
+
+    fn queue_lengths(&self) -> (usize, usize) {
+        (
+            self.inbound_rx.len(),
+            self.outbound_tx
+                .get_ref()
+                .map(|s| QUEUE_SIZE - s.capacity())
+                .unwrap_or_default(),
+        )
+    }
 }
 
 impl Tun {
@@ -53,16 +66,14 @@ impl Tun {
     pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         let name = unsafe { interface_name(fd)? };
 
-        let (inbound_tx, inbound_rx) = mpsc::channel(1000);
-        let (outbound_tx, outbound_rx) = flume::bounded(1000); // flume is an MPMC channel, therefore perfect for workstealing outbound packets.
-
-        // TODO: Test whether we can set `IFF_MULTI_QUEUE` on Android devices.
+        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())
             .spawn(move || {
                 firezone_logging::unwrap_or_warn!(
-                    tun::unix::tun_send(fd, outbound_rx.into_stream(), write),
+                    tun::unix::tun_send(fd, outbound_rx, write),
                     "Failed to send to TUN device: {}"
                 )
             })
@@ -79,7 +90,7 @@ impl Tun {
 
         Ok(Tun {
             name,
-            outbound_tx: outbound_tx.into_sink(),
+            outbound_tx: PollSender::new(outbound_tx),
             inbound_rx,
             _fd: unsafe { OwnedFd::from_raw_fd(fd) }, // `OwnedFd` will close the fd on drop.
         })

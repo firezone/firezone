@@ -46,6 +46,8 @@ use wintun::Adapter;
 /// where that is configured.
 const RING_BUFFER_SIZE: u32 = 0x10_0000;
 
+const QUEUE_SIZE: usize = 1000;
+
 pub struct TunDeviceManager {
     mtu: u32,
 
@@ -59,7 +61,7 @@ pub struct TunDeviceManager {
 
 impl TunDeviceManager {
     #[expect(clippy::unnecessary_wraps, reason = "Fallible on Linux")]
-    pub fn new(mtu: usize, _num_threads: usize) -> Result<Self> {
+    pub fn new(mtu: usize) -> Result<Self> {
         Ok(Self {
             iface_idx: None,
             luid: None,
@@ -290,8 +292,8 @@ impl Tun {
                 .start_session(RING_BUFFER_SIZE)
                 .context("Failed to start session")?,
         );
-        let (outbound_tx, outbound_rx) = mpsc::channel(1000);
-        let (inbound_tx, inbound_rx) = mpsc::channel(1000); // We want to be able to batch-receive from this.
+        let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+        let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE); // We want to be able to batch-receive from this.
         let send_thread = start_send_thread(outbound_rx, Arc::downgrade(&session))
             .context("Failed to start send thread")?;
         let recv_thread = start_recv_thread(inbound_tx, Arc::downgrade(&session))
@@ -358,6 +360,21 @@ impl tun::Tun for Tun {
             .map_err(io::Error::other)?;
 
         Ok(())
+    }
+
+    fn queue_lengths(&self) -> (usize, usize) {
+        self.state
+            .as_ref()
+            .map(|s| {
+                (
+                    s.inbound_rx.len(),
+                    s.outbound_tx
+                        .get_ref()
+                        .map(|s| QUEUE_SIZE - s.capacity())
+                        .unwrap_or_default(),
+                )
+            })
+            .unwrap_or_default()
     }
 }
 

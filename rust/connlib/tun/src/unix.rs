@@ -1,5 +1,4 @@
 use anyhow::{Context as _, Result, bail};
-use futures::StreamExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::os::fd::AsRawFd;
@@ -8,7 +7,7 @@ use tokio::sync::mpsc;
 
 pub fn tun_send<T>(
     fd: T,
-    mut outbound_rx: flume::r#async::RecvStream<'_, IpPacket>,
+    mut outbound_rx: mpsc::Receiver<IpPacket>,
     write: impl Fn(i32, &IpPacket) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where
@@ -21,7 +20,7 @@ where
         .block_on(async move {
             let fd = AsyncFd::with_interest(fd, tokio::io::Interest::WRITABLE)?;
 
-            while let Some(packet) = outbound_rx.next().await {
+            while let Some(packet) = outbound_rx.recv().await {
                 if let Err(e) = fd
                     .async_io(tokio::io::Interest::WRITABLE, |fd| {
                         write(fd.as_raw_fd(), &packet)

@@ -117,6 +117,22 @@ impl Sockets {
 
         Poll::Ready(Ok(iter))
     }
+
+    pub fn queue_lengths(&self) -> (usize, usize) {
+        let (v4_inbound, v4_outbound) = self
+            .socket_v4
+            .as_ref()
+            .map(|s| s.queue_lengths())
+            .unwrap_or_default();
+
+        let (v6_inbound, v6_outbound) = self
+            .socket_v6
+            .as_ref()
+            .map(|s| s.queue_lengths())
+            .unwrap_or_default();
+
+        (v4_inbound + v6_inbound, v4_outbound + v6_outbound)
+    }
 }
 
 struct PacketIter<T4, T6> {
@@ -332,6 +348,13 @@ impl ThreadedUdpSocket {
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {
         self.channels.as_mut().context("Missing channels")
+    }
+
+    fn queue_lengths(&self) -> (usize, usize) {
+        self.channels
+            .as_ref()
+            .map(|c| (c.inbound_rx.len(), c.outbound_tx.len()))
+            .unwrap_or_default()
     }
 }
 
