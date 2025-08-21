@@ -134,7 +134,6 @@ jobs:
           docker compose up -d httpbin --no-build
           docker compose up -d download.httpbin --no-build
           docker compose up -d api web domain --no-build
-          docker compose up -d otel --no-build
           docker compose up -d relay-1 --no-build
           docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
