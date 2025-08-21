@@ -3,7 +3,8 @@
 use firezone_relay::{AllocationPort, ClientSocket, PeerSocket, ebpf};
 use opentelemetry::global;
 use opentelemetry_sdk::metrics::{
-    InMemoryMetricExporter, PeriodicReader, SdkMeterProvider, data::Sum,
+    InMemoryMetricExporter, PeriodicReader, SdkMeterProvider,
+    data::{AggregatedMetrics, MetricData},
 };
 use std::time::Duration;
 use tokio::net::UdpSocket;
@@ -98,11 +99,18 @@ async fn ping_pong() {
 
     assert!(!metrics.is_empty());
 
-    let metric = &metrics.iter().last().unwrap().scope_metrics[0].metrics[0];
-    let sum = metric.data.as_any().downcast_ref::<Sum<u64>>().unwrap();
+    let metric = &metrics
+        .iter()
+        .last()
+        .and_then(|m| m.scope_metrics().next())
+        .and_then(|m| m.metrics().next())
+        .unwrap();
+    let AggregatedMetrics::U64(MetricData::Sum(sum)) = metric.data() else {
+        panic!("Not an u64 sum");
+    };
 
-    assert_eq!(metric.name, "data_relayed_ebpf_bytes");
-    assert_eq!(sum.data_points[0].value, 4 + 4); // "ping" and "pong" are both 4 bytes.
+    assert_eq!(metric.name(), "data_relayed_ebpf_bytes");
+    assert_eq!(sum.data_points().next().unwrap().value(), 4 + 4); // "ping" and "pong" are both 4 bytes.
 }
 
 fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricExporter) {

@@ -8,7 +8,7 @@ use opentelemetry_sdk::{
 pub struct NoopPushMetricsExporter;
 
 impl PushMetricExporter for NoopPushMetricsExporter {
-    fn export(&self, _: &mut ResourceMetrics) -> impl Future<Output = OTelSdkResult> + Send {
+    fn export(&self, _: &ResourceMetrics) -> impl Future<Output = OTelSdkResult> + Send {
         std::future::ready(Ok(()))
     }
 
@@ -22,5 +22,9 @@ impl PushMetricExporter for NoopPushMetricsExporter {
 
     fn temporality(&self) -> Temporality {
         Temporality::default()
+    }
+
+    fn shutdown_with_timeout(&self, _: std::time::Duration) -> OTelSdkResult {
+        Ok(())
     }
 }
