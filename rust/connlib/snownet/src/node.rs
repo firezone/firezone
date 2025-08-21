@@ -1976,12 +1976,10 @@ impl PeerSocket {
         }
     }
 
-    fn required_buffer_size(&self, packet: &[u8]) -> usize {
+    fn required_buffer_size(&self, packet_len: usize) -> usize {
         match self {
-            PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => packet.len() + 32,
-            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => {
-                packet.len() + 32 + 4
-            }
+            PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => packet_len + 32,
+            PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => packet_len + 32 + 4,
         }
     }
 
@@ -2354,7 +2352,8 @@ where
         let packet_src = socket.packet_src();
         let packet_dst = socket.packet_dst(self.relay.id, allocations)?;
         let packet_start = socket.packet_start();
-        let buffer_len = std::cmp::max(socket.required_buffer_size(packet_slice), 148);
+        let packet_len = std::cmp::max(packet_slice.len(), 148); // We may need to send a handshake instead of a packet so the buffer needs to be at least 148 bytes.
+        let buffer_len = socket.required_buffer_size(packet_len);
 
         let mut buffer =
             buffer_provider.get_buffer(packet_src, packet_dst, packet.ecn(), buffer_len);
