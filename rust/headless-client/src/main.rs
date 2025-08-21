@@ -11,8 +11,11 @@ use firezone_bin_shared::{
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };
-use firezone_telemetry::{Telemetry, analytics, otel};
-use opentelemetry_sdk::metrics::{PeriodicReader, SdkMeterProvider};
+use firezone_telemetry::{
+    MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, analytics, feature_flags, otel,
+};
+use opentelemetry_otlp::WithExportConfig as _;
+use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
@@ -109,6 +112,15 @@ struct Cli {
     #[arg(long, hide = true, env = "FIREZONE_METRICS")]
     metrics: Option<MetricsExporter>,
 
+    /// Send metrics to a custom OTLP collector.
+    ///
+    /// By default, Firezone's hosted OTLP collector is used.
+    ///
+    /// This configuration option is private API and has no stability guarantees.
+    /// It may be removed / changed anytime.
+    #[arg(long, env, hide = true)]
+    otlp_grpc_endpoint: Option<String>,
+
     /// A filesystem path where the token can be found
     // Apparently passing secrets through stdin is the most secure method, but
     // until anyone asks for it, env vars are okay and files on disk are slightly better.
@@ -121,6 +133,7 @@ struct Cli {
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
 enum MetricsExporter {
     Stdout,
+    OtelCollector,
 }
 
 impl Cli {
@@ -237,17 +250,34 @@ fn main() -> Result<()> {
     let mut last_connlib_start_instant = Some(Instant::now());
 
     rt.block_on(async {
-        if let Some(MetricsExporter::Stdout) = cli.metrics {
-            let exporter = opentelemetry_stdout::MetricExporter::default();
-            let reader = PeriodicReader::builder(exporter).build();
-            let provider = SdkMeterProvider::builder()
-                .with_reader(reader)
-                .with_resource(otel::default_resource_with([
-                    otel::attr::service_name!(),
-                    otel::attr::service_version!(),
-                    otel::attr::service_instance_id(firezone_id.clone()),
-                ]))
-                .build();
+        if let Some(backend) = cli.metrics {
+            let resource = otel::default_resource_with([
+                otel::attr::service_name!(),
+                otel::attr::service_version!(),
+                otel::attr::service_instance_id(firezone_id.clone()),
+            ]);
+
+            let provider = match (backend, cli.otlp_grpc_endpoint) {
+                (MetricsExporter::Stdout, _) => SdkMeterProvider::builder()
+                    .with_periodic_exporter(opentelemetry_stdout::MetricExporter::default())
+                    .with_resource(resource)
+                    .build(),
+                (MetricsExporter::OtelCollector, Some(endpoint)) => SdkMeterProvider::builder()
+                    .with_periodic_exporter(tonic_otlp_exporter(endpoint)?)
+                    .with_resource(resource)
+                    .build(),
+                (MetricsExporter::OtelCollector, None) => SdkMeterProvider::builder()
+                    .with_periodic_exporter(MaybePushMetricsExporter {
+                        inner: {
+                            // TODO: Once Firezone has a hosted OTLP exporter, it will go here.
+
+                            NoopPushMetricsExporter
+                        },
+                        should_export: feature_flags::export_metrics,
+                    })
+                    .with_resource(resource)
+                    .build(),
+            };
 
             opentelemetry::global::set_meter_provider(provider);
         }
@@ -397,6 +427,18 @@ fn read_token_file(path: &Path) -> Result<Option<SecretString>> {
 
     tracing::info!(?path, "Loaded token from disk");
     Ok(Some(token))
+}
+
+fn tonic_otlp_exporter(
+    endpoint: String,
+) -> Result<opentelemetry_otlp::MetricExporter, anyhow::Error> {
+    let metric_exporter = opentelemetry_otlp::MetricExporter::builder()
+        .with_tonic()
+        .with_endpoint(format!("http://{endpoint}"))
+        .build()
+        .context("Failed to build OTLP metric exporter")?;
+
+    Ok(metric_exporter)
 }
 
 #[cfg(test)]
