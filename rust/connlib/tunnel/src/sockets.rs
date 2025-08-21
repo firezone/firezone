@@ -4,6 +4,7 @@ use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
 use socket_factory::DatagramOut;
 use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
+use std::env::VarError;
 use std::time::{Duration, Instant};
 use std::{
     io,
@@ -242,10 +243,20 @@ impl ThreadedUdpSocket {
                     .with_unit("{error}")
                     .build();
 
-                if let Err(e) = socket.set_buffer_sizes(
-                    socket_factory::SEND_BUFFER_SIZE,
-                    socket_factory::RECV_BUFFER_SIZE,
-                ) {
+                let send_buffer_size = read_end_var_usize("FIREZONE_UDP_SEND_BUFFER_SIZE")
+                    .inspect_err(|e| {
+                        tracing::debug!("Failed to read `FIREZONE_UDP_SEND_BUFFER_SIZE`: {e}")
+                    })
+                    .unwrap_or_default()
+                    .unwrap_or(socket_factory::SEND_BUFFER_SIZE);
+                let recv_buffer_size = read_end_var_usize("FIREZONE_UDP_RECV_BUFFER_SIZE")
+                    .inspect_err(|e| {
+                        tracing::debug!("Failed to read `FIREZONE_UDP_RECV_BUFFER_SIZE`: {e}")
+                    })
+                    .unwrap_or_default()
+                    .unwrap_or(socket_factory::RECV_BUFFER_SIZE);
+
+                if let Err(e) = socket.set_buffer_sizes(send_buffer_size, recv_buffer_size) {
                     tracing::warn!("Failed to set socket buffer sizes: {e}");
                 };
 
@@ -418,6 +429,18 @@ fn listen(
     }
 
     Err(last_err.unwrap_or_else(|| io::Error::other("No addresses to listen on")))
+}
+
+fn read_end_var_usize(name: &str) -> Result<Option<usize>> {
+    let var = match std::env::var(name) {
+        Ok(var) => var,
+        Err(VarError::NotPresent) => return Ok(None),
+        Err(e @ VarError::NotUnicode(_)) => return Err(anyhow::Error::new(e)),
+    };
+
+    let var = var.parse().context("Failed to parse as usize")?;
+
+    Ok(Some(var))
 }
 
 #[derive(thiserror::Error, Debug)]
