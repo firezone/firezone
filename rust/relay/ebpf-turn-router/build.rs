@@ -1,5 +1,3 @@
-use which::which;
-
 /// Building this crate has an undeclared dependency on the `bpf-linker` binary. This would be
 /// better expressed by [artifact-dependencies][bindeps] but issues such as
 /// https://github.com/rust-lang/cargo/issues/12385 make their use impractical for the time being.
@@ -12,6 +10,17 @@ use which::which;
 ///
 /// [bindeps]: https://doc.rust-lang.org/nightly/cargo/reference/unstable.html?highlight=feature#artifact-dependencies
 fn main() {
-    let bpf_linker = which("bpf-linker").expect("bpf-linker not found in $PATH");
-    println!("cargo:rerun-if-changed={}", bpf_linker.to_str().unwrap());
+    // eBPF is Linux-only, skip build script on other platforms
+    #[cfg(not(target_os = "linux"))]
+    {
+        println!("cargo:warning=eBPF is only supported on Linux, skipping bpf-linker check");
+        return;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use which::which;
+        let bpf_linker = which("bpf-linker").expect("bpf-linker not found in $PATH");
+        println!("cargo:rerun-if-changed={}", bpf_linker.to_str().unwrap());
+    }
 }
