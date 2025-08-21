@@ -16,7 +16,7 @@ where
     E: PushMetricExporter,
     F: Fn() -> bool + Send + Sync + 'static,
 {
-    fn export(&self, metrics: &mut ResourceMetrics) -> impl Future<Output = OTelSdkResult> + Send {
+    fn export(&self, metrics: &ResourceMetrics) -> impl Future<Output = OTelSdkResult> + Send {
         if (self.should_export)() {
             return Either::Left(self.inner.export(metrics));
         }
@@ -34,5 +34,9 @@ where
 
     fn temporality(&self) -> Temporality {
         self.inner.temporality()
+    }
+
+    fn shutdown_with_timeout(&self, timeout: std::time::Duration) -> OTelSdkResult {
+        self.inner.shutdown_with_timeout(timeout)
     }
 }
