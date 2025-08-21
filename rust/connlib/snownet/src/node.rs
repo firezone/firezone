@@ -1976,7 +1976,7 @@ impl PeerSocket {
         }
     }
 
-    fn buffer_size(&self, packet: &[u8]) -> usize {
+    fn required_buffer_size(&self, packet: &[u8]) -> usize {
         match self {
             PeerSocket::PeerToPeer { .. } | PeerSocket::PeerToRelay { .. } => packet.len() + 32,
             PeerSocket::RelayToPeer { .. } | PeerSocket::RelayToRelay { .. } => {
@@ -2354,10 +2354,10 @@ where
         let packet_src = socket.packet_src();
         let packet_dst = socket.packet_dst(self.relay.id, allocations)?;
         let packet_start = socket.packet_start();
-        let buffer_len = socket.buffer_size(packet_slice);
+        let buffer_len = std::cmp::max(socket.required_buffer_size(packet_slice), 148);
 
         let mut buffer =
-            buffer_provider.get_buffer(packet_src, packet_dst, packet.ecn(), buffer_len.max(148));
+            buffer_provider.get_buffer(packet_src, packet_dst, packet.ecn(), buffer_len);
 
         match self.tunnel.encapsulate_at(
             packet_slice,
