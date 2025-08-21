@@ -2611,9 +2611,12 @@ impl BufferProvider for BufferPool<Vec<u8>> {
         _: Option<SocketAddr>,
         _: SocketAddr,
         _: Ecn,
-        _: usize,
+        len: usize,
     ) -> Self::Buffer<'_> {
-        self.pull()
+        let mut buffer = self.pull();
+        buffer.resize(len, 0);
+
+        buffer
     }
 }
 
