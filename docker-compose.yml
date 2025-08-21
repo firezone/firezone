@@ -321,6 +321,9 @@ services:
       RUST_LOG: ${RUST_LOG:-firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,boringtun=debug,snownet=debug,str0m=debug,phoenix_channel=debug,info}
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: EFC7A9E3-3576-4633-B633-7D47BA9E14AC
+      FIREZONE_METRICS: otel-collector
+      OTLP_GRPC_ENDPOINT: openobserve.local:5081
+      OTEL_EXPORTER_OTLP_HEADERS: Authorization=Basic b3RlbEBmaXJlem9uZS5sb2NhbDpmaXJlem9uZQ==,organization=default,stream-name=default
     init: true
     build:
       target: debug
@@ -354,6 +357,9 @@ services:
       FIREZONE_ENABLE_MASQUERADE: 1 # FIXME: NOOP in latest version. Remove after next release.
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
+      FIREZONE_METRICS: otel-collector
+      OTLP_GRPC_ENDPOINT: openobserve.local:5081
+      OTEL_EXPORTER_OTLP_HEADERS: Authorization=Basic b3RlbEBmaXJlem9uZS5sb2NhbDpmaXJlem9uZQ==,organization=default,stream-name=default
     init: true
     build:
       target: debug
@@ -444,7 +450,8 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
-      OTLP_GRPC_ENDPOINT: otel:4317
+      OTLP_GRPC_ENDPOINT: openobserve.local:5081
+      OTEL_EXPORTER_OTLP_HEADERS: Authorization=Basic b3RlbEBmaXJlem9uZS5sb2NhbDpmaXJlem9uZQ==,organization=default,stream-name=default
     build:
       target: debug
       context: rust
@@ -488,7 +495,8 @@ services:
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
       FIREZONE_API_URL: ws://api:8081
-      OTLP_GRPC_ENDPOINT: otel:4317
+      OTLP_GRPC_ENDPOINT: openobserve.local:5081
+      OTEL_EXPORTER_OTLP_HEADERS: Authorization=Basic b3RlbEBmaXJlem9uZS5sb2NhbDpmaXJlem9uZQ==,organization=default,stream-name=default
     build:
       target: debug
       context: rust
@@ -513,8 +521,16 @@ services:
         ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
         ipv6_address: ${RELAY_2_PUBLIC_IP6_ADDR:-172:28:0::201}
 
-  otel:
-    image: otel/opentelemetry-collector:latest
+  openobserve.local:
+    image: public.ecr.aws/zinclabs/openobserve:latest
+    restart: unless-stopped
+    environment:
+      ZO_ROOT_USER_EMAIL: "otel@firezone.local"
+      ZO_ROOT_USER_PASSWORD: "firezone"
+    ports:
+      - "5080:5080"
+    volumes:
+      - zo_data:/data
     networks:
       app:
 
@@ -630,3 +646,4 @@ volumes:
   postgres-data:
   elixir-build-cache:
   assets-build-cache:
+  zo_data:
