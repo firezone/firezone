@@ -1,5 +1,7 @@
+use firezone_telemetry::otel;
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
+use opentelemetry::metrics::ObservableHistogram;
 use std::os::fd::{FromRawFd, OwnedFd};
 use std::task::{Context, Poll};
 use std::{io, os::fd::RawFd};
@@ -15,6 +17,9 @@ pub struct Tun {
     outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
     _fd: OwnedFd,
+
+    _outbound_queue_length: ObservableHistogram<u64>,
+    _inbound_queue_length: ObservableHistogram<u64>,
 }
 
 impl tun::Tun for Tun {
@@ -44,16 +49,6 @@ impl tun::Tun for Tun {
     ) -> Poll<usize> {
         self.inbound_rx.poll_recv_many(cx, buf, max)
     }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        (
-            self.inbound_rx.len(),
-            self.outbound_tx
-                .get_ref()
-                .map(|s| QUEUE_SIZE - s.capacity())
-                .unwrap_or_default(),
-        )
-    }
 }
 
 impl Tun {
@@ -68,6 +63,21 @@ impl Tun {
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+
+        let outbound_queue_length = otel::metrics::system_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_transmit(),
+            ],
+        );
+        let inbound_queue_length = otel::metrics::system_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_receive(),
+            ],
+        );
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())
@@ -93,6 +103,8 @@ impl Tun {
             outbound_tx: PollSender::new(outbound_tx),
             inbound_rx,
             _fd: unsafe { OwnedFd::from_raw_fd(fd) }, // `OwnedFd` will close the fd on drop.
+            _outbound_queue_length: outbound_queue_length,
+            _inbound_queue_length: inbound_queue_length,
         })
     }
 }

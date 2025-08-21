@@ -2,6 +2,7 @@ use crate::otel;
 use anyhow::{Context as _, Result};
 use futures::{SinkExt, StreamExt, ready};
 use gat_lending_iterator::LendingIterator;
+use opentelemetry::metrics::ObservableHistogram;
 use socket_factory::DatagramOut;
 use socket_factory::{DatagramIn, DatagramSegmentIter, SocketFactory, UdpSocket};
 use std::time::{Duration, Instant};
@@ -117,22 +118,6 @@ impl Sockets {
 
         Poll::Ready(Ok(iter))
     }
-
-    pub fn queue_lengths(&self) -> (usize, usize) {
-        let (v4_inbound, v4_outbound) = self
-            .socket_v4
-            .as_ref()
-            .map(|s| s.queue_lengths())
-            .unwrap_or_default();
-
-        let (v6_inbound, v6_outbound) = self
-            .socket_v6
-            .as_ref()
-            .map(|s| s.queue_lengths())
-            .unwrap_or_default();
-
-        (v4_inbound + v6_inbound, v4_outbound + v6_outbound)
-    }
 }
 
 struct PacketIter<T4, T6> {
@@ -182,6 +167,9 @@ struct ThreadedUdpSocket {
 struct Channels {
     outbound_tx: flume::r#async::SendSink<'static, DatagramOut>,
     inbound_rx: flume::r#async::RecvStream<'static, Result<DatagramSegmentIter>>,
+
+    _outbound_queue_length: ObservableHistogram<u64>,
+    _inbound_queue_length: ObservableHistogram<u64>,
 }
 
 impl ThreadedUdpSocket {
@@ -189,6 +177,21 @@ impl ThreadedUdpSocket {
         let (outbound_tx, outbound_rx) = flume::bounded(10);
         let (inbound_tx, inbound_rx) = flume::bounded(10);
         let (error_tx, error_rx) = flume::bounded(0);
+
+        let outbound_queue_length = otel::metrics::system_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_gso_batch(),
+                otel::attr::network_type_for_addr(preferred_addr),
+            ],
+        );
+        let inbound_queue_length = otel::metrics::system_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_gro_batch(),
+                otel::attr::network_type_for_addr(preferred_addr),
+            ],
+        );
 
         let thread_name = match preferred_addr {
             SocketAddr::V4(_) => "UDP IPv4".to_owned(),
@@ -317,6 +320,8 @@ impl ThreadedUdpSocket {
             thread_name,
             join_handle,
             channels: Some(Channels {
+                _outbound_queue_length: outbound_queue_length,
+                _inbound_queue_length: inbound_queue_length,
                 outbound_tx: outbound_tx.into_sink(),
                 inbound_rx: inbound_rx.into_stream(),
             }),
@@ -348,13 +353,6 @@ impl ThreadedUdpSocket {
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {
         self.channels.as_mut().context("Missing channels")
-    }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        self.channels
-            .as_ref()
-            .map(|c| (c.inbound_rx.len(), c.outbound_tx.len()))
-            .unwrap_or_default()
     }
 }
 

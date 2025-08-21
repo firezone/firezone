@@ -234,6 +234,8 @@ softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting 
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
+opentelemetry = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "feat/observable-histogram" }
+opentelemetry_sdk = { git = "https://github.com/thomaseizinger/tracing-stackdriver", branch = "feat/observable-histogram" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

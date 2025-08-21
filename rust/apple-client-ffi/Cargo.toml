@@ -22,6 +22,7 @@ futures = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true }
+opentelemetry = { workspace = true }
 phoenix-channel = { workspace = true }
 rustls = { workspace = true }
 secrecy = { workspace = true }

@@ -3,6 +3,7 @@
 use crate::FIREZONE_MARK;
 use anyhow::{Context as _, Result, anyhow};
 use firezone_logging::err_with_src;
+use firezone_telemetry::otel;
 use futures::{SinkExt, TryStreamExt};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
@@ -13,6 +14,7 @@ use libc::{
 use netlink_packet_route::link::LinkAttribute;
 use netlink_packet_route::route::{RouteMessage, RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
+use opentelemetry::metrics::ObservableHistogram;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 use std::os::fd::{FromRawFd as _, OwnedFd};
@@ -338,6 +340,9 @@ const QUEUE_SIZE: usize = 10_000;
 pub struct Tun {
     outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
+
+    _outbound_queue_length: ObservableHistogram<u64>,
+    _inbound_queue_length: ObservableHistogram<u64>,
 }
 
 impl Tun {
@@ -346,6 +351,21 @@ impl Tun {
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+
+        let outbound_queue_length = otel::metrics::system_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_transmit(),
+            ],
+        );
+        let inbound_queue_length = otel::metrics::system_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_receive(),
+            ],
+        );
 
         let fd = Arc::new(open_tun()?);
 
@@ -375,6 +395,8 @@ impl Tun {
         Ok(Self {
             outbound_tx: PollSender::new(outbound_tx),
             inbound_rx,
+            _outbound_queue_length: outbound_queue_length,
+            _inbound_queue_length: inbound_queue_length,
         })
     }
 }
@@ -433,16 +455,6 @@ impl tun::Tun for Tun {
 
     fn name(&self) -> &str {
         TunDeviceManager::IFACE_NAME
-    }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        (
-            self.inbound_rx.len(),
-            self.outbound_tx
-                .get_ref()
-                .map(|s| QUEUE_SIZE - s.capacity())
-                .unwrap_or_default(),
-        )
     }
 }
 
