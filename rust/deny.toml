@@ -265,7 +265,6 @@ skip = [
     "thiserror-impl",
     "toml",
     "toml_edit",
-    "tower",
     "wasi",
     "webpki-roots",
     "windows-sys",

@@ -277,7 +277,8 @@ mod tests {
 
     use opentelemetry::global;
     use opentelemetry_sdk::metrics::{
-        InMemoryMetricExporter, PeriodicReader, SdkMeterProvider, data::Sum,
+        InMemoryMetricExporter, PeriodicReader, SdkMeterProvider,
+        data::{AggregatedMetrics, MetricData},
     };
 
     use super::*;
@@ -366,10 +367,17 @@ mod tests {
     fn get_num_buffers(exporter: &InMemoryMetricExporter) -> i64 {
         let metrics = exporter.get_finished_metrics().unwrap();
 
-        let metric = &metrics.iter().last().unwrap().scope_metrics[0].metrics[0];
-        let sum = metric.data.as_any().downcast_ref::<Sum<i64>>().unwrap();
+        let metric = &metrics
+            .iter()
+            .last()
+            .and_then(|m| m.scope_metrics().next())
+            .and_then(|m| m.metrics().next())
+            .unwrap();
+        let AggregatedMetrics::I64(MetricData::Sum(sum)) = metric.data() else {
+            panic!("Not an i64 sum");
+        };
 
-        sum.data_points[0].value
+        sum.data_points().next().unwrap().value()
     }
 
     fn init_meter_provider() -> (SdkMeterProvider, InMemoryMetricExporter) {
