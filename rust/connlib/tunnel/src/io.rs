@@ -373,7 +373,7 @@ impl Io {
         payload: &[u8],
         ecn: Ecn,
     ) {
-        self.gso_queue.enqueue(src, dst, payload, ecn);
+        self.gso_queue.enqueue_copy(src, dst, payload, ecn);
 
         self.packet_counter.add(
             1,

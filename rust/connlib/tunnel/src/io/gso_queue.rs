@@ -32,7 +32,16 @@ impl GsoQueue {
         }
     }
 
-    pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
+    /// Adds a packet into the GSO queue by copying its contents in.
+    ///
+    /// Where possible you should avoid this API and instead request a buffer you can directly write to.
+    pub fn enqueue_copy(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        payload: &[u8],
+        ecn: Ecn,
+    ) {
         let mut buffer_ref = self.get_buffer(src, dst, ecn, payload.len());
 
         buffer_ref.as_slice_mut().copy_from_slice(payload);
@@ -176,7 +185,7 @@ mod tests {
     fn dropping_datagram_iterator_does_not_drop_items() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams();
         drop(datagrams);
@@ -192,10 +201,10 @@ mod tests {
     fn appends_items_of_same_batch() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foo", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -208,11 +217,11 @@ mod tests {
     fn starts_new_batch_for_new_dst() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"barbarba", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"foofoo", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -229,14 +238,14 @@ mod tests {
     fn continues_batch_for_old_dst() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"barbarba", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"foofoo", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bazfoo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"bazfoo", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -253,11 +262,11 @@ mod tests {
     fn starts_new_batch_after_single_item_less_than_segment_length() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"bar", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
