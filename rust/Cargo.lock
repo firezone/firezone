@@ -332,6 +332,7 @@ dependencies = [
  "ip-packet",
  "ip_network",
  "libc",
+ "opentelemetry",
  "oslog",
  "phoenix-channel",
  "rustls",
@@ -1320,6 +1321,7 @@ dependencies = [
  "ip_network",
  "libc",
  "log",
+ "opentelemetry",
  "phoenix-channel",
  "rustls",
  "secrecy",
@@ -2342,6 +2344,7 @@ dependencies = [
  "dirs",
  "dns-types",
  "firezone-logging",
+ "firezone-telemetry",
  "futures",
  "gat-lending-iterator",
  "hex",
@@ -2356,6 +2359,7 @@ dependencies = [
  "netlink-packet-core",
  "netlink-packet-route",
  "nix 0.30.1",
+ "opentelemetry",
  "resolv-conf",
  "ring",
  "rtnetlink",
@@ -2605,6 +2609,7 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flume",
  "futures",
  "hex",
  "ip-packet",
@@ -10037,3 +10042,13 @@ dependencies = [
  "syn 2.0.106",
  "winnow 0.7.10",
 ]
+
+[[patch.unused]]
+name = "opentelemetry"
+version = "0.30.0"
+source = "git+https://github.com/thomaseizinger/opentelemetry-rust?branch=feat%2Fobservable-histogram#f51191cc2b8c6d1ecf7e7a421b181fe83555ce39"
+
+[[patch.unused]]
+name = "opentelemetry_sdk"
+version = "0.30.0"
+source = "git+https://github.com/thomaseizinger/opentelemetry-rust?branch=feat%2Fobservable-histogram#f51191cc2b8c6d1ecf7e7a421b181fe83555ce39"

@@ -114,7 +114,12 @@ pub mod attr {
 }
 
 pub mod metrics {
-    use opentelemetry::metrics::Counter;
+    use opentelemetry::{
+        KeyValue,
+        metrics::{Counter, ObservableHistogram},
+    };
+
+    use crate::otel::QueueLength;
 
     pub fn network_packet_dropped() -> Counter<u64> {
         opentelemetry::global::meter("connlib")
@@ -122,6 +127,44 @@ pub mod metrics {
             .with_description("Count of packets that are dropped or discarded")
             .with_unit("{packet}")
             .build()
+    }
+
+    pub fn system_queue_length<const N: usize>(
+        queue: impl QueueLength,
+        attributes: [KeyValue; N],
+    ) -> ObservableHistogram<u64> {
+        opentelemetry::global::meter("connlib")
+            .u64_observable_histogram("system.queue.length")
+            .with_description("The length of a queue.")
+            .with_boundaries(vec![
+                1.0, 2.0, 5.0, 10.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0,
+            ])
+            .with_callback(move |i| i.observe(queue.queue_length(), &attributes))
+            .build()
+    }
+}
+
+pub trait QueueLength: Send + Sync + 'static {
+    fn queue_length(&self) -> u64;
+}
+
+impl<T> QueueLength for tokio::sync::mpsc::WeakSender<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn queue_length(&self) -> u64 {
+        self.upgrade()
+            .map(|c| c.max_capacity() - c.capacity())
+            .unwrap_or_default() as u64
+    }
+}
+
+impl<T> QueueLength for flume::WeakSender<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn queue_length(&self) -> u64 {
+        self.upgrade().map(|s| s.len()).unwrap_or_default() as u64
     }
 }
 
