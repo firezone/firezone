@@ -443,7 +443,7 @@ async fn phoenix_channel_event_loop(
                 "Hiccup in portal connection: {error:#}"
             ),
             Either::Left((Err(e), _)) => {
-                let _ = event_tx.send(PortalEvent::Error(e)).await; // We don't care about the result because we are exiting anyway.
+                let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
                 break;
             }
