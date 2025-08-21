@@ -54,7 +54,7 @@ fn init_client() -> reqwest::Result<reqwest::Client> {
         .pool_max_idle_per_host(1)
         .http2_prior_knowledge() // We know PostHog supports HTTP/2.
         .http2_keep_alive_timeout(Duration::from_secs(1))
-        .http2_keep_alive_interval(Duration::from_secs(5)) // Use keep-alives to detect broken connections.
+        .http2_keep_alive_interval(Duration::from_secs(5)) // Use keep-alive to detect broken connections.
         .resolve_to_addrs(INGEST_HOST, &ingest_host_addresses)
         .build()
 }
