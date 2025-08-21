@@ -23,6 +23,7 @@ socket-factory = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
 tokio = { workspace = true, features = ["rt", "sync"] }
+tokio-stream = { workspace = true, features = ["sync"] }
 tracing = { workspace = true, features = ["std", "attributes"] }
 tun = { workspace = true }
 url = { workspace = true, features = ["serde"] }

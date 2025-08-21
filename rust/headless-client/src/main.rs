@@ -328,18 +328,10 @@ fn main() -> Result<()> {
                     // On every Resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
                     dns_controller.flush()?;
                 }
-                client_shared::Event::TunInterfaceUpdated {
-                    ipv4,
-                    ipv6,
-                    dns,
-                    search_domain,
-                    ipv4_routes,
-                    ipv6_routes,
-                } => {
-                    tun_device.set_ips(ipv4, ipv6).await?;
-                    tun_device.set_routes(ipv4_routes, ipv6_routes).await?;
-
-                    dns_controller.set_dns(dns, search_domain).await?;
+                client_shared::Event::TunInterfaceUpdated(config) => {
+                    tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
+                    dns_controller.set_dns(config.dns_sentinel_ips(), config.search_domain).await?;
+                    tun_device.set_routes(config.ipv4_routes, config.ipv6_routes).await?;
 
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>

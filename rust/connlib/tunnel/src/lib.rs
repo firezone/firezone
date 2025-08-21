@@ -446,6 +446,12 @@ pub struct TunConfig {
     pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
+impl TunConfig {
+    pub fn dns_sentinel_ips(&self) -> Vec<IpAddr> {
+        self.dns_by_sentinel.left_values().copied().collect()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IpConfig {
     pub v4: Ipv4Addr,
