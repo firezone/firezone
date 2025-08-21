@@ -110,7 +110,7 @@ pub struct BufferRef<'a> {
     chunk_size: usize,
 
     /// Phantom lifetime to ensure `BufferRef` doesn't outlive `GsoQueue`.
-    phantom_ref: PhantomData<&'a ()>,
+    phantom_ref: PhantomData<&'a mut ()>,
 }
 
 impl<'a> snownet::BufferRef<'a> for BufferRef<'a> {
