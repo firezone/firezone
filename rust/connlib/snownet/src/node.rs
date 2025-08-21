@@ -2373,25 +2373,31 @@ where
             }
             TunnResult::Err(e) => return Err(anyhow::Error::new(e)),
             TunnResult::WriteToNetwork(packet) => {
-                let mut packet = if packet_start > 0 {
-                    channel_data_packet_buffer(packet)
+                // boringtun wants us to send a handshake or buffered packet instead of the encapsulated one.
+                // However, we already wrote `packet` into the buffer from the buffer provider, yet this one is likely of a different length.
+                // Hence we need to discard the old one.
+
+                // Pull a different buffer from the pool.
+                let mut payload = if packet_start > 0 {
+                    let packet = channel_data_packet_buffer(packet);
+                    self.buffer_pool.pull_initialised(&packet)
                 } else {
-                    packet.to_vec()
+                    self.buffer_pool.pull_initialised(packet)
                 };
+
+                buffer.discard(); // Discard the current buffer from the GSO queue.
 
                 socket.maybe_encode_channel_data_header(
                     self.relay.id,
                     allocations,
-                    &mut packet,
+                    &mut payload,
                     now,
                 )?;
-
-                buffer.discard(); // We ended up not using the buffer.
 
                 transmits.push_back(Transmit {
                     src: packet_src,
                     dst: packet_dst,
-                    payload: self.buffer_pool.pull_initialised(&packet),
+                    payload,
                 });
             }
             TunnResult::WriteToTunnelV4(_, _) | TunnResult::WriteToTunnelV6(_, _) => {
