@@ -242,7 +242,7 @@ fn connect(
         .build()
         .context("Failed to create tokio runtime")?;
 
-    let mut telemetry = Telemetry::default();
+    let mut telemetry = Telemetry::new().context("Failed to create telemetry client")?;
     runtime.block_on(telemetry.start(&api_url, RELEASE, platform::DSN, device_id.clone()));
     Telemetry::set_account_slug(account_slug.clone());
 

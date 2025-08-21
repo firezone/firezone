@@ -125,15 +125,20 @@ fn main() {
         .build()
         .expect("Failed to build tokio runtime");
 
-    let mut telemetry = Telemetry::default();
-    if args.telemetry {
+    let mut telemetry = if args.telemetry {
+        let mut telemetry = Telemetry::new().expect("Failed to create telemetry client");
+
         runtime.block_on(telemetry.start(
             args.api_url.as_str(),
             VERSION.unwrap_or("unknown"),
             RELAY_DSN,
             String::new(), // Relays don't have a Firezone ID.
         ));
-    }
+
+        telemetry
+    } else {
+        Telemetry::disabled()
+    };
 
     match runtime.block_on(try_main(args)) {
         Ok(()) => runtime.block_on(telemetry.stop()),

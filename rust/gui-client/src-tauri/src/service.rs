@@ -281,6 +281,8 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
+        let telemetry = Telemetry::new().context("Failed to create telemetry client")?;
+
         tracing::info!(
             server_pid = std::process::id(),
             "Listening for GUI to connect over IPC..."
@@ -306,7 +308,7 @@ impl<'a> Handler<'a> {
             ipc_tx,
             log_filter_reloader,
             session: Session::None,
-            telemetry: Telemetry::default(),
+            telemetry,
             tun_device,
             dns_notifier,
             network_notifier,
