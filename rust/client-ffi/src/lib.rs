@@ -169,25 +169,21 @@ impl Session {
 
     pub async fn next_event(&self) -> Result<Option<Event>, Error> {
         match self.events.lock().await.next().await {
-            Some(client_shared::Event::TunInterfaceUpdated {
-                ipv4,
-                ipv6,
-                dns,
-                search_domain,
-                ipv4_routes,
-                ipv6_routes,
-            }) => {
-                let dns = serde_json::to_string(&dns).context("Failed to serialize DNS servers")?;
-                let ipv4_routes = serde_json::to_string(&V4RouteList::new(ipv4_routes))
+            Some(client_shared::Event::TunInterfaceUpdated(config)) => {
+                let dns = serde_json::to_string(
+                    &config.dns_by_sentinel.left_values().collect::<Vec<_>>(),
+                )
+                .context("Failed to serialize DNS servers")?;
+                let ipv4_routes = serde_json::to_string(&V4RouteList::new(config.ipv4_routes))
                     .context("Failed to serialize IPv4 routes")?;
-                let ipv6_routes = serde_json::to_string(&V6RouteList::new(ipv6_routes))
+                let ipv6_routes = serde_json::to_string(&V6RouteList::new(config.ipv6_routes))
                     .context("Failed to serialize IPv6 routes")?;
 
                 Ok(Some(Event::TunInterfaceUpdated {
-                    ipv4: ipv4.to_string(),
-                    ipv6: ipv6.to_string(),
+                    ipv4: config.ip.v4.to_string(),
+                    ipv6: config.ip.v6.to_string(),
                     dns,
-                    search_domain: search_domain.map(|d| d.to_string()),
+                    search_domain: config.search_domain.map(|d| d.to_string()),
                     ipv4_routes,
                     ipv6_routes,
                 }))

@@ -29,8 +29,8 @@ impl TunDeviceManager {
     )]
     pub async fn set_routes(
         &mut self,
-        _ipv4: Vec<Ipv4Network>,
-        _ipv6: Vec<Ipv6Network>,
+        _ipv4: impl IntoIterator<Item = Ipv4Network>,
+        _ipv6: impl IntoIterator<Item = Ipv6Network>,
     ) -> Result<()> {
         bail!("Not implemented")
     }

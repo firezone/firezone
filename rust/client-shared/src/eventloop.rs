@@ -1,16 +1,13 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, Result};
 use connlib_model::{PublicKey, ResourceId, ResourceView};
-use dns_types::DomainName;
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
 use firezone_tunnel::{ClientEvent, ClientTunnel, IpConfig, TunConfig};
-use ip_network::{Ipv4Network, Ipv6Network};
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
-use std::net::{Ipv4Addr, Ipv6Addr};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::time::Instant;
@@ -21,16 +18,17 @@ use std::{
     task::{Context, Poll},
 };
 use std::{future, mem};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tun::Tun;
 
 pub struct Eventloop {
     tunnel: ClientTunnel,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
-    event_tx: mpsc::Sender<Event>,
+    resource_list_sender: watch::Sender<Vec<ResourceView>>,
+    tun_config_sender: watch::Sender<Option<TunConfig>>,
 
-    portal_event_rx: mpsc::Receiver<PortalEvent>,
+    portal_event_rx: mpsc::Receiver<Result<IngressMessages, phoenix_channel::Error>>,
     portal_cmd_tx: mpsc::Sender<PortalCommand>,
 
     logged_permission_denied: bool,
@@ -45,44 +43,9 @@ pub enum Command {
     SetDisabledResources(BTreeSet<ResourceId>),
 }
 
-pub enum Event {
-    TunInterfaceUpdated {
-        ipv4: Ipv4Addr,
-        ipv6: Ipv6Addr,
-        dns: Vec<IpAddr>,
-        search_domain: Option<DomainName>,
-        ipv4_routes: Vec<Ipv4Network>,
-        ipv6_routes: Vec<Ipv6Network>,
-    },
-    ResourcesUpdated(Vec<ResourceView>),
-    Disconnected(DisconnectError),
-}
-
-impl Event {
-    fn tun_interface_updated(config: TunConfig) -> Self {
-        Self::TunInterfaceUpdated {
-            ipv4: config.ip.v4,
-            ipv6: config.ip.v6,
-            dns: config.dns_by_sentinel.left_values().copied().collect(),
-            search_domain: config.search_domain,
-            ipv4_routes: Vec::from_iter(config.ipv4_routes),
-            ipv6_routes: Vec::from_iter(config.ipv6_routes),
-        }
-    }
-}
-
 enum PortalCommand {
     Connect(PublicKeyParam),
     Send(EgressMessages),
-}
-
-#[expect(
-    clippy::large_enum_variant,
-    reason = "This type is only sent through a channel so the stack-size doesn't matter much."
-)]
-enum PortalEvent {
-    Received(IngressMessages),
-    Error(phoenix_channel::Error),
 }
 
 /// Unified error type to use across connlib.
@@ -111,7 +74,8 @@ impl Eventloop {
         tunnel: ClientTunnel,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
-        event_tx: mpsc::Sender<Event>,
+        resource_list_sender: watch::Sender<Vec<ResourceView>>,
+        tun_config_sender: watch::Sender<Option<TunConfig>>,
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
@@ -127,10 +91,11 @@ impl Eventloop {
         Self {
             tunnel,
             cmd_rx,
-            event_tx,
             logged_permission_denied: false,
             portal_event_rx,
             portal_cmd_tx,
+            resource_list_sender,
+            tun_config_sender,
         }
     }
 }
@@ -138,11 +103,11 @@ impl Eventloop {
 enum CombinedEvent {
     Command(Option<Command>),
     Tunnel(Result<ClientEvent>),
-    Portal(Option<PortalEvent>),
+    Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
 }
 
 impl Eventloop {
-    pub async fn run(mut self) -> Result<()> {
+    pub async fn run(mut self) -> Result<(), DisconnectError> {
         loop {
             match future::poll_fn(|cx| self.next_event(cx)).await {
                 CombinedEvent::Command(None) => return Ok(()),
@@ -154,14 +119,15 @@ impl Eventloop {
                 }
                 CombinedEvent::Tunnel(Ok(event)) => self.handle_tunnel_event(event).await?,
                 CombinedEvent::Tunnel(Err(e)) => self.handle_tunnel_error(e)?,
-                CombinedEvent::Portal(Some(PortalEvent::Received(msg))) => {
+                CombinedEvent::Portal(Some(event)) => {
+                    let msg = event.context("Connection to portal failed")?;
+
                     self.handle_portal_message(msg).await?;
                 }
-                CombinedEvent::Portal(Some(PortalEvent::Error(e))) => {
-                    return Err(e).context("Connection to portal failed");
-                }
                 CombinedEvent::Portal(None) => {
-                    return Err(anyhow::Error::msg("portal task exited unexpectedly"));
+                    return Err(DisconnectError(anyhow::Error::msg(
+                        "portal task exited unexpectedly",
+                    )));
                 }
             }
         }
@@ -238,15 +204,13 @@ impl Eventloop {
                     .context("Failed to send message to portal")?;
             }
             ClientEvent::ResourcesChanged { resources } => {
-                self.event_tx
-                    .send(Event::ResourcesUpdated(resources))
-                    .await
+                self.resource_list_sender
+                    .send(resources)
                     .context("Failed to emit event")?;
             }
             ClientEvent::TunInterfaceUpdated(config) => {
-                self.event_tx
-                    .send(Event::tun_interface_updated(config))
-                    .await
+                self.tun_config_sender
+                    .send(Some(config))
                     .context("Failed to emit event")?;
             }
         }
@@ -431,7 +395,7 @@ impl Eventloop {
 
 async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
-    event_tx: mpsc::Sender<PortalEvent>,
+    event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
 ) {
     use futures::future::Either;
@@ -441,7 +405,7 @@ async fn phoenix_channel_event_loop(
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
             Either::Left((Ok(phoenix_channel::Event::InboundMessage { msg, .. }), _)) => {
-                if event_tx.send(PortalEvent::Received(msg)).await.is_err() {
+                if event_tx.send(Ok(msg)).await.is_err() {
                     tracing::debug!("Event channel closed: exiting phoenix-channel event-loop");
 
                     break;
@@ -479,7 +443,7 @@ async fn phoenix_channel_event_loop(
                 "Hiccup in portal connection: {error:#}"
             ),
             Either::Left((Err(e), _)) => {
-                let _ = event_tx.send(PortalEvent::Error(e)).await; // We don't care about the result because we are exiting anyway.
+                let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
                 break;
             }
