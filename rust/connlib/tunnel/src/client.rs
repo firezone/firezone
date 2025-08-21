@@ -598,7 +598,6 @@ impl ClientState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid))]
-    #[expect(clippy::too_many_arguments)]
     pub fn handle_flow_created(
         &mut self,
         rid: ResourceId,
