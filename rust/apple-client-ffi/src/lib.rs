@@ -242,9 +242,6 @@ fn init_logging(log_dir: PathBuf, log_filter: String) -> Result<()> {
 }
 
 impl WrappedSession {
-    // TODO: Refactor this when we refactor PhoenixChannel.
-    // See https://github.com/firezone/firezone/issues/2158
-    #[expect(clippy::too_many_arguments)]
     fn connect(
         api_url: String,
         token: String,

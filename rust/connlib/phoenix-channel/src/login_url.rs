@@ -251,7 +251,6 @@ fn get_host_name() -> Option<String> {
     hostname::get().ok().and_then(|x| x.into_string().ok())
 }
 
-#[expect(clippy::too_many_arguments)]
 fn get_websocket_path<E>(
     mut api_url: Url,
     token: &SecretString,

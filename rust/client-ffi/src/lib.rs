@@ -213,7 +213,6 @@ impl Drop for Session {
     }
 }
 
-#[expect(clippy::too_many_arguments, reason = "We don't care.")]
 fn connect(
     api_url: String,
     token: String,

@@ -242,7 +242,6 @@ impl GatewayState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
-    #[expect(clippy::too_many_arguments)]
     pub fn authorize_flow(
         &mut self,
         cid: ClientId,
