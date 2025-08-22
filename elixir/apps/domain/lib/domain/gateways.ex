@@ -423,7 +423,7 @@ defmodule Domain.Gateways do
                 )
 
             _ ->
-              Logger.warning("Unable to parse client version: #{gateway.last_seen_version}")
+              Logger.warning("Unable to parse gateway version: #{gateway.last_seen_version}")
 
               false
           end
