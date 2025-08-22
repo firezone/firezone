@@ -658,15 +658,15 @@ defmodule API.Gateway.Channel do
          %Change{
            op: :update,
            old_struct: %Resources.Resource{filters: old_filters},
-           struct: %Resources.Resource{filters: filters, id: id} = resource
+           struct: %Resources.Resource{filters: filters} = resource
          },
          socket
        )
        when old_filters != filters do
-    if Cache.Gateway.has_resource?(socket.assigns.cache, id) do
-      resource = Cache.Cacheable.to_cache(resource)
-      push(socket, "resource_updated", Views.Resource.render(resource))
-    end
+    # Send regardless of cache state - if the Gateway has no flows for this resource,
+    # it will simply ignore the message.
+    resource = Cache.Cacheable.to_cache(resource)
+    push(socket, "resource_updated", Views.Resource.render(resource))
 
     {:noreply, socket}
   end

@@ -979,6 +979,48 @@ defmodule API.Gateway.ChannelTest do
              }
     end
 
+    test "sends resource_updated when filters change even without resource in cache", %{
+      resource: resource,
+      socket: _socket
+    } do
+      # Don't create any flows - simulate a gateway that reconnected
+      # and doesn't have this resource in its cache yet
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => resource.address,
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      filters = [
+        %{"protocol" => "tcp", "ports" => ["443"]},
+        %{"protocol" => "udp", "ports" => ["53"]}
+      ]
+
+      data = Map.put(old_data, "filters", filters)
+
+      # Trigger the resource update
+      Changes.Hooks.Resources.on_update(100, old_data, data)
+
+      # Should still receive the update even though resource isn't in cache
+      assert_push "resource_updated", payload
+
+      assert payload == %{
+               address: resource.address,
+               id: resource.id,
+               name: resource.name,
+               type: :dns,
+               filters: [
+                 %{protocol: :tcp, port_range_start: 443, port_range_end: 443},
+                 %{protocol: :udp, port_range_start: 53, port_range_end: 53}
+               ]
+             }
+    end
+
     test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group} do
       relay_group = Fixtures.Relays.create_global_group()
       stamp_secret = Ecto.UUID.generate()

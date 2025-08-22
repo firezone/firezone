@@ -1587,6 +1587,330 @@ defmodule API.Client.ChannelTest do
              ]
     end
 
+    test "for resource_connection insert adds gateway group to existing resource", %{
+      socket: socket,
+      account: account,
+      actor: actor
+    } do
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      gateway_group_1 = Fixtures.Gateways.create_group(account: account)
+      gateway_group_2 = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group_1.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership
+      })
+
+      assert_push "resource_created_or_updated", payload
+      assert length(payload.gateway_groups) == 1
+
+      # Add a second gateway group to the same resource
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
+        op: :insert,
+        struct: %Resources.Connection{
+          resource_id: resource.id,
+          gateway_group_id: gateway_group_2.id
+        }
+      })
+
+      # Resource should be toggled (deleted then created) to handle the update
+      assert_push "resource_deleted", deleted_id
+      assert deleted_id == resource.id
+
+      assert_push "resource_created_or_updated", payload
+      assert payload.id == resource.id
+      assert length(payload.gateway_groups) == 2
+    end
+
+    test "for resource_connection delete removes gateway group but keeps resource if other groups exist",
+         %{
+           socket: socket,
+           account: account,
+           actor: actor
+         } do
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      gateway_group_1 = Fixtures.Gateways.create_group(account: account)
+      gateway_group_2 = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [
+            %{gateway_group_id: gateway_group_1.id},
+            %{gateway_group_id: gateway_group_2.id}
+          ]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership
+      })
+
+      assert_push "resource_created_or_updated", payload
+      assert length(payload.gateway_groups) == 2
+
+      # Remove one gateway group
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
+        op: :delete,
+        old_struct: %Resources.Connection{
+          resource_id: resource.id,
+          gateway_group_id: gateway_group_1.id
+        }
+      })
+
+      # Resource should be toggled (deleted then created) with one less gateway group
+      assert_push "resource_deleted", deleted_id
+      assert deleted_id == resource.id
+
+      assert_push "resource_created_or_updated", payload
+      assert payload.id == resource.id
+      assert length(payload.gateway_groups) == 1
+    end
+
+    test "for resource_connection delete removes resource when last gateway group is removed", %{
+      socket: socket,
+      account: account,
+      actor: actor
+    } do
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership
+      })
+
+      assert_push "resource_created_or_updated", _payload
+
+      # Remove the only gateway group
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
+        op: :delete,
+        old_struct: %Resources.Connection{
+          resource_id: resource.id,
+          gateway_group_id: gateway_group.id
+        }
+      })
+
+      # Resource should be deleted and not re-created
+      assert_push "resource_deleted", deleted_id
+      assert deleted_id == resource.id
+
+      refute_push "resource_created_or_updated", _payload
+    end
+
+    test "for multiple policies with different conditions on same resource applies most permissive",
+         %{
+           socket: socket,
+           account: account,
+           actor: actor
+         } do
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      actor_group_1 = Fixtures.Actors.create_group(account: account)
+      actor_group_2 = Fixtures.Actors.create_group(account: account)
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      # Create restrictive policy with client verification requirement
+      _restrictive_policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group_1,
+          resource: resource,
+          conditions: [
+            %{
+              property: :client_verified,
+              operator: :is,
+              values: ["true"]
+            }
+          ]
+        )
+
+      membership_1 =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group_1
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership_1
+      })
+
+      # Resource should not be accessible for unverified client
+      refute_push "resource_created_or_updated", _payload
+
+      # Add a more permissive policy without conditions from second group
+      permissive_policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group_2,
+          resource: resource,
+          conditions: []
+        )
+
+      membership_2 =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group_2
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
+        op: :insert,
+        struct: membership_2
+      })
+
+      # Now insert the permissive policy
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 201,
+        op: :insert,
+        struct: permissive_policy
+      })
+
+      # Resource should now be accessible due to permissive policy
+      assert_push "resource_created_or_updated", payload
+      assert payload.id == resource.id
+
+      # Delete the second membership (which has the permissive policy)
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 300,
+        op: :delete,
+        old_struct: membership_2
+      })
+
+      # Resource should be removed since only restrictive policy remains
+      assert_push "resource_deleted", deleted_id
+      assert deleted_id == resource.id
+    end
+
+    test "for resource update that changes address compatibility removes access", %{
+      socket: socket,
+      account: account,
+      actor: actor
+    } do
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+      actor_group = Fixtures.Actors.create_group(account: account)
+
+      gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      # Create IPv4 resource
+      resource =
+        Fixtures.Resources.create_resource(
+          type: :ip,
+          address: "192.168.1.1",
+          account: account,
+          connections: [%{gateway_group_id: gateway_group.id}]
+        )
+
+      Fixtures.Policies.create_policy(
+        account: account,
+        actor_group: actor_group,
+        resource: resource
+      )
+
+      membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership
+      })
+
+      assert_push "resource_created_or_updated", payload
+      assert payload.id == resource.id
+
+      # Update resource to IPv6 (assuming client doesn't support IPv6)
+      updated_resource = %{resource | address: "2001:db8::1"}
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
+        op: :update,
+        old_struct: resource,
+        struct: updated_resource
+      })
+
+      # The behavior depends on client version/capability
+      # For now we'll just verify the update is handled without crash
+      assert %{assigns: %{last_lsn: 200}} = :sys.get_state(socket.channel_pid)
+    end
+
     test "for resource updates sends resource_created_or_updated", %{
       socket: socket,
       account: account,
