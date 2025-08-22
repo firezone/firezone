@@ -1206,6 +1206,23 @@ defmodule Domain.ClientsTest do
       assert delete_client(client, subject) ==
                {:error, {:unauthorized, [reason: :incorrect_account]}}
     end
+
+    test "raises error when deleting stale client structs", %{
+      admin_actor: actor,
+      admin_subject: subject
+    } do
+      client = Fixtures.Clients.create_client(actor: actor)
+
+      assert {:ok, deleted} = delete_client(client, subject)
+
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_client(deleted, subject)
+      end
+
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_client(client, subject)
+      end
+    end
   end
 
   describe "delete_clients_for/2" do

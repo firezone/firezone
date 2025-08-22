@@ -248,7 +248,7 @@ defmodule Domain.Actors do
 
   def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
     with :ok <- Group.Authorizer.ensure_has_access_to(group, subject) do
-      Repo.delete(group, stale_error_field: false)
+      Repo.delete(group)
     end
   end
 
@@ -606,7 +606,7 @@ defmodule Domain.Actors do
   def delete_actor(%Actor{} = actor, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(actor, subject),
          true <- actor.type != :account_admin_user or other_enabled_admins_exist?(actor) do
-      Repo.delete(actor, stale_error_field: false)
+      Repo.delete(actor)
     else
       false ->
         {:error, :cant_delete_the_last_admin}

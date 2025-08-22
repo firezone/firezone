@@ -334,16 +334,21 @@ defmodule Domain.RelaysTest do
   end
 
   describe "delete_group/2" do
-    test "returns error on state conflict", %{account: account, subject: subject} do
+    test "raises error when deleting stale relay group structs", %{
+      account: account,
+      subject: subject
+    } do
       group = Fixtures.Relays.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_group(deleted, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_group(deleted, subject)
+      end
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_group(group, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_group(group, subject)
+      end
     end
 
     test "deletes groups", %{account: account, subject: subject} do
@@ -1032,16 +1037,18 @@ defmodule Domain.RelaysTest do
   end
 
   describe "delete_relay/2" do
-    test "returns error on state conflict", %{account: account, subject: subject} do
+    test "raises error when deleting stale relay structs", %{account: account, subject: subject} do
       relay = Fixtures.Relays.create_relay(account: account)
 
       assert {:ok, deleted} = delete_relay(relay, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_relay(deleted, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_relay(deleted, subject)
+      end
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_relay(relay, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_relay(relay, subject)
+      end
     end
 
     test "deletes relays", %{account: account, subject: subject} do

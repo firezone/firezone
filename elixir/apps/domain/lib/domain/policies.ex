@@ -153,7 +153,7 @@ defmodule Domain.Policies do
 
   def delete_policy(%Policy{} = policy, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(policy, subject) do
-      Repo.delete(policy, stale_error_field: false)
+      Repo.delete(policy)
     end
   end
 

@@ -737,12 +737,12 @@ defmodule Domain.PoliciesTest do
                  ]}}
     end
 
-    test "returns error when no policy exists", %{policy: policy, subject: subject} do
+    test "raises error when deleting stale policy structs", %{policy: policy, subject: subject} do
       assert {:ok, _deleted_policy} = delete_policy(policy, subject)
 
-      assert {:error,
-              %Ecto.Changeset{action: :delete, errors: [false: {"is stale", [stale: true]}]}} =
-               delete_policy(policy, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_policy(policy, subject)
+      end
     end
 
     test "returns error when subject attempts to delete policy outside of account", %{

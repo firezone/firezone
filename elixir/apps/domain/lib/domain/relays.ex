@@ -89,7 +89,7 @@ defmodule Domain.Relays do
 
   def delete_group(%Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(group, subject) do
-      Repo.delete(group, stale_error_field: false)
+      Repo.delete(group)
     end
   end
 
@@ -311,7 +311,7 @@ defmodule Domain.Relays do
 
   def delete_relay(%Relay{} = relay, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(relay, subject) do
-      Repo.delete(relay, stale_error_field: false)
+      Repo.delete(relay)
     end
   end
 

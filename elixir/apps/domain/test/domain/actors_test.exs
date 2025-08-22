@@ -1971,16 +1971,18 @@ defmodule Domain.ActorsTest do
       }
     end
 
-    test "returns error on state conflict", %{account: account, subject: subject} do
+    test "raises error when deleting stale group structs", %{account: account, subject: subject} do
       group = Fixtures.Actors.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_group(deleted, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_group(deleted, subject)
+      end
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_group(group, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_group(group, subject)
+      end
     end
 
     test "deletes groups", %{account: account, subject: subject} do
@@ -3239,8 +3241,9 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, _actor} = delete_actor(other_actor, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_actor(other_actor, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_actor(other_actor, subject)
+      end
     end
 
     test "does not allow to delete actors in other accounts", %{

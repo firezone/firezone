@@ -108,24 +108,14 @@ defmodule Domain.Actors.Group.Sync do
   end
 
   defp delete_groups(provider, provider_identifiers_to_delete) do
-    Group.Query.all()
-    |> Group.Query.by_account_id(provider.account_id)
-    |> Group.Query.by_provider_id(provider.id)
-    |> Group.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
-    |> Repo.delete_all()
-    |> case do
-      {n, nil} when is_integer(n) ->
-        {:ok, n}
+    {num_deleted, _} =
+      Group.Query.all()
+      |> Group.Query.by_account_id(provider.account_id)
+      |> Group.Query.by_provider_id(provider.id)
+      |> Group.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
+      |> Repo.delete_all()
 
-      error ->
-        Logger.error("Unknown error deleting synced groups",
-          account_id: provider.account_id,
-          provider_id: provider.id,
-          reason: inspect(error)
-        )
-
-        {:error, "unknown error"}
-    end
+    {:ok, num_deleted}
   end
 
   defp upsert_groups(provider, attrs_by_provider_identifier, provider_identifiers_to_upsert) do

@@ -492,6 +492,23 @@ defmodule Domain.TokensTest do
                    ]
                  ]}}
     end
+
+    test "raises error when deleting stale token structs", %{
+      account: account,
+      subject: subject
+    } do
+      token = Fixtures.Tokens.create_token(account: account)
+
+      assert {:ok, deleted} = delete_token(token, subject)
+
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_token(deleted, subject)
+      end
+
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_token(token, subject)
+      end
+    end
   end
 
   describe "delete_token_for/1" do

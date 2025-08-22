@@ -297,26 +297,20 @@ defmodule Domain.Auth do
     mutate_provider(provider, subject, &Provider.Changeset.enable_provider/1)
   end
 
+  def delete_provider_by_id(provider_id, %Subject{} = subject) do
+    case fetch_provider_by_id(provider_id, subject) do
+      {:ok, provider} ->
+        delete_provider(provider, subject)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def delete_provider(%Provider{} = provider, %Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(provider, subject),
          :ok <- can_safely_delete?(provider) do
-      case Repo.delete(provider, stale_error_field: false) do
-        {:ok, provider} ->
-          Adapters.ensure_deprovisioned(provider)
-          {:ok, provider}
-
-        {:error, %Ecto.Changeset{errors: errors} = changeset} ->
-          if Enum.any?(errors, fn {_field, {_message, opts}} ->
-               Keyword.get(opts, :stale, false)
-             end) do
-            {:error, :not_found}
-          else
-            {:error, changeset}
-          end
-
-        other ->
-          other
-      end
+      Repo.delete(provider)
     end
   end
 
@@ -505,31 +499,20 @@ defmodule Domain.Auth do
 
   def delete_identity(%Identity{} = identity, %Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(identity, subject) do
-      Repo.delete(identity, stale_error_field: false)
+      Repo.delete(identity)
     end
   end
 
   def delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
-      Identity.Query.all()
-      |> Identity.Query.by_actor_id(actor.id)
-      |> Identity.Query.by_account_id(actor.account_id)
-      |> Authorizer.for_subject(Identity, subject)
-      |> Repo.delete_all()
-      |> case do
-        {n, nil} when is_integer(n) ->
-          {:ok, n}
+      {num_deleted, _} =
+        Identity.Query.all()
+        |> Identity.Query.by_actor_id(actor.id)
+        |> Identity.Query.by_account_id(actor.account_id)
+        |> Authorizer.for_subject(Identity, subject)
+        |> Repo.delete_all()
 
-        error ->
-          Logger.error("Unknown error deleting identities for actor",
-            account_id: actor.account_id,
-            subject_actor_id: subject.actor.id,
-            actor_id: actor.id,
-            reason: inspect(error)
-          )
-
-          {:error, "unknown error while deleting identities for actor"}
-      end
+      {:ok, num_deleted}
     end
   end
 
@@ -538,25 +521,14 @@ defmodule Domain.Auth do
   # will delete all of it's identities using a cascading delete in the DB
   def delete_identities_for(%Provider{} = provider, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
-      Identity.Query.all()
-      |> Identity.Query.by_provider_id(provider.id)
-      |> Identity.Query.by_account_id(provider.account_id)
-      |> Authorizer.for_subject(Identity, subject)
-      |> Repo.delete_all()
-      |> case do
-        {n, nil} when is_integer(n) ->
-          {:ok, n}
+      {num_deleted, _} =
+        Identity.Query.all()
+        |> Identity.Query.by_provider_id(provider.id)
+        |> Identity.Query.by_account_id(provider.account_id)
+        |> Authorizer.for_subject(Identity, subject)
+        |> Repo.delete_all()
 
-        error ->
-          Logger.error("Unknown error deleting identities for provider",
-            account_id: provider.account_id,
-            actor_id: subject.actor.id,
-            provider_id: provider.id,
-            reason: inspect(error)
-          )
-
-          {:error, "unknown error while deleting identities for provider"}
-      end
+      {:ok, num_deleted}
     end
   end
 

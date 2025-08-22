@@ -343,16 +343,18 @@ defmodule Domain.GatewaysTest do
   end
 
   describe "delete_group/2" do
-    test "returns error on state conflict", %{account: account, subject: subject} do
+    test "raises error when deleting stale group structs", %{account: account, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_group(deleted, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_group(deleted, subject)
+      end
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_group(group, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_group(group, subject)
+      end
     end
 
     test "deletes group", %{account: account, subject: subject} do
@@ -1049,16 +1051,18 @@ defmodule Domain.GatewaysTest do
   end
 
   describe "delete_gateway/2" do
-    test "returns error on state conflict", %{account: account, subject: subject} do
+    test "raises error when deleting stale gateway structs", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert {:ok, deleted} = delete_gateway(gateway, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_gateway(deleted, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_gateway(deleted, subject)
+      end
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_gateway(gateway, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_gateway(gateway, subject)
+      end
     end
 
     test "deletes gateways", %{account: account, subject: subject} do

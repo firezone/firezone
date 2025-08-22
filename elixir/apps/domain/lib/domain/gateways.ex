@@ -139,7 +139,7 @@ defmodule Domain.Gateways do
 
   def delete_group(%Group{managed_by: :account} = group, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(group, subject) do
-      Repo.delete(group, stale_error_field: false)
+      Repo.delete(group)
     end
   end
 
@@ -338,7 +338,7 @@ defmodule Domain.Gateways do
 
   def delete_gateway(%Gateway{} = gateway, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(gateway, subject) do
-      Repo.delete(gateway, stale_error_field: false)
+      Repo.delete(gateway)
     end
   end
 

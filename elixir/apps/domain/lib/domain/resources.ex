@@ -263,12 +263,12 @@ defmodule Domain.Resources do
   end
 
   def delete_resource(%Resource{type: :internet}, %Auth.Subject{}) do
-    {:error, :cannot_delete_internet_resource}
+    {:error, :cant_delete_internet_resource}
   end
 
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(resource, subject) do
-      Repo.delete(resource, stale_error_field: false)
+      Repo.delete(resource)
     end
   end
 

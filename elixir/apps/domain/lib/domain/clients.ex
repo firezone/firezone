@@ -225,7 +225,7 @@ defmodule Domain.Clients do
 
   def delete_client(%Client{} = client, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(client, subject) do
-      Repo.delete(client, stale_error_field: false)
+      Repo.delete(client)
     end
   end
 

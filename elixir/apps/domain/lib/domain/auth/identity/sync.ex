@@ -117,24 +117,14 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp delete_identities(provider, provider_identifiers_to_delete) do
-    Identity.Query.all()
-    |> Identity.Query.by_account_id(provider.account_id)
-    |> Identity.Query.by_provider_id(provider.id)
-    |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
-    |> Repo.delete_all()
-    |> case do
-      {n, nil} when is_integer(n) ->
-        {:ok, n}
+    {num_deleted, _} =
+      Identity.Query.all()
+      |> Identity.Query.by_account_id(provider.account_id)
+      |> Identity.Query.by_provider_id(provider.id)
+      |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
+      |> Repo.delete_all()
 
-      error ->
-        Logger.error("Unknown error deleting identities for provider",
-          account_id: provider.account_id,
-          provider_id: provider.id,
-          reason: inspect(error)
-        )
-
-        {:error, "unknown error deleting identities"}
-    end
+    {:ok, num_deleted}
   end
 
   defp insert_identities(provider, attrs_by_provider_identifier, provider_identifiers_to_insert) do

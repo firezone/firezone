@@ -1397,14 +1397,15 @@ defmodule Domain.ResourcesTest do
       %{resource: resource}
     end
 
-    test "returns error when no resource exists", %{
+    test "raises error when deleting stale resource structs", %{
       resource: resource,
       subject: subject
     } do
       assert {:ok, _resource} = delete_resource(resource, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_resource(resource, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_resource(resource, subject)
+      end
     end
 
     test "deletes resources", %{resource: resource, subject: subject} do

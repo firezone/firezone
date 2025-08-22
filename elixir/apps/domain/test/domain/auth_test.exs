@@ -1320,14 +1320,20 @@ defmodule Domain.AuthTest do
       |> Task.await_many()
     end
 
-    test "returns error when provider is already deleted", %{
+    test "raises error when deleting stale provider structs", %{
       subject: subject,
       account: account
     } do
       provider = Fixtures.Auth.create_userpass_provider(account: account)
       assert {:ok, deleted_provider} = delete_provider(provider, subject)
-      assert delete_provider(provider, subject) == {:error, :not_found}
-      assert delete_provider(deleted_provider, subject) == {:error, :not_found}
+
+      assert_raise(Ecto.StaleEntryError, fn ->
+        delete_provider(provider, subject)
+      end)
+
+      assert_raise(Ecto.StaleEntryError, fn ->
+        delete_provider(deleted_provider, subject)
+      end)
     end
 
     test "does not allow to delete providers in other accounts", %{
@@ -2606,7 +2612,7 @@ defmodule Domain.AuthTest do
       assert delete_identity(identity, subject) == {:error, :unauthorized}
     end
 
-    test "returns error when identity struct is stale", %{
+    test "raises error when deleting stale identity structs", %{
       account: account,
       provider: provider,
       actor: actor,
@@ -2616,8 +2622,9 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _identity} = delete_identity(identity, subject)
 
-      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
-               delete_identity(identity, subject)
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_identity(identity, subject)
+      end
     end
 
     test "returns error when subject cannot delete identities", %{subject: subject} do
