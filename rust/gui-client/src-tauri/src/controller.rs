@@ -176,7 +176,6 @@ enum EventloopTick {
 pub struct FailedToReceiveHello(anyhow::Error);
 
 impl<I: GuiIntegration> Controller<I> {
-    #[expect(clippy::too_many_arguments, reason = "We don't care.")]
     pub(crate) async fn start(
         ctlr_tx: CtlrTx,
         integration: I,

@@ -158,7 +158,6 @@ pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimCli
     }
 }
 
-#[expect(clippy::too_many_arguments)]
 fn assert_packets_properties<T, U>(
     ref_client: &RefClient,
     sent_requests: &HashMap<(T, U), IpPacket>,

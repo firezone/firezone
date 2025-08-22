@@ -683,7 +683,6 @@ where
     }
 
     #[must_use]
-    #[expect(clippy::too_many_arguments)]
     fn init_connection(
         &mut self,
         cid: TId,
