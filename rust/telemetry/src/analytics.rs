@@ -4,7 +4,7 @@ use anyhow::{Context as _, Result, bail};
 use serde::Serialize;
 use sha2::Digest as _;
 
-use crate::{ApiUrl, Env, Telemetry, posthog::RUNTIME};
+use crate::{ApiUrl, Env, Telemetry, posthog};
 
 /// Records a `new_session` event for a particular user and API url.
 ///
@@ -16,7 +16,7 @@ pub fn new_session(maybe_legacy_id: String, api_url: String) {
         maybe_legacy_id
     };
 
-    RUNTIME.spawn(async move {
+    posthog::RUNTIME.spawn(async move {
         if let Err(e) = capture(
             "new_session",
             distinct_id,
@@ -43,7 +43,7 @@ pub fn identify(release: String, account_slug: Option<String>) {
         return;
     };
 
-    RUNTIME.spawn({
+    posthog::RUNTIME.spawn({
         async move {
             if let Err(e) = capture(
                 "$identify",
@@ -76,7 +76,7 @@ pub fn feature_flag_called(name: impl Into<String>) {
     };
     let feature_flag = name.into();
 
-    RUNTIME.spawn({
+    posthog::RUNTIME.spawn({
         async move {
             if let Err(e) = capture(
                 "$feature_flag_called",
@@ -113,10 +113,9 @@ where
         return Ok(());
     };
 
-    let response = reqwest::ClientBuilder::new()
-        .connection_verbose(true)
-        .build()?
-        .post("https://us.i.posthog.com/i/v0/e/")
+    let response = posthog::CLIENT
+        .as_ref()?
+        .post(format!("https://{}/i/v0/e/", posthog::INGEST_HOST))
         .json(&CaptureRequest {
             api_key: api_key.to_string(),
             distinct_id,
