@@ -6,7 +6,7 @@ pub enum Error {
     InterfaceIpv4AddressNotLearned,
     InterfaceIpv6AddressAccessFailed,
     InterfaceIpv6AddressNotLearned,
-    Ipv4ChecksumMissing,
+    UdpChecksumMissing,
     PacketTooShort,
     NotUdp,
     NotTurn,
@@ -39,7 +39,7 @@ impl aya_log_ebpf::WriteToBuf for Error {
                 "Failed to get pointer to interface IPv6 address map"
             }
             Error::InterfaceIpv6AddressNotLearned => "Interface IPv6 address not learned",
-            Error::Ipv4ChecksumMissing => "IPv4 checksum is missing",
+            Error::UdpChecksumMissing => "UDP checksum is missing",
             Error::PacketTooShort => "Packet is too short",
             Error::NotUdp => "Not a UDP packet",
             Error::NotTurn => "Not TURN traffic",

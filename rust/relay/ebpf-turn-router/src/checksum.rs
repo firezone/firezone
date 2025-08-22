@@ -58,8 +58,16 @@ impl ChecksumUpdate {
         }
     }
 
-    pub fn into_checksum(self) -> u16 {
+    pub fn into_ip_checksum(self) -> u16 {
         !self.inner
+    }
+
+    pub fn into_udp_checksum(self) -> u16 {
+        // RFC 768, Section 3.1 states that we must invert the final computed checksum if it came
+        // out to be zero.
+        let check = !self.inner;
+
+        if check == 0 { 0xFFFF } else { check }
     }
 }
 
@@ -174,7 +182,7 @@ mod tests {
             .add_u16(new_dst_port)
             .add_u16(new_udp_payload.len() as u16)
             .add_u16(new_udp_payload.len() as u16)
-            .into_checksum();
+            .into_udp_checksum();
 
         assert_eq!(computed_checksum, outgoing_checksum)
     }
