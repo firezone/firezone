@@ -242,6 +242,7 @@ defmodule Domain.Flows do
     |> Flow.Query.by_account_id(connection.account_id)
     |> Flow.Query.by_resource_id(connection.resource_id)
     |> Flow.Query.by_gateway_group_id(connection.gateway_group_id)
+    |> Repo.delete_all()
   end
 
   def delete_flows_for(%Domain.Tokens.Token{account_id: nil}) do
