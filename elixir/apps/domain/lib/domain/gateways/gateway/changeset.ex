@@ -1,6 +1,6 @@
 defmodule Domain.Gateways.Gateway.Changeset do
   use Domain, :changeset
-  alias Domain.{Version, Auth, Tokens}
+  alias Domain.{Version, Auth}
   alias Domain.Gateways
 
   @upsert_fields ~w[external_id name public_key
@@ -20,7 +20,6 @@ defmodule Domain.Gateways.Gateway.Changeset do
                               last_seen_remote_ip_location_lon
                               last_seen_version
                               last_seen_at
-                              last_used_token_id
                               updated_at]a
   @update_fields ~w[name]a
   @required_fields ~w[external_id name public_key]a
@@ -28,12 +27,13 @@ defmodule Domain.Gateways.Gateway.Changeset do
   # WireGuard base64-encoded string length
   @key_length 44
 
+  # TODO: Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target,
     do: {:unsafe_fragment, ~s/(account_id, group_id, external_id) WHERE deleted_at IS NULL/}
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
 
-  def upsert(%Gateways.Group{} = group, %Tokens.Token{} = token, attrs, %Auth.Context{} = context) do
+  def upsert(%Gateways.Group{} = group, attrs, %Auth.Context{} = context) do
     %Gateways.Gateway{}
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, fn ->
@@ -56,7 +56,6 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> put_gateway_version()
     |> put_change(:account_id, group.account_id)
     |> put_change(:group_id, group.id)
-    |> put_change(:last_used_token_id, token.id)
   end
 
   def finalize_upsert(%Gateways.Gateway{} = gateway, ipv4, ipv6) do
@@ -73,7 +72,8 @@ defmodule Domain.Gateways.Gateway.Changeset do
     |> validate_required(@required_fields)
   end
 
-  def delete(%Gateways.Gateway{} = gateway) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
+  def soft_delete(%Gateways.Gateway{} = gateway) do
     gateway
     |> change()
     |> put_default_value(:deleted_at, DateTime.utc_now())

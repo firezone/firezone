@@ -37,21 +37,19 @@ defmodule Web.Live.Sites.ShowTest do
                }}}
   end
 
-  test "renders deleted gateway group without action buttons", %{
+  test "raises NotFoundError for deleted gateway group", %{
     account: account,
     group: group,
     identity: identity,
     conn: conn
   } do
-    group = Fixtures.Gateways.delete_group(group)
+    {:ok, deleted_group} = Fixtures.Gateways.delete_group(group)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/sites/#{group}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+      |> live(~p"/#{account}/sites/#{deleted_group}")
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -142,7 +140,8 @@ defmodule Web.Live.Sites.ShowTest do
       gateway: gateway,
       conn: conn
     } do
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, group: group)
 
       {:ok, lv, _html} =
@@ -180,7 +179,8 @@ defmodule Web.Live.Sites.ShowTest do
         |> live(~p"/#{account}/sites/#{group}")
 
       :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       wait_for(fn ->
@@ -209,7 +209,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
     end
 
     test "renders resources table", %{
@@ -326,7 +326,7 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      assert Repo.get(Domain.Gateways.Group, group.id).deleted_at
+      refute Repo.get(Domain.Gateways.Group, group.id)
     end
   end
 
@@ -377,7 +377,8 @@ defmodule Web.Live.Sites.ShowTest do
       gateway: gateway,
       conn: conn
     } do
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, group: group)
 
       {:ok, lv, _html} =
@@ -414,7 +415,8 @@ defmodule Web.Live.Sites.ShowTest do
         |> live(~p"/#{account}/sites/#{group}")
 
       :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       wait_for(fn ->
@@ -443,7 +445,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
     end
 
     test "renders resources table", %{
@@ -560,12 +562,12 @@ defmodule Web.Live.Sites.ShowTest do
 
       assert_redirected(lv, ~p"/#{account}/sites")
 
-      assert Repo.get(Domain.Gateways.Group, group.id).deleted_at
+      refute Repo.get(Domain.Gateways.Group, group.id)
     end
   end
 
   describe "for internet sites" do
-    setup %{account: account} do
+    setup %{account: account, subject: subject} do
       {:ok, group} = Domain.Gateways.create_internet_group(account)
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
       gateway = Repo.preload(gateway, :group)
@@ -575,7 +577,8 @@ defmodule Web.Live.Sites.ShowTest do
       %{
         group: group,
         gateway: gateway,
-        resource: resource
+        resource: resource,
+        subject: subject
       }
     end
 
@@ -600,7 +603,8 @@ defmodule Web.Live.Sites.ShowTest do
       gateway: gateway,
       conn: conn
     } do
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway(account: account, group: group)
 
       {:ok, lv, _html} =
@@ -637,7 +641,8 @@ defmodule Web.Live.Sites.ShowTest do
         |> live(~p"/#{account}/sites/#{group}")
 
       :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-      :ok = Domain.Gateways.Presence.connect(gateway)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
       assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
       wait_for(fn ->
@@ -666,7 +671,7 @@ defmodule Web.Live.Sites.ShowTest do
              |> element("button[type=submit]", "Revoke All")
              |> render_click() =~ "1 token(s) were revoked."
 
-      assert Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, gateway_group_id: group.id)
     end
 
     test "does not render resources table", %{

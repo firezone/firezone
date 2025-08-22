@@ -278,7 +278,7 @@ defmodule API.ClientControllerTest do
                    client.last_seen_remote_ip_location_region,
                  "last_seen_user_agent" => client.last_seen_user_agent,
                  "last_seen_version" => client.last_seen_version,
-                 "online" => nil,
+                 "online" => false,
                  "updated_at" => client.updated_at && DateTime.to_iso8601(client.updated_at),
                  "verified_at" => client.verified_at && DateTime.to_iso8601(client.verified_at),
                  "verified_by" => client.verified_by,
@@ -286,8 +286,7 @@ defmodule API.ClientControllerTest do
                }
              }
 
-      assert client = Repo.get(Client, client.id)
-      assert client.deleted_at
+      refute Repo.get(Client, client.id)
     end
   end
 end

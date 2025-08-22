@@ -50,16 +50,15 @@ defmodule Domain.GatewaysTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    test "returns deleted groups", %{
+    test "does not return deleted groups", %{
       account: account,
       subject: subject
     } do
-      group =
+      {:ok, deleted_group} =
         Fixtures.Gateways.create_group(account: account)
         |> Fixtures.Gateways.delete_group()
 
-      assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
-      assert fetched_group.id == group.id
+      assert {:error, :not_found} = fetch_group_by_id(deleted_group.id, subject)
     end
 
     test "returns group by id", %{account: account, subject: subject} do
@@ -347,15 +346,19 @@ defmodule Domain.GatewaysTest do
       group = Fixtures.Gateways.create_group(account: account)
 
       assert {:ok, deleted} = delete_group(group, subject)
-      assert delete_group(deleted, subject) == {:error, :not_found}
-      assert delete_group(group, subject) == {:error, :not_found}
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_group(deleted, subject)
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_group(group, subject)
     end
 
-    test "deletes groups", %{account: account, subject: subject} do
+    test "deletes group", %{account: account, subject: subject} do
       group = Fixtures.Gateways.create_group(account: account)
 
-      assert {:ok, deleted} = delete_group(group, subject)
-      assert deleted.deleted_at
+      assert {:ok, _deleted_group} = delete_group(group, subject)
+      refute Repo.get(Gateways.Group, group.id)
     end
 
     test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
@@ -364,16 +367,14 @@ defmodule Domain.GatewaysTest do
       Fixtures.Gateways.create_token(account: account, group: [account: account])
 
       assert {:ok, deleted} = delete_group(group, subject)
-      assert deleted.deleted_at
+      refute Repo.reload(deleted)
 
       tokens =
         Domain.Tokens.Token.Query.all()
         |> Domain.Tokens.Token.Query.by_gateway_group_id(group.id)
         |> Repo.all()
-        |> Enum.filter(fn token -> token.gateway_group_id == group.id end)
 
-      assert length(tokens) > 0
-      assert Enum.all?(tokens, & &1.deleted_at)
+      assert length(tokens) == 0
     end
 
     test "deletes all gateways when group is deleted", %{account: account, subject: subject} do
@@ -387,8 +388,7 @@ defmodule Domain.GatewaysTest do
         |> Domain.Gateways.Gateway.Query.by_group_id(group.id)
         |> Repo.all()
 
-      assert length(gateways) > 0
-      assert Enum.all?(gateways, & &1.deleted_at)
+      assert length(gateways) == 0
     end
 
     test "deletes all connections when group is deleted", %{account: account, subject: subject} do
@@ -420,11 +420,8 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      token1 = Repo.reload(token1)
-      token2 = Repo.reload(token2)
-
-      assert token1.deleted_at
-      assert token2.deleted_at
+      refute Repo.reload(token1)
+      refute Repo.reload(token2)
     end
 
     test "returns error when subject has no permission to delete groups", %{
@@ -434,11 +431,7 @@ defmodule Domain.GatewaysTest do
 
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert delete_group(group, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
+      assert delete_group(group, subject) == {:error, :unauthorized}
     end
   end
 
@@ -572,15 +565,16 @@ defmodule Domain.GatewaysTest do
       assert fetch_gateway_by_id(gateway.id, subject) == {:error, :not_found}
     end
 
-    test "returns deleted gateways", %{
+    test "does not return deleted gateways", %{
       account: account,
       subject: subject
     } do
-      gateway =
+      deleted_gateway =
         Fixtures.Gateways.create_gateway(account: account)
         |> Fixtures.Gateways.delete_gateway()
 
-      assert fetch_gateway_by_id(gateway.id, subject, preload: :online?) == {:ok, gateway}
+      assert fetch_gateway_by_id(deleted_gateway.id, subject, preload: :online?) ==
+               {:error, :not_found}
     end
 
     test "returns gateway by id", %{account: account, subject: subject} do
@@ -649,7 +643,12 @@ defmodule Domain.GatewaysTest do
     } do
       offline_gateway = Fixtures.Gateways.create_gateway(account: account)
       online_gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(online_gateway)
+      online_gateway = Repo.preload(online_gateway, :group)
+
+      gateway_token =
+        Fixtures.Gateways.create_token(group: online_gateway.group, account: account)
+
+      :ok = Gateways.Presence.connect(online_gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway()
 
       assert {:ok, gateways, _metadata} = list_gateways(subject, preload: :online?)
@@ -716,7 +715,9 @@ defmodule Domain.GatewaysTest do
           connections: [%{gateway_group_id: gateway.group_id}]
         )
 
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource(resource, subject)
       assert connected_gateway.id == gateway.id
@@ -729,7 +730,9 @@ defmodule Domain.GatewaysTest do
       resource = Fixtures.Resources.create_resource(account: account)
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
     end
@@ -738,7 +741,9 @@ defmodule Domain.GatewaysTest do
   describe "gateway_can_connect_to_resource?/2" do
     test "returns true when gateway can connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
 
       resource =
         Fixtures.Resources.create_resource(
@@ -751,7 +756,9 @@ defmodule Domain.GatewaysTest do
 
     test "returns false when gateway cannot connect to resource", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      :ok = Gateways.Presence.connect(gateway, gateway_token.id)
 
       resource = Fixtures.Resources.create_resource(account: account)
 
@@ -781,14 +788,12 @@ defmodule Domain.GatewaysTest do
   describe "upsert_gateway/3" do
     setup %{account: account} do
       group = Fixtures.Gateways.create_group(account: account)
-      token = Fixtures.Gateways.create_token(account: account, group: group)
 
       user_agent = Fixtures.Auth.user_agent()
       remote_ip = Fixtures.Auth.remote_ip()
 
       %{
         group: group,
-        token: token,
         context: %Domain.Auth.Context{
           type: :gateway_group,
           remote_ip: remote_ip,
@@ -803,15 +808,14 @@ defmodule Domain.GatewaysTest do
 
     test "returns errors on invalid attrs", %{
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       attrs = %{
         external_id: nil,
         public_key: "x"
       }
 
-      assert {:error, changeset} = upsert_gateway(group, token, attrs, context)
+      assert {:error, changeset} = upsert_gateway(group, attrs, context)
 
       assert errors_on(changeset) == %{
                public_key: ["should be 44 character(s)", "must be a base64-encoded string"],
@@ -821,14 +825,13 @@ defmodule Domain.GatewaysTest do
 
     test "allows creating gateway with just required attributes", %{
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       attrs =
         Fixtures.Gateways.gateway_attrs()
         |> Map.delete(:name)
 
-      assert {:ok, gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, gateway} = upsert_gateway(group, attrs, context)
 
       assert gateway.name
       assert gateway.public_key == attrs.public_key
@@ -851,8 +854,7 @@ defmodule Domain.GatewaysTest do
     test "updates gateway when it already exists", %{
       account: account,
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
       attrs = Fixtures.Gateways.gateway_attrs(external_id: gateway.external_id)
@@ -863,7 +865,7 @@ defmodule Domain.GatewaysTest do
           user_agent: "iOS/12.5 (iPhone) connlib/0.7.413"
       }
 
-      assert {:ok, updated_gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, updated_gateway} = upsert_gateway(group, attrs, context)
 
       assert Repo.aggregate(Gateways.Gateway, :count, :id) == 1
 
@@ -899,8 +901,7 @@ defmodule Domain.GatewaysTest do
     test "does not reserve additional addresses on update", %{
       account: account,
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
@@ -911,7 +912,7 @@ defmodule Domain.GatewaysTest do
           last_seen_remote_ip: %Postgrex.INET{address: {100, 64, 100, 100}}
         )
 
-      assert {:ok, updated_gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, updated_gateway} = upsert_gateway(group, attrs, context)
 
       addresses =
         Domain.Network.Address
@@ -928,11 +929,10 @@ defmodule Domain.GatewaysTest do
     test "does not allow to reuse IP addresses", %{
       account: account,
       context: context,
-      group: group,
-      token: token
+      group: group
     } do
       attrs = Fixtures.Gateways.gateway_attrs()
-      assert {:ok, gateway} = upsert_gateway(group, token, attrs, context)
+      assert {:ok, gateway} = upsert_gateway(group, attrs, context)
 
       addresses =
         Domain.Network.Address
@@ -1022,15 +1022,19 @@ defmodule Domain.GatewaysTest do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert {:ok, deleted} = delete_gateway(gateway, subject)
-      assert delete_gateway(deleted, subject) == {:error, :not_found}
-      assert delete_gateway(gateway, subject) == {:error, :not_found}
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_gateway(deleted, subject)
+
+      assert {:error, %Ecto.Changeset{errors: [false: {"is stale", [stale: true]}]}} =
+               delete_gateway(gateway, subject)
     end
 
     test "deletes gateways", %{account: account, subject: subject} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
       assert {:ok, deleted} = delete_gateway(gateway, subject)
-      assert deleted.deleted_at
+      refute Repo.reload(deleted)
     end
 
     test "returns error when subject has no permission to delete gateways", %{
@@ -1040,11 +1044,7 @@ defmodule Domain.GatewaysTest do
 
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert delete_gateway(gateway, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Gateways.Authorizer.manage_gateways_permission()]}}
+      assert delete_gateway(gateway, subject) == {:error, :unauthorized}
     end
   end
 
@@ -1233,15 +1233,19 @@ defmodule Domain.GatewaysTest do
     test "does not allow duplicate presence", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
 
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       assert {:error, {:already_tracked, _pid, _topic, _key}} =
-               Gateways.Presence.connect(gateway)
+               Gateways.Presence.connect(gateway, gateway_token.id)
     end
 
     test "tracks gateway presence for account", %{account: account} do
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      assert Gateways.Presence.connect(gateway) == :ok
+      gateway = Repo.preload(gateway, :group)
+      gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+      assert Gateways.Presence.connect(gateway, gateway_token.id) == :ok
 
       gateway = fetch_gateway_by_id!(gateway.id, preload: [:online?])
       assert gateway.online? == true

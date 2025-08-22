@@ -133,8 +133,8 @@ defmodule Domain.Auth.Adapters.EmailTest do
                "request_sequence_number" => 2
              } = identity.provider_state
 
-      assert Repo.get(Domain.Tokens.Token, first_token_id).deleted_at
-      refute Repo.get(Domain.Tokens.Token, second_token_id).deleted_at
+      refute Repo.get(Domain.Tokens.Token, first_token_id)
+      assert Repo.get(Domain.Tokens.Token, second_token_id)
     end
   end
 
@@ -175,14 +175,11 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
       assert {:ok, identity, nil} = verify_secret(identity, context, token)
 
-      assert %{last_used_token_id: token_id} = identity.provider_state
+      assert identity.provider_state == %{}
       assert identity.provider_virtual_state == %{}
 
-      token = Repo.get(Domain.Tokens.Token, token_id)
-      assert token.deleted_at
-
-      token = Repo.get(Domain.Tokens.Token, other_token.id)
-      assert token.deleted_at
+      # Email verification tokens are cleaned up automatically
+      refute Repo.get(Domain.Tokens.Token, other_token.id)
     end
 
     test "returns error when token belongs to a different identity", %{

@@ -83,6 +83,8 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
     group: group,
     conn: conn
   } do
+    token = Fixtures.Gateways.create_token(account: account, group: group)
+
     gateway =
       Fixtures.Gateways.create_gateway(
         account: account,
@@ -96,7 +98,7 @@ defmodule Web.Live.Sites.Gateways.IndexTest do
       |> live(~p"/#{account}/sites/#{group}/gateways")
 
     :ok = Domain.Gateways.Presence.Group.subscribe(group.id)
-    :ok = Domain.Gateways.Presence.connect(gateway)
+    :ok = Domain.Gateways.Presence.connect(gateway, token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_gateways:" <> _}
 
     wait_for(fn ->

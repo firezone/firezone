@@ -281,8 +281,7 @@ defmodule API.ActorControllerTest do
                }
              }
 
-      assert actor = Repo.get(Actor, actor.id)
-      assert actor.deleted_at
+      refute Repo.get(Actor, actor.id)
     end
   end
 end

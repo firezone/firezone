@@ -37,7 +37,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
                }}}
   end
 
-  test "renders deleted relay without action buttons", %{
+  test "raises NotFoundError for deleted relay", %{
     account: account,
     group: group,
     identity: identity,
@@ -45,13 +45,11 @@ defmodule Web.Live.RelayGroups.ShowTest do
   } do
     group = Fixtures.Relays.delete_group(group)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relay_groups/#{group}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -139,7 +137,10 @@ defmodule Web.Live.RelayGroups.ShowTest do
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay = Repo.preload(relay, :group)
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -169,7 +170,10 @@ defmodule Web.Live.RelayGroups.ShowTest do
 
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Relays.subscribe_to_relays_presence_in_group(group)
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay = Repo.preload(relay, :group)
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
     assert_receive {:live_table_reloaded, "relays"}, 250
 
@@ -201,7 +205,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/relay_groups")
 
-    assert Repo.get(Domain.Relays.Group, group.id).deleted_at
+    refute Repo.get(Domain.Relays.Group, group.id)
   end
 
   test "allows revoking all tokens", %{
@@ -219,7 +223,7 @@ defmodule Web.Live.RelayGroups.ShowTest do
            |> element("button[type=submit]", "Revoke All")
            |> render_click() =~ "1 token(s) were revoked."
 
-    assert Repo.get_by(Domain.Tokens.Token, relay_group_id: group.id).deleted_at
+    refute Repo.get_by(Domain.Tokens.Token, relay_group_id: group.id)
   end
 
   test "renders not found error when self_hosted_relays feature flag is false", %{

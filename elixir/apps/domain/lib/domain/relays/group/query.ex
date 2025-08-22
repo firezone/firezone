@@ -5,6 +5,7 @@ defmodule Domain.Relays.Group.Query do
     from(groups in Domain.Relays.Group, as: :groups)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
   def not_deleted do
     all()
     |> where([groups: groups], is_nil(groups.deleted_at))
@@ -55,6 +56,7 @@ defmodule Domain.Relays.Group.Query do
       }
     ]
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
   def filter_deleted(queryable) do
     {queryable, dynamic([groups: groups], not is_nil(groups.deleted_at))}
   end

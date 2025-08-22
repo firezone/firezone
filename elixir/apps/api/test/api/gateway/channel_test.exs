@@ -1,6 +1,6 @@
 defmodule API.Gateway.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.{Accounts, Events, Gateways, PubSub}
+  alias Domain.{Accounts, Events, Gateways, PubSub, Repo}
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -53,6 +53,7 @@ defmodule API.Gateway.ChannelTest do
       resource: resource,
       relay: relay,
       global_relay: global_relay,
+      global_relay_group: global_relay_group,
       socket: socket,
       token: token
     }
@@ -168,7 +169,9 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -232,7 +235,9 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -276,7 +281,9 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       flow1 =
         Fixtures.Flows.create_flow(
@@ -353,7 +360,9 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       flow =
         Fixtures.Flows.create_flow(
@@ -417,7 +426,9 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       flow =
         Fixtures.Flows.create_flow(
@@ -573,7 +584,9 @@ defmodule API.Gateway.ChannelTest do
       expires_at = DateTime.utc_now() |> DateTime.add(30, :second)
       client_payload = "RTC_SD_or_DNS_Q"
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -633,7 +646,9 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD_or_DNS_Q"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -685,12 +700,17 @@ defmodule API.Gateway.ChannelTest do
              }
     end
 
-    test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group} do
+    test "subscribes for relays presence", %{
+      gateway: gateway,
+      gateway_group: gateway_group,
+      token: token
+    } do
       relay_group = Fixtures.Relays.create_global_group()
       stamp_secret = Ecto.UUID.generate()
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret)
+      relay_token = Fixtures.Relays.create_global_token(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret, relay_token.id)
 
       Fixtures.Relays.update_relay(relay1,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-10, :second),
@@ -699,7 +719,7 @@ defmodule API.Gateway.ChannelTest do
       )
 
       relay2 = Fixtures.Relays.create_relay(group: relay_group)
-      :ok = Domain.Relays.connect_relay(relay2, stamp_secret)
+      :ok = Domain.Relays.connect_relay(relay2, stamp_secret, relay_token.id)
 
       Fixtures.Relays.update_relay(relay2,
         last_seen_at: DateTime.utc_now() |> DateTime.add(-100, :second),
@@ -709,6 +729,7 @@ defmodule API.Gateway.ChannelTest do
 
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
@@ -746,7 +767,8 @@ defmodule API.Gateway.ChannelTest do
 
     test "subscribes for account relays presence if there were no relays online", %{
       gateway: gateway,
-      gateway_group: gateway_group
+      gateway_group: gateway_group,
+      token: token
     } do
       relay_group = Fixtures.Relays.create_global_group()
       stamp_secret = Ecto.UUID.generate()
@@ -761,6 +783,7 @@ defmodule API.Gateway.ChannelTest do
 
       API.Gateway.Socket
       |> socket("gateway:#{gateway.id}", %{
+        token_id: token.id,
         gateway: gateway,
         gateway_group: gateway_group,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
@@ -770,7 +793,8 @@ defmodule API.Gateway.ChannelTest do
 
       assert_push "init", %{relays: []}
 
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay_token = Fixtures.Relays.create_global_token(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -796,7 +820,7 @@ defmodule API.Gateway.ChannelTest do
         last_seen_remote_ip_location_lon: -120.0
       )
 
-      :ok = Domain.Relays.connect_relay(other_relay, stamp_secret)
+      :ok = Domain.Relays.connect_relay(other_relay, stamp_secret, relay_token.id)
       other_relay_id = other_relay.id
 
       refute_push "relays_presence",
@@ -853,6 +877,7 @@ defmodule API.Gateway.ChannelTest do
       resource: resource,
       gateway: gateway,
       global_relay: relay,
+      global_relay_group: global_relay_group,
       socket: socket
     } do
       flow =
@@ -869,7 +894,8 @@ defmodule API.Gateway.ChannelTest do
       client_payload = "RTC_SD"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay_token = Fixtures.Relays.create_global_token(group: global_relay_group)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -933,7 +959,9 @@ defmodule API.Gateway.ChannelTest do
       preshared_key = "PSK"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       flow =
         Fixtures.Flows.create_flow(
@@ -1219,7 +1247,9 @@ defmodule API.Gateway.ChannelTest do
       payload = "RTC_SD"
 
       stamp_secret = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay, stamp_secret)
+      relay = Repo.preload(relay, :group)
+      relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+      :ok = Domain.Relays.connect_relay(relay, stamp_secret, relay_token.id)
 
       send(
         socket.channel_pid,
@@ -1297,8 +1327,8 @@ defmodule API.Gateway.ChannelTest do
     test "broadcasts :ice_candidates message to the target gateway", %{
       client: client,
       gateway: gateway,
-      subject: subject,
-      socket: socket
+      socket: socket,
+      account: account
     } do
       candidates = ["foo", "bar"]
 
@@ -1307,8 +1337,18 @@ defmodule API.Gateway.ChannelTest do
         "client_ids" => [client.id]
       }
 
-      :ok = Domain.Clients.Presence.connect(client)
-      PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+      client_actor = Fixtures.Actors.create_actor(account: account, type: :service_account)
+      client_identity = Fixtures.Auth.create_identity(account: account, actor: client_actor)
+
+      client_token =
+        Fixtures.Tokens.create_client_token(
+          account: account,
+          actor: client_actor,
+          identity: client_identity
+        )
+
+      :ok = Domain.Clients.Presence.connect(client, client_token.id)
+      PubSub.subscribe(Domain.Tokens.socket_id(client_token.id))
       :ok = Domain.PubSub.Account.subscribe(gateway.account_id)
 
       push(socket, "broadcast_ice_candidates", attrs)
@@ -1340,8 +1380,8 @@ defmodule API.Gateway.ChannelTest do
     test "broadcasts :invalidate_ice_candidates message to all gateways", %{
       client: client,
       gateway: gateway,
-      subject: subject,
-      socket: socket
+      socket: socket,
+      account: account
     } do
       candidates = ["foo", "bar"]
 
@@ -1351,8 +1391,18 @@ defmodule API.Gateway.ChannelTest do
       }
 
       :ok = Domain.PubSub.Account.subscribe(gateway.account_id)
-      :ok = Domain.Clients.Presence.connect(client)
-      PubSub.subscribe(Domain.Tokens.socket_id(subject.token_id))
+      client_actor = Fixtures.Actors.create_actor(account: account, type: :service_account)
+      client_identity = Fixtures.Auth.create_identity(account: account, actor: client_actor)
+
+      client_token =
+        Fixtures.Tokens.create_client_token(
+          account: account,
+          actor: client_actor,
+          identity: client_identity
+        )
+
+      :ok = Domain.Clients.Presence.connect(client, client_token.id)
+      PubSub.subscribe(Domain.Tokens.socket_id(client_token.id))
 
       push(socket, "broadcast_invalidated_ice_candidates", attrs)
 
@@ -1371,7 +1421,8 @@ defmodule API.Gateway.ChannelTest do
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
       stamp_secret1 = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+      relay_token = Fixtures.Relays.create_global_token(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -1389,7 +1440,7 @@ defmodule API.Gateway.ChannelTest do
       Process.sleep(1)
 
       # Reconnect with the same stamp secret
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1, relay_token.id)
 
       # Should not receive any disconnect
       relay_id = relay1.id
@@ -1407,7 +1458,8 @@ defmodule API.Gateway.ChannelTest do
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
       stamp_secret1 = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+      relay_token = Fixtures.Relays.create_global_token(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{
@@ -1426,7 +1478,7 @@ defmodule API.Gateway.ChannelTest do
 
       # Reconnect with a different stamp secret
       stamp_secret2 = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret2)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret2, relay_token.id)
 
       # Should receive disconnect "immediately"
       assert_push "relays_presence",
@@ -1446,7 +1498,8 @@ defmodule API.Gateway.ChannelTest do
 
       relay1 = Fixtures.Relays.create_relay(group: relay_group)
       stamp_secret1 = Ecto.UUID.generate()
-      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1)
+      relay_token = Fixtures.Relays.create_global_token(group: relay_group)
+      :ok = Domain.Relays.connect_relay(relay1, stamp_secret1, relay_token.id)
 
       assert_push "relays_presence",
                   %{

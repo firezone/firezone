@@ -3,11 +3,15 @@ defmodule Web.Live.RelayGroups.IndexTest do
 
   setup do
     account = Fixtures.Accounts.create_account()
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
     %{
       account: account,
-      identity: identity
+      actor: actor,
+      identity: identity,
+      subject: subject
     }
   end
 
@@ -84,9 +88,10 @@ defmodule Web.Live.RelayGroups.IndexTest do
     conn: conn
   } do
     group = Fixtures.Relays.create_group(account: account)
-    relay = Fixtures.Relays.create_relay(account: account, group: group)
+    relay = Fixtures.Relays.create_relay(account: account, group: group) |> Repo.preload(:group)
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
 
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -108,7 +113,8 @@ defmodule Web.Live.RelayGroups.IndexTest do
     conn: conn
   } do
     group = Fixtures.Relays.create_group(account: account)
-    relay = Fixtures.Relays.create_relay(account: account, group: group)
+    relay = Fixtures.Relays.create_relay(account: account, group: group) |> Repo.preload(:group)
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
 
     {:ok, lv, _html} =
       conn
@@ -117,7 +123,8 @@ defmodule Web.Live.RelayGroups.IndexTest do
 
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Relays.subscribe_to_relays_presence_in_group(group)
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
     assert_receive {:live_table_reloaded, "groups"}, 250
 

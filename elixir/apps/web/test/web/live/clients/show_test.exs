@@ -34,7 +34,7 @@ defmodule Web.Live.Clients.ShowTest do
                }}}
   end
 
-  test "renders deleted client without action buttons", %{
+  test "raises NotFoundError for deleted client", %{
     account: account,
     client: client,
     identity: identity,
@@ -42,13 +42,11 @@ defmodule Web.Live.Clients.ShowTest do
   } do
     client = Fixtures.Clients.delete_client(client)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -112,11 +110,15 @@ defmodule Web.Live.Clients.ShowTest do
 
   test "shows client online status", %{
     account: account,
+    actor: actor,
     client: client,
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Clients.Presence.connect(client)
+    client_token =
+      Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
+
+    :ok = Domain.Clients.Presence.connect(client, client_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -145,7 +147,11 @@ defmodule Web.Live.Clients.ShowTest do
       |> live(~p"/#{account}/clients/#{client}")
 
     :ok = Domain.Clients.Presence.Actor.subscribe(actor.id)
-    assert Domain.Clients.Presence.connect(client) == :ok
+
+    client_token =
+      Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
+
+    assert Domain.Clients.Presence.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
 
     wait_for(fn ->
@@ -213,7 +219,7 @@ defmodule Web.Live.Clients.ShowTest do
              "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
-  test "renders flows even for deleted policies", %{
+  test "does not render flows for deleted policies", %{
     account: account,
     identity: identity,
     client: client,
@@ -233,19 +239,11 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
 
-    [row] =
-      lv
-      |> element("#flows")
-      |> render()
-      |> table_to_map()
-
-    assert row["authorized"]
-    assert row["remote ip"] == to_string(client.last_seen_remote_ip)
-    assert row["policy"] =~ flow.policy.actor_group.name
-    assert row["policy"] =~ flow.policy.resource.name
-
-    assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
+    assert [] =
+             lv
+             |> element("#flows")
+             |> render()
+             |> table_to_map()
   end
 
   test "does not render flows for deleted policy assocs", %{
@@ -337,6 +335,6 @@ defmodule Web.Live.Clients.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/clients")
 
-    assert Repo.get(Domain.Clients.Client, client.id).deleted_at
+    refute Repo.get(Domain.Clients.Client, client.id)
   end
 end

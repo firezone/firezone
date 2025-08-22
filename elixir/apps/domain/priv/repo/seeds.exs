@@ -687,7 +687,6 @@ defmodule Domain.Repo.Seeds do
     {:ok, global_relay} =
       Relays.upsert_relay(
         global_relay_group,
-        global_relay_group_token,
         %{
           ipv4: {189, 172, 72, 111},
           ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
@@ -699,7 +698,6 @@ defmodule Domain.Repo.Seeds do
       {:ok, _global_relay} =
         Relays.upsert_relay(
           global_relay_group,
-          global_relay_group_token,
           %{
             ipv4: {189, 172, 72, 111 + i},
             ipv6: {0, 0, 0, 0, 0, 0, 0, i}
@@ -744,7 +742,6 @@ defmodule Domain.Repo.Seeds do
     {:ok, relay} =
       Relays.upsert_relay(
         relay_group,
-        relay_group_token,
         %{
           ipv4: {189, 172, 73, 111},
           ipv6: {0, 0, 0, 0, 0, 0, 0, 1}
@@ -760,7 +757,6 @@ defmodule Domain.Repo.Seeds do
       {:ok, _relay} =
         Relays.upsert_relay(
           relay_group,
-          relay_group_token,
           %{
             ipv4: {189, 172, 73, 111 + i},
             ipv6: {0, 0, 0, 0, 0, 0, 0, i}
@@ -815,7 +811,6 @@ defmodule Domain.Repo.Seeds do
     {:ok, gateway1} =
       Gateways.upsert_gateway(
         gateway_group,
-        gateway_group_token,
         %{
           external_id: Ecto.UUID.generate(),
           name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
@@ -831,7 +826,6 @@ defmodule Domain.Repo.Seeds do
     {:ok, gateway2} =
       Gateways.upsert_gateway(
         gateway_group,
-        gateway_group_token,
         %{
           external_id: Ecto.UUID.generate(),
           name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",
@@ -848,7 +842,6 @@ defmodule Domain.Repo.Seeds do
       {:ok, _gateway} =
         Gateways.upsert_gateway(
           gateway_group,
-          gateway_group_token,
           %{
             external_id: Ecto.UUID.generate(),
             name: "gw-#{Domain.Crypto.random_token(5, encoder: :user_friendly)}",

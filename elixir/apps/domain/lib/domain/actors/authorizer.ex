@@ -30,6 +30,14 @@ defmodule Domain.Actors.Authorizer do
     []
   end
 
+  def ensure_has_access_to(%Actor{} = actor, %Subject{} = subject) do
+    if actor.account_id == subject.account.id do
+      Domain.Auth.ensure_has_permissions(subject, manage_actors_permission())
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   @impl Domain.Auth.Authorizer
   def for_subject(queryable, %Subject{} = subject) do
     cond do

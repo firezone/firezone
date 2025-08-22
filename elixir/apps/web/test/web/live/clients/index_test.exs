@@ -3,11 +3,15 @@ defmodule Web.Live.Clients.IndexTest do
 
   setup do
     account = Fixtures.Accounts.create_account()
-    identity = Fixtures.Auth.create_identity(account: account, actor: [type: :account_admin_user])
+    actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+    subject = Fixtures.Auth.create_subject(account: account, actor: actor, identity: identity)
 
     %{
       account: account,
-      identity: identity
+      actor: actor,
+      identity: identity,
+      subject: subject
     }
   end
 
@@ -56,10 +60,28 @@ defmodule Web.Live.Clients.IndexTest do
     identity: identity,
     conn: conn
   } do
-    online_client = Fixtures.Clients.create_client(account: account)
+    online_client_actor = Fixtures.Actors.create_actor(account: account, type: :service_account)
+
+    online_client_identity =
+      Fixtures.Auth.create_identity(account: account, actor: online_client_actor)
+
+    online_client =
+      Fixtures.Clients.create_client(
+        account: account,
+        actor: online_client_actor,
+        identity: online_client_identity
+      )
+
     offline_client = Fixtures.Clients.create_client(account: account)
 
-    :ok = Domain.Clients.Presence.connect(online_client)
+    client_token =
+      Fixtures.Tokens.create_client_token(
+        account: account,
+        actor: online_client_actor,
+        identity: online_client_identity
+      )
+
+    :ok = Domain.Clients.Presence.connect(online_client, client_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -94,7 +116,10 @@ defmodule Web.Live.Clients.IndexTest do
     conn: conn
   } do
     actor = Fixtures.Actors.create_actor(account: account)
-    client = Fixtures.Clients.create_client(account: account, actor: actor)
+    client_identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+    client =
+      Fixtures.Clients.create_client(account: account, actor: actor, identity: client_identity)
 
     {:ok, lv, _html} =
       conn
@@ -103,7 +128,15 @@ defmodule Web.Live.Clients.IndexTest do
 
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Clients.Presence.Actor.subscribe(client.actor_id)
-    assert Domain.Clients.Presence.connect(client) == :ok
+
+    client_token =
+      Fixtures.Tokens.create_client_token(
+        account: account,
+        actor: actor,
+        identity: client_identity
+      )
+
+    assert Domain.Clients.Presence.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 250
 
