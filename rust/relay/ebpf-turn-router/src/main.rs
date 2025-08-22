@@ -22,7 +22,7 @@ use network_types::{
     ip::{IpProto, Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
-use ref_mut_at::{ref_at, ref_mut_at};
+use ref_mut_at::ref_mut_at;
 
 mod channel_data;
 mod checksum;
@@ -103,8 +103,8 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
 
 #[inline(always)]
 fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let eth = unsafe { ref_at::<EthHdr>(ctx, 0)? };
+    // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+    let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
     match eth.ether_type {
         EtherType::Ipv4 => try_handle_turn_ipv4(ctx)?,
@@ -118,8 +118,8 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 
 #[inline(always)]
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
-    // SAFETY: Offset points to the start of the IPv4 header.
-    let ipv4 = unsafe { ref_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `Ipv4Hdr` in this scope.
+    let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
     learn_interface_ipv4_address(ipv4)?;
 
@@ -132,8 +132,8 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::Ipv4PacketWithOptions);
     }
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+    let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
 
     trace!(
@@ -165,8 +165,8 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 
 #[inline(always)]
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
-    // SAFETY: Offset points to the start of the IPv6 header.
-    let ipv6 = unsafe { ref_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `Ipv6Hdr` in this scope.
+    let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
     learn_interface_ipv6_address(ipv6)?;
 
@@ -174,8 +174,8 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::NotUdp);
     }
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+    let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
 
     trace!(
@@ -243,11 +243,11 @@ fn learn_interface_ipv6_address(ipv6: &Ipv6Hdr) -> Result<(), Error> {
 
 #[inline(always)]
 fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
-    // SAFETY: Offset points to the start of the IPv4 header.
-    let ipv4 = unsafe { ref_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `Ipv4Hdr` in this scope.
+    let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+    let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
     let key = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
 
@@ -268,14 +268,14 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
 #[inline(always)]
 fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let ipv4 = unsafe { ref_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `Ipv4Hdr` in this scope.
+    let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+    let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
-    // SAFETY: Offset points to the start of the channel data header.
-    let cd = unsafe { ref_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `CdHdr` in this scope.
+    let cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
 
     let channel_number = u16::from_be_bytes(cd.number);
 
@@ -311,11 +311,11 @@ fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
 
 #[inline(always)]
 fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
-    // SAFETY: Offset points to the start of the IPv6 header.
-    let ipv6 = unsafe { ref_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `Ipv6Hdr` in this scope.
+    let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+    let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
 
     let key = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
 
@@ -336,14 +336,14 @@ fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
 #[inline(always)]
 fn try_handle_ipv6_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
-    // SAFETY: Offset points to the start of the IPv6 header.
-    let ipv6 = unsafe { ref_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `Ipv6Hdr` in this scope.
+    let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+    let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
 
-    // SAFETY: Offset points to the start of the channel data header.
-    let cd = unsafe { ref_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
+    // SAFETY: This is the only mutable instance of `CdHdr` in this scope.
+    let cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
 
     let channel_number = u16::from_be_bytes(cd.number);
 
@@ -388,30 +388,49 @@ fn handle_ipv4_udp_to_ipv4_channel(
     // Now read the old packet data from its NEW location (shifted by 4 bytes)
     let old_data_offset = -NET_EXPANSION as usize;
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, old_data_offset)? };
-    let old_eth_src = old_eth.src_addr;
-    let old_eth_dst = old_eth.dst_addr;
-    let old_eth_type = old_eth.ether_type;
+    let (old_eth_src, old_eth_dst, old_eth_type) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
+        (old_eth.src_addr, old_eth.dst_addr, old_eth.ether_type)
+    };
 
-    // SAFETY: Offset points to the start of the IPv4 header.
-    let old_ipv4 = unsafe { ref_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
-    let old_ipv4_src = old_ipv4.src_addr();
-    let old_ipv4_dst = old_ipv4.dst_addr();
-    let old_ipv4_len = old_ipv4.total_len();
-    let old_ipv4_check = old_ipv4.checksum();
-    let old_ipv4_tos = old_ipv4.tos;
-    let old_ipv4_id = old_ipv4.id();
-    let old_ipv4_frag_off = old_ipv4.frag_off;
-    let old_ipv4_ttl = old_ipv4.ttl;
-    let old_ipv4_proto = old_ipv4.proto;
+    let (
+        old_ipv4_src,
+        old_ipv4_dst,
+        old_ipv4_len,
+        old_ipv4_check,
+        old_ipv4_tos,
+        old_ipv4_id,
+        old_ipv4_frag_off,
+        old_ipv4_ttl,
+        old_ipv4_proto,
+    ) = {
+        // SAFETY: This is the only mutable instance of `Ipv4Hdr` in this scope.
+        let old_ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
+        (
+            old_ipv4.src_addr(),
+            old_ipv4.dst_addr(),
+            old_ipv4.total_len(),
+            old_ipv4.checksum(),
+            old_ipv4.tos,
+            old_ipv4.id(),
+            old_ipv4.frag_off,
+            old_ipv4.ttl,
+            old_ipv4.proto,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
-    let old_udp_len = old_udp.len();
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_check = old_udp.check();
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp =
+            unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
     //
     // 1. Ethernet header
@@ -522,32 +541,42 @@ fn handle_ipv4_udp_to_ipv6_channel(
     // Now read the old packet data from its NEW location (shifted by 24 bytes)
     let old_data_offset = -NET_EXPANSION as usize;
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, old_data_offset)? };
-    let old_eth_src = old_eth.src_addr;
-    let old_eth_dst = old_eth.dst_addr;
+    let (old_eth_src, old_eth_dst) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
+        (old_eth.src_addr, old_eth.dst_addr)
+    };
 
-    // SAFETY: Offset points to the start of the IPv4 header.
-    let old_ipv4 = unsafe { ref_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
-    let old_ipv4_src = old_ipv4.src_addr();
-    let old_ipv4_dst = old_ipv4.dst_addr();
-    let old_ipv4_len = old_ipv4.total_len();
-    let old_ipv4_tos = old_ipv4.tos;
-    let old_ipv4_ttl = old_ipv4.ttl;
-    let old_ipv4_proto = old_ipv4.proto;
+    let (old_ipv4_src, old_ipv4_dst, old_ipv4_len, old_ipv4_tos, old_ipv4_ttl, old_ipv4_proto) = {
+        // SAFETY: This is the only mutable instance of `Ipv4Hdr` in this scope.
+        let old_ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
+        (
+            old_ipv4.src_addr(),
+            old_ipv4.dst_addr(),
+            old_ipv4.total_len(),
+            old_ipv4.tos,
+            old_ipv4.ttl,
+            old_ipv4.proto,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_len = old_udp.len();
-    let old_udp_check = old_udp.check();
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp =
+            unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
     //
     // 1. Ethernet header
     //
 
-    // SAFETY: XDP context provides valid packet memory. Bounds checked by ref_mut_at.
+    // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
     eth.dst_addr = old_eth_src; // Swap source and destination
     eth.src_addr = old_eth_dst;
@@ -649,30 +678,48 @@ fn handle_ipv4_channel_to_ipv4_udp(
 ) -> Result<(), Error> {
     const NET_SHRINK: i32 = CdHdr::LEN as i32; // Shrink by 4 bytes for channel data header
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, 0)? };
-    let old_eth_src = old_eth.src_addr;
-    let old_eth_dst = old_eth.dst_addr;
-    let old_eth_type = old_eth.ether_type;
+    let (old_eth_src, old_eth_dst, old_eth_type) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+        (old_eth.src_addr, old_eth.dst_addr, old_eth.ether_type)
+    };
 
-    // SAFETY: Offset points to the start of the IPv4 header.
-    let old_ipv4 = unsafe { ref_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
-    let old_ipv4_src = old_ipv4.src_addr();
-    let old_ipv4_dst = old_ipv4.dst_addr();
-    let old_ipv4_len = old_ipv4.total_len();
-    let old_ipv4_check = old_ipv4.checksum();
-    let old_ipv4_tos = old_ipv4.tos;
-    let old_ipv4_id = old_ipv4.id();
-    let old_ipv4_frag_off = old_ipv4.frag_off;
-    let old_ipv4_ttl = old_ipv4.ttl;
-    let old_ipv4_proto = old_ipv4.proto;
+    let (
+        old_ipv4_src,
+        old_ipv4_dst,
+        old_ipv4_len,
+        old_ipv4_check,
+        old_ipv4_tos,
+        old_ipv4_id,
+        old_ipv4_frag_off,
+        old_ipv4_ttl,
+        old_ipv4_proto,
+    ) = {
+        // SAFETY: This is the only mutable instance of `Ipv4Hdr` in this scope.
+        let old_ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
+        (
+            old_ipv4.src_addr(),
+            old_ipv4.dst_addr(),
+            old_ipv4.total_len(),
+            old_ipv4.checksum(),
+            old_ipv4.tos,
+            old_ipv4.id(),
+            old_ipv4.frag_off,
+            old_ipv4.ttl,
+            old_ipv4.proto,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_len = old_udp.len();
-    let old_udp_check = old_udp.check();
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
     // Refuse to compute full UDP checksum.
     // We forged these packets, so something's wrong if this is zero.
@@ -680,10 +727,14 @@ fn handle_ipv4_channel_to_ipv4_udp(
         return Err(Error::Ipv4ChecksumMissing);
     }
 
-    // SAFETY: Offset points to the start of the channel data header.
-    let old_cd = unsafe { ref_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
-    let channel_number = u16::from_be_bytes(old_cd.number);
-    let channel_data_length = u16::from_be_bytes(old_cd.length);
+    let (channel_number, channel_data_length) = {
+        // SAFETY: This is the only mutable instance of `CdHdr` in this scope.
+        let old_cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
+        (
+            u16::from_be_bytes(old_cd.number),
+            u16::from_be_bytes(old_cd.length),
+        )
+    };
 
     //
     // 1. Ethernet header
@@ -786,25 +837,35 @@ fn handle_ipv4_channel_to_ipv6_udp(
     // Now read the old packet data from its NEW location
     let old_data_offset = (-NET_EXPANSION) as usize;
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, old_data_offset)? };
-    let old_dst_mac = old_eth.dst_addr;
-    let old_src_mac = old_eth.src_addr;
+    let (old_src_mac, old_dst_mac) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
+        (old_eth.src_addr, old_eth.dst_addr)
+    };
 
-    // SAFETY: Offset points to the start of the IPv4 header.
-    let old_ipv4 = unsafe { ref_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
-    let old_ipv4_src = old_ipv4.src_addr();
-    let old_ipv4_dst = old_ipv4.dst_addr();
-    let old_ipv4_tos = old_ipv4.tos;
-    let old_ipv4_ttl = old_ipv4.ttl;
-    let old_ipv4_proto = old_ipv4.proto;
+    let (old_ipv4_src, old_ipv4_dst, old_ipv4_tos, old_ipv4_ttl, old_ipv4_proto) = {
+        // SAFETY: This is the only mutable instance of `Ipv4Hdr` in this scope.
+        let old_ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
+        (
+            old_ipv4.src_addr(),
+            old_ipv4.dst_addr(),
+            old_ipv4.tos,
+            old_ipv4.ttl,
+            old_ipv4.proto,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
-    let old_udp_len = old_udp.len();
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_check = old_udp.check();
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp =
+            unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
     // Refuse to compute full UDP checksum.
     // We forged these packets, so something's wrong if this is zero.
@@ -812,15 +873,19 @@ fn handle_ipv4_channel_to_ipv6_udp(
         return Err(Error::Ipv4ChecksumMissing);
     }
 
-    // SAFETY: Offset points to the start of the channel data header.
-    let old_cd = unsafe {
-        ref_at::<CdHdr>(
-            ctx,
-            old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN,
-        )?
+    let (channel_number, channel_data_length) = {
+        // SAFETY: This is the only mutable instance of `CdHdr` in this scope.
+        let old_cd = unsafe {
+            ref_mut_at::<CdHdr>(
+                ctx,
+                old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN,
+            )?
+        };
+        (
+            u16::from_be_bytes(old_cd.number),
+            u16::from_be_bytes(old_cd.length),
+        )
     };
-    let channel_number = u16::from_be_bytes(old_cd.number);
-    let channel_data_length = u16::from_be_bytes(old_cd.length);
 
     //
     // 1. Ethernet header
@@ -920,30 +985,45 @@ fn handle_ipv6_udp_to_ipv6_channel(
     // Now read the old packet data from its NEW location (shifted by 4 bytes)
     let old_data_offset = CdHdr::LEN;
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, old_data_offset)? };
-    let old_eth_src = old_eth.src_addr;
-    let old_eth_dst = old_eth.dst_addr;
-    let old_eth_type = old_eth.ether_type;
+    let (old_eth_src, old_eth_dst, old_eth_type) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
+        (old_eth.src_addr, old_eth.dst_addr, old_eth.ether_type)
+    };
 
-    // SAFETY: Offset points to the start of the IPv6 header.
-    let old_ipv6 = unsafe { ref_at::<Ipv6Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
-    let old_ipv6_src = old_ipv6.src_addr();
-    let old_ipv6_dst = old_ipv6.dst_addr();
-    let old_ipv6_len = old_ipv6.payload_len();
-    let old_ipv6_priority = old_ipv6.priority();
-    let old_ipv6_flow_label = old_ipv6.flow_label;
-    let old_ipv6_next_hdr = old_ipv6.next_hdr;
-    let old_ipv6_hop_limit = old_ipv6.hop_limit;
+    let (
+        old_ipv6_src,
+        old_ipv6_dst,
+        old_ipv6_len,
+        old_ipv6_priority,
+        old_ipv6_flow_label,
+        old_ipv6_hop_limit,
+        old_ipv6_next_hdr,
+    ) = {
+        // SAFETY: This is the only mutable instance of `Ipv6Hdr` in this scope.
+        let old_ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
+        (
+            old_ipv6.src_addr(),
+            old_ipv6.dst_addr(),
+            old_ipv6.payload_len(),
+            old_ipv6.priority(),
+            old_ipv6.flow_label,
+            old_ipv6.hop_limit,
+            old_ipv6.next_hdr,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv6Hdr::LEN)? };
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_len = old_udp.len();
-    let old_udp_check = old_udp.check();
-
-    // Write headers at new positions
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp =
+            unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv6Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
     //
     // 1. Ethernet header
@@ -958,6 +1038,7 @@ fn handle_ipv6_udp_to_ipv6_channel(
     //
     // 2. IPv6 header
     //
+
     let new_ipv6_src = old_ipv6_dst;
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv6_len + CdHdr::LEN as u16;
@@ -977,6 +1058,7 @@ fn handle_ipv6_udp_to_ipv6_channel(
     //
     // 3. UDP header
     //
+
     let channel_number = client_and_channel.channel();
     let channel_data_length = old_udp_len - UdpHdr::LEN as u16;
     let new_udp_len = old_udp_len + CdHdr::LEN as u16;
@@ -1038,25 +1120,34 @@ fn handle_ipv6_udp_to_ipv4_channel(
     // 40 - 20 - 4 = 16 bytes shrink
     const NET_SHRINK: i32 = Ipv6Hdr::LEN as i32 - Ipv4Hdr::LEN as i32 - CdHdr::LEN as i32;
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, 0)? };
-    let old_eth_src = old_eth.src_addr;
-    let old_eth_dst = old_eth.dst_addr;
+    let (old_eth_src, old_eth_dst) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+        (old_eth.src_addr, old_eth.dst_addr)
+    };
 
-    // SAFETY: Offset points to the start of the IPv6 header.
-    let old_ipv6 = unsafe { ref_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
-    let old_ipv6_src = old_ipv6.src_addr();
-    let old_ipv6_dst = old_ipv6.dst_addr();
-    let old_ipv6_priority = old_ipv6.priority();
-    let old_ipv6_hop_limit = old_ipv6.hop_limit;
-    let old_ipv6_next_hdr = old_ipv6.next_hdr;
+    let (old_ipv6_src, old_ipv6_dst, old_ipv6_priority, old_ipv6_hop_limit, old_ipv6_next_hdr) = {
+        // SAFETY: This is the only mutable instance of `Ipv6Hdr` in this scope.
+        let old_ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+        (
+            old_ipv6.src_addr(),
+            old_ipv6.dst_addr(),
+            old_ipv6.priority(),
+            old_ipv6.hop_limit,
+            old_ipv6.next_hdr,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_len = old_udp.len();
-    let old_udp_check = old_udp.check();
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
     //
     // 1. Ethernet header
@@ -1177,33 +1268,53 @@ fn handle_ipv6_channel_to_ipv6_udp(
 ) -> Result<(), Error> {
     const NET_SHRINK: i32 = CdHdr::LEN as i32; // Shrink by 4 bytes for channel data header
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, 0)? };
-    let old_eth_src = old_eth.src_addr;
-    let old_eth_dst = old_eth.dst_addr;
-    let old_eth_type = old_eth.ether_type;
+    let (old_eth_src, old_eth_dst, old_eth_type) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+        (old_eth.src_addr, old_eth.dst_addr, old_eth.ether_type)
+    };
 
-    // SAFETY: Offset points to the start of the IPv6 header.
-    let old_ipv6 = unsafe { ref_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
-    let old_ipv6_src = old_ipv6.src_addr();
-    let old_ipv6_dst = old_ipv6.dst_addr();
-    let old_ipv6_len = old_ipv6.payload_len();
-    let old_ipv6_priority = old_ipv6.priority();
-    let old_ipv6_flow_label = old_ipv6.flow_label;
-    let old_ipv6_next_hdr = old_ipv6.next_hdr;
-    let old_ipv6_hop_limit = old_ipv6.hop_limit;
+    let (
+        old_ipv6_src,
+        old_ipv6_dst,
+        old_ipv6_len,
+        old_ipv6_priority,
+        old_ipv6_flow_label,
+        old_ipv6_hop_limit,
+        old_ipv6_next_hdr,
+    ) = {
+        // SAFETY: This is the only mutable instance of `Ipv6Hdr` in this scope.
+        let old_ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+        (
+            old_ipv6.src_addr(),
+            old_ipv6.dst_addr(),
+            old_ipv6.payload_len(),
+            old_ipv6.priority(),
+            old_ipv6.flow_label,
+            old_ipv6.hop_limit,
+            old_ipv6.next_hdr,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_len = old_udp.len();
-    let old_udp_check = old_udp.check();
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
-    // SAFETY: Offset points to the start of the channel data header.
-    let old_cd = unsafe { ref_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
-    let channel_number = u16::from_be_bytes(old_cd.number);
-    let channel_data_length = u16::from_be_bytes(old_cd.length);
+    let (channel_number, channel_data_length) = {
+        // SAFETY: This is the only mutable instance of `CdHdr` in this scope.
+        let old_cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
+        (
+            u16::from_be_bytes(old_cd.number),
+            u16::from_be_bytes(old_cd.length),
+        )
+    };
 
     //
     // 1. Ethernet header
@@ -1237,6 +1348,7 @@ fn handle_ipv6_channel_to_ipv6_udp(
     //
     // 3. UDP header
     //
+
     let new_udp_src = port_and_peer.allocation_port();
     let new_udp_dst = port_and_peer.peer_port();
     let new_udp_len = old_udp_len - CdHdr::LEN as u16;
@@ -1290,30 +1402,43 @@ fn handle_ipv6_channel_to_ipv4_udp(
     // Shrink by 24 bytes: 20 for the IP header diff and 4 for the removed channel data header
     const NET_SHRINK: i32 = Ipv6Hdr::LEN as i32 - Ipv4Hdr::LEN as i32 + CdHdr::LEN as i32;
 
-    // SAFETY: Offset points to the start of the Ethernet header.
-    let old_eth = unsafe { ref_at::<EthHdr>(ctx, 0)? };
-    let old_eth_src = old_eth.src_addr;
-    let old_eth_dst = old_eth.dst_addr;
+    let (old_eth_src, old_eth_dst) = {
+        // SAFETY: This is the only mutable instance of `EthHdr` in this scope.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+        (old_eth.src_addr, old_eth.dst_addr)
+    };
 
-    // SAFETY: Offset points to the start of the IPv6 header.
-    let old_ipv6 = unsafe { ref_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
-    let old_ipv6_src = old_ipv6.src_addr();
-    let old_ipv6_dst = old_ipv6.dst_addr();
-    let old_ipv6_priority = old_ipv6.priority();
-    let old_ipv6_hop_limit = old_ipv6.hop_limit;
-    let old_ipv6_next_hdr = old_ipv6.next_hdr;
+    let (old_ipv6_src, old_ipv6_dst, old_ipv6_priority, old_ipv6_hop_limit, old_ipv6_next_hdr) = {
+        // SAFETY: This is the only mutable instance of `Ipv6Hdr` in this scope.
+        let old_ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+        (
+            old_ipv6.src_addr(),
+            old_ipv6.dst_addr(),
+            old_ipv6.priority(),
+            old_ipv6.hop_limit,
+            old_ipv6.next_hdr,
+        )
+    };
 
-    // SAFETY: Offset points to the start of the UDP header.
-    let old_udp = unsafe { ref_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    let old_udp_src = old_udp.source();
-    let old_udp_dst = old_udp.dest();
-    let old_udp_len = old_udp.len();
-    let old_udp_check = old_udp.check();
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: This is the only mutable instance of `UdpHdr` in this scope.
+        let old_udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
-    // SAFETY: Offset points to the start of the channel data header.
-    let old_cd = unsafe { ref_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
-    let channel_number = u16::from_be_bytes(old_cd.number);
-    let channel_data_length = u16::from_be_bytes(old_cd.length);
+    let (channel_number, channel_data_length) = {
+        // SAFETY: This is the only mutable instance of `CdHdr` in this scope.
+        let old_cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
+        (
+            u16::from_be_bytes(old_cd.number),
+            u16::from_be_bytes(old_cd.length),
+        )
+    };
 
     //
     // 1. Ethernet header
