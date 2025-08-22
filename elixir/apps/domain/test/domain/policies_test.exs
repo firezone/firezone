@@ -234,6 +234,49 @@ defmodule Domain.PoliciesTest do
     end
   end
 
+  describe "all_policies_in_gateway_group_for_resource_id_and_actor_id!/4" do
+    test "does not return policies for other gateway groups", %{
+      account: account,
+      resource: resource,
+      actor_group: actor_group,
+      actor: actor
+    } do
+      policy =
+        Fixtures.Policies.create_policy(
+          account: account,
+          resource: resource,
+          actor_group: actor_group
+        )
+
+      connections = resource.connections
+      original_gateway_group_id = List.first(connections).gateway_group_id
+
+      new_gateway_group = Fixtures.Gateways.create_group(account: account)
+
+      # Admin moves resource to another site
+      connections = [%{gateway_group_id: new_gateway_group.id}]
+      resource = Fixtures.Resources.update_resource(resource, connections: connections)
+
+      # Since this function is used to reauthorize flows, we need to ensure we don't find
+      # policies for the old gateway group
+      assert [] =
+               all_policies_in_gateway_group_for_resource_id_and_actor_id!(
+                 account.id,
+                 original_gateway_group_id,
+                 resource.id,
+                 actor.id
+               )
+
+      assert [^policy] =
+               all_policies_in_gateway_group_for_resource_id_and_actor_id!(
+                 account.id,
+                 new_gateway_group.id,
+                 resource.id,
+                 actor.id
+               )
+    end
+  end
+
   describe "create_policy/2" do
     test "returns changeset error on empty params", %{subject: subject} do
       assert {:error, changeset} = create_policy(%{}, subject)
@@ -1190,7 +1233,7 @@ defmodule Domain.PoliciesTest do
 
       in_three_days = DateTime.utc_now() |> DateTime.add(3, :day)
 
-      assert {:ok, expires_at, ^policy1} =
+      assert {:ok, ^policy1, expires_at} =
                longest_conforming_policy_for_client(
                  [policy1, policy2],
                  client,
@@ -1201,7 +1244,7 @@ defmodule Domain.PoliciesTest do
 
       in_one_minute = DateTime.utc_now() |> DateTime.add(1, :minute)
 
-      assert {:ok, expires_at, ^policy1} =
+      assert {:ok, ^policy1, expires_at} =
                longest_conforming_policy_for_client(
                  [policy1, policy2],
                  client,

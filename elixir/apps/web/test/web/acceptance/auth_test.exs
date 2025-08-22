@@ -93,7 +93,7 @@ defmodule Web.Acceptance.AuthTest do
     for token <- tokens do
       assert %DateTime{} = token.deleted_at
 
-      Domain.Events.Hooks.Tokens.on_delete(%{
+      Domain.Changes.Hooks.Tokens.on_delete(0, %{
         "remaining_attempts" => token.remaining_attempts,
         "actor_id" => token.actor_id,
         "name" => token.name,

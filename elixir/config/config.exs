@@ -78,9 +78,9 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
   # We want to flush at most 500 change logs at a time
   flush_buffer_size: 500
 
-config :domain, Domain.Events.ReplicationConnection,
-  replication_slot_name: "events_slot",
-  publication_name: "events_publication",
+config :domain, Domain.Changes.ReplicationConnection,
+  replication_slot_name: "changes_slot",
+  publication_name: "changes_publication",
   enabled: true,
   connection_opts: [
     hostname: "localhost",
@@ -93,8 +93,8 @@ config :domain, Domain.Events.ReplicationConnection,
     password: "postgres"
   ],
   # When changing these, make sure to also:
-  #   1. Make appropriate changes to `Domain.Events.ReplicationConnection`
-  #   2. Add an appropriate `Domain.Events.Hooks` module
+  #   1. Make appropriate changes to `Domain.Changes.ReplicationConnection`
+  #   2. Add an appropriate `Domain.Changes.Hooks` module
   #   3. Add tests and test WAL locally
   table_subscriptions: ~w[
     accounts

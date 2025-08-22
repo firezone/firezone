@@ -1210,7 +1210,7 @@ defmodule Domain.Repo.Seeds do
         user_iphone,
         gateway1,
         cidr_resource.id,
-        policy,
+        policy.id,
         membership.id,
         unprivileged_subject,
         unprivileged_subject.expires_at

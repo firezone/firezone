@@ -90,6 +90,13 @@ defmodule Domain.Resources do
     end
   end
 
+  def fetch_all_resources_by_ids(ids) do
+    Resource.Query.not_deleted()
+    |> Resource.Query.by_id({:in, ids})
+    |> Repo.all()
+    |> Repo.preload(:gateway_groups)
+  end
+
   def fetch_resource_by_id_or_persistent_id!(id) do
     if Repo.valid_uuid?(id) do
       Resource.Query.not_deleted()
@@ -305,37 +312,61 @@ defmodule Domain.Resources do
   end
 
   def connected?(
-        %Resource{account_id: account_id} = resource,
-        %Gateways.Gateway{account_id: account_id} = gateway
+        resource_id,
+        %Gateways.Gateway{} = gateway
       ) do
-    Connection.Query.by_resource_id(resource.id)
+    Connection.Query.by_resource_id(resource_id)
     |> Connection.Query.by_gateway_group_id(gateway.group_id)
     |> Repo.exists?()
   end
 
-  @doc false
-  # This is the code that will be removed in future version of Firezone (in 1.3-1.4)
-  # and is reused to prevent breaking changes
-  def map_resource_address(address, acc \\ "")
+  @doc """
+    This does two things:
+    1. Filters out resources that are not compatible with the given client or gateway version.
+    2. Converts DNS resource addresses back to the pre-1.2.0 format if the client or gateway version is < 1.2.0.
+  """
+  def adapt_resource_for_version(resource, client_or_gateway_version) do
+    cond do
+      # internet resources require client and gateway >= 1.3.0
+      resource.type == :internet and Version.match?(client_or_gateway_version, "< 1.3.0") ->
+        nil
 
-  def map_resource_address(["*", "*" | rest], ""),
+      # non-internet resource, pass as-is
+      Version.match?(client_or_gateway_version, ">= 1.2.0") ->
+        resource
+
+      # we need convert dns resource addresses back to pre-1.2.0 format
+      true ->
+        resource.address
+        |> String.codepoints()
+        |> map_resource_address()
+        |> case do
+          {:cont, address} -> %{resource | address: address}
+          :drop -> nil
+        end
+    end
+  end
+
+  defp map_resource_address(address, acc \\ "")
+
+  defp map_resource_address(["*", "*" | rest], ""),
     do: map_resource_address(rest, "*")
 
-  def map_resource_address(["*", "*" | _rest], _acc),
+  defp map_resource_address(["*", "*" | _rest], _acc),
     do: :drop
 
-  def map_resource_address(["*" | rest], ""),
+  defp map_resource_address(["*" | rest], ""),
     do: map_resource_address(rest, "?")
 
-  def map_resource_address(["*" | _rest], _acc),
+  defp map_resource_address(["*" | _rest], _acc),
     do: :drop
 
-  def map_resource_address(["?" | _rest], _acc),
+  defp map_resource_address(["?" | _rest], _acc),
     do: :drop
 
-  def map_resource_address([char | rest], acc),
+  defp map_resource_address([char | rest], acc),
     do: map_resource_address(rest, acc <> char)
 
-  def map_resource_address([], acc),
+  defp map_resource_address([], acc),
     do: {:cont, acc}
 end
