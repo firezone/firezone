@@ -229,20 +229,24 @@ defmodule Domain.Cache.Client do
   def delete_membership(cache, membership, client) do
     gid_bytes = dump!(membership.group_id)
 
-    rid_bytes_to_remove =
-      cache.policies
-      |> Enum.filter(fn {_id, p} -> p.actor_group_id == gid_bytes end)
-      |> Enum.map(fn {_id, p} -> p.resource_id end)
-      |> Enum.uniq()
-
     updated_policies =
       cache.policies
       |> Enum.reject(fn {_id, p} -> p.actor_group_id == gid_bytes end)
       |> Enum.into(%{})
 
+    # Only remove resources that have no remaining policies
+    remaining_resource_ids =
+      updated_policies
+      |> Enum.map(fn {_id, p} -> p.resource_id end)
+      |> Enum.uniq()
+      |> MapSet.new()
+
     updated_resources =
       cache.resources
-      |> Map.drop(rid_bytes_to_remove)
+      |> Enum.filter(fn {rid_bytes, _resource} ->
+        MapSet.member?(remaining_resource_ids, rid_bytes)
+      end)
+      |> Enum.into(%{})
 
     updated_memberships =
       cache.memberships

@@ -1010,6 +1010,114 @@ defmodule API.Client.ChannelTest do
       assert payload == resource.id
     end
 
+    test "for actor_group_membership deletes does not push resource_deleted if another policy exists",
+         %{
+           actor: actor,
+           account: account,
+           socket: socket
+         } do
+      # Create two actor groups
+      actor_group_1 = Fixtures.Actors.create_group(account: account)
+      actor_group_2 = Fixtures.Actors.create_group(account: account)
+      Fixtures.Auth.create_identity(actor: actor, account: account)
+
+      # Add actor to both groups
+      membership_1 =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group_1
+        )
+
+      membership_2 =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor: actor,
+          group: actor_group_2
+        )
+
+      # Send membership inserts
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 100,
+        op: :insert,
+        struct: membership_1
+      })
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 101,
+        op: :insert,
+        struct: membership_2
+      })
+
+      # Create a resource accessible by both groups
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          connections: [%{gateway_group_id: Fixtures.Gateways.create_group(account: account).id}]
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 200,
+        op: :insert,
+        struct: resource
+      })
+
+      # Create policies for both groups pointing to the same resource
+      policy_1 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group_1,
+          resource: resource
+        )
+
+      policy_2 =
+        Fixtures.Policies.create_policy(
+          account: account,
+          actor_group: actor_group_2,
+          resource: resource
+        )
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 300,
+        op: :insert,
+        struct: policy_1
+      })
+
+      # Resource should be created when first policy is added
+      assert_push "resource_created_or_updated", payload
+      assert payload.id == resource.id
+
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 301,
+        op: :insert,
+        struct: policy_2
+      })
+
+      # No duplicate resource creation for second policy
+      refute_push "resource_created_or_updated", _payload
+
+      # Delete first membership
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 400,
+        op: :delete,
+        old_struct: membership_1
+      })
+
+      # Resource should NOT be deleted because policy_2 still grants access
+      refute_push "resource_deleted", _payload
+
+      # Delete second membership
+      send(socket.channel_pid, %Changes.Change{
+        lsn: 500,
+        op: :delete,
+        old_struct: membership_2
+      })
+
+      # Now resource should be deleted since no policies grant access
+      assert_push "resource_deleted", payload
+      assert payload == resource.id
+    end
+
     test "for client updates pushes added and deleted resources if verified status changes",
          %{
            client: client,
