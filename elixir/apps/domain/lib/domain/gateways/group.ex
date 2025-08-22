@@ -1,6 +1,18 @@
 defmodule Domain.Gateways.Group do
   use Domain, :schema
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t(),
+          name: String.t(),
+          managed_by: :account | :system,
+          account_id: Ecto.UUID.t(),
+          created_by: :actor | :identity | :system,
+          created_by_subject: map(),
+          deleted_at: DateTime.t() | nil,
+          inserted_at: DateTime.t(),
+          updated_at: DateTime.t()
+        }
+
   schema "gateway_groups" do
     field :name, :string
 

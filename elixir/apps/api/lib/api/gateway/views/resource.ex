@@ -1,14 +1,23 @@
 defmodule API.Gateway.Views.Resource do
-  alias Domain.Resources
+  alias Domain.Cache.Cacheable
 
-  def render(%Resources.Resource{type: :internet} = resource) do
+  def render(%Cacheable.Resource{} = resource) do
+    resource =
+      resource
+      |> Map.from_struct()
+      |> Map.put(:id, Ecto.UUID.load!(resource.id))
+
+    render_resource(resource)
+  end
+
+  defp render_resource(%{type: :internet} = resource) do
     %{
       id: resource.id,
       type: :internet
     }
   end
 
-  def render(%Resources.Resource{type: :dns} = resource) do
+  defp render_resource(%{type: :dns} = resource) do
     %{
       id: resource.id,
       type: :dns,
@@ -18,7 +27,7 @@ defmodule API.Gateway.Views.Resource do
     }
   end
 
-  def render(%Resources.Resource{type: :cidr} = resource) do
+  defp render_resource(%{type: :cidr} = resource) do
     %{
       id: resource.id,
       type: :cidr,
@@ -28,7 +37,7 @@ defmodule API.Gateway.Views.Resource do
     }
   end
 
-  def render(%Resources.Resource{type: :ip} = resource) do
+  defp render_resource(%{type: :ip} = resource) do
     {:ok, inet} = Domain.Types.IP.cast(resource.address)
     netmask = Domain.Types.CIDR.max_netmask(inet)
     address = to_string(%{inet | netmask: netmask})
@@ -42,7 +51,7 @@ defmodule API.Gateway.Views.Resource do
     }
   end
 
-  def render_filter(%Resources.Resource.Filter{ports: ports} = filter) when length(ports) > 0 do
+  defp render_filter(%{ports: ports} = filter) when length(ports) > 0 do
     Enum.map(filter.ports, fn port ->
       case String.split(port, "-") do
         [port_start, port_end] ->
@@ -67,7 +76,7 @@ defmodule API.Gateway.Views.Resource do
     end)
   end
 
-  def render_filter(%Resources.Resource.Filter{} = filter) do
+  defp render_filter(%{} = filter) do
     [
       %{
         protocol: filter.protocol

@@ -1,6 +1,6 @@
 defmodule Web.Live.Resources.IndexTest do
   use Web.ConnCase, async: true
-  alias Domain.Events
+  alias Domain.Changes
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -271,7 +271,7 @@ defmodule Web.Live.Resources.IndexTest do
       resource = Fixtures.Resources.create_resource(account: account)
 
       # Simulate WAL broadcast
-      Events.Hooks.Resources.on_insert(%{
+      Changes.Hooks.Resources.on_insert(0, %{
         "id" => resource.id,
         "account_id" => account.id
       })
@@ -302,7 +302,8 @@ defmodule Web.Live.Resources.IndexTest do
 
       Domain.Resources.delete_resource(resource, subject)
 
-      Events.Hooks.Resources.on_update(
+      Changes.Hooks.Resources.on_update(
+        0,
         %{
           "id" => resource.id,
           "account_id" => account.id,

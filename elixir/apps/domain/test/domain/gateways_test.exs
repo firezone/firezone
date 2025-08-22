@@ -2,6 +2,7 @@ defmodule Domain.GatewaysTest do
   use Domain.DataCase, async: true
   import Domain.Gateways
   alias Domain.{Gateways, Tokens, Resources}
+  import Domain.Cache.Cacheable, only: [to_cache: 1]
 
   setup do
     account = Fixtures.Accounts.create_account()
@@ -689,22 +690,31 @@ defmodule Domain.GatewaysTest do
     end
   end
 
-  describe "all_connected_gateways_for_resource/3" do
+  describe "all_compatible_gateways_for_client_and_resource/3" do
+    setup %{account: account} do
+      client = Fixtures.Clients.create_client(account: account)
+
+      %{client: client}
+    end
+
     test "returns empty list when there are no online gateways", %{
       account: account,
+      client: client,
       subject: subject
     } do
-      resource = Fixtures.Resources.create_resource(account: account)
+      resource = Fixtures.Resources.create_resource(account: account) |> to_cache()
 
       Fixtures.Gateways.create_gateway(account: account)
 
       Fixtures.Gateways.create_gateway(account: account)
       |> Fixtures.Gateways.delete_gateway()
 
-      assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
+      assert all_compatible_gateways_for_client_and_resource(client, resource, subject) ==
+               {:ok, []}
     end
 
-    test "returns list of connected gateways for a given resource", %{
+    test "returns list of connected gateways for a given client and resource", %{
+      client: client,
       account: account,
       subject: subject
     } do
@@ -715,54 +725,81 @@ defmodule Domain.GatewaysTest do
           account: account,
           connections: [%{gateway_group_id: gateway.group_id}]
         )
+        |> to_cache()
 
       assert Gateways.Presence.connect(gateway) == :ok
 
-      assert {:ok, [connected_gateway]} = all_connected_gateways_for_resource(resource, subject)
+      assert {:ok, [connected_gateway]} =
+               all_compatible_gateways_for_client_and_resource(client, resource, subject)
+
       assert connected_gateway.id == gateway.id
     end
 
-    test "does not return connected gateways that are not connected to given resource", %{
+    test "returns empty list when client is more than 1 version ahead", %{
+      client: client,
       account: account,
       subject: subject
     } do
-      resource = Fixtures.Resources.create_resource(account: account)
+      client = %{client | last_seen_version: "1.5.0"}
       gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      assert Gateways.Presence.connect(gateway) == :ok
-
-      assert all_connected_gateways_for_resource(resource, subject) == {:ok, []}
-    end
-  end
-
-  describe "gateway_can_connect_to_resource?/2" do
-    test "returns true when gateway can connect to resource", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
 
       resource =
         Fixtures.Resources.create_resource(
           account: account,
           connections: [%{gateway_group_id: gateway.group_id}]
         )
+        |> to_cache()
 
-      assert gateway_can_connect_to_resource?(gateway, resource)
+      assert Gateways.Presence.connect(gateway) == :ok
+
+      assert all_compatible_gateways_for_client_and_resource(client, resource, subject) ==
+               {:ok, []}
     end
 
-    test "returns false when gateway cannot connect to resource", %{account: account} do
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-      :ok = Gateways.Presence.connect(gateway)
+    test "returns empty list of resource is not compatible", %{
+      client: client,
+      account: account,
+      subject: subject
+    } do
+      gateway =
+        Fixtures.Gateways.create_gateway(
+          account: account,
+          context:
+            Fixtures.Auth.build_context(
+              type: :gateway_group,
+              user_agent: "Linux/1.2.3 connlib/1.0.0"
+            )
+        )
 
-      resource = Fixtures.Resources.create_resource(account: account)
+      client = %{client | last_seen_version: "1.3.0"}
 
-      refute gateway_can_connect_to_resource?(gateway, resource)
+      group = Fixtures.Gateways.create_internet_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_internet_resource(
+          account: account,
+          connections: [%{gateway_group_id: group.id}]
+        )
+        |> to_cache()
+
+      assert Gateways.Presence.connect(gateway) == :ok
+
+      assert all_compatible_gateways_for_client_and_resource(client, resource, subject) ==
+               {:ok, []}
     end
 
-    test "returns false when gateway is offline", %{account: account} do
+    test "does not return connected gateways that are not connected to given resource", %{
+      client: client,
+      account: account,
+      subject: subject
+    } do
+      resource = Fixtures.Resources.create_resource(account: account) |> to_cache()
       gateway = Fixtures.Gateways.create_gateway(account: account)
-      resource = Fixtures.Resources.create_resource(account: account)
 
-      refute gateway_can_connect_to_resource?(gateway, resource)
+      assert Gateways.Presence.connect(gateway) == :ok
+
+      assert all_compatible_gateways_for_client_and_resource(client, resource, subject) ==
+               {:ok, []}
     end
   end
 

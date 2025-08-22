@@ -5,6 +5,8 @@ defmodule API.Client.Channel do
   alias Domain.{
     Accounts,
     Clients,
+    Cache,
+    Changes.Change,
     Actors,
     PubSub,
     Resources,
@@ -24,29 +26,15 @@ defmodule API.Client.Channel do
   # connlib state will be cleaned up so it can request a new connection.
   @recompute_authorized_resources_every :timer.minutes(1)
 
-  @gateway_compatibility [
-    # We introduced new websocket protocol and the clients of version 1.4+
-    # are only compatible with gateways of version 1.4+
-    {">= 1.4.0", ">= 1.4.0"},
-    # The clients of version of 1.1+ are compatible with gateways of version 1.1+,
-    # but the clients of versions prior to that can connect to any gateway
-    {">= 1.1.0", ">= 1.1.0"}
-  ]
-
   ####################################
   ##### Channel lifecycle events #####
   ####################################
 
   @impl true
   def join("client", _payload, socket) do
-    with {:ok, gateway_version_requirement} <-
-           select_gateway_version_requirement(socket.assigns.client) do
-      socket = assign(socket, gateway_version_requirement: gateway_version_requirement)
+    send(self(), :after_join)
 
-      send(self(), :after_join)
-
-      {:ok, socket}
-    end
+    {:ok, socket}
   end
 
   @impl true
@@ -60,11 +48,9 @@ defmodule API.Client.Channel do
       @recompute_authorized_resources_every
     )
 
-    # Initialize the cache.
-    socket =
-      socket
-      |> hydrate_policies_and_resources()
-      |> hydrate_memberships()
+    # Get initial list of authorized resources, hydrating the cache
+    {:ok, resources, [], cache} =
+      Cache.Client.recompute_connectable_resources(nil, socket.assigns.client)
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -80,17 +66,10 @@ defmodule API.Client.Channel do
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)
 
-    # Initialize resources
-    resources = authorized_resources(socket)
-
-    # Save list of authorized resources in the socket to check against in
-    # the recompute_authorized_resources timer
-    socket = assign(socket, authorized_resource_ids: MapSet.new(Enum.map(resources, & &1.id)))
-
-    # Delete any stale flows for resources we may not have access to anymore
+    # Delete any stale flows for resources we may not have access to anymore based on policy conditions
     Flows.delete_stale_flows_on_connect(
       socket.assigns.client,
-      resources
+      Enum.map(resources, &Ecto.UUID.load!(&1.id))
     )
 
     push(socket, "init", %{
@@ -108,35 +87,7 @@ defmodule API.Client.Channel do
         })
     })
 
-    {:noreply, socket}
-  end
-
-  # Needed to keep the client's resource list up to date for time-based policy conditions
-  def handle_info(:recompute_authorized_resources, socket) do
-    Process.send_after(
-      self(),
-      :recompute_authorized_resources,
-      @recompute_authorized_resources_every
-    )
-
-    old_authorized_resources =
-      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
-      |> Map.values()
-
-    new_authorized_resources = authorized_resources(socket)
-
-    for resource <- old_authorized_resources -- new_authorized_resources do
-      push(socket, "resource_deleted", resource.id)
-    end
-
-    for resource <- new_authorized_resources -- old_authorized_resources do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-    end
-
-    {:noreply,
-     assign(socket,
-       authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
-     )}
+    {:noreply, assign(socket, cache: cache)}
   end
 
   # Called to actually push relays_presence with a disconnected relay to the client
@@ -148,383 +99,48 @@ defmodule API.Client.Channel do
   ##### Reacting to domain events ####
   ####################################
 
-  # ACCOUNTS
+  def handle_info(%Change{lsn: lsn} = change, socket) do
+    last_lsn = Map.get(socket.assigns, :last_lsn, 0)
 
-  def handle_info(
-        {:updated, %Accounts.Account{} = old_account, %Accounts.Account{} = account},
-        socket
-      ) do
-    # update our cached subject's account
-    socket = assign(socket, subject: %{socket.assigns.subject | account: account})
+    if lsn <= last_lsn do
+      Logger.warning("Out of order or duplicate change received; ignoring",
+        change: change,
+        last_lsn: last_lsn
+      )
 
-    if old_account.config != account.config do
-      payload = %{interface: Views.Interface.render(%{socket.assigns.client | account: account})}
-      :ok = push(socket, "config_changed", payload)
+      {:noreply, socket}
+    else
+      socket = assign(socket, last_lsn: lsn)
+
+      handle_change(change, socket)
     end
-
-    {:noreply, socket}
   end
 
-  # ACTOR_GROUP_MEMBERSHIPS
+  ####################################
+  ##### Reacting to timed events #####
+  ####################################
 
-  def handle_info(
-        {:created, %Actors.Membership{actor_id: actor_id, group_id: group_id} = membership},
-        %{assigns: %{client: %{actor_id: id}}} = socket
-      )
-      when id == actor_id do
-    # 1. Get existing authorized resources
-    old_authorized_resources =
-      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
-      |> Map.values()
+  # This is needed to keep the client's resource list up to date for time-based policy conditions
+  # since we will not receive any change messages to react to when time-based policies expire.
+  def handle_info(:recompute_authorized_resources, socket) do
+    Process.send_after(
+      self(),
+      :recompute_authorized_resources,
+      @recompute_authorized_resources_every
+    )
 
-    # 2. Re-hydrate our policies and resources
-    # It's not ideal we're hitting the DB here, but in practice it shouldn't be an issue because
-    # periods of bursty membership creation typically only happen for new accounts or new directory
-    # syncs, which won't have any policies associated.
-    socket = hydrate_policies_and_resources(socket)
+    {:ok, added_resources, removed_ids, cache} =
+      Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
 
-    # 3. Update our membership group IDs
-    memberships = Map.put(socket.assigns.memberships, group_id, membership)
-    socket = assign(socket, memberships: memberships)
-
-    # 3. Compute new authorized resources
-    new_authorized_resources = authorized_resources(socket)
-
-    # 4. Push new resources to the client
-    for resource <- new_authorized_resources -- old_authorized_resources do
-      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-    end
-
-    socket =
-      assign(socket,
-        authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
-      )
-
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        {:deleted, %Actors.Membership{actor_id: actor_id, group_id: group_id}},
-        %{assigns: %{client: %{actor_id: id}}} = socket
-      )
-      when id == actor_id do
-    # 1. Take a snapshot of all resource_ids we no longer have access to
-    deleted_resource_ids =
-      socket.assigns.policies
-      |> Enum.flat_map(fn {_id, policy} ->
-        if policy.actor_group_id == group_id, do: [policy.resource_id], else: []
-      end)
-      |> Enum.uniq()
-
-    # 2. Push deleted resources to the client
-    for resource_id <- deleted_resource_ids do
+    for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
     end
 
-    # 3. Update our state
-    policies =
-      socket.assigns.policies
-      |> Enum.filter(fn {_id, policy} -> policy.actor_group_id != group_id end)
-      |> Enum.into(%{})
-
-    r_ids = Enum.map(policies, fn {_id, policy} -> policy.resource_id end) |> Enum.uniq()
-    resources = Map.take(socket.assigns.resources, r_ids)
-    memberships = Map.delete(socket.assigns.memberships, group_id)
-
-    socket =
-      socket
-      |> assign(policies: policies)
-      |> assign(resources: resources)
-      |> assign(memberships: memberships)
-
-    {:noreply, socket}
-  end
-
-  # CLIENTS
-
-  # Changes in client verification can affect the list of allowed resources - send diff of resources
-  def handle_info(
-        {:updated, %Clients.Client{} = old_client, %Clients.Client{id: client_id} = client},
-        %{assigns: %{client: %{id: id}}} = socket
-      )
-      when id == client_id do
-    # 1. Snapshot existing authorized resources
-    old_authorized_resources =
-      Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
-      |> Map.values()
-
-    # 2. Update our state - maintain preloaded identity
-    client = %{client | identity: socket.assigns.client.identity}
-    socket = assign(socket, client: client)
-
-    # 3. If client's verification status changed, send diff of resources
-    socket =
-      if old_client.verified_at != client.verified_at do
-        new_authorized_resources = authorized_resources(socket)
-
-        for resource <- new_authorized_resources -- old_authorized_resources do
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-        end
-
-        for resource <- old_authorized_resources -- new_authorized_resources do
-          push(socket, "resource_deleted", resource.id)
-        end
-
-        assign(socket,
-          authorized_resource_ids: MapSet.new(Enum.map(new_authorized_resources, & &1.id))
-        )
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  def handle_info(
-        {:deleted, %Clients.Client{id: id}},
-        %{assigns: %{client: %{id: client_id}}} = socket
-      )
-      when id == client_id do
-    disconnect(socket)
-  end
-
-  # GATEWAY_GROUPS
-
-  def handle_info(
-        {:updated, %Gateways.Group{} = old_group, %Gateways.Group{} = group},
-        socket
-      ) do
-    resources =
-      socket.assigns.resources
-      |> Enum.map(fn {id, resource} ->
-        gateway_groups =
-          resource.gateway_groups
-          |> Enum.map(fn gg -> if gg.id == group.id, do: Map.merge(gg, group), else: gg end)
-
-        # Send resource_created_or_updated for all resources that have this group if name has changed
-        if Enum.any?(gateway_groups, fn gg -> gg.name != old_group.name and gg.id == group.id end) do
-          push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-        end
-
-        {id, %{resource | gateway_groups: gateway_groups}}
-      end)
-      |> Enum.into(%{})
-
-    socket = assign(socket, resources: resources)
-
-    {:noreply, socket}
-  end
-
-  # POLICIES
-
-  def handle_info({:created, %Policies.Policy{} = policy}, socket) do
-    # 1. Check if this policy is for us
-    if Map.has_key?(socket.assigns.memberships, policy.actor_group_id) do
-      # 2. Snapshot existing resources
-      old_authorized_resources =
-        Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
-        |> Map.values()
-
-      # 3. Hydrate a new resource if we aren't already tracking it
-      socket =
-        if Map.has_key?(socket.assigns.resources, policy.resource_id) do
-          # Resource already exists due to another policy
-          socket
-        else
-          {:ok, resource} =
-            Resources.fetch_resource_by_id(policy.resource_id, socket.assigns.subject,
-              preload: :gateway_groups
-            )
-
-          socket
-          |> assign(resources: Map.put(socket.assigns.resources, resource.id, resource))
-          |> assign(
-            authorized_resource_ids:
-              MapSet.put(socket.assigns.authorized_resource_ids, resource.id)
-          )
-        end
-
-      # 4. Hydrate the new policy
-      socket = assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
-
-      # 5. Maybe send new resource
-      if resource = (authorized_resources(socket) -- old_authorized_resources) |> List.first() do
-        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-      end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
+    for resource <- added_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
     end
-  end
 
-  def handle_info(
-        {:updated,
-         %Policies.Policy{
-           resource_id: old_resource_id,
-           actor_group_id: old_actor_group_id,
-           conditions: old_conditions
-         } = old_policy,
-         %Policies.Policy{
-           resource_id: resource_id,
-           actor_group_id: actor_group_id,
-           conditions: conditions,
-           disabled_at: disabled_at
-         } = policy},
-        socket
-      )
-      when old_resource_id != resource_id or old_actor_group_id != actor_group_id or
-             old_conditions != conditions do
-    # Breaking update - process this as a delete and then create
-    {:noreply, socket} = handle_info({:deleted, old_policy}, socket)
-
-    if is_nil(disabled_at) do
-      handle_info({:created, policy}, socket)
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Other update - just update our state if the policy is for us
-  def handle_info({:updated, %Policies.Policy{}, %Policies.Policy{} = policy}, socket) do
-    socket =
-      if Map.has_key?(socket.assigns.policies, policy.id) do
-        assign(socket, policies: Map.put(socket.assigns.policies, policy.id, policy))
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:deleted, %Policies.Policy{} = policy}, socket) do
-    # 1. Check if this policy is for us
-    if Map.has_key?(socket.assigns.policies, policy.id) do
-      # 2. Snapshot existing resources
-      old_authorized_resources =
-        Map.take(socket.assigns.resources, MapSet.to_list(socket.assigns.authorized_resource_ids))
-        |> Map.values()
-
-      # 3. Update our state
-      socket = assign(socket, policies: Map.delete(socket.assigns.policies, policy.id))
-      r_ids = Enum.map(socket.assigns.policies, fn {_id, p} -> p.resource_id end) |> Enum.uniq()
-      socket = assign(socket, resources: Map.take(socket.assigns.resources, r_ids))
-
-      authorized_resources = authorized_resources(socket)
-
-      socket =
-        assign(socket,
-          authorized_resource_ids: MapSet.new(Enum.map(authorized_resources, & &1.id))
-        )
-
-      # 4. Push deleted resource to the client if we lost access to it
-      if resource = (old_authorized_resources -- authorized_resources) |> List.first() do
-        push(socket, "resource_deleted", resource.id)
-      end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # RESOURCE_CONNECTIONS
-
-  def handle_info(
-        {:created,
-         %Resources.Connection{resource_id: resource_id, gateway_group_id: gateway_group_id}},
-        socket
-      ) do
-    # 1. Check if this affects us
-    if resource = socket.assigns.resources[resource_id] do
-      # 2. Fetch the gateway_group to hydrate the site name
-      {:ok, gateway_group} = Gateways.fetch_group_by_id(gateway_group_id, socket.assigns.subject)
-
-      # 3. Update our state
-      resource = %{resource | gateway_groups: resource.gateway_groups ++ [gateway_group]}
-      socket = assign(socket, resources: Map.put(socket.assigns.resources, resource_id, resource))
-
-      # 4. If resource is allowed, push
-      if MapSet.member?(socket.assigns.authorized_resource_ids, resource.id) do
-        # Connlib doesn't handle resources changing sites, so we need to delete then create
-        # See https://github.com/firezone/firezone/issues/9881
-        push(socket, "resource_deleted", resource.id)
-        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-      end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # Resource connection is a required field on resources, so a delete will always be followed by a create.
-  # This means connlib *should* never see a resource with no sites (gateway_groups).
-
-  def handle_info(
-        {:deleted,
-         %Resources.Connection{resource_id: resource_id, gateway_group_id: gateway_group_id}},
-        socket
-      ) do
-    # 1. Check if this affects us
-    if resource = socket.assigns.resources[resource_id] do
-      # 2. Update our state
-      gateway_groups = Enum.reject(resource.gateway_groups, &(&1.id == gateway_group_id))
-      resource = %{resource | gateway_groups: gateway_groups}
-      socket = assign(socket, resources: Map.put(socket.assigns.resources, resource_id, resource))
-
-      # 3. Tell connlib
-      push(socket, "resource_deleted", resource.id)
-
-      # 4. If resource is allowed, and has at least one site connected, push
-      if MapSet.member?(socket.assigns.authorized_resource_ids, resource.id) and
-           length(resource.gateway_groups) > 0 do
-        # Connlib doesn't handle resources changing sites, so we need to delete then create
-        # See https://github.com/firezone/firezone/issues/9881
-        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-      end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  # RESOURCES
-
-  def handle_info(
-        {:updated, %Resources.Resource{} = old_resource, %Resources.Resource{id: id} = resource},
-        socket
-      ) do
-    # 1. Check if this affects us
-    if existing_resource = socket.assigns.resources[id] do
-      # 2. Update our state - take gateway_groups from existing resource
-      resource = %{resource | gateway_groups: existing_resource.gateway_groups}
-
-      socket =
-        assign(socket,
-          resources: Map.put(socket.assigns.resources, id, resource)
-        )
-
-      # 3. If resource is allowed and had meaningful changes, push
-      # GatewayGroup changes are handled in the Resources.Connection handler
-      resource_changed? =
-        old_resource.ip_stack != resource.ip_stack or
-          old_resource.type != resource.type or
-          old_resource.filters != resource.filters or
-          old_resource.address != resource.address or
-          old_resource.address_description != resource.address_description or
-          old_resource.name != resource.name
-
-      if MapSet.member?(socket.assigns.authorized_resource_ids, resource.id) and
-           resource_changed? do
-        push(socket, "resource_created_or_updated", Views.Resource.render(resource))
-      end
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
+    {:noreply, assign(socket, cache: cache)}
   end
 
   ####################################
@@ -547,8 +163,7 @@ defmodule API.Client.Channel do
 
       :ok =
         Enum.each(relays, fn relay ->
-          # TODO: WAL
-          # Why are we unsubscribing and subscribing again?
+          # TODO: Why are we unsubscribing and subscribing again?
           :ok = Relays.unsubscribe_from_relay_presence(relay)
           :ok = Relays.subscribe_to_relay_presence(relay)
         end)
@@ -585,8 +200,7 @@ defmodule API.Client.Channel do
 
         :ok =
           Enum.each(relays, fn relay ->
-            # TODO: WAL
-            # Why are we unsubscribing and subscribing again?
+            # TODO: Why are we unsubscribing and subscribing again?
             :ok = Relays.unsubscribe_from_relay_presence(relay)
             :ok = Relays.subscribe_to_relay_presence(relay)
           end)
@@ -659,14 +273,14 @@ defmodule API.Client.Channel do
   # DEPRECATED IN 1.4
   # This message is sent by the gateway when it is ready to accept the connection from the client
   def handle_info(
-        {:connect, socket_ref, resource_id, gateway_public_key, payload},
+        {:connect, socket_ref, rid_bytes, gateway_public_key, payload},
         socket
       ) do
     reply(
       socket_ref,
       {:ok,
        %{
-         resource_id: resource_id,
+         resource_id: Ecto.UUID.load!(rid_bytes),
          persistent_keepalive: 25,
          gateway_public_key: gateway_public_key,
          gateway_payload: payload
@@ -677,12 +291,12 @@ defmodule API.Client.Channel do
   end
 
   def handle_info(
-        {:connect, _socket_ref, resource_id, gateway_group_id, gateway_id, gateway_public_key,
+        {:connect, _socket_ref, rid_bytes, gateway_group_id, gateway_id, gateway_public_key,
          gateway_ipv4, gateway_ipv6, preshared_key, ice_credentials},
         socket
       ) do
     reply_payload = %{
-      resource_id: resource_id,
+      resource_id: Ecto.UUID.load!(rid_bytes),
       preshared_key: preshared_key,
       client_ice_credentials: ice_credentials.client,
       gateway_group_id: gateway_group_id,
@@ -717,19 +331,24 @@ defmodule API.Client.Channel do
         },
         socket
       ) do
-    location = {
-      socket.assigns.client.last_seen_remote_ip_location_lat,
-      socket.assigns.client.last_seen_remote_ip_location_lon
-    }
-
-    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
-         {:ok, gateways} when gateways != [] <-
-           Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
-             preload: :group
+    with {:ok, resource, membership_id, policy_id, expires_at} <-
+           Cache.Client.authorize_resource(
+             socket.assigns.cache,
+             socket.assigns.client,
+             resource_id,
+             socket.assigns.subject
            ),
-         {:ok, gateways} <-
-           filter_compatible_gateways(gateways, socket.assigns.gateway_version_requirement) do
+         {:ok, gateways} when gateways != [] <-
+           Gateways.all_compatible_gateways_for_client_and_resource(
+             socket.assigns.client,
+             resource,
+             socket.assigns.subject
+           ) do
+      location = {
+        socket.assigns.client.last_seen_remote_ip_location_lat,
+        socket.assigns.client.last_seen_remote_ip_location_lon
+      }
+
       gateway = Gateways.load_balance_gateways(location, gateways, connected_gateway_ids)
 
       # TODO: Optimization
@@ -739,8 +358,8 @@ defmodule API.Client.Channel do
           socket.assigns.client,
           gateway,
           resource_id,
-          policy,
-          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          policy_id,
+          membership_id,
           socket.assigns.subject,
           expires_at
         )
@@ -772,26 +391,11 @@ defmodule API.Client.Channel do
 
         {:noreply, socket}
 
-      {:error, :offline} ->
+      {:error, {:forbidden, violated_properties: violated_properties}} ->
         push(socket, "flow_creation_failed", %{
           resource_id: resource_id,
-          reason: :offline
-        })
-
-        {:noreply, socket}
-
-      {:error, :forbidden} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :forbidden
-        })
-
-        {:noreply, socket}
-
-      :error ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :not_found
+          reason: :forbidden,
+          violated_properties: violated_properties
         })
 
         {:noreply, socket}
@@ -800,15 +404,6 @@ defmodule API.Client.Channel do
         push(socket, "flow_creation_failed", %{
           resource_id: resource_id,
           reason: :offline
-        })
-
-        {:noreply, socket}
-
-      {:error, {:forbidden, violated_properties: violated_properties}} ->
-        push(socket, "flow_creation_failed", %{
-          resource_id: resource_id,
-          reason: :forbidden,
-          violated_properties: violated_properties
         })
 
         {:noreply, socket}
@@ -827,18 +422,19 @@ defmodule API.Client.Channel do
 
     # TODO: Optimization
     # Gateway selection and flow authorization shouldn't need to hit the DB
-    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, _expires_at, _policy} <- authorize_resource(socket, resource_id),
-         {:ok, [_ | _] = gateways} <-
-           Gateways.all_connected_gateways_for_resource(resource, socket.assigns.subject,
-             preload: :group
+    with {:ok, resource, _membership_id, _policy_id, _expires_at} <-
+           Cache.Client.authorize_resource(
+             socket.assigns.cache,
+             socket.assigns.client,
+             resource_id,
+             socket.assigns.subject
            ),
-         gateway_version_requirement =
-           maybe_update_gateway_version_requirement(
+         {:ok, gateways} when gateways != [] <-
+           Gateways.all_compatible_gateways_for_client_and_resource(
+             socket.assigns.client,
              resource,
-             socket.assigns.gateway_version_requirement
-           ),
-         {:ok, gateways} <- filter_compatible_gateways(gateways, gateway_version_requirement) do
+             socket.assigns.subject
+           ) do
       location = {
         socket.assigns.client.last_seen_remote_ip_location_lat,
         socket.assigns.client.last_seen_remote_ip_location_lon
@@ -857,14 +453,11 @@ defmodule API.Client.Channel do
 
       {:reply, reply, socket}
     else
-      {:ok, []} ->
-        {:reply, {:error, %{reason: :offline}}, socket}
-
       {:error, :not_found} ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
-      :error ->
-        {:reply, {:error, %{reason: :not_found}}, socket}
+      {:ok, []} ->
+        {:reply, {:error, %{reason: :offline}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
         {:reply, {:error, %{reason: :forbidden, violated_properties: violated_properties}},
@@ -884,18 +477,28 @@ defmodule API.Client.Channel do
         },
         socket
       ) do
-    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
-         {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
+    with {:ok, resource, membership_id, policy_id, expires_at} <-
+           Cache.Client.authorize_resource(
+             socket.assigns.cache,
+             socket.assigns.client,
+             resource_id,
+             socket.assigns.subject
+           ),
+         {:ok, gateway} <-
+           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
+         %Cache.Cacheable.GatewayGroup{} <-
+           Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
+             g.id == Ecto.UUID.dump!(gateway.group_id)
+           end),
+         true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =
         Flows.create_flow(
           socket.assigns.client,
           gateway,
           resource_id,
-          policy,
-          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          policy_id,
+          membership_id,
           socket.assigns.subject,
           expires_at
         )
@@ -916,9 +519,6 @@ defmodule API.Client.Channel do
       {:noreply, socket}
     else
       {:error, :not_found} ->
-        {:reply, {:error, %{reason: :not_found}}, socket}
-
-      :error ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
@@ -944,18 +544,28 @@ defmodule API.Client.Channel do
         socket
       ) do
     # Flow authorization can happen out-of-band since we just authorized the resource above
-    with {:ok, resource} <- Map.fetch(socket.assigns.resources, resource_id),
-         {:ok, expires_at, policy} <- authorize_resource(socket, resource_id),
-         {:ok, gateway} <- Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject),
-         true <- Gateways.gateway_can_connect_to_resource?(gateway, resource) do
+    with {:ok, resource, membership_id, policy_id, expires_at} <-
+           Cache.Client.authorize_resource(
+             socket.assigns.cache,
+             socket.assigns.client,
+             resource_id,
+             socket.assigns.subject
+           ),
+         {:ok, gateway} <-
+           Gateways.fetch_gateway_by_id(gateway_id, socket.assigns.subject, preload: :online?),
+         %Cache.Cacheable.GatewayGroup{} <-
+           Enum.find(resource.gateway_groups, {:error, :not_found}, fn g ->
+             g.id == Ecto.UUID.dump!(gateway.group_id)
+           end),
+         true <- gateway.online? do
       # TODO: Optimization
       {:ok, flow} =
         Flows.create_flow(
           socket.assigns.client,
           gateway,
           resource_id,
-          policy,
-          Map.fetch!(socket.assigns.memberships, policy.actor_group_id).id,
+          policy_id,
+          membership_id,
           socket.assigns.subject,
           expires_at
         )
@@ -977,9 +587,6 @@ defmodule API.Client.Channel do
       {:noreply, socket}
     else
       {:error, :not_found} ->
-        {:reply, {:error, %{reason: :not_found}}, socket}
-
-      :error ->
         {:reply, {:error, %{reason: :not_found}}, socket}
 
       {:error, {:forbidden, violated_properties: violated_properties}} ->
@@ -1053,88 +660,6 @@ defmodule API.Client.Channel do
     end
   end
 
-  defp select_gateway_version_requirement(client) do
-    case Version.parse(client.last_seen_version) do
-      {:ok, _version} ->
-        gateway_version_requirement =
-          Enum.find_value(
-            @gateway_compatibility,
-            fn {client_version_requirement, gateway_version_requirement} ->
-              if Version.match?(client.last_seen_version, client_version_requirement) do
-                gateway_version_requirement
-              end
-            end
-          )
-
-        {:ok, gateway_version_requirement || "> 0.0.0"}
-
-      :error ->
-        {:error, %{reason: :invalid_version}}
-    end
-  end
-
-  # DEPRECATED IN 1.4
-  defp maybe_update_gateway_version_requirement(resource, gateway_version_requirement) do
-    case map_or_drop_compatible_resource(resource, "1.0.0") do
-      {:cont, _resource} ->
-        gateway_version_requirement
-
-      :drop ->
-        if resource.type == :internet do
-          ">= 1.3.0"
-        else
-          ">= 1.2.0"
-        end
-    end
-  end
-
-  defp filter_compatible_gateways(gateways, gateway_version_requirement) do
-    gateways
-    |> Enum.filter(fn gateway ->
-      Version.match?(gateway.last_seen_version, gateway_version_requirement)
-    end)
-    |> case do
-      [] -> {:error, :not_found}
-      gateways -> {:ok, gateways}
-    end
-  end
-
-  # DEPRECATED IN 1.4
-  defp map_and_filter_compatible_resources(resources, client_version) do
-    Enum.flat_map(resources, fn resource ->
-      case map_or_drop_compatible_resource(resource, client_version) do
-        {:cont, resource} -> [resource]
-        :drop -> []
-      end
-    end)
-  end
-
-  # DEPRECATED IN 1.4
-  def map_or_drop_compatible_resource(resource, client_or_gateway_version) do
-    cond do
-      resource.gateway_groups == [] ->
-        :drop
-
-      resource.type == :internet and Version.match?(client_or_gateway_version, ">= 1.3.0") ->
-        {:cont, resource}
-
-      resource.type == :internet ->
-        :drop
-
-      Version.match?(client_or_gateway_version, ">= 1.2.0") ->
-        {:cont, resource}
-
-      true ->
-        resource.address
-        |> String.codepoints()
-        |> Resources.map_resource_address()
-        |> case do
-          {:cont, address} -> {:cont, %{resource | address: address}}
-          :drop -> :drop
-        end
-    end
-  end
-
   defp generate_preshared_key(client, gateway) do
     Domain.Crypto.psk(client, gateway)
   end
@@ -1180,89 +705,247 @@ defmodule API.Client.Channel do
     }
   end
 
-  defp disconnect(socket) do
-    push(socket, "disconnect", %{reason: :token_expired})
-    send(socket.transport_pid, %Phoenix.Socket.Broadcast{event: "disconnect"})
+  ##########################################
+  #### Handling changes from the domain ####
+  ##########################################
+
+  # ACCOUNTS
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Accounts.Account{} = old_account,
+           struct: %Accounts.Account{} = account
+         },
+         socket
+       ) do
+    # Update our subject's account
+    subject = %{socket.assigns.subject | account: account}
+    socket = assign(socket, subject: subject)
+
+    if old_account.config != account.config do
+      client = %{socket.assigns.client | account: account}
+      payload = %{interface: Views.Interface.render(client)}
+      :ok = push(socket, "config_changed", payload)
+    end
+
+    {:noreply, socket}
+  end
+
+  # ACTOR_GROUP_MEMBERSHIPS
+
+  defp handle_change(
+         %Change{op: :insert, struct: %Actors.Membership{actor_id: actor_id}},
+         %{assigns: %{client: %{actor_id: id}}} = socket
+       )
+       when id == actor_id do
+    Cache.Client.add_membership(socket.assigns.cache, socket.assigns.client)
+    |> push_resource_updates(socket)
+  end
+
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct: %Actors.Membership{actor_id: actor_id} = membership
+         },
+         %{assigns: %{client: %{actor_id: id}}} = socket
+       )
+       when id == actor_id do
+    Cache.Client.delete_membership(socket.assigns.cache, membership, socket.assigns.client)
+    |> push_resource_updates(socket)
+  end
+
+  # CLIENTS
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Clients.Client{} = old_client,
+           struct: %Clients.Client{id: client_id} = client
+         },
+         %{assigns: %{client: %{id: id}}} = socket
+       )
+       when id == client_id do
+    # Maintain our preloaded identity
+    client = %{client | identity: socket.assigns.client.identity}
+    socket = assign(socket, client: client)
+
+    # Changes in client verification can affect the list of allowed resources
+    if old_client.verified_at != client.verified_at do
+      Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
+      |> push_resource_updates(socket)
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Clients.Client{id: id}},
+         %{assigns: %{client: %{id: client_id}}} = socket
+       )
+       when id == client_id do
+    # TODO: Hard delete
+    # Deleting a client won't necessary delete its tokens in the case of a headless client.
+    # So we explicitly handle the deleted client here by forcing it to reconnect.
     {:stop, :shutdown, socket}
   end
 
-  # TODO: Optimization
-  # We can reduce memory usage of this cache by an order of magnitude by storing
-  # optimized versions of the fields we need to evaluate policy conditions and
-  # render data to the client.
-  defp hydrate_policies_and_resources(socket) do
-    OpenTelemetry.Tracer.with_span "client.hydrate_policies_and_resources",
-      attributes: %{
-        account_id: socket.assigns.client.account_id
-      } do
-      {_policies, acc} =
-        Policies.all_policies_for_actor!(socket.assigns.subject.actor)
-        |> Enum.map_reduce(%{policies: %{}, resources: %{}}, fn policy, acc ->
-          resources = Map.put(acc.resources, policy.resource_id, policy.resource)
+  # GATEWAY_GROUPS
 
-          # Remove resource from policy to avoid storing twice
-          policies = Map.put(acc.policies, policy.id, Map.delete(policy, :resource))
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Gateways.Group{name: old_name},
+           struct: %Gateways.Group{name: name} = group
+         },
+         socket
+       )
+       when old_name != name do
+    Cache.Client.update_resources_with_group_name(
+      socket.assigns.cache,
+      group,
+      socket.assigns.client
+    )
+    |> push_resource_updates(socket)
+  end
 
-          {policy, Map.merge(acc, %{policies: policies, resources: resources})}
-        end)
+  # POLICIES
 
-      assign(socket,
-        policies: acc.policies,
-        resources: acc.resources
-      )
+  defp handle_change(
+         %Change{op: :insert, struct: %Policies.Policy{} = policy},
+         socket
+       ) do
+    Cache.Client.add_policy(
+      socket.assigns.cache,
+      policy,
+      socket.assigns.client,
+      socket.assigns.subject
+    )
+    |> push_resource_updates(socket)
+  end
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Policies.Policy{
+             resource_id: old_resource_id,
+             actor_group_id: old_actor_group_id,
+             conditions: old_conditions
+           },
+           struct: %Policies.Policy{
+             resource_id: resource_id,
+             actor_group_id: actor_group_id,
+             conditions: conditions,
+             disabled_at: disabled_at
+           }
+         } = change,
+         socket
+       )
+       when old_resource_id != resource_id or old_actor_group_id != actor_group_id or
+              old_conditions != conditions do
+    # TODO: Optimization
+    # Breaking update - process this as a delete and then create to make our lives easier.
+    # We could be smarter here and process the individual side effects more cleverly to avoid
+    # sending resource_deleted and resource_created_or_updated if the policy is not actually changing
+    # the client's connectable_resources.
+    {:noreply, socket} = handle_change(%{change | op: :delete}, socket)
+
+    # DO NOT re-add disabled policies
+    if is_nil(disabled_at) do
+      handle_change(%{change | op: :insert}, socket)
+    else
+      {:noreply, socket}
     end
   end
 
-  defp hydrate_memberships(socket) do
-    OpenTelemetry.Tracer.with_span "client.hydrate_memberships",
-      attributes: %{
-        account_id: socket.assigns.client.account_id
-      } do
-      memberships =
-        Actors.all_memberships_for_actor!(socket.assigns.subject.actor)
-        |> Enum.map(fn membership ->
-          {membership.group_id, membership}
-        end)
-        |> Enum.into(%{})
-
-      assign(socket, memberships: memberships)
-    end
+  # Other update, i.e. description - just update our state
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Policies.Policy{},
+           struct: %Policies.Policy{} = policy
+         },
+         socket
+       ) do
+    Cache.Client.update_policy(socket.assigns.cache, policy)
+    |> push_resource_updates(socket)
   end
 
-  defp authorized_resources(socket) do
-    OpenTelemetry.Tracer.with_span "client.authorized_resources",
-      attributes: %{
-        account_id: socket.assigns.client.account_id
-      } do
-      client = socket.assigns.client
-
-      resource_ids =
-        socket.assigns.policies
-        |> Map.values()
-        |> Policies.filter_by_conforming_policies_for_client(client)
-        |> Enum.map(& &1.resource_id)
-        |> Enum.uniq()
-
-      socket.assigns.resources
-      |> Map.take(resource_ids)
-      |> Map.values()
-      |> map_and_filter_compatible_resources(client.last_seen_version)
-    end
+  defp handle_change(
+         %Change{op: :delete, old_struct: %Policies.Policy{} = policy},
+         socket
+       ) do
+    Cache.Client.delete_policy(socket.assigns.cache, policy, socket.assigns.client)
+    |> push_resource_updates(socket)
   end
 
-  # Returns either the longest authorized policy or an error tuple of violated properties
-  defp authorize_resource(socket, resource_id) do
-    OpenTelemetry.Tracer.with_span "client.authorize_resource",
-      attributes: %{
-        account_id: socket.assigns.client.account_id
-      } do
-      socket.assigns.policies
-      |> Enum.filter(fn {_id, policy} -> policy.resource_id == resource_id end)
-      |> Enum.map(fn {_id, policy} -> policy end)
-      |> Policies.longest_conforming_policy_for_client(
-        socket.assigns.client,
-        socket.assigns.subject.expires_at
-      )
+  # RESOURCE_CONNECTIONS
+
+  defp handle_change(
+         %Change{
+           op: :insert,
+           struct: %Resources.Connection{} = connection
+         },
+         socket
+       ) do
+    Cache.Client.add_resource_connection(
+      socket.assigns.cache,
+      connection,
+      socket.assigns.subject,
+      socket.assigns.client
+    )
+    |> push_resource_updates(socket)
+  end
+
+  defp handle_change(
+         %Change{
+           op: :delete,
+           old_struct: %Resources.Connection{} = connection
+         },
+         socket
+       ) do
+    Cache.Client.delete_resource_connection(
+      socket.assigns.cache,
+      connection,
+      socket.assigns.client
+    )
+    |> push_resource_updates(socket)
+  end
+
+  # RESOURCES
+
+  defp handle_change(
+         %Change{
+           op: :update,
+           old_struct: %Resources.Resource{},
+           struct: %Resources.Resource{} = resource
+         },
+         socket
+       ) do
+    Cache.Client.update_resource(
+      socket.assigns.cache,
+      resource,
+      socket.assigns.client
+    )
+    |> push_resource_updates(socket)
+  end
+
+  defp handle_change(%Change{}, socket), do: {:noreply, socket}
+
+  defp push_resource_updates({:ok, added_resources, removed_ids, cache}, socket) do
+    # TODO: Multi-site resources
+    # Currently, connlib doesn't handle resources changing sites, so we need to delete then create.
+    # We handle that scenario by sending resource_deleted then resource_created_or_updated, so it's
+    # important that deletions are processed first here.
+    # See https://github.com/firezone/firezone/issues/9881
+    for resource_id <- removed_ids do
+      push(socket, "resource_deleted", resource_id)
     end
+
+    for resource <- added_resources do
+      push(socket, "resource_created_or_updated", Views.Resource.render(resource))
+    end
+
+    {:noreply, assign(socket, cache: cache)}
   end
 end
