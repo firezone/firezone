@@ -1074,43 +1074,92 @@ defmodule API.Gateway.ChannelTest do
              }
     end
 
-    test "does not send resource_updated when adaptation returns nil", %{
-      account: account,
+    test "does not send resource_updated when DNS adaptation fails", %{
       socket: socket
     } do
-      # Update the channel process state to use an old gateway version
+      # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
-        put_in(state.assigns.gateway.last_seen_version, "1.2.9")
+        put_in(state.assigns.gateway.last_seen_version, "1.1.0")
       end)
 
-      # Create an internet resource (requires gateway >= 1.3.0)
-      internet_group = Fixtures.Gateways.create_internet_group(account: account)
+      # Create a DNS resource with an address that can't be adapted
+      # For pre-1.2.0, addresses with wildcards not at the beginning get dropped
+      account = Fixtures.Accounts.create_account()
 
       resource =
-        Fixtures.Resources.create_internet_resource(
+        Fixtures.Resources.create_resource(
           account: account,
-          connections: [%{gateway_group_id: internet_group.id}]
+          type: :dns,
+          address: "example.*.com"
         )
 
       old_data = %{
         "id" => resource.id,
         "account_id" => resource.account_id,
-        "type" => "internet",
+        "address" => "example.*.com",
+        "name" => resource.name,
+        "type" => "dns",
         "filters" => [],
         "ip_stack" => "dual"
       }
 
-      filters = [
-        %{"protocol" => "tcp", "ports" => ["443"]}
-      ]
-
-      data = Map.put(old_data, "filters", filters)
+      # Only change filters to trigger the filter-change handler
+      data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
 
       # Trigger the resource update
       Changes.Hooks.Resources.on_update(100, old_data, data)
 
-      # Should not receive any update since internet resources aren't supported in 1.2.0
+      # Should not receive any update since the address can't be adapted for version < 1.2.0
       refute_push "resource_updated", _payload
+    end
+
+    test "adapts DNS resource address for old gateway versions", %{
+      socket: socket
+    } do
+      # Update the channel process state to use an old gateway version (< 1.2.0)
+      :sys.replace_state(socket.channel_pid, fn state ->
+        put_in(state.assigns.gateway.last_seen_version, "1.1.0")
+      end)
+
+      # Create a DNS resource with an address that needs adaptation for old versions
+      account = Fixtures.Accounts.create_account()
+
+      resource =
+        Fixtures.Resources.create_resource(
+          account: account,
+          type: :dns,
+          address: "**.example.com"
+        )
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => "**.example.com",
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      # Only change filters, not address, to trigger the filter-change handler
+      data = Map.put(old_data, "filters", [%{"protocol" => "tcp", "ports" => ["443"]}])
+
+      # Trigger the resource update
+      Changes.Hooks.Resources.on_update(100, old_data, data)
+
+      # Should receive the update with the adapted address (** becomes * for pre-1.2.0)
+      assert_push "resource_updated", payload
+
+      assert payload == %{
+               # ** was converted to *
+               address: "*.example.com",
+               id: resource.id,
+               name: resource.name,
+               type: :dns,
+               filters: [
+                 %{protocol: :tcp, port_range_start: 443, port_range_end: 443}
+               ]
+             }
     end
 
     test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group} do
