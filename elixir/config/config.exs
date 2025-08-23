@@ -34,7 +34,9 @@ config :domain, Domain.Repo,
   start_apps_before_migration: [:ssl, :logger_json]
 
 config :domain, Domain.ChangeLogs.ReplicationConnection,
+  # NOTE: When changing this, you MUST manually drop the old slot.
   replication_slot_name: "change_logs_slot",
+  # NOTE: When changing this, you MUST manually drop the old publication.
   publication_name: "change_logs_publication",
   enabled: true,
   connection_opts: [
@@ -79,7 +81,9 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
   flush_buffer_size: 500
 
 config :domain, Domain.Changes.ReplicationConnection,
+  # NOTE: When changing this, you MUST manually drop the old slot.
   replication_slot_name: "changes_slot",
+  # NOTE: When changing this, you MUST manually drop the old publication.
   publication_name: "changes_publication",
   enabled: true,
   connection_opts: [
