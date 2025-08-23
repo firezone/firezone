@@ -1021,6 +1021,98 @@ defmodule API.Gateway.ChannelTest do
              }
     end
 
+    test "handles resource_updated with version adaptation for old gateways", %{
+      gateway: gateway,
+      resource: resource,
+      gateway_group: gateway_group,
+      token: token
+    } do
+      # Create a new socket with the gateway set to an old version (< 1.2.0)
+      {:ok, _, _socket} =
+        API.Gateway.Socket
+        |> socket("gateway:#{gateway.id}", %{
+          token_id: token.id,
+          gateway: Map.put(gateway, :last_seen_version, "1.1.0"),
+          gateway_group: gateway_group,
+          opentelemetry_ctx: OpenTelemetry.Ctx.new(),
+          opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
+        })
+        |> subscribe_and_join(API.Gateway.Channel, "gateway")
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "address" => resource.address,
+        "name" => resource.name,
+        "type" => "dns",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      filters = [
+        %{"protocol" => "tcp", "ports" => ["443"]},
+        %{"protocol" => "udp", "ports" => ["53"]}
+      ]
+
+      data = Map.put(old_data, "filters", filters)
+
+      # Trigger the resource update
+      Changes.Hooks.Resources.on_update(100, old_data, data)
+
+      # Gateway with version 1.1.0 should receive the adapted resource
+      assert_push "resource_updated", payload
+
+      assert payload == %{
+               address: resource.address,
+               id: resource.id,
+               name: resource.name,
+               type: :dns,
+               filters: [
+                 %{protocol: :tcp, port_range_start: 443, port_range_end: 443},
+                 %{protocol: :udp, port_range_start: 53, port_range_end: 53}
+               ]
+             }
+    end
+
+    test "does not send resource_updated when adaptation returns nil", %{
+      account: account,
+      socket: socket
+    } do
+      # Update the channel process state to use an old gateway version
+      :sys.replace_state(socket.channel_pid, fn state ->
+        put_in(state.assigns.gateway.last_seen_version, "1.2.9")
+      end)
+
+      # Create an internet resource (requires gateway >= 1.3.0)
+      internet_group = Fixtures.Gateways.create_internet_group(account: account)
+
+      resource =
+        Fixtures.Resources.create_internet_resource(
+          account: account,
+          connections: [%{gateway_group_id: internet_group.id}]
+        )
+
+      old_data = %{
+        "id" => resource.id,
+        "account_id" => resource.account_id,
+        "type" => "internet",
+        "filters" => [],
+        "ip_stack" => "dual"
+      }
+
+      filters = [
+        %{"protocol" => "tcp", "ports" => ["443"]}
+      ]
+
+      data = Map.put(old_data, "filters", filters)
+
+      # Trigger the resource update
+      Changes.Hooks.Resources.on_update(100, old_data, data)
+
+      # Should not receive any update since internet resources aren't supported in 1.2.0
+      refute_push "resource_updated", _payload
+    end
+
     test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group} do
       relay_group = Fixtures.Relays.create_global_group()
       stamp_secret = Ecto.UUID.generate()

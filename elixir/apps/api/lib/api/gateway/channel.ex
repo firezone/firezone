@@ -666,9 +666,15 @@ defmodule API.Gateway.Channel do
     # Send regardless of cache state - if the Gateway has no flows for this resource,
     # it will simply ignore the message.
     resource = Cache.Cacheable.to_cache(resource)
-    push(socket, "resource_updated", Views.Resource.render(resource))
 
-    {:noreply, socket}
+    case Resources.adapt_resource_for_version(resource, socket.assigns.gateway.last_seen_version) do
+      nil ->
+        {:noreply, socket}
+
+      adapted_resource ->
+        push(socket, "resource_updated", Views.Resource.render(adapted_resource))
+        {:noreply, socket}
+    end
   end
 
   defp handle_change(%Change{}, socket), do: {:noreply, socket}
