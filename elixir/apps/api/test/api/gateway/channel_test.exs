@@ -980,11 +980,10 @@ defmodule API.Gateway.ChannelTest do
     end
 
     test "sends resource_updated when filters change even without resource in cache", %{
-      resource: resource,
-      socket: _socket
+      resource: resource
     } do
-      # Don't create any flows - simulate a gateway that reconnected
-      # and doesn't have this resource in its cache yet
+      # The resource is already connected to the gateway via the setup
+      # No flows exist yet, so the resource isn't in the cache
 
       old_data = %{
         "id" => resource.id,
@@ -1003,7 +1002,7 @@ defmodule API.Gateway.ChannelTest do
 
       data = Map.put(old_data, "filters", filters)
 
-      # Trigger the resource update
+      # Trigger the resource update via the Changes hook which will broadcast to the channel
       Changes.Hooks.Resources.on_update(100, old_data, data)
 
       # Should still receive the update even though resource isn't in cache
@@ -1114,7 +1113,8 @@ defmodule API.Gateway.ChannelTest do
     end
 
     test "adapts DNS resource address for old gateway versions", %{
-      socket: socket
+      socket: socket,
+      account: account
     } do
       # Update the channel process state to use an old gateway version (< 1.2.0)
       :sys.replace_state(socket.channel_pid, fn state ->
@@ -1122,13 +1122,13 @@ defmodule API.Gateway.ChannelTest do
       end)
 
       # Create a DNS resource with an address that needs adaptation for old versions
-      account = Fixtures.Accounts.create_account()
-
+      # Use the existing account from setup so the channel receives the update
       resource =
         Fixtures.Resources.create_resource(
           account: account,
           type: :dns,
-          address: "**.example.com"
+          address: "**.example.com",
+          connections: [%{gateway_group_id: socket.assigns.gateway.group_id}]
         )
 
       old_data = %{
