@@ -1,11 +1,13 @@
 use std::{
     collections::{BTreeMap, VecDeque},
+    marker::PhantomData,
     net::SocketAddr,
 };
 
 use bufferpool::{Buffer, BufferPool};
 use bytes::BytesMut;
 use ip_packet::Ecn;
+use snownet::{BufferProvider, BufferRef as _};
 use socket_factory::DatagramOut;
 
 use super::MAX_INBOUND_PACKET_BATCH;
@@ -30,32 +32,19 @@ impl GsoQueue {
         }
     }
 
-    pub fn enqueue(&mut self, src: Option<SocketAddr>, dst: SocketAddr, payload: &[u8], ecn: Ecn) {
-        let payload_len = payload.len();
+    /// Adds a packet into the GSO queue by copying its contents in.
+    ///
+    /// Where possible you should avoid this API and instead request a buffer you can directly write to.
+    pub fn enqueue_copy(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        payload: &[u8],
+        ecn: Ecn,
+    ) {
+        let mut buffer_ref = self.get_buffer(src, dst, ecn, payload.len());
 
-        debug_assert!(
-            payload_len <= MAX_SEGMENT_SIZE,
-            "MAX_SEGMENT_SIZE is miscalculated"
-        );
-
-        let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
-
-        let Some((batch_size, buffer)) = batches.back_mut() else {
-            batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
-
-            return;
-        };
-        let batch_size = *batch_size;
-
-        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
-        let batch_is_ongoing = buffer.len() % batch_size == 0;
-
-        if batch_is_ongoing && payload_len <= batch_size {
-            buffer.extend_from_slice(payload);
-            return;
-        }
-
-        batches.push_back((payload_len, self.buffer_pool.pull_initialised(payload)));
+        buffer_ref.as_slice_mut().copy_from_slice(payload);
     }
 
     pub fn datagrams(&mut self) -> impl Iterator<Item = DatagramOut> + '_ {
@@ -64,6 +53,88 @@ impl GsoQueue {
 
     pub fn clear(&mut self) {
         self.inner.clear()
+    }
+}
+
+impl snownet::BufferProvider for GsoQueue {
+    type Buffer<'a>
+        = BufferRef<'a>
+    where
+        Self: 'a;
+
+    fn get_buffer(
+        &mut self,
+        src: Option<SocketAddr>,
+        dst: SocketAddr,
+        ecn: Ecn,
+        payload_len: usize,
+    ) -> Self::Buffer<'_> {
+        let batches = self.inner.entry(Connection { src, dst, ecn }).or_default();
+
+        let Some((batch_size, buffer)) = batches.back_mut() else {
+            let buffer = self.buffer_pool.pull();
+            batches.push_back((payload_len, buffer));
+
+            let (_, buffer) = batches.back_mut().expect("We just pushed an element");
+
+            return BufferRef {
+                inner: buffer,
+                current_end: 0,
+                chunk_size: payload_len,
+                phantom_ref: PhantomData,
+            };
+        };
+        let batch_size = *batch_size;
+
+        // A batch is considered "ongoing" if so far we have only pushed packets of the same length.
+        let batch_is_ongoing = buffer.len() % batch_size == 0;
+
+        if batch_is_ongoing && payload_len <= batch_size {
+            return BufferRef {
+                inner: buffer,
+                current_end: buffer.len(),
+                chunk_size: payload_len,
+                phantom_ref: PhantomData,
+            };
+        }
+
+        let buffer = self.buffer_pool.pull();
+        batches.push_back((payload_len, buffer));
+
+        let (_, buffer) = batches.back_mut().expect("We just pushed an element");
+
+        BufferRef {
+            inner: buffer,
+            current_end: 0,
+            chunk_size: payload_len,
+            phantom_ref: PhantomData,
+        }
+    }
+}
+
+pub struct BufferRef<'a> {
+    /// Raw pointer to our buffer because Rust can't work out that it is only a single, mutable borrow.
+    inner: *mut Buffer<BytesMut>,
+    current_end: usize,
+    chunk_size: usize,
+
+    /// Phantom lifetime to ensure `BufferRef` doesn't outlive `GsoQueue`.
+    phantom_ref: PhantomData<&'a mut ()>,
+}
+
+impl<'a> snownet::BufferRef<'a> for BufferRef<'a> {
+    fn as_slice_mut(&mut self) -> &mut [u8] {
+        let inner = unsafe { self.inner.as_mut().expect("pointer to be valid") };
+
+        inner.resize(self.current_end + self.chunk_size, 0);
+
+        &mut inner[self.current_end..][..self.chunk_size]
+    }
+
+    fn discard(self) {
+        let inner = unsafe { self.inner.as_mut().expect("pointer to be valid") };
+
+        inner.truncate(self.current_end);
     }
 }
 
@@ -114,7 +185,7 @@ mod tests {
     fn dropping_datagram_iterator_does_not_drop_items() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams();
         drop(datagrams);
@@ -130,10 +201,10 @@ mod tests {
     fn appends_items_of_same_batch() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"foo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foo", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -146,11 +217,11 @@ mod tests {
     fn starts_new_batch_for_new_dst() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"barbarba", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"foofoo", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -167,14 +238,14 @@ mod tests {
     fn continues_batch_for_old_dst() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_2, b"barbarba", Ecn::NonEct);
-        send_queue.enqueue(None, DST_2, b"foofoo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"barbarba", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_2, b"foofoo", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_1, b"foobaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bazfoo", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"bazfoo", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
@@ -191,11 +262,11 @@ mod tests {
     fn starts_new_batch_after_single_item_less_than_segment_length() {
         let mut send_queue = GsoQueue::new();
 
-        send_queue.enqueue(None, DST_1, b"foobar", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
-        send_queue.enqueue(None, DST_1, b"bar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"foobar", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"bar", Ecn::NonEct);
 
-        send_queue.enqueue(None, DST_1, b"barbaz", Ecn::NonEct);
+        send_queue.enqueue_copy(None, DST_1, b"barbaz", Ecn::NonEct);
 
         let datagrams = send_queue.datagrams().collect::<Vec<_>>();
 
