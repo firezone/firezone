@@ -42,41 +42,14 @@ runs:
       run: Set-MpPreference -DisableRealtimeMonitoring $true
       shell: powershell
 
-    - name: Extract Rust version
-      run: |
-        RUST_TOOLCHAIN=$(grep 'channel' rust-toolchain.toml | awk -F '"' '{print $2}')
-        echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
-      shell: bash
-      working-directory: ./rust
-
-    - name: Cache Rust toolchain
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.rustup/toolchains
-          ~/.rustup/update-hashes
-          ~/.rustup/settings.toml
-        key: rust-toolchain-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('rust/rust-toolchain.toml') }}
-        restore-keys: |
-          rust-toolchain-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-
-          rust-toolchain-${{ runner.os }}-
-
-    - name: Cache cargo registry and git deps
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry/index
-          ~/.cargo/registry/cache
-          ~/.cargo/git/db
-        key: cargo-registry-${{ runner.os }}-${{ hashFiles('rust/**/Cargo.lock') }}
-        restore-keys: |
-          cargo-registry-${{ runner.os }}-
-
-    - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+    - uses: actions-rust-lang/setup-rust-toolchain@ab6845274e2ff01cd4462007e1a9d9df1ab49f42 # v1
       id: toolchain
       with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
+        target: ${{ inputs.targets }}
+        cache: true
+        cache-on-failure: true
+        rustflags: ""  # Don't set -D warnings by default
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
     # For this to work, you need an Azure Storage account and a blob container named `sccache`.
@@ -88,10 +61,6 @@ runs:
         echo "SCCACHE_AZURE_CONNECTION_STRING=${{ inputs.sccache_azure_connection_string }}" >> $GITHUB_ENV
         echo "SCCACHE_AZURE_BLOB_CONTAINER=sccache" >> $GITHUB_ENV
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
-
-    - if: inputs.targets != ''
-      run: rustup target add ${{ inputs.targets }}
-      shell: bash
 
     - name: Install nightly Rust
       id: nightly
