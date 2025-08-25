@@ -275,7 +275,7 @@ jobs:
   perf-tests:
     name: perf-tests
     needs: build-perf-artifacts
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-24.04-xlarge
     permissions:
       contents: read
       id-token: write
