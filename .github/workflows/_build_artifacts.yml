@@ -46,7 +46,7 @@ permissions:
 jobs:
   control-plane:
     name: ${{ matrix.image_name }}
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -132,7 +132,7 @@ jobs:
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
     if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
-    runs-on: windows-2022-xlarge
+    runs-on: windows-2022
     defaults:
       run:
         working-directory: rust
@@ -193,7 +193,7 @@ jobs:
 
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: rust
@@ -437,7 +437,7 @@ jobs:
     name: merge-${{ matrix.image.name }}
     needs: data-plane-linux
     if: ${{ always() }}
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:

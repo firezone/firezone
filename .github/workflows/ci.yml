@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   planner:
-    runs-on: ubuntu-latest-xlarge
+    runs-on: ubuntu-latest
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
@@ -116,7 +116,7 @@ jobs:
   required-check:
     name: required-check
     needs: planner
-    runs-on: ubuntu-latest-xlarge
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Wait for all jobs to complete
@@ -186,7 +186,7 @@ jobs:
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
@@ -275,7 +275,7 @@ jobs:
   perf-tests:
     name: perf-tests
     needs: build-perf-artifacts
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       id-token: write
@@ -386,7 +386,7 @@ jobs:
   upload-bencher:
     continue-on-error: true
     needs: perf-tests
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       id-token: write

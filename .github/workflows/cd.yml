@@ -37,7 +37,7 @@ jobs:
 
   notify:
     needs: ci
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     steps:
       - name: Send 'checks-passed' event
         env:
