@@ -33,43 +33,45 @@ if config_env() == :prod do
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_change_logs_replication_slot_name),
     publication_name: env_var_to_config!(:database_change_logs_publication_name),
-    connection_opts: [
-      port: env_var_to_config!(:database_port),
-      ssl: env_var_to_config!(:database_ssl_enabled),
-      ssl_opts: env_var_to_config!(:database_ssl_opts),
-      parameters: env_var_to_config!(:database_parameters),
-      username: env_var_to_config!(:database_user),
-      database: env_var_to_config!(:database_name)
-    ] ++
-      if(env_var_to_config(:database_password),
-        do: [{:password, env_var_to_config!(:database_password)}],
-        else: []
-      ) ++
-      if(env_var_to_config(:database_socket_dir),
-        do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-        else: [{:hostname, env_var_to_config!(:database_host)}]
-      )
+    connection_opts:
+      [
+        port: env_var_to_config!(:database_port),
+        ssl: env_var_to_config!(:database_ssl_enabled),
+        ssl_opts: env_var_to_config!(:database_ssl_opts),
+        parameters: env_var_to_config!(:database_parameters),
+        username: env_var_to_config!(:database_user),
+        database: env_var_to_config!(:database_name)
+      ] ++
+        if(env_var_to_config(:database_password),
+          do: [{:password, env_var_to_config!(:database_password)}],
+          else: []
+        ) ++
+        if(env_var_to_config(:database_socket_dir),
+          do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+          else: [{:hostname, env_var_to_config!(:database_host)}]
+        )
 
   config :domain, Domain.Changes.ReplicationConnection,
     enabled: env_var_to_config!(:background_jobs_enabled),
     replication_slot_name: env_var_to_config!(:database_changes_replication_slot_name),
     publication_name: env_var_to_config!(:database_changes_publication_name),
-    connection_opts: [
-      port: env_var_to_config!(:database_port),
-      ssl: env_var_to_config!(:database_ssl_enabled),
-      ssl_opts: env_var_to_config!(:database_ssl_opts),
-      parameters: env_var_to_config!(:database_parameters),
-      username: env_var_to_config!(:database_user),
-      database: env_var_to_config!(:database_name)
-    ] ++
-      if(env_var_to_config(:database_password),
-        do: [{:password, env_var_to_config!(:database_password)}],
-        else: []
-      ) ++
-      if(env_var_to_config(:database_socket_dir),
-        do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
-        else: [{:hostname, env_var_to_config!(:database_host)}]
-      )
+    connection_opts:
+      [
+        port: env_var_to_config!(:database_port),
+        ssl: env_var_to_config!(:database_ssl_enabled),
+        ssl_opts: env_var_to_config!(:database_ssl_opts),
+        parameters: env_var_to_config!(:database_parameters),
+        username: env_var_to_config!(:database_user),
+        database: env_var_to_config!(:database_name)
+      ] ++
+        if(env_var_to_config(:database_password),
+          do: [{:password, env_var_to_config!(:database_password)}],
+          else: []
+        ) ++
+        if(env_var_to_config(:database_socket_dir),
+          do: [{:socket_dir, env_var_to_config!(:database_socket_dir)}],
+          else: [{:hostname, env_var_to_config!(:database_host)}]
+        )
 
   config :domain, run_manual_migrations: env_var_to_config!(:run_manual_migrations)
 
