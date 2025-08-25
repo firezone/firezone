@@ -460,6 +460,7 @@ services:
       - net.ipv6.conf.default.disable_ipv6=0
     cap_add:
       - NET_ADMIN
+      - BPF
     privileged: true # Needed to load eBPF prog
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
@@ -509,6 +510,7 @@ services:
       - net.ipv6.conf.default.disable_ipv6=0
     cap_add:
       - NET_ADMIN
+      - BPF
     privileged: true # Needed to load eBPF prog
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
