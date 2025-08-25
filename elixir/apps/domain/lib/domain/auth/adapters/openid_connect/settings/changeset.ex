@@ -47,7 +47,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
 
   def fetch_document(value) do
     if System.get_env("STATIC_SEEDS") == "true" do
-      # Skip actual fetches when generating consistent seeds
+      # Skip actual fetches when generating consistent seeds to avoid requiring the network
       {:ok, %{}}
     else
       OpenIDConnect.Document.fetch_document(value)

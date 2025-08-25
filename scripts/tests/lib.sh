@@ -23,8 +23,8 @@ function install_iptables_drop_rules() {
     client apk add iptables
 
     # Execute within the client container because doing so from the host is not reliable in CI.
-    client iptables -A OUTPUT -d ${GATEWAY_IP4_ADDR:-172.28.0.105} -j DROP
-    client ip6tables -A OUTPUT -d ${GATEWAY_IP6_ADDR:-172:28:0::105} -j DROP
+    client iptables -A OUTPUT -d 172.28.0.105 -j DROP
+    client ip6tables -A OUTPUT -d 172:28:0::105 -j DROP
 }
 
 function client_curl_resource() {
