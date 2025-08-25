@@ -9,14 +9,25 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Cache apt packages
+      if: ${{ runner.os == 'Linux' }}
+      uses: actions/cache@v4
+      with:
+        path: /var/cache/apt/archives
+        key: ${{ runner.os }}-apt-tauri-${{ hashFiles('.github/actions/setup-tauri-v2/action.yml') }}
+        restore-keys: |
+          ${{ runner.os }}-apt-tauri-
+    
     - name: Apt-get update
       if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get update
       shell: bash
+    
     - name: Install Tauri build deps
       if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get --yes install build-essential curl file libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev libxdo-dev wget
       shell: bash
+    
     - name: Install gnome-keyring
       if: ${{ runner.os == 'Linux' }}
       run: sudo apt-get --yes install gnome-keyring
@@ -24,6 +35,7 @@ runs:
       # This is only needed if we'll launch the Tauri GUI, so it's redundant for clippy / test
       # This is what the Tauri CI tests use
       # <https://github.com/tauri-apps/tauri/blob/3fb414b61ad7cfce67751230826fddfb39effec5/.github/workflows/bench.yml#L74>
+    
     - name: Install Tauri runtime deps
       if: ${{ runner.os == 'Linux' && inputs.runtime == 'true' }}
       run: sudo apt-get --yes install at-spi2-core xvfb
