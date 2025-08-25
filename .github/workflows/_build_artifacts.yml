@@ -319,6 +319,13 @@ jobs:
           # Used for Docker images
           cp target/${{ matrix.arch.target }}/${{ inputs.profile }}/${{ matrix.name.package }} ${{ matrix.name.package }}
           sha256sum ${{ matrix.name.package }} > ${{ matrix.name.package }}.sha256sum.txt
+      # Upload relay binary as artifact for perf tests
+      - name: Upload relay binary
+        if: ${{ matrix.name.package == 'firezone-relay' && inputs.image_prefix == 'perf' && matrix.arch.shortname == 'x64' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: relay-binary-${{ github.sha }}
+          path: ${{ matrix.name.package }}
       # For pushing built images to Google Cloud Storage
       - uses: google-github-actions/auth@ba79af03959ebeac9769e648f473a284504d9193 # v2.1.10
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
