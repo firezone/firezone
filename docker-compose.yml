@@ -458,6 +458,8 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.default.disable_ipv6=0
+    cap_add:
+      - NET_ADMIN
     privileged: true # Needed to load eBPF prog
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
@@ -505,6 +507,8 @@ services:
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.default.disable_ipv6=0
+    cap_add:
+      - NET_ADMIN
     privileged: true # Needed to load eBPF prog
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
