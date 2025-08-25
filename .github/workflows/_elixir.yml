@@ -4,7 +4,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -44,7 +44,7 @@ jobs:
           reporter: java-junit
 
   type-check:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -82,7 +82,7 @@ jobs:
         run: mix dialyzer --format dialyxir
 
   static-analysis:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -111,7 +111,7 @@ jobs:
         run: mix deps.unlock --check-unused
 
   migrations-and-seed-test:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -150,7 +150,7 @@ jobs:
     name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
     permissions:
       checks: write
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir

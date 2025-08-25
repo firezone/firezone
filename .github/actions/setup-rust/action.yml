@@ -44,16 +44,19 @@ runs:
 
     - name: Extract Rust version
       run: |
-        RUST_TOOLCHAIN=$(grep 'channel' rust-toolchain.toml | awk -F '"' '{print $2}')
+        RUST_TOOLCHAIN=$(grep 'channel' rust/rust-toolchain.toml | awk -F '"' '{print $2}')
         echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
       shell: bash
-      working-directory: ./rust
 
-    - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
+    - uses: actions-rust-lang/setup-rust-toolchain@ab6845274e2ff01cd4462007e1a9d9df1ab49f42 # v1
       id: toolchain
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
+        target: ${{ inputs.targets }}
+        cache: true
+        cache-on-failure: true
+        rustflags: "" # Don't set -D warnings by default
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
     # For this to work, you need an Azure Storage account and a blob container named `sccache`.
@@ -66,16 +69,15 @@ runs:
         echo "SCCACHE_AZURE_BLOB_CONTAINER=sccache" >> $GITHUB_ENV
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
 
-    - if: inputs.targets != ''
-      run: rustup target add ${{ inputs.targets }}
-      shell: bash
-
     - name: Install nightly Rust
       id: nightly
       run: |
         NIGHTLY="nightly-2025-05-30"
-        rustup toolchain install $NIGHTLY
-        rustup component add rust-src --toolchain $NIGHTLY
+        # Check if nightly toolchain is already installed
+        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
+          rustup toolchain install $NIGHTLY
+          rustup component add rust-src --toolchain $NIGHTLY
+        fi
         echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
       shell: bash
 
