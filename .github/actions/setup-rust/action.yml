@@ -49,6 +49,29 @@ runs:
       shell: bash
       working-directory: ./rust
 
+    - name: Cache Rust toolchain
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.rustup/toolchains
+          ~/.rustup/update-hashes
+          ~/.rustup/settings.toml
+        key: rust-toolchain-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-${{ hashFiles('rust/rust-toolchain.toml') }}
+        restore-keys: |
+          rust-toolchain-${{ runner.os }}-${{ env.RUST_TOOLCHAIN }}-
+          rust-toolchain-${{ runner.os }}-
+
+    - name: Cache cargo registry and git deps
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry/index
+          ~/.cargo/registry/cache
+          ~/.cargo/git/db
+        key: cargo-registry-${{ runner.os }}-${{ hashFiles('rust/**/Cargo.lock') }}
+        restore-keys: |
+          cargo-registry-${{ runner.os }}-
+
     - uses: dtolnay/rust-toolchain@b3b07ba8b418998c39fb20f53e8b695cdcc8de1b # v1
       id: toolchain
       with:
@@ -74,8 +97,11 @@ runs:
       id: nightly
       run: |
         NIGHTLY="nightly-2025-05-30"
-        rustup toolchain install $NIGHTLY
-        rustup component add rust-src --toolchain $NIGHTLY
+        # Check if nightly toolchain is already installed
+        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
+          rustup toolchain install $NIGHTLY
+          rustup component add rust-src --toolchain $NIGHTLY
+        fi
         echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
       shell: bash
 
