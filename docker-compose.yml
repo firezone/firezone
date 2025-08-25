@@ -447,7 +447,6 @@ services:
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
       EBPF_OFFLOADING: eth0
-      EBPF_ATTACH_MODE: generic
     build:
       target: debug
       context: rust
@@ -461,6 +460,7 @@ services:
     cap_add:
       - NET_ADMIN
       - BPF
+      - SYS_ADMIN
     privileged: true # Needed to load eBPF prog
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
@@ -497,7 +497,6 @@ services:
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
       EBPF_OFFLOADING: eth0
-      EBPF_ATTACH_MODE: generic
     build:
       target: debug
       context: rust
@@ -511,6 +510,7 @@ services:
     cap_add:
       - NET_ADMIN
       - BPF
+      - SYS_ADMIN
     privileged: true # Needed to load eBPF prog
     healthcheck:
       test: ["CMD-SHELL", "lsof -i UDP | grep firezone-relay"]
