@@ -12,7 +12,7 @@ on:
 jobs:
   publish_clients:
     name: Publish ${{ matrix.identifier }} to winget
-    runs-on: windows-latest-xlarge
+    runs-on: windows-latest
     strategy:
       matrix:
         include:

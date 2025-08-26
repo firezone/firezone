@@ -4,7 +4,7 @@ on:
 
 jobs:
   unit-test:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -44,7 +44,7 @@ jobs:
           reporter: java-junit
 
   type-check:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -82,7 +82,7 @@ jobs:
         run: mix dialyzer --format dialyxir
 
   static-analysis:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -111,7 +111,7 @@ jobs:
         run: mix deps.unlock --check-unused
 
   migrations-and-seed-test:
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -150,7 +150,7 @@ jobs:
     name: acceptance-test-${{ matrix.MIX_TEST_PARTITION }}
     permissions:
       checks: write
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     defaults:
       run:
         working-directory: ./elixir
@@ -184,62 +184,19 @@ jobs:
         with:
           mix_env: ${{ env.MIX_ENV }}
       - uses: ./.github/actions/setup-node
+        with:
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          lockfile-dir: ./elixir/apps/web/assets
       - name: Compile Application
         run: mix compile --warnings-as-errors
-      # Front-End deps cache
-      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        name: pnpm Web Deps Cache
-        id: pnpm-web-deps-cache
-        env:
-          cache-name: pnpm-deps-web
-        with:
-          path: |
-            elixir/apps/web/assets/node_modules
-            elixir/esbuild-*
-            elixir/tailwind-*
-          key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
       - name: Install Front-End Dependencies
-        if: ${{ steps.pnpm-web-deps-cache.outputs.cache-hit != 'true' }}
         run: |
           cd apps/web
           mix assets.setup
-      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        name: Save pnpm Deps Cache
-        if: ${{ github.ref_name == 'main' }}
-        env:
-          cache-name: pnpm-deps-web
-        with:
-          path: |
-            elixir/apps/web/assets/node_modules
-            elixir/esbuild-*
-            elixir/tailwind-*
-          key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/pnpm-lock.yaml') }}
-      # Front-End build cache, it rarely changes so we cache it aggressively too
-      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        name: Web Assets Cache
-        id: pnpm-web-build-cache
-        env:
-          cache-name: pnpm-build-web
-        with:
-          path: |
-            elixir/apps/web/assets/tmp
-            elixir/apps/web/priv/static
-          key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/**') }}
       - name: Build Web Assets
-        if: ${{ steps.pnpm-web-build-cache.outputs.cache-hit != 'true' }}
         run: |
           cd apps/web
           mix assets.build
-      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        name: Save Web Assets Cache
-        if: ${{ github.ref_name == 'main' }}
-        env:
-          cache-name: pnpm-build-web
-        with:
-          path: |
-            elixir/apps/web/assets/tmp
-            elixir/apps/web/priv/static
-          key: ubuntu-22.04-${{ runner.arch }}-${{ env.cache-name }}-${{ hashFiles('elixir/apps/web/assets/**') }}
       # Run tests
       - name: Setup Database
         run: |

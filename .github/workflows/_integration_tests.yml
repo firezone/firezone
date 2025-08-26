@@ -74,7 +74,7 @@ env:
 jobs:
   integration-tests:
     name: ${{ matrix.test.name }}
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     permissions:
       contents: read
       id-token: write

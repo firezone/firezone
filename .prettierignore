@@ -10,6 +10,7 @@ website/.next
 **/*.rs
 **/*.wxs
 **/pnpm-lock.yaml
+.github/pnpm-lock.yaml
 swift/apple/**/Contents.json
 rust/gui-client/src-frontend/generated
 rust/gui-client/dist
