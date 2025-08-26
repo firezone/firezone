@@ -16,9 +16,11 @@ repos:
             ".github",
             "exec",
             "prettier",
+            "--ignore-path",
+            "../.prettierignore",
             "--check",
             "--ignore-unknown",
-            ".",
+            "../",
           ]
         language: system
         pass_filenames: false
