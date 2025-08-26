@@ -71,6 +71,11 @@ defmodule Domain.Repo.Migrations.UpdateClientFkConstraints do
     REFERENCES network_addresses(address, account_id)
     ON DELETE NO ACTION
     """)
+
+    # Rename Primary Key Index
+    execute("""
+      ALTER INDEX devices_pkey RENAME TO clients_pkey;
+    """)
   end
 
   def down do
@@ -142,6 +147,11 @@ defmodule Domain.Repo.Migrations.UpdateClientFkConstraints do
     FOREIGN KEY (ipv6, account_id)
     REFERENCES network_addresses(address, account_id)
     ON DELETE NO ACTION
+    """)
+
+    # Undo rename Primary Key Index
+    execute("""
+      ALTER INDEX clients_pkey RENAME TO devices_pkey;
     """)
   end
 end
