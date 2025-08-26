@@ -164,6 +164,7 @@ jobs:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'elixir')
     uses: ./.github/workflows/_elixir.yml
+    secrets: inherit
   rust:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'rust')
