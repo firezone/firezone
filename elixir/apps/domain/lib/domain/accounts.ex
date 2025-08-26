@@ -32,6 +32,14 @@ defmodule Domain.Accounts do
     |> Repo.all()
   end
 
+  # TODO: This will need to be updated once more notifications are available
+  def all_accounts_pending_notification!() do
+    Account.Query.not_disabled()
+    |> Account.Query.by_notification_enabled("outdated_gateway")
+    |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
+    |> Repo.all()
+  end
+
   def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
          true <- Repo.valid_uuid?(id) do

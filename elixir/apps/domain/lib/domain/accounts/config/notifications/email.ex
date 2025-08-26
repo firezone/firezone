@@ -4,7 +4,7 @@ defmodule Domain.Accounts.Config.Notifications.Email do
   @primary_key false
 
   embedded_schema do
-    field :enabled, :boolean
+    field :enabled, :boolean, default: true
     field :last_notified, :utc_datetime
   end
 end
