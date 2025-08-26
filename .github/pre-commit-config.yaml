@@ -9,7 +9,7 @@ repos:
         pass_filenames: false
       - id: prettier
         name: Prettier
-        entry: prettier --check --ignore-unknown .
+        entry: pnpm run --dir .github/ prettier --check --ignore-unknown ../
         language: system
         pass_filenames: false
 
