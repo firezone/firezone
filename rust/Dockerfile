@@ -66,12 +66,19 @@ ARG RUST_VERSION="1.89.0" # Keep in sync with `rust-toolchain.toml`
 
 WORKDIR /app
 
-RUN apk add --no-cache rustup
+RUN apk add --no-cache rustup sccache
 RUN /usr/bin/rustup-init -y --default-toolchain ${RUST_VERSION} --profile minimal
+
+# Configure sccache
+ENV RUSTC_WRAPPER=sccache
+ENV SCCACHE_DIR=/sccache
+ENV SCCACHE_CACHE_SIZE=20G
 
 COPY . .
 
-RUN --mount=type=cache,target=./target /root/.cargo/bin/cargo build -p ${PACKAGE}
+RUN --mount=type=cache,target=./target \
+    --mount=type=cache,target=/sccache \
+    /root/.cargo/bin/cargo build -p ${PACKAGE}
 RUN cp target/debug/${PACKAGE} /bin
 
 WORKDIR /bin
