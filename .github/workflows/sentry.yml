@@ -12,7 +12,7 @@ concurrency:
 jobs:
   create_sentry_release:
     name: create_${{ matrix.component }}_sentry_release
-    runs-on: ubuntu-22.04-xlarge
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
