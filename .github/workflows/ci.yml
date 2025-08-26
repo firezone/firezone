@@ -179,6 +179,7 @@ jobs:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'static-analysis')
     uses: ./.github/workflows/_static-analysis.yml
+    secrets: inherit
   codeql:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'codeql')
