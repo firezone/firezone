@@ -54,7 +54,7 @@ runs:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
         target: ${{ inputs.targets }}
-        cache: true
+        cache: ${{ github.ref_name == 'main' }}
         cache-on-failure: true
         rustflags: "" # Don't set -D warnings by default
 
