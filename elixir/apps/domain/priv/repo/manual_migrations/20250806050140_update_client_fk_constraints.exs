@@ -82,7 +82,7 @@ defmodule Domain.Repo.Migrations.UpdateClientFkConstraints do
     # Undo rename Identity FK and add ON DELETE CASCADE
     execute("""
     ALTER TABLE clients
-    DROP CONSTRAINT IF EXISTS devices_identity_id_fkey
+    DROP CONSTRAINT IF EXISTS clients_identity_id_fkey
     """)
 
     execute("""
@@ -96,7 +96,7 @@ defmodule Domain.Repo.Migrations.UpdateClientFkConstraints do
     # Undo rename Actor FK and add ON DELETE CASCADE
     execute("""
     ALTER TABLE clients
-    DROP CONSTRAINT IF EXISTS devices_actor_id_fkey
+    DROP CONSTRAINT IF EXISTS clients_actor_id_fkey
     """)
 
     execute("""
