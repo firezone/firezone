@@ -9,7 +9,8 @@ repos:
         pass_filenames: false
       - id: prettier
         name: Prettier
-        entry: ./.github/node_modules/prettier/bin/prettier.cjs
+        entry: pnpm
+        args: ["exec", "prettier", "--check", "--ignore-unknown", "."]
         language: system
         pass_filenames: false
 
