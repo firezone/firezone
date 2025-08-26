@@ -78,7 +78,7 @@ COPY . .
 
 RUN --mount=type=cache,target=./target \
     --mount=type=cache,target=/sccache \
-    /root/.cargo/bin/cargo build -p ${PACKAGE}
-RUN cp target/debug/${PACKAGE} /bin
+    /root/.cargo/bin/cargo build -p ${PACKAGE} && \
+    cp target/debug/${PACKAGE} /bin
 
 WORKDIR /bin
