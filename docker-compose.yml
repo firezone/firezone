@@ -1,3 +1,4 @@
+# Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
 services:
   # Dependencies
   postgres:
@@ -315,6 +316,7 @@ services:
     networks:
       - app
 
+  # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
   client:
     environment:
       FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
@@ -324,7 +326,7 @@ services:
       FIREZONE_ID: EFC7A9E3-3576-4633-B633-7D47BA9E14AC
     init: true
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -357,7 +359,7 @@ services:
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
     init: true
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -397,7 +399,7 @@ services:
 
   download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -447,7 +449,7 @@ services:
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
@@ -491,7 +493,7 @@ services:
       FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
     build:
-      target: debug
+      target: ${DOCKER_BUILD_TARGET:-debug}
       context: rust
       dockerfile: Dockerfile
       args:
