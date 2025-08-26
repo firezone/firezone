@@ -1,6 +1,9 @@
 name: "Setup Node"
 description: "Sets up the correct Node version and installs pnpm"
 inputs:
+  npmjs-token:
+    description: "NPMJS token to use for authentication"
+    required: true
   node-version:
     description: "Version of nodejs to install"
     required: false
@@ -10,16 +13,14 @@ runs:
   steps:
     - name: Configure npm auth
       shell: bash
-      env:
-        NPMJS_TOKEN: ${{ secrets.NPMJS_TOKEN }}
       run: |
-        if [[ -z "${NPMJS_TOKEN}" ]]; then
-          echo "NPMJS_TOKEN is not set. Add it as a repo/org secret." >&2
+        if [[ -z "${{ inputs.npmjs-token }}" ]]; then
+          echo "inputs.npmjs-token not provided" >&2
           exit 1
         fi
         cat > "$HOME/.npmrc" <<'RC'
         always-auth=true
-        //registry.npmjs.org/:_authToken=${NPMJS_TOKEN}
+        //registry.npmjs.org/:_authToken=${{ inputs.npmjs-token }}
         RC
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:

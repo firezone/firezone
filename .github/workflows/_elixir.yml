@@ -184,6 +184,8 @@ jobs:
         with:
           mix_env: ${{ env.MIX_ENV }}
       - uses: ./.github/actions/setup-node
+        with:
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
       - name: Compile Application
         run: mix compile --warnings-as-errors
       # Front-End deps cache

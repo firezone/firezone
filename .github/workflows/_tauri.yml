@@ -45,6 +45,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-node
+        with:
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
       - run: pnpm install
       - run: pnpm eslint .
 
@@ -65,6 +67,8 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-node
+        with:
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
       - uses: ./.github/actions/setup-rust
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -133,6 +137,8 @@ jobs:
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: ./.github/actions/setup-node
+        with:
+          npmjs-token: ${{ secrets.NPMJS_TOKEN }}
       - uses: ./.github/actions/setup-rust
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
