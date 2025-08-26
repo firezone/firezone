@@ -34,7 +34,7 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
         cache: pnpm
-        cache-dependency-path: ${{ inputs.pnpm-lockfile }}
+        cache-dependency-path: ${{ inputs.lockfile-dir }}
     - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       if: "${{ inputs.lockfile-dir == '' }}"
       with:
