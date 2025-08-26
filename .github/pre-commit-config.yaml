@@ -10,7 +10,7 @@ repos:
       - id: prettier
         name: Prettier
         entry: pnpm
-        args: ["exec", "prettier", "--check", "--ignore-unknown", "."]
+        args: ["--dir", ".github", "exec", "prettier", "--check", "--ignore-unknown", "."]
         language: system
         pass_filenames: false
 
