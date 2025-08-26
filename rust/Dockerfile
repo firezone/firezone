@@ -66,7 +66,7 @@ ARG RUST_VERSION="1.89.0" # Keep in sync with `rust-toolchain.toml`
 
 WORKDIR /app
 
-RUN apk add --no-cache rustup sccache
+RUN apk add --no-cache rustup sccache build-base
 RUN /usr/bin/rustup-init -y --default-toolchain ${RUST_VERSION} --profile minimal
 
 # Configure sccache
