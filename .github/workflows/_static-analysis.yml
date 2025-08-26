@@ -79,7 +79,7 @@ jobs:
       - name: Install Python Dependencies
         run: |
           pip install -r .github/requirements.txt
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
       - name: Install dependencies

@@ -186,6 +186,7 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          lockfile-dir: ./elixir/apps/web/assets
       - name: Compile Application
         run: mix compile --warnings-as-errors
       - name: Install Front-End Dependencies

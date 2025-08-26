@@ -47,6 +47,7 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          lockfile-dir: ./rust/gui-client
       - run: pnpm install
       - run: pnpm eslint .
 
@@ -69,6 +70,7 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
@@ -139,6 +141,7 @@ jobs:
       - uses: ./.github/actions/setup-node
         with:
           npmjs-token: ${{ secrets.NPMJS_TOKEN }}
+          lockfile-dir: ./rust/gui-client
       - uses: ./.github/actions/setup-rust
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
