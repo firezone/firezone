@@ -21,7 +21,6 @@ defmodule Domain.Clients.Client do
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t(),
           identity_id: Ecto.UUID.t(),
-          last_used_token_id: Ecto.UUID.t(),
           device_serial: String.t() | nil,
           device_uuid: String.t() | nil,
           identifier_for_vendor: String.t() | nil,
