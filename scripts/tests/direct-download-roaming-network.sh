@@ -16,9 +16,11 @@ DOWNLOAD_PID=$!
 
 sleep 3 # Download a bit
 
-docker network disconnect firezone_app firezone-client-1 # Disconnect the client
-sleep 3
-docker network connect firezone_app firezone-client-1 --ip 172.28.0.200 # Reconnect client with a different IP
+# Assign different interface IPs to simulate roaming
+client ip addr del 172.28.0.100/24 dev eth0
+client ip -6 addr del 172:28:0::100/64 dev eth0
+client ip addr add 172.28.0.200/24 dev eth0
+client ip -6 addr add 172:28:0::200/64 dev eth0
 
 # Send SIGHUP, triggering `reconnect` internally
 sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"

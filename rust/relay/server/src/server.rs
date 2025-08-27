@@ -1038,6 +1038,14 @@ where
                     debug_assert_eq!(&existing_n, number, "internal state should be consistent");
                 }
 
+                self.pending_commands
+                    .push_back(Command::DeleteChannelBinding {
+                        client: *cs,
+                        channel_number: *number,
+                        peer: c.peer_address,
+                        allocation_port: c.allocation,
+                    });
+
                 tracing::info!(%peer, %number, allocation = %port, "Deleted channel binding");
 
                 false

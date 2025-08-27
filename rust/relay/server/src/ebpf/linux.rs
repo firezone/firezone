@@ -1,15 +1,16 @@
-use std::net::SocketAddr;
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 use anyhow::{Context as _, Result};
 use aya::{
     Pod,
-    maps::{Array, AsyncPerfEventArray, HashMap, MapData},
+    maps::{AsyncPerfEventArray, HashMap, MapData, PerCpuArray, PerCpuValues},
     programs::{Xdp, XdpFlags},
 };
 use aya_log::EbpfLogger;
 use bytes::BytesMut;
 use ebpf_shared::{
-    ClientAndChannelV4, ClientAndChannelV6, Config, PortAndPeerV4, PortAndPeerV6, StatsEvent,
+    ClientAndChannelV4, ClientAndChannelV6, InterfaceAddressV4, InterfaceAddressV6, PortAndPeerV4,
+    PortAndPeerV6, StatsEvent,
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
@@ -32,7 +33,12 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn try_load(interface: &str, attach_mode: AttachMode) -> Result<Self> {
+    pub fn try_load(
+        interface: &str,
+        attach_mode: AttachMode,
+        ipv4_addr: Option<Ipv4Addr>,
+        ipv6_addr: Option<Ipv6Addr>,
+    ) -> Result<Self> {
         let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
             "/ebpf-turn-router-main"
@@ -95,7 +101,7 @@ impl Program {
                             tracing::warn!(%cpu_id, num_lost = %events.lost, "Lost perf events");
                         }
 
-                        tracing::debug!(%cpu_id, num_read = %events.read, "Read perf events from eBPF kernel");
+                        tracing::trace!(%cpu_id, num_read = %events.read, "Read perf events from eBPF kernel");
 
                         for bytes in buffers.iter().take(events.read) {
                             let Some(stats) = StatsEvent::from_bytes(bytes) else {
@@ -112,6 +118,14 @@ impl Program {
                     }
                 }
             });
+        }
+
+        // Set interface addresses if provided
+        if let Some(ipv4) = ipv4_addr {
+            set_interface_ipv4_address(&mut ebpf, ipv4)?;
+        }
+        if let Some(ipv6) = ipv6_addr {
+            set_interface_ipv6_address(&mut ebpf, ipv6)?;
         }
 
         tracing::info!("eBPF TURN router loaded and attached to interface {interface}");
@@ -223,12 +237,6 @@ impl Program {
         Ok(())
     }
 
-    pub fn set_config(&mut self, config: Config) -> Result<()> {
-        self.config_array_mut()?.set(0, config, 0)?;
-
-        Ok(())
-    }
-
     fn chan_to_udp_44_map_mut(
         &mut self,
     ) -> Result<HashMap<&mut MapData, ClientAndChannelV4, PortAndPeerV4>> {
@@ -277,10 +285,6 @@ impl Program {
         self.hash_map_mut("UDP_TO_CHAN_64")
     }
 
-    fn config_array_mut(&mut self) -> Result<Array<&mut MapData, Config>> {
-        self.array_mut("CONFIG")
-    }
-
     fn hash_map_mut<K, V>(&mut self, name: &'static str) -> Result<HashMap<&mut MapData, K, V>>
     where
         K: Pod,
@@ -294,17 +298,48 @@ impl Program {
 
         Ok(map)
     }
+}
 
-    fn array_mut<T>(&mut self, name: &'static str) -> Result<Array<&mut MapData, T>>
-    where
-        T: Pod,
-    {
-        let map = self
-            .ebpf
-            .map_mut(name)
-            .with_context(|| format!("Array `{name}` not found"))?;
-        let map = Array::<_, T>::try_from(map).context("Failed to convert array")?;
+fn set_interface_ipv4_address(ebpf: &mut aya::Ebpf, addr: Ipv4Addr) -> Result<()> {
+    let mut interface_addr = InterfaceAddressV4::default();
+    interface_addr.set(addr);
 
-        Ok(map)
-    }
+    set_per_cpu_map(ebpf, "INT_ADDR_V4", interface_addr)
+        .context("Failed to set IPv4 interface address")?;
+
+    tracing::info!(%addr, "Set eBPF interface IPv4 address");
+    Ok(())
+}
+
+fn set_interface_ipv6_address(ebpf: &mut aya::Ebpf, addr: Ipv6Addr) -> Result<()> {
+    let mut interface_addr = InterfaceAddressV6::default();
+    interface_addr.set(addr);
+
+    set_per_cpu_map(ebpf, "INT_ADDR_V6", interface_addr)
+        .context("Failed to set IPv6 interface address")?;
+
+    tracing::info!(%addr, "Set eBPF interface IPv6 address");
+    Ok(())
+}
+
+fn set_per_cpu_map<T>(ebpf: &mut aya::Ebpf, map_name: &str, value: T) -> Result<()>
+where
+    T: Pod + Clone,
+{
+    let map = ebpf
+        .map_mut(map_name)
+        .with_context(|| format!("{map_name} map not found"))?;
+    let mut per_cpu_map: PerCpuArray<&mut MapData, T> = PerCpuArray::try_from(map)?;
+
+    // Get the number of CPUs and create a value for each CPU
+    let num_cpus =
+        aya::util::nr_cpus().map_err(|(_, e)| anyhow::anyhow!("Failed to get CPU count: {}", e))?;
+    let values = vec![value; num_cpus];
+
+    per_cpu_map
+        .set(0, PerCpuValues::try_from(values)?, 0)
+        .with_context(|| format!("Failed to set per-CPU values in {map_name}"))?;
+
+    tracing::debug!(%map_name, %num_cpus, "Set per-CPU map with value");
+    Ok(())
 }
