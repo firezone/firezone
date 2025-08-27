@@ -13,12 +13,12 @@ ENV LANG=C.UTF-8 \
 WORKDIR /bin
 
 ## curl is needed to run tests (`main` runs CI against `release` images) and `firezone-relay` needs `curl` in its entry script.
-RUN apk add --no-cache curl
+RUN apk add --no-cache --update curl
 
 # Gateway specific runtime base image
 FROM runtime_base AS runtime_firezone-gateway
 ## iptables are needed only by gateway for masquerading
-RUN apk add --no-cache iptables ip6tables
+RUN apk add --no-cache --update iptables ip6tables
 COPY ./docker-init-gateway.sh ./docker-init.sh
 
 # Relay specific runtime base image
@@ -46,7 +46,7 @@ CMD ${PACKAGE}
 # Build an image for GitHub Actions which includes debug asserts and more test utilities
 FROM runtime AS debug
 
-RUN apk add --no-cache iperf3 bind-tools iproute2 jq procps iptables
+RUN apk add --no-cache --update iperf3 bind-tools iproute2 jq procps iptables
 
 ## Build first with `cargo build --target ${TARGET} -p ${PACKAGE} && mv /target/${TARGET}/debug/${PACKAGE} .`
 ARG PACKAGE

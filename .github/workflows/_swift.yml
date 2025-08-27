@@ -68,12 +68,6 @@ jobs:
         with:
           targets: ${{ matrix.rust-targets }}
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
-      - uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        name: Restore Swift DerivedData Cache
-        id: cache
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-${{ hashFiles('swift/*', 'rust/**/*.rs', 'rust/**/*.toml', 'rust/**/*.lock}') }}
       - run: ${{ matrix.build-script }}
         env:
           IOS_APP_PROVISIONING_PROFILE: "${{ secrets.APPLE_IOS_APP_PROVISIONING_PROFILE }}"
@@ -145,11 +139,3 @@ jobs:
 
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ${{ runner.temp }}
           sentry-cli debug-files upload --log-level info --project apple-client --include-sources ./rust/target
-      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
-        if: ${{ steps.cache.outputs.cache-hit != 'true'}}
-        name: Save Swift DerivedData Cache
-        with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          # Swift benefits heavily from build cache, so aggressively write a new one
-          # on each build on `main` and attempt to restore it in PR builds with broader restore-key.
-          key: ${{ steps.cache.outputs.cache-primary-key }}

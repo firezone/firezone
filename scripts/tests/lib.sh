@@ -20,7 +20,7 @@ function relay2() {
 
 function install_iptables_drop_rules() {
     # Install `iptables` to have it available in the compatibility tests
-    client apk add iptables
+    client apk add --update --no-cache iptables
 
     # Execute within the client container because doing so from the host is not reliable in CI.
     client iptables -A OUTPUT -d 172.28.0.105 -j DROP
