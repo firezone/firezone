@@ -647,7 +647,10 @@ defmodule Domain.GatewaysTest do
       offline_gateway = Fixtures.Gateways.create_gateway(account: account)
       online_gateway = Fixtures.Gateways.create_gateway(account: account)
       online_gateway = Repo.preload(online_gateway, :group)
-      gateway_token = Fixtures.Gateways.create_token(account: account, group: online_gateway.group)
+
+      gateway_token =
+        Fixtures.Gateways.create_token(account: account, group: online_gateway.group)
+
       :ok = Gateways.Presence.connect(online_gateway, gateway_token.id)
       Fixtures.Gateways.create_gateway()
 

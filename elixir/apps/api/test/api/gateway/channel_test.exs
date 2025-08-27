@@ -1172,7 +1172,11 @@ defmodule API.Gateway.ChannelTest do
              }
     end
 
-    test "subscribes for relays presence", %{gateway: gateway, gateway_group: gateway_group, token: token} do
+    test "subscribes for relays presence", %{
+      gateway: gateway,
+      gateway_group: gateway_group,
+      token: token
+    } do
       relay_group = Fixtures.Relays.create_global_group()
       stamp_secret = Ecto.UUID.generate()
 
