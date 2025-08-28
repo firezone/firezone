@@ -20,6 +20,9 @@ const TUNNEL_NAME: &str = "firezone-client-tunnel";
 #[cfg(target_os = "linux")]
 const EXE_EXTENSION: &str = "";
 
+#[cfg(target_os = "macos")]
+const EXE_EXTENSION: &str = "";
+
 #[cfg(target_os = "windows")]
 const EXE_EXTENSION: &str = "exe";
 
@@ -145,6 +148,20 @@ impl App {
     }
 }
 
+#[cfg(target_os = "macos")]
+impl App {
+    fn new() -> Result<Self> {
+        Ok(Self {})
+    }
+
+    fn gui_command(&self, args: &[&str]) -> Result<Exec> {
+        Ok(Exec::cmd(gui_path())
+            .arg("--no-deep-links")
+            .arg("--no-elevation-check")
+            .args(args))
+    }
+}
+
 #[cfg(target_os = "windows")]
 impl App {
     fn new() -> Result<Self> {
@@ -179,6 +196,11 @@ fn debug_db_path() -> PathBuf {
     Path::new("target").join("debug").join(GUI_NAME)
 }
 
+#[cfg(target_os = "macos")]
+fn debug_db_path() -> PathBuf {
+    Path::new("target").join("debug").join(GUI_NAME)
+}
+
 #[cfg(target_os = "windows")]
 fn debug_db_path() -> PathBuf {
     Path::new("target")
@@ -200,6 +222,11 @@ fn tunnel_service_command() -> Exec {
             .to_str()
             .expect("IPC binary path should be valid Unicode"),
     ])
+}
+
+#[cfg(target_os = "macos")]
+fn tunnel_service_command() -> Exec {
+    Exec::cmd("sudo").arg(tunnel_path())
 }
 
 #[cfg(target_os = "windows")]
