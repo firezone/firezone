@@ -160,6 +160,10 @@ impl Io {
         self.nameservers.fastest()
     }
 
+    pub fn gso_queue_mut(&mut self) -> &mut GsoQueue {
+        &mut self.gso_queue
+    }
+
     pub fn poll<'b>(
         &mut self,
         cx: &mut Context<'_>,
@@ -369,7 +373,7 @@ impl Io {
         payload: &[u8],
         ecn: Ecn,
     ) {
-        self.gso_queue.enqueue(src, dst, payload, ecn);
+        self.gso_queue.enqueue_copy(src, dst, payload, ecn);
 
         self.packet_counter.add(
             1,

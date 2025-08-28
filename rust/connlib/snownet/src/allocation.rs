@@ -860,6 +860,10 @@ impl Allocation {
         );
     }
 
+    pub fn active_socket(&self) -> Option<SocketAddr> {
+        Some(self.active_socket?.addr)
+    }
+
     pub fn encode_channel_data_header(
         &mut self,
         peer: SocketAddr,
