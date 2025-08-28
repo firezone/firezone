@@ -633,4 +633,3 @@ volumes:
   postgres-data:
   elixir-build-cache:
   assets-build-cache:
-  rust-sccache:
