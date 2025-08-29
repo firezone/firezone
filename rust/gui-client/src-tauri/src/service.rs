@@ -281,7 +281,7 @@ impl<'a> Handler<'a> {
     ) -> Result<Self> {
         dns_controller.deactivate()?;
 
-        let telemetry = Telemetry::new().context("Failed to create telemetry client")?;
+        let telemetry = Telemetry::new();
 
         tracing::info!(
             server_pid = std::process::id(),
