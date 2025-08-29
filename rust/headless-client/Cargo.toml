@@ -20,6 +20,7 @@ firezone-telemetry = { workspace = true }
 futures = { workspace = true }
 humantime = { workspace = true }
 ip-packet = { workspace = true }
+known-dirs = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
 opentelemetry-otlp = { workspace = true, features = ["metrics", "grpc-tonic"] }
 opentelemetry-stdout = { workspace = true, features = ["metrics"] }
