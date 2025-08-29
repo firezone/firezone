@@ -125,6 +125,7 @@ defmodule Domain.Tokens.Token.Changeset do
     |> validate_required(~w[last_seen_user_agent last_seen_remote_ip]a)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def delete(%Token{} = token) do
     token
     |> change()

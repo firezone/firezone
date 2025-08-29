@@ -5,6 +5,7 @@ defmodule Domain.Clients.Client.Query do
     from(clients in Domain.Clients.Client, as: :clients)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def not_deleted do
     all()
     |> where([clients: clients], is_nil(clients.deleted_at))
@@ -34,10 +35,6 @@ defmodule Domain.Clients.Client.Query do
     where(queryable, [clients: clients], clients.account_id == ^account_id)
   end
 
-  def by_last_used_token_id(queryable, last_used_token_id) do
-    where(queryable, [clients: clients], clients.last_used_token_id == ^last_used_token_id)
-  end
-
   def by_last_seen_within(queryable, period, unit) do
     where(queryable, [clients: clients], clients.last_seen_at > ago(^period, ^unit))
   end
@@ -61,7 +58,8 @@ defmodule Domain.Clients.Client.Query do
     select(queryable, [clients: clients], clients)
   end
 
-  def delete(queryable) do
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
+  def soft_delete(queryable) do
     queryable
     |> Ecto.Query.select([clients: clients], clients)
     |> Ecto.Query.update([clients: clients],

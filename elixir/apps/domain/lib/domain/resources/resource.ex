@@ -45,6 +45,7 @@ defmodule Domain.Resources.Resource do
     # ref https://github.com/firezone/firezone/issues/2162
     has_many :gateway_groups, through: [:connections, :gateway_group]
 
+    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
     has_many :policies, Domain.Policies.Policy, where: [deleted_at: nil]
     has_many :actor_groups, through: [:policies, :actor_group]
 
@@ -58,6 +59,7 @@ defmodule Domain.Resources.Resource do
     belongs_to :replaced_by_resource, Domain.Resources.Resource
     has_one :replaces_resource, Domain.Resources.Resource, foreign_key: :replaced_by_resource_id
 
+    # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

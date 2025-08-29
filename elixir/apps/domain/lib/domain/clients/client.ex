@@ -21,7 +21,6 @@ defmodule Domain.Clients.Client do
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t(),
           identity_id: Ecto.UUID.t(),
-          last_used_token_id: Ecto.UUID.t(),
           device_serial: String.t() | nil,
           device_uuid: String.t() | nil,
           identifier_for_vendor: String.t() | nil,
@@ -59,7 +58,6 @@ defmodule Domain.Clients.Client do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :actor, Domain.Actors.Actor
     belongs_to :identity, Domain.Auth.Identity
-    belongs_to :last_used_token, Domain.Tokens.Token
 
     # Hardware Identifiers
     field :device_serial, :string
@@ -72,6 +70,7 @@ defmodule Domain.Clients.Client do
     field :verified_by, Ecto.Enum, values: [:system, :actor, :identity]
     field :verified_by_subject, :map
 
+    # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

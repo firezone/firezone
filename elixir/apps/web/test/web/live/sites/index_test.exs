@@ -89,6 +89,7 @@ defmodule Web.Live.Sites.IndexTest do
     conn: conn
   } do
     group = Fixtures.Gateways.create_group(account: account)
+    token = Fixtures.Gateways.create_token(account: account, group: group)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
 
     {:ok, lv, _html} =
@@ -98,7 +99,7 @@ defmodule Web.Live.Sites.IndexTest do
 
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Gateways.Presence.Account.subscribe(account.id)
-    :ok = Domain.Gateways.Presence.connect(gateway)
+    :ok = Domain.Gateways.Presence.connect(gateway, token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
     assert_receive {:live_table_reloaded, "groups"}, 250
 
@@ -140,6 +141,7 @@ defmodule Web.Live.Sites.IndexTest do
     account = Fixtures.Accounts.update_account(account, features: %{internet_resource: true})
 
     group = Fixtures.Gateways.create_internet_group(account: account)
+    token = Fixtures.Gateways.create_token(account: account, group: group)
     gateway = Fixtures.Gateways.create_gateway(account: account, group: group)
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Gateways.Presence.Account.subscribe(account.id)
@@ -155,7 +157,7 @@ defmodule Web.Live.Sites.IndexTest do
 
     assert has_element?(lv, "#internet-site-banner a[href='/#{account.slug}/sites/#{group.id}']")
 
-    :ok = Domain.Gateways.Presence.connect(gateway)
+    :ok = Domain.Gateways.Presence.connect(gateway, token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:account_gateways:" <> _}
     assert_receive {:live_table_reloaded, "groups"}, 250
     assert lv |> element("#internet-site-banner") |> render() =~ "Online"

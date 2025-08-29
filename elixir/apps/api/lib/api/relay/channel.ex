@@ -42,7 +42,7 @@ defmodule API.Relay.Channel do
 
     OpenTelemetry.Tracer.with_span "relay.after_join" do
       push(socket, "init", %{})
-      :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret)
+      :ok = Relays.connect_relay(socket.assigns.relay, stamp_secret, socket.assigns.token_id)
       {:noreply, socket}
     end
   end

@@ -139,8 +139,38 @@ defmodule API.IdentityProviderControllerTest do
                }
              }
 
-      assert identity_provider = Repo.get(Provider, identity_provider.id)
-      assert identity_provider.deleted_at
+      refute Repo.get(Provider, identity_provider.id)
+    end
+
+    test "returns not found on invalid ID", %{conn: conn, account: account, actor: actor} do
+      {_identity_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(%{account: account})
+
+      invalid_id = Ecto.UUID.generate()
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/identity_providers/#{invalid_id}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+    end
+
+    test "returns not found on ID belonging to another account", %{conn: conn, actor: actor} do
+      other_account = Fixtures.Accounts.create_account()
+
+      {identity_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(%{account: other_account})
+
+      conn =
+        conn
+        |> authorize_conn(actor)
+        |> put_req_header("content-type", "application/json")
+        |> delete("/identity_providers/#{identity_provider.id}")
+
+      assert json_response(conn, 404) == %{"error" => %{"reason" => "Not Found"}}
+      assert Repo.get(Domain.Auth.Provider, identity_provider.id)
     end
   end
 end

@@ -40,7 +40,7 @@ defmodule Web.Live.RelayGroups.NewTokenTest do
     context = Fixtures.Auth.build_context(type: :relay_group)
     assert {:ok, group, token} = Domain.Relays.authenticate(token, context)
     relay = Fixtures.Relays.create_relay(account: account, group: group, token: token)
-    Domain.Relays.connect_relay(relay, "foo")
+    Domain.Relays.connect_relay(relay, "foo", token.id)
 
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _group_id}
 

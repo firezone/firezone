@@ -426,7 +426,10 @@ defmodule Web.Resources.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("delete", %{"id" => _resource_id}, socket) do
-    {:ok, _} = Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
+    {:ok, _deleted_resource} =
+      Resources.delete_resource(socket.assigns.resource, socket.assigns.subject)
+
+    socket = put_flash(socket, :info, "Resource was deleted.")
 
     if site_id = socket.assigns.params["site_id"] do
       {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{site_id}")}

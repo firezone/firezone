@@ -6,9 +6,9 @@ defmodule Domain.Clients.Presence do
   alias Domain.PubSub
   alias Domain.Clients.Client
 
-  def connect(%Client{} = client) do
+  def connect(%Client{} = client, token_id) do
     with {:ok, _} <- __MODULE__.Account.track(client.account_id, client.id),
-         {:ok, _} <- __MODULE__.Actor.track(client.actor_id, client.id) do
+         {:ok, _} <- __MODULE__.Actor.track(client.actor_id, client.id, token_id) do
       :ok
     end
   end
@@ -47,12 +47,12 @@ defmodule Domain.Clients.Presence do
   end
 
   defmodule Actor do
-    def track(actor_id, client_id) do
+    def track(actor_id, client_id, token_id) do
       Domain.Clients.Presence.track(
         self(),
         topic(actor_id),
         client_id,
-        %{}
+        %{token_id: token_id}
       )
     end
 

@@ -251,7 +251,7 @@ defmodule Web.Groups.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("delete", _params, socket) do
-    {:ok, _group} = Actors.delete_group(socket.assigns.group, socket.assigns.subject)
+    {:ok, _deleted_group} = Actors.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/groups")}
   end
 end

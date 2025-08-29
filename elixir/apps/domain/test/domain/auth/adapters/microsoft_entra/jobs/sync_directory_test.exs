@@ -508,8 +508,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
              )
 
       # Signs out users which identity has been deleted
-      deleted_identity_token = Repo.reload(deleted_identity_token)
-      assert deleted_identity_token.deleted_at
+      refute Repo.reload(deleted_identity_token)
     end
 
     test "stops the sync retries on 401 error on the provider", %{

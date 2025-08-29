@@ -67,7 +67,7 @@ defmodule Web.Live.Resources.ShowTest do
     assert active_buttons(html) == []
   end
 
-  test "renders deleted resource without action buttons", %{
+  test "raises NotFoundError for deleted resource", %{
     account: account,
     resource: resource,
     identity: identity,
@@ -75,13 +75,11 @@ defmodule Web.Live.Resources.ShowTest do
   } do
     resource = Fixtures.Resources.delete_resource(resource)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -339,12 +337,14 @@ defmodule Web.Live.Resources.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
 
-    assert lv
-           |> element("button[type=submit]", "Delete Resource")
-           |> render_click() ==
-             {:error, {:live_redirect, %{to: ~p"/#{account}/resources", kind: :push}}}
+    assert {:error, {:live_redirect, %{to: redirect_path, kind: :push}}} =
+             lv
+             |> element("button[type=submit]", "Delete Resource")
+             |> render_click()
 
-    assert Repo.get(Domain.Resources.Resource, resource.id).deleted_at
+    assert redirect_path == ~p"/#{account}/resources"
+
+    refute Repo.get(Domain.Resources.Resource, resource.id)
   end
 
   test "renders created_by info when created by Identity", %{

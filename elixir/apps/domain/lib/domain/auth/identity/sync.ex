@@ -50,6 +50,7 @@ defmodule Domain.Auth.Identity.Sync do
     {:ok, identities}
   end
 
+  # TODO: Update after `deleted_at` is removed from DB
   defp plan_identities_update(identities, provider_identifiers) do
     {insert, update, delete} =
       Enum.reduce(
@@ -116,22 +117,14 @@ defmodule Domain.Auth.Identity.Sync do
   end
 
   defp delete_identities(provider, provider_identifiers_to_delete) do
-    provider_identifiers_to_delete = Enum.uniq(provider_identifiers_to_delete)
-
-    {_count, identities} =
-      Identity.Query.not_deleted()
+    {num_deleted, _} =
+      Identity.Query.all()
       |> Identity.Query.by_account_id(provider.account_id)
       |> Identity.Query.by_provider_id(provider.id)
       |> Identity.Query.by_provider_identifier({:in, provider_identifiers_to_delete})
-      |> Identity.Query.delete()
-      |> Repo.update_all([])
+      |> Repo.delete_all()
 
-    :ok =
-      Enum.each(identities, fn identity ->
-        {:ok, _tokens} = Domain.Tokens.delete_tokens_for(identity)
-      end)
-
-    {:ok, identities}
+    {:ok, num_deleted}
   end
 
   defp insert_identities(provider, attrs_by_provider_identifier, provider_identifiers_to_insert) do
@@ -153,6 +146,7 @@ defmodule Domain.Auth.Identity.Sync do
     end)
   end
 
+  # TODO: Update after `deleted_at` is removed from DB
   defp update_identities_and_actors(
          identities,
          attrs_by_provider_identifier,

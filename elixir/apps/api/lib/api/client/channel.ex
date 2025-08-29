@@ -61,7 +61,7 @@ defmodule API.Client.Channel do
     socket = Debouncer.cache_stamp_secrets(socket, relays)
 
     # Track client's presence
-    :ok = Clients.Presence.connect(socket.assigns.client)
+    :ok = Clients.Presence.connect(socket.assigns.client, socket.assigns.subject.token_id)
 
     # Subscribe to all account updates
     :ok = PubSub.Account.subscribe(socket.assigns.client.account_id)

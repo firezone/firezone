@@ -73,8 +73,7 @@ defmodule API.IdentityProviderController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, identity_provider} <- Auth.fetch_provider_by_id(id, subject),
-         {:ok, identity_provider} <- Auth.delete_provider(identity_provider, subject) do
+    with {:ok, identity_provider} <- Auth.delete_provider_by_id(id, subject) do
       render(conn, :show, identity_provider: identity_provider)
     end
   end

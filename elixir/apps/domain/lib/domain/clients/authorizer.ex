@@ -52,4 +52,21 @@ defmodule Domain.Clients.Authorizer do
         |> Client.Query.by_actor_id(subject.actor.id)
     end
   end
+
+  def ensure_has_access_to(%Client{} = client, %Subject{} = subject) do
+    cond do
+      # If client belongs to same actor, check own permission
+      client.account_id == subject.account.id and
+          client.actor_id == subject.actor.id ->
+        Domain.Auth.ensure_has_permissions(subject, manage_own_clients_permission())
+
+      # Otherwise, check global manage permission
+      client.account_id == subject.account.id ->
+        Domain.Auth.ensure_has_permissions(subject, manage_clients_permission())
+
+      # Different account
+      true ->
+        {:error, {:unauthorized, reason: :incorrect_account}}
+    end
+  end
 end

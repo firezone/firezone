@@ -35,7 +35,7 @@ defmodule Web.Live.Gateways.ShowTest do
                }}}
   end
 
-  test "renders deleted gateway without action buttons", %{
+  test "raises NotFoundError for deleted gateway", %{
     account: account,
     gateway: gateway,
     identity: identity,
@@ -43,13 +43,11 @@ defmodule Web.Live.Gateways.ShowTest do
   } do
     gateway = Fixtures.Gateways.delete_gateway(gateway)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateways/#{gateway}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -102,7 +100,8 @@ defmodule Web.Live.Gateways.ShowTest do
     identity: identity,
     conn: conn
   } do
-    :ok = Domain.Gateways.Presence.connect(gateway)
+    gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+    :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -135,7 +134,7 @@ defmodule Web.Live.Gateways.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/sites/#{gateway.group}")
 
-    assert Repo.get(Domain.Gateways.Gateway, gateway.id).deleted_at
+    refute Repo.get(Domain.Gateways.Gateway, gateway.id)
   end
 
   test "updates gateway status on presence event", %{
@@ -150,7 +149,8 @@ defmodule Web.Live.Gateways.ShowTest do
       |> live(~p"/#{account}/gateways/#{gateway}")
 
     :ok = Domain.Gateways.Presence.Group.subscribe(gateway.group.id)
-    :ok = Domain.Gateways.Presence.connect(gateway)
+    gateway_token = Fixtures.Gateways.create_token(group: gateway.group, account: account)
+    :ok = Domain.Gateways.Presence.connect(gateway, gateway_token.id)
     assert_receive %{topic: "presences:group_gateways:" <> _}
 
     table =

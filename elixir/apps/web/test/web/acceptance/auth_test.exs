@@ -88,11 +88,14 @@ defmodule Web.Acceptance.AuthTest do
     |> Auth.authenticate(identity)
     |> visit(~p"/#{account}/actors")
 
-    {:ok, tokens} = Domain.Tokens.delete_tokens_for(identity)
+    tokens =
+      Domain.Tokens.Token.Query.all()
+      |> Domain.Tokens.Token.Query.by_identity_id(identity.id)
+      |> Domain.Repo.all()
+
+    {:ok, _count} = Domain.Tokens.delete_tokens_for(identity)
 
     for token <- tokens do
-      assert %DateTime{} = token.deleted_at
-
       Domain.Changes.Hooks.Tokens.on_delete(0, %{
         "remaining_attempts" => token.remaining_attempts,
         "actor_id" => token.actor_id,
