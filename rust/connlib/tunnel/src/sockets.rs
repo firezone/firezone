@@ -120,22 +120,6 @@ impl Sockets {
 
         Poll::Ready(Ok(iter))
     }
-
-    pub fn queue_lengths(&self) -> (usize, usize) {
-        let (v4_inbound, v4_outbound) = self
-            .socket_v4
-            .as_ref()
-            .map(|s| s.queue_lengths())
-            .unwrap_or_default();
-
-        let (v6_inbound, v6_outbound) = self
-            .socket_v6
-            .as_ref()
-            .map(|s| s.queue_lengths())
-            .unwrap_or_default();
-
-        (v4_inbound + v6_inbound, v4_outbound + v6_outbound)
-    }
 }
 
 struct PacketIter<T4, T6> {
@@ -203,6 +187,21 @@ impl ThreadedUdpSocket {
         let (outbound_tx, mut outbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (error_tx, error_rx) = flume::bounded(0);
+
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_gso_batch(),
+                otel::attr::network_type_for_addr(preferred_addr),
+            ],
+        ));
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_gro_batch(),
+                otel::attr::network_type_for_addr(preferred_addr),
+            ],
+        ));
 
         let thread_name = match preferred_addr {
             SocketAddr::V4(_) => "UDP IPv4".to_owned(),
@@ -372,21 +371,6 @@ impl ThreadedUdpSocket {
 
     fn channels_mut(&mut self) -> Result<&mut Channels> {
         self.channels.as_mut().context("Missing channels")
-    }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        self.channels
-            .as_ref()
-            .map(|c| {
-                (
-                    c.inbound_rx.len(),
-                    c.outbound_tx
-                        .get_ref()
-                        .map(|c| QUEUE_SIZE - c.capacity())
-                        .unwrap_or_default(),
-                )
-            })
-            .unwrap_or_default()
     }
 }
 
