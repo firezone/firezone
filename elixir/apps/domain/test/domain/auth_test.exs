@@ -1275,50 +1275,49 @@ defmodule Domain.AuthTest do
     end
 
     # TODO: HARD-DELETE - Need to figure out if we care about this case
-    @tag :skip
-    test "returns error when trying to delete the last provider using a race condition" do
-      for _ <- 0..50 do
-        test_pid = self()
+    # test "returns error when trying to delete the last provider using a race condition" do
+    #  for _ <- 0..50 do
+    #    test_pid = self()
 
-        Task.async(fn ->
-          allow_child_sandbox_access(test_pid)
+    #    Task.async(fn ->
+    #      allow_child_sandbox_access(test_pid)
 
-          account = Fixtures.Accounts.create_account()
+    #      account = Fixtures.Accounts.create_account()
 
-          provider_one = Fixtures.Auth.create_email_provider(account: account)
-          provider_two = Fixtures.Auth.create_userpass_provider(account: account)
+    #      provider_one = Fixtures.Auth.create_email_provider(account: account)
+    #      provider_two = Fixtures.Auth.create_userpass_provider(account: account)
 
-          actor =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider_one
-            )
+    #      actor =
+    #        Fixtures.Actors.create_actor(
+    #          type: :account_admin_user,
+    #          account: account,
+    #          provider: provider_one
+    #        )
 
-          identity =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor,
-              provider: provider_one
-            )
+    #      identity =
+    #        Fixtures.Auth.create_identity(
+    #          account: account,
+    #          actor: actor,
+    #          provider: provider_one
+    #        )
 
-          subject = Fixtures.Auth.create_subject(identity: identity)
+    #      subject = Fixtures.Auth.create_subject(identity: identity)
 
-          for provider <- [provider_two, provider_one] do
-            Task.async(fn ->
-              allow_child_sandbox_access(test_pid)
-              delete_provider(provider, subject)
-            end)
-          end
-          |> Task.await_many()
+    #      for provider <- [provider_two, provider_one] do
+    #        Task.async(fn ->
+    #          allow_child_sandbox_access(test_pid)
+    #          delete_provider(provider, subject)
+    #        end)
+    #      end
+    #      |> Task.await_many()
 
-          assert Auth.Provider.Query.not_deleted()
-                 |> Auth.Provider.Query.by_account_id(account.id)
-                 |> Repo.aggregate(:count) == 1
-        end)
-      end
-      |> Task.await_many()
-    end
+    #      assert Auth.Provider.Query.not_deleted()
+    #             |> Auth.Provider.Query.by_account_id(account.id)
+    #             |> Repo.aggregate(:count) == 1
+    #    end)
+    #  end
+    #  |> Task.await_many()
+    # end
 
     test "raises error when deleting stale provider structs", %{
       subject: subject,
@@ -1815,88 +1814,87 @@ defmodule Domain.AuthTest do
     end
 
     # TODO: HARD-DELETE - Need to figure out if the flows message checking is necessary
-    @tag :skip
-    test "deletes removed identities", %{account: account, provider: provider} do
-      provider_identifiers = ["USER_ID1", "USER_ID2", "USER_ID3", "USER_ID4", "USER_ID5"]
+    # test "deletes removed identities", %{account: account, provider: provider} do
+    #  provider_identifiers = ["USER_ID1", "USER_ID2", "USER_ID3", "USER_ID4", "USER_ID5"]
 
-      deleted_identity_actor = Fixtures.Actors.create_actor(account: account)
+    #  deleted_identity_actor = Fixtures.Actors.create_actor(account: account)
 
-      deleted_identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          actor: deleted_identity_actor,
-          provider_identifier: Enum.at(provider_identifiers, 0)
-        )
+    #  deleted_identity =
+    #    Fixtures.Auth.create_identity(
+    #      account: account,
+    #      provider: provider,
+    #      actor: deleted_identity_actor,
+    #      provider_identifier: Enum.at(provider_identifiers, 0)
+    #    )
 
-      deleted_identity_token =
-        Fixtures.Tokens.create_token(
-          account: account,
-          actor: deleted_identity_actor,
-          identity: deleted_identity
-        )
+    #  deleted_identity_token =
+    #    Fixtures.Tokens.create_token(
+    #      account: account,
+    #      actor: deleted_identity_actor,
+    #      identity: deleted_identity
+    #    )
 
-      for n <- 1..4 do
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          provider_identifier: Enum.at(provider_identifiers, n)
-        )
-      end
+    #  for n <- 1..4 do
+    #    Fixtures.Auth.create_identity(
+    #      account: account,
+    #      provider: provider,
+    #      provider_identifier: Enum.at(provider_identifiers, n)
+    #    )
+    #  end
 
-      attrs_list = [
-        %{
-          "actor" => %{
-            "name" => "Joe Smith",
-            "type" => "account_user"
-          },
-          "provider_identifier" => "USER_ID3"
-        },
-        %{
-          "actor" => %{
-            "name" => "Jennie Smith",
-            "type" => "account_user"
-          },
-          "provider_identifier" => "USER_ID4"
-        },
-        %{
-          "actor" => %{
-            "name" => "Jane Doe",
-            "type" => "account_admin_user"
-          },
-          "provider_identifier" => "USER_ID5"
-        }
-      ]
+    #  attrs_list = [
+    #    %{
+    #      "actor" => %{
+    #        "name" => "Joe Smith",
+    #        "type" => "account_user"
+    #      },
+    #      "provider_identifier" => "USER_ID3"
+    #    },
+    #    %{
+    #      "actor" => %{
+    #        "name" => "Jennie Smith",
+    #        "type" => "account_user"
+    #      },
+    #      "provider_identifier" => "USER_ID4"
+    #    },
+    #    %{
+    #      "actor" => %{
+    #        "name" => "Jane Doe",
+    #        "type" => "account_admin_user"
+    #      },
+    #      "provider_identifier" => "USER_ID5"
+    #    }
+    #  ]
 
-      assert {:ok,
-              %{
-                identities: [_id1, _id2, _id3, _id4, _id5],
-                plan: {[], upsert, delete},
-                deleted: 2,
-                inserted: [],
-                actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
-              }} = sync_provider_identities(provider, attrs_list)
+    #  assert {:ok,
+    #          %{
+    #            identities: [_id1, _id2, _id3, _id4, _id5],
+    #            plan: {[], upsert, delete},
+    #            deleted: 2,
+    #            inserted: [],
+    #            actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
+    #          }} = sync_provider_identities(provider, attrs_list)
 
-      assert Enum.sort(upsert) == ["USER_ID3", "USER_ID4", "USER_ID5"]
+    #  assert Enum.sort(upsert) == ["USER_ID3", "USER_ID4", "USER_ID5"]
 
-      assert Enum.take(provider_identifiers, 2)
-             |> Enum.all?(&(&1 in delete))
+    #  assert Enum.take(provider_identifiers, 2)
+    #         |> Enum.all?(&(&1 in delete))
 
-      refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID1")
-      refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID2")
+    #  refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID1")
+    #  refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID2")
 
-      assert Auth.Identity.Query.all()
-             |> Auth.Identity.Query.by_provider_id(provider.id)
-             |> Repo.aggregate(:count) == 3
+    #  assert Auth.Identity.Query.all()
+    #         |> Auth.Identity.Query.by_provider_id(provider.id)
+    #         |> Repo.aggregate(:count) == 3
 
-      assert actor_ids_by_provider_identifier
-             |> Map.keys()
-             |> length() == 3
+    #  assert actor_ids_by_provider_identifier
+    #         |> Map.keys()
+    #         |> length() == 3
 
-      # Signs out users which identity has been deleted
-      deleted_identity_token = Repo.reload(deleted_identity_token)
-      assert deleted_identity_token.deleted_at
-    end
+    #  # Signs out users which identity has been deleted
+    #  deleted_identity_token = Repo.reload(deleted_identity_token)
+    #  assert deleted_identity_token.deleted_at
+    # end
 
     test "circuit breaker prevents mass deletions of identities", %{
       account: account,
@@ -3111,51 +3109,49 @@ defmodule Domain.AuthTest do
     end
 
     # TODO: HARD-DELETE - Not sure this test is needed any more.  I don't think this is a reachable state.
-    @tag :skip
-    test "returns error when actor is deleted", %{
-      account: account,
-      provider: provider,
-      user_agent: user_agent,
-      remote_ip: remote_ip
-    } do
-      nonce = "test_nonce_for_firezone"
+    # test "returns error when actor is deleted", %{
+    #  account: account,
+    #  provider: provider,
+    #  user_agent: user_agent,
+    #  remote_ip: remote_ip
+    # } do
+    #  nonce = "test_nonce_for_firezone"
 
-      actor =
-        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-        |> Fixtures.Actors.delete()
+    #  actor =
+    #    Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    #    |> Fixtures.Actors.delete()
 
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
-      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+    #  identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+    #  context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+    #  {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
 
-      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+    #  secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
-      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
-               {:error, :unauthorized}
-    end
+    #  assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
+    #           {:error, :unauthorized}
+    # end
 
     # TODO: HARD-DELETE - Not sure this test is needed any more.  I don't think this is a reachable state.
-    @tag :skip
-    test "returns error when provider is deleted", %{
-      account: account,
-      provider: provider,
-      user_agent: user_agent,
-      remote_ip: remote_ip
-    } do
-      nonce = "test_nonce_for_firezone"
+    # test "returns error when provider is deleted", %{
+    #  account: account,
+    #  provider: provider,
+    #  user_agent: user_agent,
+    #  remote_ip: remote_ip
+    # } do
+    #  nonce = "test_nonce_for_firezone"
 
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-      {:ok, _provider} = delete_provider(provider, subject)
+    #  actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    #  identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+    #  subject = Fixtures.Auth.create_subject(identity: identity)
+    #  {:ok, _provider} = delete_provider(provider, subject)
 
-      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
-      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
-      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+    #  context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+    #  {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+    #  secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
-      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
-               {:error, :unauthorized}
-    end
+    #  assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
+    #           {:error, :unauthorized}
+    # end
   end
 
   describe "sign_in/3" do
@@ -4331,10 +4327,11 @@ defmodule Domain.AuthTest do
     end
   end
 
-  defp allow_child_sandbox_access(parent_pid) do
-    Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
-    # Allow is async call we need to break current process execution
-    # to allow sandbox to be enabled
-    :timer.sleep(10)
-  end
+  # TODO: HARD-DELETE - This may not be needed anymore
+  # defp allow_child_sandbox_access(parent_pid) do
+  #  Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
+  #  # Allow is async call we need to break current process execution
+  #  # to allow sandbox to be enabled
+  #  :timer.sleep(10)
+  # end
 end

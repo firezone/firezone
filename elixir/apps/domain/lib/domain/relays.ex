@@ -358,6 +358,7 @@ defmodule Domain.Relays do
     |> Enum.map(&Enum.random(elem(&1, 1)))
   end
 
+  # TODO: WAL
   # Refactor to use new conventions
   def connect_relay(%Relay{} = relay, secret, token_id) do
     with {:ok, _} <-

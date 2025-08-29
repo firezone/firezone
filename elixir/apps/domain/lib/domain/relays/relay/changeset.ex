@@ -21,13 +21,13 @@ defmodule Domain.Relays.Relay.Changeset do
                               last_seen_at
                               updated_at]a
 
-  # TODO: Update or remove after `deleted_at` is removed from DB
+  # TODO: HARD-DELETE - Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target(%{account_id: nil}) do
     {:unsafe_fragment,
      ~s/(COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NULL/}
   end
 
-  # TODO: Update or remove after `deleted_at` is removed from DB
+  # TODO: HARD-DELETE - Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target(%{account_id: _account_id}) do
     {:unsafe_fragment,
      ~s/(account_id, COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NOT NULL/}

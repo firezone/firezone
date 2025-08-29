@@ -478,23 +478,15 @@ defmodule Web.Clients.Show do
         nil
 
       presence_data ->
-        metas = get_in(presence_data, ["metas"])
-
-        case metas do
-          nil ->
-            nil
-
-          metas when is_list(metas) ->
-            case List.first(metas) do
-              %{token_id: token_id} -> fetch_token(token_id, subject)
-              _ -> nil
-            end
-
-          _ ->
-            nil
-        end
+        get_in(presence_data, ["metas"])
+        |> fetch_token_by_metas(subject)
     end
   end
+
+  defp fetch_token_by_metas([%{token_id: token_id} | _tail], subject),
+    do: fetch_token(token_id, subject)
+
+  defp fetch_token_by_metas(_metas, _subject), do: nil
 
   defp fetch_token(token_id, subject) do
     case Domain.Tokens.fetch_token_by_id(token_id, subject, preload: [identity: [:provider]]) do

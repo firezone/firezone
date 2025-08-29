@@ -3171,67 +3171,66 @@ defmodule Domain.ActorsTest do
     end
 
     # TODO: HARD-DELETE - Need to figure out if we care about this case
-    @tag :skip
-    test "returns error when trying to delete the last admin actor using a race condition" do
-      for _ <- 0..50 do
-        test_pid = self()
+    # test "returns error when trying to delete the last admin actor using a race condition" do
+    #  for _ <- 0..50 do
+    #    test_pid = self()
 
-        Task.async(fn ->
-          allow_child_sandbox_access(test_pid)
+    #    Task.async(fn ->
+    #      allow_child_sandbox_access(test_pid)
 
-          Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
+    #      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
 
-          account = Fixtures.Accounts.create_account()
-          provider = Fixtures.Auth.create_email_provider(account: account)
+    #      account = Fixtures.Accounts.create_account()
+    #      provider = Fixtures.Auth.create_email_provider(account: account)
 
-          actor_one =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider
-            )
+    #      actor_one =
+    #        Fixtures.Actors.create_actor(
+    #          type: :account_admin_user,
+    #          account: account,
+    #          provider: provider
+    #        )
 
-          actor_two =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider
-            )
+    #      actor_two =
+    #        Fixtures.Actors.create_actor(
+    #          type: :account_admin_user,
+    #          account: account,
+    #          provider: provider
+    #        )
 
-          identity_one =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor_one,
-              provider: provider
-            )
+    #      identity_one =
+    #        Fixtures.Auth.create_identity(
+    #          account: account,
+    #          actor: actor_one,
+    #          provider: provider
+    #        )
 
-          identity_two =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor_two,
-              provider: provider
-            )
+    #      identity_two =
+    #        Fixtures.Auth.create_identity(
+    #          account: account,
+    #          actor: actor_two,
+    #          provider: provider
+    #        )
 
-          subject_one = Fixtures.Auth.create_subject(identity: identity_one)
-          subject_two = Fixtures.Auth.create_subject(identity: identity_two)
+    #      subject_one = Fixtures.Auth.create_subject(identity: identity_one)
+    #      subject_two = Fixtures.Auth.create_subject(identity: identity_two)
 
-          for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
-            Task.async(fn ->
-              allow_child_sandbox_access(test_pid)
-              delete_actor(actor, subject)
-            end)
-          end
-          |> Task.await_many()
+    #      for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
+    #        Task.async(fn ->
+    #          allow_child_sandbox_access(test_pid)
+    #          delete_actor(actor, subject)
+    #        end)
+    #      end
+    #      |> Task.await_many()
 
-          queryable =
-            Actors.Actor.Query.not_deleted()
-            |> Actors.Actor.Query.by_account_id(account.id)
+    #      queryable =
+    #        Actors.Actor.Query.not_deleted()
+    #        |> Actors.Actor.Query.by_account_id(account.id)
 
-          assert Repo.aggregate(queryable, :count) == 1
-        end)
-      end
-      |> Task.await_many()
-    end
+    #      assert Repo.aggregate(queryable, :count) == 1
+    #    end)
+    #  end
+    #  |> Task.await_many()
+    # end
 
     test "does not allow to delete an actor twice", %{
       account: account,
@@ -3395,10 +3394,11 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  defp allow_child_sandbox_access(parent_pid) do
-    Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
-    # Allow is async call we need to break current process execution
-    # to allow sandbox to be enabled
-    :timer.sleep(10)
-  end
+  # TODO: HARD-DELETE - This may not be needed anymore
+  # defp allow_child_sandbox_access(parent_pid) do
+  #  Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
+  #  # Allow is async call we need to break current process execution
+  #  # to allow sandbox to be enabled
+  #  :timer.sleep(10)
+  # end
 end
