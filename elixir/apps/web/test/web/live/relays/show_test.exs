@@ -35,7 +35,7 @@ defmodule Web.Live.Relays.ShowTest do
                }}}
   end
 
-  test "renders deleted relay without action buttons", %{
+  test "raises NotFoundError for deleted relay", %{
     account: account,
     relay: relay,
     identity: identity,
@@ -43,13 +43,11 @@ defmodule Web.Live.Relays.ShowTest do
   } do
     relay = Fixtures.Relays.delete_relay(relay)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relays/#{relay}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -101,9 +99,11 @@ defmodule Web.Live.Relays.ShowTest do
     account: account,
     relay: relay,
     identity: identity,
+    subject: _subject,
     conn: conn
   } do
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
 
     {:ok, lv, _html} =
       conn
@@ -123,6 +123,7 @@ defmodule Web.Live.Relays.ShowTest do
     account: account,
     relay: relay,
     identity: identity,
+    subject: _subject,
     conn: conn
   } do
     {:ok, lv, _html} =
@@ -131,7 +132,8 @@ defmodule Web.Live.Relays.ShowTest do
       |> live(~p"/#{account}/relays/#{relay}")
 
     :ok = Domain.Relays.subscribe_to_relays_presence_in_group(relay.group_id)
-    :ok = Domain.Relays.connect_relay(relay, "foo")
+    relay_token = Fixtures.Relays.create_token(group: relay.group, account: account)
+    :ok = Domain.Relays.connect_relay(relay, "foo", relay_token.id)
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:group_relays:" <> _}
 
     wait_for(fn ->
@@ -162,7 +164,7 @@ defmodule Web.Live.Relays.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/relay_groups/#{relay.group}")
 
-    assert Repo.get(Domain.Relays.Relay, relay.id).deleted_at
+    refute Repo.get(Domain.Relays.Relay, relay.id)
   end
 
   test "renders not found error when self_hosted_relays feature flag is false", %{

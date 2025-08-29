@@ -1279,8 +1279,7 @@ defmodule Web.AuthControllerTest do
 
       assert redirected_to(conn) =~ ~p"/#{account}"
 
-      token = Repo.get!(Domain.Tokens.Token, conn.assigns.subject.token_id)
-      assert token.deleted_at
+      refute Repo.get(Domain.Tokens.Token, conn.assigns.subject.token_id)
     end
 
     test "works even if user is already logged out", %{conn: conn} do

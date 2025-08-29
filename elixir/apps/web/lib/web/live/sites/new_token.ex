@@ -342,10 +342,10 @@ defmodule Web.Sites.NewToken do
     else
       connected? =
         joins
-        |> Map.keys()
-        |> Enum.any?(fn id ->
-          gateway = Gateways.fetch_gateway_by_id!(id)
-          socket.assigns.token.id == gateway.last_used_token_id
+        |> Enum.any?(fn {_gateway_id, %{metas: metas}} ->
+          Enum.any?(metas, fn meta ->
+            Map.get(meta, :token_id) == socket.assigns.token.id
+          end)
         end)
 
       {:noreply, assign(socket, connected?: connected?)}

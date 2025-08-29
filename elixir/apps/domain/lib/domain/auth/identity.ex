@@ -23,10 +23,13 @@ defmodule Domain.Auth.Identity do
     field :created_by, Ecto.Enum, values: ~w[system provider identity]a
     field :created_by_subject, :map
 
+    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
     has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
 
+    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
     has_many :tokens, Domain.Tokens.Token, foreign_key: :identity_id, where: [deleted_at: nil]
 
+    # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps(updated_at: false)
   end

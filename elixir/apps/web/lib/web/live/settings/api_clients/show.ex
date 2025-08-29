@@ -18,6 +18,8 @@ defmodule Web.Settings.ApiClients.Show do
           )
 
         {:ok, socket}
+      else
+        {:error, _reason} -> raise Web.LiveErrors.NotFoundError
       end
     else
       {:ok, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/beta")}
@@ -258,11 +260,12 @@ defmodule Web.Settings.ApiClients.Show do
   end
 
   def handle_event("revoke_all_tokens", _params, socket) do
-    {:ok, deleted_tokens} = Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
+    {:ok, deleted_tokens_count} =
+      Tokens.delete_tokens_for(socket.assigns.actor, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
+      |> put_flash(:info, "#{deleted_tokens_count} token(s) were revoked.")
       |> reload_live_table!("tokens")
 
     {:noreply, socket}

@@ -110,7 +110,8 @@ defmodule Web.Settings.IdentityProviders.System.Show do
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _provider} = Auth.delete_provider(socket.assigns.provider, socket.assigns.subject)
+    {:ok, _deleted_provider} =
+      Auth.delete_provider(socket.assigns.provider, socket.assigns.subject)
 
     {:noreply,
      push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/identity_providers")}

@@ -1,15 +1,17 @@
 defmodule API.Relay.ChannelTest do
   use API.ChannelCase, async: true
-  alias Domain.Relays
+  alias Domain.{Relays, Repo}
 
   setup do
-    relay = Fixtures.Relays.create_relay()
+    relay = Fixtures.Relays.create_relay() |> Repo.preload([:group, :account])
+    token = Fixtures.Relays.create_token(group: relay.group, account: relay.account)
 
     stamp_secret = Domain.Crypto.random_token()
 
     {:ok, _, socket} =
       API.Relay.Socket
       |> socket("relay:#{relay.id}", %{
+        token_id: token.id,
         relay: relay,
         opentelemetry_ctx: OpenTelemetry.Ctx.new(),
         opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")
@@ -30,12 +32,14 @@ defmodule API.Relay.ChannelTest do
     test "tracks presence after join of an global relay" do
       group = Fixtures.Relays.create_global_group()
       relay = Fixtures.Relays.create_relay(group: group)
+      token = Fixtures.Relays.create_global_token(group: group)
 
       stamp_secret = Domain.Crypto.random_token()
 
       {:ok, _, _socket} =
         API.Relay.Socket
         |> socket("relay:#{relay.id}", %{
+          token_id: token.id,
           relay: relay,
           opentelemetry_ctx: OpenTelemetry.Ctx.new(),
           opentelemetry_span_ctx: OpenTelemetry.Tracer.start_span("test")

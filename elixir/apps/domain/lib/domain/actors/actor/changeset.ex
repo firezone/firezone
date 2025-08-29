@@ -81,6 +81,7 @@ defmodule Domain.Actors.Actor.Changeset do
     |> put_change(:disabled_at, nil)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def delete_actor(%Actor{} = actor) do
     actor
     |> change()

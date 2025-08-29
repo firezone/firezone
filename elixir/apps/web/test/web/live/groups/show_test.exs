@@ -32,7 +32,7 @@ defmodule Web.Live.Groups.ShowTest do
                }}}
   end
 
-  test "renders deleted group without action buttons", %{
+  test "raises NotFoundError for deleted group", %{
     account: account,
     group: group,
     identity: identity,
@@ -40,13 +40,11 @@ defmodule Web.Live.Groups.ShowTest do
   } do
     group = Fixtures.Actors.delete_group(group)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/#{group}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -313,6 +311,6 @@ defmodule Web.Live.Groups.ShowTest do
 
     assert_redirected(lv, ~p"/#{account}/groups")
 
-    assert Repo.get(Domain.Actors.Group, group.id).deleted_at
+    refute Repo.get(Domain.Actors.Group, group.id)
   end
 end

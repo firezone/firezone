@@ -66,8 +66,7 @@ defmodule Domain.Fixtures.Policies do
         actor: [type: :account_admin_user]
       )
 
-    {:ok, policy} = Policies.delete_policy(policy, subject)
-    policy
+    Policies.delete_policy(policy, subject)
   end
 
   def update_policy(policy, attrs) do

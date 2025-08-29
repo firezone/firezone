@@ -95,7 +95,7 @@ defmodule API.GatewayController do
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
 
-    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, subject),
+    with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, subject, preload: :online?),
          {:ok, gateway} <- Gateways.delete_gateway(gateway, subject) do
       render(conn, :show, gateway: gateway)
     end

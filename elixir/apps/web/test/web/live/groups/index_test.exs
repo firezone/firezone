@@ -90,14 +90,6 @@ defmodule Web.Live.Groups.IndexTest do
     empty_group = Fixtures.Actors.create_group(account: account)
 
     group_with_few_preloads = Fixtures.Actors.create_group(account: account)
-    deleted_actor = Fixtures.Actors.create_actor(account: account) |> Fixtures.Actors.delete()
-
-    Fixtures.Actors.create_membership(
-      account: account,
-      group: group_with_few_preloads,
-      actor: deleted_actor
-    )
-
     actor = Fixtures.Actors.create_actor(account: account)
 
     Fixtures.Actors.create_membership(

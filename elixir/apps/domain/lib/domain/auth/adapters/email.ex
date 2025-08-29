@@ -109,9 +109,7 @@ defmodule Domain.Auth.Adapters.Email do
         |> Identity.Query.by_id(identity.id)
         |> Repo.fetch_and_update(Identity.Query,
           with: fn identity ->
-            Identity.Changeset.update_identity_provider_state(identity, %{
-              last_used_token_id: token.id
-            })
+            Identity.Changeset.update_identity_provider_state(identity, %{})
           end
         )
 

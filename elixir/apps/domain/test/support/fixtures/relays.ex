@@ -112,7 +112,8 @@ defmodule Domain.Fixtures.Relays do
         |> create_group()
       end)
 
-    {token, attrs} =
+    # TODO: BRIAN - This can likely be removed
+    {_token, attrs} =
       pop_assoc_fixture(attrs, :token, fn assoc_attrs ->
         if group.account_id do
           assoc_attrs
@@ -132,7 +133,7 @@ defmodule Domain.Fixtures.Relays do
         |> Fixtures.Auth.build_context()
       end)
 
-    {:ok, relay} = Relays.upsert_relay(group, token, attrs, context)
+    {:ok, relay} = Relays.upsert_relay(group, attrs, context)
     %{relay | online?: false}
   end
 

@@ -114,6 +114,36 @@ defmodule Domain.Fixtures.Tokens do
     token
   end
 
+  def create_client_token(attrs \\ %{}) do
+    attrs = attrs |> Enum.into(%{type: :client}) |> token_attrs()
+
+    {account, attrs} =
+      pop_assoc_fixture(attrs, :account, fn assoc_attrs ->
+        Fixtures.Accounts.create_account(assoc_attrs)
+      end)
+
+    {actor, attrs} =
+      pop_assoc_fixture(attrs, :actor, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account})
+        |> Fixtures.Actors.create_actor()
+      end)
+
+    {identity, attrs} =
+      pop_assoc_fixture(attrs, :identity, fn assoc_attrs ->
+        assoc_attrs
+        |> Enum.into(%{account: account, actor: actor})
+        |> Fixtures.Auth.create_identity()
+      end)
+
+    attrs = Map.put(attrs, :account_id, account.id)
+    attrs = Map.put(attrs, :actor_id, actor.id)
+    attrs = Map.put(attrs, :identity_id, identity.id)
+
+    {:ok, token} = Domain.Tokens.create_token(attrs)
+    token
+  end
+
   def create_api_client_token(attrs \\ %{}) do
     attrs = token_attrs(attrs)
 

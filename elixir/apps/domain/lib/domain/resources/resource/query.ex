@@ -5,6 +5,7 @@ defmodule Domain.Resources.Resource.Query do
     from(resources in Domain.Resources.Resource, as: :resources)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def not_deleted do
     all()
     |> where([resources: resources], is_nil(resources.deleted_at))
@@ -192,6 +193,7 @@ defmodule Domain.Resources.Resource.Query do
      dynamic([connections: connections], connections.gateway_group_id == ^gateway_group_id)}
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def filter_deleted(queryable) do
     {queryable, dynamic([resources: resources], not is_nil(resources.deleted_at))}
   end
