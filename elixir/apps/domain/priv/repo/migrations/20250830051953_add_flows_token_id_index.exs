@@ -4,6 +4,6 @@ defmodule Domain.Repo.Migrations.AddFlowsTokenIdIndex do
   @disable_ddl_transaction true
 
   def change do
-    create(index(:flows, [:token_id]))
+    create_if_not_exists(index(:flows, [:token_id]))
   end
 end
