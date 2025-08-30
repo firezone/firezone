@@ -15,7 +15,7 @@ defmodule Domain.Auth.Identity.Sync do
          {:ok, {insert, update, delete}} <-
            plan_identities_update(identities, provider_identifiers),
          :ok <- deletion_circuit_breaker(identities, delete, provider),
-         {:ok, deleted} <- delete_identities(provider, delete),
+         {:ok, deleted_count} <- delete_identities(provider, delete),
          {:ok, inserted} <-
            insert_identities(provider, attrs_by_provider_identifier, insert),
          {:ok, updated} <-
@@ -32,7 +32,7 @@ defmodule Domain.Auth.Identity.Sync do
        %{
          identities: identities,
          plan: {insert, update, delete},
-         deleted: deleted,
+         deleted_count: deleted_count,
          inserted: inserted,
          updated: updated,
          actor_ids_by_provider_identifier: actor_ids_by_provider_identifier

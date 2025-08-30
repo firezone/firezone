@@ -1655,7 +1655,7 @@ defmodule Domain.AuthTest do
                 plan: {insert, [], []},
                 inserted: [_actor1, _actor2],
                 updated: [],
-                deleted: 0,
+                deleted_count: 0,
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 
@@ -1717,7 +1717,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan: {[], update, []},
-                deleted: 0,
+                deleted_count: 0,
                 updated: [_updated_identity1, _updated_identity2],
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
@@ -1767,7 +1767,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [fetched_identity],
                 plan: {[], ["USER_ID1"], []},
-                deleted: 0,
+                deleted_count: 0,
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
@@ -1802,7 +1802,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [fetched_identity],
                 plan: {[], [], []},
-                deleted: 0,
+                deleted_count: 0,
                 inserted: [],
                 actor_ids_by_provider_identifier: %{}
               }} = sync_provider_identities(provider, attrs_list)
@@ -1949,7 +1949,7 @@ defmodule Domain.AuthTest do
                 %{
                   identities: [],
                   plan: {[], [], []},
-                  deleted: 0,
+                  deleted_count: 0,
                   updated: [],
                   inserted: [],
                   actor_ids_by_provider_identifier: %{}
@@ -2014,7 +2014,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan: {[], update, []},
-                deleted: 0,
+                deleted_count: 0,
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)

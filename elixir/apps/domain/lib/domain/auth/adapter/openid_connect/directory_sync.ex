@@ -285,17 +285,17 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
            plan: {identities_insert_ids, identities_update_ids, identities_delete_ids},
            inserted: identities_inserted,
            updated: identities_updated,
-           deleted: identities_deleted
+           deleted_count: identities_deleted_count
          },
          %{
            plan: {groups_upsert_ids, groups_delete_ids},
            upserted: groups_upserted,
-           deleted: groups_deleted
+           deleted_count: groups_deleted_count
          },
          %{
            plan: {memberships_insert_tuples, memberships_delete_tuples},
            inserted: memberships_inserted,
-           deleted_stats: {deleted_memberships_count, _}
+           deleted_count: {memberships_deleted_count, _}
          }
        ) do
     time_taken = time_taken(start_time, finish_time)
@@ -308,17 +308,17 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
       plan_identities_delete: length(identities_delete_ids),
       identities_inserted: length(identities_inserted),
       identities_and_actors_updated: length(identities_updated),
-      identities_deleted: length(identities_deleted),
+      identities_deleted: identities_deleted_count,
       # Groups
       plan_groups_upsert: length(groups_upsert_ids),
       plan_groups_delete: length(groups_delete_ids),
       groups_upserted: length(groups_upserted),
-      groups_deleted: length(groups_deleted),
+      groups_deleted: groups_deleted_count,
       # Memberships
       plan_memberships_insert: length(memberships_insert_tuples),
       plan_memberships_delete: length(memberships_delete_tuples),
       memberships_inserted: length(memberships_inserted),
-      memberships_deleted: deleted_memberships_count
+      memberships_deleted: memberships_deleted_count
     )
   end
 
