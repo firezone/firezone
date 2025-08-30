@@ -708,6 +708,15 @@ where
                 (sender, requested_channel),
             );
 
+            // Also update the eBPF maps when refreshing a channel binding
+            self.pending_commands
+                .push_back(Command::CreateChannelBinding {
+                    client: sender,
+                    channel_number: requested_channel,
+                    peer: peer_address,
+                    allocation_port: channel.allocation,
+                });
+
             tracing::info!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
             self.authenticate_and_send(
@@ -1036,6 +1045,17 @@ where
                 {
                     debug_assert_eq!(&existing_cs, cs, "internal state should be consistent");
                     debug_assert_eq!(&existing_n, number, "internal state should be consistent");
+                }
+
+                // Also delete from eBPF maps when deleting channel due to allocation removal
+                if c.bound {
+                    self.pending_commands
+                        .push_back(Command::DeleteChannelBinding {
+                            client: *cs,
+                            channel_number: *number,
+                            peer: c.peer_address,
+                            allocation_port: c.allocation,
+                        });
                 }
 
                 tracing::info!(%peer, %number, allocation = %port, "Deleted channel binding");

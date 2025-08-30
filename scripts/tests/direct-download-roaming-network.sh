@@ -23,6 +23,10 @@ docker network connect firezone_app firezone-client-1 --ip 172.28.0.200 # Reconn
 # Send SIGHUP, triggering `reconnect` internally
 sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"
 
+# Re-add static route to relays through router
+client ip route add 172.29.0.0/24 via 172.28.0.254
+client ip -6 route add 172:29:0::/64 via 172:28:0::254
+
 wait $DOWNLOAD_PID || {
     echo "Download process failed"
     exit 1

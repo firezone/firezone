@@ -295,6 +295,10 @@ jobs:
       CLIENT_TAG: ${{ github.sha }}
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
       RELAY_TAG: ${{ github.sha }}
+      RELAY_1_PUBLIC_IP4_ADDR: 172.29.0.101
+      RELAY_1_PUBLIC_IP6_ADDR: 172:29:0::101
+      RELAY_2_PUBLIC_IP4_ADDR: 172.29.0.102
+      RELAY_2_PUBLIC_IP6_ADDR: 172:29:0::102
     strategy:
       fail-fast: false
       matrix:
@@ -328,12 +332,13 @@ jobs:
           docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
+          docker compose up veth-config
       - name: Add 10ms simulated latency
         run: |
-          docker compose exec -d client tc qdisc add dev eth0 root netem delay 10ms
-          docker compose exec -d gateway tc qdisc add dev eth0 root netem delay 10ms
-          docker compose exec -d relay-1 tc qdisc add dev eth0 root netem delay 10ms
-          docker compose exec -d relay-2 tc qdisc add dev eth0 root netem delay 10ms
+          docker compose exec -T client tc qdisc add dev eth0 root netem delay 10ms
+          docker compose exec -T gateway tc qdisc add dev eth0 root netem delay 10ms
+          docker compose exec -T relay-1 tc qdisc add dev eth0 root netem delay 10ms
+          docker compose exec -T relay-2 tc qdisc add dev eth0 root netem delay 10ms
       - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
         env:
@@ -374,16 +379,32 @@ jobs:
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
-        run: docker compose logs client | grep "WARN" && exit 1 || exit 0
+        run: |
+          # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
+          docker compose logs client | \
+            grep --invert "I/O error (os error 5)" | \
+            grep "WARN" && exit 1 || exit 0
       - name: Ensure Relay-1 emitted no warnings
         if: "!cancelled()"
-        run: docker compose logs relay-1 | grep "WARN" && exit 1 || exit 0
+        run: |
+          # BTF doesn't load for veth interfaces
+          docker compose logs relay-1 | \
+            grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
+            grep "WARN" && exit 1 || exit 0
       - name: Ensure Relay-2 emitted no warnings
         if: "!cancelled()"
-        run: docker compose logs relay-2 | grep "WARN" && exit 1 || exit 0
+        run: |
+          # BTF doesn't load for veth interfaces
+          docker compose logs relay-2 | \
+            grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
+            grep "WARN" && exit 1 || exit 0
       - name: Ensure Gateway emitted no warnings
         if: "!cancelled()"
-        run: docker compose logs gateway | grep "WARN" && exit 1 || exit 0
+        run: |
+          # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
+          docker compose logs gateway | \
+            grep --invert "I/O error (os error 5)" | \
+            grep "WARN" && exit 1 || exit 0
 
   upload-bencher:
     continue-on-error: true
