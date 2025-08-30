@@ -295,7 +295,7 @@ defmodule Domain.Auth.Adapter.OpenIDConnect.DirectorySync do
          %{
            plan: {memberships_insert_tuples, memberships_delete_tuples},
            inserted: memberships_inserted,
-           deleted_count: {memberships_deleted_count, _}
+           deleted_count: memberships_deleted_count
          }
        ) do
     time_taken = time_taken(start_time, finish_time)
