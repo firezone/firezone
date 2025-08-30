@@ -26,8 +26,8 @@ function install_iptables_drop_rules() {
     client iptables -A OUTPUT -d 172.28.0.105 -j DROP
     client ip6tables -A OUTPUT -d 172:28:0::105 -j DROP
 
-    local client_stack="$1"
-    local gateway_stack="$2"
+    local client_stack="${1:-}"
+    local gateway_stack="${2:-}"
 
     # If both are empty, we don't care which stack they use; just return
     if [[ -z "$client_stack" && -z "$gateway_stack" ]]; then
