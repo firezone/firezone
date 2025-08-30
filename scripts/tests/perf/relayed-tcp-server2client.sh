@@ -3,7 +3,9 @@
 set -euox pipefail
 
 source "./scripts/tests/lib.sh"
-install_iptables_drop_rules
+
+# Enforce IPv6 - IPv4 relaying
+install_iptables_drop_rules ipv6 ipv4
 
 docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
   --time 30 \
