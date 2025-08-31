@@ -23,13 +23,13 @@ defmodule Domain.Actors.Membership.Sync do
 
     with {:ok, memberships} <- all_provider_memberships(provider),
          {:ok, {insert, delete}} <- plan_memberships_update(tuples, memberships),
-         deleted_stats = delete_memberships(delete),
+         {:ok, deleted_count} = delete_memberships(delete),
          {:ok, inserted} <- insert_memberships(provider, insert) do
       {:ok,
        %{
          plan: {insert, delete},
          inserted: inserted,
-         deleted_stats: deleted_stats
+         deleted_count: deleted_count
        }}
     end
   end
@@ -63,8 +63,11 @@ defmodule Domain.Actors.Membership.Sync do
   end
 
   defp delete_memberships(provider_identifiers_to_delete) do
-    Membership.Query.by_group_id_and_actor_id({:in, provider_identifiers_to_delete})
-    |> Repo.delete_all()
+    {count, nil} =
+      Membership.Query.by_group_id_and_actor_id({:in, provider_identifiers_to_delete})
+      |> Repo.delete_all()
+
+    {:ok, count}
   end
 
   defp insert_memberships(provider, provider_identifiers_to_insert) do

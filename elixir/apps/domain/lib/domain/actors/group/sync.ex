@@ -15,7 +15,7 @@ defmodule Domain.Actors.Group.Sync do
     with {:ok, groups} <- all_provider_groups(provider),
          {:ok, {upsert, delete}} <- plan_groups_update(groups, provider_identifiers),
          :ok <- deletion_circuit_breaker(groups, delete, provider),
-         {:ok, _num_deleted} <- delete_groups(provider, delete),
+         {:ok, deleted_count} <- delete_groups(provider, delete),
          {:ok, upserted} <- upsert_groups(provider, attrs_by_provider_identifier, upsert) do
       group_ids_by_provider_identifier =
         for group <- groups ++ upserted,
@@ -28,7 +28,7 @@ defmodule Domain.Actors.Group.Sync do
        %{
          groups: groups,
          plan: {upsert, delete},
-         deleted: delete,
+         deleted_count: deleted_count,
          upserted: upserted,
          group_ids_by_provider_identifier: group_ids_by_provider_identifier
        }}
