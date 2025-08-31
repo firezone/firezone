@@ -4,7 +4,7 @@
 )]
 
 use anyhow::Result;
-use ebpf_shared::Config;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
 use crate::ebpf::AttachMode;
@@ -13,7 +13,12 @@ use crate::{AllocationPort, ClientSocket, PeerSocket};
 pub struct Program {}
 
 impl Program {
-    pub fn try_load(_: &str, _: AttachMode) -> Result<Self> {
+    pub fn try_load(
+        _: &str,
+        _: AttachMode,
+        _: Option<Ipv4Addr>,
+        _: Option<Ipv6Addr>,
+    ) -> Result<Self> {
         Err(anyhow::anyhow!("Platform not supported"))
     }
 
@@ -35,13 +40,5 @@ impl Program {
         _: AllocationPort,
     ) -> Result<()> {
         Ok(())
-    }
-
-    pub fn set_config(&mut self, _: Config) -> Result<()> {
-        Ok(())
-    }
-
-    pub fn config(&self) -> Config {
-        Config::default()
     }
 }

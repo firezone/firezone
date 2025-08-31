@@ -176,8 +176,20 @@ services:
       FEATURE_IDP_SYNC_ENABLED: "true"
       FEATURE_REST_API_ENABLED: "true"
       FEATURE_INTERNET_RESOURCE_ENABLED: "true"
+    user: root # Needed to run `ip route` commands
     cap_add:
       - NET_ADMIN # Needed to run `tc` commands to add simulated delay
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        # Add static route to relay subnet via router
+        ip route add 172.29.0.0/24 via 172.28.0.254
+        ip -6 route add 172:29:0::/64 via 172:28:0::254
+
+        exec su default -c "bin/server"
     depends_on:
       vault:
         condition: "service_healthy"
@@ -190,7 +202,9 @@ services:
       retries: 5
       timeout: 5s
     networks:
-      - app
+      app:
+        ipv4_address: 172.28.0.10
+        ipv6_address: 172:28:0::10
 
   domain:
     build:
@@ -322,6 +336,21 @@ services:
       RUST_LOG: ${RUST_LOG:-firezone_linux_client=trace,wire=trace,connlib_client_shared=trace,firezone_tunnel=trace,connlib_shared=trace,boringtun=debug,snownet=debug,str0m=debug,phoenix_channel=debug,info}
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: EFC7A9E3-3576-4633-B633-7D47BA9E14AC
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        # Add static route to relay subnet via router
+        ip route add 172.29.0.0/24 via 172.28.0.254
+        ip -6 route add 172:29:0::/64 via 172:28:0::254
+
+        # Disable checksum offloading so that checksums are correct when they reach the relay
+        apk add --no-cache ethtool
+        ethtool -K eth0 tx off
+
+        firezone-headless-client
     init: true
     build:
       target: debug
@@ -339,6 +368,8 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
+      router:
+        condition: "service_started"
       api:
         condition: "service_healthy"
     networks:
@@ -355,6 +386,23 @@ services:
       FIREZONE_ENABLE_MASQUERADE: 1 # FIXME: NOOP in latest version. Remove after next release.
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        # Add static route to relay subnet via router
+        ip route add 172.29.0.0/24 via 172.28.0.254
+        ip -6 route add 172:29:0::/64 via 172:28:0::254
+
+        # Disable checksum offloading so that checksums are correct when they reach the relay
+        apk add --no-cache ethtool
+        ethtool -K eth0 tx off
+        ethtool -K eth1 tx off
+        ethtool -K eth2 tx off
+
+        firezone-gateway
     init: true
     build:
       target: debug
@@ -375,6 +423,8 @@ services:
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
+      router:
+        condition: "service_started"
       api:
         condition: "service_healthy"
     networks:
@@ -433,9 +483,8 @@ services:
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}
-      PUBLIC_IP6_ADDR: ${RELAY_1_PUBLIC_IP6_ADDR:-172:28:0::101}
-      # PUBLIC_IP6_ADDR: fcff:3990:3990::101
+      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-172.29.0.101}
+      PUBLIC_IP6_ADDR: ${RELAY_1_PUBLIC_IP6_ADDR:-172:29:0::101}
       # LOWEST_PORT: 55555
       # HIGHEST_PORT: 55666
       # Token for self-hosted Relay
@@ -444,8 +493,22 @@ services:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
-      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_API_URL: ws://172.28.0.10:8081
       OTLP_GRPC_ENDPOINT: otel:4317
+      EBPF_OFFLOADING: eth0
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        # Add static route to app subnet via router
+        ip route add 172.28.0.0/24 via 172.29.0.254
+        ip -6 route add 172:28:0::/64 via 172:29:0::254
+
+        firezone-relay
+    privileged: true
+    init: true
     build:
       target: debug
       context: rust
@@ -463,6 +526,8 @@ services:
       retries: 5
       timeout: 5s
     depends_on:
+      router:
+        condition: "service_started"
       api:
         condition: "service_healthy"
     # ports:
@@ -473,23 +538,36 @@ services:
     # - "55555-55666:55555-55666/udp"
     # - 3478:3478/udp
     networks:
-      app:
-        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.28.0.101}
-        ipv6_address: ${RELAY_1_PUBLIC_IP6_ADDR:-172:28:0::101}
+      relays:
+        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.29.0.101}
+        ipv6_address: ${RELAY_1_PUBLIC_IP6_ADDR:-172:29:0::101}
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
-      PUBLIC_IP6_ADDR: ${RELAY_2_PUBLIC_IP6_ADDR:-172:28:0::201}
-      # PUBLIC_IP6_ADDR: fcff:3990:3990::101
+      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-172.29.0.102}
+      PUBLIC_IP6_ADDR: ${RELAY_2_PUBLIC_IP6_ADDR:-172:29:0::102}
       # Token for self-hosted Relay
       # FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkNTQ5YzQxMDctMTQ5Mi00ZjhmLWE0ZWMtYTlkMmE2NmQ4YWE5bQAAADhQVTVBSVRFMU84VkRWTk1ITU9BQzc3RElLTU9HVERJQTY3MlM2RzFBQjAyT1MzNEg1TUUwPT09PW4GAEngLBONAWIAAVGA.E-f2MFdGMX7JTL2jwoHBdWcUd2G3UNz2JRZLbQrlf0k"
       # Token for global Relay
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
-      FIREZONE_API_URL: ws://api:8081
+      FIREZONE_API_URL: ws://172.28.0.10:8081
       OTLP_GRPC_ENDPOINT: otel:4317
+      EBPF_OFFLOADING: eth0
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        # Add static route to app subnet via router
+        ip route add 172.28.0.0/24 via 172.29.0.254
+        ip -6 route add 172:28:0::/64 via 172:29:0::254
+
+        firezone-relay
+    privileged: true
+    init: true
     build:
       target: debug
       context: rust
@@ -507,12 +585,70 @@ services:
       retries: 5
       timeout: 5s
     depends_on:
+      router:
+        condition: "service_started"
       api:
         condition: "service_healthy"
     networks:
+      relays:
+        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.29.0.102}
+        ipv6_address: ${RELAY_2_PUBLIC_IP6_ADDR:-172:29:0::102}
+
+  # Relays in prod always talk to a router to reach the Internet. We leverage this to avoid a map lookup and simply swap the
+  # MACs for all relayed traffic. So we mimic this setup for local dev and CI to ensure this eBPF code path is getting exercised.
+  # For this to work, we need to ensure the relays and client/gateway are *not* connected to the same Docker network, otherwise
+  # they will learn each other's MAC addresses via ARP and the next-hop MAC swap will not be valid.
+  router:
+    image: alpine:3.22
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
+    command: ["sleep", "infinity"]
+    init: true
+    networks:
       app:
-        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.28.0.201}
-        ipv6_address: ${RELAY_2_PUBLIC_IP6_ADDR:-172:28:0::201}
+        ipv4_address: 172.28.0.254
+        ipv6_address: 172:28:0::254
+      relays:
+        ipv4_address: 172.29.0.254
+        ipv6_address: 172:29:0::254
+
+  # The veth driver uses a pair of interfaces to connect the docker bridge to the container namespace.
+  # For containers that have an eBPF program attached and do XDP_TX, we need to attach a dummy program
+  # to the corresponding veth interface on the host to be able to receive the XDP_TX traffic and pass
+  # it up to the docker bridge successfully.
+  #
+  # The "recommended" way to do this is to set both veth interfaces' GRO to on, or attach an XDP program
+  # that does XDP_PASS to the host side veth interface. The GRO method is not reliable and was shown to
+  # only pass packets in large bursts every 15-20 seconds which breaks ICE setup, so we use the XDP method.
+  veth-config:
+    image: ghcr.io/firezone/xdp-pass
+    pid: host
+    network_mode: host
+    privileged: true
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        VETHS=$$(ip link show type veth | grep '^[0-9]' | awk '{print $$2}' | cut -d: -f1 | cut -d@ -f1)
+
+        # Safe to attach to all veth interfaces on the host
+        for dev in $$VETHS; do
+          echo "Attaching XDP to: $$dev"
+          ip link set dev $$dev xdpdrv obj /xdp/xdp_pass.o sec xdp 2>/dev/null
+        done
+
+        echo "Done configuring $$(echo "$$VETHS" | wc -w) veth interfaces"
+    depends_on:
+      relay-1:
+        condition: "service_started"
+      relay-2:
+        condition: "service_started"
 
   otel:
     image: otel/opentelemetry-collector:latest
@@ -623,6 +759,12 @@ networks:
       config:
         - subnet: 172.28.0.0/24
         - subnet: 172:28:0::/64
+  relays:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+        - subnet: 172:29:0::/64
   99-ghost-in-da-edge:
     name: ghost-in-da-edge
     internal: false

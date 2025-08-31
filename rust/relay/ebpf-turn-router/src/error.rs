@@ -3,9 +3,9 @@ use core::num::NonZeroUsize;
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     InterfaceIpv4AddressAccessFailed,
-    InterfaceIpv4AddressNotLearned,
+    InterfaceIpv4AddressNotConfigured,
     InterfaceIpv6AddressAccessFailed,
-    InterfaceIpv6AddressNotLearned,
+    InterfaceIpv6AddressNotConfigured,
     UdpChecksumMissing,
     PacketTooShort,
     NotUdp,
@@ -16,6 +16,7 @@ pub enum Error {
     BadChannelDataLength,
     NoEntry(SupportedChannel),
     XdpAdjustHeadFailed(i64),
+    PacketLoop,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -34,11 +35,11 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::InterfaceIpv4AddressAccessFailed => {
                 "Failed to get pointer to interface IPv4 address map"
             }
-            Error::InterfaceIpv4AddressNotLearned => "Interface IPv4 address not learned",
+            Error::InterfaceIpv4AddressNotConfigured => "Interface IPv4 address not configured",
             Error::InterfaceIpv6AddressAccessFailed => {
                 "Failed to get pointer to interface IPv6 address map"
             }
-            Error::InterfaceIpv6AddressNotLearned => "Interface IPv6 address not learned",
+            Error::InterfaceIpv6AddressNotConfigured => "Interface IPv6 address not configured",
             Error::UdpChecksumMissing => "UDP checksum is missing",
             Error::PacketTooShort => "Packet is too short",
             Error::NotUdp => "Not a UDP packet",
@@ -47,6 +48,7 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::Ipv4PacketWithOptions => "IPv4 packet has options",
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
+            Error::PacketLoop => "Packet loop detected",
             Error::NoEntry(ch) => match ch {
                 SupportedChannel::Udp4ToChan => "No entry in UDPv4 to channel IPv4 or IPv6 map",
                 SupportedChannel::Chan4ToUdp => "No entry in channel IPv4 to UDPv4 or UDPv6 map",
