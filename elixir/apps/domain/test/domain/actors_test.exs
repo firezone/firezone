@@ -711,7 +711,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {upsert, []},
-                deleted: [],
+                deleted_count: 0,
                 upserted: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = sync_provider_groups(provider, attrs_list)
@@ -760,7 +760,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {upsert, []},
-                deleted: [],
+                deleted_count: 0,
                 upserted: [_group1, _group2],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = sync_provider_groups(provider, attrs_list)
@@ -832,21 +832,19 @@ defmodule Domain.ActorsTest do
         %{"name" => "Group:Finance", "provider_identifier" => "G:GROUP_ID4"}
       ]
 
-      deleted_group_ids = [group1.provider_identifier, group2.provider_identifier]
-
       assert {:ok,
               %{
                 groups: [_group1, _group2, _group3, _group4, _group5],
                 plan: {_upsert, delete},
-                deleted: [deleted_group1, deleted_group2],
+                deleted_count: 2,
                 upserted: [_upserted_group3, _upserted_group4, _upserted_group5],
                 group_ids_by_provider_identifier: group_ids_by_provider_identifier
               }} = sync_provider_groups(provider, attrs_list)
 
       assert Enum.all?(["G:GROUP_ID1", "OU:OU_ID1"], &(&1 in delete))
-      assert deleted_group1 in deleted_group_ids
-      assert deleted_group2 in deleted_group_ids
       assert Repo.aggregate(Actors.Group, :count) == 3
+      refute Repo.get(Domain.Actors.Group, group1.id)
+      refute Repo.get(Domain.Actors.Group, group2.id)
 
       assert Map.keys(group_ids_by_provider_identifier) |> length() == 3
     end
@@ -924,7 +922,7 @@ defmodule Domain.ActorsTest do
                 %{
                   groups: [],
                   plan: {[], []},
-                  deleted: [],
+                  deleted_count: 0,
                   upserted: [],
                   group_ids_by_provider_identifier: %{}
                 }}
@@ -1063,7 +1061,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {insert, []},
-                deleted_stats: {0, nil},
+                deleted_count: 0,
                 inserted: [_membership1, _membership2]
               }} =
                sync_provider_memberships(
@@ -1122,7 +1120,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {[], []},
-                deleted_stats: {0, nil},
+                deleted_count: 0,
                 inserted: []
               }} =
                sync_provider_memberships(
@@ -1171,7 +1169,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {[], delete},
-                deleted_stats: {2, nil},
+                deleted_count: 2,
                 inserted: []
               }} =
                sync_provider_memberships(
@@ -1225,7 +1223,7 @@ defmodule Domain.ActorsTest do
               %{
                 plan: {[], delete},
                 inserted: [],
-                deleted_stats: {1, nil}
+                deleted_count: 1
               }} =
                sync_provider_memberships(
                  actor_ids_by_provider_identifier,
@@ -1265,7 +1263,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {[], []},
-                deleted_stats: {0, nil},
+                deleted_count: 0,
                 inserted: []
               }} =
                sync_provider_memberships(
@@ -1311,7 +1309,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {[], delete},
-                deleted_stats: {2, nil},
+                deleted_count: 2,
                 inserted: []
               }} =
                sync_provider_memberships(
@@ -1360,7 +1358,7 @@ defmodule Domain.ActorsTest do
       assert {:ok,
               %{
                 plan: {[], delete},
-                deleted_stats: {2, nil},
+                deleted_count: 2,
                 inserted: []
               }} =
                sync_provider_memberships(
