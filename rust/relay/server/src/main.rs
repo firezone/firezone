@@ -3,7 +3,6 @@
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use ebpf_shared::Config;
 use firezone_bin_shared::http_health_check;
 use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
@@ -94,6 +93,16 @@ struct Args {
     #[arg(long, env, hide = true, default_value = "driver")]
     ebpf_attach_mode: ebpf::AttachMode,
 
+    /// IPv4 address of the interface where eBPF is attached.
+    /// Required when ebpf_offloading is set.
+    #[arg(long, env)]
+    ebpf_int4_addr: Option<Ipv4Addr>,
+
+    /// IPv6 address of the interface where eBPF is attached.
+    /// Required when ebpf_offloading is set.
+    #[arg(long, env)]
+    ebpf_int6_addr: Option<Ipv6Addr>,
+
     #[command(flatten)]
     health_check: http_health_check::HealthCheckArgs,
 
@@ -154,22 +163,41 @@ fn main() {
 async fn try_main(args: Args) -> Result<()> {
     let filter_reload_handle = setup_tracing(&args)?;
 
-    let mut ebpf = args
-        .ebpf_offloading
-        .as_deref()
-        .map(|interface| ebpf::Program::try_load(interface, args.ebpf_attach_mode))
-        .transpose()
-        .context("Failed to load eBPF TURN router")?;
+    let ebpf = if let Some(interface) = args.ebpf_offloading.as_deref() {
+        if args.ebpf_int4_addr.is_none() {
+            tracing::warn!(
+                "eBPF offloading enabled with but EBPF_INT4_ADDR not set. IPv6 to IPv4 relaying will not work."
+            );
+        }
 
-    if let Some(ebpf) = ebpf.as_mut() {
-        ebpf.set_config(
-            Config::default()
-                .with_udp_checksum(true)
-                .with_lowest_allocation_port(args.lowest_port)
-                .with_highest_allocation_port(args.highest_port),
+        if args.ebpf_int6_addr.is_none() {
+            tracing::warn!(
+                "eBPF offloading enabled with but EBPF_INT6_ADDR not set. IPv4 to IPv6 relaying will not work."
+            );
+        }
+
+        if let Some(ipv4) = args.ebpf_int4_addr
+            && let Some(ipv6) = args.ebpf_int6_addr
+        {
+            tracing::info!(
+                "eBPF offloading enabled with IPv4 address {} and IPv6 address {}",
+                ipv4,
+                ipv6
+            );
+        }
+
+        Some(
+            ebpf::Program::try_load(
+                interface,
+                args.ebpf_attach_mode,
+                args.ebpf_int4_addr,
+                args.ebpf_int6_addr,
+            )
+            .context("Failed to load eBPF TURN router")?,
         )
-        .context("Failed to set config of eBPF program")?;
-    }
+    } else {
+        None
+    };
 
     let public_addr = match (args.public_ip4_addr, args.public_ip6_addr) {
         (Some(ip4), Some(ip6)) => IpStack::Dual { ip4, ip6 },

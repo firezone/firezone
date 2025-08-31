@@ -139,6 +139,7 @@ jobs:
           docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
+          docker compose up veth-config
 
           # Wait a few seconds for the services to fully start. GH runners are
           # slow, so this gives the Client enough time to initialize its tun interface,
@@ -161,10 +162,10 @@ jobs:
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
-        # Remove the error filter once headless-client 1.5.2 is released.
         run: |
+          # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
           docker compose logs client | \
-            grep "Operation not permitted (os error 1)" --invert | \
+            grep --invert "I/O error (os error 5)" | \
             grep "WARN" && exit 1 || exit 0
       - name: Show Client logs
         if: "!cancelled()"
@@ -180,7 +181,11 @@ jobs:
 
       - name: Ensure Gateway emitted no warnings
         if: "!cancelled()"
-        run: docker compose logs gateway | grep "WARN" && exit 1 || exit 0
+        run: |
+          # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
+          docker compose logs gateway | \
+            grep --invert "I/O error (os error 5)" | \
+            grep "WARN" && exit 1 || exit 0
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway

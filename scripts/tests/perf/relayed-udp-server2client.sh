@@ -3,7 +3,7 @@
 set -euox pipefail
 
 source "./scripts/tests/lib.sh"
-install_iptables_drop_rules
+force_relayed_connections ipv4 ipv6
 
 docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
   --time 30 \
