@@ -2,11 +2,12 @@
 
 source "./scripts/tests/lib.sh"
 
-# Download 10MB at a max rate of 1MB/s. Shouldn't take longer than 13 seconds (allows for 3s of restablishing)
+# Download 10MB at a max rate of 1MB/s. The first two UDP socket writes will fail as checksum offload is disabled.
+# This means it will take 13 seconds + the resent STUN binding request round trip time.
 client sh -c \
     "curl \
         --fail \
-        --max-time 13 \
+        --max-time 16 \
         --keepalive-time 1 \
         --limit-rate 1000000 \
         --output download.file \
@@ -16,11 +17,13 @@ DOWNLOAD_PID=$!
 
 sleep 3 # Download a bit
 
-# Assign different interface IPs to simulate roaming
-client ip addr del 172.28.0.100/24 dev eth0
-client ip -6 addr del 172:28:0::100/64 dev eth0
-client ip addr add 172.28.0.200/24 dev eth0
-client ip -6 addr add 172:28:0::200/64 dev eth0
+docker network disconnect firezone_app firezone-client-1 # Disconnect the client
+sleep 3
+docker network connect firezone_app firezone-client-1 --ip 172.28.0.200 # Reconnect client with a different IP
+
+# Re-add static route to relays through router
+client ip route add 172.29.0.0/24 via 172.28.0.254 dev eth0
+client ip -6 route add 172:29:0::/64 via 172:28:0::254 dev eth0
 
 # Send SIGHUP, triggering `reconnect` internally
 sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"
