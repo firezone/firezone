@@ -324,17 +324,16 @@ jobs:
           export_environment_variables: true
           create_credentials_file: true
       - name: Copy relay to Cloud Storage
-        # if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
-        if: ${{ matrix.name.artifact == 'firezone-relay' }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         run: |
           set -e
-          # gcloud storage cp \
-          #   "${{ matrix.name.package }}" \
-          #   gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
-          #
-          # gcloud storage cp \
-          #   "${{ matrix.name.package }}".sha256sum.txt \
-          #   gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
+          gcloud storage cp \
+            "${{ matrix.name.package }}" \
+            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}
+
+          gcloud storage cp \
+            "${{ matrix.name.package }}".sha256sum.txt \
+            gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
 
           az storage blob upload \
             --container-name artifacts \
