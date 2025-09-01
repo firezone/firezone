@@ -370,10 +370,10 @@ defmodule Web.RelayGroups.NewToken do
     else
       connected? =
         joins
-        |> Map.keys()
-        |> Enum.any?(fn id ->
-          relay = Relays.fetch_relay_by_id!(id)
-          socket.assigns.token.id == relay.last_used_token_id
+        |> Enum.any?(fn {_relay_id, %{metas: metas}} ->
+          Enum.any?(metas, fn meta ->
+            Map.get(meta, :token_id) == socket.assigns.token.id
+          end)
         end)
 
       {:noreply, assign(socket, connected?: connected?)}

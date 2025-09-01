@@ -270,8 +270,7 @@ defmodule API.ResourceControllerTest do
                }
              }
 
-      assert resource = Repo.get(Resource, resource.id)
-      assert resource.deleted_at
+      refute Repo.get(Resource, resource.id)
     end
   end
 end

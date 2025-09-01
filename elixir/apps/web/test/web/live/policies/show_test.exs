@@ -75,21 +75,19 @@ defmodule Web.Live.Policies.ShowTest do
                }}}
   end
 
-  test "renders deleted policy without action buttons", %{
+  test "raises NotFoundError for deleted policy", %{
     account: account,
     policy: policy,
     identity: identity,
     conn: conn
   } do
-    policy = Fixtures.Policies.delete_policy(policy)
+    {:ok, deleted_policy} = Fixtures.Policies.delete_policy(policy)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(identity)
-      |> live(~p"/#{account}/policies/#{policy}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+      |> live(~p"/#{account}/policies/#{deleted_policy}")
+    end
   end
 
   test "renders breadcrumbs item", %{
@@ -253,14 +251,7 @@ defmodule Web.Live.Policies.ShowTest do
            |> render_click() ==
              {:error, {:live_redirect, %{to: ~p"/#{account}/policies", kind: :push}}}
 
-    assert Repo.get(Domain.Policies.Policy, policy.id).deleted_at
-
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/policies/#{policy}")
-
-    assert html =~ "(deleted)"
+    refute Repo.get(Domain.Policies.Policy, policy.id)
   end
 
   test "allows disabling and enabling policy", %{

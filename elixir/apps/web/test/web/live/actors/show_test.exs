@@ -16,23 +16,21 @@ defmodule Web.Live.Actors.ShowTest do
                }}}
   end
 
-  test "renders deleted actor without action buttons", %{conn: conn} do
+  test "raises NotFoundError for deleted actor", %{conn: conn} do
     account = Fixtures.Accounts.create_account()
 
-    actor =
+    deleted_actor =
       Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       |> Fixtures.Actors.delete()
 
     auth_actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
     auth_identity = Fixtures.Auth.create_identity(account: account, actor: auth_actor)
 
-    {:ok, _lv, html} =
+    assert_raise Web.LiveErrors.NotFoundError, fn ->
       conn
       |> authorize_conn(auth_identity)
-      |> live(~p"/#{account}/actors/#{actor}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
+      |> live(~p"/#{account}/actors/#{deleted_actor}")
+    end
   end
 
   test "renders breadcrumbs item", %{conn: conn} do
@@ -92,7 +90,8 @@ defmodule Web.Live.Actors.ShowTest do
 
     Domain.Config.put_env_override(:test_pid, self())
     :ok = Domain.Clients.Presence.Actor.subscribe(actor.id)
-    assert Domain.Clients.Presence.connect(client) == :ok
+    client_token = Fixtures.Tokens.create_client_token(account: account, actor: actor)
+    assert Domain.Clients.Presence.connect(client, client_token.id) == :ok
     assert_receive %Phoenix.Socket.Broadcast{topic: "presences:actor_clients:" <> _}
     assert_receive {:live_table_reloaded, "clients"}, 500
 
@@ -145,7 +144,7 @@ defmodule Web.Live.Actors.ShowTest do
              "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
-  test "renders flows even for deleted policies", %{
+  test "does not render flows for deleted policies", %{
     conn: conn
   } do
     account = Fixtures.Accounts.create_account()
@@ -167,21 +166,11 @@ defmodule Web.Live.Actors.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/#{actor}")
 
-    [row] =
+    [] =
       lv
       |> element("#flows")
       |> render()
       |> table_to_map()
-
-    assert row["authorized"]
-    assert row["policy"] =~ flow.policy.actor_group.name
-    assert row["policy"] =~ flow.policy.resource.name
-
-    assert row["client"] ==
-             "#{flow.client.name} #{client.last_seen_remote_ip}"
-
-    assert row["gateway"] ==
-             "#{flow.gateway.group.name}-#{flow.gateway.name} #{flow.gateway.last_seen_remote_ip}"
   end
 
   test "does not render flows for deleted policy assocs", %{
@@ -699,7 +688,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -732,7 +721,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
     end
 
     test "allows editing actors", %{
@@ -771,7 +760,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      assert Repo.get(Domain.Actors.Actor, actor.id).deleted_at
+      refute Repo.get(Domain.Actors.Actor, actor.id)
     end
 
     test "allows deleting synced actors that don't have any identities left", %{
@@ -794,7 +783,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      assert Repo.get(Domain.Actors.Actor, actor.id).deleted_at
+      refute Repo.get(Domain.Actors.Actor, actor.id)
     end
 
     test "renders error when trying to delete last admin", %{
@@ -814,7 +803,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't delete the last admin of an account."
 
-      refute Repo.get(Domain.Actors.Actor, actor.id).deleted_at
+      assert Repo.get(Domain.Actors.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -997,7 +986,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       assert_redirect(lv, ~p"/#{account}/actors")
 
-      assert Repo.get(Domain.Actors.Actor, actor.id).deleted_at
+      refute Repo.get(Domain.Actors.Actor, actor.id)
     end
 
     test "allows disabling actors", %{
@@ -1128,7 +1117,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
     end
 
     test "allows revoking all tokens", %{
@@ -1161,7 +1150,7 @@ defmodule Web.Live.Actors.ShowTest do
              |> render()
              |> table_to_map() == []
 
-      assert Repo.get_by(Domain.Tokens.Token, id: token.id).deleted_at
+      refute Repo.get_by(Domain.Tokens.Token, id: token.id)
     end
   end
 end

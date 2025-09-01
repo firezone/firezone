@@ -65,7 +65,6 @@ defmodule API.Schemas.GatewayGroupToken do
   defmodule DeletedTokens do
     require OpenApiSpex
     alias OpenApiSpex.Schema
-    alias API.Schemas.GatewayGroupToken
 
     OpenApiSpex.schema(%{
       title: "DeletedGatewayGroupTokenListResponse",
@@ -73,20 +72,20 @@ defmodule API.Schemas.GatewayGroupToken do
       type: :object,
       properties: %{
         data: %Schema{
-          description: "Deleted Gateway Group Tokens",
-          type: :array,
-          items: GatewayGroupToken.Schema
+          type: :object,
+          properties: %{
+            deleted_count: %Schema{
+              type: :integer,
+              description: "Number of tokens that were deleted"
+            }
+          },
+          required: [:deleted_count]
         }
       },
       example: %{
-        "data" => [
-          %{
-            "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205"
-          },
-          %{
-            "id" => "6301d7d2-4938-4123-87de-282c01cca656"
-          }
-        ]
+        "data" => %{
+          "deleted_count" => 5
+        }
       }
     })
   end

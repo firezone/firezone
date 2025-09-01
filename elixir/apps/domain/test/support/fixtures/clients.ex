@@ -70,7 +70,7 @@ defmodule Domain.Fixtures.Clients do
         actor: [type: :account_admin_user]
       )
 
-    {:ok, client} = Clients.delete_client(client, subject)
+    {:ok, _client} = Clients.delete_client(client, subject)
     client
   end
 

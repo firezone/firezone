@@ -212,8 +212,8 @@ defmodule API.GatewayGroupController do
     subject = conn.assigns.subject
 
     with {:ok, gateway_group} <- Gateways.fetch_group_by_id(gateway_group_id, subject),
-         {:ok, deleted_tokens} <- Tokens.delete_tokens_for(gateway_group, subject) do
-      render(conn, :deleted_tokens, %{tokens: deleted_tokens})
+         {:ok, deleted_count} <- Tokens.delete_tokens_for(gateway_group, subject) do
+      render(conn, :deleted_tokens, %{count: deleted_count})
     end
   end
 end

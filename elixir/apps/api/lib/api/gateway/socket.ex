@@ -19,7 +19,7 @@ defmodule API.Gateway.Socket do
       attrs = Map.take(attrs, ~w[external_id name public_key])
 
       with {:ok, group, token} <- Gateways.authenticate(encoded_token, context),
-           {:ok, gateway} <- Gateways.upsert_gateway(group, token, attrs, context) do
+           {:ok, gateway} <- Gateways.upsert_gateway(group, attrs, context) do
         OpenTelemetry.Tracer.set_attributes(%{
           token_id: token.id,
           gateway_id: gateway.id,

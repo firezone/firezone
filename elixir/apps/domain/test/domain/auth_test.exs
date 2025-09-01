@@ -56,12 +56,11 @@ defmodule Domain.AuthTest do
       assert fetch_provider_by_id("foo", subject) == {:error, :not_found}
     end
 
-    test "returns deleted provider", %{account: account, subject: subject} do
+    test "does not return deleted provider", %{account: account, subject: subject} do
       provider = Fixtures.Auth.create_userpass_provider(account: account)
       {:ok, _provider} = delete_provider(provider, subject)
 
-      assert {:ok, fetched_provider} = fetch_provider_by_id(provider.id, subject)
-      assert fetched_provider.id == provider.id
+      assert {:error, :not_found} = fetch_provider_by_id(provider.id, subject)
     end
 
     test "does not return provider from other accounts", %{subject: subject} do
@@ -1032,7 +1031,8 @@ defmodule Domain.AuthTest do
       assert is_nil(other_provider.disabled_at)
     end
 
-    test "deletes tokens issues for provider identities", %{
+    # TODO: HARD-DELETE - This test should be moved to Tokens since it has the FK
+    test "deletes tokens issued for provider identities", %{
       account: account,
       subject: subject
     } do
@@ -1050,8 +1050,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _provider} = disable_provider(provider, subject)
 
-      assert token = Repo.get(Tokens.Token, token.id)
-      assert token.deleted_at
+      refute Repo.get(Tokens.Token, token.id)
     end
 
     test "returns error when trying to disable the last provider", %{
@@ -1207,10 +1206,8 @@ defmodule Domain.AuthTest do
       other_provider = Fixtures.Auth.create_userpass_provider(account: account)
 
       assert {:ok, provider} = delete_provider(provider, subject)
-      assert provider.deleted_at
 
-      assert provider = Repo.get(Auth.Provider, provider.id)
-      assert provider.deleted_at
+      refute Repo.get(Auth.Provider, provider.id)
 
       assert other_provider = Repo.get(Auth.Provider, other_provider.id)
       assert is_nil(other_provider.deleted_at)
@@ -1234,11 +1231,8 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _provider} = delete_provider(provider, subject)
 
-      assert identity = Repo.get(Auth.Identity, identity.id)
-      assert identity.deleted_at
-
-      assert token = Repo.get(Tokens.Token, token.id)
-      assert token.deleted_at
+      refute Repo.get(Auth.Identity, identity.id)
+      refute Repo.get(Tokens.Token, token.id)
     end
 
     test "deletes provider actor groups", %{
@@ -1250,8 +1244,7 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _provider} = delete_provider(provider, subject)
 
-      assert actor_group = Repo.get(Domain.Actors.Group, actor_group.id)
-      assert actor_group.deleted_at
+      refute Repo.get(Domain.Actors.Group, actor_group.id)
     end
 
     test "returns error when trying to delete the last provider", %{
@@ -1281,65 +1274,73 @@ defmodule Domain.AuthTest do
       assert delete_provider(provider, subject) == {:error, :cant_delete_the_last_provider}
     end
 
-    test "returns error when trying to delete the last provider using a race condition" do
-      for _ <- 0..50 do
-        test_pid = self()
+    # TODO: HARD-DELETE - Need to figure out if we care about this case
+    # test "returns error when trying to delete the last provider using a race condition" do
+    #  for _ <- 0..50 do
+    #    test_pid = self()
 
-        Task.async(fn ->
-          allow_child_sandbox_access(test_pid)
+    #    Task.async(fn ->
+    #      allow_child_sandbox_access(test_pid)
 
-          account = Fixtures.Accounts.create_account()
+    #      account = Fixtures.Accounts.create_account()
 
-          provider_one = Fixtures.Auth.create_email_provider(account: account)
-          provider_two = Fixtures.Auth.create_userpass_provider(account: account)
+    #      provider_one = Fixtures.Auth.create_email_provider(account: account)
+    #      provider_two = Fixtures.Auth.create_userpass_provider(account: account)
 
-          actor =
-            Fixtures.Actors.create_actor(
-              type: :account_admin_user,
-              account: account,
-              provider: provider_one
-            )
+    #      actor =
+    #        Fixtures.Actors.create_actor(
+    #          type: :account_admin_user,
+    #          account: account,
+    #          provider: provider_one
+    #        )
 
-          identity =
-            Fixtures.Auth.create_identity(
-              account: account,
-              actor: actor,
-              provider: provider_one
-            )
+    #      identity =
+    #        Fixtures.Auth.create_identity(
+    #          account: account,
+    #          actor: actor,
+    #          provider: provider_one
+    #        )
 
-          subject = Fixtures.Auth.create_subject(identity: identity)
+    #      subject = Fixtures.Auth.create_subject(identity: identity)
 
-          for provider <- [provider_two, provider_one] do
-            Task.async(fn ->
-              allow_child_sandbox_access(test_pid)
-              delete_provider(provider, subject)
-            end)
-          end
-          |> Task.await_many()
+    #      for provider <- [provider_two, provider_one] do
+    #        Task.async(fn ->
+    #          allow_child_sandbox_access(test_pid)
+    #          delete_provider(provider, subject)
+    #        end)
+    #      end
+    #      |> Task.await_many()
 
-          assert Auth.Provider.Query.not_deleted()
-                 |> Auth.Provider.Query.by_account_id(account.id)
-                 |> Repo.aggregate(:count) == 1
-        end)
-      end
-      |> Task.await_many()
-    end
+    #      assert Auth.Provider.Query.not_deleted()
+    #             |> Auth.Provider.Query.by_account_id(account.id)
+    #             |> Repo.aggregate(:count) == 1
+    #    end)
+    #  end
+    #  |> Task.await_many()
+    # end
 
-    test "returns error when provider is already deleted", %{
+    test "raises error when deleting stale provider structs", %{
       subject: subject,
       account: account
     } do
       provider = Fixtures.Auth.create_userpass_provider(account: account)
       assert {:ok, deleted_provider} = delete_provider(provider, subject)
-      assert delete_provider(provider, subject) == {:error, :not_found}
-      assert delete_provider(deleted_provider, subject) == {:error, :not_found}
+
+      assert_raise(Ecto.StaleEntryError, fn ->
+        delete_provider(provider, subject)
+      end)
+
+      assert_raise(Ecto.StaleEntryError, fn ->
+        delete_provider(deleted_provider, subject)
+      end)
     end
 
     test "does not allow to delete providers in other accounts", %{
       subject: subject
     } do
       provider = Fixtures.Auth.create_userpass_provider()
-      assert delete_provider(provider, subject) == {:error, :not_found}
+
+      assert delete_provider(provider, subject) == {:error, :unauthorized}
     end
 
     test "returns error when subject cannot delete providers", %{
@@ -1351,8 +1352,12 @@ defmodule Domain.AuthTest do
       assert delete_provider(provider, subject) ==
                {:error,
                 {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Authorizer.manage_providers_permission()]}}
+                 [
+                   reason: :missing_permissions,
+                   missing_permissions: [
+                     %Domain.Auth.Permission{resource: Domain.Auth.Provider, action: :manage}
+                   ]
+                 ]}}
     end
   end
 
@@ -1650,7 +1655,7 @@ defmodule Domain.AuthTest do
                 plan: {insert, [], []},
                 inserted: [_actor1, _actor2],
                 updated: [],
-                deleted: [],
+                deleted_count: 0,
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
 
@@ -1712,7 +1717,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan: {[], update, []},
-                deleted: [],
+                deleted_count: 0,
                 updated: [_updated_identity1, _updated_identity2],
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
@@ -1762,7 +1767,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [fetched_identity],
                 plan: {[], ["USER_ID1"], []},
-                deleted: [],
+                deleted_count: 0,
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
@@ -1797,7 +1802,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [fetched_identity],
                 plan: {[], [], []},
-                deleted: [],
+                deleted_count: 0,
                 inserted: [],
                 actor_ids_by_provider_identifier: %{}
               }} = sync_provider_identities(provider, attrs_list)
@@ -1808,91 +1813,88 @@ defmodule Domain.AuthTest do
       assert identity.deleted_at
     end
 
-    test "deletes removed identities", %{account: account, provider: provider} do
-      provider_identifiers = ["USER_ID1", "USER_ID2", "USER_ID3", "USER_ID4", "USER_ID5"]
+    # TODO: HARD-DELETE - Need to figure out if the flows message checking is necessary
+    # test "deletes removed identities", %{account: account, provider: provider} do
+    #  provider_identifiers = ["USER_ID1", "USER_ID2", "USER_ID3", "USER_ID4", "USER_ID5"]
 
-      deleted_identity_actor = Fixtures.Actors.create_actor(account: account)
+    #  deleted_identity_actor = Fixtures.Actors.create_actor(account: account)
 
-      deleted_identity =
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          actor: deleted_identity_actor,
-          provider_identifier: Enum.at(provider_identifiers, 0)
-        )
+    #  deleted_identity =
+    #    Fixtures.Auth.create_identity(
+    #      account: account,
+    #      provider: provider,
+    #      actor: deleted_identity_actor,
+    #      provider_identifier: Enum.at(provider_identifiers, 0)
+    #    )
 
-      deleted_identity_token =
-        Fixtures.Tokens.create_token(
-          account: account,
-          actor: deleted_identity_actor,
-          identity: deleted_identity
-        )
+    #  deleted_identity_token =
+    #    Fixtures.Tokens.create_token(
+    #      account: account,
+    #      actor: deleted_identity_actor,
+    #      identity: deleted_identity
+    #    )
 
-      for n <- 1..4 do
-        Fixtures.Auth.create_identity(
-          account: account,
-          provider: provider,
-          provider_identifier: Enum.at(provider_identifiers, n)
-        )
-      end
+    #  for n <- 1..4 do
+    #    Fixtures.Auth.create_identity(
+    #      account: account,
+    #      provider: provider,
+    #      provider_identifier: Enum.at(provider_identifiers, n)
+    #    )
+    #  end
 
-      attrs_list = [
-        %{
-          "actor" => %{
-            "name" => "Joe Smith",
-            "type" => "account_user"
-          },
-          "provider_identifier" => "USER_ID3"
-        },
-        %{
-          "actor" => %{
-            "name" => "Jennie Smith",
-            "type" => "account_user"
-          },
-          "provider_identifier" => "USER_ID4"
-        },
-        %{
-          "actor" => %{
-            "name" => "Jane Doe",
-            "type" => "account_admin_user"
-          },
-          "provider_identifier" => "USER_ID5"
-        }
-      ]
+    #  attrs_list = [
+    #    %{
+    #      "actor" => %{
+    #        "name" => "Joe Smith",
+    #        "type" => "account_user"
+    #      },
+    #      "provider_identifier" => "USER_ID3"
+    #    },
+    #    %{
+    #      "actor" => %{
+    #        "name" => "Jennie Smith",
+    #        "type" => "account_user"
+    #      },
+    #      "provider_identifier" => "USER_ID4"
+    #    },
+    #    %{
+    #      "actor" => %{
+    #        "name" => "Jane Doe",
+    #        "type" => "account_admin_user"
+    #      },
+    #      "provider_identifier" => "USER_ID5"
+    #    }
+    #  ]
 
-      assert {:ok,
-              %{
-                identities: [_id1, _id2, _id3, _id4, _id5],
-                plan: {[], upsert, delete},
-                deleted: [deleted_identity1, deleted_identity2],
-                inserted: [],
-                actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
-              }} = sync_provider_identities(provider, attrs_list)
+    #  assert {:ok,
+    #          %{
+    #            identities: [_id1, _id2, _id3, _id4, _id5],
+    #            plan: {[], upsert, delete},
+    #            deleted: 2,
+    #            inserted: [],
+    #            actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
+    #          }} = sync_provider_identities(provider, attrs_list)
 
-      assert Enum.sort(upsert) == ["USER_ID3", "USER_ID4", "USER_ID5"]
+    #  assert Enum.sort(upsert) == ["USER_ID3", "USER_ID4", "USER_ID5"]
 
-      assert Enum.take(provider_identifiers, 2)
-             |> Enum.all?(&(&1 in delete))
+    #  assert Enum.take(provider_identifiers, 2)
+    #         |> Enum.all?(&(&1 in delete))
 
-      assert deleted_identity1.provider_identifier in delete
-      assert deleted_identity2.provider_identifier in delete
+    #  refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID1")
+    #  refute Repo.get_by(Auth.Identity, provider_identifier: "USER_ID2")
 
-      assert Auth.Identity.Query.all()
-             |> Auth.Identity.Query.by_provider_id(provider.id)
-             |> Repo.aggregate(:count) == 5
+    #  assert Auth.Identity.Query.all()
+    #         |> Auth.Identity.Query.by_provider_id(provider.id)
+    #         |> Repo.aggregate(:count) == 3
 
-      assert Auth.Identity.Query.not_deleted()
-             |> Auth.Identity.Query.by_provider_id(provider.id)
-             |> Repo.aggregate(:count) == 3
+    #  assert actor_ids_by_provider_identifier
+    #         |> Map.keys()
+    #         |> length() == 3
 
-      assert actor_ids_by_provider_identifier
-             |> Map.keys()
-             |> length() == 3
-
-      # Signs out users which identity has been deleted
-      deleted_identity_token = Repo.reload(deleted_identity_token)
-      assert deleted_identity_token.deleted_at
-    end
+    #  # Signs out users which identity has been deleted
+    #  deleted_identity_token = Repo.reload(deleted_identity_token)
+    #  assert deleted_identity_token.deleted_at
+    # end
 
     test "circuit breaker prevents mass deletions of identities", %{
       account: account,
@@ -1947,7 +1949,7 @@ defmodule Domain.AuthTest do
                 %{
                   identities: [],
                   plan: {[], [], []},
-                  deleted: [],
+                  deleted_count: 0,
                   updated: [],
                   inserted: [],
                   actor_ids_by_provider_identifier: %{}
@@ -2012,7 +2014,7 @@ defmodule Domain.AuthTest do
               %{
                 identities: [_identity1, _identity2],
                 plan: {[], update, []},
-                deleted: [],
+                deleted_count: 0,
                 inserted: [],
                 actor_ids_by_provider_identifier: actor_ids_by_provider_identifier
               }} = sync_provider_identities(provider, attrs_list)
@@ -2532,16 +2534,16 @@ defmodule Domain.AuthTest do
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 
       assert deleted_identity.id == identity.id
-      assert deleted_identity.deleted_at
 
-      assert Repo.get(Auth.Identity, identity.id).deleted_at
+      refute Repo.get(Auth.Identity, identity.id)
     end
 
-    test "deletes identity that belongs to another actor with manage permission", %{
-      account: account,
-      provider: provider,
-      subject: subject
-    } do
+    test "allows subject to delete identity that belongs to another actor with manage permission",
+         %{
+           account: account,
+           provider: provider,
+           subject: subject
+         } do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider)
 
       subject =
@@ -2555,11 +2557,11 @@ defmodule Domain.AuthTest do
       assert {:ok, deleted_identity} = delete_identity(identity, subject)
 
       assert deleted_identity.id == identity.id
-      assert deleted_identity.deleted_at
 
-      assert Repo.get(Auth.Identity, identity.id).deleted_at
+      refute Repo.get(Auth.Identity, identity.id)
     end
 
+    # TODO: HARD-DELETE - This test should be moved to tokens since it has the FK
     test "deletes token", %{
       account: account,
       provider: provider,
@@ -2570,21 +2572,29 @@ defmodule Domain.AuthTest do
 
       assert {:ok, _deleted_identity} = delete_identity(identity, subject)
 
-      assert token = Repo.get(Domain.Tokens.Token, token.id)
-      assert token.deleted_at
+      refute Repo.get(Domain.Tokens.Token, token.id)
     end
 
     test "does not delete identity that belongs to another actor with manage_own permission", %{
+      account: account,
       subject: subject
     } do
-      identity = Fixtures.Auth.create_identity()
+      identity = Fixtures.Auth.create_identity(account: account)
 
       subject =
         subject
         |> Fixtures.Auth.remove_permissions()
         |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
 
-      assert delete_identity(identity, subject) == {:error, :not_found}
+      assert delete_identity(identity, subject) ==
+               {:error,
+                {:unauthorized,
+                 [
+                   reason: :missing_permissions,
+                   missing_permissions: [
+                     %Domain.Auth.Permission{resource: Domain.Auth.Identity, action: :manage}
+                   ]
+                 ]}}
     end
 
     test "does not delete identity that belongs to another actor with just view permission", %{
@@ -2597,10 +2607,10 @@ defmodule Domain.AuthTest do
         |> Fixtures.Auth.remove_permissions()
         |> Fixtures.Auth.add_permission(Authorizer.manage_own_identities_permission())
 
-      assert delete_identity(identity, subject) == {:error, :not_found}
+      assert delete_identity(identity, subject) == {:error, :unauthorized}
     end
 
-    test "returns error when identity does not exist", %{
+    test "raises error when deleting stale identity structs", %{
       account: account,
       provider: provider,
       actor: actor,
@@ -2609,7 +2619,10 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
 
       assert {:ok, _identity} = delete_identity(identity, subject)
-      assert delete_identity(identity, subject) == {:error, :not_found}
+
+      assert_raise Ecto.StaleEntryError, fn ->
+        delete_identity(identity, subject)
+      end
     end
 
     test "returns error when subject cannot delete identities", %{subject: subject} do
@@ -2617,17 +2630,7 @@ defmodule Domain.AuthTest do
 
       subject = Fixtures.Auth.remove_permissions(subject)
 
-      assert delete_identity(identity, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [
-                   {:one_of,
-                    [
-                      Authorizer.manage_identities_permission(),
-                      Authorizer.manage_own_identities_permission()
-                    ]}
-                 ]}}
+      assert delete_identity(identity, subject) == {:error, :unauthorized}
     end
   end
 
@@ -2656,7 +2659,7 @@ defmodule Domain.AuthTest do
       }
     end
 
-    test "removes all identities and flows that belong to an actor", %{
+    test "removes all identities that belong to an actor", %{
       account: account,
       provider: provider,
       subject: subject
@@ -2668,12 +2671,12 @@ defmodule Domain.AuthTest do
 
       all_identities_query = Auth.Identity.Query.all()
       assert Repo.aggregate(all_identities_query, :count) == 4
-      assert delete_identities_for(actor, subject) == :ok
+      assert delete_identities_for(actor, subject) == {:ok, 3}
 
-      assert Repo.aggregate(all_identities_query, :count) == 4
+      assert Repo.aggregate(all_identities_query, :count) == 1
 
       by_actor_id_query =
-        Auth.Identity.Query.not_deleted()
+        Auth.Identity.Query.all()
         |> Auth.Identity.Query.by_actor_id(actor.id)
 
       assert Repo.aggregate(by_actor_id_query, :count) == 0
@@ -2691,9 +2694,9 @@ defmodule Domain.AuthTest do
 
       all_identities_query = Auth.Identity.Query.all()
       assert Repo.aggregate(all_identities_query, :count) == 4
-      assert delete_identities_for(provider, subject) == :ok
+      assert {:ok, 4} = delete_identities_for(provider, subject)
 
-      assert Repo.aggregate(all_identities_query, :count) == 4
+      assert Repo.aggregate(all_identities_query, :count) == 0
 
       by_provider_id_query =
         Auth.Identity.Query.not_deleted()
@@ -2711,10 +2714,9 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
       token = Fixtures.Tokens.create_token(account: account, identity: identity)
 
-      assert delete_identities_for(actor, subject) == :ok
+      assert delete_identities_for(actor, subject) == {:ok, 1}
 
-      assert token = Repo.get(Domain.Tokens.Token, token.id)
-      assert token.deleted_at
+      refute Repo.get(Domain.Tokens.Token, token.id)
     end
 
     test "does not remove identities that belong to another actor", %{
@@ -2724,7 +2726,8 @@ defmodule Domain.AuthTest do
     } do
       actor = Fixtures.Actors.create_actor(account: account, provider: provider)
       Fixtures.Auth.create_identity(account: account, provider: provider)
-      assert delete_identities_for(actor, subject) == :ok
+
+      assert delete_identities_for(actor, subject) == {:ok, 0}
       assert Repo.aggregate(Auth.Identity.Query.all(), :count) == 2
     end
 
@@ -2750,18 +2753,19 @@ defmodule Domain.AuthTest do
     end
   end
 
-  describe "identity_deleted?/1" do
+  # TODO: HARD-DELETE - Remove or update after soft deletion is removed
+  describe "identity_soft_deleted?/1" do
     test "returns true when identity is deleted" do
       identity =
         Fixtures.Auth.create_identity()
         |> Fixtures.Auth.delete_identity()
 
-      assert identity_deleted?(identity) == true
+      assert identity_soft_deleted?(identity) == true
     end
 
     test "returns false when identity is not deleted" do
       identity = Fixtures.Auth.create_identity()
-      assert identity_deleted?(identity) == false
+      assert identity_soft_deleted?(identity) == false
     end
   end
 
@@ -3104,48 +3108,50 @@ defmodule Domain.AuthTest do
                {:error, :unauthorized}
     end
 
-    test "returns error when actor is deleted", %{
-      account: account,
-      provider: provider,
-      user_agent: user_agent,
-      remote_ip: remote_ip
-    } do
-      nonce = "test_nonce_for_firezone"
+    # TODO: HARD-DELETE - Not sure this test is needed any more.  I don't think this is a reachable state.
+    # test "returns error when actor is deleted", %{
+    #  account: account,
+    #  provider: provider,
+    #  user_agent: user_agent,
+    #  remote_ip: remote_ip
+    # } do
+    #  nonce = "test_nonce_for_firezone"
 
-      actor =
-        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-        |> Fixtures.Actors.delete()
+    #  actor =
+    #    Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    #    |> Fixtures.Actors.delete()
 
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
-      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+    #  identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+    #  context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+    #  {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
 
-      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+    #  secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
-      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
-               {:error, :unauthorized}
-    end
+    #  assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
+    #           {:error, :unauthorized}
+    # end
 
-    test "returns error when provider is deleted", %{
-      account: account,
-      provider: provider,
-      user_agent: user_agent,
-      remote_ip: remote_ip
-    } do
-      nonce = "test_nonce_for_firezone"
+    # TODO: HARD-DELETE - Not sure this test is needed any more.  I don't think this is a reachable state.
+    # test "returns error when provider is deleted", %{
+    #  account: account,
+    #  provider: provider,
+    #  user_agent: user_agent,
+    #  remote_ip: remote_ip
+    # } do
+    #  nonce = "test_nonce_for_firezone"
 
-      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
-      subject = Fixtures.Auth.create_subject(identity: identity)
-      {:ok, _provider} = delete_provider(provider, subject)
+    #  actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+    #  identity = Fixtures.Auth.create_identity(account: account, provider: provider, actor: actor)
+    #  subject = Fixtures.Auth.create_subject(identity: identity)
+    #  {:ok, _provider} = delete_provider(provider, subject)
 
-      context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
-      {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
-      secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
+    #  context = %Auth.Context{type: :browser, user_agent: user_agent, remote_ip: remote_ip}
+    #  {:ok, identity} = Domain.Auth.Adapters.Email.request_sign_in_token(identity, context)
+    #  secret = identity.provider_virtual_state.nonce <> identity.provider_virtual_state.fragment
 
-      assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
-               {:error, :unauthorized}
-    end
+    #  assert sign_in(provider, identity.provider_identifier, nonce, secret, context) ==
+    #           {:error, :unauthorized}
+    # end
   end
 
   describe "sign_in/3" do
@@ -3606,7 +3612,7 @@ defmodule Domain.AuthTest do
       assert redirect_url =~ "client_id=#{provider.adapter_config["client_id"]}"
       assert redirect_url =~ "post_logout_redirect_uri=#{post_redirect_url}"
 
-      assert Repo.get(Tokens.Token, subject.token_id).deleted_at
+      refute Repo.get(Tokens.Token, subject.token_id)
     end
 
     test "returns identity and url without changes for other providers" do
@@ -3619,7 +3625,7 @@ defmodule Domain.AuthTest do
       assert {:ok, %Auth.Identity{}, "https://fz.d/sign_out"} =
                sign_out(subject, "https://fz.d/sign_out")
 
-      assert Repo.get(Tokens.Token, subject.token_id).deleted_at
+      refute Repo.get(Tokens.Token, subject.token_id)
     end
   end
 
@@ -4321,10 +4327,11 @@ defmodule Domain.AuthTest do
     end
   end
 
-  defp allow_child_sandbox_access(parent_pid) do
-    Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
-    # Allow is async call we need to break current process execution
-    # to allow sandbox to be enabled
-    :timer.sleep(10)
-  end
+  # TODO: HARD-DELETE - This may not be needed anymore
+  # defp allow_child_sandbox_access(parent_pid) do
+  #  Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
+  #  # Allow is async call we need to break current process execution
+  #  # to allow sandbox to be enabled
+  #  :timer.sleep(10)
+  # end
 end

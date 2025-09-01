@@ -50,8 +50,7 @@ defmodule Domain.Fixtures.Gateways do
         actor: [type: :account_admin_user]
       )
 
-    {:ok, group} = Gateways.delete_group(group, subject)
-    group
+    Gateways.delete_group(group, subject)
   end
 
   def create_token(attrs \\ %{}) do
@@ -105,7 +104,8 @@ defmodule Domain.Fixtures.Gateways do
         |> create_group()
       end)
 
-    {token, attrs} =
+    # TODO: BRIAN - This can likely be removed
+    {_token, attrs} =
       pop_assoc_fixture(attrs, :token, fn assoc_attrs ->
         assoc_attrs
         |> Enum.into(%{account: account, group: group})
@@ -119,7 +119,7 @@ defmodule Domain.Fixtures.Gateways do
         |> Fixtures.Auth.build_context()
       end)
 
-    {:ok, gateway} = Gateways.upsert_gateway(group, token, attrs, context)
+    {:ok, gateway} = Gateways.upsert_gateway(group, attrs, context)
     %{gateway | online?: false}
   end
 

@@ -19,7 +19,7 @@ defmodule API.Relay.Socket do
       attrs = Map.take(attrs, ~w[ipv4 ipv6 name port])
 
       with {:ok, group, token} <- Relays.authenticate(encoded_token, context),
-           {:ok, relay} <- Relays.upsert_relay(group, token, attrs, context) do
+           {:ok, relay} <- Relays.upsert_relay(group, attrs, context) do
         OpenTelemetry.Tracer.set_attributes(%{
           token_id: token.id,
           relay_id: relay.id,

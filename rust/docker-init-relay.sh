@@ -43,15 +43,34 @@ fi
 if [ "${OTEL_METADATA_DISCOVERY_METHOD}" = "gce_metadata" ]; then
     echo "Using GCE metadata to set OTEL metadata"
 
-    instance_id=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/id" -H "Metadata-Flavor: Google" -s)           # i.e. 5832583187537235075
-    instance_name=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/name" -H "Metadata-Flavor: Google" -s)       # i.e. relay-m5k7
-    zone=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" -s | cut -d/ -f4)  # i.e. us-east-1
+    instance_id=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/id" -H "Metadata-Flavor: Google" -s)          # i.e. 5832583187537235075
+    instance_name=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/name" -H "Metadata-Flavor: Google" -s)      # i.e. relay-m5k7
+    zone=$(curl "http://metadata.google.internal/computeMetadata/v1/instance/zone" -H "Metadata-Flavor: Google" -s | cut -d/ -f4) # i.e. us-east-1
 
     # Source for attribute names:
     # - https://opentelemetry.io/docs/specs/semconv/attributes-registry/service/
     # - https://opentelemetry.io/docs/specs/semconv/attributes-registry/gcp/#gcp---google-compute-engine-gce-attributes:
     export OTEL_RESOURCE_ATTRIBUTES="service.instance.id=${instance_id},gcp.gce.instance.name=${instance_name},cloud.region=${zone}"
     echo "Discovered OTEL metadata: ${OTEL_RESOURCE_ATTRIBUTES}"
+fi
+
+# If eBPF offloading is enabled, we need the source address to use for cross-stack relaying
+if [ -n "${EBPF_OFFLOADING}" ]; then
+    if [ -z "${EBPF_INT4_ADDR}" ]; then
+        # Get the address of the EBPF_OFFLOADING interface used to reach the default gw
+        EBPF_INT4_ADDR=$(ip -4 addr show dev "${EBPF_OFFLOADING}" | awk '/inet / {print $2}' | cut -d/ -f1)
+        export EBPF_INT4_ADDR
+    fi
+    if [ -z "${EBPF_INT6_ADDR}" ]; then
+        # Get the address of the EBPF_OFFLOADING interface used to reach the default gw
+        EBPF_INT6_ADDR=$(ip -6 addr show dev "${EBPF_OFFLOADING}" scope global | awk '/inet6 / {print $2; exit}' | cut -d/ -f1)
+        export EBPF_INT6_ADDR
+    fi
+
+    if [ -z "${EBPF_INT4_ADDR}" ] && [ -z "${EBPF_INT6_ADDR}" ]; then
+        echo "Failed to determine IP address(es) of interface ${EBPF_OFFLOADING}"
+        exit 1
+    fi
 fi
 
 exec "$@"

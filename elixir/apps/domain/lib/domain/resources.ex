@@ -1,7 +1,8 @@
 defmodule Domain.Resources do
   alias Domain.{Repo, Auth}
-  alias Domain.{Accounts, Gateways, Policies}
+  alias Domain.{Accounts, Gateways}
   alias Domain.Resources.{Authorizer, Resource, Connection}
+  require Logger
 
   def fetch_resource_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
@@ -262,44 +263,28 @@ defmodule Domain.Resources do
   end
 
   def delete_resource(%Resource{type: :internet}, %Auth.Subject{}) do
-    {:error, :cannot_delete_internet_resource}
+    {:error, :cant_delete_internet_resource}
   end
 
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.not_deleted()
-      |> Resource.Query.by_id(resource.id)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch_and_update(Resource.Query,
-        with: fn resource ->
-          {_count, nil} =
-            Connection.Query.by_resource_id(resource.id)
-            |> Repo.delete_all()
-
-          Resource.Changeset.delete(resource)
-        end
-      )
-      |> case do
-        {:ok, resource} ->
-          {:ok, _policies} = Policies.delete_policies_for(resource, subject)
-          {:ok, resource}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    with :ok <- Authorizer.ensure_has_access_to(resource, subject) do
+      Repo.delete(resource)
     end
   end
 
+  # TODO: HARD-DELETE (shouldn't be needed)
   def delete_connections_for(%Gateways.Group{} = gateway_group, %Auth.Subject{} = subject) do
     Connection.Query.by_gateway_group_id(gateway_group.id)
     |> delete_connections(subject)
   end
 
+  # TODO: HARD-DELETE (shouldn't be needed)
   def delete_connections_for(%Resource{} = resource, %Auth.Subject{} = subject) do
     Connection.Query.by_resource_id(resource.id)
     |> delete_connections(subject)
   end
 
+  # TODO: HARD-DELETE (shouldn't be needed)
   defp delete_connections(queryable, subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
       {count, nil} =

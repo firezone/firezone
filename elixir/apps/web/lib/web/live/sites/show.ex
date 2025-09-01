@@ -488,17 +488,18 @@ defmodule Web.Sites.Show do
     do: handle_live_table_event(event, params, socket)
 
   def handle_event("revoke_all_tokens", _params, socket) do
-    {:ok, deleted_tokens} = Tokens.delete_tokens_for(socket.assigns.group, socket.assigns.subject)
+    {:ok, deleted_token_count} =
+      Tokens.delete_tokens_for(socket.assigns.group, socket.assigns.subject)
 
     socket =
       socket
-      |> put_flash(:info, "#{length(deleted_tokens)} token(s) were revoked.")
+      |> put_flash(:info, "#{deleted_token_count} token(s) were revoked.")
 
     {:noreply, socket}
   end
 
   def handle_event("delete", _params, socket) do
-    {:ok, _group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
+    {:ok, _deleted_group} = Gateways.delete_group(socket.assigns.group, socket.assigns.subject)
     {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites")}
   end
 

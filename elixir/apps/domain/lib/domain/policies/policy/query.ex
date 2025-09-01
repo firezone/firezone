@@ -5,6 +5,7 @@ defmodule Domain.Policies.Policy.Query do
     from(policies in Domain.Policies.Policy, as: :policies)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def not_deleted do
     all()
     |> where([policies: policies], is_nil(policies.deleted_at))
@@ -84,6 +85,7 @@ defmodule Domain.Policies.Policy.Query do
     })
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def delete(queryable) do
     queryable
     |> Ecto.Query.select([policies: policies], policies)
@@ -251,6 +253,7 @@ defmodule Domain.Policies.Policy.Query do
     {queryable, dynamic([policies: policies], not is_nil(policies.disabled_at))}
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def filter_deleted(queryable) do
     {queryable, dynamic([policies: policies], not is_nil(policies.deleted_at))}
   end

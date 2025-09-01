@@ -40,6 +40,7 @@ defmodule Domain.Gateways.Group.Changeset do
     |> unique_constraint(:name, name: :gateway_groups_account_id_name_managed_by_index)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
   def delete(%Gateways.Group{} = group) do
     group
     |> change()

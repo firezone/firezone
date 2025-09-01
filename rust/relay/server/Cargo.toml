@@ -16,7 +16,6 @@ bytecodec = { workspace = true }
 bytes = { workspace = true }
 clap = { workspace = true, features = ["derive", "env"] }
 derive_more = { workspace = true, features = ["from"] }
-ebpf-shared = { workspace = true, features = ["std"] }
 firezone-bin-shared = { workspace = true }
 firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
@@ -53,6 +52,7 @@ uuid = { workspace = true, features = ["v4"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 aya = { workspace = true, features = ["tokio"] }
 aya-log = { workspace = true }
+ebpf-shared = { workspace = true, features = ["std"] }
 
 [target.'cfg(target_os = "linux")'.build-dependencies]
 anyhow = "1"

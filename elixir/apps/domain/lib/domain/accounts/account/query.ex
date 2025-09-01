@@ -5,6 +5,7 @@ defmodule Domain.Accounts.Account.Query do
     from(accounts in Domain.Accounts.Account, as: :accounts)
   end
 
+  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
   def not_deleted(queryable \\ all()) do
     where(queryable, [accounts: accounts], is_nil(accounts.deleted_at))
   end

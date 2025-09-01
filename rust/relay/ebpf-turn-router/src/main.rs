@@ -27,7 +27,6 @@ use ref_mut_at::ref_mut_at;
 
 mod channel_data;
 mod checksum;
-mod config;
 mod error;
 mod ref_mut_at;
 mod stats;
@@ -68,7 +67,7 @@ static CHAN_TO_UDP_64: HashMap<ClientAndChannelV6, PortAndPeerV4> =
 static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
     HashMap::with_max_entries(NUM_ENTRIES, 0);
 
-// Per-CPU data structures to learn relay interface addresses
+// Per-CPU data structures to store relay interface addresses (configured from userspace)
 #[map]
 static INT_ADDR_V4: PerCpuArray<InterfaceAddressV4> = PerCpuArray::with_max_entries(1, 0);
 #[map]
@@ -80,18 +79,24 @@ pub fn handle_turn(ctx: XdpContext) -> u32 {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
 
         Error::InterfaceIpv4AddressAccessFailed
-        | Error::InterfaceIpv4AddressNotLearned
         | Error::InterfaceIpv6AddressAccessFailed
-        | Error::InterfaceIpv6AddressNotLearned
         | Error::PacketTooShort
         | Error::NotTurn
-        | Error::NoEntry(_)
         | Error::NotAChannelDataMessage
         | Error::UdpChecksumMissing
         | Error::Ipv4PacketWithOptions => {
             debug!(&ctx, "Passing packet to the stack: {}", e);
 
             xdp_action::XDP_PASS
+        }
+
+        Error::InterfaceIpv4AddressNotConfigured
+        | Error::PacketLoop
+        | Error::NoEntry(_)
+        | Error::InterfaceIpv6AddressNotConfigured => {
+            debug!(&ctx, "Dropping packet: {}", e);
+
+            xdp_action::XDP_DROP
         }
 
         Error::BadChannelDataLength | Error::XdpAdjustHeadFailed(_) => {
@@ -121,8 +126,6 @@ fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
-
-    learn_interface_ipv4_address(ipv4)?;
 
     if ipv4.proto != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -169,8 +172,6 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
-    learn_interface_ipv6_address(ipv6)?;
-
     if ipv6.next_hdr != IpProto::Udp {
         return Err(Error::NotUdp);
     }
@@ -204,42 +205,6 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     }
 
     Err(Error::NotTurn)
-}
-
-#[inline(always)]
-fn learn_interface_ipv4_address(ipv4: &Ipv4Hdr) -> Result<(), Error> {
-    let interface_addr = INT_ADDR_V4
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv4AddressAccessFailed)?;
-
-    let dst_ip = ipv4.dst_addr();
-
-    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
-    unsafe {
-        if (*interface_addr).get().is_none() {
-            (*interface_addr).set(dst_ip);
-        }
-    }
-
-    Ok(())
-}
-
-#[inline(always)]
-fn learn_interface_ipv6_address(ipv6: &Ipv6Hdr) -> Result<(), Error> {
-    let interface_addr = INT_ADDR_V6
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv6AddressAccessFailed)?;
-
-    let dst_ip = ipv6.dst_addr();
-
-    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
-    unsafe {
-        if (*interface_addr).get().is_none() {
-            (*interface_addr).set(dst_ip);
-        }
-    }
-
-    Ok(())
 }
 
 #[inline(always)]
@@ -451,6 +416,11 @@ fn handle_ipv4_udp_to_ipv4_channel(
     let new_ipv4_dst = client_and_channel.client_ip();
     let new_ipv4_len = old_ipv4_len + CdHdr::LEN as u16;
 
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv4_src == new_ipv4_dst {
+        return Err(Error::PacketLoop);
+    }
+
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
     ipv4.set_version(4); // IPv4
@@ -490,8 +460,7 @@ fn handle_ipv4_udp_to_ipv4_channel(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if old_udp_check == 0 || !crate::config::udp_checksum_enabled() {
+    if old_udp_check == 0 {
         // No checksum is valid for UDP IPv4 - we didn't write it, but maybe a middlebox did
         udp.set_check(0);
     } else {
@@ -570,6 +539,12 @@ fn handle_ipv4_udp_to_ipv6_channel(
         )
     };
 
+    // Refuse to compute full UDP checksum.
+    // We forged these packets, so something's wrong if this is zero.
+    if old_udp_check == 0 {
+        return Err(Error::UdpChecksumMissing);
+    }
+
     //
     // 1. Ethernet header
     //
@@ -587,6 +562,11 @@ fn handle_ipv4_udp_to_ipv6_channel(
     let new_ipv6_src = get_interface_ipv6_address()?;
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv4_len - Ipv4Hdr::LEN as u16 + CdHdr::LEN as u16;
+
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv6_dst == new_ipv6_src {
+        return Err(Error::PacketLoop);
+    }
 
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
@@ -618,29 +598,24 @@ fn handle_ipv4_udp_to_ipv6_channel(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if !crate::config::udp_checksum_enabled() {
-        udp.set_check(0);
-    } else {
-        udp.set_check(
-            ChecksumUpdate::new(old_udp_check)
-                .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
-                .remove_u32(u32::from_be_bytes(old_ipv4_dst.octets()))
-                .remove_u16(old_udp_src)
-                .remove_u16(old_udp_dst)
-                .remove_u16(old_udp_len)
-                .remove_u16(old_udp_len)
-                .add_u128(u128::from_be_bytes(new_ipv6_src.octets()))
-                .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
-                .add_u16(new_udp_src)
-                .add_u16(new_udp_dst)
-                .add_u16(new_udp_len)
-                .add_u16(new_udp_len)
-                .add_u16(channel_number)
-                .add_u16(channel_data_length)
-                .into_udp_checksum(),
-        );
-    }
+    udp.set_check(
+        ChecksumUpdate::new(old_udp_check)
+            .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
+            .remove_u32(u32::from_be_bytes(old_ipv4_dst.octets()))
+            .remove_u16(old_udp_src)
+            .remove_u16(old_udp_dst)
+            .remove_u16(old_udp_len)
+            .remove_u16(old_udp_len)
+            .add_u128(u128::from_be_bytes(new_ipv6_src.octets()))
+            .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
+            .add_u16(new_udp_src)
+            .add_u16(new_udp_dst)
+            .add_u16(new_udp_len)
+            .add_u16(new_udp_len)
+            .add_u16(channel_number)
+            .add_u16(channel_data_length)
+            .into_udp_checksum(),
+    );
 
     //
     // 4. Channel data header
@@ -704,12 +679,6 @@ fn handle_ipv4_channel_to_ipv4_udp(
         )
     };
 
-    // Refuse to compute full UDP checksum.
-    // We forged these packets, so something's wrong if this is zero.
-    if old_udp_check == 0 {
-        return Err(Error::UdpChecksumMissing);
-    }
-
     let (channel_number, channel_data_length) = {
         // SAFETY: The offset must point to the start of a valid `CdHdr`.
         let old_cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
@@ -736,6 +705,11 @@ fn handle_ipv4_channel_to_ipv4_udp(
     let new_ipv4_src = old_ipv4_dst; // Swap source and destination
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_ipv4_len - CdHdr::LEN as u16;
+
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv4_src == new_ipv4_dst {
+        return Err(Error::PacketLoop);
+    }
 
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
@@ -775,8 +749,7 @@ fn handle_ipv4_channel_to_ipv4_udp(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if old_udp_check == 0 || !crate::config::udp_checksum_enabled() {
+    if old_udp_check == 0 {
         // No checksum is valid for UDP IPv4 - we didn't write it, but maybe a middlebox did
         udp.set_check(0);
     } else {
@@ -884,6 +857,11 @@ fn handle_ipv4_channel_to_ipv6_udp(
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_udp_len = old_udp_len - CdHdr::LEN as u16;
 
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv6_src == new_ipv6_dst {
+        return Err(Error::PacketLoop);
+    }
+
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
     ipv6.set_version(6); // IPv6
@@ -910,29 +888,24 @@ fn handle_ipv4_channel_to_ipv6_udp(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if !crate::config::udp_checksum_enabled() {
-        udp.set_check(0);
-    } else {
-        udp.set_check(
-            ChecksumUpdate::new(old_udp_check)
-                .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
-                .remove_u32(u32::from_be_bytes(old_ipv4_dst.octets()))
-                .remove_u16(old_udp_src)
-                .remove_u16(old_udp_dst)
-                .remove_u16(old_udp_len)
-                .remove_u16(old_udp_len)
-                .remove_u16(channel_number)
-                .remove_u16(channel_data_length)
-                .add_u128(u128::from_be_bytes(new_ipv6_src.octets()))
-                .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
-                .add_u16(new_udp_src)
-                .add_u16(new_udp_dst)
-                .add_u16(new_udp_len)
-                .add_u16(new_udp_len)
-                .into_udp_checksum(),
-        );
-    }
+    udp.set_check(
+        ChecksumUpdate::new(old_udp_check)
+            .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
+            .remove_u32(u32::from_be_bytes(old_ipv4_dst.octets()))
+            .remove_u16(old_udp_src)
+            .remove_u16(old_udp_dst)
+            .remove_u16(old_udp_len)
+            .remove_u16(old_udp_len)
+            .remove_u16(channel_number)
+            .remove_u16(channel_data_length)
+            .add_u128(u128::from_be_bytes(new_ipv6_src.octets()))
+            .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
+            .add_u16(new_udp_src)
+            .add_u16(new_udp_dst)
+            .add_u16(new_udp_len)
+            .add_u16(new_udp_len)
+            .into_udp_checksum(),
+    );
 
     Ok(())
 }
@@ -1008,6 +981,11 @@ fn handle_ipv6_udp_to_ipv6_channel(
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv6_len + CdHdr::LEN as u16;
 
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv6_src == new_ipv6_dst {
+        return Err(Error::PacketLoop);
+    }
+
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
     // Set fields explicitly to avoid reading potentially corrupted memory
@@ -1038,27 +1016,22 @@ fn handle_ipv6_udp_to_ipv6_channel(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if !crate::config::udp_checksum_enabled() {
-        udp.set_check(0);
-    } else {
-        udp.set_check(
-            ChecksumUpdate::new(old_udp_check)
-                .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
-                .remove_u16(old_udp_src)
-                .remove_u16(old_udp_dst)
-                .remove_u16(old_udp_len)
-                .remove_u16(old_udp_len)
-                .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
-                .add_u16(new_udp_src)
-                .add_u16(new_udp_dst)
-                .add_u16(new_udp_len)
-                .add_u16(new_udp_len)
-                .add_u16(channel_number)
-                .add_u16(channel_data_length)
-                .into_udp_checksum(),
-        );
-    }
+    udp.set_check(
+        ChecksumUpdate::new(old_udp_check)
+            .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
+            .remove_u16(old_udp_src)
+            .remove_u16(old_udp_dst)
+            .remove_u16(old_udp_len)
+            .remove_u16(old_udp_len)
+            .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
+            .add_u16(new_udp_src)
+            .add_u16(new_udp_dst)
+            .add_u16(new_udp_len)
+            .add_u16(new_udp_len)
+            .add_u16(channel_number)
+            .add_u16(channel_data_length)
+            .into_udp_checksum(),
+    );
 
     //
     // 4. Channel data header
@@ -1129,6 +1102,11 @@ fn handle_ipv6_udp_to_ipv4_channel(
     let new_udp_len = old_udp_len + CdHdr::LEN as u16;
     let new_ipv4_len = Ipv4Hdr::LEN as u16 + new_udp_len;
 
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv4_dst == new_ipv4_src {
+        return Err(Error::PacketLoop);
+    }
+
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
     ipv4.set_version(4);
@@ -1164,29 +1142,24 @@ fn handle_ipv6_udp_to_ipv4_channel(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if !crate::config::udp_checksum_enabled() {
-        udp.set_check(0);
-    } else {
-        udp.set_check(
-            ChecksumUpdate::new(old_udp_check)
-                .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
-                .remove_u128(u128::from_be_bytes(old_ipv6_dst.octets()))
-                .remove_u16(old_udp_src)
-                .remove_u16(old_udp_dst)
-                .remove_u16(old_udp_len)
-                .remove_u16(old_udp_len)
-                .add_u32(u32::from_be_bytes(new_ipv4_src.octets()))
-                .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
-                .add_u16(new_udp_src)
-                .add_u16(new_udp_dst)
-                .add_u16(new_udp_len)
-                .add_u16(new_udp_len)
-                .add_u16(channel_number)
-                .add_u16(channel_data_length)
-                .into_udp_checksum(),
-        );
-    }
+    udp.set_check(
+        ChecksumUpdate::new(old_udp_check)
+            .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
+            .remove_u128(u128::from_be_bytes(old_ipv6_dst.octets()))
+            .remove_u16(old_udp_src)
+            .remove_u16(old_udp_dst)
+            .remove_u16(old_udp_len)
+            .remove_u16(old_udp_len)
+            .add_u32(u32::from_be_bytes(new_ipv4_src.octets()))
+            .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
+            .add_u16(new_udp_src)
+            .add_u16(new_udp_dst)
+            .add_u16(new_udp_len)
+            .add_u16(new_udp_len)
+            .add_u16(channel_number)
+            .add_u16(channel_data_length)
+            .into_udp_checksum(),
+    );
 
     //
     // 4. Channel data header
@@ -1280,6 +1253,11 @@ fn handle_ipv6_channel_to_ipv6_udp(
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_ipv6_len = old_ipv6_len - CdHdr::LEN as u16;
 
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv6_src == new_ipv6_dst {
+        return Err(Error::PacketLoop);
+    }
+
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
     ipv6.set_version(6); // IPv6
@@ -1308,27 +1286,22 @@ fn handle_ipv6_channel_to_ipv6_udp(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if !crate::config::udp_checksum_enabled() {
-        udp.set_check(0);
-    } else {
-        udp.set_check(
-            ChecksumUpdate::new(old_udp_check)
-                .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
-                .remove_u16(old_udp_src)
-                .remove_u16(old_udp_dst)
-                .remove_u16(old_udp_len)
-                .remove_u16(old_udp_len)
-                .remove_u16(channel_number)
-                .remove_u16(channel_data_length)
-                .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
-                .add_u16(new_udp_src)
-                .add_u16(new_udp_dst)
-                .add_u16(new_udp_len)
-                .add_u16(new_udp_len)
-                .into_udp_checksum(),
-        );
-    }
+    udp.set_check(
+        ChecksumUpdate::new(old_udp_check)
+            .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
+            .remove_u16(old_udp_src)
+            .remove_u16(old_udp_dst)
+            .remove_u16(old_udp_len)
+            .remove_u16(old_udp_len)
+            .remove_u16(channel_number)
+            .remove_u16(channel_data_length)
+            .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
+            .add_u16(new_udp_src)
+            .add_u16(new_udp_dst)
+            .add_u16(new_udp_len)
+            .add_u16(new_udp_len)
+            .into_udp_checksum(),
+    );
 
     adjust_head(ctx, NET_SHRINK)?;
 
@@ -1400,6 +1373,11 @@ fn handle_ipv6_channel_to_ipv4_udp(
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_udp_len - CdHdr::LEN as u16 + Ipv4Hdr::LEN as u16;
 
+    // Check for packet loop - would we be sending to ourselves?
+    if new_ipv4_src == new_ipv4_dst {
+        return Err(Error::PacketLoop);
+    }
+
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
     ipv4.set_version(4);
@@ -1434,29 +1412,24 @@ fn handle_ipv6_channel_to_ipv4_udp(
 
     // Incrementally update UDP checksum
 
-    // TODO: Remove conditional checksums once we can test this fully in CI
-    if !crate::config::udp_checksum_enabled() {
-        udp.set_check(0);
-    } else {
-        udp.set_check(
-            ChecksumUpdate::new(old_udp_check)
-                .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
-                .remove_u128(u128::from_be_bytes(old_ipv6_dst.octets()))
-                .remove_u16(old_udp_src)
-                .remove_u16(old_udp_dst)
-                .remove_u16(old_udp_len)
-                .remove_u16(old_udp_len)
-                .remove_u16(channel_number)
-                .remove_u16(channel_data_length)
-                .add_u32(u32::from_be_bytes(new_ipv4_src.octets()))
-                .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
-                .add_u16(new_udp_src)
-                .add_u16(new_udp_dst)
-                .add_u16(new_udp_len)
-                .add_u16(new_udp_len)
-                .into_udp_checksum(),
-        );
-    }
+    udp.set_check(
+        ChecksumUpdate::new(old_udp_check)
+            .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
+            .remove_u128(u128::from_be_bytes(old_ipv6_dst.octets()))
+            .remove_u16(old_udp_src)
+            .remove_u16(old_udp_dst)
+            .remove_u16(old_udp_len)
+            .remove_u16(old_udp_len)
+            .remove_u16(channel_number)
+            .remove_u16(channel_data_length)
+            .add_u32(u32::from_be_bytes(new_ipv4_src.octets()))
+            .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
+            .add_u16(new_udp_src)
+            .add_u16(new_udp_dst)
+            .add_u16(new_udp_len)
+            .add_u16(new_udp_len)
+            .into_udp_checksum(),
+    );
 
     adjust_head(ctx, NET_SHRINK)?;
 
@@ -1483,7 +1456,7 @@ fn get_interface_ipv4_address() -> Result<Ipv4Addr, Error> {
     // SAFETY: This comes from a per-cpu data structure so we can safely access it.
     let addr = unsafe { *interface_addr };
 
-    addr.get().ok_or(Error::InterfaceIpv4AddressNotLearned)
+    addr.get().ok_or(Error::InterfaceIpv4AddressNotConfigured)
 }
 
 fn get_interface_ipv6_address() -> Result<Ipv6Addr, Error> {
@@ -1494,7 +1467,7 @@ fn get_interface_ipv6_address() -> Result<Ipv6Addr, Error> {
     // SAFETY: This comes from a per-cpu data structure so we can safely access it.
     let addr = unsafe { *interface_addr };
 
-    addr.get().ok_or(Error::InterfaceIpv6AddressNotLearned)
+    addr.get().ok_or(Error::InterfaceIpv6AddressNotConfigured)
 }
 
 /// Defines our panic handler.

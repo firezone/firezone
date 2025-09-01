@@ -18,8 +18,6 @@ defmodule Domain.Relays.Relay do
     field :last_seen_version, :string
     field :last_seen_at, :utc_datetime_usec
 
-    belongs_to :last_used_token, Domain.Tokens.Token
-
     field :stamp_secret, :string, virtual: true
 
     field :online?, :boolean, virtual: true
@@ -27,6 +25,7 @@ defmodule Domain.Relays.Relay do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :group, Domain.Relays.Group
 
+    # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
     timestamps()
   end

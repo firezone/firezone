@@ -45,8 +45,8 @@ defmodule API.GatewayGroupJSON do
   @doc """
   Render all deleted Gateway Group Tokens
   """
-  def deleted_tokens(%{tokens: tokens}) do
-    %{data: for(token <- tokens, do: %{id: token.id})}
+  def deleted_tokens(%{count: count}) do
+    %{data: %{deleted_count: count}}
   end
 
   defp data(%Gateways.Group{} = group) do

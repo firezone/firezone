@@ -219,8 +219,7 @@ defmodule API.ActorGroupControllerTest do
                }
              }
 
-      assert actor_group = Repo.get(Group, actor_group.id)
-      assert actor_group.deleted_at
+      refute Repo.get(Group, actor_group.id)
     end
   end
 end

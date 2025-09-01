@@ -4,7 +4,7 @@ defmodule Domain.Clients.Client.Changeset do
   alias Domain.{Version, Auth, Actors}
   alias Domain.Clients
 
-  @required_fields ~w[external_id last_used_token_id name public_key]a
+  @required_fields ~w[external_id name public_key]a
   @hardware_identifiers ~w[device_serial device_uuid identifier_for_vendor firebase_installation_id]a
   @upsert_fields @required_fields ++ @hardware_identifiers
   @update_fields ~w[name]a
@@ -12,6 +12,7 @@ defmodule Domain.Clients.Client.Changeset do
   # WireGuard base64-encoded string length
   @key_length 44
 
+  # TODO: Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target,
     do: {:unsafe_fragment, ~s/(account_id, actor_id, external_id) WHERE deleted_at IS NULL/}
 
@@ -20,7 +21,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> update([clients: clients],
       set: [
         public_key: fragment("EXCLUDED.public_key"),
-        last_used_token_id: fragment("EXCLUDED.last_used_token_id"),
         last_seen_user_agent: fragment("EXCLUDED.last_seen_user_agent"),
         last_seen_remote_ip: fragment("EXCLUDED.last_seen_remote_ip"),
         last_seen_remote_ip_location_region:
@@ -108,7 +108,6 @@ defmodule Domain.Clients.Client.Changeset do
     |> cast(attrs, @upsert_fields)
     |> put_default_value(:name, &generate_name/0)
     |> put_assocs(actor_or_identity)
-    |> put_change(:last_used_token_id, subject.token_id)
     |> put_change(:last_seen_user_agent, subject.context.user_agent)
     |> put_change(:last_seen_remote_ip, %Postgrex.INET{address: subject.context.remote_ip})
     |> put_change(:last_seen_remote_ip_location_region, subject.context.remote_ip_location_region)

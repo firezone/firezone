@@ -30,6 +30,22 @@ defmodule Domain.Tokens.Authorizer do
     []
   end
 
+  def ensure_has_access_to(%Token{} = token, %Subject{} = subject) do
+    cond do
+      # If token belongs to same actor, check own permission
+      subject.account.id == token.account_id and owns_token?(token, subject) ->
+        Domain.Auth.ensure_has_permissions(subject, manage_own_tokens_permission())
+
+      # Otherwise, check global manage permission
+      subject.account.id == token.account_id ->
+        Domain.Auth.ensure_has_permissions(subject, manage_tokens_permission())
+
+      # Different account
+      true ->
+        {:error, :unauthorized}
+    end
+  end
+
   @impl true
   def for_subject(queryable, %Subject{} = subject) do
     cond do
@@ -41,5 +57,9 @@ defmodule Domain.Tokens.Authorizer do
         |> Token.Query.by_account_id(subject.account.id)
         |> Token.Query.by_actor_id(subject.actor.id)
     end
+  end
+
+  defp owns_token?(token, subject) do
+    token.actor_id == subject.actor.id
   end
 end
