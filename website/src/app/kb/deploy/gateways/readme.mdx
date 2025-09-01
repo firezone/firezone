@@ -58,10 +58,13 @@ you'll need to make sure the following outbound traffic is allowed:
 | ---------------------------- | ------------------------------------- | ------------- | --------------- | --------------------------------------------------------------- |
 | api.firezone.dev             | `34.102.202.25`                       | `443`         | HTTPS/WebSocket | Control Plane API (IPv4)                                        |
 | api.firezone.dev             | `2600:1901:0:620b::`                  | `443`         | HTTPS/WebSocket | Control Plane API (IPv6)                                        |
+| sentry.firezone.dev          | `34.95.103.143`                       | `443`         | HTTPS           | Crash-reporting (IPv4), see [Telemetry](#telemetry)             |
+| sentry.firezone.dev          | `2600:1901:0:64bd::`                  | `443`         | HTTPS           | Crash-reporting (IPv6), see [Telemetry](#telemetry)             |
+| posthog.firezone.dev         | `34.95.103.143`                       | `443`         | HTTPS           | Feature-flag evaluation (IPv4)                                  |
+| posthog.firezone.dev         | `2600:1901:0:64bd::`                  | `443`         | HTTPS           | Feature-flag evaluation (IPv6)                                  |
 | N/A                          | See [relay-ips.json](/relay-ips.json) | `3478`        | STUN            | STUN protocol signaling                                         |
 | N/A                          | See [relay-ips.json](/relay-ips.json) | `49152-65535` | TURN            | TURN protocol channel data                                      |
 | github.com, www.firezone.dev | Varies                                | `443`         | HTTPS           | Only required for [Gateway upgrades](/kb/administer/upgrading). |
-| sentry.io                    | Varies                                | `443`         | HTTPS           | Crash-reporting, see [Telemetry](#telemetry)                    |
 
 #### Permissions
 
