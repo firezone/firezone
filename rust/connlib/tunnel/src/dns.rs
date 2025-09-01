@@ -8,6 +8,7 @@ use dns_types::{
 use firezone_logging::err_with_src;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
+use std::collections::{BTreeSet, VecDeque};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::{
@@ -40,6 +41,8 @@ pub struct StubResolver {
     /// All DNS resources we know about, indexed by the glob pattern they match against.
     dns_resources: BTreeMap<Pattern, Resource>,
     search_domain: Option<DomainName>,
+
+    events: VecDeque<Event>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -117,17 +120,53 @@ pub(crate) enum ResolveStrategy {
 
 impl Default for StubResolver {
     fn default() -> Self {
-        StubResolver {
-            fqdn_to_ips: Default::default(),
-            ips_to_fqdn: Default::default(),
-            ip_provider: IpProvider::for_resources(),
-            dns_resources: Default::default(),
-            search_domain: Default::default(),
-        }
+        StubResolver::new(Default::default())
     }
 }
 
 impl StubResolver {
+    pub(crate) fn new(records: BTreeSet<DnsResourceRecord>) -> Self {
+        let mut ips_to_fqdn = HashMap::default();
+        let mut fqdn_to_ips = BTreeMap::default();
+        let mut ip_provider = IpProvider::for_resources();
+
+        if !records.is_empty() {
+            tracing::info!(count = %records.len(), "Re-seeding records for DNS resources");
+
+            let num_ip4_records = records
+                .iter()
+                .flat_map(|r| &r.ips)
+                .filter(|ip| ip.is_ipv4())
+                .count();
+            let num_ip6_records = records
+                .iter()
+                .flat_map(|r| &r.ips)
+                .filter(|ip| ip.is_ipv6())
+                .count();
+
+            for record in records {
+                for ip in record.ips.clone() {
+                    ips_to_fqdn.insert(ip, (record.domain.clone(), record.resource));
+                }
+
+                fqdn_to_ips.insert((record.domain, record.resource), record.ips);
+            }
+
+            // Advance IP provider to make sure future addresses are unique.
+            let _ = ip_provider.get_n_ipv4(num_ip4_records);
+            let _ = ip_provider.get_n_ipv6(num_ip6_records);
+        }
+
+        StubResolver {
+            fqdn_to_ips,
+            ips_to_fqdn,
+            ip_provider,
+            dns_resources: Default::default(),
+            search_domain: Default::default(),
+            events: Default::default(),
+        }
+    }
+
     /// Attempts to resolve an IP to a given resource.
     ///
     /// Semantically, this is like a PTR query, i.e. we check whether we handed out this IP as part of answering a DNS query for one of our resources.
@@ -201,6 +240,8 @@ impl StubResolver {
         fqdn: dns_types::DomainName,
         resource: Resource,
     ) -> Vec<IpAddr> {
+        let mut records_changed = false;
+
         let ips = self
             .fqdn_to_ips
             .entry((fqdn.clone(), resource.id))
@@ -217,11 +258,17 @@ impl StubResolver {
 
                 tracing::debug!(domain = %fqdn, ?ips, "Assigning proxy IPs");
 
+                records_changed = true;
+
                 ips
             })
             .clone();
         for ip in &ips {
             self.ips_to_fqdn.insert(*ip, (fqdn.clone(), resource.id));
+        }
+
+        if records_changed {
+            self.events.push_back(Event::RecordsChanged(self.records()));
         }
 
         ips
@@ -321,6 +368,33 @@ impl StubResolver {
 
         self.search_domain = new_search_domain;
     }
+
+    pub fn poll_event(&mut self) -> Option<Event> {
+        self.events.pop_front()
+    }
+
+    fn records(&self) -> BTreeSet<DnsResourceRecord> {
+        self.fqdn_to_ips
+            .iter()
+            .map(|((name, resource), ips)| DnsResourceRecord {
+                domain: name.clone(),
+                resource: *resource,
+                ips: ips.clone(),
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug)]
+pub enum Event {
+    RecordsChanged(BTreeSet<DnsResourceRecord>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct DnsResourceRecord {
+    pub domain: DomainName,
+    pub resource: ResourceId,
+    pub ips: Vec<IpAddr>,
 }
 
 pub fn is_subdomain(name: &dns_types::DomainName, pattern: &str) -> bool {
@@ -737,6 +811,73 @@ mod tests {
 
         assert_eq!(response.response_code(), ResponseCode::NOERROR);
         assert_eq!(response.records().count(), 0);
+    }
+
+    #[test]
+    fn emits_new_records_on_assign() {
+        let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Dual,
+        );
+
+        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::A,
+        )) else {
+            panic!("Unexpected result")
+        };
+
+        let Event::RecordsChanged(records) = resolver.poll_event().unwrap();
+
+        assert_eq!(
+            records,
+            BTreeSet::from([DnsResourceRecord {
+                domain: "example.com".parse::<dns_types::DomainName>().unwrap(),
+                resource: ResourceId::from_u128(1),
+                ips: vec![
+                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 1)),
+                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 2)),
+                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 3)),
+                    IpAddr::from(Ipv4Addr::new(100, 96, 0, 4)),
+                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0)),
+                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 1)),
+                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 2)),
+                    IpAddr::from(Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 3)),
+                ]
+            }])
+        )
+    }
+
+    #[test]
+    fn repeated_queries_dont_emit_events() {
+        let mut resolver = StubResolver::default();
+
+        resolver.add_resource(
+            ResourceId::from_u128(1),
+            "example.com".to_owned(),
+            IpStack::Dual,
+        );
+
+        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::A,
+        )) else {
+            panic!("Unexpected result")
+        };
+
+        assert!(resolver.poll_event().is_some());
+
+        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+            "example.com".parse::<dns_types::DomainName>().unwrap(),
+            RecordType::A,
+        )) else {
+            panic!("Unexpected result")
+        };
+
+        assert!(resolver.poll_event().is_none());
     }
 }
 

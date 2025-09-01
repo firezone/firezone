@@ -7,7 +7,7 @@ use super::{
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{ClientState, proptest::*};
+use crate::{ClientState, DnsResourceRecord, proptest::*};
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
@@ -39,6 +39,12 @@ pub(crate) struct SimClient {
     ///
     /// This contains results from both, queries to DNS resources and non-resources.
     pub(crate) dns_records: HashMap<DomainName, Vec<IpAddr>>,
+
+    /// The current DNS resource records emitted by the client.
+    ///
+    /// In a real system, these would be cached on the local file system
+    /// or somewhere where they survive a restart.
+    pub(crate) dns_resource_record_cache: BTreeSet<DnsResourceRecord>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
     dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
@@ -95,7 +101,24 @@ impl SimClient {
             tcp_dns_client,
             tcp_client: crate::tests::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
+            dns_resource_record_cache: Default::default(),
         }
+    }
+
+    pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
+        let dns_resource_records = self.dns_resource_record_cache.clone();
+
+        // Overwrite the ClientState with a new key.
+        // This is effectively the same as restarting a client / signing out and in again.
+        //
+        // We keep all the state in `SimClient` which is equivalent to host system.
+        // That is where we cache resolved DNS names for example.
+        self.sut = ClientState::new(key.0, dns_resource_records, now);
+
+        self.search_domain = None;
+        self.dns_by_sentinel.clear();
+        self.ipv4_routes.clear();
+        self.ipv6_routes.clear();
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
@@ -473,7 +496,7 @@ impl RefClient {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self, now: Instant) -> SimClient {
-        let mut client_state = ClientState::new(self.key.0, now); // Cheating a bit here by reusing the key as seed.
+        let mut client_state = ClientState::new(self.key.0, Default::default(), now); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
@@ -564,6 +587,17 @@ impl RefClient {
         }
 
         table
+    }
+
+    pub(crate) fn restart(&mut self, key: PrivateKey) {
+        self.search_domain = None;
+        self.ipv4_routes.clear();
+        self.ipv6_routes.clear();
+
+        self.key = key;
+
+        self.reset_connections();
+        self.readd_all_resources();
     }
 
     pub(crate) fn reset_connections(&mut self) {
@@ -1101,6 +1135,10 @@ impl RefClient {
 
     pub(crate) fn all_resources(&self) -> Vec<Resource> {
         self.resources.clone()
+    }
+
+    pub(crate) fn system_dns_resolvers(&self) -> Vec<IpAddr> {
+        self.system_dns_resolvers.clone()
     }
 
     pub(crate) fn set_system_dns_resolvers(&mut self, servers: &Vec<IpAddr>) {

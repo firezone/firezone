@@ -116,6 +116,7 @@ jobs:
           rg --count --no-ignore "ICMP Error error=V6TimeExceeded" "$TESTCASES_DIR"
           rg --count --no-ignore "Forwarding query for DNS resource to corresponding site" "$TESTCASES_DIR"
           rg --count --no-ignore "Revoking resource authorization" "$TESTCASES_DIR"
+          rg --count --no-ignore "Re-seeding records for DNS resources" "$TESTCASES_DIR"
 
           # Make sure we are recovering from ICE disconnect
           rg --count --no-ignore "State change \(got new possible\): Disconnected -> Checking" "$TESTCASES_DIR"
