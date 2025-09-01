@@ -28,6 +28,10 @@ export default function Gateway() {
           always default to a single TUN thread. Using multiple threads can
           cause packet reordering which hurts TCP throughput performance.
         </ChangeItem>
+        <ChangeItem pull="10076">
+          Introduces graceful shutdown, allowing Clients to immediately switch
+          over a new Gateway instead of waiting for the ICE timeout (~15s).
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.15" date={new Date("2025-08-05")}>
         <ChangeItem pull="10109">

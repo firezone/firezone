@@ -272,7 +272,7 @@ impl Io {
         Poll::Pending
     }
 
-    fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
+    pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
         let mut datagrams = self.gso_queue.datagrams();
         let mut any_pending = false;
 

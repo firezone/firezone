@@ -79,6 +79,11 @@ impl GatewayState {
         self.node.public_key()
     }
 
+    pub fn shutdown(&mut self, now: Instant) {
+        self.peers.clear();
+        self.node.close_all(p2p_control::goodbye(), now);
+    }
+
     /// Handles packets received on the TUN device.
     pub(crate) fn handle_tun_input(
         &mut self,
@@ -142,9 +147,24 @@ impl GatewayState {
             .with_context(|| format!("No peer for connection {cid}"))?;
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
-            let Some(immediate_response) =
-                handle_p2p_control_packet(fz_p2p_control, peer, &mut self.buffered_events)
-            else {
+            let immediate_response = match fz_p2p_control.event_type() {
+                p2p_control::ASSIGNED_IPS_EVENT => {
+                    handle_assigned_ips_event(fz_p2p_control, peer, &mut self.buffered_events)
+                }
+                p2p_control::GOODBYE_EVENT => {
+                    self.peers.remove(&cid);
+                    self.node.remove_connection(cid, "received `goodbye`");
+
+                    None
+                }
+                code => {
+                    tracing::debug!(code = %code.into_u8(), "Unknown control protocol event");
+
+                    None
+                }
+            };
+
+            let Some(immediate_response) = immediate_response else {
                 return Ok(None);
             };
 
@@ -176,8 +196,9 @@ impl GatewayState {
         }
     }
 
-    pub fn cleanup_connection(&mut self, id: &ClientId) {
+    pub fn cleanup_connection(&mut self, id: &ClientId, now: Instant) {
         self.peers.remove(id);
+        self.node.close_connection(*id, p2p_control::goodbye(), now);
     }
 
     pub fn add_ice_candidate(
@@ -205,14 +226,16 @@ impl GatewayState {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%rid, %cid))]
-    pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId) {
+    pub fn remove_access(&mut self, cid: &ClientId, rid: &ResourceId, now: Instant) {
         let Some(peer) = self.peers.get_mut(cid) else {
             return;
         };
 
         peer.remove_resource(rid);
-        if peer.is_emptied() {
+        if peer.is_empty() {
             self.peers.remove(cid);
+            self.node
+                .close_connection(*cid, p2p_control::goodbye(), now);
         }
 
         tracing::debug!("Access removed");
@@ -384,7 +407,13 @@ impl GatewayState {
                     p.expire_resources(utc_now);
                     p.handle_timeout(now)
                 });
-                self.peers.retain(|_, p| !p.is_emptied());
+                let removed_peers = self.peers.extract_if(|_, p| p.is_empty());
+
+                for (id, _) in removed_peers {
+                    tracing::debug!(cid = %id, "Access to last resource for Client removed");
+
+                    self.node.close_connection(id, p2p_control::goodbye(), now);
+                }
 
                 self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL);
             }
@@ -491,48 +520,41 @@ impl GatewayState {
     }
 }
 
-fn handle_p2p_control_packet(
+fn handle_assigned_ips_event(
     fz_p2p_control: FzP2pControlSlice,
     peer: &ClientOnGateway,
     buffered_events: &mut VecDeque<GatewayEvent>,
 ) -> Option<IpPacket> {
     use p2p_control::dns_resource_nat;
 
-    match fz_p2p_control.event_type() {
-        p2p_control::ASSIGNED_IPS_EVENT => {
-            let Ok(req) = dns_resource_nat::decode_assigned_ips(fz_p2p_control)
-                .inspect_err(|e| tracing::debug!("{e:#}"))
-            else {
-                return None;
-            };
+    let Ok(req) = dns_resource_nat::decode_assigned_ips(fz_p2p_control)
+        .inspect_err(|e| tracing::debug!("{e:#}"))
+    else {
+        return None;
+    };
 
-            if !peer.is_allowed(req.resource) {
-                tracing::warn!(cid = %peer.id(), rid = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
+    if !peer.is_allowed(req.resource) {
+        tracing::warn!(cid = %peer.id(), rid = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
 
-                let packet = dns_resource_nat::domain_status(
-                    req.resource,
-                    req.domain,
-                    dns_resource_nat::NatStatus::Inactive,
-                )
-                .inspect_err(|e| tracing::warn!("Failed to create `DomainStatus` packet: {e:#}"))
-                .ok()?;
+        let packet = dns_resource_nat::domain_status(
+            req.resource,
+            req.domain,
+            dns_resource_nat::NatStatus::Inactive,
+        )
+        .inspect_err(|e| tracing::warn!("Failed to create `DomainStatus` packet: {e:#}"))
+        .ok()?;
 
-                return Some(packet);
-            }
-
-            // TODO: Should we throttle concurrent events for the same domain?
-
-            buffered_events.push_back(GatewayEvent::ResolveDns(ResolveDnsRequest {
-                domain: req.domain,
-                client: peer.id(),
-                resource: req.resource,
-                proxy_ips: req.proxy_ips,
-            }));
-        }
-        code => {
-            tracing::debug!(code = %code.into_u8(), "Unknown control protocol event");
-        }
+        return Some(packet);
     }
+
+    // TODO: Should we throttle concurrent events for the same domain?
+
+    buffered_events.push_back(GatewayEvent::ResolveDns(ResolveDnsRequest {
+        domain: req.domain,
+        client: peer.id(),
+        resource: req.resource,
+        proxy_ips: req.proxy_ips,
+    }));
 
     None
 }

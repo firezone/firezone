@@ -137,9 +137,10 @@ impl Eventloop {
         match command {
             Command::Stop => return Ok(ControlFlow::Break(())),
             Command::SetDns(dns) => self.tunnel.state_mut().update_system_resolvers(dns),
-            Command::SetDisabledResources(resources) => {
-                self.tunnel.state_mut().set_disabled_resources(resources)
-            }
+            Command::SetDisabledResources(resources) => self
+                .tunnel
+                .state_mut()
+                .set_disabled_resources(resources, Instant::now()),
             Command::SetTun(tun) => {
                 self.tunnel.set_tun(tun);
             }
@@ -284,7 +285,7 @@ impl Eventloop {
                 let state = self.tunnel.state_mut();
 
                 state.update_interface_config(interface);
-                state.set_resources(resources);
+                state.set_resources(resources, Instant::now());
                 state.update_relays(
                     BTreeSet::default(),
                     firezone_tunnel::turn(&relays),
@@ -292,10 +293,14 @@ impl Eventloop {
                 );
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
-                self.tunnel.state_mut().add_resource(resource);
+                self.tunnel
+                    .state_mut()
+                    .add_resource(resource, Instant::now());
             }
             IngressMessages::ResourceDeleted(resource) => {
-                self.tunnel.state_mut().remove_resource(resource);
+                self.tunnel
+                    .state_mut()
+                    .remove_resource(resource, Instant::now());
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
