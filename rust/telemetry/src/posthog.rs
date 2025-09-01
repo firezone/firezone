@@ -10,7 +10,7 @@ pub(crate) const API_KEY_ON_PREM: &str = "phc_4R9Ii6q4SEofVkH7LvajwuJ3nsGFhCj0Zl
 pub(crate) static RUNTIME: LazyLock<Runtime> = LazyLock::new(init_runtime);
 pub(crate) static CLIENT: LazyLock<reqwest::Result<reqwest::Client>> = LazyLock::new(init_client);
 
-pub(crate) const INGEST_HOST: &str = "us.i.posthog.com";
+pub(crate) const INGEST_HOST: &str = "posthog.firezone.dev";
 
 pub(crate) fn api_key_for_env(env: Env) -> Option<&'static str> {
     match env {
