@@ -135,7 +135,7 @@ fn main() {
         .expect("Failed to build tokio runtime");
 
     let mut telemetry = if args.telemetry {
-        let mut telemetry = Telemetry::new().expect("Failed to create telemetry client");
+        let mut telemetry = Telemetry::new();
 
         runtime.block_on(telemetry.start(
             args.api_url.as_str(),

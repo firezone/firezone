@@ -50,7 +50,7 @@ fn main() -> ExitCode {
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
 
-    let mut telemetry = Telemetry::new().expect("Failed to create telemetry client");
+    let mut telemetry = Telemetry::new();
 
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()

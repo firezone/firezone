@@ -29,7 +29,7 @@ fn main() -> ExitCode {
     let cli = Cli::parse();
 
     let mut telemetry = if cli.is_telemetry_allowed() {
-        Telemetry::new().expect("Failed to create telemetry client")
+        Telemetry::new()
     } else {
         Telemetry::disabled()
     };
