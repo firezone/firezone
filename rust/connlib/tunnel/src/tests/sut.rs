@@ -365,6 +365,32 @@ impl TunnelTest {
                     tracing::error!(%rid, "No gateway for resource");
                 }
             }
+            Transition::RestartClient(key) => {
+                // Copy current state that will be preserved.
+                let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
+                let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
+                let system_dns = ref_state.client.inner().system_dns_resolvers();
+                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
+                let all_resources = ref_state.client.inner().all_resources();
+                let disabled_resources = ref_state.client.inner().disabled_resources.clone();
+
+                state.client.exec_mut(|c| {
+                    c.restart(key, now);
+
+                    // Apply to new instance.
+                    c.sut.set_disabled_resources(disabled_resources, now);
+                    c.sut.update_interface_config(Interface {
+                        ipv4,
+                        ipv6,
+                        upstream_dns,
+                        search_domain: ref_state.client.inner().search_domain.clone(),
+                    });
+                    c.sut.update_system_resolvers(system_dns);
+                    c.sut.set_resources(all_resources, now);
+
+                    c.update_relays(iter::empty(), state.relays.iter(), now);
+                })
+            }
         };
         state.advance(ref_state, &mut buffered_transmits);
 
@@ -798,7 +824,6 @@ impl TunnelTest {
 
                 Ok(())
             }
-
             ClientEvent::ResourcesChanged { resources } => {
                 self.client.exec_mut(|c| {
                     c.resource_status = resources
@@ -835,6 +860,12 @@ impl TunnelTest {
                     c.ipv6_routes = config.ipv6_routes;
                     c.search_domain = config.search_domain
                 });
+
+                Ok(())
+            }
+            ClientEvent::DnsRecordsChanged { records } => {
+                self.client
+                    .exec_mut(|c| c.dns_resource_record_cache = records);
 
                 Ok(())
             }

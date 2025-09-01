@@ -8,7 +8,6 @@ pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
-use firezone_tunnel::ClientTunnel;
 use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -69,7 +68,8 @@ impl Session {
 
         let eventloop = handle.spawn(
             Eventloop::new(
-                ClientTunnel::new(tcp_socket_factory, udp_socket_factory),
+                tcp_socket_factory,
+                udp_socket_factory,
                 portal,
                 cmd_rx,
                 resource_list_sender,

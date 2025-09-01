@@ -29,6 +29,12 @@ export default function Apple() {
           Fixes a minor DNS cache bug where newly-added DNS resources may not
           resolve for a few seconds after showing up in the Resource List.
         </ChangeItem>
+        <ChangeItem pull="10104">
+          Fixes an issue where DNS resources would resolve to a different IP
+          after signing out and back into Firezone. This would break
+          connectivity for long-running services that don't re-resolve DNS, like
+          SSH sessions or mongoose.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-08-07")}>
         <ChangeItem pull="10143">

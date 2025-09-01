@@ -6,10 +6,13 @@ use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use firezone_tunnel::{ClientEvent, ClientTunnel, IpConfig, TunConfig};
+use firezone_tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig};
+use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
+use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::ops::ControlFlow;
 use std::pin::pin;
+use std::sync::Arc;
 use std::time::Instant;
 use std::{
     collections::BTreeSet,
@@ -20,6 +23,26 @@ use std::{
 use std::{future, mem};
 use tokio::sync::{mpsc, watch};
 use tun::Tun;
+
+/// In-memory cache for DNS resource records.
+///
+/// This is cached in a `static` to ensure it persists across sessions but gets cleared
+/// once the process stops.
+///
+/// The ideal lifetime of this cache would be that of the current "boot session" of the computer.
+/// That would ensure that network connections to IPs handed out by the stub resolver will
+/// always point to the same resource.
+///
+/// On Linux and Windows, the process is a background-service and needs to be explicitly stopped.
+/// Therefore, this will most likely outlive any other network connection unless the user messes with it.
+///
+/// On MacOS, iOS and Android, the OS manages the background-service for us.
+/// Thus, while being disconnected, the OS may terminate the process and therefore clear this cache.
+/// In most cases, the process will however stay around which makes this solution workable.
+///
+/// One alternative would be a file-system based cache.
+/// That however means we need to define a more explicit eviction policy to stop the cache from growing.
+static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::new(BTreeSet::new());
 
 pub struct Eventloop {
     tunnel: ClientTunnel,
@@ -71,7 +94,8 @@ impl DisconnectError {
 
 impl Eventloop {
     pub(crate) fn new(
-        tunnel: ClientTunnel,
+        tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+        udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -79,6 +103,12 @@ impl Eventloop {
     ) -> Self {
         let (portal_event_tx, portal_event_rx) = mpsc::channel(128);
         let (portal_cmd_tx, portal_cmd_rx) = mpsc::channel(128);
+
+        let tunnel = ClientTunnel::new(
+            tcp_socket_factory,
+            udp_socket_factory,
+            DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
+        );
 
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
@@ -213,6 +243,9 @@ impl Eventloop {
                 self.tun_config_sender
                     .send(Some(config))
                     .context("Failed to emit event")?;
+            }
+            firezone_tunnel::ClientEvent::DnsRecordsChanged { records } => {
+                *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
         }
 

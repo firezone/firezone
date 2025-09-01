@@ -70,6 +70,7 @@ pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
+pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
@@ -113,6 +114,7 @@ impl ClientTunnel {
     pub fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        records: BTreeSet<DnsResourceRecord>,
     ) -> Self {
         Self {
             io: Io::new(
@@ -120,7 +122,7 @@ impl ClientTunnel {
                 udp_socket_factory.clone(),
                 BTreeSet::default(),
             ),
-            role_state: ClientState::new(rand::random(), Instant::now()),
+            role_state: ClientState::new(rand::random(), records, Instant::now()),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
                 .u64_counter("system.network.packets")
@@ -450,6 +452,9 @@ pub enum ClientEvent {
     /// The list of resources has changed and UI clients may have to be updated.
     ResourcesChanged {
         resources: Vec<ResourceView>,
+    },
+    DnsRecordsChanged {
+        records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
 }

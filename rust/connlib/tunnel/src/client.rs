@@ -8,7 +8,7 @@ pub(crate) use resource::{CidrResource, Resource};
 pub(crate) use resource::{DnsResource, InternetResource};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
-use crate::dns::StubResolver;
+use crate::dns::{DnsResourceRecord, StubResolver};
 use crate::expiring_map::ExpiringMap;
 use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
@@ -188,7 +188,7 @@ impl PendingFlow {
 }
 
 impl ClientState {
-    pub(crate) fn new(seed: [u8; 32], now: Instant) -> Self {
+    pub(crate) fn new(seed: [u8; 32], records: BTreeSet<DnsResourceRecord>, now: Instant) -> Self {
         Self {
             resources_gateways: Default::default(),
             active_cidr_resources: IpNetworkTable::new(),
@@ -203,7 +203,7 @@ impl ClientState {
             sites_status: Default::default(),
             gateways_site: Default::default(),
             udp_dns_sockets_by_upstream_and_query_id: Default::default(),
-            stub_resolver: Default::default(),
+            stub_resolver: StubResolver::new(records),
             disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
@@ -1536,7 +1536,13 @@ impl ClientState {
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
-        self.buffered_events.pop_front()
+        self.buffered_events
+            .pop_front()
+            .or_else(|| match self.stub_resolver.poll_event()? {
+                dns::Event::RecordsChanged(records) => {
+                    Some(ClientEvent::DnsRecordsChanged { records })
+                }
+            })
     }
 
     pub(crate) fn reset(&mut self, now: Instant, reason: &str) {
@@ -2117,7 +2123,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(rand::random(), Instant::now())
+            ClientState::new(rand::random(), Default::default(), Instant::now())
         }
     }
 
