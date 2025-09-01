@@ -68,7 +68,7 @@ function force_relayed_connections() {
 }
 
 function client_curl_resource() {
-    client curl --connect-timeout 5 --fail "$1" >/dev/null
+    client curl --connect-timeout 10 --fail "$1" >/dev/null
 }
 
 function client_ping_resource() {
