@@ -323,7 +323,7 @@ jobs:
           service_account: "github-account@firezone-staging.iam.gserviceaccount.com"
           export_environment_variables: true
           create_credentials_file: true
-      - name: Copy relay to Google Cloud Storage
+      - name: Copy relay to Cloud Storage
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-relay' }}
         run: |
           set -e
@@ -334,6 +334,22 @@ jobs:
           gcloud storage cp \
             "${{ matrix.name.package }}".sha256sum.txt \
             gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
+
+          az storage blob upload \
+            --container-name artifacts \
+            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
+            --file "${{ matrix.name.package }}" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+
+          az storage blob upload \
+            --container-name artifacts \
+            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
+            --file "${{ matrix.name.package }}.sha256sum.txt" \
+            --overwrite true \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name }}
         env:
