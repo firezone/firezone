@@ -178,7 +178,7 @@ tauri-plugin-shell = "2.3.0"
 tauri-runtime = "2.7.1"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = "2.2.0"
-tempfile = "3.20.0"
+tempfile = "3.21.0"
 test-case = "3.3.1"
 test-strategy = "0.4.3"
 thiserror = "2.0.16"
