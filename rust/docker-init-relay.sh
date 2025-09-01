@@ -66,11 +66,6 @@ if [ -n "${EBPF_OFFLOADING}" ]; then
         EBPF_INT6_ADDR=$(ip -6 addr show dev "${EBPF_OFFLOADING}" scope global | awk '/inet6 / {print $2; exit}' | cut -d/ -f1)
         export EBPF_INT6_ADDR
     fi
-
-    if [ -z "${EBPF_INT4_ADDR}" ] && [ -z "${EBPF_INT6_ADDR}" ]; then
-        echo "Failed to determine IP address(es) of interface ${EBPF_OFFLOADING}"
-        exit 1
-    fi
 fi
 
 exec "$@"
