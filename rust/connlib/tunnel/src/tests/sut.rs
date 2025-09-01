@@ -378,7 +378,7 @@ impl TunnelTest {
                     c.restart(key, now);
 
                     // Apply to new instance.
-                    c.sut.set_disabled_resources(disabled_resources);
+                    c.sut.set_disabled_resources(disabled_resources, now);
                     c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,
@@ -386,7 +386,7 @@ impl TunnelTest {
                         search_domain: ref_state.client.inner().search_domain.clone(),
                     });
                     c.sut.update_system_resolvers(system_dns);
-                    c.sut.set_resources(all_resources);
+                    c.sut.set_resources(all_resources, now);
 
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                 })
