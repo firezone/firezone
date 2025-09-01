@@ -346,10 +346,6 @@ services:
         ip route add 172.29.0.0/24 via 172.28.0.254
         ip -6 route add 172:29:0::/64 via 172:28:0::254
 
-        # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool
-        ethtool -K eth0 tx off
-
         firezone-headless-client
     init: true
     build:
@@ -395,12 +391,6 @@ services:
         # Add static route to relay subnet via router
         ip route add 172.29.0.0/24 via 172.28.0.254
         ip -6 route add 172:29:0::/64 via 172:28:0::254
-
-        # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool
-        ethtool -K eth0 tx off
-        ethtool -K eth1 tx off
-        ethtool -K eth2 tx off
 
         firezone-gateway
     init: true
