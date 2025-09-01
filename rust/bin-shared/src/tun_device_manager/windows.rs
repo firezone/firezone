@@ -300,14 +300,14 @@ impl Tun {
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE); // We want to be able to batch-receive from this.
 
-        tokio::spawn(otel::metrics::system_queue_length(
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        tokio::spawn(otel::metrics::system_queue_length(
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
