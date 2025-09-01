@@ -80,7 +80,7 @@ where
                         };
                     }
                     Err(e) => {
-                        tracing::warn!("Failed to read from TUN FD: {e}");
+                        tracing::warn!("Failed to read from TUN FD: {:#}", anyhow::Error::new(e));
                         continue;
                     }
                 }
