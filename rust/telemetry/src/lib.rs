@@ -41,7 +41,7 @@ pub struct Dsn {
 // > DSNs are safe to keep public because they only allow submission of new events and related event data; they do not allow read access to any information.
 // <https://docs.sentry.io/concepts/key-terms/dsn-explainer/#dsn-utilization>
 
-const INGEST_HOST: &str = "o4507971108339712.ingest.us.sentry.io";
+const INGEST_HOST: &str = "sentry.firezone.dev";
 
 pub const ANDROID_DSN: Dsn = Dsn {
     public_key: "928a6ee1f6af9734100b8bc89b2dc87d",
