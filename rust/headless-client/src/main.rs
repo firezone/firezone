@@ -202,7 +202,7 @@ fn main() -> Result<()> {
     };
 
     let mut telemetry = if cli.is_telemetry_allowed() {
-        let mut telemetry = Telemetry::new().context("Failed to create telemetry client")?;
+        let mut telemetry = Telemetry::new();
 
         rt.block_on(telemetry.start(
             cli.api_url.as_ref(),

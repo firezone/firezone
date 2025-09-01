@@ -260,7 +260,7 @@ impl WrappedSession {
             .enable_all()
             .build()?;
 
-        let mut telemetry = Telemetry::new().context("Failed to create telemetry client")?;
+        let mut telemetry = Telemetry::new();
         runtime.block_on(telemetry.start(&api_url, RELEASE, APPLE_DSN, device_id.clone()));
         Telemetry::set_account_slug(account_slug.clone());
 

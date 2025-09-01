@@ -140,6 +140,12 @@ pub struct Telemetry {
     transport: TransportFactory,
 }
 
+impl Default for Telemetry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Drop for Telemetry {
     fn drop(&mut self) {
         if self.inner.is_none() {
@@ -152,13 +158,15 @@ impl Drop for Telemetry {
 }
 
 impl Telemetry {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
+    pub fn new() -> Self {
+        Self {
             inner: Default::default(),
-            // The instances for `Telemetry` get created at the very beginning of each program entry-point.
-            // Therefore, it is safe to perform DNS resolution there right away before the tunnel is up.
-            transport: TransportFactory::resolve_ingest_host()?,
-        })
+            transport: TransportFactory::resolve_ingest_host().unwrap_or_else(|e| {
+                tracing::debug!("Failed to create telemetry transport factory: {e:#}");
+
+                TransportFactory::without_addresses()
+            }),
+        }
     }
 
     pub fn disabled() -> Self {
@@ -424,14 +432,19 @@ impl TransportFactory {
 
 impl sentry::TransportFactory for TransportFactory {
     fn create_transport(&self, options: &sentry::ClientOptions) -> Arc<dyn sentry::Transport> {
-        let client = reqwest::ClientBuilder::new()
+        let mut builder = reqwest::ClientBuilder::new()
             .http2_prior_knowledge()
             .http2_keep_alive_while_idle(true)
             .http2_keep_alive_timeout(Duration::from_secs(1))
-            .http2_keep_alive_interval(Duration::from_secs(5)) // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
-            .resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses)
-            .build()
-            .expect("Failed to build HTTP client");
+            .http2_keep_alive_interval(Duration::from_secs(5)); // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
+
+        if !self.ingest_domain_addresses.is_empty() {
+            builder = builder.resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses);
+        } else {
+            tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host");
+        }
+
+        let client = builder.build().expect("Failed to build HTTP client");
 
         Arc::new(ReqwestHttpTransport::with_client(options, client))
     }
@@ -445,7 +458,7 @@ mod tests {
 
     #[tokio::test]
     async fn starting_session_for_unsupported_env_disables_current_one() {
-        let mut telemetry = Telemetry::new().unwrap();
+        let mut telemetry = Telemetry::new();
         telemetry
             .start("wss://api.firez.one", "1.0.0", TESTING, String::new())
             .await;
