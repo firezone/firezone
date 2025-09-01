@@ -331,6 +331,62 @@ where
         Ok(())
     }
 
+    /// Removes a connection by just clearing its local memory.
+    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    pub fn remove_connection(&mut self, cid: TId, reason: impl fmt::Display) {
+        let existing = self.connections.established.remove(&cid);
+
+        if existing.is_none() {
+            return;
+        }
+
+        tracing::info!("Connection removed ({reason})");
+    }
+
+    /// Closes a connection to the provided peer.
+    ///
+    /// If we are connected, sends the provided "goodbye" packet before discarding the connection.
+    #[tracing::instrument(level = "info", skip_all, fields(%cid))]
+    pub fn close_connection(&mut self, cid: TId, goodbye: IpPacket, now: Instant) {
+        let Some(mut connection) = self.connections.established.remove(&cid) else {
+            tracing::debug!("Cannot close unknown connection");
+
+            return;
+        };
+
+        let peer_socket = match connection.state {
+            ConnectionState::Connected { peer_socket, .. }
+            | ConnectionState::Idle { peer_socket } => peer_socket,
+            ConnectionState::Connecting { .. } => {
+                tracing::info!("Connection closed during ICE");
+                return;
+            }
+            ConnectionState::Failed => return,
+        };
+
+        self.pending_events.push_back(Event::ConnectionClosed(cid));
+
+        match connection.encapsulate(cid, peer_socket, goodbye, now, &mut self.allocations) {
+            Ok(Some(transmit)) => {
+                tracing::info!("Connection closed proactively (sent goodbye)");
+
+                self.buffered_transmits.push_back(transmit);
+            }
+            Ok(None) => {
+                tracing::info!("Connection closed proactively (failed to send goodbye)");
+            }
+            Err(e) => {
+                tracing::info!("Connection closed proactively (failed to send goodbye: {e:#})");
+            }
+        }
+    }
+
+    pub fn close_all(&mut self, goodbye: IpPacket, now: Instant) {
+        for id in self.connections.iter_ids().collect::<Vec<_>>() {
+            self.close_connection(id, goodbye.clone(), now);
+        }
+    }
+
     pub fn public_key(&self) -> PublicKey {
         self.public_key
     }

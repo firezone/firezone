@@ -5,11 +5,12 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
+use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -17,11 +18,11 @@ use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    fmt,
+    fmt, future,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{Context, Poll, ready},
-    time::Instant,
+    time::{Duration, Instant},
 };
 use tun::Tun;
 
@@ -263,6 +264,31 @@ impl GatewayTunnel {
 
     pub fn public_key(&self) -> PublicKey {
         self.role_state.public_key()
+    }
+
+    /// Shutdown the Gateway tunnel.
+    pub fn shutdown(mut self) -> BoxFuture<'static, Result<()>> {
+        // Initiate shutdown.
+        self.role_state.shutdown(Instant::now());
+
+        // Drain all UDP packets that need to be sent.
+        while let Some(trans) = self.role_state.poll_transmit() {
+            self.io
+                .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+        }
+
+        // Return a future that "owns" our IO, polling it until all packets have been flushed.
+        async move {
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                future::poll_fn(move |cx| self.io.flush(cx)),
+            )
+            .await
+            .context("Failed to flush within 1s")??;
+
+            Ok(())
+        }
+        .boxed()
     }
 
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {

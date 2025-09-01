@@ -23,7 +23,7 @@ use proptest::prelude::*;
 use snownet::Transmit;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque},
-    mem,
+    iter, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
     time::Instant,
@@ -434,6 +434,10 @@ pub struct RefClient {
     #[debug(skip)]
     pub(crate) connected_cidr_resources: BTreeSet<ResourceId>,
 
+    /// The DNS resources the client is connected to.
+    #[debug(skip)]
+    pub(crate) connected_dns_resources: BTreeSet<ResourceId>,
+
     /// Actively disabled resources by the UI
     #[debug(skip)]
     pub(crate) disabled_resources: BTreeSet<ResourceId>,
@@ -486,9 +490,30 @@ impl RefClient {
         self.ipv6_routes.remove(resource);
 
         self.connected_cidr_resources.remove(resource);
+        self.connected_dns_resources.remove(resource);
 
         if self.internet_resource.is_some_and(|r| &r == resource) {
             self.connected_internet_resource = false;
+        }
+
+        let Some(site) = self.site_for_resource(*resource) else {
+            tracing::error!(%resource, "No site for resource");
+            return;
+        };
+
+        // If this was the last resource we were connected to for this site,
+        // the connection will be GC'd.
+        if self
+            .connected_resources()
+            .all(|r| self.site_for_resource(r).is_some_and(|s| s != site))
+        {
+            tracing::debug!(
+                last_resource = %resource,
+                site = %site.id,
+                "We are no longer connected to any resources in this site"
+            );
+
+            self.site_status.remove(&site.id);
         }
     }
 
@@ -505,10 +530,13 @@ impl RefClient {
     }
 
     pub(crate) fn connected_resources(&self) -> impl Iterator<Item = ResourceId> + '_ {
-        self.connected_cidr_resources.iter().copied().chain(
-            self.internet_resource
-                .filter(|_| self.connected_internet_resource),
-        )
+        iter::empty()
+            .chain(self.connected_cidr_resources.clone())
+            .chain(self.connected_dns_resources.clone())
+            .chain(
+                self.internet_resource
+                    .filter(|_| self.connected_internet_resource),
+            )
     }
 
     fn recalculate_cidr_routes(&mut self) -> IpNetworkTable<ResourceId> {
@@ -540,6 +568,7 @@ impl RefClient {
 
     pub(crate) fn reset_connections(&mut self) {
         self.connected_cidr_resources.clear();
+        self.connected_dns_resources.clear();
         self.connected_internet_resource = false;
 
         for status in self.site_status.values_mut() {
@@ -745,7 +774,9 @@ impl RefClient {
 
     fn connect_to_resource(&mut self, resource: ResourceId, destination: Destination) {
         match destination {
-            Destination::DomainName { .. } => {}
+            Destination::DomainName { .. } => {
+                self.connected_dns_resources.insert(resource);
+            }
             Destination::IpAddr(_) => self.connect_to_internet_or_cidr_resource(resource),
         }
     }
@@ -801,6 +832,7 @@ impl RefClient {
 
         if let Some(resource) = self.is_site_specific_dns_query(query) {
             self.set_resource_online(resource);
+            self.connected_dns_resources.insert(resource);
             return;
         }
 
@@ -1192,6 +1224,7 @@ fn ref_client(
                     cidr_resources: IpNetworkTable::new(),
                     dns_records: Default::default(),
                     connected_cidr_resources: Default::default(),
+                    connected_dns_resources: Default::default(),
                     connected_internet_resource: Default::default(),
                     expected_icmp_handshakes: Default::default(),
                     expected_udp_handshakes: Default::default(),
