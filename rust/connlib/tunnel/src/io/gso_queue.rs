@@ -97,7 +97,7 @@ impl Iterator for DrainDatagramsIter<'_> {
                 src: connection.src,
                 dst: connection.dst,
                 packet: buffer,
-                segment_size: Some(segment_size),
+                segment_size,
                 ecn: connection.ecn,
             });
         }
@@ -139,7 +139,7 @@ mod tests {
 
         assert_eq!(datagrams.len(), 1);
         assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazfoobazfoo");
-        assert_eq!(datagrams[0].segment_size, Some(6));
+        assert_eq!(datagrams[0].segment_size, 6);
     }
 
     #[test]
@@ -156,10 +156,10 @@ mod tests {
 
         assert_eq!(datagrams.len(), 2);
         assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbaz");
-        assert_eq!(datagrams[0].segment_size, Some(6));
+        assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
         assert_eq!(datagrams[1].packet.as_ref(), b"barbarbafoofoo");
-        assert_eq!(datagrams[1].segment_size, Some(8));
+        assert_eq!(datagrams[1].segment_size, 8);
         assert_eq!(datagrams[1].dst, DST_2);
     }
 
@@ -180,10 +180,10 @@ mod tests {
 
         assert_eq!(datagrams.len(), 2);
         assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazfoobazbazfoo");
-        assert_eq!(datagrams[0].segment_size, Some(6));
+        assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
         assert_eq!(datagrams[1].packet.as_ref(), b"barbarbafoofoo");
-        assert_eq!(datagrams[1].segment_size, Some(8));
+        assert_eq!(datagrams[1].segment_size, 8);
         assert_eq!(datagrams[1].dst, DST_2);
     }
 
@@ -201,10 +201,10 @@ mod tests {
 
         assert_eq!(datagrams.len(), 2);
         assert_eq!(datagrams[0].packet.as_ref(), b"foobarbarbazbar");
-        assert_eq!(datagrams[0].segment_size, Some(6));
+        assert_eq!(datagrams[0].segment_size, 6);
         assert_eq!(datagrams[0].dst, DST_1);
         assert_eq!(datagrams[1].packet.as_ref(), b"barbaz");
-        assert_eq!(datagrams[1].segment_size, Some(6));
+        assert_eq!(datagrams[1].segment_size, 6);
         assert_eq!(datagrams[1].dst, DST_1);
     }
 

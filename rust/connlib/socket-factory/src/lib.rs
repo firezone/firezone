@@ -260,7 +260,7 @@ pub struct DatagramOut {
     pub src: Option<SocketAddr>,
     pub dst: SocketAddr,
     pub packet: Buffer<BytesMut>,
-    pub segment_size: Option<usize>,
+    pub segment_size: usize,
     pub ecn: Ecn,
 }
 
@@ -306,80 +306,87 @@ impl UdpSocket {
             datagram.ecn,
         )?;
 
-        let dst = datagram.dst;
+        match self.send_transmit(&transmit).await {
+            Ok(()) => return Ok(()),
 
-        match transmit.segment_size {
-            Some(segment_size) => {
-                let chunk_size = self.calculate_chunk_size(segment_size, transmit.destination);
-                let num_batches = transmit.contents.len() / chunk_size;
-
-                for (idx, chunk) in transmit
-                    .contents
-                    .chunks(chunk_size)
-                    .map(|contents| Transmit {
-                        destination: transmit.destination,
-                        ecn: transmit.ecn,
-                        contents,
-                        segment_size: Some(segment_size),
-                        src_ip: transmit.src_ip,
-                    })
-                    .enumerate()
-                {
-                    let num_bytes = chunk.contents.len();
-                    let batch_num = idx + 1;
-
-                    #[cfg(debug_assertions)]
-                    tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?chunk.ecn, num_packets = %(num_bytes / segment_size), %segment_size);
-
-                    self.send_inner(chunk)
-                        .await
-                        .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
-                }
+            // On Linux and Android, we retry sending once for os error 5.
+            //
+            // quinn-udp disables GSO for those but cannot automatically re-send them because we need to split the datagram differently.
+            #[cfg(any(target_os = "linux", target_os = "android"))]
+            Err(e) if is_os_error_5(&e) => {
+                self.send_transmit(&transmit).await?;
             }
-            None => {
-                #[cfg(debug_assertions)]
-                tracing::trace!(target: "wire::net::send", src = ?datagram.src, %dst, ecn = ?transmit.ecn, num_bytes = %transmit.contents.len());
 
-                self.send_inner(transmit)
-                    .await
-                    .with_context(|| format!("Failed to send single-datagram to {dst}"))?;
-            }
+            // Any other error or other OS returns the error directly.
+            Err(e) => return Err(e),
         }
 
         Ok(())
     }
 
-    async fn send_inner(&self, chunk: Transmit<'_>) -> io::Result<()> {
-        let batch_size = chunk.contents.len() / chunk.segment_size.unwrap_or(chunk.contents.len());
+    async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
+        let segment_size = transmit
+            .segment_size
+            .expect("`segment_size` must always be set");
+        let src = transmit.src_ip;
+        let dst = transmit.destination;
 
-        self.batch_histogram.record(
-            batch_size as u64,
-            &[
-                KeyValue::new("network.transport", "udp"),
-                KeyValue::new("network.io.direction", "transmit"),
-            ],
-        );
+        let chunk_size = self.calculate_chunk_size(segment_size, dst);
+        let num_batches = transmit.contents.len() / chunk_size;
 
-        self.inner
-            .async_io(Interest::WRITABLE, || {
-                match self.state.try_send((&self.inner).into(), &chunk) {
-                    Ok(()) => Ok(()),
-                    #[cfg(target_os = "macos")]
-                    Err(e)
-                        if e.raw_os_error().is_some_and(|e| e == libc::ENOBUFS)
-                            && firezone_telemetry::feature_flags::map_enobufs_to_would_block() =>
-                    {
-                        firezone_telemetry::analytics::feature_flag_called(
-                            "map-enobufs-to-wouldblock",
-                        );
-                        tracing::debug!("Encountered ENOBUFS, treating as WouldBlock");
-
-                        Err(io::Error::from(io::ErrorKind::WouldBlock))
-                    }
-                    Err(e) => Err(e),
-                }
+        for (idx, chunk) in transmit
+            .contents
+            .chunks(chunk_size)
+            .map(|contents| Transmit {
+                destination: dst,
+                ecn: transmit.ecn,
+                contents,
+                segment_size: Some(segment_size),
+                src_ip: transmit.src_ip,
             })
-            .await
+            .enumerate()
+        {
+            let num_bytes = chunk.contents.len();
+            let batch_num = idx + 1;
+
+            #[cfg(debug_assertions)]
+            tracing::trace!(target: "wire::net::send", ?src, %dst, ecn = ?chunk.ecn, num_packets = %(num_bytes / segment_size), %segment_size);
+
+            let batch_size =
+                chunk.contents.len() / chunk.segment_size.unwrap_or(chunk.contents.len());
+
+            self.batch_histogram.record(
+                batch_size as u64,
+                &[
+                    KeyValue::new("network.transport", "udp"),
+                    KeyValue::new("network.io.direction", "transmit"),
+                ],
+            );
+
+            self.inner
+                .async_io(Interest::WRITABLE, || {
+                    match self.state.try_send((&self.inner).into(), &chunk) {
+                        Ok(()) => Ok(()),
+                        #[cfg(target_os = "macos")]
+                        Err(e)
+                            if e.raw_os_error().is_some_and(|e| e == libc::ENOBUFS)
+                                && firezone_telemetry::feature_flags::map_enobufs_to_would_block() =>
+                        {
+                            firezone_telemetry::analytics::feature_flag_called(
+                                "map-enobufs-to-wouldblock",
+                            );
+                            tracing::debug!("Encountered ENOBUFS, treating as WouldBlock");
+
+                            Err(io::Error::from(io::ErrorKind::WouldBlock))
+                        }
+                        Err(e) => Err(e),
+                    }
+                })
+                .await
+                .with_context(|| format!("Failed to send datagram-batch {batch_num}/{num_batches} with segment_size {segment_size} and total length {num_bytes} to {dst}"))?;
+        }
+
+        Ok(())
     }
 
     /// Calculate the chunk size for a given segment size.
@@ -420,7 +427,7 @@ impl UdpSocket {
         payload: &[u8],
     ) -> io::Result<Vec<u8>> {
         let transmit = self
-            .prepare_transmit(dst, None, payload, None, Ecn::NonEct)
+            .prepare_transmit(dst, None, payload, payload.len(), Ecn::NonEct)
             .map_err(|e| io::Error::other(format!("{e:#}")))?;
 
         self.inner
@@ -451,7 +458,7 @@ impl UdpSocket {
         dst: SocketAddr,
         src_ip: Option<IpAddr>,
         packet: &'a [u8],
-        segment_size: Option<usize>,
+        segment_size: usize,
         ecn: Ecn,
     ) -> Result<quinn_udp::Transmit<'a>> {
         let src_ip = match src_ip {
@@ -473,7 +480,7 @@ impl UdpSocket {
                 Ecn::Ce => Some(quinn_udp::EcnCodepoint::Ce),
             },
             contents: packet,
-            segment_size,
+            segment_size: Some(segment_size),
             src_ip,
         };
 
@@ -507,6 +514,14 @@ fn is_equal_modulo_scope_for_ipv6_link_local(expected: SocketAddr, actual: Socke
         (SocketAddr::V6(expected), SocketAddr::V6(actual)) => expected == actual,
         (SocketAddr::V6(_), SocketAddr::V4(_)) | (SocketAddr::V4(_), SocketAddr::V6(_)) => false,
     }
+}
+
+#[cfg(any(target_os = "linux", target_os = "android"))]
+fn is_os_error_5(e: &anyhow::Error) -> bool {
+    e.root_cause()
+        .downcast_ref::<io::Error>()
+        .and_then(|e| e.raw_os_error())
+        .is_some_and(|c| c == libc::EIO)
 }
 
 /// An iterator that segments an array of buffers into individual datagrams.
