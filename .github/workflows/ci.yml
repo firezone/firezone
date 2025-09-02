@@ -372,10 +372,8 @@ jobs:
         if: "!cancelled()"
         with:
           overwrite: true
-          name: ${{ matrix.test_name }}-${{ github.sha }}-tcpdump
-          path: |
-            ./client.pcap
-            ./gateway.pcap
+          name: ${{ matrix.test_name }}-${{ github.sha }}-tcpdump-${{ matrix.foo }}-${{ matrix.bar }}
+          path: ./*.pcap
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
