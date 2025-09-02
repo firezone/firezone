@@ -20,7 +20,14 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10104">
+          Fixes an issue where DNS resources would resolve to a different IP
+          after signing out and back into Firezone. This would break
+          connectivity for long-running services that don't re-resolve DNS, like
+          SSH sessions or mongoose.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.3" date={new Date("2025-08-05")}>
         <ChangeItem pull="9985">
           Fixes an issue where control plane messages could be stuck forever on

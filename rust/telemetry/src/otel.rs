@@ -114,7 +114,14 @@ pub mod attr {
 }
 
 pub mod metrics {
-    use opentelemetry::metrics::Counter;
+    use std::{ops::ControlFlow, time::Duration};
+
+    use opentelemetry::{
+        KeyValue,
+        metrics::{Counter, Gauge},
+    };
+
+    use crate::otel::QueueLength;
 
     pub fn network_packet_dropped() -> Counter<u64> {
         opentelemetry::global::meter("connlib")
@@ -122,6 +129,70 @@ pub mod metrics {
             .with_description("Count of packets that are dropped or discarded")
             .with_unit("{packet}")
             .build()
+    }
+
+    pub async fn periodic_system_queue_length<const N: usize>(
+        queue: impl QueueLength,
+        attributes: [KeyValue; N],
+    ) {
+        let gauge = opentelemetry::global::meter("connlib")
+            .u64_gauge("system.queue.length")
+            .with_description("The length of a queue.")
+            .build();
+
+        periodic_gauge(
+            gauge,
+            |gauge| {
+                let len = match queue.queue_length() {
+                    Some(len) => len,
+                    None => return ControlFlow::Break(()),
+                };
+
+                gauge.record(len, &attributes);
+
+                ControlFlow::Continue(())
+            },
+            Duration::from_secs(1),
+        )
+        .await;
+    }
+
+    pub async fn periodic_gauge<T>(
+        gauge: Gauge<T>,
+        callback: impl Fn(&Gauge<T>) -> ControlFlow<(), ()>,
+        interval: Duration,
+    ) {
+        while callback(&gauge).is_continue() {
+            tokio::time::sleep(interval).await;
+        }
+    }
+}
+
+pub trait QueueLength: Send + Sync + 'static {
+    fn queue_length(&self) -> Option<u64>;
+}
+
+impl<T> QueueLength for tokio::sync::mpsc::WeakSender<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn queue_length(&self) -> Option<u64> {
+        let sender = self.upgrade()?;
+        let len = sender.max_capacity() - sender.capacity();
+
+        Some(len as u64)
+    }
+}
+
+impl<T> QueueLength for flume::WeakSender<T>
+where
+    T: Send + Sync + 'static,
+{
+    fn queue_length(&self) -> Option<u64> {
+        let sender = self.upgrade()?;
+        let len = sender.len();
+
+        Some(len as u64)
     }
 }
 

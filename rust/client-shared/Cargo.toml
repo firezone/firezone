@@ -15,6 +15,7 @@ firezone-tunnel = { workspace = true }
 futures = { workspace = true }
 ip_network = { workspace = true }
 libc = { workspace = true }
+parking_lot = { workspace = true }
 phoenix-channel = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true, features = ["std", "derive"] }

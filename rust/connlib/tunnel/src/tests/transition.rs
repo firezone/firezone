@@ -5,7 +5,10 @@ use crate::{
 use connlib_model::{RelayId, ResourceId};
 use dns_types::{DomainName, RecordType};
 
-use super::sim_net::{Host, any_ip_stack};
+use super::{
+    reference::PrivateKey,
+    sim_net::{Host, any_ip_stack},
+};
 use crate::messages::DnsServer;
 use prop::collection;
 use proptest::{prelude::*, sample};
@@ -66,6 +69,9 @@ pub(crate) enum Transition {
 
     /// Reconnect to the portal.
     ReconnectPortal,
+
+    /// Restart the client.
+    RestartClient(PrivateKey),
 
     /// Simulate deployment of new relays.
     DeployNewRelays(BTreeMap<RelayId, Host<u64>>),

@@ -14,6 +14,12 @@ export default function Headless({ os }: { os: OS }) {
           Sets <code>FIREZONE_DNS_CONTROL=etc-resolv-conf</code> by default in
           the headless client Docker image.
         </ChangeItem>
+        <ChangeItem pull="10104">
+          Fixes an issue where DNS resources would resolve to a different IP
+          after signing out and back into Firezone. This would break
+          connectivity for long-running services that don't re-resolve DNS, like
+          SSH sessions or mongoose.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.2" date={new Date("2025-07-28")}>
         <ChangeItem pull="9985">
