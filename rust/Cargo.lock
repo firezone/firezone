@@ -2344,6 +2344,7 @@ dependencies = [
  "dirs",
  "dns-types",
  "firezone-logging",
+ "firezone-telemetry",
  "futures",
  "gat-lending-iterator",
  "hex",
@@ -2608,6 +2609,7 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "flume",
  "futures",
  "hex",
  "ip-packet",

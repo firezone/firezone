@@ -1,3 +1,4 @@
+use firezone_telemetry::otel;
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf};
 use std::os::fd::{FromRawFd, OwnedFd};
@@ -44,16 +45,6 @@ impl tun::Tun for Tun {
     ) -> Poll<usize> {
         self.inbound_rx.poll_recv_many(cx, buf, max)
     }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        (
-            self.inbound_rx.len(),
-            self.outbound_tx
-                .get_ref()
-                .map(|s| QUEUE_SIZE - s.capacity())
-                .unwrap_or_default(),
-        )
-    }
 }
 
 impl Tun {
@@ -68,6 +59,21 @@ impl Tun {
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
+
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_transmit(),
+            ],
+        ));
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_receive(),
+            ],
+        ));
 
         std::thread::Builder::new()
             .name("TUN send".to_owned())

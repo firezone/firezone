@@ -3,6 +3,7 @@ use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
+use firezone_telemetry::otel;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use ring::digest;
@@ -298,6 +299,22 @@ impl Tun {
         );
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE); // We want to be able to batch-receive from this.
+
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_transmit(),
+            ],
+        ));
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_receive(),
+            ],
+        ));
+
         let send_thread = start_send_thread(outbound_rx, Arc::downgrade(&session))
             .context("Failed to start send thread")?;
         let recv_thread = start_recv_thread(inbound_tx, Arc::downgrade(&session))
@@ -364,21 +381,6 @@ impl tun::Tun for Tun {
             .map_err(io::Error::other)?;
 
         Ok(())
-    }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        self.state
-            .as_ref()
-            .map(|s| {
-                (
-                    s.inbound_rx.len(),
-                    s.outbound_tx
-                        .get_ref()
-                        .map(|s| QUEUE_SIZE - s.capacity())
-                        .unwrap_or_default(),
-                )
-            })
-            .unwrap_or_default()
     }
 }
 
