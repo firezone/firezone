@@ -33,7 +33,7 @@ defmodule Domain.Accounts do
   end
 
   # TODO: This will need to be updated once more notifications are available
-  def all_accounts_pending_notification!() do
+  def all_accounts_pending_notification! do
     Account.Query.not_disabled()
     |> Account.Query.by_notification_enabled("outdated_gateway")
     |> Account.Query.by_notification_last_notified("outdated_gateway", 24)
