@@ -307,7 +307,7 @@ impl UdpSocket {
         )?;
 
         match self.send_transmit(&transmit).await {
-            Ok(()) => return Ok(()),
+            Ok(()) => Ok(()),
 
             // On Linux and Android, we retry sending once for os error 5.
             //
@@ -315,13 +315,13 @@ impl UdpSocket {
             #[cfg(any(target_os = "linux", target_os = "android"))]
             Err(e) if is_os_error_5(&e) => {
                 self.send_transmit(&transmit).await?;
+
+                Ok(())
             }
 
             // Any other error or other OS returns the error directly.
-            Err(e) => return Err(e),
+            Err(e) => Err(e),
         }
-
-        Ok(())
     }
 
     async fn send_transmit(&self, transmit: &Transmit<'_>) -> Result<()> {
