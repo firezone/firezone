@@ -364,10 +364,6 @@ impl Tun for ValidateChecksumAdapter {
     fn name(&self) -> &str {
         self.inner.name()
     }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        self.inner.queue_lengths()
-    }
 }
 
 impl ValidateChecksumAdapter {

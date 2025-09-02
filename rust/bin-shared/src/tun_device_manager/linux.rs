@@ -3,6 +3,7 @@
 use crate::FIREZONE_MARK;
 use anyhow::{Context as _, Result, anyhow};
 use firezone_logging::err_with_src;
+use firezone_telemetry::otel;
 use futures::{SinkExt, TryStreamExt};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
@@ -347,6 +348,21 @@ impl Tun {
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            outbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_transmit(),
+            ],
+        ));
+        tokio::spawn(otel::metrics::periodic_system_queue_length(
+            inbound_tx.downgrade(),
+            [
+                otel::attr::queue_item_ip_packet(),
+                otel::attr::network_io_direction_receive(),
+            ],
+        ));
+
         let fd = Arc::new(open_tun()?);
 
         std::thread::Builder::new()
@@ -433,16 +449,6 @@ impl tun::Tun for Tun {
 
     fn name(&self) -> &str {
         TunDeviceManager::IFACE_NAME
-    }
-
-    fn queue_lengths(&self) -> (usize, usize) {
-        (
-            self.inbound_rx.len(),
-            self.outbound_tx
-                .get_ref()
-                .map(|s| QUEUE_SIZE - s.capacity())
-                .unwrap_or_default(),
-        )
     }
 }
 
