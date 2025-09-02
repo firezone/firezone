@@ -147,7 +147,7 @@ jobs:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
-        timeout-minutes: 10
+        timeout-minutes: 15
       - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}
