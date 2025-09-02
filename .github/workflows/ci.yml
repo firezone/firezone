@@ -361,6 +361,9 @@ jobs:
           # Copy pcap files from containers to host
           docker compose cp client:/tmp/client.pcap ./client.pcap || true
           docker compose cp gateway:/tmp/gateway.pcap ./gateway.pcap || true
+
+          gzip -f ./client.pcap || true
+          gzip -f ./gateway.pcap || true
       # - name: "Save performance test results: ${{ matrix.test_name }}"
       #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       #   with:
@@ -373,7 +376,7 @@ jobs:
         with:
           overwrite: true
           name: ${{ matrix.test_name }}-${{ github.sha }}-tcpdump-${{ matrix.foo }}-${{ matrix.bar }}
-          path: ./*.pcap
+          path: ./*.pcap.gz
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
