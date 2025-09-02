@@ -3,7 +3,7 @@
 use std::{
     borrow::Cow,
     collections::BTreeMap,
-    fmt,
+    fmt, mem,
     net::{SocketAddr, ToSocketAddrs as _},
     str::FromStr,
     sync::Arc,
@@ -371,21 +371,24 @@ fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
         "parent_span_id",
     ];
 
-    for (key, attribute) in &log.attributes {
+    for (key, attribute) in mem::take(&mut log.attributes) {
         let LogAttribute(serde_json::Value::String(attr_string)) = &attribute else {
             continue;
         };
 
         if IGNORED_ATTRS.iter().any(|attr| key.starts_with(attr)) {
+            log.attributes.insert(key, attribute);
+
             continue;
         }
 
         let key = match key.rsplit_once(':') {
             Some((_, key)) => key,
-            None => key,
+            None => &key,
         };
 
         log.body.push_str(&format!(" {key}={attr_string}"));
+        log.attributes.insert(key.to_owned(), attribute);
     }
 
     Some(log)
@@ -501,6 +504,38 @@ mod tests {
         assert_eq!(
             log.body,
             "Foobar class=success response from=1.1.1.1:3478 method=binding"
+        )
+    }
+
+    #[test]
+    fn trims_name_of_span_from_attribute() {
+        let log = log(
+            "Foobar",
+            &[
+                ("handle_input:class", "success response"),
+                ("handle_input:from", "1.1.1.1:3478"),
+                ("handle_input:method", "binding"),
+            ],
+        );
+
+        let log = append_tracing_fields_to_message(log).unwrap();
+
+        assert_eq!(
+            log.attributes,
+            BTreeMap::from([
+                (
+                    "class".to_owned(),
+                    LogAttribute(serde_json::Value::String("success response".to_owned()))
+                ),
+                (
+                    "from".to_owned(),
+                    LogAttribute(serde_json::Value::String("1.1.1.1:3478".to_owned()))
+                ),
+                (
+                    "method".to_owned(),
+                    LogAttribute(serde_json::Value::String("binding".to_owned()))
+                )
+            ])
         )
     }
 
