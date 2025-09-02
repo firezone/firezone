@@ -341,6 +341,10 @@ jobs:
           docker compose exec -T gateway tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -T relay-1 tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -T relay-2 tc qdisc add dev eth0 root netem delay 10ms
+      - name: Start tcpdump for client and gateway
+        run: |
+          docker compose exec -d client tcpdump -i any -w /tmp/client.pcap
+          docker compose exec -d gateway tcpdump -i any -w /tmp/gateway.pcap
       - name: "Performance test: ${{ matrix.test_name }}"
         timeout-minutes: 5
         env:
@@ -348,12 +352,30 @@ jobs:
         run: |
           ./scripts/tests/perf/${{ matrix.test_name }}.sh
           jq '{ "${{ matrix.test_name }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
+      - name: Stop tcpdump and collect pcap files
+        if: "!cancelled()"
+        run: |
+          docker compose exec -T client pkill tcpdump || true
+          docker compose exec -T gateway pkill tcpdump || true
+
+          # Copy pcap files from containers to host
+          docker compose cp client:/tmp/client.pcap ./client.pcap || true
+          docker compose cp gateway:/tmp/gateway.pcap ./gateway.pcap || true
       # - name: "Save performance test results: ${{ matrix.test_name }}"
       #   uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       #   with:
       #     overwrite: true
       #     name: ${{ matrix.test_name }}-${{ github.sha }}-iperf3results
       #     path: ./${{ matrix.test_name }}.bmf.json
+      - name: "Save tcpdump captures: ${{ matrix.test_name }}"
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: "!cancelled()"
+        with:
+          overwrite: true
+          name: ${{ matrix.test_name }}-${{ github.sha }}-tcpdump
+          path: |
+            ./client.pcap
+            ./gateway.pcap
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
