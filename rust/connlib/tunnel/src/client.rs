@@ -1563,9 +1563,9 @@ impl ClientState {
     }
 
     pub(crate) fn poll_transmit(&mut self) -> Option<snownet::Transmit> {
-        self.buffered_transmits
-            .pop_front()
-            .or_else(|| self.node.poll_transmit())
+        self.node
+            .poll_transmit()
+            .or_else(|| self.buffered_transmits.pop_front())
     }
 
     pub(crate) fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
