@@ -1,10 +1,7 @@
 pub use error::Error;
 
 use aya_ebpf::{
-    bindings::xdp_action,
-    helpers::bpf_xdp_adjust_head,
-    macros::map,
-    maps::{HashMap, PerCpuArray},
+    bindings::xdp_action, helpers::bpf_xdp_adjust_head, macros::map, maps::PerCpuArray,
     programs::XdpContext,
 };
 use aya_log_ebpf::*;
@@ -24,12 +21,12 @@ use network_types::{
 use ref_mut_at::ref_mut_at;
 
 mod channel_data;
+mod channel_maps;
 mod checksum;
 mod error;
 mod ref_mut_at;
 mod stats;
 
-const NUM_ENTRIES: u32 = 0x10000;
 /// Lower bound for TURN UDP ports
 const LOWER_PORT: u16 = 49152;
 /// Upper bound for TURN UDP ports
@@ -38,36 +35,6 @@ const UPPER_PORT: u16 = 65535;
 const CHAN_START: u16 = 0x4000;
 /// Channel number end
 const CHAN_END: u16 = 0x7FFF;
-
-// SAFETY: Testing has shown that these maps are safe to use as long as we aren't
-// writing to them from multiple threads at the same time. Since we only update these
-// from the single-threaded eventloop in userspace, we are ok.
-// See https://github.com/firezone/firezone/issues/10138#issuecomment-3186074350
-
-#[map]
-static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_44: HashMap<PortAndPeerV4, ClientAndChannelV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static CHAN_TO_UDP_66: HashMap<ClientAndChannelV6, PortAndPeerV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static CHAN_TO_UDP_46: HashMap<ClientAndChannelV4, PortAndPeerV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_46: HashMap<PortAndPeerV4, ClientAndChannelV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static CHAN_TO_UDP_64: HashMap<ClientAndChannelV6, PortAndPeerV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
 
 // Per-CPU data structures to learn relay interface addresses
 #[map]
@@ -226,13 +193,13 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     let key = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_44.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_44.get(&key) } {
         handle_ipv4_udp_to_ipv4_channel(ctx, client_and_channel)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_46.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_46.get(&key) } {
         handle_ipv4_udp_to_ipv6_channel(ctx, client_and_channel)?;
         return Ok(());
     }
@@ -268,14 +235,14 @@ fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
     let key = ClientAndChannelV4::new(ipv4.src_addr(), udp.source(), channel_number);
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_44.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_44.get(&key) } {
         // IPv4 to IPv4 - existing logic
         handle_ipv4_channel_to_ipv4_udp(ctx, port_and_peer)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_46.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_46.get(&key) } {
         handle_ipv4_channel_to_ipv6_udp(ctx, port_and_peer)?;
         return Ok(());
     }
@@ -294,13 +261,13 @@ fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     let key = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_66.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_66.get(&key) } {
         handle_ipv6_udp_to_ipv6_channel(ctx, client_and_channel)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_64.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_64.get(&key) } {
         handle_ipv6_udp_to_ipv4_channel(ctx, client_and_channel)?;
         return Ok(());
     }
@@ -336,13 +303,13 @@ fn try_handle_ipv6_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
     let key = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), u16::from_be_bytes(cd.number));
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_66.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_66.get(&key) } {
         handle_ipv6_channel_to_ipv6_udp(ctx, port_and_peer)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_64.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_64.get(&key) } {
         handle_ipv6_channel_to_ipv4_udp(ctx, port_and_peer)?;
         return Ok(());
     }
@@ -1476,33 +1443,4 @@ fn get_interface_ipv6_address() -> Result<Ipv6Addr, Error> {
     let addr = unsafe { *interface_addr };
 
     addr.get().ok_or(Error::InterfaceIpv6AddressNotConfigured)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Memory overhead of an eBPF map.
-    ///
-    /// Determined empirically.
-    const HASH_MAP_OVERHEAD: f32 = 1.5;
-
-    #[test]
-    fn hashmaps_are_less_than_11_mb() {
-        let ipv4_datatypes =
-            core::mem::size_of::<PortAndPeerV4>() + core::mem::size_of::<ClientAndChannelV4>();
-        let ipv6_datatypes =
-            core::mem::size_of::<PortAndPeerV6>() + core::mem::size_of::<ClientAndChannelV6>();
-
-        let ipv4_map_size = ipv4_datatypes as f32 * NUM_ENTRIES as f32 * HASH_MAP_OVERHEAD;
-        let ipv6_map_size = ipv6_datatypes as f32 * NUM_ENTRIES as f32 * HASH_MAP_OVERHEAD;
-
-        let total_map_size = (ipv4_map_size + ipv6_map_size) * 2_f32;
-        let total_map_size_mb = total_map_size / 1024_f32 / 1024_f32;
-
-        assert!(
-            total_map_size_mb < 11_f32,
-            "Total map size = {total_map_size_mb} MB"
-        );
-    }
 }
