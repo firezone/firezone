@@ -342,7 +342,7 @@ impl UdpSocket {
                 ecn: transmit.ecn,
                 contents,
                 segment_size: Some(segment_size),
-                src_ip: transmit.src_ip,
+                src_ip: src,
             })
             .enumerate()
         {
