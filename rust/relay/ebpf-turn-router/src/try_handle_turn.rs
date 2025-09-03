@@ -154,10 +154,10 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
             && let Some(pp) = routing::get_port_and_peer_v6(cc)
         {
             handle_ipv4_udp_to_ipv6_udp(ctx, &pp)?;
-            return Ok(());
+        } else {
+            handle_ipv4_udp_to_ipv6_channel(ctx, &cc)?;
         }
 
-        handle_ipv4_udp_to_ipv6_channel(ctx, &cc)?;
         return Ok(());
     }
 
