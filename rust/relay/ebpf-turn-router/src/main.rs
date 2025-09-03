@@ -12,10 +12,8 @@ fn main() {
 #[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod try_handle_turn;
 
-// Everything below is only for BPF target
 #[cfg(any(target_arch = "bpf", target_os = "linux"))]
 #[aya_ebpf::macros::xdp]
-// Per-CPU data structures to learn relay interface addresses
 pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
     use aya_ebpf::bindings::xdp_action;
     use aya_log_ebpf::{debug, warn};
