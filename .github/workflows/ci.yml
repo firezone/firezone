@@ -188,7 +188,7 @@ jobs:
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -277,7 +277,7 @@ jobs:
   perf-tests:
     name: perf-tests
     needs: build-perf-artifacts
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
@@ -405,7 +405,7 @@ jobs:
   upload-bencher:
     continue-on-error: true
     needs: perf-tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
