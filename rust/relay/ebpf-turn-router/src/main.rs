@@ -9,17 +9,6 @@ fn main() {
     std::process::exit(1);
 }
 
-// Include modules only for BPF target
-#[cfg(any(target_arch = "bpf", target_os = "linux"))]
-mod channel_data;
-#[cfg(any(target_arch = "bpf", target_os = "linux"))]
-mod checksum;
-#[cfg(any(target_arch = "bpf", target_os = "linux"))]
-mod error;
-#[cfg(any(target_arch = "bpf", target_os = "linux"))]
-mod ref_mut_at;
-#[cfg(any(target_arch = "bpf", target_os = "linux"))]
-mod stats;
 #[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod try_handle_turn;
 
@@ -30,7 +19,7 @@ mod try_handle_turn;
 pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
     use aya_ebpf::bindings::xdp_action;
     use aya_log_ebpf::{debug, warn};
-    use error::Error;
+    use try_handle_turn::Error;
 
     try_handle_turn::try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,

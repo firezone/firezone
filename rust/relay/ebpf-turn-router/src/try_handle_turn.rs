@@ -1,8 +1,5 @@
-use crate::channel_data::CdHdr;
-use crate::checksum::ChecksumUpdate;
-use crate::error::Error;
-use crate::error::SupportedChannel;
-use crate::ref_mut_at::ref_mut_at;
+pub use error::Error;
+
 use aya_ebpf::{
     bindings::xdp_action,
     helpers::bpf_xdp_adjust_head,
@@ -11,16 +8,26 @@ use aya_ebpf::{
     programs::XdpContext,
 };
 use aya_log_ebpf::*;
+use channel_data::CdHdr;
+use checksum::ChecksumUpdate;
 use core::net::{Ipv4Addr, Ipv6Addr};
 use ebpf_shared::{
     ClientAndChannelV4, ClientAndChannelV6, InterfaceAddressV4, InterfaceAddressV6, PortAndPeerV4,
     PortAndPeerV6,
 };
+use error::SupportedChannel;
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{IpProto, Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
+use ref_mut_at::ref_mut_at;
+
+mod channel_data;
+mod checksum;
+mod error;
+mod ref_mut_at;
+mod stats;
 
 const NUM_ENTRIES: u32 = 0x10000;
 const LOWER_PORT: u16 = 49152; // Lower bound for TURN UDP ports
@@ -111,14 +118,14 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_ipv4_udp_to_channel_data(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len);
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(());
     }
 
     if udp.dest() == 3478 {
         try_handle_ipv4_channel_data_to_udp(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
+        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(());
     }
@@ -153,14 +160,14 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_ipv6_udp_to_channel_data(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len);
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(());
     }
 
     if udp.dest() == 3478 {
         try_handle_ipv6_channel_data_to_udp(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
+        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(());
     }
@@ -1118,7 +1125,7 @@ fn handle_ipv6_udp_to_ipv4_channel(
     ipv4.set_dst_addr(new_ipv4_dst);
 
     // Calculate fresh checksum
-    let check = crate::checksum::new_ipv4(ipv4);
+    let check = checksum::new_ipv4(ipv4);
     ipv4.set_checksum(check);
 
     //
@@ -1389,7 +1396,7 @@ fn handle_ipv6_channel_to_ipv4_udp(
     ipv4.set_dst_addr(new_ipv4_dst);
 
     // Calculate fresh checksum
-    let check = crate::checksum::new_ipv4(ipv4);
+    let check = checksum::new_ipv4(ipv4);
     ipv4.set_checksum(check);
 
     //
