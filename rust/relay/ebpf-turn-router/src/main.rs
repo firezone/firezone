@@ -10,21 +10,21 @@ fn main() {
 }
 
 // Include modules only for BPF target
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod channel_data;
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod checksum;
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod error;
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod ref_mut_at;
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod stats;
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod try_handle_turn;
 
 // Everything below is only for BPF target
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 #[aya_ebpf::macros::xdp]
 // Per-CPU data structures to learn relay interface addresses
 pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
