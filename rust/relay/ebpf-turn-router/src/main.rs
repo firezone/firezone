@@ -35,7 +35,6 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
         }
 
         Error::InterfaceIpv4AddressNotConfigured
-        | Error::PacketLoop
         | Error::NoEntry(_)
         | Error::InterfaceIpv6AddressNotConfigured => {
             debug!(&ctx, "Dropping packet: {}", e);

@@ -327,11 +327,6 @@ fn handle_ipv4_udp_to_ipv4_channel(
     let new_ipv4_dst = client_and_channel.client_ip();
     let new_ipv4_len = old_ipv4_len + CdHdr::LEN as u16;
 
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv4_src == new_ipv4_dst {
-        return Err(Error::PacketLoop);
-    }
-
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
     ipv4.set_version(4); // IPv4
@@ -474,11 +469,6 @@ fn handle_ipv4_udp_to_ipv6_channel(
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv4_len - Ipv4Hdr::LEN as u16 + CdHdr::LEN as u16;
 
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv6_dst == new_ipv6_src {
-        return Err(Error::PacketLoop);
-    }
-
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
     ipv6.set_version(6);
@@ -616,11 +606,6 @@ fn handle_ipv4_channel_to_ipv4_udp(
     let new_ipv4_src = old_ipv4_dst; // Swap source and destination
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_ipv4_len - CdHdr::LEN as u16;
-
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv4_src == new_ipv4_dst {
-        return Err(Error::PacketLoop);
-    }
 
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
@@ -768,11 +753,6 @@ fn handle_ipv4_channel_to_ipv6_udp(
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_udp_len = old_udp_len - CdHdr::LEN as u16;
 
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv6_src == new_ipv6_dst {
-        return Err(Error::PacketLoop);
-    }
-
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
     ipv6.set_version(6); // IPv6
@@ -892,11 +872,6 @@ fn handle_ipv6_udp_to_ipv6_channel(
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv6_len + CdHdr::LEN as u16;
 
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv6_src == new_ipv6_dst {
-        return Err(Error::PacketLoop);
-    }
-
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
     // Set fields explicitly to avoid reading potentially corrupted memory
@@ -1012,11 +987,6 @@ fn handle_ipv6_udp_to_ipv4_channel(
     let new_ipv4_dst = client_and_channel.client_ip();
     let new_udp_len = old_udp_len + CdHdr::LEN as u16;
     let new_ipv4_len = Ipv4Hdr::LEN as u16 + new_udp_len;
-
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv4_dst == new_ipv4_src {
-        return Err(Error::PacketLoop);
-    }
 
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
@@ -1164,11 +1134,6 @@ fn handle_ipv6_channel_to_ipv6_udp(
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_ipv6_len = old_ipv6_len - CdHdr::LEN as u16;
 
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv6_src == new_ipv6_dst {
-        return Err(Error::PacketLoop);
-    }
-
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
     ipv6.set_version(6); // IPv6
@@ -1283,11 +1248,6 @@ fn handle_ipv6_channel_to_ipv4_udp(
     let new_ipv4_src = interface::ipv4_address()?;
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_udp_len - CdHdr::LEN as u16 + Ipv4Hdr::LEN as u16;
-
-    // Check for packet loop - would we be sending to ourselves?
-    if new_ipv4_src == new_ipv4_dst {
-        return Err(Error::PacketLoop);
-    }
 
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, NET_SHRINK as usize + EthHdr::LEN)? };
