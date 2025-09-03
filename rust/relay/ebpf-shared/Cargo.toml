@@ -9,3 +9,6 @@ std = ["aya"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 aya = { workspace = true, optional = true }
+
+[dependencies]
+derive_more = { workspace = true, features = ["from"] }

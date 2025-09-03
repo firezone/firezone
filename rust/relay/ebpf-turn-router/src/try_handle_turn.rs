@@ -14,11 +14,11 @@ use network_types::{
 use ref_mut_at::ref_mut_at;
 
 mod channel_data;
-mod channel_maps;
 mod checksum;
 mod error;
 mod interface;
 mod ref_mut_at;
+mod routing;
 mod stats;
 
 /// Lower bound for TURN UDP ports
@@ -137,15 +137,13 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     let key = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_44.get(&key) } {
-        handle_ipv4_udp_to_ipv4_channel(ctx, client_and_channel)?;
+    if let Some(cc) = routing::get_client_and_channel_v4(key) {
+        handle_ipv4_udp_to_ipv4_channel(ctx, &cc)?;
         return Ok(());
     }
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_46.get(&key) } {
-        handle_ipv4_udp_to_ipv6_channel(ctx, client_and_channel)?;
+    if let Some(cc) = routing::get_client_and_channel_v6(key) {
+        handle_ipv4_udp_to_ipv6_channel(ctx, &cc)?;
         return Ok(());
     }
 
@@ -179,16 +177,13 @@ fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     let key = ClientAndChannelV4::new(ipv4.src_addr(), udp.source(), channel_number);
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_44.get(&key) } {
-        // IPv4 to IPv4 - existing logic
-        handle_ipv4_channel_to_ipv4_udp(ctx, port_and_peer)?;
+    if let Some(port_and_peer) = routing::get_port_and_peer_v4(key) {
+        handle_ipv4_channel_to_ipv4_udp(ctx, &port_and_peer)?;
         return Ok(());
     }
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_46.get(&key) } {
-        handle_ipv4_channel_to_ipv6_udp(ctx, port_and_peer)?;
+    if let Some(port_and_peer) = routing::get_port_and_peer_v6(key) {
+        handle_ipv4_channel_to_ipv6_udp(ctx, &port_and_peer)?;
         return Ok(());
     }
 
@@ -205,15 +200,13 @@ fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     let key = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_66.get(&key) } {
-        handle_ipv6_udp_to_ipv6_channel(ctx, client_and_channel)?;
+    if let Some(client_and_channel) = routing::get_client_and_channel_v6(key) {
+        handle_ipv6_udp_to_ipv6_channel(ctx, &client_and_channel)?;
         return Ok(());
     }
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_64.get(&key) } {
-        handle_ipv6_udp_to_ipv4_channel(ctx, client_and_channel)?;
+    if let Some(client_and_channel) = routing::get_client_and_channel_v4(key) {
+        handle_ipv6_udp_to_ipv4_channel(ctx, &client_and_channel)?;
         return Ok(());
     }
 
@@ -247,15 +240,13 @@ fn try_handle_ipv6_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     let key = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), u16::from_be_bytes(cd.number));
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_66.get(&key) } {
-        handle_ipv6_channel_to_ipv6_udp(ctx, port_and_peer)?;
+    if let Some(port_and_peer) = routing::get_port_and_peer_v6(key) {
+        handle_ipv6_channel_to_ipv6_udp(ctx, &port_and_peer)?;
         return Ok(());
     }
 
-    // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_64.get(&key) } {
-        handle_ipv6_channel_to_ipv4_udp(ctx, port_and_peer)?;
+    if let Some(port_and_peer) = routing::get_port_and_peer_v4(key) {
+        handle_ipv6_channel_to_ipv4_udp(ctx, &port_and_peer)?;
         return Ok(());
     }
 

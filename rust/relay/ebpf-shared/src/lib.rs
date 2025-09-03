@@ -25,6 +25,14 @@ pub struct ClientAndChannelV6 {
     channel: [u8; 2],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, derive_more::From)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub enum ClientAndChannel {
+    V4(ClientAndChannelV4),
+    V6(ClientAndChannelV6),
+}
+
 impl ClientAndChannelV4 {
     pub fn new(ipv4_address: Ipv4Addr, port: u16, channel: u16) -> Self {
         Self {
@@ -94,6 +102,14 @@ pub struct PortAndPeerV6 {
 
     allocation_port: [u8; 2],
     peer_port: [u8; 2],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, derive_more::From)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub enum PortAndPeer {
+    V4(PortAndPeerV4),
+    V6(PortAndPeerV6),
 }
 
 impl PortAndPeerV4 {
