@@ -35,18 +35,19 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
-    match eth.ether_type {
+    let num_bytes = match eth.ether_type {
         EtherType::Ipv4 => try_handle_turn_ipv4(ctx)?,
         EtherType::Ipv6 => try_handle_turn_ipv6(ctx)?,
         _ => return Err(Error::NotIp),
     };
+    stats::emit_data_relayed(ctx, num_bytes);
 
     // If we get to here, we modified the packet and need to send it back out again.
     Ok(xdp_action::XDP_TX)
 }
 
 #[inline(always)]
-fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
@@ -75,23 +76,21 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_ipv4_udp_to_channel_data(ctx)?;
-        stats::emit_data_relayed(ctx, udp_payload_len);
 
-        return Ok(());
+        return Ok(udp_payload_len);
     }
 
     if udp.dest() == 3478 {
         try_handle_ipv4_channel_data_to_udp(ctx)?;
-        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
-        return Ok(());
+        return Ok(udp_payload_len - CdHdr::LEN as u16);
     }
 
     Err(Error::NotTurn)
 }
 
 #[inline(always)]
-fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
+fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
@@ -115,16 +114,14 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_ipv6_udp_to_channel_data(ctx)?;
-        stats::emit_data_relayed(ctx, udp_payload_len);
 
-        return Ok(());
+        return Ok(udp_payload_len);
     }
 
     if udp.dest() == 3478 {
         try_handle_ipv6_channel_data_to_udp(ctx)?;
-        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
-        return Ok(());
+        return Ok(udp_payload_len - CdHdr::LEN as u16);
     }
 
     Err(Error::NotTurn)
