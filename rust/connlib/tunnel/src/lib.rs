@@ -148,15 +148,13 @@ impl ClientTunnel {
                 return Poll::Ready(Ok(e));
             }
 
-            if let Some(packet) = self.role_state.poll_packets() {
+            while let Some(packet) = self.role_state.poll_packets() {
                 self.io.send_tun(packet);
-                continue;
             }
 
-            if let Some(trans) = self.role_state.poll_transmit() {
+            while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
-                continue;
             }
 
             if let Some(query) = self.role_state.poll_dns_queries() {
@@ -301,10 +299,9 @@ impl GatewayTunnel {
                 return Poll::Ready(Ok(other));
             }
 
-            if let Some(trans) = self.role_state.poll_transmit() {
+            while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
-                continue;
             }
 
             if let Some((timeout, reason)) = self.role_state.poll_timeout() {
