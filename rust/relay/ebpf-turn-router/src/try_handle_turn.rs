@@ -1,68 +1,34 @@
-use crate::channel_data::CdHdr;
-use crate::checksum::ChecksumUpdate;
-use crate::error::Error;
-use crate::error::SupportedChannel;
-use crate::ref_mut_at::ref_mut_at;
-use aya_ebpf::{
-    bindings::xdp_action,
-    helpers::bpf_xdp_adjust_head,
-    macros::map,
-    maps::{HashMap, PerCpuArray},
-    programs::XdpContext,
-};
+pub use error::Error;
+
+use aya_ebpf::{bindings::xdp_action, helpers::bpf_xdp_adjust_head, programs::XdpContext};
 use aya_log_ebpf::*;
-use core::net::{Ipv4Addr, Ipv6Addr};
-use ebpf_shared::{
-    ClientAndChannelV4, ClientAndChannelV6, InterfaceAddressV4, InterfaceAddressV6, PortAndPeerV4,
-    PortAndPeerV6,
-};
+use channel_data::CdHdr;
+use checksum::ChecksumUpdate;
+use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
+use error::SupportedChannel;
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{IpProto, Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
+use ref_mut_at::ref_mut_at;
 
-const NUM_ENTRIES: u32 = 0x10000;
-const LOWER_PORT: u16 = 49152; // Lower bound for TURN UDP ports
-const UPPER_PORT: u16 = 65535; // Upper bound for TURN UDP ports
-const CHAN_START: u16 = 0x4000; // Channel number start
-const CHAN_END: u16 = 0x7FFF; // Channel number end
+mod channel_data;
+mod channel_maps;
+mod checksum;
+mod error;
+mod interface;
+mod ref_mut_at;
+mod stats;
 
-// SAFETY: Testing has shown that these maps are safe to use as long as we aren't
-// writing to them from multiple threads at the same time. Since we only update these
-// from the single-threaded eventloop in userspace, we are ok.
-// See https://github.com/firezone/firezone/issues/10138#issuecomment-3186074350
-
-#[map]
-static CHAN_TO_UDP_44: HashMap<ClientAndChannelV4, PortAndPeerV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_44: HashMap<PortAndPeerV4, ClientAndChannelV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static CHAN_TO_UDP_66: HashMap<ClientAndChannelV6, PortAndPeerV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_66: HashMap<PortAndPeerV6, ClientAndChannelV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static CHAN_TO_UDP_46: HashMap<ClientAndChannelV4, PortAndPeerV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_46: HashMap<PortAndPeerV4, ClientAndChannelV6> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static CHAN_TO_UDP_64: HashMap<ClientAndChannelV6, PortAndPeerV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-#[map]
-static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
-    HashMap::with_max_entries(NUM_ENTRIES, 0);
-
-// Per-CPU data structures to learn relay interface addresses
-#[map]
-static INT_ADDR_V4: PerCpuArray<InterfaceAddressV4> = PerCpuArray::with_max_entries(1, 0);
-#[map]
-static INT_ADDR_V6: PerCpuArray<InterfaceAddressV6> = PerCpuArray::with_max_entries(1, 0);
+/// Lower bound for TURN UDP ports
+const LOWER_PORT: u16 = 49152;
+/// Upper bound for TURN UDP ports
+const UPPER_PORT: u16 = 65535;
+/// Channel number start
+const CHAN_START: u16 = 0x4000;
+/// Channel number end
+const CHAN_END: u16 = 0x7FFF;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
@@ -83,8 +49,6 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
 fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
-
-    learn_interface_ipv4_address(ipv4)?;
 
     if ipv4.proto != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -111,14 +75,14 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_ipv4_udp_to_channel_data(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len);
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(());
     }
 
     if udp.dest() == 3478 {
         try_handle_ipv4_channel_data_to_udp(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
+        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(());
     }
@@ -130,8 +94,6 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
-
-    learn_interface_ipv6_address(ipv6)?;
 
     if ipv6.next_hdr != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -153,55 +115,19 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_ipv6_udp_to_channel_data(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len);
+        stats::emit_data_relayed(ctx, udp_payload_len);
 
         return Ok(());
     }
 
     if udp.dest() == 3478 {
         try_handle_ipv6_channel_data_to_udp(ctx)?;
-        crate::stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
+        stats::emit_data_relayed(ctx, udp_payload_len - CdHdr::LEN as u16);
 
         return Ok(());
     }
 
     Err(Error::NotTurn)
-}
-
-#[inline(always)]
-fn learn_interface_ipv4_address(ipv4: &Ipv4Hdr) -> Result<(), Error> {
-    let interface_addr = INT_ADDR_V4
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv4AddressAccessFailed)?;
-
-    let dst_ip = ipv4.dst_addr();
-
-    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
-    unsafe {
-        if (*interface_addr).get().is_none() {
-            (*interface_addr).set(dst_ip);
-        }
-    }
-
-    Ok(())
-}
-
-#[inline(always)]
-fn learn_interface_ipv6_address(ipv6: &Ipv6Hdr) -> Result<(), Error> {
-    let interface_addr = INT_ADDR_V6
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv6AddressAccessFailed)?;
-
-    let dst_ip = ipv6.dst_addr();
-
-    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
-    unsafe {
-        if (*interface_addr).get().is_none() {
-            (*interface_addr).set(dst_ip);
-        }
-    }
-
-    Ok(())
 }
 
 #[inline(always)]
@@ -215,13 +141,13 @@ fn try_handle_ipv4_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     let key = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_44.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_44.get(&key) } {
         handle_ipv4_udp_to_ipv4_channel(ctx, client_and_channel)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_46.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_46.get(&key) } {
         handle_ipv4_udp_to_ipv6_channel(ctx, client_and_channel)?;
         return Ok(());
     }
@@ -257,14 +183,14 @@ fn try_handle_ipv4_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
     let key = ClientAndChannelV4::new(ipv4.src_addr(), udp.source(), channel_number);
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_44.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_44.get(&key) } {
         // IPv4 to IPv4 - existing logic
         handle_ipv4_channel_to_ipv4_udp(ctx, port_and_peer)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_46.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_46.get(&key) } {
         handle_ipv4_channel_to_ipv6_udp(ctx, port_and_peer)?;
         return Ok(());
     }
@@ -283,13 +209,13 @@ fn try_handle_ipv6_udp_to_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     let key = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_66.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_66.get(&key) } {
         handle_ipv6_udp_to_ipv6_channel(ctx, client_and_channel)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(client_and_channel) = unsafe { UDP_TO_CHAN_64.get(&key) } {
+    if let Some(client_and_channel) = unsafe { channel_maps::UDP_TO_CHAN_64.get(&key) } {
         handle_ipv6_udp_to_ipv4_channel(ctx, client_and_channel)?;
         return Ok(());
     }
@@ -325,13 +251,13 @@ fn try_handle_ipv6_channel_data_to_udp(ctx: &XdpContext) -> Result<(), Error> {
     let key = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), u16::from_be_bytes(cd.number));
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_66.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_66.get(&key) } {
         handle_ipv6_channel_to_ipv6_udp(ctx, port_and_peer)?;
         return Ok(());
     }
 
     // SAFETY: We only write to these using a single thread in userspace.
-    if let Some(port_and_peer) = unsafe { CHAN_TO_UDP_64.get(&key) } {
+    if let Some(port_and_peer) = unsafe { channel_maps::CHAN_TO_UDP_64.get(&key) } {
         handle_ipv6_channel_to_ipv4_udp(ctx, port_and_peer)?;
         return Ok(());
     }
@@ -556,7 +482,7 @@ fn handle_ipv4_udp_to_ipv6_channel(
     // 2. IPv4 -> IPv6 header
     //
 
-    let new_ipv6_src = get_interface_ipv6_address()?;
+    let new_ipv6_src = interface::ipv6_address()?;
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv4_len - Ipv4Hdr::LEN as u16 + CdHdr::LEN as u16;
 
@@ -850,7 +776,7 @@ fn handle_ipv4_channel_to_ipv6_udp(
     // 2. IPv6 header
     //
 
-    let new_ipv6_src = get_interface_ipv6_address()?;
+    let new_ipv6_src = interface::ipv6_address()?;
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_udp_len = old_udp_len - CdHdr::LEN as u16;
 
@@ -1094,7 +1020,7 @@ fn handle_ipv6_udp_to_ipv4_channel(
     // 2. IPv6 -> IPv4 header
     //
 
-    let new_ipv4_src = get_interface_ipv4_address()?;
+    let new_ipv4_src = interface::ipv4_address()?;
     let new_ipv4_dst = client_and_channel.client_ip();
     let new_udp_len = old_udp_len + CdHdr::LEN as u16;
     let new_ipv4_len = Ipv4Hdr::LEN as u16 + new_udp_len;
@@ -1118,7 +1044,7 @@ fn handle_ipv6_udp_to_ipv4_channel(
     ipv4.set_dst_addr(new_ipv4_dst);
 
     // Calculate fresh checksum
-    let check = crate::checksum::new_ipv4(ipv4);
+    let check = checksum::new_ipv4(ipv4);
     ipv4.set_checksum(check);
 
     //
@@ -1366,7 +1292,7 @@ fn handle_ipv6_channel_to_ipv4_udp(
     // 2. IPv6 -> IPv4 header
     //
 
-    let new_ipv4_src = get_interface_ipv4_address()?;
+    let new_ipv4_src = interface::ipv4_address()?;
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_udp_len - CdHdr::LEN as u16 + Ipv4Hdr::LEN as u16;
 
@@ -1389,7 +1315,7 @@ fn handle_ipv6_channel_to_ipv4_udp(
     ipv4.set_dst_addr(new_ipv4_dst);
 
     // Calculate fresh checksum
-    let check = crate::checksum::new_ipv4(ipv4);
+    let check = checksum::new_ipv4(ipv4);
     ipv4.set_checksum(check);
 
     //
@@ -1442,56 +1368,4 @@ fn adjust_head(ctx: &XdpContext, size: i32) -> Result<(), Error> {
     }
 
     Ok(())
-}
-
-#[inline(always)]
-fn get_interface_ipv4_address() -> Result<Ipv4Addr, Error> {
-    let interface_addr = INT_ADDR_V4
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv4AddressAccessFailed)?;
-
-    // SAFETY: This comes from a per-cpu data structure so we can safely access it.
-    let addr = unsafe { *interface_addr };
-
-    addr.get().ok_or(Error::InterfaceIpv4AddressNotConfigured)
-}
-
-fn get_interface_ipv6_address() -> Result<Ipv6Addr, Error> {
-    let interface_addr = INT_ADDR_V6
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv6AddressAccessFailed)?;
-
-    // SAFETY: This comes from a per-cpu data structure so we can safely access it.
-    let addr = unsafe { *interface_addr };
-
-    addr.get().ok_or(Error::InterfaceIpv6AddressNotConfigured)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Memory overhead of an eBPF map.
-    ///
-    /// Determined empirically.
-    const HASH_MAP_OVERHEAD: f32 = 1.5;
-
-    #[test]
-    fn hashmaps_are_less_than_11_mb() {
-        let ipv4_datatypes =
-            core::mem::size_of::<PortAndPeerV4>() + core::mem::size_of::<ClientAndChannelV4>();
-        let ipv6_datatypes =
-            core::mem::size_of::<PortAndPeerV6>() + core::mem::size_of::<ClientAndChannelV6>();
-
-        let ipv4_map_size = ipv4_datatypes as f32 * NUM_ENTRIES as f32 * HASH_MAP_OVERHEAD;
-        let ipv6_map_size = ipv6_datatypes as f32 * NUM_ENTRIES as f32 * HASH_MAP_OVERHEAD;
-
-        let total_map_size = (ipv4_map_size + ipv6_map_size) * 2_f32;
-        let total_map_size_mb = total_map_size / 1024_f32 / 1024_f32;
-
-        assert!(
-            total_map_size_mb < 11_f32,
-            "Total map size = {total_map_size_mb} MB"
-        );
-    }
 }

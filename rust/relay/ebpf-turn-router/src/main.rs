@@ -9,28 +9,15 @@ fn main() {
     std::process::exit(1);
 }
 
-// Include modules only for BPF target
-#[cfg(target_arch = "bpf")]
-mod channel_data;
-#[cfg(target_arch = "bpf")]
-mod checksum;
-#[cfg(target_arch = "bpf")]
-mod error;
-#[cfg(target_arch = "bpf")]
-mod ref_mut_at;
-#[cfg(target_arch = "bpf")]
-mod stats;
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 mod try_handle_turn;
 
-// Everything below is only for BPF target
-#[cfg(target_arch = "bpf")]
+#[cfg(any(target_arch = "bpf", target_os = "linux"))]
 #[aya_ebpf::macros::xdp]
-// Per-CPU data structures to learn relay interface addresses
 pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
     use aya_ebpf::bindings::xdp_action;
     use aya_log_ebpf::{debug, warn};
-    use error::Error;
+    use try_handle_turn::Error;
 
     try_handle_turn::try_handle_turn(&ctx).unwrap_or_else(|e| match e {
         Error::NotIp | Error::NotUdp => xdp_action::XDP_PASS,
