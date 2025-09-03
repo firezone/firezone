@@ -50,8 +50,6 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
-    interface::learn_interface_ipv4_address(ipv4)?;
-
     if ipv4.proto != IpProto::Udp {
         return Err(Error::NotUdp);
     }
@@ -96,8 +94,6 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
 fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
-
-    interface::learn_interface_ipv6_address(ipv6)?;
 
     if ipv6.next_hdr != IpProto::Udp {
         return Err(Error::NotUdp);
