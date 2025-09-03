@@ -30,10 +30,14 @@ mod ref_mut_at;
 mod stats;
 
 const NUM_ENTRIES: u32 = 0x10000;
-const LOWER_PORT: u16 = 49152; // Lower bound for TURN UDP ports
-const UPPER_PORT: u16 = 65535; // Upper bound for TURN UDP ports
-const CHAN_START: u16 = 0x4000; // Channel number start
-const CHAN_END: u16 = 0x7FFF; // Channel number end
+/// Lower bound for TURN UDP ports
+const LOWER_PORT: u16 = 49152;
+/// Upper bound for TURN UDP ports
+const UPPER_PORT: u16 = 65535;
+/// Channel number start
+const CHAN_START: u16 = 0x4000;
+/// Channel number end
+const CHAN_END: u16 = 0x7FFF;
 
 // SAFETY: Testing has shown that these maps are safe to use as long as we aren't
 // writing to them from multiple threads at the same time. Since we only update these
