@@ -515,8 +515,8 @@ fn handle_ipv4_udp_to_ipv4_udp(
 
 #[inline(always)]
 fn handle_ipv4_udp_to_ipv6_udp(
-    ctx: &XdpContext,
-    peer_and_port: &PortAndPeerV6,
+    _ctx: &XdpContext,
+    _peer_and_port: &PortAndPeerV6,
 ) -> Result<(), Error> {
     // TODO: Need to expand for IPv6 header.
 
