@@ -1,17 +1,10 @@
 pub use error::Error;
 
-use aya_ebpf::{
-    bindings::xdp_action, helpers::bpf_xdp_adjust_head, macros::map, maps::PerCpuArray,
-    programs::XdpContext,
-};
+use aya_ebpf::{bindings::xdp_action, helpers::bpf_xdp_adjust_head, programs::XdpContext};
 use aya_log_ebpf::*;
 use channel_data::CdHdr;
 use checksum::ChecksumUpdate;
-use core::net::{Ipv4Addr, Ipv6Addr};
-use ebpf_shared::{
-    ClientAndChannelV4, ClientAndChannelV6, InterfaceAddressV4, InterfaceAddressV6, PortAndPeerV4,
-    PortAndPeerV6,
-};
+use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
 use error::SupportedChannel;
 use network_types::{
     eth::{EthHdr, EtherType},
@@ -24,6 +17,7 @@ mod channel_data;
 mod channel_maps;
 mod checksum;
 mod error;
+mod interface;
 mod ref_mut_at;
 mod stats;
 
@@ -35,12 +29,6 @@ const UPPER_PORT: u16 = 65535;
 const CHAN_START: u16 = 0x4000;
 /// Channel number end
 const CHAN_END: u16 = 0x7FFF;
-
-// Per-CPU data structures to learn relay interface addresses
-#[map]
-static INT_ADDR_V4: PerCpuArray<InterfaceAddressV4> = PerCpuArray::with_max_entries(1, 0);
-#[map]
-static INT_ADDR_V6: PerCpuArray<InterfaceAddressV6> = PerCpuArray::with_max_entries(1, 0);
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
@@ -62,7 +50,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
 
-    learn_interface_ipv4_address(ipv4)?;
+    interface::learn_interface_ipv4_address(ipv4)?;
 
     if ipv4.proto != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -109,7 +97,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
 
-    learn_interface_ipv6_address(ipv6)?;
+    interface::learn_interface_ipv6_address(ipv6)?;
 
     if ipv6.next_hdr != IpProto::Udp {
         return Err(Error::NotUdp);
@@ -144,42 +132,6 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<(), Error> {
     }
 
     Err(Error::NotTurn)
-}
-
-#[inline(always)]
-fn learn_interface_ipv4_address(ipv4: &Ipv4Hdr) -> Result<(), Error> {
-    let interface_addr = INT_ADDR_V4
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv4AddressAccessFailed)?;
-
-    let dst_ip = ipv4.dst_addr();
-
-    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
-    unsafe {
-        if (*interface_addr).get().is_none() {
-            (*interface_addr).set(dst_ip);
-        }
-    }
-
-    Ok(())
-}
-
-#[inline(always)]
-fn learn_interface_ipv6_address(ipv6: &Ipv6Hdr) -> Result<(), Error> {
-    let interface_addr = INT_ADDR_V6
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv6AddressAccessFailed)?;
-
-    let dst_ip = ipv6.dst_addr();
-
-    // SAFETY: These are per-cpu maps so we don't need to worry about thread safety.
-    unsafe {
-        if (*interface_addr).get().is_none() {
-            (*interface_addr).set(dst_ip);
-        }
-    }
-
-    Ok(())
 }
 
 #[inline(always)]
@@ -534,7 +486,7 @@ fn handle_ipv4_udp_to_ipv6_channel(
     // 2. IPv4 -> IPv6 header
     //
 
-    let new_ipv6_src = get_interface_ipv6_address()?;
+    let new_ipv6_src = interface::get_interface_ipv6_address()?;
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv4_len - Ipv4Hdr::LEN as u16 + CdHdr::LEN as u16;
 
@@ -828,7 +780,7 @@ fn handle_ipv4_channel_to_ipv6_udp(
     // 2. IPv6 header
     //
 
-    let new_ipv6_src = get_interface_ipv6_address()?;
+    let new_ipv6_src = interface::get_interface_ipv6_address()?;
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_udp_len = old_udp_len - CdHdr::LEN as u16;
 
@@ -1072,7 +1024,7 @@ fn handle_ipv6_udp_to_ipv4_channel(
     // 2. IPv6 -> IPv4 header
     //
 
-    let new_ipv4_src = get_interface_ipv4_address()?;
+    let new_ipv4_src = interface::get_interface_ipv4_address()?;
     let new_ipv4_dst = client_and_channel.client_ip();
     let new_udp_len = old_udp_len + CdHdr::LEN as u16;
     let new_ipv4_len = Ipv4Hdr::LEN as u16 + new_udp_len;
@@ -1344,7 +1296,7 @@ fn handle_ipv6_channel_to_ipv4_udp(
     // 2. IPv6 -> IPv4 header
     //
 
-    let new_ipv4_src = get_interface_ipv4_address()?;
+    let new_ipv4_src = interface::get_interface_ipv4_address()?;
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_udp_len - CdHdr::LEN as u16 + Ipv4Hdr::LEN as u16;
 
@@ -1420,27 +1372,4 @@ fn adjust_head(ctx: &XdpContext, size: i32) -> Result<(), Error> {
     }
 
     Ok(())
-}
-
-#[inline(always)]
-fn get_interface_ipv4_address() -> Result<Ipv4Addr, Error> {
-    let interface_addr = INT_ADDR_V4
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv4AddressAccessFailed)?;
-
-    // SAFETY: This comes from a per-cpu data structure so we can safely access it.
-    let addr = unsafe { *interface_addr };
-
-    addr.get().ok_or(Error::InterfaceIpv4AddressNotConfigured)
-}
-
-fn get_interface_ipv6_address() -> Result<Ipv6Addr, Error> {
-    let interface_addr = INT_ADDR_V6
-        .get_ptr_mut(0)
-        .ok_or(Error::InterfaceIpv6AddressAccessFailed)?;
-
-    // SAFETY: This comes from a per-cpu data structure so we can safely access it.
-    let addr = unsafe { *interface_addr };
-
-    addr.get().ok_or(Error::InterfaceIpv6AddressNotConfigured)
 }
