@@ -24,6 +24,7 @@ pub fn ipv4_address() -> Result<Ipv4Addr, Error> {
     addr.get().ok_or(Error::InterfaceIpv4AddressNotConfigured)
 }
 
+#[inline(always)]
 pub fn ipv6_address() -> Result<Ipv6Addr, Error> {
     let interface_addr = INT_ADDR_V6
         .get_ptr_mut(0)
