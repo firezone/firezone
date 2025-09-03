@@ -482,7 +482,7 @@ fn handle_ipv4_udp_to_ipv6_channel(
     // 2. IPv4 -> IPv6 header
     //
 
-    let new_ipv6_src = interface::get_interface_ipv6_address()?;
+    let new_ipv6_src = interface::ipv6_address()?;
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv4_len - Ipv4Hdr::LEN as u16 + CdHdr::LEN as u16;
 
@@ -776,7 +776,7 @@ fn handle_ipv4_channel_to_ipv6_udp(
     // 2. IPv6 header
     //
 
-    let new_ipv6_src = interface::get_interface_ipv6_address()?;
+    let new_ipv6_src = interface::ipv6_address()?;
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_udp_len = old_udp_len - CdHdr::LEN as u16;
 
@@ -1020,7 +1020,7 @@ fn handle_ipv6_udp_to_ipv4_channel(
     // 2. IPv6 -> IPv4 header
     //
 
-    let new_ipv4_src = interface::get_interface_ipv4_address()?;
+    let new_ipv4_src = interface::ipv4_address()?;
     let new_ipv4_dst = client_and_channel.client_ip();
     let new_udp_len = old_udp_len + CdHdr::LEN as u16;
     let new_ipv4_len = Ipv4Hdr::LEN as u16 + new_udp_len;
@@ -1292,7 +1292,7 @@ fn handle_ipv6_channel_to_ipv4_udp(
     // 2. IPv6 -> IPv4 header
     //
 
-    let new_ipv4_src = interface::get_interface_ipv4_address()?;
+    let new_ipv4_src = interface::ipv4_address()?;
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_udp_len - CdHdr::LEN as u16 + Ipv4Hdr::LEN as u16;
 
