@@ -3,7 +3,7 @@
 //! Testing has shown that these maps are safe to use as long as we aren't
 //! writing to them from multiple threads at the same time. Since we only update these
 //! from the single-threaded eventloop in userspace, we are ok.
-//! See https://github.com/firezone/firezone/issues/10138#issuecomment-3186074350
+//! See <https://github.com/firezone/firezone/issues/10138#issuecomment-3186074350>.
 
 use aya_ebpf::{macros::map, maps::HashMap};
 use ebpf_shared::{ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
