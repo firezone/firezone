@@ -1,4 +1,4 @@
-//! Per-CPU data structures to learn relay interface addresses
+//! Per-CPU data structures to store relay interface addresses.
 
 use core::net::{Ipv4Addr, Ipv6Addr};
 
