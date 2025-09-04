@@ -40,6 +40,13 @@ impl ClientAndChannel {
             ClientAndChannel::V6(cc) => cc.client_ip().into(),
         }
     }
+
+    pub fn client_port(&self) -> u16 {
+        match self {
+            ClientAndChannel::V4(cc) => cc.client_port(),
+            ClientAndChannel::V6(cc) => cc.client_port(),
+        }
+    }
 }
 
 impl ClientAndChannelV4 {
@@ -126,6 +133,13 @@ impl PortAndPeer {
         match self {
             PortAndPeer::V4(pp) => pp.peer_ip().into(),
             PortAndPeer::V6(pp) => pp.peer_ip().into(),
+        }
+    }
+
+    pub fn peer_port(&self) -> u16 {
+        match self {
+            PortAndPeer::V4(pp) => pp.peer_port(),
+            PortAndPeer::V6(pp) => pp.peer_port(),
         }
     }
 }
