@@ -144,11 +144,31 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
-    let key = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
-    let cc = routing::get_client_and_channel(key)?;
+    let pp = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
+    let cc = routing::get_client_and_channel(pp)?;
+
+    aya_log_ebpf::trace!(
+        ctx,
+        "Routing packet from {:i}:{} to {:i}:{}",
+        pp.peer_ip(),
+        pp.peer_port(),
+        cc.client_ip(),
+        cc.client_port(),
+    );
 
     if is_interface_ip(cc.client_ip())? {
-        match routing::get_port_and_peer(cc)? {
+        let pp = routing::get_port_and_peer(cc)?;
+
+        aya_log_ebpf::trace!(
+            ctx,
+            "Routing packet from {:i}:{} to {:i}:{}",
+            cc.client_ip(),
+            cc.client_port(),
+            pp.peer_ip(),
+            pp.peer_port(),
+        );
+
+        match pp {
             PortAndPeer::V4(pp) => from_ipv4_udp::to_ipv4_udp(ctx, &pp)?,
             PortAndPeer::V6(pp) => from_ipv4_udp::to_ipv6_udp(ctx, &pp)?,
         }
@@ -189,11 +209,31 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
-    let key = ClientAndChannelV4::new(ipv4.src_addr(), udp.source(), channel_number);
-    let pp = routing::get_port_and_peer(key)?;
+    let cc = ClientAndChannelV4::new(ipv4.src_addr(), udp.source(), channel_number);
+    let pp = routing::get_port_and_peer(cc)?;
+
+    aya_log_ebpf::trace!(
+        ctx,
+        "Routing packet from {:i}:{} to {:i}:{}",
+        cc.client_ip(),
+        cc.client_port(),
+        pp.peer_ip(),
+        pp.peer_port(),
+    );
 
     if is_interface_ip(pp.peer_ip())? {
-        match routing::get_client_and_channel(pp)? {
+        let cc = routing::get_client_and_channel(pp)?;
+
+        aya_log_ebpf::trace!(
+            ctx,
+            "Routing packet from {:i}:{} to {:i}:{}",
+            pp.peer_ip(),
+            pp.peer_port(),
+            cc.client_ip(),
+            cc.client_port(),
+        );
+
+        match cc {
             ClientAndChannel::V4(cc) => from_ipv4_channel::to_ipv4_channel(ctx, &cc)?,
             ClientAndChannel::V6(cc) => from_ipv4_channel::to_ipv6_channel(ctx, &cc)?,
         }
@@ -217,11 +257,31 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
 
-    let key = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
-    let cc = routing::get_client_and_channel(key)?;
+    let pp = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
+    let cc = routing::get_client_and_channel(pp)?;
+
+    aya_log_ebpf::trace!(
+        ctx,
+        "Routing packet from {:i}:{} to {:i}:{}",
+        pp.peer_ip(),
+        pp.peer_port(),
+        cc.client_ip(),
+        cc.client_port(),
+    );
 
     if is_interface_ip(cc.client_ip())? {
-        match routing::get_port_and_peer(cc)? {
+        let pp = routing::get_port_and_peer(cc)?;
+
+        aya_log_ebpf::trace!(
+            ctx,
+            "Routing packet from {:i}:{} to {:i}:{}",
+            cc.client_ip(),
+            cc.client_port(),
+            pp.peer_ip(),
+            pp.peer_port(),
+        );
+
+        match pp {
             PortAndPeer::V4(pp) => from_ipv6_udp::to_ipv4_udp(ctx, &pp)?,
             PortAndPeer::V6(pp) => from_ipv6_udp::to_ipv6_udp(ctx, &pp)?,
         }
@@ -262,11 +322,22 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
-    let key = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), cd.number());
-    let pp = routing::get_port_and_peer(key)?;
+    let cc = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), cd.number());
+    let pp = routing::get_port_and_peer(cc)?;
 
     if is_interface_ip(pp.peer_ip())? {
-        match routing::get_client_and_channel(pp)? {
+        let cc = routing::get_client_and_channel(pp)?;
+
+        aya_log_ebpf::trace!(
+            ctx,
+            "Routing packet from {:i}:{} to {:i}:{}",
+            pp.peer_ip(),
+            pp.peer_port(),
+            cc.client_ip(),
+            cc.client_port(),
+        );
+
+        match cc {
             ClientAndChannel::V4(cc) => from_ipv6_channel::to_ipv4_channel(ctx, &cc)?,
             ClientAndChannel::V6(cc) => from_ipv6_channel::to_ipv6_channel(ctx, &cc)?,
         }
