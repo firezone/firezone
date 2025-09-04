@@ -26,6 +26,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
         | Error::InterfaceIpv6AddressAccessFailed
         | Error::PacketTooShort
         | Error::NotTurn
+        | Error::NoEntry(_)
         | Error::NotAChannelDataMessage
         | Error::UdpChecksumMissing
         | Error::Ipv4PacketWithOptions => {
@@ -34,16 +35,18 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             xdp_action::XDP_PASS
         }
 
-        Error::InterfaceIpv4AddressNotConfigured
-        | Error::PacketLoop
-        | Error::NoEntry(_)
-        | Error::InterfaceIpv6AddressNotConfigured => {
+        // TODO: Remove this when same-host relay-relay is supported.
+        Error::PacketLoop => {
             debug!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP
         }
 
-        Error::BadChannelDataLength | Error::XdpAdjustHeadFailed(_) => {
+        // These are exceptions and shouldn't happen in practice - WARN.
+        Error::BadChannelDataLength
+        | Error::InterfaceIpv4AddressNotConfigured
+        | Error::InterfaceIpv6AddressNotConfigured
+        | Error::XdpAdjustHeadFailed(_) => {
             warn!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP

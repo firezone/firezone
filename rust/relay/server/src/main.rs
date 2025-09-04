@@ -586,6 +586,11 @@ where
                         ClientSocket::new(from),
                         Instant::now(),
                     ) {
+                        // If eBPF offloading is enabled, log a warning as this traffic should be handled by kernel
+                        if self.ebpf.is_some() {
+                            tracing::warn!(target: "relay", %port, %peer, "Relaying client->peer ChannelData in userspace! (should have been handled by eBPF)");
+                        }
+
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)
                             .expect("valid ChannelData if we should relay it")
@@ -612,6 +617,11 @@ where
                         PeerSocket::new(from),
                         AllocationPort::new(port),
                     ) {
+                        // If eBPF offloading is enabled, log a warning as this traffic should be handled by kernel
+                        if self.ebpf.is_some() {
+                            tracing::warn!(target: "relay", %client, %channel, "Relaying peer->client traffic in userspace! (should have been handled by eBPF)");
+                        }
+
                         let total_length = ChannelData::encode_header_to_slice(
                             channel,
                             packet.len() as u16,
