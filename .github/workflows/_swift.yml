@@ -6,7 +6,7 @@ on:
 jobs:
   update-release-draft:
     name: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       # mark:next-apple-version
       RELEASE_NAME: macos-client-1.5.8

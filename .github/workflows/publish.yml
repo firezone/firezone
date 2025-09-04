@@ -21,7 +21,7 @@ jobs:
         startsWith(inputs.release_name || github.event.release.name, 'gateway') ||
         startsWith(inputs.release_name || github.event.release.name, 'headless-client')
       }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       # Needed to upload artifacts to a release
       packages: write

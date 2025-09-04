@@ -46,7 +46,7 @@ permissions:
 jobs:
   control-plane:
     name: ${{ matrix.image_name }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -193,7 +193,7 @@ jobs:
 
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: rust
@@ -448,7 +448,7 @@ jobs:
     name: merge-${{ matrix.image.name }}
     needs: data-plane-linux
     if: ${{ always() }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
