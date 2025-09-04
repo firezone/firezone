@@ -29,20 +29,16 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
         | Error::NotAChannelDataMessage
         | Error::UdpChecksumMissing
         | Error::Ipv4PacketWithOptions => {
-            debug!(&ctx, "Passing packet to the stack: {}", e);
+            debug!(&ctx, "Passing packet to userspace: {}", e);
 
             xdp_action::XDP_PASS
         }
 
         Error::InterfaceIpv4AddressNotConfigured
+        | Error::InterfaceIpv6AddressNotConfigured
         | Error::NoEntry(_)
-        | Error::InterfaceIpv6AddressNotConfigured => {
-            debug!(&ctx, "Dropping packet: {}", e);
-
-            xdp_action::XDP_DROP
-        }
-
-        Error::BadChannelDataLength | Error::XdpAdjustHeadFailed(_) => {
+        | Error::BadChannelDataLength
+        | Error::XdpAdjustHeadFailed(_) => {
             warn!(&ctx, "Dropping packet: {}", e);
 
             xdp_action::XDP_DROP
