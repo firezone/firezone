@@ -157,27 +157,6 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
         cc.channel()
     );
 
-    if is_interface_ip(cc.client_ip())? {
-        let pp = routing::get_port_and_peer(cc)?;
-
-        aya_log_ebpf::trace!(
-            ctx,
-            "Routing packet from {:i}:{} to {:i}:{} on {}",
-            cc.client_ip(),
-            cc.client_port(),
-            pp.peer_ip(),
-            pp.peer_port(),
-            pp.allocation_port(),
-        );
-
-        match pp {
-            PortAndPeer::V4(pp) => from_ipv4_udp::to_ipv4_udp(ctx, &pp)?,
-            PortAndPeer::V6(pp) => from_ipv4_udp::to_ipv6_udp(ctx, &pp)?,
-        }
-
-        return Ok(());
-    }
-
     match cc {
         ClientAndChannel::V4(cc) => from_ipv4_udp::to_ipv4_channel(ctx, &cc)?,
         ClientAndChannel::V6(cc) => from_ipv4_udp::to_ipv6_channel(ctx, &cc)?,
@@ -276,27 +255,6 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
         cc.client_port(),
         cc.channel()
     );
-
-    if is_interface_ip(cc.client_ip())? {
-        let pp = routing::get_port_and_peer(cc)?;
-
-        aya_log_ebpf::trace!(
-            ctx,
-            "Routing packet from {:i}:{} to {:i}:{} on {}",
-            cc.client_ip(),
-            cc.client_port(),
-            pp.peer_ip(),
-            pp.peer_port(),
-            pp.allocation_port(),
-        );
-
-        match pp {
-            PortAndPeer::V4(pp) => from_ipv6_udp::to_ipv4_udp(ctx, &pp)?,
-            PortAndPeer::V6(pp) => from_ipv6_udp::to_ipv6_udp(ctx, &pp)?,
-        }
-
-        return Ok(());
-    }
 
     match cc {
         ClientAndChannel::V4(cc) => from_ipv6_udp::to_ipv4_channel(ctx, &cc)?,
