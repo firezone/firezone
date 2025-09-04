@@ -157,6 +157,19 @@ impl PortAndPeer {
         }
     }
 
+    /// Flips the allocation and peer port.
+    ///
+    /// When sending out a packet:
+    /// - the allocation port is the source
+    /// - the peer port is the destination
+    ///
+    /// When receiving a packet:
+    /// - the allocation port is the destination
+    /// - the peer port is the source
+    ///
+    /// When sending a packet to ourselves, we therefore need to flip these ports.
+    /// 1. The allocation port becomes the source port of the packet.
+    /// 2. The peer port becomes the destination of the packet.
     pub fn flip_ports(self) -> Self {
         match self {
             PortAndPeer::V4(pp) => PortAndPeer::V4(PortAndPeerV4 {
