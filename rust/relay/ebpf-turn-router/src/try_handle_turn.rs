@@ -149,11 +149,13 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     aya_log_ebpf::trace!(
         ctx,
-        "Routing packet from {:i}:{} to {:i}:{}",
+        "Routing packet from {:i}:{} on {} to {:i}:{} on {}",
         pp.peer_ip(),
         pp.peer_port(),
+        pp.allocation_port(),
         cc.client_ip(),
         cc.client_port(),
+        cc.channel()
     );
 
     if is_interface_ip(cc.client_ip())? {
@@ -161,11 +163,12 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
 
         aya_log_ebpf::trace!(
             ctx,
-            "Routing packet from {:i}:{} to {:i}:{}",
+            "Routing packet from {:i}:{} to {:i}:{} on {}",
             cc.client_ip(),
             cc.client_port(),
             pp.peer_ip(),
             pp.peer_port(),
+            pp.allocation_port(),
         );
 
         match pp {
@@ -214,11 +217,12 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     aya_log_ebpf::trace!(
         ctx,
-        "Routing packet from {:i}:{} to {:i}:{}",
+        "Routing packet from {:i}:{} to {:i}:{} on {}",
         cc.client_ip(),
         cc.client_port(),
         pp.peer_ip(),
         pp.peer_port(),
+        pp.allocation_port(),
     );
 
     if is_interface_ip(pp.peer_ip())? {
@@ -227,11 +231,13 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
         aya_log_ebpf::trace!(
             ctx,
-            "Routing packet from {:i}:{} to {:i}:{}",
+            "Routing packet from {:i}:{} on {} to {:i}:{} on {}",
             pp.peer_ip(),
             pp.peer_port(),
+            pp.allocation_port(),
             cc.client_ip(),
             cc.client_port(),
+            cc.channel()
         );
 
         match cc {
@@ -263,11 +269,13 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     aya_log_ebpf::trace!(
         ctx,
-        "Routing packet from {:i}:{} to {:i}:{}",
+        "Routing packet from {:i}:{} on {} to {:i}:{} on {}",
         pp.peer_ip(),
         pp.peer_port(),
+        pp.allocation_port(),
         cc.client_ip(),
         cc.client_port(),
+        cc.channel()
     );
 
     if is_interface_ip(cc.client_ip())? {
@@ -275,11 +283,12 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
 
         aya_log_ebpf::trace!(
             ctx,
-            "Routing packet from {:i}:{} to {:i}:{}",
+            "Routing packet from {:i}:{} to {:i}:{} on {}",
             cc.client_ip(),
             cc.client_port(),
             pp.peer_ip(),
             pp.peer_port(),
+            pp.allocation_port(),
         );
 
         match pp {
@@ -326,17 +335,29 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     let cc = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), cd.number());
     let pp = routing::get_port_and_peer(cc)?;
 
+    aya_log_ebpf::trace!(
+        ctx,
+        "Routing packet from {:i}:{} to {:i}:{} on {}",
+        cc.client_ip(),
+        cc.client_port(),
+        pp.peer_ip(),
+        pp.peer_port(),
+        pp.allocation_port(),
+    );
+
     if is_interface_ip(pp.peer_ip())? {
         let pp = pp.flip_ports();
         let cc = routing::get_client_and_channel(pp)?;
 
         aya_log_ebpf::trace!(
             ctx,
-            "Routing packet from {:i}:{} to {:i}:{}",
+            "Routing packet from {:i}:{} on {} to {:i}:{} on {}",
             pp.peer_ip(),
             pp.peer_port(),
+            pp.allocation_port(),
             cc.client_ip(),
             cc.client_port(),
+            cc.channel()
         );
 
         match cc {
