@@ -1,109 +1,113 @@
 use aya_ebpf::programs::XdpContext;
-use ebpf_shared::{ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6};
+use ebpf_shared::PortAndPeerV6;
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{Ipv4Hdr, Ipv6Hdr},
     udp::UdpHdr,
 };
 
-use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, interface, ref_mut_at,
-};
+use crate::try_handle_turn::{Error, adjust_head, checksum::ChecksumUpdate, interface, ref_mut_at};
 
 #[inline(always)]
-pub fn to_ipv6_udp(_ctx: &XdpContext, _peer_and_port: &PortAndPeerV6) -> Result<(), Error> {
-    // TODO: Need to expand for IPv6 header.
+pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<(), Error> {
+    const NET_EXPANSION: i32 = Ipv4Hdr::LEN as i32 - Ipv6Hdr::LEN as i32;
 
-    // let (old_eth_src, old_eth_dst, old_eth_type) = {
-    //     // SAFETY: The offset must point to the start of a valid `EthHdr`.
-    //     let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-    //     (old_eth.src_addr, old_eth.dst_addr, old_eth.ether_type)
-    // };
+    adjust_head(ctx, NET_EXPANSION)?;
 
-    // let (old_ipv4_src, old_ipv4_dst, _, old_ipv4_check, ..) = {
-    //     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
-    //     let old_ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
-    //     (
-    //         old_ipv4.src_addr(),
-    //         old_ipv4.dst_addr(),
-    //         old_ipv4.total_len(),
-    //         old_ipv4.checksum(),
-    //         old_ipv4.tos,
-    //         old_ipv4.id(),
-    //         old_ipv4.frag_off,
-    //         old_ipv4.ttl,
-    //         old_ipv4.proto,
-    //     )
-    // };
+    // Now read the old packet data from its NEW location
+    let old_data_offset = (-NET_EXPANSION) as usize;
 
-    // let (_, old_udp_src, old_udp_dst, old_udp_check) = {
-    //     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
-    //     let old_udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
-    //     (
-    //         old_udp.len(),
-    //         old_udp.source(),
-    //         old_udp.dest(),
-    //         old_udp.check(),
-    //     )
-    // };
+    let (old_src_mac, old_dst_mac) = {
+        // SAFETY: The offset must point to the start of a valid `EthHdr`.
+        let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, old_data_offset)? };
+        (old_eth.src_addr, old_eth.dst_addr)
+    };
 
-    // //
-    // // 1. Ethernet header
-    // //
+    let (old_ipv4_src, old_ipv4_dst, old_ipv4_tos, old_ipv4_ttl, old_ipv4_proto) = {
+        // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
+        let old_ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
+        (
+            old_ipv4.src_addr(),
+            old_ipv4.dst_addr(),
+            old_ipv4.tos,
+            old_ipv4.ttl,
+            old_ipv4.proto,
+        )
+    };
 
-    // // SAFETY: The offset must point to the start of a valid `EthHdr`.
-    // let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
-    // eth.src_addr = old_eth_dst;
-    // eth.dst_addr = old_eth_src;
-    // eth.ether_type = old_eth_type;
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+        // SAFETY: The offset must point to the start of a valid `UdpHdr`.
+        let old_udp =
+            unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
+        (
+            old_udp.len(),
+            old_udp.source(),
+            old_udp.dest(),
+            old_udp.check(),
+        )
+    };
 
-    // //
-    // // 2. IPv4 header
-    // //
+    // Refuse to compute full UDP checksum.
+    // We forged these packets, so something's wrong if this is zero.
+    if old_udp_check == 0 {
+        return Err(Error::UdpChecksumMissing);
+    }
 
-    // let new_ipv4_src = old_ipv4_dst;
-    // let new_ipv4_dst = peer_and_port.peer_ip();
+    //
+    // 1. Ethernet header
+    //
 
-    // // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
-    // let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
-    // ipv4.set_src_addr(new_ipv4_src); // Swap source and destination
-    // ipv4.set_dst_addr(new_ipv4_dst); // Destination is the peer IP
-    // ipv4.set_checksum(
-    //     ChecksumUpdate::new(old_ipv4_check)
-    //         .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
-    //         .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
-    //         .into_ip_checksum(),
-    // );
+    // SAFETY: The offset must point to the start of a valid `EthHdr`.
+    let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
+    eth.dst_addr = old_src_mac; // Swap MACs
+    eth.src_addr = old_dst_mac;
+    eth.ether_type = EtherType::Ipv6; // Change to IPv6
 
-    // //
-    // // 3. UDP header
-    // //
+    //
+    // 2. IPv6 header
+    //
 
-    // let new_udp_src = peer_and_port.allocation_port();
-    // let new_udp_dst = peer_and_port.peer_port();
+    let new_ipv6_src = interface::ipv6_address()?;
+    let new_ipv6_dst = port_and_peer.peer_ip();
 
-    // // SAFETY: The offset must point to the start of a valid `UdpHdr`.
-    // let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
-    // udp.set_source(new_udp_src);
-    // udp.set_dest(new_udp_dst);
+    // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
+    let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
+    ipv6.set_version(6); // IPv6
+    ipv6.set_priority(old_ipv4_tos);
+    ipv6.flow_label = [0, 0, 0];
+    ipv6.set_payload_len(old_udp_len);
+    ipv6.next_hdr = old_ipv4_proto;
+    ipv6.hop_limit = old_ipv4_ttl;
+    ipv6.set_src_addr(new_ipv6_src);
+    ipv6.set_dst_addr(new_ipv6_dst);
 
-    // // Incrementally update UDP checksum
+    //
+    // 3. UDP header
+    //
 
-    // if old_udp_check == 0 {
-    //     // No checksum is valid for UDP IPv4 - we didn't write it, but maybe a middlebox did
-    //     udp.set_check(0);
-    // } else {
-    //     udp.set_check(
-    //         ChecksumUpdate::new(old_udp_check)
-    //             .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
-    //             .remove_u16(old_udp_src)
-    //             .remove_u16(old_udp_dst)
-    //             .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
-    //             .add_u16(new_udp_src)
-    //             .add_u16(new_udp_dst)
-    //             .into_udp_checksum(),
-    //     );
-    // }
+    let new_udp_src = port_and_peer.allocation_port();
+    let new_udp_dst = port_and_peer.peer_port();
+
+    // SAFETY: The offset must point to the start of a valid `UdpHdr`.
+    let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
+    udp.set_source(new_udp_src);
+    udp.set_dest(new_udp_dst);
+    udp.set_len(old_udp_len);
+
+    // Incrementally update UDP checksum
+
+    udp.set_check(
+        ChecksumUpdate::new(old_udp_check)
+            .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
+            .remove_u32(u32::from_be_bytes(old_ipv4_dst.octets()))
+            .remove_u16(old_udp_src)
+            .remove_u16(old_udp_dst)
+            .add_u128(u128::from_be_bytes(new_ipv6_src.octets()))
+            .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
+            .add_u16(new_udp_src)
+            .add_u16(new_udp_dst)
+            .into_udp_checksum(),
+    );
 
     Ok(())
 }

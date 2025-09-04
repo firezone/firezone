@@ -5,7 +5,7 @@ use network_types::{eth::EthHdr, ip::Ipv4Hdr, udp::UdpHdr};
 use crate::try_handle_turn::{Error, checksum::ChecksumUpdate, ref_mut_at};
 
 #[inline(always)]
-pub fn to_ipv4_udp(ctx: &XdpContext, peer_and_port: &PortAndPeerV4) -> Result<(), Error> {
+pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<(), Error> {
     let (old_eth_src, old_eth_dst, old_eth_type) = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.
         let old_eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
@@ -54,7 +54,7 @@ pub fn to_ipv4_udp(ctx: &XdpContext, peer_and_port: &PortAndPeerV4) -> Result<()
     //
 
     let new_ipv4_src = old_ipv4_dst;
-    let new_ipv4_dst = peer_and_port.peer_ip();
+    let new_ipv4_dst = port_and_peer.peer_ip();
 
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
@@ -71,8 +71,8 @@ pub fn to_ipv4_udp(ctx: &XdpContext, peer_and_port: &PortAndPeerV4) -> Result<()
     // 3. UDP header
     //
 
-    let new_udp_src = peer_and_port.allocation_port();
-    let new_udp_dst = peer_and_port.peer_port();
+    let new_udp_src = port_and_peer.allocation_port();
+    let new_udp_dst = port_and_peer.peer_port();
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
