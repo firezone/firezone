@@ -21,7 +21,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
 
     match try_handle_turn::try_handle_turn(&ctx) {
         Ok(()) => {
-            trace!(&ctx, target: "eBPF", "Sending packet");
+            trace!(&ctx, target: "eBPF", "==> send packet");
 
             xdp_action::XDP_TX
         }
@@ -35,7 +35,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::UdpChecksumMissing
             | Error::Ipv4PacketWithOptions),
         ) => {
-            debug!(&ctx, target: "eBPF", "Passing packet to userspace: {}", e);
+            debug!(&ctx, target: "eBPF", "^^^ pass packet to userspace: {}", e);
 
             xdp_action::XDP_PASS
         }
@@ -46,7 +46,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::BadChannelDataLength
             | Error::XdpAdjustHeadFailed(_)),
         ) => {
-            warn!(&ctx,target: "eBPF", "Dropping packet: {}", e);
+            warn!(&ctx,target: "eBPF", "XXX drop packet: {}", e);
 
             xdp_action::XDP_DROP
         }

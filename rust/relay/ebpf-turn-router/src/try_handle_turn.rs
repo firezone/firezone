@@ -75,7 +75,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     trace!(
         ctx,
         target: "eBPF",
-        "New packet from {:i}:{} for {:i}:{} with UDP payload {}",
+        "<== new packet from {:i}:{} for {:i}:{} with UDP payload {}",
         ipv4.src_addr(),
         udp.source(),
         ipv4.dst_addr(),
@@ -114,7 +114,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     trace!(
         ctx,
         target: "eBPF",
-        "New packet from {:i}:{} for {:i}:{} with UDP payload {}",
+        "<== new packet from {:i}:{} for {:i}:{} with UDP payload {}",
         ipv6.src_addr(),
         udp.source(),
         ipv6.dst_addr(),
