@@ -15,5 +15,7 @@ for client_ip_family in ipv4 ipv6; do
         # Reset for next test case
         docker compose restart client
         docker compose restart gateway
+
+        sleep 2
     done
 done
