@@ -42,7 +42,7 @@ pub fn to_ipv6_channel(
         )
     };
 
-    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
+    let (_, old_udp_src, old_udp_dst, old_udp_check) = {
         // SAFETY: The offset must point to the start of a valid `UdpHdr`.
         let old_udp =
             unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
@@ -114,14 +114,12 @@ pub fn to_ipv6_channel(
     udp.set_check(
         ChecksumUpdate::new(old_udp_check)
             .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
-            .remove_u32(u32::from_be_bytes(old_ipv4_dst.octets()))
-            .remove_u16(old_udp_src)
-            .remove_u16(old_udp_dst)
-            .remove_u16(old_udp_len)
-            .remove_u16(old_udp_len)
             .add_u128(u128::from_be_bytes(new_ipv6_src.octets()))
+            .remove_u32(u32::from_be_bytes(old_ipv4_dst.octets()))
             .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
+            .remove_u16(old_udp_src)
             .add_u16(new_udp_src)
+            .remove_u16(old_udp_dst)
             .add_u16(new_udp_dst)
             .remove_u16(old_channel_number)
             .add_u16(channel_number)

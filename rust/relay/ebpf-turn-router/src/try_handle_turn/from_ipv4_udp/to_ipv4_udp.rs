@@ -88,10 +88,10 @@ pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<()
         udp.set_check(
             ChecksumUpdate::new(old_udp_check)
                 .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
-                .remove_u16(old_udp_src)
-                .remove_u16(old_udp_dst)
                 .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
+                .remove_u16(old_udp_src)
                 .add_u16(new_udp_src)
+                .remove_u16(old_udp_dst)
                 .add_u16(new_udp_dst)
                 .into_udp_checksum(),
         );

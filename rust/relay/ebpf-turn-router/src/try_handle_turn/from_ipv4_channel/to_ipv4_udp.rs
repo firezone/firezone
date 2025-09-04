@@ -92,8 +92,8 @@ pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<()
     ipv4.set_checksum(
         ChecksumUpdate::new(old_ipv4_check)
             .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
-            .remove_u16(old_ipv4_len)
             .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
+            .remove_u16(old_ipv4_len)
             .add_u16(new_ipv4_len)
             .into_ip_checksum(),
     );
@@ -122,17 +122,17 @@ pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<()
         udp.set_check(
             ChecksumUpdate::new(old_udp_check)
                 .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
+                .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
                 .remove_u16(old_udp_src)
+                .add_u16(new_udp_src)
                 .remove_u16(old_udp_dst)
+                .add_u16(new_udp_dst)
                 .remove_u16(old_udp_len)
+                .add_u16(new_udp_len)
                 .remove_u16(old_udp_len)
+                .add_u16(new_udp_len)
                 .remove_u16(channel_number)
                 .remove_u16(channel_data_length)
-                .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))
-                .add_u16(new_udp_src)
-                .add_u16(new_udp_dst)
-                .add_u16(new_udp_len)
-                .add_u16(new_udp_len)
                 .into_udp_checksum(),
         );
     }

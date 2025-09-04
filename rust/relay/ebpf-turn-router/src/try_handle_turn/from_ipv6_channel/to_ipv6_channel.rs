@@ -86,10 +86,10 @@ pub fn to_ipv6_channel(
     udp.set_check(
         ChecksumUpdate::new(old_udp_check)
             .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
-            .remove_u16(old_udp_src)
-            .remove_u16(old_udp_dst)
             .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
+            .remove_u16(old_udp_src)
             .add_u16(new_udp_src)
+            .remove_u16(old_udp_dst)
             .add_u16(new_udp_dst)
             .remove_u16(old_channel_number)
             .add_u16(channel_number)
