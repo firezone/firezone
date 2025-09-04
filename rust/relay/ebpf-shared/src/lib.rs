@@ -5,7 +5,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use core::net::{Ipv4Addr, Ipv6Addr};
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -31,6 +31,15 @@ pub struct ClientAndChannelV6 {
 pub enum ClientAndChannel {
     V4(ClientAndChannelV4),
     V6(ClientAndChannelV6),
+}
+
+impl ClientAndChannel {
+    pub fn client_ip(&self) -> IpAddr {
+        match self {
+            ClientAndChannel::V4(cc) => cc.client_ip().into(),
+            ClientAndChannel::V6(cc) => cc.client_ip().into(),
+        }
+    }
 }
 
 impl ClientAndChannelV4 {
@@ -110,6 +119,15 @@ pub struct PortAndPeerV6 {
 pub enum PortAndPeer {
     V4(PortAndPeerV4),
     V6(PortAndPeerV6),
+}
+
+impl PortAndPeer {
+    pub fn peer_ip(&self) -> IpAddr {
+        match self {
+            PortAndPeer::V4(pp) => pp.peer_ip().into(),
+            PortAndPeer::V6(pp) => pp.peer_ip().into(),
+        }
+    }
 }
 
 impl PortAndPeerV4 {
