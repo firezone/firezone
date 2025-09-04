@@ -74,6 +74,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
 
     trace!(
         ctx,
+        target: "eBPF",
         "New packet from {:i}:{} for {:i}:{} with UDP payload {}",
         ipv4.src_addr(),
         udp.source(),
@@ -112,6 +113,7 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
 
     trace!(
         ctx,
+        target: "eBPF",
         "New packet from {:i}:{} for {:i}:{} with UDP payload {}",
         ipv6.src_addr(),
         udp.source(),
@@ -148,6 +150,7 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     aya_log_ebpf::trace!(
         ctx,
+        target: "eBPF",
         "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
         pp.peer_ip(),
         pp.peer_port(),
@@ -195,6 +198,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     aya_log_ebpf::trace!(
         ctx,
+        target: "eBPF",
         "Routing packet from {:i}:{} on channel {} to {:i}:{} on allocation {}",
         cc.client_ip(),
         cc.client_port(),
@@ -210,6 +214,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
         aya_log_ebpf::trace!(
             ctx,
+            target: "eBPF",
             "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
             pp.peer_ip(),
             pp.peer_port(),
@@ -248,6 +253,7 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     aya_log_ebpf::trace!(
         ctx,
+        target: "eBPF",
         "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
         pp.peer_ip(),
         pp.peer_port(),
@@ -295,6 +301,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     aya_log_ebpf::trace!(
         ctx,
+        target: "eBPF",
         "Routing packet from {:i}:{} on channel {} to {:i}:{} on allocation {}",
         cc.client_ip(),
         cc.client_port(),
@@ -310,6 +317,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
         aya_log_ebpf::trace!(
             ctx,
+            target: "eBPF",
             "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
             pp.peer_ip(),
             pp.peer_port(),

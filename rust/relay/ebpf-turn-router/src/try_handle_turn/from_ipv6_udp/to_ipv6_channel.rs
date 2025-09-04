@@ -11,13 +11,6 @@ pub fn to_ipv6_channel(
     ctx: &XdpContext,
     client_and_channel: &ClientAndChannelV6,
 ) -> Result<(), Error> {
-    // aya_log_ebpf::trace!(
-    //     ctx,
-    //     "Routing packet to {:i}:{}",
-    //     client_and_channel.client_ip(),
-    //     client_and_channel.client_port()
-    // );
-
     // Expand by 4 bytes for channel data header
     const NET_EXPANSION: i32 = -(CdHdr::LEN as i32);
 

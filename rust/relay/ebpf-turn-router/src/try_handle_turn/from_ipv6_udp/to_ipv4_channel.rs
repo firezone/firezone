@@ -18,13 +18,6 @@ pub fn to_ipv4_channel(
     ctx: &XdpContext,
     client_and_channel: &ClientAndChannelV4,
 ) -> Result<(), Error> {
-    // aya_log_ebpf::trace!(
-    //     ctx,
-    //     "Routing packet to {:i}:{}",
-    //     client_and_channel.client_ip(),
-    //     client_and_channel.client_port()
-    // );
-
     // 40 - 20 - 4 = 16 bytes shrink
     const NET_SHRINK: i32 = Ipv6Hdr::LEN as i32 - Ipv4Hdr::LEN as i32 - CdHdr::LEN as i32;
 

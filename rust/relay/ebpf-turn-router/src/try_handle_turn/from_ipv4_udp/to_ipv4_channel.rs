@@ -11,13 +11,6 @@ pub fn to_ipv4_channel(
     ctx: &XdpContext,
     client_and_channel: &ClientAndChannelV4,
 ) -> Result<(), Error> {
-    // aya_log_ebpf::trace!(
-    //     ctx,
-    //     "Routing packet to {:i}:{}",
-    //     client_and_channel.client_ip(),
-    //     client_and_channel.client_port()
-    // );
-
     const NET_EXPANSION: i32 = -(CdHdr::LEN as i32);
 
     adjust_head(ctx, NET_EXPANSION)?;
