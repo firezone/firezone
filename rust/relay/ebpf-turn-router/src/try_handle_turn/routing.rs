@@ -11,6 +11,10 @@ use ebpf_shared::{
     PortAndPeerV6,
 };
 
+use crate::try_handle_turn::Error;
+
+use super::error::SupportedChannel;
+
 const NUM_ENTRIES: u32 = 0x10000;
 
 #[map]
@@ -39,34 +43,70 @@ static UDP_TO_CHAN_64: HashMap<PortAndPeerV6, ClientAndChannelV4> =
     HashMap::with_max_entries(NUM_ENTRIES, 0);
 
 #[inline(always)]
-pub fn get_client_and_channel_v4(key: impl Into<PortAndPeer>) -> Option<ClientAndChannelV4> {
+pub fn get_client_and_channel(key: impl Into<PortAndPeer>) -> Result<ClientAndChannel, Error> {
+    let key = key.into();
+
+    let maybe_v4 = get_client_and_channel_v4(key).map(ClientAndChannel::V4);
+    let maybe_v6 = get_client_and_channel_v6(key).map(ClientAndChannel::V6);
+
+    maybe_v4.or(maybe_v6)
+}
+
+#[inline(always)]
+pub fn get_port_and_peer(key: impl Into<ClientAndChannel>) -> Result<PortAndPeer, Error> {
+    let key = key.into();
+
+    let maybe_v4 = get_port_and_peer_v4(key).map(PortAndPeer::V4);
+    let maybe_v6 = get_port_and_peer_v6(key).map(PortAndPeer::V6);
+
+    maybe_v4.or(maybe_v6)
+}
+
+#[inline(always)]
+fn get_client_and_channel_v4(key: impl Into<PortAndPeer>) -> Result<ClientAndChannelV4, Error> {
     match key.into() {
-        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_44.get(&pp) }.copied(),
-        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_64.get(&pp) }.copied(),
+        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_44.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Udp4ToChan)),
+        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_64.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Udp6ToChan)),
     }
 }
 
 #[inline(always)]
-pub fn get_client_and_channel_v6(key: impl Into<PortAndPeer>) -> Option<ClientAndChannelV6> {
+fn get_client_and_channel_v6(key: impl Into<PortAndPeer>) -> Result<ClientAndChannelV6, Error> {
     match key.into() {
-        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_46.get(&pp) }.copied(),
-        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_66.get(&pp) }.copied(),
+        PortAndPeer::V4(pp) => unsafe { UDP_TO_CHAN_46.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Udp4ToChan)),
+        PortAndPeer::V6(pp) => unsafe { UDP_TO_CHAN_66.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Udp6ToChan)),
     }
 }
 
 #[inline(always)]
-pub fn get_port_and_peer_v4(key: impl Into<ClientAndChannel>) -> Option<PortAndPeerV4> {
+fn get_port_and_peer_v4(key: impl Into<ClientAndChannel>) -> Result<PortAndPeerV4, Error> {
     match key.into() {
-        ClientAndChannel::V4(pp) => unsafe { CHAN_TO_UDP_44.get(&pp) }.copied(),
-        ClientAndChannel::V6(pp) => unsafe { CHAN_TO_UDP_64.get(&pp) }.copied(),
+        ClientAndChannel::V4(pp) => unsafe { CHAN_TO_UDP_44.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Chan4ToUdp)),
+        ClientAndChannel::V6(pp) => unsafe { CHAN_TO_UDP_64.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Chan6ToUdp)),
     }
 }
 
 #[inline(always)]
-pub fn get_port_and_peer_v6(key: impl Into<ClientAndChannel>) -> Option<PortAndPeerV6> {
+fn get_port_and_peer_v6(key: impl Into<ClientAndChannel>) -> Result<PortAndPeerV6, Error> {
     match key.into() {
-        ClientAndChannel::V4(pp) => unsafe { CHAN_TO_UDP_46.get(&pp) }.copied(),
-        ClientAndChannel::V6(pp) => unsafe { CHAN_TO_UDP_66.get(&pp) }.copied(),
+        ClientAndChannel::V4(pp) => unsafe { CHAN_TO_UDP_46.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Chan4ToUdp)),
+        ClientAndChannel::V6(pp) => unsafe { CHAN_TO_UDP_66.get(&pp) }
+            .copied()
+            .ok_or(Error::NoEntry(SupportedChannel::Chan6ToUdp)),
     }
 }
 

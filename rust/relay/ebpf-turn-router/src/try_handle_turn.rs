@@ -23,7 +23,6 @@ use ebpf_shared::{
     ClientAndChannel, ClientAndChannelV4, ClientAndChannelV6, PortAndPeer, PortAndPeerV4,
     PortAndPeerV6,
 };
-use error::SupportedChannel;
 use network_types::{
     eth::{EthHdr, EtherType},
     ip::{IpProto, Ipv4Hdr, Ipv6Hdr},
@@ -195,8 +194,8 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     if is_interface_ip(pp.peer_ip())? {
         match routing::get_client_and_channel(pp)? {
-            ClientAndChannel::V4(cc) => {}
-            ClientAndChannel::V6(cc) => {}
+            ClientAndChannel::V4(cc) => from_ipv4_channel::to_ipv4_channel(ctx, &cc)?,
+            ClientAndChannel::V6(cc) => from_ipv4_channel::to_ipv6_channel(ctx, &cc)?,
         }
 
         return Ok(());
@@ -223,8 +222,8 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
 
     if is_interface_ip(cc.client_ip())? {
         match routing::get_port_and_peer(cc)? {
-            PortAndPeer::V4(pp) => {}
-            PortAndPeer::V6(pp) => {}
+            PortAndPeer::V4(pp) => from_ipv6_udp::to_ipv4_udp(ctx, &pp)?,
+            PortAndPeer::V6(pp) => from_ipv6_udp::to_ipv6_udp(ctx, &pp)?,
         }
 
         return Ok(());
@@ -268,8 +267,8 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 
     if is_interface_ip(pp.peer_ip())? {
         match routing::get_client_and_channel(pp)? {
-            ClientAndChannel::V4(cc) => {}
-            ClientAndChannel::V6(cc) => {}
+            ClientAndChannel::V4(cc) => from_ipv6_channel::to_ipv4_channel(ctx, &cc)?,
+            ClientAndChannel::V6(cc) => from_ipv6_channel::to_ipv6_channel(ctx, &cc)?,
         }
 
         return Ok(());
