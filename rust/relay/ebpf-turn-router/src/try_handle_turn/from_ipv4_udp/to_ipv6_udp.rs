@@ -1,5 +1,4 @@
 use aya_ebpf::programs::XdpContext;
-use aya_log_ebpf::trace;
 use ebpf_shared::PortAndPeerV6;
 use network_types::{
     eth::{EthHdr, EtherType},
@@ -11,12 +10,12 @@ use crate::try_handle_turn::{Error, adjust_head, checksum::ChecksumUpdate, inter
 
 #[inline(always)]
 pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<(), Error> {
-    trace!(
-        ctx,
-        "Routing packet to {:i}:{}",
-        port_and_peer.peer_ip(),
-        port_and_peer.peer_port()
-    );
+    // aya_log_ebpf::trace!(
+    //     ctx,
+    //     "Routing packet to {:i}:{}",
+    //     port_and_peer.peer_ip(),
+    //     port_and_peer.peer_port()
+    // );
 
     const NET_EXPANSION: i32 = Ipv4Hdr::LEN as i32 - Ipv6Hdr::LEN as i32;
 

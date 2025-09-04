@@ -1,5 +1,4 @@
 use aya_ebpf::programs::XdpContext;
-use aya_log_ebpf::trace;
 use ebpf_shared::ClientAndChannelV6;
 use network_types::{
     eth::{EthHdr, EtherType},
@@ -16,12 +15,12 @@ pub fn to_ipv6_channel(
     ctx: &XdpContext,
     client_and_channel: &ClientAndChannelV6,
 ) -> Result<(), Error> {
-    trace!(
-        ctx,
-        "Routing packet to {:i}:{}",
-        client_and_channel.client_ip(),
-        client_and_channel.client_port()
-    );
+    // aya_log_ebpf::trace!(
+    //     ctx,
+    //     "Routing packet to {:i}:{}",
+    //     client_and_channel.client_ip(),
+    //     client_and_channel.client_port()
+    // );
 
     // Expand the packet by 20 bytes for IPv6 header
     const NET_EXPANSION: i32 = -(Ipv6Hdr::LEN as i32 - Ipv4Hdr::LEN as i32);

@@ -1,5 +1,4 @@
 use aya_ebpf::programs::XdpContext;
-use aya_log_ebpf::trace;
 use ebpf_shared::ClientAndChannelV6;
 use network_types::{eth::EthHdr, ip::Ipv6Hdr, udp::UdpHdr};
 
@@ -10,12 +9,12 @@ pub fn to_ipv6_channel(
     ctx: &XdpContext,
     client_and_channel: &ClientAndChannelV6,
 ) -> Result<(), Error> {
-    trace!(
-        ctx,
-        "Routing packet to {:i}:{}",
-        client_and_channel.client_ip(),
-        client_and_channel.client_port()
-    );
+    // aya_log_ebpf::trace!(
+    //     ctx,
+    //     "Routing packet to {:i}:{}",
+    //     client_and_channel.client_ip(),
+    //     client_and_channel.client_port()
+    // );
 
     let (old_eth_src, old_eth_dst, old_eth_type) = {
         // SAFETY: The offset must point to the start of a valid `EthHdr`.

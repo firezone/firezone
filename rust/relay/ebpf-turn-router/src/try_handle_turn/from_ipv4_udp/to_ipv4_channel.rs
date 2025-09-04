@@ -1,5 +1,4 @@
 use aya_ebpf::programs::XdpContext;
-use aya_log_ebpf::trace;
 use ebpf_shared::ClientAndChannelV4;
 use network_types::{eth::EthHdr, ip::Ipv4Hdr, udp::UdpHdr};
 
@@ -12,12 +11,12 @@ pub fn to_ipv4_channel(
     ctx: &XdpContext,
     client_and_channel: &ClientAndChannelV4,
 ) -> Result<(), Error> {
-    trace!(
-        ctx,
-        "Routing packet to {:i}:{}",
-        client_and_channel.client_ip(),
-        client_and_channel.client_port()
-    );
+    // aya_log_ebpf::trace!(
+    //     ctx,
+    //     "Routing packet to {:i}:{}",
+    //     client_and_channel.client_ip(),
+    //     client_and_channel.client_port()
+    // );
 
     const NET_EXPANSION: i32 = -(CdHdr::LEN as i32);
 
