@@ -148,12 +148,15 @@ impl ClientOnGateway {
         let ip_maps = ipv4_maps.chain(ipv6_maps);
 
         for (proxy_ip, real_ip) in ip_maps {
-            tracing::debug!(%name, %proxy_ip, %real_ip);
-
-            if self.nat_table.has_entry_for_inside(*proxy_ip) {
-                tracing::debug!(%name, %proxy_ip, %real_ip, "Skipping DNS resource NAT entry because we have open NAT sessions for it");
+            if let Some(state) = self.permanent_translations.get(proxy_ip)
+                && self.nat_table.has_entry_for_inside(*proxy_ip)
+                && state.resolved_ip != real_ip
+            {
+                tracing::debug!(%name, %proxy_ip, new_real_ip = %real_ip, current_real_ip = %state.resolved_ip, "Skipping DNS resource NAT entry because we have open NAT sessions for it");
                 continue;
             }
+
+            tracing::debug!(%name, %proxy_ip, %real_ip);
 
             self.permanent_translations
                 .insert(*proxy_ip, TranslationState::new(resource_id, real_ip));
