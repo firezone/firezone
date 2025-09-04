@@ -9,7 +9,7 @@ use connlib_model::{ResourceId, ResourceView};
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
-    device_info, known_dirs,
+    device_info,
     platform::{UdpSocketFactory, tcp_socket_factory},
     signals,
 };

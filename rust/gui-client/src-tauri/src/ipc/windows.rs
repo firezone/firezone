@@ -1,6 +1,5 @@
 use super::{NotFound, SocketId};
 use anyhow::{Context as _, Result, bail};
-use firezone_bin_shared::BUNDLE_ID;
 use std::{ffi::c_void, io::ErrorKind, os::windows::io::AsRawHandle, time::Duration};
 use tokio::net::windows::named_pipe;
 use windows::Win32::{
@@ -151,24 +150,13 @@ fn create_pipe_server(pipe_path: &str) -> Result<named_pipe::NamedPipeServer, Pi
 /// Named pipe for an IPC connection
 fn ipc_path(id: SocketId) -> String {
     let name = match id {
-        SocketId::Tunnel => format!("{BUNDLE_ID}_tunnel.ipc"),
-        SocketId::Gui => format!("{BUNDLE_ID}_gui.ipc"),
+        SocketId::Tunnel => format!("firezone_tunnel.ipc"),
+        SocketId::Gui => format!("firezone_gui.ipc"),
         #[cfg(test)]
-        SocketId::Test(id) => format!("{BUNDLE_ID}_test_{id}.ipc"),
+        SocketId::Test(id) => format!("firezone_test_{id}.ipc"),
     };
-    named_pipe_path(&name)
-}
 
-/// Returns a valid name for a Windows named pipe
-///
-/// # Arguments
-///
-/// * `id` - BUNDLE_ID, e.g. `dev.firezone.client`
-///
-/// Public because the GUI Client reuses this for deep links. Eventually that code
-/// will be de-duped into this code.
-pub fn named_pipe_path(id: &str) -> String {
-    format!(r"\\.\pipe\{id}")
+    format!(r"\\.\pipe\{name}")
 }
 
 #[cfg(test)]
