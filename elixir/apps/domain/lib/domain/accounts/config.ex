@@ -23,4 +23,37 @@ defmodule Domain.Accounts.Config do
   end
 
   def supported_dns_protocols, do: ~w[ip_port]a
+
+  @doc """
+  Returns a default config with defaults set
+  """
+  def default_config do
+    %__MODULE__{
+      notifications: %__MODULE__.Notifications{
+        outdated_gateway: %Domain.Accounts.Config.Notifications.Email{enabled: true}
+      }
+    }
+  end
+
+  @doc """
+  Ensures a config has proper defaults
+  """
+  def ensure_defaults(%__MODULE__{} = config) do
+    notifications = config.notifications || %__MODULE__.Notifications{}
+
+    outdated_gateway =
+      notifications.outdated_gateway || %Domain.Accounts.Config.Notifications.Email{enabled: true}
+
+    outdated_gateway =
+      case outdated_gateway.enabled do
+        nil -> %{outdated_gateway | enabled: true}
+        _ -> outdated_gateway
+      end
+
+    notifications = %{notifications | outdated_gateway: outdated_gateway}
+
+    %{config | notifications: notifications}
+  end
+
+  def ensure_defaults(nil), do: default_config()
 end
