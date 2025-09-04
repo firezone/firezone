@@ -42,7 +42,7 @@ pub fn to_ipv6_channel(
         )
     };
 
-    let (_, old_udp_src, old_udp_dst, old_udp_check) = {
+    let (old_udp_len, old_udp_src, old_udp_dst, old_udp_check) = {
         // SAFETY: The offset must point to the start of a valid `UdpHdr`.
         let old_udp =
             unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
@@ -54,7 +54,7 @@ pub fn to_ipv6_channel(
         )
     };
 
-    let (old_channel_number, _) = {
+    let (old_channel_number, old_channel_data_length) = {
         let old_cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
 
         (old_cd.number(), old_cd.length())
@@ -108,6 +108,7 @@ pub fn to_ipv6_channel(
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
     udp.set_source(new_udp_src);
     udp.set_dest(new_udp_dst);
+    udp.set_len(old_udp_len);
 
     // Incrementally update UDP checksum
 
@@ -133,6 +134,7 @@ pub fn to_ipv6_channel(
     // SAFETY: The offset must point to the start of a valid `CdHdr`.
     let cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
     cd.number = channel_number.to_be_bytes();
+    cd.length = old_channel_data_length.to_be_bytes();
 
     Ok(())
 }
