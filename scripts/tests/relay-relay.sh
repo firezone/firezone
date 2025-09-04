@@ -4,6 +4,10 @@ source "./scripts/tests/lib.sh"
 
 docker compose stop relay-2 # Force Client and Gateway to use the same relay.
 
+# Restart them to discard state of relay-2
+docker compose restart client
+docker compose restart gateway
+
 for container in client gateway; do
     # Drop all outgoing traffic
     docker compose exec -T "$container" iptables -P OUTPUT DROP
