@@ -175,13 +175,13 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `CdHdr`.
     let cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN)? };
 
-    let channel_number = u16::from_be_bytes(cd.number);
+    let channel_number = cd.number();
 
     if !(CHAN_START..=CHAN_END).contains(&channel_number) {
         return Err(Error::NotAChannelDataMessage);
     }
 
-    let channel_data_len = u16::from_be_bytes(cd.length);
+    let channel_data_len = cd.length();
     let expected_channel_data_len = udp.len() - UdpHdr::LEN as u16 - CdHdr::LEN as u16;
 
     // This can happen if we receive packets formed via GSO, like on a loopback interface.
@@ -248,7 +248,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `CdHdr`.
     let cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
 
-    let channel_number = u16::from_be_bytes(cd.number);
+    let channel_number = cd.number();
 
     if !(CHAN_START..=CHAN_END).contains(&channel_number) {
         return Err(Error::NotAChannelDataMessage);
@@ -262,7 +262,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
-    let key = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), u16::from_be_bytes(cd.number));
+    let key = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), cd.number());
     let pp = routing::get_port_and_peer(key)?;
 
     if is_interface_ip(pp.peer_ip())? {

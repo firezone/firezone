@@ -63,10 +63,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
                 old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN + UdpHdr::LEN,
             )?
         };
-        (
-            u16::from_be_bytes(old_cd.number),
-            u16::from_be_bytes(old_cd.length),
-        )
+        (old_cd.number(), old_cd.length())
     };
 
     //

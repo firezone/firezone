@@ -52,10 +52,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
     let (channel_number, channel_data_length) = {
         // SAFETY: The offset must point to the start of a valid `CdHdr`.
         let old_cd = unsafe { ref_mut_at::<CdHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN + UdpHdr::LEN)? };
-        (
-            u16::from_be_bytes(old_cd.number),
-            u16::from_be_bytes(old_cd.length),
-        )
+        (old_cd.number(), old_cd.length())
     };
 
     //
