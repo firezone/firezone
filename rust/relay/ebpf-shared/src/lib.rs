@@ -142,6 +142,21 @@ impl PortAndPeer {
             PortAndPeer::V6(pp) => pp.peer_port(),
         }
     }
+
+    pub fn flip_ports(self) -> Self {
+        match self {
+            PortAndPeer::V4(pp) => PortAndPeer::V4(PortAndPeerV4 {
+                ipv4_address: pp.ipv4_address,
+                allocation_port: pp.peer_port,
+                peer_port: pp.allocation_port,
+            }),
+            PortAndPeer::V6(pp) => PortAndPeer::V6(PortAndPeerV6 {
+                ipv6_address: pp.ipv6_address,
+                allocation_port: pp.peer_port,
+                peer_port: pp.allocation_port,
+            }),
+        }
+    }
 }
 
 impl PortAndPeerV4 {

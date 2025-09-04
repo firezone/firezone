@@ -222,6 +222,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     );
 
     if is_interface_ip(pp.peer_ip())? {
+        let pp = pp.flip_ports();
         let cc = routing::get_client_and_channel(pp)?;
 
         aya_log_ebpf::trace!(
@@ -326,6 +327,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     let pp = routing::get_port_and_peer(cc)?;
 
     if is_interface_ip(pp.peer_ip())? {
+        let pp = pp.flip_ports();
         let cc = routing::get_client_and_channel(pp)?;
 
         aya_log_ebpf::trace!(
