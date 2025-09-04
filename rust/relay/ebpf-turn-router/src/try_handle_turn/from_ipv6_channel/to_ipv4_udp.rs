@@ -1,4 +1,5 @@
 use aya_ebpf::programs::XdpContext;
+use aya_log_ebpf::trace;
 use ebpf_shared::PortAndPeerV4;
 use network_types::{
     eth::{EthHdr, EtherType},
@@ -15,6 +16,13 @@ use crate::try_handle_turn::{
 
 #[inline(always)]
 pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<(), Error> {
+    trace!(
+        ctx,
+        "Routing packet to {:i}:{}",
+        port_and_peer.peer_ip(),
+        port_and_peer.peer_port()
+    );
+
     // Shrink by 24 bytes: 20 for the IP header diff and 4 for the removed channel data header
     const NET_SHRINK: i32 = Ipv6Hdr::LEN as i32 - Ipv4Hdr::LEN as i32 + CdHdr::LEN as i32;
 
