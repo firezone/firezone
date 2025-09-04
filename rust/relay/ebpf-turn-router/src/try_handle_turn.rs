@@ -16,7 +16,7 @@ use core::net::IpAddr;
 pub use adjust_head::adjust_head;
 pub use error::Error;
 
-use aya_ebpf::{bindings::xdp_action, programs::XdpContext};
+use aya_ebpf::programs::XdpContext;
 use aya_log_ebpf::*;
 use channel_data::CdHdr;
 use ebpf_shared::{
@@ -40,7 +40,7 @@ const CHAN_START: u16 = 0x4000;
 const CHAN_END: u16 = 0x7FFF;
 
 #[inline(always)]
-pub fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
+pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
@@ -51,8 +51,7 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<u32, Error> {
     };
     stats::emit_data_relayed(ctx, num_bytes);
 
-    // If we get to here, we modified the packet and need to send it back out again.
-    Ok(xdp_action::XDP_TX)
+    Ok(())
 }
 
 #[inline(always)]
