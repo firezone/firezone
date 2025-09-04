@@ -9,8 +9,13 @@ docker compose restart client
 docker compose restart gateway
 
 for container in client gateway; do
-    # Drop all outgoing traffic
+    # Always all traffic on TUN device
+    docker compose exec -T "$container" iptables -I INPUT 1 -i tun-firezone -j ACCEPT
+    docker compose exec -T "$container" iptables -I INPUT 1 -o tun-firezone -j ACCEPT
+
+    # Drop all outgoing traffic otherwise
     docker compose exec -T "$container" iptables -P OUTPUT DROP
+
     # Only allow traffic to the relay control port (forces relay-relay candidate)
     docker compose exec -T "$container" iptables -A OUTPUT -p udp --dport 3478 -j ACCEPT
 
