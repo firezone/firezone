@@ -4,6 +4,7 @@ set -euox pipefail
 
 source "./scripts/tests/lib.sh"
 force_relayed_connections ipv6 ipv4
+disable_offloading
 
 docker compose exec --env RUST_LOG=info -it client /bin/sh -c 'iperf3 \
   --time 30 \

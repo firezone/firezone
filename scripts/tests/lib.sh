@@ -67,6 +67,29 @@ function force_relayed_connections() {
     fi
 }
 
+# Disables checksum offloading for Client and Gateway on all interfaces.
+# Without this, the eBPF kernel cannot update the checksums correctly.
+function disable_offloading() {
+    client_disable_offloading eth0
+    gateway_disable_offloading eth0
+    gateway_disable_offloading eth1
+    gateway_disable_offloading eth2
+}
+
+function client_disable_offloading() {
+    local interface="$1"
+
+    client apk add --no-cache ethtool
+    client ethtool -K "$interface" tx off
+}
+
+function gateway_disable_offloading() {
+    local interface="$1"
+
+    gateway apk add --no-cache ethtool
+    gateway ethtool -K "$interface" tx off
+}
+
 function client_curl_resource() {
     client curl --connect-timeout 30 --fail "$1" >/dev/null
 }

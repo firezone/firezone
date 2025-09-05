@@ -4,6 +4,7 @@ source "./scripts/tests/lib.sh"
 
 # Arrange: Setup a relayed connection
 force_relayed_connections
+disable_offloading
 client_curl_resource "172.20.0.100/get"
 client_curl_resource "[172:20:0::100]/get"
 
