@@ -626,33 +626,35 @@ services:
 
         # Routing entry for API
         iptables -t nat -A PREROUTING -d 200.0.0.10 -j DNAT --to-destination 172.28.0.10
-        iptables -t nat -A POSTROUTING -s 172.28.0.10 -j SNAT --to-source 200.0.0.10
         ip6tables -t nat -A PREROUTING -d 200:0:0::10 -j DNAT --to-destination 172:28:0::10
+        iptables -t nat -A POSTROUTING -s 172.28.0.10 -j SNAT --to-source 200.0.0.10
         ip6tables -t nat -A POSTROUTING -s 172:28:0::10 -j SNAT --to-source 200:0:0::10
 
         # Routing entry for relay-1
         iptables -t nat -A PREROUTING -d 200.0.0.101 -j DNAT --to-destination 172.29.0.101
+        ip6tables -t nat -A PREROUTING -d 200:0:0::101 -j DNAT --to-destination 172:29:0::101
         iptables -t nat -A POSTROUTING -s 172.29.0.101 -j SNAT --to-source 200.0.0.101
-        ip6tables -t nat -A PREROUTING -d 200:0:0::101 -j DNAT --to-destination 172:28:0::101
-        ip6tables -t nat -A POSTROUTING -s 172:28:0::101 -j SNAT --to-source 200:0:0::101
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::101 -j SNAT --to-source 200:0:0::101
 
         # Routing entry for relay-2
         iptables -t nat -A PREROUTING -d 200.0.0.102 -j DNAT --to-destination 172.29.0.102
+        ip6tables -t nat -A PREROUTING -d 200:0:0::102 -j DNAT --to-destination 172:29:0::102
         iptables -t nat -A POSTROUTING -s 172.29.0.102 -j SNAT --to-source 200.0.0.102
-        ip6tables -t nat -A PREROUTING -d 200:0:0::102 -j DNAT --to-destination 172:28:0::102
-        ip6tables -t nat -A POSTROUTING -s 172:28:0::102 -j SNAT --to-source 200:0:0::102
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::102 -j SNAT --to-source 200:0:0::102
 
-        # Masquerade traffic from relays
-        iptables -t nat -A POSTROUTING -s 172.29.0.0/24 -j MASQUERADE
-        ip6tables -t nat -A POSTROUTING -s 172:29:0::/64 -j MASQUERADE
+        # NAT traffic from relays
+        iptables -t nat -A POSTROUTING -s 172.29.0.101 -j SNAT --to-source 200.0.0.101
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::101 -j SNAT --to-source 200:0:0::101
+        iptables -t nat -A POSTROUTING -s 172.29.0.102 -j SNAT --to-source 200.0.0.102
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::102 -j SNAT --to-source 200:0:0::102
 
-        # Masquerade traffic from client
-        iptables -t nat -A POSTROUTING -s 172.30.0.0/24 -j MASQUERADE ${CLIENT_MASQUERADE:-}
-        ip6tables -t nat -A POSTROUTING -s 172:30:0::/64 -j MASQUERADE ${CLIENT_MASQUERADE:-}
+        # NAT traffic from client
+        iptables -t nat -A POSTROUTING -s 172.30.0.0/24 -j SNAT --udp --to-source 200.0.0.50:1024-65535
+        ip6tables -t nat -A POSTROUTING -s 172:30:0::/64 -j SNAT --udp --to-source [200:0:0::50]:1024-65535
 
-        # Masquerade traffic from gateway
-        iptables -t nat -A POSTROUTING -s 172.31.0.0/24 -j MASQUERADE ${GATEWAY_MASQUERADE:-}
-        ip6tables -t nat -A POSTROUTING -s 172:31:0::/64 -j MASQUERADE ${GATEWAY_MASQUERADE:-}
+        # NAT traffic from gateway
+        iptables -t nat -A POSTROUTING -s 172.31.0.0/24 -j SNAT --udp --to-source 200.0.0.55:1024-65535
+        ip6tables -t nat -A POSTROUTING -s 172:31:0::/64 -j SNAT --udp --to-source [200:0:0::55]:1024-65535
 
         sleep infinity
     init: true
