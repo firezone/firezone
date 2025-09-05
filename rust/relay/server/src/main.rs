@@ -586,11 +586,6 @@ where
                         ClientSocket::new(from),
                         Instant::now(),
                     ) {
-                        if self.ebpf.is_some() {
-                            tracing::debug!(target: "relay", %port, %peer, "Dropping client->peer ChannelData in userspace (handled by eBPF)");
-                            continue;
-                        }
-
                         // Re-parse as `ChannelData` if we should relay it.
                         let payload = ChannelData::parse(packet)
                             .expect("valid ChannelData if we should relay it")
@@ -617,11 +612,6 @@ where
                         PeerSocket::new(from),
                         AllocationPort::new(port),
                     ) {
-                        if self.ebpf.is_some() {
-                            tracing::debug!(target: "relay", %client, %channel, "Dropping peer->client traffic in userspace (handled by eBPF)");
-                            continue;
-                        }
-
                         let total_length = ChannelData::encode_header_to_slice(
                             channel,
                             packet.len() as u16,
