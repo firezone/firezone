@@ -660,7 +660,22 @@ services:
       - net.ipv6.conf.default.forwarding=1
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.default.disable_ipv6=0
-    command: ["sleep", "infinity"]
+    privileged: true
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        apk add --no-cache iptables ip6tables
+
+        iptables -t nat -A POSTROUTING -s 172.30.0.0/24 -j MASQUERADE ${CLIENT_MASQUERADE:-}
+        ip6tables -t nat -A POSTROUTING -s 172:30:0::/64 -j MASQUERADE ${CLIENT_MASQUERADE:-}
+
+        iptables -t nat -A POSTROUTING -s 172.31.0.0/24 -j MASQUERADE ${GATEWAY_MASQUERADE:-}
+        ip6tables -t nat -A POSTROUTING -s 172:31:0::/64 -j MASQUERADE ${GATEWAY_MASQUERADE:-}
+
+        sleep infinity
     init: true
     networks:
       app:
