@@ -708,6 +708,14 @@ where
                 (sender, requested_channel),
             );
 
+            self.pending_commands
+                .push_back(Command::CreateChannelBinding {
+                    client: sender,
+                    channel_number: requested_channel,
+                    peer: channel.peer_address,
+                    allocation_port: channel.allocation,
+                });
+
             tracing::info!(target: "relay", allocation = %allocation.port, peer = %peer_address, channel = %requested_channel.value(), "Refreshed channel binding");
 
             self.authenticate_and_send(
