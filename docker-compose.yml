@@ -186,9 +186,9 @@ services:
       - |
         set -e
 
-        # Add static route to relay subnet via router
-        ip route add 172.29.0.0/24 via 172.28.0.254
-        ip -6 route add 172:29:0::/64 via 172:28:0::254
+        # Add static route to internet subnet via router
+        ip -4 route add 200.0.0.0/8 via 172.28.0.254
+        ip -6 route add 200:0:0::/8 via 172:28:0::254
 
         exec su default -c "bin/server"
     depends_on:
@@ -344,9 +344,9 @@ services:
       - |
         set -e
 
-        # Add static route to relay subnet via router
-        ip route add 172.29.0.0/24 via 172.28.0.254
-        ip -6 route add 172:29:0::/64 via 172:28:0::254
+        # Add static route to internet subnet via router
+        ip -4 route add 200.0.0.0/8 via 172.30.0.254
+        ip -6 route add 200:0:0::/8 via 172:30:0::254
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
         apk add --no-cache ethtool
@@ -375,9 +375,10 @@ services:
       api:
         condition: "service_healthy"
     networks:
-      app:
-        ipv4_address: 172.28.0.100
-        ipv6_address: 172:28:0::100
+      client:
+    extra_hosts:
+      - "api:200.0.0.10"
+      - "api:200:0:0::10"
 
   gateway:
     healthcheck:
@@ -385,7 +386,6 @@ services:
     environment:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAAH8sImUAWIAAVGA.tAm2O9FcyF67VAF3rZdwQpeADrYOIs3S2l2K51G26OM"
       RUST_LOG: ${RUST_LOG:-phoenix_channel=trace,firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,phoenix_channel=debug,boringtun=debug,snownet=debug,str0m=debug,info}
-      FIREZONE_ENABLE_MASQUERADE: 1 # FIXME: NOOP in latest version. Remove after next release.
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: 4694E56C-7643-4A15-9DF3-638E5B05F570
     command:
@@ -394,9 +394,9 @@ services:
       - |
         set -e
 
-        # Add static route to relay subnet via router
-        ip route add 172.29.0.0/24 via 172.28.0.254
-        ip -6 route add 172:29:0::/64 via 172:28:0::254
+        # Add static route to internet subnet via router
+        ip -4 route add 200.0.0.0/8 via 172.31.0.254
+        ip -6 route add 200:0:0::/8 via 172:31:0::254
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
         apk add --no-cache ethtool
@@ -430,11 +430,12 @@ services:
       api:
         condition: "service_healthy"
     networks:
-      app:
-        ipv4_address: 172.28.0.105
-        ipv6_address: 172:28:0::105
+      gateway:
       dns_resources:
       resources:
+    extra_hosts:
+      - "api:200.0.0.10"
+      - "api:200:0:0::10"
 
   httpbin:
     image: kennethreitz/httpbin
@@ -485,8 +486,8 @@ services:
 
   relay-1:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_1_PUBLIC_IP4_ADDR:-172.29.0.101}
-      PUBLIC_IP6_ADDR: ${RELAY_1_PUBLIC_IP6_ADDR:-172:29:0::101}
+      PUBLIC_IP4_ADDR: 200.0.0.101
+      PUBLIC_IP6_ADDR: 200:0:0::101
       # LOWEST_PORT: 55555
       # HIGHEST_PORT: 55666
       # Token for self-hosted Relay
@@ -495,7 +496,7 @@ services:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
-      FIREZONE_API_URL: ws://172.28.0.10:8081
+      FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
       EBPF_OFFLOADING: eth0
     command:
@@ -504,9 +505,9 @@ services:
       - |
         set -e
 
-        # Add static route to app subnet via router
-        ip route add 172.28.0.0/24 via 172.29.0.254
-        ip -6 route add 172:28:0::/64 via 172:29:0::254
+        # Add static route to internet subnet via router
+        ip -4 route add 200.0.0.0/8 via 172.29.0.254
+        ip -6 route add 200:0:0::/8 via 172:29:0::254
 
         firezone-relay
     privileged: true
@@ -541,20 +542,23 @@ services:
     # - 3478:3478/udp
     networks:
       relays:
-        ipv4_address: ${RELAY_1_PUBLIC_IP4_ADDR:-172.29.0.101}
-        ipv6_address: ${RELAY_1_PUBLIC_IP6_ADDR:-172:29:0::101}
+        ipv4_address: 172.29.0.101
+        ipv6_address: 172:29:0::101
+    extra_hosts:
+      - "api:200.0.0.10"
+      - "api:200:0:0::10"
 
   relay-2:
     environment:
-      PUBLIC_IP4_ADDR: ${RELAY_2_PUBLIC_IP4_ADDR:-172.29.0.102}
-      PUBLIC_IP6_ADDR: ${RELAY_2_PUBLIC_IP6_ADDR:-172:29:0::102}
+      PUBLIC_IP4_ADDR: 200.0.0.102
+      PUBLIC_IP6_ADDR: 200:0:0::102
       # Token for self-hosted Relay
       # FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkNTQ5YzQxMDctMTQ5Mi00ZjhmLWE0ZWMtYTlkMmE2NmQ4YWE5bQAAADhQVTVBSVRFMU84VkRWTk1ITU9BQzc3RElLTU9HVERJQTY3MlM2RzFBQjAyT1MzNEg1TUUwPT09PW4GAEngLBONAWIAAVGA.E-f2MFdGMX7JTL2jwoHBdWcUd2G3UNz2JRZLbQrlf0k"
       # Token for global Relay
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaAN3A25pbG0AAAAkZTgyZmNkYzEtMDU3YS00MDE1LWI5MGItM2IxOGYwZjI4MDUzbQAAADhDMTROR0E4N0VKUlIwM0c0UVBSMDdBOUM2Rzc4NFRTU1RIU0Y0VEk1VDBHRDhENkwwVlJHPT09PW4GAOb7sImUAWIAAVGA.e_k2YXxBOSmqVSu5RRscjZJBkZ7OAGzkpr5X2ge1MNo"
       RUST_LOG: ${RUST_LOG:-debug}
       RUST_BACKTRACE: 1
-      FIREZONE_API_URL: ws://172.28.0.10:8081
+      FIREZONE_API_URL: ws://api:8081
       OTLP_GRPC_ENDPOINT: otel:4317
       EBPF_OFFLOADING: eth0
     command:
@@ -563,9 +567,9 @@ services:
       - |
         set -e
 
-        # Add static route to app subnet via router
-        ip route add 172.28.0.0/24 via 172.29.0.254
-        ip -6 route add 172:28:0::/64 via 172:29:0::254
+        # Add static route to internet subnet via router
+        ip -4 route add 200.0.0.0/8 via 172.29.0.254
+        ip -6 route add 200:0:0::/8 via 172:29:0::254
 
         firezone-relay
     privileged: true
@@ -593,8 +597,11 @@ services:
         condition: "service_healthy"
     networks:
       relays:
-        ipv4_address: ${RELAY_2_PUBLIC_IP4_ADDR:-172.29.0.102}
-        ipv6_address: ${RELAY_2_PUBLIC_IP6_ADDR:-172:29:0::102}
+        ipv4_address: 172.29.0.102
+        ipv6_address: 172:29:0::102
+    extra_hosts:
+      - "api:200.0.0.10"
+      - "api:200:0:0::10"
 
   # Relays in prod always talk to a router to reach the Internet. We leverage this to avoid a map lookup and simply swap the
   # MACs for all relayed traffic. So we mimic this setup for local dev and CI to ensure this eBPF code path is getting exercised.
@@ -608,7 +615,48 @@ services:
       - net.ipv6.conf.default.forwarding=1
       - net.ipv6.conf.all.disable_ipv6=0
       - net.ipv6.conf.default.disable_ipv6=0
-    command: ["sleep", "infinity"]
+    privileged: true
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        apk add --no-cache iptables ip6tables
+
+        # Routing entry for API
+        iptables -t nat -A PREROUTING -d 200.0.0.10 -j DNAT --to-destination 172.28.0.10
+        ip6tables -t nat -A PREROUTING -d 200:0:0::10 -j DNAT --to-destination 172:28:0::10
+        iptables -t nat -A POSTROUTING -s 172.28.0.10 -j SNAT --to-source 200.0.0.10
+        ip6tables -t nat -A POSTROUTING -s 172:28:0::10 -j SNAT --to-source 200:0:0::10
+
+        # Routing entry for relay-1
+        iptables -t nat -A PREROUTING -d 200.0.0.101 -j DNAT --to-destination 172.29.0.101
+        ip6tables -t nat -A PREROUTING -d 200:0:0::101 -j DNAT --to-destination 172:29:0::101
+        iptables -t nat -A POSTROUTING -s 172.29.0.101 -j SNAT --to-source 200.0.0.101
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::101 -j SNAT --to-source 200:0:0::101
+
+        # Routing entry for relay-2
+        iptables -t nat -A PREROUTING -d 200.0.0.102 -j DNAT --to-destination 172.29.0.102
+        ip6tables -t nat -A PREROUTING -d 200:0:0::102 -j DNAT --to-destination 172:29:0::102
+        iptables -t nat -A POSTROUTING -s 172.29.0.102 -j SNAT --to-source 200.0.0.102
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::102 -j SNAT --to-source 200:0:0::102
+
+        # NAT traffic from relays
+        iptables -t nat -A POSTROUTING -s 172.29.0.101 -j SNAT --to-source 200.0.0.101
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::101 -j SNAT --to-source 200:0:0::101
+        iptables -t nat -A POSTROUTING -s 172.29.0.102 -j SNAT --to-source 200.0.0.102
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::102 -j SNAT --to-source 200:0:0::102
+
+        # NAT traffic from client
+        iptables -t nat -A POSTROUTING -s 172.30.0.0/24 -j SNAT --udp --to-source 200.0.0.50:1024-65535
+        ip6tables -t nat -A POSTROUTING -s 172:30:0::/64 -j SNAT --udp --to-source [200:0:0::50]:1024-65535
+
+        # NAT traffic from gateway
+        iptables -t nat -A POSTROUTING -s 172.31.0.0/24 -j SNAT --udp --to-source 200.0.0.55:1024-65535
+        ip6tables -t nat -A POSTROUTING -s 172:31:0::/64 -j SNAT --udp --to-source [200:0:0::55]:1024-65535
+
+        sleep infinity
     init: true
     networks:
       app:
@@ -617,6 +665,15 @@ services:
       relays:
         ipv4_address: 172.29.0.254
         ipv6_address: 172:29:0::254
+      client:
+        ipv4_address: 172.30.0.254
+        ipv6_address: 172:30:0::254
+      gateway:
+        ipv4_address: 172.31.0.254
+        ipv6_address: 172:31:0::254
+      internet:
+        ipv4_address: 200.0.0.254
+        ipv6_address: 200:0:0::254
 
   # The veth driver uses a pair of interfaces to connect the docker bridge to the container namespace.
   # For containers that have an eBPF program attached and do XDP_TX, we need to attach a dummy program
@@ -767,6 +824,24 @@ networks:
       config:
         - subnet: 172.29.0.0/24
         - subnet: 172:29:0::/64
+  client:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+        - subnet: 172:30:0::/64
+  gateway:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.31.0.0/24
+        - subnet: 172:31:0::/64
+  internet:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 200.0.0.0/8
+        - subnet: 200:0:0::/8
   99-ghost-in-da-edge:
     name: ghost-in-da-edge
     internal: false

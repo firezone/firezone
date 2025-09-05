@@ -7,5 +7,8 @@ license = { workspace = true }
 [features]
 std = ["aya"]
 
+[dependencies]
+derive_more = { workspace = true, features = ["from"] }
+
 [target.'cfg(target_os = "linux")'.dependencies]
 aya = { workspace = true, optional = true }

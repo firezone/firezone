@@ -16,7 +16,6 @@ pub enum Error {
     BadChannelDataLength,
     NoEntry(SupportedChannel),
     XdpAdjustHeadFailed(i64),
-    PacketLoop,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -48,7 +47,6 @@ impl aya_log_ebpf::WriteToBuf for Error {
             Error::Ipv4PacketWithOptions => "IPv4 packet has options",
             Error::NotAChannelDataMessage => "Not a channel data message",
             Error::BadChannelDataLength => "Channel data length does not match packet length",
-            Error::PacketLoop => "Packet loop detected",
             Error::NoEntry(ch) => match ch {
                 SupportedChannel::Udp4ToChan => "No entry in UDPv4 to channel IPv4 or IPv6 map",
                 SupportedChannel::Chan4ToUdp => "No entry in channel IPv4 to UDPv4 or UDPv6 map",
