@@ -586,7 +586,6 @@ where
                         ClientSocket::new(from),
                         Instant::now(),
                     ) {
-                        // If eBPF offloading is enabled, drop ChannelData relay traffic (it's handled by kernel)
                         if self.ebpf.is_some() {
                             tracing::debug!(target: "relay", %port, %peer, "Dropping client->peer ChannelData in userspace (handled by eBPF)");
                             continue;
@@ -618,7 +617,6 @@ where
                         PeerSocket::new(from),
                         AllocationPort::new(port),
                     ) {
-                        // If eBPF offloading is enabled, drop peer->client relay traffic (it's handled by kernel)
                         if self.ebpf.is_some() {
                             tracing::debug!(target: "relay", %client, %channel, "Dropping peer->client traffic in userspace (handled by eBPF)");
                             continue;
