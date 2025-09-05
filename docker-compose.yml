@@ -186,6 +186,10 @@ services:
       - |
         set -e
 
+        # Add static route to internet subnet via router
+        ip -4 route add 200.0.0.0/8 via 172.28.0.254
+        ip -6 route add 200:0:0::/8 via 172:28:0::254
+
         exec su default -c "bin/server"
     depends_on:
       vault:
@@ -202,9 +206,6 @@ services:
       app:
         ipv4_address: 172.28.0.10
         ipv6_address: 172:28:0::10
-      internet:
-        ipv4_address: 200.0.0.10
-        ipv6_address: 200:0:0::10
 
   domain:
     build:
@@ -640,6 +641,10 @@ services:
         iptables -t nat -A POSTROUTING -s 172.29.0.102 -j SNAT --to-source 200.0.0.102
         ip6tables -t nat -A PREROUTING -d 200:0:0::102 -j DNAT --to-destination 172:28:0::102
         ip6tables -t nat -A POSTROUTING -s 172:28:0::102 -j SNAT --to-source 200:0:0::102
+
+        # Masquerade traffic from relays
+        iptables -t nat -A POSTROUTING -s 172.29.0.0/24 -j MASQUERADE
+        ip6tables -t nat -A POSTROUTING -s 172:29:0::/64 -j MASQUERADE
 
         # Masquerade traffic from client
         iptables -t nat -A POSTROUTING -s 172.30.0.0/24 -j MASQUERADE ${CLIENT_MASQUERADE:-}
