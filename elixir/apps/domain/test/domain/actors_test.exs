@@ -3392,6 +3392,569 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "batch_upsert_groups/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{
+        account: account,
+        provider: provider
+      }
+    end
+
+    test "creates new groups when they don't exist", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      attrs_list = [
+        %{"name" => "Engineering", "provider_identifier" => "eng-001"},
+        %{"name" => "Marketing", "provider_identifier" => "mkt-001"},
+        %{"name" => "Sales", "provider_identifier" => "sales-001"}
+      ]
+
+      assert {:ok, groups} = batch_upsert_groups(provider, attrs_list, synced_at)
+      assert length(groups) == 3
+
+      # Verify all groups were created with correct attributes
+      for group <- groups do
+        assert group.provider_identifier in ["eng-001", "mkt-001", "sales-001"]
+      end
+
+      # Verify they're persisted in the database with correct attributes
+      assert Repo.aggregate(Actors.Group, :count) == 3
+
+      # Fetch the groups to verify all attributes
+      created_groups =
+        Actors.Group.Query.all()
+        |> Actors.Group.Query.by_account_id(provider.account_id)
+        |> Actors.Group.Query.by_provider_id(provider.id)
+        |> Repo.all()
+
+      for group <- created_groups do
+        assert group.provider_id == provider.id
+        assert group.account_id == provider.account_id
+        assert group.type == :static
+        assert group.created_by == :provider
+        assert group.synced_at == synced_at
+        assert group.name in ["Engineering", "Marketing", "Sales"]
+        assert group.provider_identifier in ["eng-001", "mkt-001", "sales-001"]
+      end
+    end
+
+    test "updates existing groups when they already exist", %{provider: provider} do
+      synced_at1 = DateTime.utc_now()
+
+      # First create some groups
+      attrs_list1 = [
+        %{"name" => "Old Engineering", "provider_identifier" => "eng-001"},
+        %{"name" => "Old Marketing", "provider_identifier" => "mkt-001"}
+      ]
+
+      {:ok, _groups} = batch_upsert_groups(provider, attrs_list1, synced_at1)
+
+      # Now update them with new names
+      synced_at2 = DateTime.add(synced_at1, 60, :second)
+
+      attrs_list2 = [
+        %{"name" => "New Engineering", "provider_identifier" => "eng-001"},
+        %{"name" => "New Marketing", "provider_identifier" => "mkt-001"},
+        %{"name" => "Sales", "provider_identifier" => "sales-001"}
+      ]
+
+      {:ok, groups} = batch_upsert_groups(provider, attrs_list2, synced_at2)
+      assert length(groups) == 3
+
+      # Fetch the updated groups to verify all attributes
+      updated_groups =
+        Actors.Group.Query.all()
+        |> Actors.Group.Query.by_account_id(provider.account_id)
+        |> Actors.Group.Query.by_provider_id(provider.id)
+        |> Repo.all()
+
+      # Verify updates and new creation
+      eng_group = Enum.find(updated_groups, &(&1.provider_identifier == "eng-001"))
+      assert eng_group.name == "New Engineering"
+      assert eng_group.synced_at == synced_at2
+
+      mkt_group = Enum.find(updated_groups, &(&1.provider_identifier == "mkt-001"))
+      assert mkt_group.name == "New Marketing"
+      assert mkt_group.synced_at == synced_at2
+
+      sales_group = Enum.find(updated_groups, &(&1.provider_identifier == "sales-001"))
+      assert sales_group.name == "Sales"
+      assert sales_group.synced_at == synced_at2
+
+      # Verify total count (2 updated, 1 new)
+      assert Repo.aggregate(Actors.Group, :count) == 3
+    end
+
+    test "handles empty attrs list", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      assert {:ok, groups} = batch_upsert_groups(provider, [], synced_at)
+      assert groups == []
+      assert Repo.aggregate(Actors.Group, :count) == 0
+    end
+
+    test "preserves groups from different providers", %{account: account, provider: provider} do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      synced_at = DateTime.utc_now()
+
+      # Create a group for another provider
+      other_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: other_provider,
+          provider_identifier: "other-001"
+        )
+
+      # Batch upsert for our provider
+      attrs_list = [
+        %{"name" => "Engineering", "provider_identifier" => "eng-001"}
+      ]
+
+      {:ok, _groups} = batch_upsert_groups(provider, attrs_list, synced_at)
+
+      # Verify other provider's group is not affected
+      assert Repo.get(Actors.Group, other_group.id)
+      assert Repo.aggregate(Actors.Group, :count) == 2
+    end
+  end
+
+  describe "delete_unsynced_groups/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{
+        account: account,
+        provider: provider
+      }
+    end
+
+    test "deletes groups not synced at given timestamp", %{account: account, provider: provider} do
+      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      new_synced_at = DateTime.utc_now()
+
+      # Create groups with old synced_at
+      old_group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "old-001",
+          synced_at: old_synced_at
+        )
+
+      old_group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "old-002",
+          synced_at: old_synced_at
+        )
+
+      # Create a group with new synced_at
+      new_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "new-001",
+          synced_at: new_synced_at
+        )
+
+      assert {:ok, count} = delete_unsynced_groups(provider, new_synced_at)
+      assert count == 2
+
+      # Verify old groups are deleted
+      refute Repo.get(Actors.Group, old_group1.id)
+      refute Repo.get(Actors.Group, old_group2.id)
+
+      # Verify new group still exists
+      assert Repo.get(Actors.Group, new_group.id)
+    end
+
+    test "doesn't delete groups from other providers", %{account: account, provider: provider} do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      synced_at = DateTime.utc_now()
+
+      # Create groups for different providers
+      our_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "our-001",
+          synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      other_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: other_provider,
+          provider_identifier: "other-001",
+          synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      assert {:ok, count} = delete_unsynced_groups(provider, synced_at)
+      assert count == 1
+
+      # Verify only our provider's group is deleted
+      refute Repo.get(Actors.Group, our_group.id)
+      assert Repo.get(Actors.Group, other_group.id)
+    end
+
+    test "returns 0 when no groups to delete", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      assert {:ok, count} = delete_unsynced_groups(provider, synced_at)
+      assert count == 0
+    end
+  end
+
+  describe "batch_upsert_group_memberships/5" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      # Create groups
+      group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "group-001"
+        )
+
+      group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "group-002"
+        )
+
+      # Create identities with actors
+      identity1 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "user-001",
+          actor: [type: :account_user, account: account]
+        )
+
+      identity2 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "user-002",
+          actor: [type: :account_user, account: account]
+        )
+
+      %{
+        account: account,
+        provider: provider,
+        groups: [group1, group2],
+        identities: [identity1, identity2]
+      }
+    end
+
+    test "creates new memberships", %{provider: provider, groups: groups, identities: identities} do
+      synced_at = DateTime.utc_now()
+
+      # Define membership tuples (group_provider_identifier, identity_provider_identifier)
+      tuples = [
+        {"group-001", "user-001"},
+        {"group-001", "user-002"},
+        {"group-002", "user-001"}
+      ]
+
+      assert :ok =
+               batch_upsert_group_memberships(
+                 provider,
+                 tuples,
+                 groups,
+                 identities,
+                 synced_at
+               )
+
+      # Fetch the created memberships
+      memberships =
+        Actors.Membership.Query.all()
+        |> Actors.Membership.Query.by_account_id(provider.account_id)
+        |> Repo.all()
+
+      assert length(memberships) == 3
+
+      # Verify all memberships were created with correct attributes
+      for membership <- memberships do
+        assert membership.account_id == provider.account_id
+        assert membership.synced_at == synced_at
+      end
+
+      # Verify correct associations
+      [identity1, identity2] = identities
+      [group1, group2] = groups
+
+      # Check user-001 is in both groups
+      user1_memberships = Enum.filter(memberships, &(&1.actor_id == identity1.actor_id))
+      assert length(user1_memberships) == 2
+
+      assert MapSet.new(Enum.map(user1_memberships, & &1.group_id)) ==
+               MapSet.new([group1.id, group2.id])
+
+      # Check user-002 is only in group-001
+      user2_memberships = Enum.filter(memberships, &(&1.actor_id == identity2.actor_id))
+      assert length(user2_memberships) == 1
+      assert hd(user2_memberships).group_id == group1.id
+    end
+
+    test "updates existing memberships", %{
+      account: account,
+      provider: provider,
+      groups: groups,
+      identities: identities
+    } do
+      synced_at1 = DateTime.utc_now()
+      [group1, _group2] = groups
+      [identity1, identity2] = identities
+
+      # Create initial membership
+      existing_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          actor_id: identity1.actor_id,
+          group: group1
+        )
+
+      # Batch upsert with overlapping membership
+      tuples = [
+        # This should update existing
+        {"group-001", "user-001"},
+        # This should create new
+        {"group-001", "user-002"}
+      ]
+
+      synced_at2 = DateTime.add(synced_at1, 60, :second)
+
+      :ok =
+        batch_upsert_group_memberships(
+          provider,
+          tuples,
+          groups,
+          identities,
+          synced_at2
+        )
+
+      # Fetch the updated memberships
+      memberships =
+        Actors.Membership.Query.all()
+        |> Actors.Membership.Query.by_account_id(provider.account_id)
+        |> Repo.all()
+
+      assert length(memberships) == 2
+
+      # Verify existing membership was updated
+      updated_membership = Enum.find(memberships, &(&1.actor_id == identity1.actor_id))
+      assert updated_membership.id == existing_membership.id
+      assert updated_membership.synced_at == synced_at2
+
+      # Verify new membership was created
+      new_membership = Enum.find(memberships, &(&1.actor_id == identity2.actor_id))
+      assert new_membership.id != existing_membership.id
+      assert new_membership.synced_at == synced_at2
+    end
+
+    test "handles empty tuples list", %{
+      provider: provider,
+      groups: groups,
+      identities: identities
+    } do
+      synced_at = DateTime.utc_now()
+
+      assert :ok =
+               batch_upsert_group_memberships(
+                 provider,
+                 [],
+                 groups,
+                 identities,
+                 synced_at
+               )
+
+      # Verify no memberships were created
+      memberships =
+        Actors.Membership.Query.all()
+        |> Actors.Membership.Query.by_account_id(provider.account_id)
+        |> Repo.all()
+
+      assert memberships == []
+    end
+
+    test "raises on invalid provider identifiers", %{
+      provider: provider,
+      groups: groups,
+      identities: identities
+    } do
+      synced_at = DateTime.utc_now()
+
+      # Include an invalid group identifier - the function raises on invalid identifiers
+      tuples = [
+        # Invalid group
+        {"invalid-group", "user-001"}
+      ]
+
+      assert_raise ArgumentError, ~r/Unknown group with provider_identifier/, fn ->
+        batch_upsert_group_memberships(
+          provider,
+          tuples,
+          groups,
+          identities,
+          synced_at
+        )
+      end
+
+      # Test invalid identity
+      tuples2 = [
+        # Invalid user
+        {"group-001", "invalid-user"}
+      ]
+
+      assert_raise ArgumentError, ~r/Unknown identity with provider_identifier/, fn ->
+        batch_upsert_group_memberships(
+          provider,
+          tuples2,
+          groups,
+          identities,
+          synced_at
+        )
+      end
+    end
+  end
+
+  describe "delete_unsynced_group_memberships/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "group-001"
+        )
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      %{
+        account: account,
+        provider: provider,
+        group: group,
+        actor: actor
+      }
+    end
+
+    test "deletes memberships not synced at given timestamp", %{
+      account: account,
+      provider: provider,
+      group: group,
+      actor: actor
+    } do
+      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      new_synced_at = DateTime.utc_now()
+
+      # Create memberships with different synced_at times
+      old_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: group,
+          actor: actor,
+          synced_at: old_synced_at
+        )
+
+      new_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: group,
+          actor: Fixtures.Actors.create_actor(account: account),
+          synced_at: new_synced_at
+        )
+
+      assert {:ok, count} = delete_unsynced_group_memberships(provider, new_synced_at)
+      assert count == 1
+
+      # Verify old membership is deleted
+      refute Repo.get(Actors.Membership, old_membership.id)
+
+      # Verify new membership still exists
+      assert Repo.get(Actors.Membership, new_membership.id)
+    end
+
+    test "only deletes memberships for groups belonging to the provider", %{
+      account: account,
+      provider: provider,
+      actor: actor
+    } do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      synced_at = DateTime.utc_now()
+
+      # Create groups for different providers
+      our_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "our-001"
+        )
+
+      other_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: other_provider,
+          provider_identifier: "other-001"
+        )
+
+      # Create memberships for both groups
+      our_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: our_group,
+          actor: actor,
+          synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      other_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: other_group,
+          actor: actor,
+          synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      assert {:ok, count} = delete_unsynced_group_memberships(provider, synced_at)
+      assert count == 1
+
+      # Verify only our provider's membership is deleted
+      refute Repo.get(Actors.Membership, our_membership.id)
+      assert Repo.get(Actors.Membership, other_membership.id)
+    end
+
+    test "returns 0 when no memberships to delete", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      assert {:ok, count} = delete_unsynced_group_memberships(provider, synced_at)
+      assert count == 0
+    end
+  end
+
   # TODO: HARD-DELETE - This may not be needed anymore
   # defp allow_child_sandbox_access(parent_pid) do
   #  Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())

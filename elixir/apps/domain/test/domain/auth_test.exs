@@ -1,7 +1,7 @@
 defmodule Domain.AuthTest do
   use Domain.DataCase, async: true
   import Domain.Auth
-  alias Domain.{Auth, Tokens}
+  alias Domain.{Actors, Auth, Tokens}
   alias Domain.Auth.Authorizer
 
   # Providers
@@ -2482,6 +2482,70 @@ defmodule Domain.AuthTest do
     end
   end
 
+  describe "delete_unsynced_identities_and_actors/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{account: account, provider: provider, bypass: bypass}
+    end
+
+    test "deletes identities for provider that don't match the given synced_at", %{
+      account: account,
+      provider: provider
+    } do
+      yesterday = DateTime.add(DateTime.utc_now(), -1, :day)
+      now = DateTime.utc_now()
+
+      identity1 =
+        Fixtures.Auth.create_identity(
+          synced_at: now,
+          account: account,
+          provider: provider,
+          actor: [type: :account_admin_user]
+        )
+
+      identity2 =
+        Fixtures.Auth.create_identity(
+          synced_at: yesterday,
+          account: account,
+          provider: provider
+        )
+
+      # Identity for another provider should not be deleted
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      _other_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: other_provider
+        )
+
+      # Identity for another account should not be deleted
+      other_account = Fixtures.Accounts.create_account()
+
+      {other_account_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: other_account)
+
+      _other_account_identity =
+        Fixtures.Auth.create_identity(
+          account: other_account,
+          provider: other_account_provider
+        )
+
+      assert delete_unsynced_identities_and_actors(provider, now) ==
+               {:ok, 1}
+
+      assert Repo.get(Auth.Identity, identity1.id)
+      refute Repo.get(Auth.Identity, identity2.id)
+
+      assert Repo.aggregate(Auth.Identity, :count) == 3
+    end
+  end
+
   describe "delete_identity/2" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -4324,6 +4388,200 @@ defmodule Domain.AuthTest do
       identity = Fixtures.Auth.create_identity(account: account, actor: actor)
       subject = Fixtures.Auth.create_subject(identity: identity)
       refute can_grant_role?(subject, :account_admin_user)
+    end
+  end
+
+  describe "batch_upsert_identities_with_actors/3" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{
+        account: account,
+        provider: provider
+      }
+    end
+
+    test "creates new identities and actors when they don't exist", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      attrs_list = [
+        %{
+          "actor" => %{
+            "type" => :account_user,
+            "name" => "User 1"
+          },
+          "provider_identifier" => "user-001",
+          "provider_state" => %{
+            "userinfo" => %{
+              "email" => "user1@example.com"
+            }
+          }
+        },
+        %{
+          "actor" => %{
+            "type" => :account_user,
+            "name" => "User 2"
+          },
+          "provider_identifier" => "user-002",
+          "provider_state" => %{
+            "userinfo" => %{
+              "email" => "user2@example.com"
+            }
+          }
+        }
+      ]
+
+      assert {:ok, identities} =
+               batch_upsert_identities_with_actors(provider, attrs_list, synced_at)
+
+      assert length(identities) == 2
+
+      # Verify identities were created with correct attributes
+      for identity <- identities do
+        identity = Repo.reload!(identity) |> Repo.preload(:actor)
+        assert identity.actor.type == :account_user
+        assert identity.provider_id == provider.id
+        assert identity.account_id == provider.account_id
+        assert identity.synced_at == synced_at
+        assert identity.provider_identifier in ["user-001", "user-002"]
+      end
+
+      # Verify they're persisted
+      assert Repo.aggregate(Auth.Identity, :count) == 2
+      assert Repo.aggregate(Actors.Actor, :count) == 2
+    end
+
+    test "updates existing identities when they already exist", %{
+      account: account,
+      provider: provider
+    } do
+      synced_at1 = DateTime.utc_now()
+
+      # Create initial identity
+      existing_actor =
+        Fixtures.Actors.create_actor(
+          account: account,
+          type: :account_user
+        )
+
+      existing_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "user-001",
+          actor: existing_actor,
+          provider_state: %{
+            "userinfo" => %{
+              "email" => "old@example.com"
+            }
+          }
+        )
+
+      # Update with new state
+      synced_at2 = DateTime.add(synced_at1, 60, :second)
+
+      attrs_list = [
+        %{
+          "actor" => %{
+            "type" => :account_user,
+            "name" => "New Name"
+          },
+          "provider_identifier" => "user-001",
+          "provider_state" => %{
+            "userinfo" => %{
+              "email" => "new@example.com"
+            }
+          }
+        },
+        %{
+          "actor" => %{
+            "type" => :account_user,
+            "name" => "User 2"
+          },
+          "provider_identifier" => "user-002",
+          "provider_state" => %{
+            "userinfo" => %{
+              "email" => "user2@example.com"
+            }
+          }
+        }
+      ]
+
+      {:ok, identities} =
+        batch_upsert_identities_with_actors(provider, attrs_list, synced_at2)
+
+      assert length(identities) == 2
+
+      # Verify existing identity was updated
+      updated_identity =
+        Enum.find(identities, &(&1.provider_identifier == "user-001"))
+        |> Repo.reload!()
+        |> Repo.preload(:actor)
+
+      assert updated_identity.id == existing_identity.id
+      assert updated_identity.synced_at == synced_at2
+      assert updated_identity.provider_state["userinfo"]["email"] == "new@example.com"
+      assert updated_identity.email == "new@example.com"
+      assert updated_identity.actor_id == existing_actor.id
+      assert updated_identity.actor.name == "New Name"
+
+      # Verify total count (1 updated, 1 new)
+      assert Repo.aggregate(Auth.Identity, :count) == 2
+      assert Repo.aggregate(Actors.Actor, :count) == 2
+    end
+
+    test "handles empty attrs list", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      assert {:ok, identities} =
+               batch_upsert_identities_with_actors(provider, [], synced_at)
+
+      assert identities == []
+      assert Repo.aggregate(Auth.Identity, :count) == 0
+    end
+
+    test "preserves identities from different providers", %{account: account, provider: provider} do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      synced_at = DateTime.utc_now()
+
+      # Create an identity for another provider
+      other_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: other_provider,
+          provider_identifier: "other-user",
+          actor: [type: :account_user, account: account]
+        )
+
+      # Batch upsert for our provider
+      attrs_list = [
+        %{
+          "actor" => %{
+            "type" => :account_user,
+            "name" => "Our User"
+          },
+          "provider_identifier" => "our-user",
+          "provider_state" => %{
+            "userinfo" => %{
+              "email" => "our@example.com"
+            }
+          }
+        }
+      ]
+
+      {:ok, identities} =
+        batch_upsert_identities_with_actors(provider, attrs_list, synced_at)
+
+      assert length(identities) == 1
+
+      # Verify other provider's identity is not affected
+      assert Repo.get(Auth.Identity, other_identity.id)
+      assert Repo.aggregate(Auth.Identity, :count) == 2
     end
   end
 

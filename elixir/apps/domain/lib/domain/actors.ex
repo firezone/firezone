@@ -180,6 +180,64 @@ defmodule Domain.Actors do
     )
   end
 
+  # TODO: IdP sync
+  # Move to a new memberships context
+  def batch_upsert_group_memberships(
+        %Auth.Provider{} = provider,
+        tuples,
+        groups,
+        identities,
+        synced_at
+      ) do
+    group_provider_to_id =
+      for group <- groups, into: %{} do
+        {group.provider_identifier, group.id}
+      end
+
+    identity_provider_to_actor_id =
+      for identity <- identities, into: %{} do
+        {identity.provider_identifier, identity.actor_id}
+      end
+
+    memberships_to_upsert =
+      tuples
+      |> Enum.filter(fn {group_provider_id, identity_provider_id} ->
+        # We should never see a membership for a group or identity that wasn't synced
+
+        if not Map.has_key?(group_provider_to_id, group_provider_id) do
+          raise ArgumentError,
+                "Unknown group with provider_identifier #{group_provider_id} in provider #{provider.id}"
+        end
+
+        if not Map.has_key?(identity_provider_to_actor_id, identity_provider_id) do
+          raise ArgumentError,
+                "Unknown identity with provider_identifier #{identity_provider_id} in provider #{provider.id}"
+        end
+
+        true
+      end)
+      |> Enum.map(fn {group_provider_id, identity_provider_id} ->
+        %{
+          id: Ecto.UUID.generate(),
+          account_id: provider.account_id,
+          group_id: group_provider_to_id[group_provider_id],
+          actor_id: identity_provider_to_actor_id[identity_provider_id],
+          synced_at: synced_at
+        }
+      end)
+
+    {_count, _memberships} =
+      Repo.insert_all(
+        Membership,
+        memberships_to_upsert,
+        on_conflict: {:replace, [:synced_at]},
+        conflict_target: [:actor_id, :group_id],
+        returning: false
+      )
+
+    :ok
+  end
+
   def new_group(attrs \\ %{}) do
     change_group(%Group{}, attrs)
   end
@@ -202,6 +260,43 @@ defmodule Domain.Actors do
       Group.Changeset.create(subject.account, attrs, subject)
       |> Repo.insert()
     end
+  end
+
+  # TODO: IdP sync
+  # Move to a new groups context
+  def batch_upsert_groups(%Auth.Provider{} = provider, attrs_list, synced_at) do
+    now = DateTime.utc_now()
+
+    groups_to_insert =
+      attrs_list
+      |> Enum.map(fn group ->
+        %{
+          id: Ecto.UUID.generate(),
+          name: group["name"],
+          provider_id: provider.id,
+          provider_identifier: group["provider_identifier"],
+          type: :static,
+          account_id: provider.account_id,
+          created_by: :provider,
+          created_by_subject: %{"name" => "Provider", "email" => nil},
+          synced_at: synced_at,
+          inserted_at: now,
+          updated_at: now
+        }
+      end)
+
+    {_count, upserted_groups} =
+      Repo.insert_all(
+        Group,
+        groups_to_insert,
+        on_conflict: {:replace, [:name, :synced_at, :updated_at]},
+        conflict_target:
+          {:unsafe_fragment,
+           ~s/(account_id, provider_id, provider_identifier) WHERE provider_id IS NOT NULL and provider_identifier IS NOT NULL/},
+        returning: [:id, :provider_identifier]
+      )
+
+    {:ok, upserted_groups}
   end
 
   def change_group(group, attrs \\ %{})
@@ -643,6 +738,28 @@ defmodule Domain.Actors do
         end
       )
     end
+  end
+
+  def delete_unsynced_groups(%Auth.Provider{} = provider, synced_at) do
+    {count, _groups} =
+      Group.Query.all()
+      |> Group.Query.by_account_id(provider.account_id)
+      |> Group.Query.by_provider_id(provider.id)
+      |> Group.Query.not_synced_at(synced_at)
+      |> Repo.delete_all()
+
+    {:ok, count}
+  end
+
+  def delete_unsynced_group_memberships(%Auth.Provider{} = provider, synced_at) do
+    {count, _memberships} =
+      Membership.Query.all()
+      |> Membership.Query.by_account_id(provider.account_id)
+      |> Membership.Query.by_group_provider_id(provider.id)
+      |> Membership.Query.not_synced_at(synced_at)
+      |> Repo.delete_all()
+
+    {:ok, count}
   end
 
   def delete_stale_synced_actors_for_provider(

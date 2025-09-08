@@ -28,6 +28,10 @@ defmodule Domain.Auth.Identity.Query do
     |> where([provider: provider], is_nil(provider.disabled_at))
   end
 
+  def not_synced_at(queryable, synced_at) do
+    where(queryable, [identities: identities], identities.synced_at != ^synced_at)
+  end
+
   def by_id(queryable, id)
 
   def by_id(queryable, {:not, id}) do
@@ -121,6 +125,10 @@ defmodule Domain.Auth.Identity.Query do
 
   def returning_ids(queryable) do
     select(queryable, [identities: identities], identities.id)
+  end
+
+  def returning_actor_ids(queryable) do
+    select(queryable, [identities: identities], identities.actor_id)
   end
 
   def returning_distinct_actor_ids(queryable) do

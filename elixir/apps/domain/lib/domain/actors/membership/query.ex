@@ -48,6 +48,10 @@ defmodule Domain.Actors.Membership.Query do
     |> where([groups: groups], groups.provider_id == ^provider_id)
   end
 
+  def not_synced_at(queryable, synced_at) do
+    where(queryable, [memberships: memberships], memberships.synced_at != ^synced_at)
+  end
+
   def count_actors_by_group_id(queryable \\ all()) do
     queryable
     |> group_by([memberships: memberships], memberships.group_id)
