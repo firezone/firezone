@@ -121,8 +121,8 @@ impl ClientOnGateway {
         if self.have_proxy_ips_been_reassigned(resource_id, &name, &proxy_ips) {
             tracing::info!("Client has re-assigned proxy IPs, resetting DNS resource NAT");
 
-            self.nat_table.clear();
-            self.permanent_translations.clear();
+            self.nat_table = Default::default();
+            self.permanent_translations = Default::default();
         }
 
         let resource = self
