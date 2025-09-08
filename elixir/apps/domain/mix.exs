@@ -59,6 +59,9 @@ defmodule Domain.MixProject do
       {:argon2_elixir, "~> 4.0"},
       {:workos, "~> 1.1"},
 
+      # Directory sync
+      {:req, "~> 0.5.15"},
+
       # Job system
       {:oban, "~> 2.19"},
 

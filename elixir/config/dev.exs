@@ -41,10 +41,17 @@ config :domain, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        # Delete expired flows every minute
-       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
+
+       # Schedule Entra directories to be synced every minute
+       {"* * * * *", Domain.Entra.Jobs.Scheduler}
      ]}
   ],
-  queues: [default: 10],
+  queues: [
+    default: 10,
+    entra_scheduler: 1,
+    entra_sync: 5
+  ],
   engine: Oban.Engines.Basic,
   repo: Domain.Repo
 

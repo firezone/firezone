@@ -180,10 +180,21 @@ if config_env() == :prod do
       {Oban.Plugins.Cron,
        crontab: [
          # Delete expired flows every minute
-         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
+
+         # Schedule Entra directories to be synced every minute
+         {"* * * * *", Domain.Entra.Jobs.Scheduler}
        ]}
     ],
-    queues: if(env_var_to_config!(:background_jobs_enabled), do: [default: 10], else: []),
+    queues:
+      if(env_var_to_config!(:background_jobs_enabled),
+        do: [
+          default: 10,
+          entra_scheduler: 1,
+          entra_sync: 5
+        ],
+        else: []
+      ),
     engine: Oban.Engines.Basic,
     repo: Domain.Repo
 
