@@ -268,6 +268,10 @@ impl ClientOnGateway {
         self.recalculate_filters();
     }
 
+    /// Checks if the given proxy IPs assigned for a domain are consistent with what we have stored.
+    ///
+    /// When a Client signs out and back in again, it starts re-numbering DNS resources and thus may
+    /// reuse a proxy IP previously assigned to a different domain.
     fn have_proxy_ips_been_reassigned(
         &self,
         resource_id: ResourceId,
