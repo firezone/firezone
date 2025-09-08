@@ -6,8 +6,8 @@ defmodule API.Schemas.Client do
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "Client",
-      description: "Client",
+      title: "ClientGet",
+      description: "Get schema for retrieving a single Client",
       type: :object,
       properties: %{
         id: %Schema{type: :string, description: "Client ID"},
