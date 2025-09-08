@@ -50,6 +50,12 @@ impl NatTable {
         self.table.left_values().any(|(_, c)| c == &ip)
     }
 
+    pub(crate) fn clear(&mut self) {
+        self.table.clear();
+        self.last_seen.clear();
+        self.expired.clear();
+    }
+
     pub(crate) fn translate_outgoing(
         &mut self,
         packet: &IpPacket,
