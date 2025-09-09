@@ -331,15 +331,20 @@ fn setup_tracing(args: &Args) -> Result<FilterReloadHandle> {
 
             tracing::trace!(target: "relay", "Successfully initialized metric provider on tokio runtime");
 
-            let (filter, reload_handle) = firezone_logging::try_filter(&directives)?;
+            let (log_filter, log_reload_handle) = firezone_logging::try_filter(&directives)?;
+            let (otel_filter, otel_reload_handle) = firezone_logging::try_filter(&directives)?;
 
             let dispatch: Dispatch = tracing_subscriber::registry()
-                .with(log_layer(args).with_filter(filter))
-                .with(tracing_opentelemetry::layer().with_tracer(tracer_provider.tracer("relay")))
+                .with(log_layer(args).with_filter(log_filter))
+                .with(
+                    tracing_opentelemetry::layer()
+                        .with_tracer(tracer_provider.tracer("relay"))
+                        .with_filter(otel_filter),
+                )
                 .with(sentry_layer())
                 .into();
 
-            (dispatch, reload_handle)
+            (dispatch, log_reload_handle.merge(otel_reload_handle))
         }
     };
 
