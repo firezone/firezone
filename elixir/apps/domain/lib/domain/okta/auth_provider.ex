@@ -30,7 +30,6 @@ defmodule Domain.Okta.AuthProvider do
     field :portal_session_lifetime_secs, :integer
 
     field :is_verified, :boolean, virtual: true, default: false
-    field :okta_domain, :string
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
@@ -38,6 +37,10 @@ defmodule Domain.Okta.AuthProvider do
     field :name, :string, default: "Okta"
     field :client_id, :string
     field :client_secret, :string, redact: true
+    field :okta_domain, :string
+
+    # Built from the okta_domain
+    field :discovery_document_uri, :string, virtual: true
 
     subject_trail(~w[actor identity system]a)
     timestamps()
@@ -54,6 +57,9 @@ defmodule Domain.Okta.AuthProvider do
       :is_verified
     ])
     |> validate_acceptance(:is_verified)
+    |> put_discovery_document_uri()
+    |> validate_required(:discovery_document_uri)
+    |> validate_uri(:discovery_document_uri)
     |> validate_length(:okta_domain, min: 1, max: 255)
     |> validate_fqdn(:okta_domain)
     |> validate_length(:issuer, min: 1, max: 2_000)
@@ -96,6 +102,17 @@ defmodule Domain.Okta.AuthProvider do
       changeset
     else
       add_error(changeset, :issuer, "must equal https://<okta_domain>")
+    end
+  end
+
+  defp put_discovery_document_uri(changeset) do
+    case get_field(changeset, :okta_domain) do
+      nil ->
+        changeset
+
+      okta_domain ->
+        uri = "https://#{okta_domain}/.well-known/openid-configuration"
+        put_change(changeset, :discovery_document_uri, uri)
     end
   end
 end

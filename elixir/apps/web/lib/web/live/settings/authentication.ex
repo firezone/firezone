@@ -175,6 +175,7 @@ defmodule Web.Settings.Authentication do
         {:ok, _provider} ->
           {:noreply,
            socket
+           |> init()
            |> put_flash(:info, "Authentication provider deleted successfully.")
            |> push_patch(to: ~p"/#{socket.assigns.account}/settings/authentication")}
 
