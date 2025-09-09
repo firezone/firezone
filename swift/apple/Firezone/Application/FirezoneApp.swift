@@ -73,6 +73,11 @@ struct FirezoneApp: App {
     var menuBar: MenuBar?
     var store: Store?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+      // Enforce single instance BEFORE the app fully launches
+      enforceSingleInstance()
+    }
+
     func applicationDidFinishLaunching(_: Notification) {
       if let store {
         menuBar = MenuBar(store: store)
@@ -84,6 +89,49 @@ struct FirezoneApp: App {
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
       maybeShowOutdatedAlert()
+    }
+
+    private func enforceSingleInstance() {
+      // Get the actual bundle identifier from the running app
+      guard let bundleId = Bundle.main.bundleIdentifier else { return }
+
+      let runningApps = NSRunningApplication.runningApplications(
+        withBundleIdentifier: bundleId
+      )
+
+      guard runningApps.count > 1 else { return }
+
+      for app in runningApps where app != NSRunningApplication.current {
+        // Try to terminate the other instance
+        var terminated = app.terminate()
+
+        if !terminated {
+          // If graceful termination fails, force terminate
+          terminated = app.forceTerminate()
+        }
+
+        if !terminated {
+          // If we still can't terminate, show an alert to the user
+          DispatchQueue.main.async {
+            let alert = NSAlert()
+            alert.messageText = "Another Firezone Instance Detected"
+            alert.informativeText = """
+              Another instance of Firezone is already running. \
+              Please quit the other instance manually from the menu bar to continue.
+
+              Location: \(app.bundleURL?.path ?? "Unknown")
+              """
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "OK")
+
+            // Show the alert
+            alert.runModal()
+
+            // Exit this instance since we can't terminate the other one
+            NSApp.terminate(nil)
+          }
+        }
+      }
     }
 
     private func maybeShowOutdatedAlert() {
