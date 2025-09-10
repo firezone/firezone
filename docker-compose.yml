@@ -222,7 +222,6 @@ services:
     build:
       context: scripts/router
     sysctls: *ip-forwarding
-    privileged: true
     environment:
       PORT_FORWARDS: |
         8081 172.28.0.100 tcp
@@ -418,7 +417,6 @@ services:
     build:
       context: scripts/router
     sysctls: *ip-forwarding
-    privileged: true
     environment:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
     networks:
@@ -487,7 +485,6 @@ services:
     build:
       context: scripts/router
     sysctls: *ip-forwarding
-    privileged: true
     environment:
       MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
     networks:
@@ -613,7 +610,6 @@ services:
     build:
       context: scripts/router
     sysctls: *ip-forwarding
-    privileged: true
     environment:
       PORT_FORWARDS: |
         3478 172.29.1.100 udp
@@ -689,7 +685,6 @@ services:
     build:
       context: scripts/router
     sysctls: *ip-forwarding
-    privileged: true
     environment:
       PORT_FORWARDS: |
         3478 172.29.2.100 udp
