@@ -1,7 +1,7 @@
 defmodule Domain.Entra.Directory.Changeset do
   use Domain, :changeset
 
-  @create_fields ~w(tenant_id)a
+  @required_fields ~w(account_id auth_provider_id tenant_id)a
   @update_fields ~w(
     groups_delta_link
     users_delta_link
@@ -13,7 +13,7 @@ defmodule Domain.Entra.Directory.Changeset do
 
   def create(struct, attrs) do
     struct
-    |> cast(attrs, @create_fields)
+    |> cast(attrs, @required_fields)
     |> changeset()
   end
 
@@ -25,7 +25,7 @@ defmodule Domain.Entra.Directory.Changeset do
 
   defp changeset(changeset) do
     changeset
-    |> validate_required([:tenant_id])
+    |> validate_required(@required_fields)
     |> validate_length(:tenant_id, is: 36)
     |> validate_length(:last_error, max: 1000)
     |> assoc_constraint(:account)

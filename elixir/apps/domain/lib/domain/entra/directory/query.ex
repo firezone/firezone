@@ -4,7 +4,7 @@ defmodule Domain.Entra.Directory.Query do
   alias Domain.Entra.Directory
 
   def all do
-    from(d in Directory)
+    from(d in Directory, as: :directory)
   end
 
   def not_disabled(queryable \\ all()) do
@@ -28,14 +28,7 @@ defmodule Domain.Entra.Directory.Query do
       preload: [
         :auth_provider,
         :account,
-        # entra_group_inclusions has a composite primary key, so we need an efficient way to query by both account_id
-        # and directory_id for preloading
-        group_inclusions:
-          ^from(gi in Domain.Entra.GroupInclusion,
-            where:
-              gi.account_id == parent_as(:directory).account_id and
-                gi.entra_directory_id == parent_as(:directory).id
-          )
+        :group_inclusions
       ]
     )
   end

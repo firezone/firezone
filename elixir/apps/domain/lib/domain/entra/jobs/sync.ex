@@ -7,7 +7,7 @@ defmodule Domain.Entra.Jobs.Sync do
   @batch_size 500
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{id: id}}) do
+  def perform(%Oban.Job{args: %{"id" => id}}) do
     Logger.debug("Starting Entra directory sync", entra_directory_id: id)
 
     case Entra.fetch_directory_for_sync(id) do

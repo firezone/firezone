@@ -2,13 +2,15 @@ defmodule Domain.Entra.Authorizer do
   use Domain.Auth.Authorizer
   alias Domain.Entra
 
-  def manage_directories_permission, do: build(Entra, :manage)
+  def manage_directories_permission, do: build(Entra.Directory, :manage)
+  def manage_group_inclusions_permission, do: build(Entra.GroupInclusion, :manage)
 
   @impl Domain.Auth.Authorizer
 
   def list_permissions_for_role(:account_admin_user) do
     [
-      manage_directories_permission()
+      manage_directories_permission(),
+      manage_group_inclusions_permission()
     ]
   end
 

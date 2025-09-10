@@ -9,7 +9,7 @@ defmodule Domain.Repo.Migrations.CreateEntraGroupInclusions do
       )
 
       add(
-        :entra_directory_id,
+        :directory_id,
         references(:entra_directories, type: :binary_id, on_delete: :delete_all),
         null: false,
         primary_key: true

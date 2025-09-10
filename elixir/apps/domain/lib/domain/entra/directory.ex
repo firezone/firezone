@@ -14,7 +14,8 @@ defmodule Domain.Entra.Directory do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :auth_provider, Domain.Auth.Provider
 
-    has_many :group_inclusions, Domain.Entra.GroupInclusion
+    has_many :group_inclusions, Domain.Entra.GroupInclusion,
+      foreign_key: :directory_id
 
     timestamps()
   end

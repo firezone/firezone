@@ -231,7 +231,7 @@ defmodule Domain.Auth do
       with {:ok, provider} <- Repo.insert(changeset),
            {:ok, _directory} <-
              Domain.Entra.create_directory_from_auth_provider(provider, subject) do
-        provider
+        {:ok, provider}
       end
     end)
   end
