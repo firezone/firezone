@@ -18,55 +18,6 @@ function relay2() {
     docker compose exec -T relay-2 "$@"
 }
 
-# Takes two optional arguments to force the client and gateway to use a specific IP stack.
-# 1. client_stack: "ipv4", "ipv6"
-# 2. gateway_stack: "ipv4", "ipv6"
-#
-# By default, the client and gateway will use happy eyeballs to use pick the first working IP stack.
-function force_relayed_connections() {
-    # Install `iptables` to have it available in the compatibility tests
-    client apk add --no-cache iptables
-
-    # Execute within the client container because doing so from the host is not reliable in CI.
-    client iptables -A OUTPUT -d 172.28.0.105 -j DROP
-    client ip6tables -A OUTPUT -d 172:28:0::105 -j DROP
-
-    local client_stack="${1:-}"
-    local gateway_stack="${2:-}"
-
-    # If both are empty, we don't care which stack they use; just return
-    if [[ -z "$client_stack" && -z "$gateway_stack" ]]; then
-        return
-    fi
-
-    gateway apk add --no-cache iptables
-
-    if [[ "$client_stack" == "ipv4" && "$gateway_stack" == "ipv4" ]]; then
-        client ip6tables -A OUTPUT -d $RELAY_1_PUBLIC_IP6_ADDR -j DROP
-        client ip6tables -A OUTPUT -d $RELAY_2_PUBLIC_IP6_ADDR -j DROP
-        gateway ip6tables -A OUTPUT -d $RELAY_1_PUBLIC_IP6_ADDR -j DROP
-        gateway ip6tables -A OUTPUT -d $RELAY_2_PUBLIC_IP6_ADDR -j DROP
-    elif [[ "$client_stack" == "ipv4" && "$gateway_stack" == "ipv6" ]]; then
-        client ip6tables -A OUTPUT -d $RELAY_1_PUBLIC_IP6_ADDR -j DROP
-        client ip6tables -A OUTPUT -d $RELAY_2_PUBLIC_IP6_ADDR -j DROP
-        gateway iptables -A OUTPUT -d $RELAY_1_PUBLIC_IP4_ADDR -j DROP
-        gateway iptables -A OUTPUT -d $RELAY_2_PUBLIC_IP4_ADDR -j DROP
-    elif [[ "$client_stack" == "ipv6" && "$gateway_stack" == "ipv4" ]]; then
-        client iptables -A OUTPUT -d $RELAY_1_PUBLIC_IP4_ADDR -j DROP
-        client iptables -A OUTPUT -d $RELAY_2_PUBLIC_IP4_ADDR -j DROP
-        gateway ip6tables -A OUTPUT -d $RELAY_1_PUBLIC_IP6_ADDR -j DROP
-        gateway ip6tables -A OUTPUT -d $RELAY_2_PUBLIC_IP6_ADDR -j DROP
-    elif [[ "$client_stack" == "ipv6" && "$gateway_stack" == "ipv6" ]]; then
-        client iptables -A OUTPUT -d $RELAY_1_PUBLIC_IP4_ADDR -j DROP
-        client iptables -A OUTPUT -d $RELAY_2_PUBLIC_IP4_ADDR -j DROP
-        gateway iptables -A OUTPUT -d $RELAY_1_PUBLIC_IP4_ADDR -j DROP
-        gateway iptables -A OUTPUT -d $RELAY_2_PUBLIC_IP4_ADDR -j DROP
-    else
-        echo "Invalid stack combination: client_stack=$client_stack, gateway_stack=$gateway_stack"
-        exit 1
-    fi
-}
-
 function client_curl_resource() {
     client curl --connect-timeout 30 --fail "$1" >/dev/null
 }
