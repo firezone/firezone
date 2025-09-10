@@ -188,7 +188,7 @@ jobs:
 
   update-release-draft:
     name: update-release-draft-${{ matrix.config_name }}
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -277,7 +277,7 @@ jobs:
   perf-tests:
     name: perf-tests
     needs: build-perf-artifacts
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write
@@ -380,9 +380,7 @@ jobs:
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
         run: |
-          # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
-          docker compose logs client | \
-            grep --invert "I/O error (os error 5)" | \
+          docker compose logs client |
             grep "WARN" && exit 1 || exit 0
       - name: Ensure Relay-1 emitted no warnings
         if: "!cancelled()"
@@ -401,15 +399,13 @@ jobs:
       - name: Ensure Gateway emitted no warnings
         if: "!cancelled()"
         run: |
-          # Disabling checksum offloading causes one or two "I/O error (os error 5)" warnings
-          docker compose logs gateway | \
-            grep --invert "I/O error (os error 5)" | \
+          docker compose logs gateway |
             grep "WARN" && exit 1 || exit 0
 
   upload-bencher:
     continue-on-error: true
     needs: perf-tests
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       id-token: write

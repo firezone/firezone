@@ -23,7 +23,7 @@ jobs:
       contents: write # for updating the release draft
       id-token: write
     name: update-release-draft
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
       # mark:next-gui-version
       RELEASE_NAME: gui-client-1.5.7
@@ -41,7 +41,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   static-analysis:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/setup-node
@@ -147,7 +147,7 @@ jobs:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         # Installing new packages can take time
-        timeout-minutes: 10
+        timeout-minutes: 15
       - uses: matbour/setup-sentry-cli@3e938c54b3018bdd019973689ef984e033b0454b #v2.0.0
         with:
           token: ${{ secrets.SENTRY_AUTH_TOKEN }}

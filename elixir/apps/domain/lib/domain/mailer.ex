@@ -91,6 +91,6 @@ defmodule Domain.Mailer do
       |> Keyword.fetch!(:from_email)
 
     Email.new()
-    |> Email.from(from_email)
+    |> Email.from({"Firezone Notifications", from_email})
   end
 end

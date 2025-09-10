@@ -18,6 +18,7 @@ defmodule Domain.Accounts.Account.Changeset do
     %Account{}
     |> cast(attrs, [:name, :legal_name, :slug])
     |> changeset()
+    |> put_default_config()
   end
 
   def update_profile_and_config(%Account{} = account, attrs) do
@@ -119,6 +120,25 @@ defmodule Domain.Accounts.Account.Changeset do
 
       true ->
         {:error, "Account ID or Slug contains invalid characters"}
+    end
+  end
+
+  defp put_default_config(changeset) do
+    case get_change(changeset, :config) do
+      nil ->
+        put_change(changeset, :config, Config.default_config())
+
+      %Ecto.Changeset{} = config_changeset ->
+        config = Ecto.Changeset.apply_changes(config_changeset)
+        updated_config = Config.ensure_defaults(config)
+        put_change(changeset, :config, updated_config)
+
+      %Config{} = config ->
+        updated_config = Config.ensure_defaults(config)
+        put_change(changeset, :config, updated_config)
+
+      _ ->
+        changeset
     end
   end
 end
