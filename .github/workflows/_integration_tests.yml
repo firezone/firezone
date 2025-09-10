@@ -133,6 +133,8 @@ jobs:
             export CLIENT_MASQUERADE="random"
           fi
 
+          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
+
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin.search.test --no-build
           docker compose up -d httpbin --no-build

@@ -326,6 +326,8 @@ jobs:
             echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
           fi
 
+          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
+
           # Start services in the same order each time for the tests
           docker compose up -d iperf3
           docker compose up -d api web domain --no-build
