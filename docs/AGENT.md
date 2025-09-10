@@ -11,9 +11,10 @@ The control plane components are built in Elixir and reside in `elixir/`.
 At the core of the data plane resides a shared library called [`connlib`](rust/connlib).
 It combines ICE (using the `str0m` library) and WireGuard (using the `boringtun` library) to establish on-the-fly tunnels between Clients and Gateways.
 The entry-point for the data plane is [`Tunnel`](rust/connlib/tunnel) which acts as a big event-loop combining three components:
-  - A platform-specific TUN device
-  - A sans-IO state component representing either the Client or the Gateway
-  - A platform-specific UDP socket
+
+- A platform-specific TUN device
+- A sans-IO state component representing either the Client or the Gateway
+- A platform-specific UDP socket
 
 Packets from IO sources (TUN device and UDP socket) are passed to the state component, resulting in a UDP or IP packet.
 The state component also manages ICE through the [`snownet`](rust/connlib/snownet) library, so some UDP traffic is handled internally and does not yield an IP packet.
