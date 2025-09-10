@@ -17,9 +17,9 @@ DOWNLOAD_PID=$!
 
 sleep 3 # Download a bit
 
-docker network disconnect firezone_client_internal firezone-client-1 # Disconnect the client
+docker network disconnect firezone_client-internal firezone-client-1 # Disconnect the client
 sleep 3
-docker network connect firezone_client_internal firezone-client-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
+docker network connect firezone_client-internal firezone-client-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
 
 # Add static route to internet subnet via router; they get removed when the network interface disappears
 client ip -4 route add 203.0.113.0/24 via 172.30.0.254
