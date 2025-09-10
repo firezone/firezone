@@ -102,34 +102,23 @@ struct FirezoneApp: App {
       guard runningApps.count > 1 else { return }
 
       for app in runningApps where app != NSRunningApplication.current {
-        // Try to terminate the other instance
-        var terminated = app.terminate()
+        DispatchQueue.main.async {
+          let alert = NSAlert()
+          alert.messageText = "Another Firezone Instance Detected"
+          alert.informativeText = """
+            Another instance of Firezone is already running. \
+            Please quit the other instance from the menu bar to continue.
 
-        if !terminated {
-          // If graceful termination fails, force terminate
-          terminated = app.forceTerminate()
-        }
+            Location: \(app.bundleURL?.path ?? "Unknown")
+            """
+          alert.alertStyle = .warning
+          alert.addButton(withTitle: "OK")
 
-        if !terminated {
-          // If we still can't terminate, show an alert to the user
-          DispatchQueue.main.async {
-            let alert = NSAlert()
-            alert.messageText = "Another Firezone Instance Detected"
-            alert.informativeText = """
-              Another instance of Firezone is already running. \
-              Please quit the other instance from the menu bar to continue.
+          // Show alert
+          alert.runModal()
 
-              Location: \(app.bundleURL?.path ?? "Unknown")
-              """
-            alert.alertStyle = .warning
-            alert.addButton(withTitle: "OK")
-
-            // Show the alert
-            alert.runModal()
-
-            // Exit this instance since we can't terminate the other one
-            NSApp.terminate(nil)
-          }
+          // Exit this instance since we can't terminate the other one
+          NSApp.terminate(nil)
         }
       }
     }
