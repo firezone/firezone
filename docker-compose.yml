@@ -384,7 +384,7 @@ services:
         apk add --no-cache ethtool
         ethtool -K eth0 tx off
 
-        firezone-headless-client
+        exec firezone-headless-client
     init: true
     build:
       target: ${DOCKER_BUILD_TARGET:-debug}
@@ -455,7 +455,7 @@ services:
         ethtool -K eth1 tx off
         ethtool -K eth2 tx off
 
-        firezone-gateway
+        exec firezone-gateway
     init: true
     build:
       target: ${DOCKER_BUILD_TARGET:-debug}
