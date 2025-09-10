@@ -19,7 +19,7 @@ function relay2() {
 }
 
 function client_curl_resource() {
-    client curl --connect-timeout 30 --fail "$1" >/dev/null
+    client curl --connect-timeout 10 --fail "$1" >/dev/null
 }
 
 function client_ping_resource() {
