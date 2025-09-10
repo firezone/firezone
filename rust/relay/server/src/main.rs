@@ -3,7 +3,7 @@
 use anyhow::{Context, Result, bail};
 use backoff::ExponentialBackoffBuilder;
 use clap::Parser;
-use firezone_bin_shared::http_health_check;
+use firezone_bin_shared::{http_health_check, signals};
 use firezone_logging::{FilterReloadHandle, err_with_src, sentry_layer};
 use firezone_relay::sockets::Sockets;
 use firezone_relay::{
@@ -419,9 +419,7 @@ struct Eventloop<R> {
 
     ebpf: Option<ebpf::Program>,
 
-    #[cfg(unix)]
-    sigterm: tokio::signal::unix::Signal,
-    shutting_down: bool,
+    sigterm: signals::Terminate,
 
     stats_log_interval: tokio::time::Interval,
     last_num_bytes_relayed: u64,
@@ -475,19 +473,13 @@ where
             ebpf,
             buffer: [0u8; MAX_UDP_SIZE],
             last_heartbeat_sent,
-            #[cfg(unix)]
-            sigterm: tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?,
-            shutting_down: false,
+            sigterm: signals::Terminate::new()?,
         })
     }
 
     fn poll(&mut self, cx: &mut std::task::Context<'_>) -> Poll<Result<()>> {
         loop {
             let mut ready = false;
-
-            if self.shutting_down && self.channel.is_none() && self.server.num_allocations() == 0 {
-                return Poll::Ready(Ok(()));
-            }
 
             ready!(self.sockets.flush(cx))?;
 
@@ -667,31 +659,9 @@ where
                 Some(Poll::Pending) | None => {}
             }
 
-            #[cfg(unix)]
             match self.sigterm.poll_recv(cx) {
-                Poll::Ready(Some(())) => {
-                    if self.shutting_down {
-                        tracing::info!("Forcing shutdown on repeated SIGTERM");
-
-                        return Poll::Ready(Ok(()));
-                    }
-
-                    tracing::info!(active_allocations = %self.server.num_allocations(), "Received SIGTERM, initiating graceful shutdown");
-
-                    self.shutting_down = true;
-
-                    if let Some(portal) = self.channel.as_mut() {
-                        match portal.close() {
-                            Ok(()) => {}
-                            Err(phoenix_channel::Connecting) => {
-                                self.channel = None; // If we are still connecting, just discard the websocket connection.
-                            }
-                        }
-                    }
-
-                    ready = true;
-                }
-                Poll::Ready(None) | Poll::Pending => {}
+                Poll::Ready(()) => return Poll::Ready(Ok(())),
+                Poll::Pending => {}
             }
 
             if self.stats_log_interval.poll_tick(cx).is_ready() {
