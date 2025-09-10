@@ -151,7 +151,23 @@ enum Cmd {
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const RELEASE: &str = concat!("headless-client@", env!("CARGO_PKG_VERSION"));
 
-fn main() -> Result<()> {
+#[expect(
+    clippy::print_stderr,
+    reason = "No logger is active when we are printing this error."
+)]
+fn main() {
+    match try_main() {
+        Ok(()) => {}
+        Err(e) => {
+            // Print chain of errors manually to avoid it looking like a crash with stacktrace.
+            eprintln!("{e:#}");
+
+            std::process::exit(1);
+        }
+    }
+}
+
+fn try_main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("Calling `install_default` only once per process should always succeed");
