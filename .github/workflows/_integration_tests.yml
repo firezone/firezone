@@ -100,20 +100,25 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - name: direct-curl-api-down
-          - name: direct-curl-api-restart
-          - name: direct-curl-gateway-restart
-          - name: direct-curl-ecn
-          - name: direct-download-packet-loss
-          - name: direct-dns-api-down
-          - name: direct-dns-two-resources
-          - name: direct-dns
-          - name: direct-download-roaming-network
+          - name: curl-api-down
+          - name: curl-api-restart
+          - name: curl-ecn
+          - name: dns
+          - name: dns-api-down
+          - name: dns-nm
+          - name: dns-two-resources
+          - name: systemd/dns-systemd-resolved
+          - name: tcp-dns
+          - name: download-packet-loss
+            rust_log: debug
+            # Setting both client and gateway to random masquerade will force relay-relay candidate pair
+          - name: download
+            client_masquerade: random
+            gateway_masquerade: random
+            rust_log: debug
+          - name: download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
             rust_log: debug
-          - name: dns-nm
-          - name: tcp-dns
-          - name: systemd/dns-systemd-resolved
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/ghcr-docker-login
@@ -129,6 +134,14 @@ jobs:
 
           if [[ -n "${{ matrix.test.rust_log }}" ]]; then
             export RUST_LOG="${{ matrix.test.rust_log }}"
+          fi
+
+          if [[ -n "${{ matrix.test.client_masquerade }}" ]]; then
+            export CLIENT_MASQUERADE="${{ matrix.test.client_masquerade }}"
+          fi
+
+          if [[ -n "${{ matrix.test.gateway_masquerade }}" ]]; then
+            export GATEWAY_MASQUERADE="${{ matrix.test.gateway_masquerade }}"
           fi
 
           docker compose build client-router gateway-router relay-1-router relay-2-router api-router
