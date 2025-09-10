@@ -117,7 +117,7 @@ struct FirezoneApp: App {
             alert.messageText = "Another Firezone Instance Detected"
             alert.informativeText = """
               Another instance of Firezone is already running. \
-              Please quit the other instance manually from the menu bar to continue.
+              Please quit the other instance from the menu bar to continue.
 
               Location: \(app.bundleURL?.path ?? "Unknown")
               """
