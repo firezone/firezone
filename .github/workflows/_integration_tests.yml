@@ -118,6 +118,8 @@ jobs:
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+      # We need at least Docker v28.1 which is not yet available on GitHub actions runners
+      - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Start docker compose in the background
@@ -127,6 +129,8 @@ jobs:
           if [[ -n "${{ matrix.test.rust_log }}" ]]; then
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi
+
+          docker compose build client-router gateway-router relay-1-router relay-2-router api-router
 
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin.search.test --no-build

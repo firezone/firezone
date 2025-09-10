@@ -13,6 +13,7 @@ debug_exit() {
     docker compose ps -a
     resolvectl dns tun-firezone || true
     systemctl status "$SERVICE_NAME" || true
+    journalctl -eu "$SERVICE_NAME" || true
     exit 1
 }
 
@@ -52,7 +53,7 @@ resolvectl query "$HTTPBIN" || debug_exit
 # Accessing a resource should succeed after the client is up
 # Block off Docker's DNS.
 sudo resolvectl dns "$DOCKER_IFACE" ""
-curl -v $HTTPBIN/get
+curl -v $HTTPBIN/get || debug_exit
 
 # Make sure it's going through the tunnel
 nslookup "$HTTPBIN" | grep "100\\.96\\.0\\."

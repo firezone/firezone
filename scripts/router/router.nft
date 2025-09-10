@@ -1,0 +1,36 @@
+table inet router {
+    # Input chain - drop by default, allow established connections
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        # Allow loopback
+        iif "lo" accept
+
+        # Allow established and related connections
+        ct state established,related accept
+
+        # Allow ICMP/ICMPv6 for basic connectivity
+        ip protocol icmp accept
+        ip6 nexthdr ipv6-icmp accept
+    }
+
+    # Forward chain - accept by default for router functionality
+    chain forward {
+        type filter hook forward priority filter; policy accept;
+    }
+
+    # Output chain - accept by default
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+
+    # Prerouting chain for DNAT
+    chain prerouting {
+        type nat hook prerouting priority dstnat;
+    }
+
+    # Postrouting chain for SNAT/masquerading
+    chain postrouting {
+        type nat hook postrouting priority srcnat;
+    }
+}
