@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="10313">
+          Fixes an issue where multiple concurrent Firezone macOS clients could
+          run simultaneously. We now enforce a single instance of the client.
+        </ChangeItem>
         <ChangeItem pull="10224">
           Fixes a minor DNS cache bug where newly-added DNS resources may not
           resolve for a few seconds after showing up in the Resource List.
