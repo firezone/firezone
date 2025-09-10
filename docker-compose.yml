@@ -502,7 +502,7 @@ services:
       - net.ipv6.conf.default.forwarding=1
     privileged: true
     environment:
-      MASQUERADE_TYPE: ""
+      MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
     networks:
       gateway-internal:
         ipv4_address: 172.31.0.254
