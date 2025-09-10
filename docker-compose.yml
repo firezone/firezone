@@ -1,4 +1,12 @@
 # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
+
+x-ip-forwarding: &ip-forwarding
+  - net.ipv4.ip_forward=1
+  - net.ipv6.conf.all.disable_ipv6=0
+  - net.ipv6.conf.default.disable_ipv6=0
+  - net.ipv6.conf.all.forwarding=1
+  - net.ipv6.conf.default.forwarding=1
+
 services:
   # Dependencies
   postgres:
@@ -213,12 +221,7 @@ services:
   api-router:
     build:
       context: scripts/router
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.default.disable_ipv6=0
-      - net.ipv6.conf.all.forwarding=1
-      - net.ipv6.conf.default.forwarding=1
+    sysctls: *ip-forwarding
     privileged: true
     environment:
       PORT_FORWARDS: |
@@ -414,12 +417,7 @@ services:
   client-router:
     build:
       context: scripts/router
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.default.disable_ipv6=0
-      - net.ipv6.conf.all.forwarding=1
-      - net.ipv6.conf.default.forwarding=1
+    sysctls: *ip-forwarding
     privileged: true
     environment:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
@@ -466,13 +464,7 @@ services:
     image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv4.conf.all.src_valid_mark=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.default.disable_ipv6=0
-      - net.ipv6.conf.all.forwarding=1
-      - net.ipv6.conf.default.forwarding=1
+    sysctls: *ip-forwarding
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
@@ -494,12 +486,7 @@ services:
   gateway-router:
     build:
       context: scripts/router
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.default.disable_ipv6=0
-      - net.ipv6.conf.all.forwarding=1
-      - net.ipv6.conf.default.forwarding=1
+    sysctls: *ip-forwarding
     privileged: true
     environment:
       MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
@@ -625,12 +612,7 @@ services:
   relay-1-router:
     build:
       context: scripts/router
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.default.disable_ipv6=0
-      - net.ipv6.conf.all.forwarding=1
-      - net.ipv6.conf.default.forwarding=1
+    sysctls: *ip-forwarding
     privileged: true
     environment:
       PORT_FORWARDS: |
@@ -706,12 +688,7 @@ services:
   relay-2-router:
     build:
       context: scripts/router
-    sysctls:
-      - net.ipv4.ip_forward=1
-      - net.ipv6.conf.all.disable_ipv6=0
-      - net.ipv6.conf.default.disable_ipv6=0
-      - net.ipv6.conf.all.forwarding=1
-      - net.ipv6.conf.default.forwarding=1
+    sysctls: *ip-forwarding
     privileged: true
     environment:
       PORT_FORWARDS: |
