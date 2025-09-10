@@ -221,6 +221,8 @@ services:
   api-router:
     build:
       context: scripts/router
+    cap_add:
+      - NET_ADMIN
     sysctls: *ip-forwarding
     environment:
       PORT_FORWARDS: |
@@ -416,6 +418,8 @@ services:
   client-router:
     build:
       context: scripts/router
+    cap_add:
+      - NET_ADMIN
     sysctls: *ip-forwarding
     environment:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
@@ -484,6 +488,8 @@ services:
   gateway-router:
     build:
       context: scripts/router
+    cap_add:
+      - NET_ADMIN
     sysctls: *ip-forwarding
     environment:
       MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
@@ -609,6 +615,8 @@ services:
   relay-1-router:
     build:
       context: scripts/router
+    cap_add:
+      - NET_ADMIN
     sysctls: *ip-forwarding
     environment:
       PORT_FORWARDS: |
@@ -684,6 +692,8 @@ services:
   relay-2-router:
     build:
       context: scripts/router
+    cap_add:
+      - NET_ADMIN
     sysctls: *ip-forwarding
     environment:
       PORT_FORWARDS: |
