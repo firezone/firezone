@@ -295,22 +295,17 @@ jobs:
       CLIENT_TAG: ${{ github.sha }}
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
       RELAY_TAG: ${{ github.sha }}
-      RELAY_1_PUBLIC_IP4_ADDR: 172.29.0.101
-      RELAY_1_PUBLIC_IP6_ADDR: 172:29:0::101
-      RELAY_2_PUBLIC_IP4_ADDR: 172.29.0.102
-      RELAY_2_PUBLIC_IP6_ADDR: 172:29:0::102
     strategy:
       fail-fast: false
       matrix:
-        test_name:
-          - direct-tcp-client2server
-          - direct-tcp-server2client
-          - direct-udp-client2server
-          - direct-udp-server2client
-          - relayed-tcp-client2server
-          - relayed-tcp-server2client
-          - relayed-udp-client2server
-          - relayed-udp-server2client
+        test:
+          - tcp-client2server
+          - tcp-server2client
+          - udp-client2server
+          - udp-server2client
+        flavour:
+          - direct
+          - relayed
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/ghcr-docker-login
@@ -325,11 +320,15 @@ jobs:
           sed -i 's/^\(\s*\)RUST_LOG:.*$/\1RUST_LOG: wire=error,opentelemetry_sdk=error,debug/' docker-compose.yml
           grep RUST_LOG docker-compose.yml
 
+          if [ "${{ matrix.flavour }}" = "relayed" ]; then
+            echo "CLIENT_MASQUERADE=random" >> "$GITHUB_ENV"
+            echo "UDP_BITRATE=300M" >> "$GITHUB_ENV"
+          fi
+
           # Start services in the same order each time for the tests
           docker compose up -d iperf3
           docker compose up -d api web domain --no-build
-          docker compose up -d relay-1 --no-build
-          docker compose up -d relay-2 --no-build
+          docker compose up -d relay-1 relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
           docker compose up veth-config
@@ -338,20 +337,19 @@ jobs:
           docker compose exec -T client tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -T gateway tc qdisc add dev eth0 root netem delay 10ms
           docker compose exec -T relay-1 tc qdisc add dev eth0 root netem delay 10ms
-          docker compose exec -T relay-2 tc qdisc add dev eth0 root netem delay 10ms
-      - name: "Performance test: ${{ matrix.test_name }}"
+      - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
         timeout-minutes: 5
         env:
-          TEST_NAME: ${{ matrix.test_name }}
+          TEST_NAME: ${{ matrix.flavour }}-${{ matrix.test }}
         run: |
-          ./scripts/tests/perf/${{ matrix.test_name }}.sh
-          jq '{ "${{ matrix.test_name }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.test_name }}.json > ./${{ matrix.test_name }}.bmf.json
-      - name: "Save performance test results: ${{ matrix.test_name }}"
+          ./scripts/tests/perf/${{ matrix.test }}.sh
+          jq '{ "${{ matrix.flavour }}-${{ matrix.test }}": { "retransmits": { "value": (.end.sum_sent.retransmits // -1) }, "throughput": { "value": .end.sum_received.bits_per_second } } }' ./${{ matrix.flavour }}-${{ matrix.test }}.json > ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
+      - name: "Save performance test results: ${{ matrix.flavour }}-${{ matrix.test }}"
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           overwrite: true
-          name: ${{ matrix.test_name }}-${{ github.sha }}-iperf3results
-          path: ./${{ matrix.test_name }}.bmf.json
+          name: ${{ matrix.flavour }}-${{ matrix.test }}-${{ github.sha }}-iperf3results
+          path: ./${{ matrix.flavour }}-${{ matrix.test }}.bmf.json
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client

@@ -128,6 +128,10 @@ jobs:
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi
 
+          if [[ "${{ matrix.test.name }}" =~ ^relay.* ]]; then
+            export CLIENT_MASQUERADE="random"
+          fi
+
           # Start one-by-one to avoid variability in service startup order
           docker compose up -d dns.httpbin.search.test --no-build
           docker compose up -d httpbin --no-build
