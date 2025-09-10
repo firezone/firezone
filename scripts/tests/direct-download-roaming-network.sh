@@ -21,6 +21,10 @@ docker network disconnect firezone_client_internal firezone-client-1 # Disconnec
 sleep 3
 docker network connect firezone_client_internal firezone-client-1 --ip 172.30.0.200 --ip6 172:30::200 # Reconnect client with a different IP
 
+# Add static route to internet subnet via router; they get removed when the network interface disappears
+client ip -4 route add 203.0.113.0/24 via 172.30.0.254
+client ip -6 route add 203:0:113::/64 via 172:30:0::254
+
 # Send SIGHUP, triggering `reconnect` internally
 sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"
 
