@@ -129,8 +129,14 @@ jobs:
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi
 
-          if [[ "${{ matrix.test.name }}" =~ ^relay.* ]]; then
-            export CLIENT_MASQUERADE="random"
+          # The only supported value is 'random' for symmetric NAT or empty for cone NAT
+          if [[ -n "${{ matrix.test.client_masquerade }}" ]]; then
+            export CLIENT_MASQUERADE="${{ matrix.test.client_masquerade }}"
+          fi
+
+          # The only supported value is 'random' for symmetric NAT or empty for cone NAT
+          if [[ -n "${{ matrix.test.gateway_masquerade }}" ]]; then
+            export GATEWAY_MASQUERADE="${{ matrix.test.gateway_masquerade }}"
           fi
 
           docker compose build client-router gateway-router relay-1-router relay-2-router api-router
