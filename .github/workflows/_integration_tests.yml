@@ -109,12 +109,12 @@ jobs:
           - name: dns-two-resources
           - name: systemd/dns-systemd-resolved
           - name: tcp-dns
-          - name: download-packet-loss
-            rust_log: debug
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
           - name: download
             client_masquerade: random
             gateway_masquerade: random
+            rust_log: debug
+          - name: download-packet-loss
             rust_log: debug
           - name: download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
