@@ -729,6 +729,40 @@ services:
         ipv6_address: 203:0:113::102
         interface_name: internet
 
+  # The veth driver uses a pair of interfaces to connect the docker bridge to the container namespace.
+  # For containers that have an eBPF program attached and do XDP_TX, we need to attach a dummy program
+  # to the corresponding veth interface on the host to be able to receive the XDP_TX traffic and pass
+  # it up to the docker bridge successfully.
+  #
+  # The "recommended" way to do this is to set both veth interfaces' GRO to on, or attach an XDP program
+  # that does XDP_PASS to the host side veth interface. The GRO method is not reliable and was shown to
+  # only pass packets in large bursts every 15-20 seconds which breaks ICE setup, so we use the XDP method.
+  veth-config:
+    image: ghcr.io/firezone/xdp-pass
+    pid: host
+    network_mode: host
+    privileged: true
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+
+        VETHS=$$(ip link show type veth | grep '^[0-9]' | awk '{print $$2}' | cut -d: -f1 | cut -d@ -f1)
+
+        # Safe to attach to all veth interfaces on the host
+        for dev in $$VETHS; do
+          echo "Attaching XDP to: $$dev"
+          ip link set dev $$dev xdpdrv obj /xdp/xdp_pass.o sec xdp 2>/dev/null
+        done
+
+        echo "Done configuring $$(echo "$$VETHS" | wc -w) veth interfaces"
+    depends_on:
+      relay-1:
+        condition: "service_started"
+      relay-2:
+        condition: "service_started"
+
   otel:
     image: otel/opentelemetry-collector:latest
     networks:
