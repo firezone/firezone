@@ -8,19 +8,19 @@ defmodule Domain.Entra.Jobs.Sync do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"id" => id}}) do
-    Logger.debug("Starting Entra directory sync", entra_directory_id: id)
+    Logger.info("Starting Entra directory sync", entra_directory_id: id)
 
     case Entra.fetch_directory_for_sync(id) do
       {:ok, directory} ->
         sync(directory)
 
       {:error, :not_found} ->
-        Logger.debug("Entra directory deleted or sync disabled, skipping", entra_directory_id: id)
+        Logger.info("Entra directory deleted or sync disabled, skipping", entra_directory_id: id)
     end
   end
 
   defp sync(%Entra.Directory{} = directory) do
-    Logger.debug("Syncing Entra directory",
+    Logger.info("Syncing Entra directory",
       entra_directory_id: directory.id,
       account_id: directory.account_id,
       auth_provider_id: directory.auth_provider_id
@@ -33,7 +33,7 @@ defmodule Domain.Entra.Jobs.Sync do
     # The Graph API doesn't support delta + filtering by more than 50 items, so if group filtering is enabled,
     # we perform an optimized full sync. If it's disabled we perform delta syncs.
     if filtering_enabled? do
-      Logger.debug("Group filtering is enabled, performing optimized full sync",
+      Logger.info("Group filtering is enabled, performing optimized full sync",
         entra_directory_id: directory.id
       )
 
@@ -50,11 +50,27 @@ defmodule Domain.Entra.Jobs.Sync do
 
       delete_unsynced(directory, synced_at)
     else
-      Logger.debug("Group filtering is disabled, performing delta syncs",
+      Logger.info("Group filtering is disabled, performing delta syncs",
         entra_directory_id: directory.id
       )
 
-      # TODO
+      Entra.APIClient.delta_sync_users(
+        access_token,
+        directory.users_delta_link,
+        @batch_size,
+        fn users, new_delta_link ->
+          delta_sync_users_callback(directory, users, new_delta_link)
+        end
+      )
+
+      Entra.APIClient.delta_sync_groups(
+        access_token,
+        directory.groups_delta_link,
+        @batch_size,
+        fn groups_with_members, new_delta_link ->
+          delta_sync_groups_callback(directory, groups_with_members, new_delta_link)
+        end
+      )
     end
   end
 
@@ -72,13 +88,34 @@ defmodule Domain.Entra.Jobs.Sync do
     end
   end
 
-  # Called on each batch of groups + users
   defp full_sync_callback(directory, synced_at, groups_with_users) do
-    Logger.debug("Inserting groups callback called")
-    Logger.debug(inspect(groups_with_users, pretty: true))
+    Logger.info("Inserting groups callback called")
+    Logger.info(inspect(groups_with_users, pretty: true))
   end
 
   defp delete_unsynced(directory, synced_at) do
-    Logger.debug("Deleting unsynced groups and users", entra_directory_id: directory.id)
+    Logger.info("Deleting unsynced groups and users", entra_directory_id: directory.id)
+  end
+
+  defp delta_sync_users_callback(directory, users, nil) do
+    Logger.info("Delta sync users callback called, more remaining")
+    Logger.info(inspect(users, pretty: true))
+  end
+
+  defp delta_sync_users_callback(directory, users, new_delta_link) do
+    Logger.info("Delta sync users completed")
+    Logger.info(inspect(users, pretty: true))
+    Logger.info("New delta link: #{new_delta_link}")
+  end
+
+  defp delta_sync_groups_callback(directory, groups_with_members, nil) do
+    Logger.info("Delta sync groups callback called, more remaining")
+    Logger.info(inspect(groups_with_members, pretty: true))
+  end
+
+  defp delta_sync_groups_callback(directory, groups_with_members, new_delta_link) do
+    Logger.info("Delta sync groups completed")
+    Logger.info(inspect(groups_with_members, pretty: true))
+    Logger.info("New delta link: #{new_delta_link}")
   end
 end

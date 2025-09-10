@@ -19,5 +19,8 @@ defmodule Domain.Repo.Migrations.CreateEntraGroupInclusions do
 
       timestamps(updated_at: false)
     end
+
+    # For preloads and cascading deletes
+    create(index(:entra_group_inclusions, :directory_id))
   end
 end

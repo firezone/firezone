@@ -4,6 +4,7 @@ defmodule Domain.Entra.APIClient do
   @group_fields ~w[
     id
     displayName
+    transitiveMembers
   ]
 
   @user_fields ~w[
@@ -17,12 +18,7 @@ defmodule Domain.Entra.APIClient do
   ]
 
   def fetch_access_token(tenant_id, client_id, client_secret) do
-    Logger.debug("Getting access token for Entra tenant",
-      tenant_id: tenant_id,
-      client_id: client_id
-    )
-
-    url = "#{endpoint()}/#{tenant_id}/oauth2/v2.0/token"
+    url = "https://login.microsoftonline.com/#{tenant_id}/oauth2/v2.0/token"
 
     body = %{
       "grant_type" => "client_credentials",
@@ -49,7 +45,7 @@ defmodule Domain.Entra.APIClient do
         batch_size,
         callback
       ) do
-    select = @group_fields ++ ["transitiveMembers"]
+    select = Enum.join(@group_fields, ",")
     expand = "transitiveMembers($select=#{Enum.join(@user_fields, ",")})"
     top = batch_size
     filter = if only_groups == [], do: nil, else: "id in ('#{Enum.join(only_groups, "','")}')"
@@ -65,20 +61,54 @@ defmodule Domain.Entra.APIClient do
         })
       )
 
-    list_all(url, access_token, callback)
+    list_full(url, access_token, callback)
   end
 
-  defp list_all(url, access_token, callback) do
-    headers = %{
-      "Authorization" => "Bearer #{access_token}",
-      "Content-Type" => "application/json"
-    }
+  def delta_sync_users(access_token, nil, batch_size, callback) do
+    select = Enum.join(@user_fields, ",")
+    top = batch_size
 
-    case Req.get!(url, headers: headers) do
+    url =
+      URI.parse("#{endpoint()}/v1.0/users/delta")
+      |> URI.append_query(
+        URI.encode_query(%{
+          "$select" => select,
+          "$top" => top
+        })
+      )
+
+    list_delta(url, callback, headers: headers(access_token))
+  end
+
+  def delta_sync_users(_access_token, delta_link, _batch_size, callback) do
+    list_delta(delta_link, callback)
+  end
+
+  def delta_sync_groups(access_token, nil, batch_size, callback) do
+    select = Enum.join(@group_fields, ",")
+    top = batch_size
+
+    url =
+      URI.parse("#{endpoint()}/v1.0/groups/delta")
+      |> URI.append_query(
+        URI.encode_query(%{
+          "$select" => select,
+          "$top" => top
+        })
+      )
+
+    list_delta(url, callback, headers: headers(access_token))
+  end
+
+  def delta_sync_groups(_access_token, delta_link, _batch_size, callback) do
+    list_delta(delta_link, callback)
+  end
+
+  defp list_full(url, callback, opts \\ []) do
+    case Req.get!(url, opts) do
       %{status: 200, body: %{"value" => groups_with_users, "@odata.nextLink" => next_page}} ->
         callback.(groups_with_users)
-
-        list_all(next_page, access_token, callback)
+        list_full(next_page, callback, opts)
 
       %{status: 200, body: %{"value" => groups_with_users}} ->
         callback.(groups_with_users)
@@ -90,8 +120,31 @@ defmodule Domain.Entra.APIClient do
     end
   end
 
+  defp list_delta(url, callback, opts \\ []) do
+    case Req.get!(url, opts) do
+      %{status: 200, body: %{"value" => items, "@odata.deltaLink" => delta_link}} ->
+        callback.(items, delta_link)
+
+      %{status: 200, body: %{"value" => items, "@odata.nextLink" => next_page}} ->
+        callback.(items, nil)
+        list_delta(next_page, callback, opts)
+
+      response ->
+        Logger.warning("Unexpected response from Entra API during delta sync",
+          response: inspect(response)
+        )
+    end
+  end
+
   defp endpoint do
     Domain.Config.fetch_env!(:domain, __MODULE__)
     |> Keyword.fetch!(:endpoint)
+  end
+
+  defp headers(access_token) do
+    %{
+      "Authorization" => "Bearer #{access_token}",
+      "Content-Type" => "application/json"
+    }
   end
 end

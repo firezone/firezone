@@ -26,7 +26,8 @@ defmodule Domain.Entra.Directory.Changeset do
   defp changeset(changeset) do
     changeset
     |> validate_required(@required_fields)
-    |> validate_length(:tenant_id, is: 36)
+    # tenant_id can be the UUID or the human name
+    |> validate_length(:tenant_id, max: 255)
     |> validate_length(:last_error, max: 1000)
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
