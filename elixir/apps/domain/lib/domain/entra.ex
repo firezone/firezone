@@ -17,7 +17,8 @@ defmodule Domain.Entra do
   def fetch_directory_for_sync(id) do
     Entra.Directory.Query.not_disabled()
     |> Entra.Directory.Query.by_id(id)
-    |> Repo.fetch(Entra.Directory.Query, preload: [:auth_provider, :account])
+    |> Entra.Directory.Query.with_preloads_for_sync()
+    |> Repo.fetch(Entra.Directory.Query)
   end
 
   def stream_directories_for_sync do
@@ -33,5 +34,28 @@ defmodule Domain.Entra do
       |> Authorizer.for_subject(subject)
       |> Repo.list(Entra.GroupInclusion.Query, opts)
     end
+  end
+
+  def create_directory_from_auth_provider(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
+    uri = provider.adapter_config["discovery_document_uri"]
+    [_, tenant_id] = Regex.run(~r/login\.microsoftonline\.com\/([a-f0-9\-]{36})/, uri)
+
+    attrs = %{
+      account_id: provider.account_id,
+      auth_provider_id: provider.id,
+      tenant_id: tenant_id
+    }
+
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_directories_permission()) do
+      %Entra.Directory{}
+      |> Entra.Directory.Changeset.create(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  def disable(%Entra.Directory{} = directory) do
+    directory
+    |> Entra.Directory.Changeset.update(%{disabled_at: DateTime.utc_now()})
+    |> Repo.update()
   end
 end

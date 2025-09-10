@@ -221,9 +221,23 @@ defmodule Domain.Auth do
          changeset =
            Provider.Changeset.create(account, attrs, subject)
            |> Adapters.provider_changeset(),
-         {:ok, provider} <- Repo.insert(changeset) do
+         {:ok, provider} <- create_provider_with_directory(attrs["adapter"], changeset, subject) do
       Adapters.ensure_provisioned(provider)
     end
+  end
+
+  defp create_provider_with_directory(:microsoft_entra, changeset, %Subject{} = subject) do
+    Repo.transact(fn ->
+      with {:ok, provider} <- Repo.insert(changeset),
+           {:ok, _directory} <-
+             Domain.Entra.create_directory_from_auth_provider(provider, subject) do
+        provider
+      end
+    end)
+  end
+
+  defp create_provider_with_directory(_, changeset, _subject) do
+    Repo.insert(changeset)
   end
 
   # used for testing and seeding the database
