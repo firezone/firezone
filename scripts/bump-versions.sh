@@ -90,8 +90,8 @@ function update_version_variables() {
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function apple() {
-    current_apple_client_version="1.5.7"
-    next_apple_client_version="1.5.8"
+    current_apple_client_version="1.5.8"
+    next_apple_client_version="1.5.9"
 
     update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_client_version}"'/g;}' {} \;
@@ -151,8 +151,8 @@ function android() {
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
 # 5. Commit the changes and open a PR.
 function gui() {
-    current_gui_client_version="1.5.6"
-    next_gui_client_version="1.5.7"
+    current_gui_client_version="1.5.7"
+    next_gui_client_version="1.5.8"
 
     update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_client_version}"'/g;}' {} \;
@@ -175,8 +175,8 @@ function gui() {
 # 3. Run `scripts/bump-versions.sh headless` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function headless() {
-    current_headless_client_version="1.5.2"
-    next_headless_client_version="1.5.3"
+    current_headless_client_version="1.5.3"
+    next_headless_client_version="1.5.4"
 
     update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_client_version}"'/g;}' {} \;
@@ -198,8 +198,8 @@ function headless() {
 # 3. Run `scripts/bump-versions.sh gateway` to update the versions in the codebase.
 # 4. Commit the changes and open a PR.
 function gateway() {
-    current_gateway_version="1.4.15"
-    next_gateway_version="1.4.16"
+    current_gateway_version="1.4.16"
+    next_gateway_version="1.4.17"
 
     update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;

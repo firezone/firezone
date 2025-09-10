@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.8" date={new Date("2025-09-10")}>
         <ChangeItem pull="10313">
           Fixes an issue where multiple concurrent Firezone macOS clients could
           run simultaneously. We now enforce a single instance of the client.
@@ -39,7 +40,7 @@ export default function Apple() {
           connectivity for long-running services that don't re-resolve DNS, like
           SSH sessions or mongoose.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.7" date={new Date("2025-08-07")}>
         <ChangeItem pull="10143">
           Fixes an issue on iOS 17 and below that caused the tunnel to crash

@@ -10,14 +10,15 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.7" date={new Date("2025-09-10")}>
         <ChangeItem pull="10104">
           Fixes an issue where DNS resources would resolve to a different IP
           after signing out and back into Firezone. This would break
           connectivity for long-running services that don't re-resolve DNS, like
           SSH sessions or mongoose.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.6" date={new Date("2025-07-28")}>
         <ChangeItem pull="9985">
           Fixes an issue where control plane messages could be stuck forever on

@@ -145,9 +145,9 @@ jobs:
         target: [x86_64-pc-windows-msvc]
         package: [firezone-headless-client]
         # mark:next-headless-version
-        release_name: [headless-client-1.5.3]
+        release_name: [headless-client-1.5.4]
         # mark:next-headless-version
-        version: [1.5.3]
+        version: [1.5.4]
     env:
       ARTIFACT_PATH: ${{ matrix.artifact }}_${{ matrix.version }}_${{ matrix.arch }}.exe
       RELEASE_NAME: ${{ matrix.release_name }}
@@ -256,9 +256,9 @@ jobs:
             artifact: firezone-client-headless-linux
             image_name: client
             # mark:next-headless-version
-            release_name: headless-client-1.5.3
+            release_name: headless-client-1.5.4
             # mark:next-headless-version
-            version: 1.5.3
+            version: 1.5.4
           - package: firezone-relay
             artifact: firezone-relay
             image_name: relay
@@ -266,9 +266,9 @@ jobs:
             artifact: firezone-gateway
             image_name: gateway
             # mark:next-gateway-version
-            release_name: gateway-1.4.16
+            release_name: gateway-1.4.17
             # mark:next-gateway-version
-            version: 1.4.16
+            version: 1.4.17
           - package: http-test-server
             artifact: http-test-server
             image_name: http-test-server
@@ -464,7 +464,7 @@ jobs:
           - name: relay
           - name: gateway
             # mark:next-gateway-version
-            version: 1.4.16
+            version: 1.4.17
           - name: client
             # mark:next-client-version
             version: 1.0.6
