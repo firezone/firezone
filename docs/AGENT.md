@@ -1,4 +1,6 @@
-# Firezone
+# AI agent rules for Firezone
+
+## Summary
 
 Firezone is a zero-trust access platform built on top of WireGuard.
 The data plane components are built in Rust and reside in `rust/`.
