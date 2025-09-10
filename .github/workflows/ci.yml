@@ -311,7 +311,8 @@ jobs:
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: docker/setup-docker-action@v4 # We need at least Docker v28.1 which is not yet available on GitHub actions runners
+      # We need at least Docker v28.1 which is not yet available on GitHub actions runners
+      - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
       - name: Start docker compose in the background
