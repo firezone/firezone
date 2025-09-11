@@ -2,7 +2,6 @@
 
 import { CustomerLogosColored } from "@/components/CustomerLogos";
 import Toggle from "@/components/Toggle";
-import { HiCheck } from "react-icons/hi2";
 import Link from "next/link";
 import PlanTable from "./plan_table";
 import { useState } from "react";
@@ -11,7 +10,6 @@ import { FaCheck, FaCircleCheck } from "react-icons/fa6";
 
 export default function _Page() {
   let [annual, setAnnual] = useState(true);
-  let teamPrice: string;
 
   return (
     <>
@@ -287,7 +285,7 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">
-                  40-hour pentest &amp; SOC 2 reports
+                  Access to our SOC2 and pentest reports
                 </span>
               </li>
               <li className="flex space-x-2.5">
