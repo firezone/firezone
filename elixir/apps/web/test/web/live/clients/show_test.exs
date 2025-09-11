@@ -337,4 +337,50 @@ defmodule Web.Live.Clients.ShowTest do
 
     refute Repo.get(Domain.Clients.Client, client.id)
   end
+
+  test "renders current sign in method with auth_identity when client online", %{
+    account: account,
+    client: client,
+    actor: actor,
+    identity: identity,
+    conn: conn
+  } do
+    client_token =
+      Fixtures.Tokens.create_client_token(account: account, actor: actor, identity: identity)
+
+    :ok = Domain.Clients.Presence.connect(client, client_token.id)
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    table =
+      lv
+      |> element("#client")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["current sign in method"] =~ identity.provider_identifier
+  end
+
+  test "renders offline message in current sign in method when client offline", %{
+    account: account,
+    client: client,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/clients/#{client}")
+
+    table =
+      lv
+      |> element("#client")
+      |> render()
+      |> vertical_table_to_map()
+
+    assert table["current sign in method"] == "Client is offline - sign in method unavailable"
+  end
 end

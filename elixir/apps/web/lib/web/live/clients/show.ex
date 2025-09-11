@@ -478,7 +478,7 @@ defmodule Web.Clients.Show do
         nil
 
       presence_data ->
-        get_in(presence_data, ["metas"])
+        Map.get(presence_data, :metas)
         |> fetch_token_by_metas(subject)
     end
   end
