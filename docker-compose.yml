@@ -1,4 +1,7 @@
 # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
+include:
+  - scripts/common/resources.yml
+
 services:
   # Dependencies
   postgres:
@@ -491,53 +494,6 @@ services:
         interface_name: internal
       internet:
         interface_name: internet
-
-  httpbin:
-    image: kennethreitz/httpbin
-    # Needed to bind to IPv6
-    command: ["gunicorn", "-b", "[::]:80", "httpbin:app"]
-    healthcheck:
-      test: ["CMD-SHELL", "ps -C gunicorn"]
-    networks:
-      resources:
-        ipv4_address: 172.20.0.100
-        ipv6_address: 172:20:0::100
-
-  download.httpbin: # Named after `httpbin` because that is how DNS resources are configured for the test setup.
-    build:
-      target: ${DOCKER_BUILD_TARGET:-debug}
-      context: rust
-      dockerfile: Dockerfile
-      args:
-        PACKAGE: http-test-server
-    image: ${HTTP_TEST_SERVER_IMAGE:-ghcr.io/firezone/debug/http-test-server}:${HTTP_TEST_SERVER_TAG:-main}
-    environment:
-      PORT: 80
-    networks:
-      dns_resources:
-        ipv4_address: 172.21.0.101
-
-  dns.httpbin.search.test:
-    image: kennethreitz/httpbin
-    healthcheck:
-      test: ["CMD-SHELL", "ps -C gunicorn"]
-    networks:
-      dns_resources:
-        ipv4_address: 172.21.0.100
-
-  iperf3:
-    image: mlabbe/iperf3
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "(cat /proc/net/tcp | grep 5201) && (cat /proc/net/udp | grep 5201)",
-        ]
-    command: -s -V
-    networks:
-      resources:
-        ipv4_address: 172.20.0.110
-        ipv6_address: 172:20:0::110
 
   relay-1:
     environment:
