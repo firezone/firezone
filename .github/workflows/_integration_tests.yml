@@ -73,7 +73,7 @@ env:
 
 jobs:
   integration-tests:
-    name: ${{ matrix.test.name }}
+    name: ${{ matrix.test.name || matrix.test.script }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -100,24 +100,25 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - name: curl-api-down
-          - name: curl-api-restart
-          - name: curl-ecn
-          - name: dns
-          - name: dns-api-down
-          - name: dns-nm
-          - name: dns-two-resources
-          - name: systemd/dns-systemd-resolved
-          - name: tcp-dns
+          - script: curl-api-down
+          - script: curl-api-restart
+          - script: curl-ecn
+          - script: dns
+          - script: dns-api-down
+          - script: dns-nm
+          - script: dns-two-resources
+          - script: systemd/dns-systemd-resolved
+          - script: tcp-dns
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
-          - name: download
+          - name: download-double-symmetric-nat
+            script: download
             client_masquerade: random
             gateway_masquerade: random
             rust_log: debug
             stop_containers: relay-2 # Force single relay
-          - name: download-packet-loss
+          - script: download-packet-loss
             rust_log: debug
-          - name: download-roaming-network
+          - script: download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
             rust_log: debug
     steps:
@@ -180,7 +181,7 @@ jobs:
           docker compose exec -T gateway sh -c 'apk add --update --no-cache iproute2-tc'
           docker compose exec -T gateway sh -c 'tc qdisc add dev eth0 root netem delay 10ms'
 
-      - run: ./scripts/tests/${{ matrix.test.name }}.sh
+      - run: ./scripts/tests/${{ matrix.test.script }}.sh
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
