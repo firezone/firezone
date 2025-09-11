@@ -753,6 +753,10 @@ services:
         condition: "service_healthy"
       relay-2-router:
         condition: "service_healthy"
+      gateway-router:
+        condition: "service_healthy"
+      client-router:
+        condition: "service_healthy"
 
   otel:
     image: otel/opentelemetry-collector:latest
