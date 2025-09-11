@@ -80,8 +80,8 @@ defmodule Domain.Entra.APIClient do
     list_delta(url, callback, headers: headers(access_token))
   end
 
-  def delta_sync_users(_access_token, delta_link, _batch_size, callback) do
-    list_delta(delta_link, callback)
+  def delta_sync_users(access_token, delta_link, _batch_size, callback) do
+    list_delta(delta_link, callback, headers: headers(access_token))
   end
 
   def delta_sync_groups(access_token, nil, batch_size, callback) do
@@ -100,8 +100,8 @@ defmodule Domain.Entra.APIClient do
     list_delta(url, callback, headers: headers(access_token))
   end
 
-  def delta_sync_groups(_access_token, delta_link, _batch_size, callback) do
-    list_delta(delta_link, callback)
+  def delta_sync_groups(access_token, delta_link, _batch_size, callback) do
+    list_delta(delta_link, callback, headers: headers(access_token))
   end
 
   defp list_full(url, callback, opts \\ []) do
@@ -114,6 +114,8 @@ defmodule Domain.Entra.APIClient do
         callback.(groups_with_users)
 
       response ->
+        Logger.warning(inspect(response, pretty: true))
+
         Logger.warning("Unexpected response from Entra API during full sync",
           response: inspect(response)
         )
@@ -130,6 +132,8 @@ defmodule Domain.Entra.APIClient do
         list_delta(next_page, callback, opts)
 
       response ->
+        Logger.warning(inspect(response, pretty: true))
+
         Logger.warning("Unexpected response from Entra API during delta sync",
           response: inspect(response)
         )

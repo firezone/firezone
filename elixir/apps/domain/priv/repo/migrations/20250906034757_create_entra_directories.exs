@@ -18,10 +18,10 @@ defmodule Domain.Repo.Migrations.CreateEntraDirectories do
 
       add(:tenant_id, :string, null: false)
 
-      add(:groups_delta_link, :string)
-      add(:users_delta_link, :string)
+      add(:groups_delta_link, :text)
+      add(:users_delta_link, :text)
 
-      add(:last_error, :string)
+      add(:last_error, :text)
       add(:error_emailed_at, :utc_datetime_usec)
       add(:disabled_at, :utc_datetime_usec)
 

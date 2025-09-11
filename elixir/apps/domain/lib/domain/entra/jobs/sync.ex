@@ -106,6 +106,8 @@ defmodule Domain.Entra.Jobs.Sync do
     Logger.info("Delta sync users completed")
     Logger.info(inspect(users, pretty: true))
     Logger.info("New delta link: #{new_delta_link}")
+
+    Entra.update_directory(directory, %{users_delta_link: new_delta_link})
   end
 
   defp delta_sync_groups_callback(directory, groups_with_members, nil) do
@@ -117,5 +119,7 @@ defmodule Domain.Entra.Jobs.Sync do
     Logger.info("Delta sync groups completed")
     Logger.info(inspect(groups_with_members, pretty: true))
     Logger.info("New delta link: #{new_delta_link}")
+
+    Entra.update_directory(directory, %{groups_delta_link: new_delta_link})
   end
 end

@@ -53,9 +53,15 @@ defmodule Domain.Entra do
     end
   end
 
-  def disable(%Entra.Directory{} = directory) do
+  def disable_sync(%Entra.Directory{} = directory) do
     directory
     |> Entra.Directory.Changeset.update(%{disabled_at: DateTime.utc_now()})
+    |> Repo.update()
+  end
+
+  def update_directory(%Entra.Directory{} = directory, attrs) do
+    directory
+    |> Entra.Directory.Changeset.update(attrs)
     |> Repo.update()
   end
 end
