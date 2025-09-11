@@ -1,12 +1,4 @@
 # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
-
-x-ip-forwarding: &ip-forwarding
-  - net.ipv4.ip_forward=1
-  - net.ipv6.conf.all.disable_ipv6=0
-  - net.ipv6.conf.default.disable_ipv6=0
-  - net.ipv6.conf.all.forwarding=1
-  - net.ipv6.conf.default.forwarding=1
-
 services:
   # Dependencies
   postgres:
@@ -219,12 +211,9 @@ services:
         ipv6_address: 172:28:0::100
 
   api-router:
-    build:
-      context: scripts/router
-    cap_add:
-      - NET_ADMIN
-    sysctls: *ip-forwarding
-    privileged: true
+    extends:
+      file: scripts/compose/router.yml
+      service: router
     environment:
       PORT_FORWARDS: |
         8081 172.28.0.100 tcp
@@ -417,12 +406,9 @@ services:
 
   # Client Router (NAT only, symmetric NAT)
   client-router:
-    build:
-      context: scripts/router
-    cap_add:
-      - NET_ADMIN
-    privileged: true
-    sysctls: *ip-forwarding
+    extends:
+      file: scripts/compose/router.yml
+      service: router
     environment:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
     networks:
@@ -468,7 +454,12 @@ services:
     image: ${GATEWAY_IMAGE:-ghcr.io/firezone/debug/gateway}:${GATEWAY_TAG:-main}
     cap_add:
       - NET_ADMIN
-    sysctls: *ip-forwarding
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv6.conf.all.disable_ipv6=0
+      - net.ipv6.conf.default.disable_ipv6=0
+      - net.ipv6.conf.all.forwarding=1
+      - net.ipv6.conf.default.forwarding=1
     devices:
       - "/dev/net/tun:/dev/net/tun"
     depends_on:
@@ -488,12 +479,9 @@ services:
 
   # Gateway Router (NAT only, cone NAT)
   gateway-router:
-    build:
-      context: scripts/router
-    cap_add:
-      - NET_ADMIN
-    privileged: true
-    sysctls: *ip-forwarding
+    extends:
+      file: scripts/compose/router.yml
+      service: router
     environment:
       MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
     networks:
@@ -616,12 +604,9 @@ services:
       - "api:203:0:113::10"
 
   relay-1-router:
-    build:
-      context: scripts/router
-    cap_add:
-      - NET_ADMIN
-    privileged: true
-    sysctls: *ip-forwarding
+    extends:
+      file: scripts/compose/router.yml
+      service: router
     environment:
       PORT_FORWARDS: |
         3478 172.29.1.100 udp
@@ -694,12 +679,9 @@ services:
       - "api:203:0:113::10"
 
   relay-2-router:
-    build:
-      context: scripts/router
-    cap_add:
-      - NET_ADMIN
-    privileged: true
-    sysctls: *ip-forwarding
+    extends:
+      file: scripts/compose/router.yml
+      service: router
     environment:
       PORT_FORWARDS: |
         3478 172.29.2.100 udp
