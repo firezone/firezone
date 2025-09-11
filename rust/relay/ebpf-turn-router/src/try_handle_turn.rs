@@ -38,6 +38,8 @@ const UPPER_PORT: u16 = 65535;
 const CHAN_START: u16 = 0x4000;
 /// Channel number end
 const CHAN_END: u16 = 0x7FFF;
+/// DNS port
+const DNS_PORT: u16 = 53;
 
 #[inline(always)]
 pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
@@ -72,6 +74,11 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
 
+    // We do not want to handle DNS packets
+    if udp.source() == DNS_PORT {
+        return Err(Error::DnsPacket);
+    }
+
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_from_ipv4_udp(ctx)?;
 
@@ -99,6 +106,11 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
+
+    // We do not want to handle DNS packets
+    if udp.source() == DNS_PORT {
+        return Err(Error::DnsPacket);
+    }
 
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_from_ipv6_udp(ctx)?;
