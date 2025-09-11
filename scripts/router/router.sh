@@ -72,6 +72,12 @@ nft -f "$CONFIG_FILE"
 
 rm "$CONFIG_FILE"
 
+for iface in internal internet; do
+    # Enable RPS (Receive Packet Steering) to always use CPU 1 to handle packets.
+    # This prevents packet reordering where otherwise the CPU which handles the interrupt would handle the packet.
+    echo 1 >"/sys/class/net/$iface/queues/rx-0/rps_cpus" 2>/dev/null
+done
+
 echo "1" >/tmp/setup_done # Health check marker
 
 # Keep container running
