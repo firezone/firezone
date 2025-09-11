@@ -27,8 +27,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
         }
         Err(Error::NotIp | Error::NotUdp) => xdp_action::XDP_PASS,
         Err(
-            e @ (Error::InterfaceIpv4AddressAccessFailed
-            | Error::InterfaceIpv6AddressAccessFailed
+            e @ (Error::ArrayIndexOutOfBounds
             | Error::PacketTooShort
             | Error::NotTurn
             | Error::NotAChannelDataMessage
@@ -40,8 +39,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             xdp_action::XDP_PASS
         }
         Err(
-            e @ (Error::InterfaceIpv4AddressNotConfigured
-            | Error::InterfaceIpv6AddressNotConfigured
+            e @ (Error::IpAddrUnset
             | Error::NoEntry(_)
             | Error::BadChannelDataLength
             | Error::XdpAdjustHeadFailed(_)),

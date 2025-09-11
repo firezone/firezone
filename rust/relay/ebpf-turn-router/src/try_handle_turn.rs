@@ -1,12 +1,12 @@
 mod adjust_head;
 mod channel_data;
 mod checksum;
+mod config;
 mod error;
 mod from_ipv4_channel;
 mod from_ipv4_udp;
 mod from_ipv6_channel;
 mod from_ipv6_udp;
-mod interface;
 mod ref_mut_at;
 mod routing;
 mod stats;
@@ -72,17 +72,6 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
 
-    trace!(
-        ctx,
-        target: "eBPF",
-        "<== new packet from {:i}:{} for {:i}:{} with UDP payload {}",
-        ipv4.src_addr(),
-        udp.source(),
-        ipv4.dst_addr(),
-        udp.dest(),
-        udp_payload_len
-    );
-
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_from_ipv4_udp(ctx)?;
 
@@ -111,17 +100,6 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
 
-    trace!(
-        ctx,
-        target: "eBPF",
-        "<== new packet from {:i}:{} for {:i}:{} with UDP payload {}",
-        ipv6.src_addr(),
-        udp.source(),
-        ipv6.dst_addr(),
-        udp.dest(),
-        udp_payload_len
-    );
-
     if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
         try_handle_from_ipv6_udp(ctx)?;
 
@@ -146,15 +124,23 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
     let pp = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
+
+    trace!(
+        ctx,
+        target: "eBPF",
+        "<== new packet from {:i}:{} on allocation {} with UDP payload {}",
+        pp.peer_ip(),
+        pp.peer_port(),
+        pp.allocation_port(),
+        udp.len() - UdpHdr::LEN as u16
+    );
+
     let cc = routing::get_client_and_channel(pp)?;
 
     aya_log_ebpf::trace!(
         ctx,
         target: "eBPF",
-        "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
-        pp.peer_ip(),
-        pp.peer_port(),
-        pp.allocation_port(),
+        "Routing to {:i}:{} on channel {}",
         cc.client_ip(),
         cc.client_port(),
         cc.channel()
@@ -194,31 +180,36 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     }
 
     let cc = ClientAndChannelV4::new(ipv4.src_addr(), udp.source(), channel_number);
+
+    trace!(
+        ctx,
+        target: "eBPF",
+        "<== new packet from {:i}:{} on channel {} with UDP payload {}",
+        cc.client_ip(),
+        cc.client_port(),
+        cc.channel(),
+        udp.len() - UdpHdr::LEN as u16
+    );
+
     let pp = routing::get_port_and_peer(cc)?;
 
     aya_log_ebpf::trace!(
         ctx,
         target: "eBPF",
-        "Routing packet from {:i}:{} on channel {} to {:i}:{} on allocation {}",
-        cc.client_ip(),
-        cc.client_port(),
-        cc.channel(),
+        "Routing packet to {:i}:{} on allocation {}",
         pp.peer_ip(),
         pp.peer_port(),
         pp.allocation_port(),
     );
 
-    if is_interface_ip(pp.peer_ip())? {
+    if is_own_public_ip(pp.peer_ip())? {
         let pp = pp.flip_ports();
         let cc = routing::get_client_and_channel(pp)?;
 
         aya_log_ebpf::trace!(
             ctx,
             target: "eBPF",
-            "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
-            pp.peer_ip(),
-            pp.peer_port(),
-            pp.allocation_port(),
+            "Routing packet to {:i}:{} on channel {}",
             cc.client_ip(),
             cc.client_port(),
             cc.channel()
@@ -249,15 +240,23 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
 
     let pp = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
+
+    trace!(
+        ctx,
+        target: "eBPF",
+        "<== new packet from {:i}:{} on allocation {} with UDP payload {}",
+        pp.peer_ip(),
+        pp.peer_port(),
+        pp.allocation_port(),
+        udp.len() - UdpHdr::LEN as u16
+    );
+
     let cc = routing::get_client_and_channel(pp)?;
 
     aya_log_ebpf::trace!(
         ctx,
         target: "eBPF",
-        "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
-        pp.peer_ip(),
-        pp.peer_port(),
-        pp.allocation_port(),
+        "Routing packet to {:i}:{} on channel {}",
         cc.client_ip(),
         cc.client_port(),
         cc.channel()
@@ -297,31 +296,36 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
     }
 
     let cc = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), cd.number());
+
+    trace!(
+        ctx,
+        target: "eBPF",
+        "<== new packet from {:i}:{} on channel {} with UDP payload {}",
+        cc.client_ip(),
+        cc.client_port(),
+        cc.channel(),
+        udp.len() - UdpHdr::LEN as u16
+    );
+
     let pp = routing::get_port_and_peer(cc)?;
 
     aya_log_ebpf::trace!(
         ctx,
         target: "eBPF",
-        "Routing packet from {:i}:{} on channel {} to {:i}:{} on allocation {}",
-        cc.client_ip(),
-        cc.client_port(),
-        cc.channel(),
+        "Routing packet to {:i}:{} on allocation {}",
         pp.peer_ip(),
         pp.peer_port(),
         pp.allocation_port(),
     );
 
-    if is_interface_ip(pp.peer_ip())? {
+    if is_own_public_ip(pp.peer_ip())? {
         let pp = pp.flip_ports();
         let cc = routing::get_client_and_channel(pp)?;
 
         aya_log_ebpf::trace!(
             ctx,
             target: "eBPF",
-            "Routing packet from {:i}:{} on allocation {} to {:i}:{} on channel {}",
-            pp.peer_ip(),
-            pp.peer_port(),
-            pp.allocation_port(),
+            "Routing packet to {:i}:{} on channel {}",
             cc.client_ip(),
             cc.client_port(),
             cc.channel()
@@ -344,9 +348,9 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
 }
 
 #[inline(always)]
-fn is_interface_ip(ip: IpAddr) -> Result<bool, Error> {
-    let ipv4_interface = interface::ipv4_address()?;
-    let ipv6_interface = interface::ipv6_address()?;
+fn is_own_public_ip(ip: IpAddr) -> Result<bool, Error> {
+    let ipv4_public = config::public_ipv4_address()?;
+    let ipv6_public = config::public_ipv6_address()?;
 
-    Ok(ip == ipv4_interface || ip == ipv6_interface)
+    Ok(ip == ipv4_public || ip == ipv6_public)
 }

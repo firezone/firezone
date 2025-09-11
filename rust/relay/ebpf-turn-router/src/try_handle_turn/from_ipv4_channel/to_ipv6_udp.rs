@@ -7,7 +7,7 @@ use network_types::{
 };
 
 use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, interface, ref_mut_at,
+    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, ref_mut_at,
 };
 
 #[inline(always)]
@@ -80,7 +80,7 @@ pub fn to_ipv6_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV6) -> Result<()
     // 2. IPv6 header
     //
 
-    let new_ipv6_src = interface::ipv6_address()?;
+    let new_ipv6_src = config::interface_ipv6_address()?;
     let new_ipv6_dst = port_and_peer.peer_ip();
     let new_udp_len = old_udp_len - CdHdr::LEN as u16;
 

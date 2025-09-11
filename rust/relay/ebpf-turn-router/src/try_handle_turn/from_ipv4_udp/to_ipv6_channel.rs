@@ -7,7 +7,7 @@ use network_types::{
 };
 
 use crate::try_handle_turn::{
-    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, interface, ref_mut_at,
+    Error, adjust_head, channel_data::CdHdr, checksum::ChecksumUpdate, config, ref_mut_at,
 };
 
 #[inline(always)]
@@ -74,7 +74,7 @@ pub fn to_ipv6_channel(
     // 2. IPv4 -> IPv6 header
     //
 
-    let new_ipv6_src = interface::ipv6_address()?;
+    let new_ipv6_src = config::interface_ipv6_address()?;
     let new_ipv6_dst = client_and_channel.client_ip();
     let new_ipv6_len = old_ipv4_len - Ipv4Hdr::LEN as u16 + CdHdr::LEN as u16;
 

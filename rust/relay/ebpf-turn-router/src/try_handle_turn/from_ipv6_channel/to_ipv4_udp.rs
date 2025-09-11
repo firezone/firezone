@@ -10,7 +10,7 @@ use crate::try_handle_turn::{
     Error, adjust_head,
     channel_data::CdHdr,
     checksum::{self, ChecksumUpdate},
-    interface, ref_mut_at,
+    config, ref_mut_at,
 };
 
 #[inline(always)]
@@ -67,7 +67,7 @@ pub fn to_ipv4_udp(ctx: &XdpContext, port_and_peer: &PortAndPeerV4) -> Result<()
     // 2. IPv6 -> IPv4 header
     //
 
-    let new_ipv4_src = interface::ipv4_address()?;
+    let new_ipv4_src = config::interface_ipv4_address()?;
     let new_ipv4_dst = port_and_peer.peer_ip();
     let new_ipv4_len = old_udp_len - CdHdr::LEN as u16 + Ipv4Hdr::LEN as u16;
 

@@ -240,52 +240,6 @@ impl PortAndPeerV6 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub struct InterfaceAddressV4 {
-    address: [u8; 4],
-}
-
-impl InterfaceAddressV4 {
-    const ZERO: [u8; 4] = [0; 4];
-
-    pub fn set(&mut self, addr: Ipv4Addr) {
-        self.address = addr.octets();
-    }
-
-    pub fn get(&self) -> Option<Ipv4Addr> {
-        if self.address != Self::ZERO {
-            Some(self.address.into())
-        } else {
-            None
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub struct InterfaceAddressV6 {
-    address: [u8; 16],
-}
-
-impl InterfaceAddressV6 {
-    const ZERO: [u8; 16] = [0; 16];
-
-    pub fn set(&mut self, addr: Ipv6Addr) {
-        self.address = addr.octets();
-    }
-
-    pub fn get(&self) -> Option<Ipv6Addr> {
-        if self.address != Self::ZERO {
-            Some(self.address.into())
-        } else {
-            None
-        }
-    }
-}
-
-#[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct StatsEvent {
@@ -313,8 +267,4 @@ mod userspace {
     unsafe impl aya::Pod for ClientAndChannelV6 {}
 
     unsafe impl aya::Pod for PortAndPeerV6 {}
-
-    unsafe impl aya::Pod for InterfaceAddressV4 {}
-
-    unsafe impl aya::Pod for InterfaceAddressV6 {}
 }

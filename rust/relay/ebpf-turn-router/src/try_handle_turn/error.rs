@@ -2,10 +2,8 @@ use core::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
-    InterfaceIpv4AddressAccessFailed,
-    InterfaceIpv4AddressNotConfigured,
-    InterfaceIpv6AddressAccessFailed,
-    InterfaceIpv6AddressNotConfigured,
+    ArrayIndexOutOfBounds,
+    IpAddrUnset,
     UdpChecksumMissing,
     PacketTooShort,
     NotUdp,
@@ -31,14 +29,8 @@ impl aya_log_ebpf::WriteToBuf for Error {
     fn write(self, buf: &mut [u8]) -> Option<NonZeroUsize> {
         // Use a simpler match structure to help the verifier
         let msg = match self {
-            Error::InterfaceIpv4AddressAccessFailed => {
-                "Failed to get pointer to interface IPv4 address map"
-            }
-            Error::InterfaceIpv4AddressNotConfigured => "Interface IPv4 address not configured",
-            Error::InterfaceIpv6AddressAccessFailed => {
-                "Failed to get pointer to interface IPv6 address map"
-            }
-            Error::InterfaceIpv6AddressNotConfigured => "Interface IPv6 address not configured",
+            Error::ArrayIndexOutOfBounds => "Array index is out of bounds",
+            Error::IpAddrUnset => "IP address has not been configured",
             Error::UdpChecksumMissing => "UDP checksum is missing",
             Error::PacketTooShort => "Packet is too short",
             Error::NotUdp => "Not a UDP packet",
