@@ -9,8 +9,7 @@ use aya::{
 use aya_log::EbpfLogger;
 use bytes::BytesMut;
 use ebpf_shared::{
-    ClientAndChannelV4, ClientAndChannelV6, InterfaceAddressV4, InterfaceAddressV6, PortAndPeerV4,
-    PortAndPeerV6, StatsEvent,
+    ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6, StatsEvent,
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
 
@@ -36,8 +35,10 @@ impl Program {
     pub fn try_load(
         interface: &str,
         attach_mode: AttachMode,
-        ipv4_addr: Option<Ipv4Addr>,
-        ipv6_addr: Option<Ipv6Addr>,
+        ipv4_interface_addr: Option<Ipv4Addr>,
+        ipv6_interface_addr: Option<Ipv6Addr>,
+        ipv4_public_addr: Option<Ipv4Addr>,
+        ipv6_public_addr: Option<Ipv6Addr>,
     ) -> Result<Self> {
         let mut ebpf = aya::Ebpf::load(aya::include_bytes_aligned!(concat!(
             env!("OUT_DIR"),
@@ -121,11 +122,19 @@ impl Program {
         }
 
         // Set interface addresses if provided
-        if let Some(ipv4) = ipv4_addr {
+        if let Some(ipv4) = ipv4_interface_addr {
             set_interface_ipv4_address(&mut ebpf, ipv4)?;
         }
-        if let Some(ipv6) = ipv6_addr {
+        if let Some(ipv6) = ipv6_interface_addr {
             set_interface_ipv6_address(&mut ebpf, ipv6)?;
+        }
+
+        // Set public addresses if provided
+        if let Some(ipv4) = ipv4_public_addr {
+            set_public_ipv4_address(&mut ebpf, ipv4)?;
+        }
+        if let Some(ipv6) = ipv6_public_addr {
+            set_public_ipv6_address(&mut ebpf, ipv6)?;
         }
 
         tracing::info!("eBPF TURN router loaded and attached to interface {interface}");
@@ -301,10 +310,7 @@ impl Program {
 }
 
 fn set_interface_ipv4_address(ebpf: &mut aya::Ebpf, addr: Ipv4Addr) -> Result<()> {
-    let mut interface_addr = InterfaceAddressV4::default();
-    interface_addr.set(addr);
-
-    set_per_cpu_map(ebpf, "INT_ADDR_V4", interface_addr)
+    set_per_cpu_map(ebpf, "INT_ADDR_V4", addr.octets())
         .context("Failed to set IPv4 interface address")?;
 
     tracing::info!(%addr, "Set eBPF interface IPv4 address");
@@ -312,13 +318,26 @@ fn set_interface_ipv4_address(ebpf: &mut aya::Ebpf, addr: Ipv4Addr) -> Result<()
 }
 
 fn set_interface_ipv6_address(ebpf: &mut aya::Ebpf, addr: Ipv6Addr) -> Result<()> {
-    let mut interface_addr = InterfaceAddressV6::default();
-    interface_addr.set(addr);
-
-    set_per_cpu_map(ebpf, "INT_ADDR_V6", interface_addr)
+    set_per_cpu_map(ebpf, "INT_ADDR_V6", addr.octets())
         .context("Failed to set IPv6 interface address")?;
 
     tracing::info!(%addr, "Set eBPF interface IPv6 address");
+    Ok(())
+}
+
+fn set_public_ipv4_address(ebpf: &mut aya::Ebpf, addr: Ipv4Addr) -> Result<()> {
+    set_per_cpu_map(ebpf, "PUBLIC_ADDR_V4", addr.octets())
+        .context("Failed to set IPv4 public address")?;
+
+    tracing::info!(%addr, "Set eBPF public IPv4 address");
+    Ok(())
+}
+
+fn set_public_ipv6_address(ebpf: &mut aya::Ebpf, addr: Ipv6Addr) -> Result<()> {
+    set_per_cpu_map(ebpf, "PUBLIC_ADDR_V6", addr.octets())
+        .context("Failed to set IPv6 public address")?;
+
+    tracing::info!(%addr, "Set eBPF public IPv6 address");
     Ok(())
 }
 

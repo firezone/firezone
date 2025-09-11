@@ -18,6 +18,8 @@ impl Program {
         _: AttachMode,
         _: Option<Ipv4Addr>,
         _: Option<Ipv6Addr>,
+        _: Option<Ipv4Addr>,
+        _: Option<Ipv6Addr>,
     ) -> Result<Self> {
         Err(anyhow::anyhow!("Platform not supported"))
     }

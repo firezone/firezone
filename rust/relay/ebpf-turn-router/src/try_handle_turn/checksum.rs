@@ -11,6 +11,19 @@
 //! 3. Subtraction in one's complement arithmetic is implemented as the addition of the one's complement of the number to be subtracted.
 //!
 //! This allows us to e.g. take an existing IP header checksum and update it to account for just the destination address changing.
+//!
+//! To use this module, create a new instance of [`ChecksumUpdate`] from the old checksum and then chain the appropriate functions on it.
+//! For example, if you are changing the source port of a UDP packet, you want to:
+//! - [`remove_u16`](ChecksumUpdate::remove_u16) the old port
+//! - [`add_u16`](ChecksumUpdate::add_u16) the new port
+//!
+//! This will adjust the checksum as if it would have been computed for the packet with the new port.
+//!
+//! When re-routing packets, we often send from our own address.
+//! In other words, the previous destination becomes the new source.
+//! In that case, it is common to optimise the checksum update by not removing the old destination at all.
+//! Instead we are basically replacing the old source with the new destination.
+//! Checksum computation is commutative, i.e. it doesn't care in which order the individual fields got added.
 
 use network_types::ip::Ipv4Hdr;
 

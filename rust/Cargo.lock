@@ -2134,6 +2134,7 @@ name = "ebpf-shared"
 version = "0.1.0"
 dependencies = [
  "aya",
+ "derive_more 2.0.1",
 ]
 
 [[package]]

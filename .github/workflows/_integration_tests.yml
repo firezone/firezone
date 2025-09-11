@@ -73,7 +73,7 @@ env:
 
 jobs:
   integration-tests:
-    name: ${{ matrix.test.name }}
+    name: ${{ matrix.test.name || matrix.test.script }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -100,20 +100,27 @@ jobs:
       fail-fast: false
       matrix:
         test:
-          - name: direct-curl-api-down
-          - name: direct-curl-api-restart
-          - name: direct-curl-gateway-restart
-          - name: direct-curl-ecn
-          - name: direct-download-packet-loss
-          - name: direct-dns-api-down
-          - name: direct-dns-two-resources
-          - name: direct-dns
-          - name: direct-download-roaming-network
+          - script: curl-api-down
+          - script: curl-api-restart
+          - script: curl-ecn
+          - script: dns
+          - script: dns-api-down
+          - script: dns-nm
+          - script: dns-two-resources
+          - script: systemd/dns-systemd-resolved
+          - script: tcp-dns
+            # Setting both client and gateway to random masquerade will force relay-relay candidate pair
+          - name: download-double-symmetric-nat
+            script: download
+            client_masquerade: random
+            gateway_masquerade: random
+            rust_log: debug
+            stop_containers: relay-2 # Force single relay
+          - script: download-packet-loss
+            rust_log: debug
+          - script: download-roaming-network
             # Too noisy can cause flaky tests due to the amount of data
             rust_log: debug
-          - name: dns-nm
-          - name: tcp-dns
-          - name: systemd/dns-systemd-resolved
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - uses: ./.github/actions/ghcr-docker-login
@@ -131,6 +138,14 @@ jobs:
             export RUST_LOG="${{ matrix.test.rust_log }}"
           fi
 
+          if [[ -n "${{ matrix.test.client_masquerade }}" ]]; then
+            export CLIENT_MASQUERADE="${{ matrix.test.client_masquerade }}"
+          fi
+
+          if [[ -n "${{ matrix.test.gateway_masquerade }}" ]]; then
+            export GATEWAY_MASQUERADE="${{ matrix.test.gateway_masquerade }}"
+          fi
+
           docker compose build client-router gateway-router relay-1-router relay-2-router api-router
 
           # Start one-by-one to avoid variability in service startup order
@@ -144,6 +159,10 @@ jobs:
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
           docker compose up veth-config
+
+          if [[ -n "${{ matrix.test.stop_containers }}" ]]; then
+            docker compose stop ${{ matrix.test.stop_containers }}
+          fi
 
           # Wait a few seconds for the services to fully start. GH runners are
           # slow, so this gives the Client enough time to initialize its tun interface,
@@ -162,7 +181,7 @@ jobs:
           docker compose exec -T gateway sh -c 'apk add --update --no-cache iproute2-tc'
           docker compose exec -T gateway sh -c 'tc qdisc add dev eth0 root netem delay 10ms'
 
-      - run: ./scripts/tests/${{ matrix.test.name }}.sh
+      - run: ./scripts/tests/${{ matrix.test.script }}.sh
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
