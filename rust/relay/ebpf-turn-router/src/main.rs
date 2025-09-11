@@ -28,6 +28,7 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
         Err(Error::NotIp | Error::NotUdp) => xdp_action::XDP_PASS,
         Err(
             e @ (Error::PacketTooShort
+            | Error::DnsPacket
             | Error::NotTurn
             | Error::NotAChannelDataMessage
             | Error::UdpChecksumMissing
