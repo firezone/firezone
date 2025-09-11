@@ -4,6 +4,10 @@ defmodule Domain.Entra.Jobs.Sync do
   alias Domain.Entra
   require Logger
 
+  # How many pages to fetch in each request to the Graph API
+  @page_size 999
+
+  # How many records to batch-upsert at once
   @batch_size 500
 
   @impl Oban.Worker
@@ -27,57 +31,32 @@ defmodule Domain.Entra.Jobs.Sync do
     )
 
     access_token = get_access_token!(directory)
-    filtering_enabled? = Enum.any?(directory.group_inclusions)
     synced_at = DateTime.utc_now()
 
-    # The Graph API doesn't support delta + filtering by more than 50 items, so if group filtering is enabled,
-    # we perform an optimized full sync. If it's disabled we perform delta syncs.
-    if filtering_enabled? do
-      Logger.info("Group filtering is enabled, performing optimized full sync",
-        entra_directory_id: directory.id
-      )
+    Logger.info("Group filtering is enabled, performing optimized full sync",
+      entra_directory_id: directory.id
+    )
 
-      only_groups = Enum.map(directory.group_inclusions, & &1.external_id)
+    only_groups = Enum.map(directory.group_inclusions, & &1.external_id)
 
-      Entra.APIClient.full_sync(
+    %{
+      groups: groups,
+      users: users,
+      memberships: memberships
+    } =
+      Entra.APIClient.sync_directory(
         access_token,
         only_groups,
-        @batch_size,
-        fn groups_with_users ->
-          full_sync_callback(directory, synced_at, groups_with_users)
-        end
+        @page_size
       )
 
-      delete_unsynced(directory, synced_at)
-    else
-      Logger.info("Group filtering is disabled, performing delta syncs",
-        entra_directory_id: directory.id
-      )
-
-      Entra.APIClient.delta_sync_users(
-        access_token,
-        directory.users_delta_link,
-        @batch_size,
-        fn users, new_delta_link ->
-          delta_sync_users_callback(directory, users, new_delta_link)
-        end
-      )
-
-      Entra.APIClient.delta_sync_groups(
-        access_token,
-        directory.groups_delta_link,
-        @batch_size,
-        fn groups_with_members, new_delta_link ->
-          delta_sync_groups_callback(directory, groups_with_members, new_delta_link)
-        end
-      )
-    end
+    delete_unsynced(directory, synced_at)
   end
 
   defp get_access_token!(directory) do
     tenant_id = directory.tenant_id
-    client_id = directory.auth_provider.adapter_config["client_id"]
-    client_secret = directory.auth_provider.adapter_config["client_secret"]
+    client_id = directory.client_id
+    client_secret = directory.client_secret
 
     case Entra.APIClient.fetch_access_token(tenant_id, client_id, client_secret) do
       {:ok, access_token} ->
@@ -88,38 +67,37 @@ defmodule Domain.Entra.Jobs.Sync do
     end
   end
 
-  defp full_sync_callback(directory, synced_at, groups_with_users) do
+  defp sync_callback(directory, synced_at, groups_with_members) do
     Logger.info("Inserting groups callback called")
-    Logger.info(inspect(groups_with_users, pretty: true))
+    Logger.info(inspect(groups_with_members, pretty: true))
+
+    %{
+      groups: groups,
+      identities: identities,
+      actors: actors,
+      memberships: memberships
+    } = map_reduce(groups_with_members)
   end
 
   defp delete_unsynced(directory, synced_at) do
     Logger.info("Deleting unsynced groups and users", entra_directory_id: directory.id)
   end
 
-  defp delta_sync_users_callback(directory, users, nil) do
-    Logger.info("Delta sync users callback called, more remaining")
-    Logger.info(inspect(users, pretty: true))
-  end
+  # Reduce the batch of groups with members to upsertable groups, identities, actors, and memberships
+  defp map_reduce(groups_with_members) do
+    acc = %{groups: [], identities: [], actors: [], memberships: []}
 
-  defp delta_sync_users_callback(directory, users, new_delta_link) do
-    Logger.info("Delta sync users completed")
-    Logger.info(inspect(users, pretty: true))
-    Logger.info("New delta link: #{new_delta_link}")
-
-    Entra.update_directory(directory, %{users_delta_link: new_delta_link})
-  end
-
-  defp delta_sync_groups_callback(directory, groups_with_members, nil) do
-    Logger.info("Delta sync groups callback called, more remaining")
-    Logger.info(inspect(groups_with_members, pretty: true))
-  end
-
-  defp delta_sync_groups_callback(directory, groups_with_members, new_delta_link) do
-    Logger.info("Delta sync groups completed")
-    Logger.info(inspect(groups_with_members, pretty: true))
-    Logger.info("New delta link: #{new_delta_link}")
-
-    Entra.update_directory(directory, %{groups_delta_link: new_delta_link})
+    groups_with_members
+    |> Enum.filter(fn group ->
+      Map.has_key?(group, "transitiveMembers")
+    end)
+    |> Enum.map(fn group ->
+      Map.update!(group, "transitiveMembers", fn members ->
+        members
+        |> Enum.filter(fn member ->
+          member["@odata.type"] == "#microsoft.graph.user" and member["accountEnabled"] == true
+        end)
+      end)
+    end)
   end
 end

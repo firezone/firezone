@@ -2,9 +2,8 @@ defmodule Domain.Entra.Directory do
   use Domain, :schema
 
   schema "entra_directories" do
-    field :groups_delta_link, :string
-    field :users_delta_link, :string
-
+    field :client_id, :string
+    field :client_secret, :string
     field :tenant_id, :string
 
     field :last_error, :string

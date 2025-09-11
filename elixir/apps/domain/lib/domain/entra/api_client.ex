@@ -37,104 +37,48 @@ defmodule Domain.Entra.APIClient do
   end
 
   @doc """
-    Recursively perform a full sync of the given Entra directory, filtering by only_groups.
+    Recursively perform a full want of the given Entra directory, filtering by only_groups.
+    Calls the given callback with each page of groups with their transitive members.
   """
-  def full_sync(
+  def sync(
         access_token,
         only_groups,
         batch_size,
         callback
       ) do
     select = Enum.join(@group_fields, ",")
-    expand = "transitiveMembers($select=#{Enum.join(@user_fields, ",")})"
     top = batch_size
     filter = if only_groups == [], do: nil, else: "id in ('#{Enum.join(only_groups, "','")}')"
+    expand = "transitiveMembers($select=#{Enum.join(@user_fields, ",")})"
 
     url =
       URI.parse("#{endpoint()}/v1.0/groups")
       |> URI.append_query(
         URI.encode_query(%{
           "$select" => select,
-          "$expand" => expand,
           "$top" => top,
-          "$filter" => filter
+          "$filter" => filter,
+          "$expand" => expand
         })
       )
 
-    list_full(url, access_token, callback)
+    list_groups(url, callback, headers: headers(access_token))
   end
 
-  def delta_sync_users(access_token, nil, batch_size, callback) do
-    select = Enum.join(@user_fields, ",")
-    top = batch_size
-
-    url =
-      URI.parse("#{endpoint()}/v1.0/users/delta")
-      |> URI.append_query(
-        URI.encode_query(%{
-          "$select" => select,
-          "$top" => top
-        })
-      )
-
-    list_delta(url, callback, headers: headers(access_token))
-  end
-
-  def delta_sync_users(access_token, delta_link, _batch_size, callback) do
-    list_delta(delta_link, callback, headers: headers(access_token))
-  end
-
-  def delta_sync_groups(access_token, nil, batch_size, callback) do
-    select = Enum.join(@group_fields, ",")
-    top = batch_size
-
-    url =
-      URI.parse("#{endpoint()}/v1.0/groups/delta")
-      |> URI.append_query(
-        URI.encode_query(%{
-          "$select" => select,
-          "$top" => top
-        })
-      )
-
-    list_delta(url, callback, headers: headers(access_token))
-  end
-
-  def delta_sync_groups(access_token, delta_link, _batch_size, callback) do
-    list_delta(delta_link, callback, headers: headers(access_token))
-  end
-
-  defp list_full(url, callback, opts \\ []) do
+  defp list_groups(url, callback, opts) do
     case Req.get!(url, opts) do
-      %{status: 200, body: %{"value" => groups_with_users, "@odata.nextLink" => next_page}} ->
-        callback.(groups_with_users)
-        list_full(next_page, callback, opts)
+      %{status: 200, body: %{"value" => value, "@odata.nextLink" => next_page}} ->
+        callback.(value)
 
-      %{status: 200, body: %{"value" => groups_with_users}} ->
-        callback.(groups_with_users)
+        list_groups(next_page, callback, opts)
+
+      %{status: 200, body: %{"value" => value}} ->
+        callback.(value)
 
       response ->
         Logger.warning(inspect(response, pretty: true))
 
         Logger.warning("Unexpected response from Entra API during full sync",
-          response: inspect(response)
-        )
-    end
-  end
-
-  defp list_delta(url, callback, opts \\ []) do
-    case Req.get!(url, opts) do
-      %{status: 200, body: %{"value" => items, "@odata.deltaLink" => delta_link}} ->
-        callback.(items, delta_link)
-
-      %{status: 200, body: %{"value" => items, "@odata.nextLink" => next_page}} ->
-        callback.(items, nil)
-        list_delta(next_page, callback, opts)
-
-      response ->
-        Logger.warning(inspect(response, pretty: true))
-
-        Logger.warning("Unexpected response from Entra API during delta sync",
           response: inspect(response)
         )
     end

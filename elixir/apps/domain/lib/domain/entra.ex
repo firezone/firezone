@@ -40,9 +40,12 @@ defmodule Domain.Entra do
     uri = provider.adapter_config["discovery_document_uri"]
     [_, tenant_id] = Regex.run(~r/login\.microsoftonline\.com\/([a-f0-9\-]{36})/, uri)
 
+    # TODO: Populate tenant_id, client_id, client_secret from new setup wizard
     attrs = %{
       account_id: provider.account_id,
       auth_provider_id: provider.id,
+      client_id: provider.adapter_config["client_id"],
+      client_secret: provider.adapter_config["client_secret"],
       tenant_id: tenant_id
     }
 
@@ -51,12 +54,6 @@ defmodule Domain.Entra do
       |> Entra.Directory.Changeset.create(attrs)
       |> Repo.insert()
     end
-  end
-
-  def disable_sync(%Entra.Directory{} = directory) do
-    directory
-    |> Entra.Directory.Changeset.update(%{disabled_at: DateTime.utc_now()})
-    |> Repo.update()
   end
 
   def update_directory(%Entra.Directory{} = directory, attrs) do

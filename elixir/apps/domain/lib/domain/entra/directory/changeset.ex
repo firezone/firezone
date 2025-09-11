@@ -1,10 +1,10 @@
 defmodule Domain.Entra.Directory.Changeset do
   use Domain, :changeset
 
-  @required_fields ~w(account_id auth_provider_id tenant_id)a
+  @required_fields ~w(account_id auth_provider_id client_id client_secret tenant_id)a
   @update_fields ~w(
-    groups_delta_link
-    users_delta_link
+    client_id
+    client_secret
     tenant_id
     last_error
     error_emailed_at
