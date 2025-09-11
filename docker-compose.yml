@@ -746,9 +746,13 @@ services:
         echo "Done configuring $$(echo "$$VETHS" | wc -w) veth interfaces"
     depends_on:
       relay-1:
-        condition: "service_started"
+        condition: "service_healthy"
       relay-2:
-        condition: "service_started"
+        condition: "service_healthy"
+      relay-1-router:
+        condition: "service_healthy"
+      relay-2-router:
+        condition: "service_healthy"
 
   otel:
     image: otel/opentelemetry-collector:latest

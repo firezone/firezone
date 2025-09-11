@@ -192,6 +192,8 @@ async fn try_main(args: Args) -> Result<()> {
                 args.ebpf_attach_mode,
                 args.ebpf_int4_addr,
                 args.ebpf_int6_addr,
+                args.public_ip4_addr,
+                args.public_ip6_addr,
             )
             .context("Failed to load eBPF TURN router")?,
         )

@@ -5,7 +5,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use core::net::{Ipv4Addr, Ipv6Addr};
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -23,6 +23,37 @@ pub struct ClientAndChannelV6 {
     ipv6_address: [u8; 16],
     port: [u8; 2],
     channel: [u8; 2],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, derive_more::From)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub enum ClientAndChannel {
+    V4(ClientAndChannelV4),
+    V6(ClientAndChannelV6),
+}
+
+impl ClientAndChannel {
+    pub fn client_ip(&self) -> IpAddr {
+        match self {
+            ClientAndChannel::V4(cc) => cc.client_ip().into(),
+            ClientAndChannel::V6(cc) => cc.client_ip().into(),
+        }
+    }
+
+    pub fn client_port(&self) -> u16 {
+        match self {
+            ClientAndChannel::V4(cc) => cc.client_port(),
+            ClientAndChannel::V6(cc) => cc.client_port(),
+        }
+    }
+
+    pub fn channel(&self) -> u16 {
+        match self {
+            ClientAndChannel::V4(cc) => cc.channel(),
+            ClientAndChannel::V6(cc) => cc.channel(),
+        }
+    }
 }
 
 impl ClientAndChannelV4 {
@@ -96,6 +127,65 @@ pub struct PortAndPeerV6 {
     peer_port: [u8; 2],
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, derive_more::From)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub enum PortAndPeer {
+    V4(PortAndPeerV4),
+    V6(PortAndPeerV6),
+}
+
+impl PortAndPeer {
+    pub fn peer_ip(&self) -> IpAddr {
+        match self {
+            PortAndPeer::V4(pp) => pp.peer_ip().into(),
+            PortAndPeer::V6(pp) => pp.peer_ip().into(),
+        }
+    }
+
+    pub fn peer_port(&self) -> u16 {
+        match self {
+            PortAndPeer::V4(pp) => pp.peer_port(),
+            PortAndPeer::V6(pp) => pp.peer_port(),
+        }
+    }
+
+    pub fn allocation_port(&self) -> u16 {
+        match self {
+            PortAndPeer::V4(pp) => pp.allocation_port(),
+            PortAndPeer::V6(pp) => pp.allocation_port(),
+        }
+    }
+
+    /// Flips the allocation and peer port.
+    ///
+    /// When sending out a packet:
+    /// - the allocation port is the source
+    /// - the peer port is the destination
+    ///
+    /// When receiving a packet:
+    /// - the allocation port is the destination
+    /// - the peer port is the source
+    ///
+    /// When sending a packet to ourselves, we therefore need to flip these ports.
+    /// 1. The allocation port becomes the source port of the packet.
+    /// 2. The peer port becomes the destination of the packet.
+    pub fn flip_ports(self) -> Self {
+        match self {
+            PortAndPeer::V4(pp) => PortAndPeer::V4(PortAndPeerV4 {
+                ipv4_address: pp.ipv4_address,
+                allocation_port: pp.peer_port,
+                peer_port: pp.allocation_port,
+            }),
+            PortAndPeer::V6(pp) => PortAndPeer::V6(PortAndPeerV6 {
+                ipv6_address: pp.ipv6_address,
+                allocation_port: pp.peer_port,
+                peer_port: pp.allocation_port,
+            }),
+        }
+    }
+}
+
 impl PortAndPeerV4 {
     pub fn new(ipv4_address: Ipv4Addr, allocation_port: u16, peer_port: u16) -> Self {
         Self {
@@ -150,52 +240,6 @@ impl PortAndPeerV6 {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Default)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub struct InterfaceAddressV4 {
-    address: [u8; 4],
-}
-
-impl InterfaceAddressV4 {
-    const ZERO: [u8; 4] = [0; 4];
-
-    pub fn set(&mut self, addr: Ipv4Addr) {
-        self.address = addr.octets();
-    }
-
-    pub fn get(&self) -> Option<Ipv4Addr> {
-        if self.address != Self::ZERO {
-            Some(self.address.into())
-        } else {
-            None
-        }
-    }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub struct InterfaceAddressV6 {
-    address: [u8; 16],
-}
-
-impl InterfaceAddressV6 {
-    const ZERO: [u8; 16] = [0; 16];
-
-    pub fn set(&mut self, addr: Ipv6Addr) {
-        self.address = addr.octets();
-    }
-
-    pub fn get(&self) -> Option<Ipv6Addr> {
-        if self.address != Self::ZERO {
-            Some(self.address.into())
-        } else {
-            None
-        }
-    }
-}
-
-#[repr(C)]
 #[derive(Clone, Copy)]
 #[cfg_attr(feature = "std", derive(Debug))]
 pub struct StatsEvent {
@@ -223,8 +267,4 @@ mod userspace {
     unsafe impl aya::Pod for ClientAndChannelV6 {}
 
     unsafe impl aya::Pod for PortAndPeerV6 {}
-
-    unsafe impl aya::Pod for InterfaceAddressV4 {}
-
-    unsafe impl aya::Pod for InterfaceAddressV6 {}
 }
