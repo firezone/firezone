@@ -1,6 +1,5 @@
 import Tooltip from "@/components/Tooltip";
 import { FaCheck } from "react-icons/fa6";
-import { useEffect } from "react";
 import Link from "next/link";
 
 export default function PlanTable() {
@@ -468,8 +467,8 @@ export default function PlanTable() {
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
-            <Tooltip content="Independent audit reports for compliance with industry standards">
-              Compliance reports
+            <Tooltip content="Independent audit reports of Firezone's service for compliance with industry standards">
+              Firezone service compliance reports
             </Tooltip>
           </td>
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
@@ -478,8 +477,8 @@ export default function PlanTable() {
         </tr>
         <tr className="border-b border-1 border-neutral-200">
           <td className="gmx-1 py-4">
-            <Tooltip content="Penetration testing for security vulnerabilities conducted by a third party firm">
-              Pentest reports
+            <Tooltip content="Penetration testing for security vulnerabilities in Firezone's service conducted by a third party firm">
+              Firezone service pentest reports
             </Tooltip>
           </td>
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
@@ -491,7 +490,7 @@ export default function PlanTable() {
             colSpan={4}
             className="mx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
           >
-            Support & Customer success
+            Support &amp; Customer success
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
