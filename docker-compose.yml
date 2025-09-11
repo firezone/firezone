@@ -224,6 +224,7 @@ services:
     cap_add:
       - NET_ADMIN
     sysctls: *ip-forwarding
+    privileged: true
     environment:
       PORT_FORWARDS: |
         8081 172.28.0.100 tcp
@@ -420,6 +421,7 @@ services:
       context: scripts/router
     cap_add:
       - NET_ADMIN
+    privileged: true
     sysctls: *ip-forwarding
     environment:
       MASQUERADE_TYPE: ${CLIENT_MASQUERADE:-}
@@ -490,6 +492,7 @@ services:
       context: scripts/router
     cap_add:
       - NET_ADMIN
+    privileged: true
     sysctls: *ip-forwarding
     environment:
       MASQUERADE_TYPE: ${GATEWAY_MASQUERADE:-}
@@ -617,6 +620,7 @@ services:
       context: scripts/router
     cap_add:
       - NET_ADMIN
+    privileged: true
     sysctls: *ip-forwarding
     environment:
       PORT_FORWARDS: |
@@ -694,6 +698,7 @@ services:
       context: scripts/router
     cap_add:
       - NET_ADMIN
+    privileged: true
     sysctls: *ip-forwarding
     environment:
       PORT_FORWARDS: |
