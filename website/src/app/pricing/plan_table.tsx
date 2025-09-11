@@ -490,7 +490,7 @@ export default function PlanTable() {
             colSpan={4}
             className="mx-1 pt-12 pb-4 text-lg uppercase font-semibold text-primary-450 tracking-light"
           >
-            Support &amp; Customer success
+            Support & Customer success
           </td>
         </tr>
         <tr className="border-b border-1 border-neutral-200">
