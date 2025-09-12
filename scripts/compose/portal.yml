@@ -70,3 +70,10 @@ services:
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
+      # Secrets
+      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
+      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
+      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"

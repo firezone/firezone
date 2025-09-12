@@ -33,13 +33,6 @@ services:
       RELEASE_NAME: "web"
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
-      # Secrets
-      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -89,13 +82,6 @@ services:
       RELEASE_NAME: "api"
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
-      # Secrets
-      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -172,13 +158,6 @@ services:
       RELEASE_NAME: "domain"
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
-      # Secrets
-      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -222,13 +201,6 @@ services:
       RELEASE_NAME: "mix"
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
-      # Secrets
-      TOKENS_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      TOKENS_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      SECRET_KEY_BASE: "5OVYJ83AcoQcPmdKNksuBhJFBhjHD1uUa9mDOHV/6EIdBQ6pXksIhkVeWIzFk5S2"
-      LIVE_VIEW_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_SIGNING_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
-      COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Higher log level not to make seeds output too verbose
       LOG_LEVEL: "info"
       # Emails
