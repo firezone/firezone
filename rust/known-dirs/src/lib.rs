@@ -10,19 +10,27 @@
 use anyhow::{Context as _, Result};
 use std::path::PathBuf;
 
-pub use platform::{logs, runtime, session, settings, tunnel_service_config, tunnel_service_logs};
+pub use platform::{
+    headless_client_token_path, logs, runtime, session, settings, tunnel_service_config,
+    tunnel_service_logs,
+};
 
 #[cfg(target_os = "linux")]
-#[path = "known_dirs/linux.rs"]
+#[path = "platform/linux.rs"]
 pub mod platform;
 
 #[cfg(target_os = "macos")]
-#[path = "known_dirs/macos.rs"]
+#[path = "platform/macos.rs"]
 pub mod platform;
 
 #[cfg(target_os = "windows")]
-#[path = "known_dirs/windows.rs"]
+#[path = "platform/windows.rs"]
 pub mod platform;
+
+// TODO: Change this into something more idiomatic per platform.
+//
+// e.g. Linux typically doesn't use reverse domain notation.
+const NAMESPACE: &str = "dev.firezone.client";
 
 pub fn tunnel_log_filter() -> Result<PathBuf> {
     Ok(tunnel_service_config()
