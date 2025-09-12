@@ -17,6 +17,11 @@ x-phoenix-config: &phoenix-config
   PHOENIX_HTTP_API_PORT: "8081"
   PHOENIX_SECURE_COOKIES: "false"
 
+x-health-check: &health-check
+  interval: 1s
+  retries: 10
+  timeout: 1s
+
 services:
   web:
     extends:
@@ -37,10 +42,7 @@ services:
       LOG_LEVEL: "debug"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
-      start_period: 10s
-      interval: 30s
-      retries: 5
-      timeout: 5s
+      <<: *health-check
     depends_on:
       vault:
         condition: "service_healthy"
@@ -89,10 +91,7 @@ services:
         condition: "service_healthy"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
-      start_period: 10s
-      interval: 30s
-      retries: 5
-      timeout: 5s
+      <<: *health-check
     networks:
       app-internal:
         ipv4_address: 172.28.0.100
@@ -134,10 +133,7 @@ services:
       LOG_LEVEL: "debug"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
-      start_period: 10s
-      interval: 30s
-      retries: 5
-      timeout: 5s
+      <<: *health-check
     depends_on:
       vault:
         condition: "service_healthy"
@@ -240,6 +236,7 @@ services:
   gateway:
     healthcheck:
       test: ["CMD-SHELL", "ip link | grep tun-firezone"]
+      <<: *health-check
     environment:
       FIREZONE_TOKEN: ".SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkMjI3NDU2MGItZTk3Yi00NWU0LThiMzQtNjc5Yzc2MTdlOThkbQAAADhPMDJMN1VTMkozVklOT01QUjlKNklMODhRSVFQNlVPOEFRVk82VTVJUEwwVkpDMjJKR0gwPT09PW4GAAH8sImUAWIAAVGA.tAm2O9FcyF67VAF3rZdwQpeADrYOIs3S2l2K51G26OM"
       RUST_LOG: ${RUST_LOG:-phoenix_channel=trace,firezone_gateway=trace,wire=trace,connlib_gateway_shared=trace,firezone_tunnel=trace,connlib_shared=trace,phoenix_channel=debug,boringtun=debug,snownet=debug,str0m=debug,info}
