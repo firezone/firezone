@@ -205,13 +205,28 @@ impl IpPacket {
 
         let ip = IpSlice::from_slice(&buf.inner[..len]).context("Failed to parse IP packet")?;
 
+        let src_ip = ip.source_addr();
+        let dst_ip = ip.destination_addr();
+
         // Validate the packet contents
         match ip.payload_ip_number() {
             IpNumber::UDP => {
-                UdpSlice::from_slice(ip.payload().payload).context("Failed to parse UDP packet")?;
+                let udp_header = UdpHeaderSlice::from_slice(ip.payload().payload)
+                    .context("Failed to parse UDP header")?
+                    .to_header();
+
+                UdpSlice::from_slice(ip.payload().payload).with_context(|| {
+                    format!("Failed to parse UDP packet; src IP = {src_ip}, dst IP = {dst_ip}, {udp_header:?}")
+                })?;
             }
             IpNumber::TCP => {
-                TcpSlice::from_slice(ip.payload().payload).context("Failed to parse TCP packet")?;
+                let tcp_header = TcpHeaderSlice::from_slice(ip.payload().payload)
+                    .context("Failed to parse TCP header")?
+                    .to_header();
+
+                TcpSlice::from_slice(ip.payload().payload).with_context(|| {
+                    format!("Failed to parse TCP packet; src IP = {src_ip}, dst IP = {dst_ip}, {tcp_header:?}")
+                })?;
             }
             IpNumber::ICMP => {
                 anyhow::ensure!(
@@ -219,8 +234,9 @@ impl IpPacket {
                     "ICMPv4 is only allowed in IPv4 packets"
                 );
 
-                Icmpv4Slice::from_slice(ip.payload().payload)
-                    .context("Failed to parse ICMPv4 packet")?;
+                Icmpv4Slice::from_slice(ip.payload().payload).with_context(|| {
+                    format!("Failed to parse ICMPv4 packet; src IP = {src_ip}, dst IP = {dst_ip}")
+                })?;
             }
             IpNumber::IPV6_ICMP => {
                 anyhow::ensure!(
@@ -228,8 +244,9 @@ impl IpPacket {
                     "ICMPv6 is only allowed in IPv6 packets"
                 );
 
-                Icmpv6Slice::from_slice(ip.payload().payload)
-                    .context("Failed to parse ICMPv6 packet")?;
+                Icmpv6Slice::from_slice(ip.payload().payload).with_context(|| {
+                    format!("Failed to parse ICMPv6 packet; src IP = {src_ip}, dst IP = {dst_ip}")
+                })?;
             }
             _ => {}
         };
