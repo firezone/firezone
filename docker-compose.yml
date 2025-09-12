@@ -48,8 +48,6 @@ services:
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
-      # Seeds
-      STATIC_SEEDS: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
       start_period: 10s
@@ -109,8 +107,6 @@ services:
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
-      # Seeds
-      STATIC_SEEDS: "true"
     user: root # Needed to run `ip route` commands
     cap_add:
       - NET_ADMIN # Needed to run `tc` commands to add simulated delay
@@ -197,8 +193,6 @@ services:
       ## Warning: The token is for the blackhole Postmark server created in a separate isolated account,
       ## that WILL NOT send any actual emails, but you can see and debug them in the Postmark dashboard.
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
-      # Seeds
-      STATIC_SEEDS: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
       start_period: 10s
@@ -255,8 +249,6 @@ services:
       # Mix env should be set to prod to use secrets declared above,
       # otherwise seeds will generate invalid tokens
       MIX_ENV: "prod"
-      # Seeds
-      STATIC_SEEDS: "true"
     depends_on:
       postgres:
         condition: "service_healthy"

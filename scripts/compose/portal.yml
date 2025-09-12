@@ -65,3 +65,5 @@ services:
       FEATURE_IDP_SYNC_ENABLED: "true"
       FEATURE_REST_API_ENABLED: "true"
       FEATURE_INTERNET_RESOURCE_ENABLED: "true"
+      # Seeds
+      STATIC_SEEDS: "true"
