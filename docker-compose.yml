@@ -34,7 +34,6 @@ services:
       <<: [*portal-urls, *erlang-cluster, *phoenix-config]
       RELEASE_HOSTNAME: "web.cluster.local"
       RELEASE_NAME: "web"
-      # Debugging
       LOG_LEVEL: "debug"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
@@ -68,7 +67,6 @@ services:
       <<: [*portal-urls, *erlang-cluster, *phoenix-config]
       RELEASE_HOSTNAME: "api.cluster.local"
       RELEASE_NAME: "api"
-      # Debugging
       LOG_LEVEL: "debug"
     user: root # Needed to run `ip route` commands
     cap_add:
@@ -132,11 +130,9 @@ services:
     image: ${DOMAIN_IMAGE:-ghcr.io/firezone/domain}:${DOMAIN_TAG:-main}
     hostname: domain.cluster.local
     environment:
-      # Erlang
       <<: *erlang-cluster
       RELEASE_HOSTNAME: "domain.cluster.local"
       RELEASE_NAME: "domain"
-      # Debugging
       LOG_LEVEL: "debug"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
@@ -167,7 +163,6 @@ services:
     hostname: elixir
     environment:
       <<: *portal-urls
-      # Erlang
       RELEASE_HOSTNAME: "mix.cluster.local"
       RELEASE_NAME: "mix"
       # Higher log level not to make seeds output too verbose
