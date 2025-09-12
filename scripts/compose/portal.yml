@@ -58,3 +58,10 @@ services:
       DATABASE_NAME: firezone_dev
       DATABASE_USER: postgres
       DATABASE_PASSWORD: postgres
+      # Feature flags
+      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
+      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
+      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
+      FEATURE_IDP_SYNC_ENABLED: "true"
+      FEATURE_REST_API_ENABLED: "true"
+      FEATURE_INTERNET_RESOURCE_ENABLED: "true"

@@ -50,13 +50,6 @@ services:
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Seeds
       STATIC_SEEDS: "true"
-      # Feature flags
-      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
-      FEATURE_IDP_SYNC_ENABLED: "true"
-      FEATURE_REST_API_ENABLED: "true"
-      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
       start_period: 10s
@@ -118,13 +111,6 @@ services:
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Seeds
       STATIC_SEEDS: "true"
-      # Feature flags
-      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
-      FEATURE_IDP_SYNC_ENABLED: "true"
-      FEATURE_REST_API_ENABLED: "true"
-      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
     user: root # Needed to run `ip route` commands
     cap_add:
       - NET_ADMIN # Needed to run `tc` commands to add simulated delay
@@ -213,13 +199,6 @@ services:
       OUTBOUND_EMAIL_ADAPTER_OPTS: '{"api_key":"7da7d1cd-111c-44a7-b5ac-4027b9d230e5"}'
       # Seeds
       STATIC_SEEDS: "true"
-      # Feature flags
-      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
-      FEATURE_IDP_SYNC_ENABLED: "true"
-      FEATURE_REST_API_ENABLED: "true"
-      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
       start_period: 10s
@@ -278,13 +257,6 @@ services:
       MIX_ENV: "prod"
       # Seeds
       STATIC_SEEDS: "true"
-      # Feature flags
-      FEATURE_POLICY_CONDITIONS_ENABLED: "true"
-      FEATURE_MULTI_SITE_RESOURCES_ENABLED: "true"
-      FEATURE_SELF_HOSTED_RELAYS_ENABLED: "true"
-      FEATURE_IDP_SYNC_ENABLED: "true"
-      FEATURE_REST_API_ENABLED: "true"
-      FEATURE_INTERNET_RESOURCE_ENABLED: "true"
     depends_on:
       postgres:
         condition: "service_healthy"
