@@ -4,6 +4,10 @@ include:
   - scripts/compose/edgeshark.yml
   - scripts/compose/portal.yml
 
+x-erlang-cluster: &erlang-cluster
+  ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
+  ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
+
 services:
   web:
     extends:
@@ -25,8 +29,7 @@ services:
       PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
-      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
+      <<: *erlang-cluster
       RELEASE_HOSTNAME: "web.cluster.local"
       RELEASE_NAME: "web"
       # Debugging
@@ -67,8 +70,7 @@ services:
       PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
-      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
+      <<: *erlang-cluster
       RELEASE_HOSTNAME: "api.cluster.local"
       RELEASE_NAME: "api"
       # Debugging
@@ -136,8 +138,7 @@ services:
     hostname: domain.cluster.local
     environment:
       # Erlang
-      ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
-      ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
+      <<: *erlang-cluster
       RELEASE_HOSTNAME: "domain.cluster.local"
       RELEASE_NAME: "domain"
       # Debugging
