@@ -12,4 +12,3 @@ defmodule Domain.Entra.GroupInclusion do
     timestamps(updated_at: false)
   end
 end
-

@@ -39,18 +39,20 @@ defmodule Domain.Entra.Jobs.Sync do
 
     only_groups = Enum.map(directory.group_inclusions, & &1.external_id)
 
-    %{
-      groups: groups,
-      users: users,
-      memberships: memberships
-    } =
-      Entra.APIClient.sync_directory(
-        access_token,
-        only_groups,
-        @page_size
-      )
+    case Entra.APIClient.fetch_all(
+           access_token,
+           only_groups,
+           @page_size,
+           fn to_upsert ->
+             batch_upsert(directory, synced_at, to_upsert)
+           end
+         ) do
+      :ok ->
+        delete_unsynced(directory, synced_at)
 
-    delete_unsynced(directory, synced_at)
+      {:error, %Req.Response{} = response} ->
+        raise Entra.SyncError, response: response, directory_id: directory.id
+    end
   end
 
   defp get_access_token!(directory) do
@@ -67,37 +69,17 @@ defmodule Domain.Entra.Jobs.Sync do
     end
   end
 
-  defp sync_callback(directory, synced_at, groups_with_members) do
-    Logger.info("Inserting groups callback called")
-    Logger.info(inspect(groups_with_members, pretty: true))
-
-    %{
-      groups: groups,
-      identities: identities,
-      actors: actors,
-      memberships: memberships
-    } = map_reduce(groups_with_members)
+  defp batch_upsert(directory, synced_at, %{
+         groups: groups,
+         identities: identities,
+         memberships: memberships
+       }) do
+    Logger.info(inspect(groups, pretty: true))
+    Logger.info(inspect(identities, pretty: true))
+    Logger.info(inspect(memberships, pretty: true))
   end
 
   defp delete_unsynced(directory, synced_at) do
     Logger.info("Deleting unsynced groups and users", entra_directory_id: directory.id)
-  end
-
-  # Reduce the batch of groups with members to upsertable groups, identities, actors, and memberships
-  defp map_reduce(groups_with_members) do
-    acc = %{groups: [], identities: [], actors: [], memberships: []}
-
-    groups_with_members
-    |> Enum.filter(fn group ->
-      Map.has_key?(group, "transitiveMembers")
-    end)
-    |> Enum.map(fn group ->
-      Map.update!(group, "transitiveMembers", fn members ->
-        members
-        |> Enum.filter(fn member ->
-          member["@odata.type"] == "#microsoft.graph.user" and member["accountEnabled"] == true
-        end)
-      end)
-    end)
   end
 end
