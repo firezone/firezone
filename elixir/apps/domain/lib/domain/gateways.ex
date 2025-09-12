@@ -23,6 +23,7 @@ defmodule Domain.Gateways do
   def count_groups_for_account(%Accounts.Account{} = account) do
     Group.Query.not_deleted()
     |> Group.Query.by_account_id(account.id)
+    |> Group.Query.by_managed_by(:account)
     |> Repo.aggregate(:count)
   end
 
