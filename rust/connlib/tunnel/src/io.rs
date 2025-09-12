@@ -3,8 +3,9 @@ mod nameserver_set;
 mod tcp_dns;
 mod udp_dns;
 
-use crate::{device_channel::Device, dns, otel, sockets::Sockets};
+use crate::{TunnelError, device_channel::Device, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, Result};
+use chrono::{DateTime, Utc};
 use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
 use gat_lending_iterator::LendingIterator;
@@ -82,13 +83,91 @@ impl Default for Buffers {
     }
 }
 
-pub enum Input<D, I> {
-    Timeout(Instant),
-    Device(D),
-    Network(I),
-    TcpDnsQuery(l4_tcp_dns_server::Query),
-    UdpDnsQuery(l4_udp_dns_server::Query),
-    DnsResponse(dns::RecursiveResponse),
+pub struct Input<D, I> {
+    pub now: Instant,
+    pub now_utc: DateTime<Utc>,
+    pub timeout: bool,
+    pub device: Option<D>,
+    pub network: Option<I>,
+    pub tcp_dns_query: Option<l4_tcp_dns_server::Query>,
+    pub udp_dns_query: Option<l4_udp_dns_server::Query>,
+    pub dns_response: Option<dns::RecursiveResponse>,
+    pub error: TunnelError,
+}
+
+impl<D, I> Input<D, I> {
+    fn error(e: impl Into<anyhow::Error>) -> Self {
+        Self {
+            now: Instant::now(),
+            now_utc: Utc::now(),
+            timeout: false,
+            device: None,
+            network: None,
+            tcp_dns_query: None,
+            udp_dns_query: None,
+            dns_response: None,
+            error: TunnelError::single(e),
+        }
+    }
+
+    fn from_polls(
+        timeout: bool,
+        device: Poll<D>,
+        network: Poll<Result<I>>,
+        tcp_dns_query: Poll<Result<l4_tcp_dns_server::Query>>,
+        udp_dns_query: Poll<Result<l4_udp_dns_server::Query>>,
+        dns_response: Poll<dns::RecursiveResponse>,
+    ) -> Self {
+        let mut error = TunnelError::default();
+
+        Self {
+            now: Instant::now(),
+            now_utc: Utc::now(),
+            timeout,
+            device: poll_to_option(device),
+            network: poll_result_to_option(network, &mut error),
+            tcp_dns_query: poll_result_to_option(tcp_dns_query, &mut error),
+            udp_dns_query: poll_result_to_option(udp_dns_query, &mut error),
+            dns_response: poll_to_option(dns_response),
+            error,
+        }
+    }
+
+    fn into_poll(self) -> Poll<Self> {
+        if !self.timeout
+            && self.device.is_none()
+            && self.network.is_none()
+            && self.tcp_dns_query.is_none()
+            && self.udp_dns_query.is_none()
+            && self.dns_response.is_none()
+        {
+            return Poll::Pending;
+        }
+
+        Poll::Ready(self)
+    }
+}
+
+fn poll_to_option<T>(poll: Poll<T>) -> Option<T> {
+    match poll {
+        Poll::Ready(r) => Some(r),
+        Poll::Pending => None,
+    }
+}
+
+fn poll_result_to_option<T, E>(poll: Poll<Result<T, E>>, error: &mut TunnelError) -> Option<T>
+where
+    anyhow::Error: From<E>,
+{
+    match poll {
+        Poll::Ready(Ok(r)) => Some(r),
+        Poll::Ready(Err(e)) => {
+            error.push(e);
+
+            None
+        }
+        Poll::Pending => None,
+    }
 }
 
 const DNS_QUERY_TIMEOUT: Duration = Duration::from_secs(5);
@@ -157,14 +236,14 @@ impl Io {
         cx: &mut Context<'_>,
         buffers: &'b mut Buffers,
     ) -> Poll<
-        Result<
-            Input<
-                impl Iterator<Item = IpPacket> + use<'b>,
-                impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-            >,
+        Input<
+            impl Iterator<Item = IpPacket> + use<'b>,
+            impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
         >,
     > {
-        ready!(self.flush(cx)?);
+        if let Err(e) = ready!(self.flush(cx)) {
+            return Poll::Ready(Input::error(e));
+        }
 
         if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
             self.nameservers.evaluate();
@@ -173,93 +252,83 @@ impl Io {
         // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
         let _ = self.nameservers.poll(cx);
 
-        if let Poll::Ready(network) = self.sockets.poll_recv_from(cx) {
-            return Poll::Ready(Ok(Input::Network(
-                network
-                    .context("UDP socket failed")?
-                    .filter(is_max_wg_packet_size),
-            )));
-        }
+        let network = self.sockets.poll_recv_from(cx).map(|network| {
+            Ok(network
+                .context("UDP socket failed")?
+                .filter(is_max_wg_packet_size))
+        });
 
-        if let Poll::Ready(num_packets) =
-            self.tun
-                .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
-        {
-            let num_ipv4 = buffers.ip[..num_packets]
-                .iter()
-                .filter(|p| p.ipv4_header().is_some())
-                .count();
-            let num_ipv6 = num_packets - num_ipv4;
+        let device = self
+            .tun
+            .poll_read_many(cx, &mut buffers.ip, MAX_INBOUND_PACKET_BATCH)
+            .map(|num_packets| {
+                let num_ipv4 = buffers.ip[..num_packets]
+                    .iter()
+                    .filter(|p| p.ipv4_header().is_some())
+                    .count();
+                let num_ipv6 = num_packets - num_ipv4;
 
-            self.packet_counter.add(
-                num_ipv4 as u64,
-                &[
-                    otel::attr::network_type_ipv4(),
-                    otel::attr::network_io_direction_receive(),
-                ],
-            );
-            self.packet_counter.add(
-                num_ipv6 as u64,
-                &[
-                    otel::attr::network_type_ipv6(),
-                    otel::attr::network_io_direction_receive(),
-                ],
-            );
+                self.packet_counter.add(
+                    num_ipv4 as u64,
+                    &[
+                        otel::attr::network_type_ipv4(),
+                        otel::attr::network_io_direction_receive(),
+                    ],
+                );
+                self.packet_counter.add(
+                    num_ipv6 as u64,
+                    &[
+                        otel::attr::network_type_ipv6(),
+                        otel::attr::network_io_direction_receive(),
+                    ],
+                );
 
-            return Poll::Ready(Ok(Input::Device(buffers.ip.drain(..num_packets))));
-        }
+                buffers.ip.drain(..num_packets)
+            });
 
-        if let Poll::Ready(query) = self.udp_dns_server.poll(cx) {
-            return Poll::Ready(Ok(Input::UdpDnsQuery(
-                query.context("Failed to poll UDP DNS server")?,
-            )));
-        }
+        let udp_dns_query = self
+            .udp_dns_server
+            .poll(cx)
+            .map(|query| query.context("Failed to poll UDP DNS server"));
 
-        if let Poll::Ready(query) = self.tcp_dns_server.poll(cx) {
-            return Poll::Ready(Ok(Input::TcpDnsQuery(
-                query.context("Failed to poll TCP DNS server")?,
-            )));
-        }
+        let tcp_dns_query = self
+            .tcp_dns_server
+            .poll(cx)
+            .map(|query| query.context("Failed to poll TCP DNS server"));
 
-        match self.dns_queries.poll_unpin(cx) {
-            Poll::Ready((result, meta)) => {
-                let response = match result {
-                    Ok(result) => dns::RecursiveResponse {
-                        server: meta.server,
-                        query: meta.query,
-                        message: result,
-                        transport: meta.transport,
-                    },
-                    Err(e @ futures_bounded::Timeout { .. }) => dns::RecursiveResponse {
-                        server: meta.server,
-                        query: meta.query,
-                        message: Err(io::Error::new(io::ErrorKind::TimedOut, e)),
-                        transport: meta.transport,
-                    },
-                };
+        let dns_response = self
+            .dns_queries
+            .poll_unpin(cx)
+            .map(|(result, meta)| match result {
+                Ok(result) => dns::RecursiveResponse {
+                    server: meta.server,
+                    query: meta.query,
+                    message: result,
+                    transport: meta.transport,
+                },
+                Err(e @ futures_bounded::Timeout { .. }) => dns::RecursiveResponse {
+                    server: meta.server,
+                    query: meta.query,
+                    message: Err(io::Error::new(io::ErrorKind::TimedOut, e)),
+                    transport: meta.transport,
+                },
+            });
 
-                return Poll::Ready(Ok(Input::DnsResponse(response)));
-            }
-            Poll::Pending => {}
-        }
+        let timeout = self
+            .timeout
+            .as_mut()
+            .map(|timeout| timeout.poll_unpin(cx).is_ready())
+            .unwrap_or(false);
 
-        if let Some(timeout) = self.timeout.as_mut()
-            && timeout.poll_unpin(cx).is_ready()
-        {
-            // Always emit `now` as the timeout value.
-            // This ensures that time within our state machine is always monotonic.
-            // If we were to use the `deadline` of the timer instead, time may go backwards.
-            // That is because it is valid to set a `Sleep` to a timestamp in the past.
-            // It will resolve immediately but it will still report the old timestamp as its deadline.
-            // To guard against this case, specifically call `Instant::now` here.
-            let now = Instant::now();
-
-            self.timeout = None; // Clear the timeout.
-
-            return Poll::Ready(Ok(Input::Timeout(now)));
-        }
-
-        Poll::Pending
+        Input::from_polls(
+            timeout,
+            device,
+            network,
+            tcp_dns_query,
+            udp_dns_query,
+            dns_response,
+        )
+        .into_poll()
     }
 
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
