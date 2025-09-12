@@ -757,6 +757,8 @@ services:
         condition: "service_healthy"
       client-router:
         condition: "service_healthy"
+      gateway:
+        condition: "service_healthy"
 
   otel:
     image: otel/opentelemetry-collector:latest
