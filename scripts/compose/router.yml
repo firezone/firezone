@@ -1,7 +1,7 @@
 services:
   router:
     build:
-      context: scripts/router
+      context: ../router
     cap_add:
       - NET_ADMIN
     privileged: true
