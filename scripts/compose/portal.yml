@@ -50,6 +50,7 @@ services:
       start_period: 5s
 
   common:
+    image: alpine:latest # Dummy, will always be overridden.
     environment:
       # Database
       RUN_CONDITIONAL_MIGRATIONS: "true"
@@ -79,7 +80,9 @@ services:
       COOKIE_ENCRYPTION_SALT: "t01wa0K4lUd7mKa0HAtZdE+jFOPDDej2"
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
+      # Erlang
       ERLANG_DISTRIBUTION_PORT: 9000
+      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       # Emails
       OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"

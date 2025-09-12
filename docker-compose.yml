@@ -27,7 +27,6 @@ services:
       # Erlang
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
       ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "web.cluster.local"
       RELEASE_NAME: "web"
       # Debugging
@@ -70,7 +69,6 @@ services:
       # Erlang
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
       ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "api.cluster.local"
       RELEASE_NAME: "api"
       # Debugging
@@ -140,7 +138,6 @@ services:
       # Erlang
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
       ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "domain.cluster.local"
       RELEASE_NAME: "domain"
       # Debugging
@@ -177,7 +174,6 @@ services:
       WEB_EXTERNAL_URL: http://localhost:8080/
       API_EXTERNAL_URL: http://localhost:8081/
       # Erlang
-      RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "mix.cluster.local"
       RELEASE_NAME: "mix"
       # Higher log level not to make seeds output too verbose
