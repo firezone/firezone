@@ -171,7 +171,11 @@ impl ClientTunnel {
                 self.io.reset_timeout(timeout, reason);
             }
 
-            match self.io.poll(cx, &mut self.buffers)? {
+            match self
+                .io
+                .poll(cx, &mut self.buffers)
+                .map_err(TunnelError::single)?
+            {
                 Poll::Ready(io::Input::Timeout(timeout)) => {
                     self.role_state.handle_timeout(timeout);
                     continue;
@@ -317,7 +321,11 @@ impl GatewayTunnel {
                 self.io.reset_timeout(timeout, reason);
             }
 
-            match self.io.poll(cx, &mut self.buffers)? {
+            match self
+                .io
+                .poll(cx, &mut self.buffers)
+                .map_err(TunnelError::single)?
+            {
                 Poll::Ready(io::Input::DnsResponse(response)) => {
                     let message = response.message.unwrap_or_else(|e| {
                         tracing::debug!("DNS query failed: {e}");
@@ -327,10 +335,14 @@ impl GatewayTunnel {
 
                     match response.transport {
                         dns::Transport::Udp { source } => {
-                            self.io.send_udp_dns_response(source, message)?;
+                            self.io
+                                .send_udp_dns_response(source, message)
+                                .map_err(TunnelError::single)?;
                         }
                         dns::Transport::Tcp { remote, .. } => {
-                            self.io.send_tcp_dns_response(remote, message)?;
+                            self.io
+                                .send_tcp_dns_response(remote, message)
+                                .map_err(TunnelError::single)?;
                         }
                     }
 
@@ -342,6 +354,7 @@ impl GatewayTunnel {
                 }
                 Poll::Ready(io::Input::Device(packets)) => {
                     let now = Instant::now();
+                    let mut error = TunnelError::default();
 
                     for packet in packets {
                         if packet.is_fz_p2p_control() {
@@ -350,13 +363,24 @@ impl GatewayTunnel {
 
                         let ecn = packet.ecn();
 
-                        let Some(transmit) = self.role_state.handle_tun_input(packet, now)? else {
-                            self.role_state.handle_timeout(now, Utc::now());
-                            continue;
-                        };
+                        match self.role_state.handle_tun_input(packet, now) {
+                            Ok(Some(transmit)) => {
+                                self.io.send_network(
+                                    transmit.src,
+                                    transmit.dst,
+                                    &transmit.payload,
+                                    ecn,
+                                );
+                            }
+                            Ok(None) => {
+                                self.role_state.handle_timeout(now, Utc::now());
+                            }
+                            Err(e) => error.push(e),
+                        }
+                    }
 
-                        self.io
-                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
+                    if !error.is_empty() {
+                        return Poll::Ready(Err(error));
                     }
 
                     continue;
@@ -364,6 +388,7 @@ impl GatewayTunnel {
                 Poll::Ready(io::Input::Network(mut packets)) => {
                     let now = Instant::now();
                     let utc_now = Utc::now();
+                    let mut error = TunnelError::default();
 
                     while let Some(received) = packets.next() {
                         self.packet_counter.add(
@@ -375,19 +400,22 @@ impl GatewayTunnel {
                             ],
                         );
 
-                        let Some(packet) = self.role_state.handle_network_input(
+                        match self.role_state.handle_network_input(
                             received.local,
                             received.from,
                             received.packet,
                             now,
-                        )?
-                        else {
-                            self.role_state.handle_timeout(now, utc_now);
-                            continue;
+                        ) {
+                            Ok(Some(packet)) => self
+                                .io
+                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(None) => self.role_state.handle_timeout(now, utc_now),
+                            Err(e) => error.push(e),
                         };
+                    }
 
-                        self.io
-                            .send_tun(packet.with_ecn_from_transport(received.ecn));
+                    if !error.is_empty() {
+                        return Poll::Ready(Err(error));
                     }
 
                     continue;
@@ -396,10 +424,12 @@ impl GatewayTunnel {
                     let Some(nameserver) = self.io.fastest_nameserver() else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
-                        self.io.send_udp_dns_response(
-                            query.source,
-                            dns_types::Response::servfail(&query.message),
-                        )?;
+                        self.io
+                            .send_udp_dns_response(
+                                query.source,
+                                dns_types::Response::servfail(&query.message),
+                            )
+                            .map_err(TunnelError::single)?;
 
                         continue;
                     };
@@ -414,10 +444,12 @@ impl GatewayTunnel {
                     let Some(nameserver) = self.io.fastest_nameserver() else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
 
-                        self.io.send_tcp_dns_response(
-                            query.remote,
-                            dns_types::Response::servfail(&query.message),
-                        )?;
+                        self.io
+                            .send_tcp_dns_response(
+                                query.remote,
+                                dns_types::Response::servfail(&query.message),
+                            )
+                            .map_err(TunnelError::single)?;
 
                         continue;
                     };
@@ -517,18 +549,28 @@ pub enum GatewayEvent {
     ResolveDns(ResolveDnsRequest),
 }
 
+/// A collection of errors that occurred during a single event-loop tick.
+///
+/// This type purposely doesn't provide a `From` implementation for any errors.
+/// We want compile-time safety inside the event-loop that we don't abort processing in the middle of a packet batch.
+#[derive(Debug, Default)]
 pub struct TunnelError {
     errors: Vec<anyhow::Error>,
 }
 
-impl<E> From<E> for TunnelError
-where
-    anyhow::Error: From<E>,
-{
-    fn from(value: E) -> Self {
+impl TunnelError {
+    pub fn single(e: impl Into<anyhow::Error>) -> Self {
         Self {
-            errors: vec![anyhow::Error::from(value)],
+            errors: vec![e.into()],
         }
+    }
+
+    pub fn push(&mut self, e: impl Into<anyhow::Error>) {
+        self.errors.push(e.into());
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
     }
 }
 
