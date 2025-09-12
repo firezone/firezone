@@ -145,44 +145,60 @@ impl ClientTunnel {
         cx: &mut Context<'_>,
     ) -> Poll<Result<ClientEvent, TunnelError>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            let mut ready = false;
+
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             if let Some(e) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(e));
             }
 
-            if let Some(packet) = self.role_state.poll_packets() {
+            while let Some(packet) = self.role_state.poll_packets() {
                 self.io.send_tun(packet);
-                continue;
+                ready = true;
             }
 
-            if let Some(trans) = self.role_state.poll_transmit() {
+            while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
-                continue;
+                ready = true;
             }
 
-            if let Some(query) = self.role_state.poll_dns_queries() {
+            while let Some(query) = self.role_state.poll_dns_queries() {
                 self.io.send_dns_query(query);
-                continue;
+                ready = true;
             }
 
             if let Some((timeout, reason)) = self.role_state.poll_timeout() {
                 self.io.reset_timeout(timeout, reason);
             }
 
-            match self
-                .io
-                .poll(cx, &mut self.buffers)
-                .map_err(TunnelError::single)?
-            {
-                Poll::Ready(io::Input::Timeout(timeout)) => {
-                    self.role_state.handle_timeout(timeout);
-                    continue;
-                }
-                Poll::Ready(io::Input::Device(packets)) => {
-                    let now = Instant::now();
+            if let Poll::Ready(input) = self.io.poll(cx, &mut self.buffers) {
+                let io::Input {
+                    now,
+                    now_utc: _,
+                    timeout,
+                    dns_response,
+                    tcp_dns_query: _,
+                    udp_dns_query: _,
+                    device,
+                    network,
+                    error,
+                } = input;
 
+                if let Some(response) = dns_response {
+                    self.role_state.handle_dns_response(response);
+                    self.role_state.handle_timeout(now);
+
+                    ready = true;
+                }
+
+                if timeout {
+                    self.role_state.handle_timeout(now);
+                    ready = true;
+                }
+
+                if let Some(packets) = device {
                     for packet in packets {
                         if packet.is_fz_p2p_control() {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -190,20 +206,25 @@ impl ClientTunnel {
 
                         let ecn = packet.ecn();
 
-                        let Some(transmit) = self.role_state.handle_tun_input(packet, now) else {
-                            self.role_state.handle_timeout(now);
-                            continue;
-                        };
-
-                        self.io
-                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
+                        match self.role_state.handle_tun_input(packet, now) {
+                            Some(transmit) => {
+                                self.io.send_network(
+                                    transmit.src,
+                                    transmit.dst,
+                                    &transmit.payload,
+                                    ecn,
+                                );
+                            }
+                            None => {
+                                self.role_state.handle_timeout(now);
+                            }
+                        }
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::Network(mut packets)) => {
-                    let now = Instant::now();
 
+                if let Some(mut packets) = network {
                     while let Some(received) = packets.next() {
                         self.packet_counter.add(
                             1,
@@ -214,35 +235,29 @@ impl ClientTunnel {
                             ],
                         );
 
-                        let Some(packet) = self.role_state.handle_network_input(
+                        match self.role_state.handle_network_input(
                             received.local,
                             received.from,
                             received.packet,
                             now,
-                        ) else {
-                            self.role_state.handle_timeout(now);
-                            continue;
+                        ) {
+                            Some(packet) => self
+                                .io
+                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                            None => self.role_state.handle_timeout(now),
                         };
-
-                        self.io
-                            .send_tun(packet.with_ecn_from_transport(received.ecn));
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::DnsResponse(packet)) => {
-                    self.role_state.handle_dns_response(packet);
-                    self.role_state.handle_timeout(Instant::now());
-                    continue;
+
+                if !error.is_empty() {
+                    return Poll::Ready(Err(error));
                 }
-                Poll::Ready(io::Input::UdpDnsQuery(_) | io::Input::TcpDnsQuery(_)) => {
-                    debug_assert!(
-                        false,
-                        "Client does not (yet) use userspace DNS server sockets"
-                    );
-                    continue;
-                }
-                Poll::Pending => {}
+            }
+
+            if ready {
+                continue;
             }
 
             return Poll::Pending;
@@ -305,28 +320,39 @@ impl GatewayTunnel {
         cx: &mut Context<'_>,
     ) -> Poll<Result<GatewayEvent, TunnelError>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            let mut ready = false;
+
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(Ok(other));
             }
 
-            if let Some(trans) = self.role_state.poll_transmit() {
+            while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
-                continue;
+
+                ready = true;
             }
 
             if let Some((timeout, reason)) = self.role_state.poll_timeout() {
                 self.io.reset_timeout(timeout, reason);
             }
 
-            match self
-                .io
-                .poll(cx, &mut self.buffers)
-                .map_err(TunnelError::single)?
-            {
-                Poll::Ready(io::Input::DnsResponse(response)) => {
+            if let Poll::Ready(input) = self.io.poll(cx, &mut self.buffers) {
+                let io::Input {
+                    now,
+                    now_utc,
+                    timeout,
+                    dns_response,
+                    tcp_dns_query,
+                    udp_dns_query,
+                    device,
+                    network,
+                    mut error,
+                } = input;
+
+                if let Some(response) = dns_response {
                     let message = response.message.unwrap_or_else(|e| {
                         tracing::debug!("DNS query failed: {e}");
 
@@ -335,27 +361,26 @@ impl GatewayTunnel {
 
                     match response.transport {
                         dns::Transport::Udp { source } => {
-                            self.io
-                                .send_udp_dns_response(source, message)
-                                .map_err(TunnelError::single)?;
+                            if let Err(e) = self.io.send_udp_dns_response(source, message) {
+                                error.push(e);
+                            }
                         }
                         dns::Transport::Tcp { remote, .. } => {
-                            self.io
-                                .send_tcp_dns_response(remote, message)
-                                .map_err(TunnelError::single)?;
+                            if let Err(e) = self.io.send_tcp_dns_response(remote, message) {
+                                error.push(e);
+                            }
                         }
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::Timeout(timeout)) => {
-                    self.role_state.handle_timeout(timeout, Utc::now());
-                    continue;
-                }
-                Poll::Ready(io::Input::Device(packets)) => {
-                    let now = Instant::now();
-                    let mut error = TunnelError::default();
 
+                if timeout {
+                    self.role_state.handle_timeout(now, now_utc);
+                    ready = true;
+                }
+
+                if let Some(packets) = device {
                     for packet in packets {
                         if packet.is_fz_p2p_control() {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -379,17 +404,10 @@ impl GatewayTunnel {
                         }
                     }
 
-                    if !error.is_empty() {
-                        return Poll::Ready(Err(error));
-                    }
-
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::Network(mut packets)) => {
-                    let now = Instant::now();
-                    let utc_now = Utc::now();
-                    let mut error = TunnelError::default();
 
+                if let Some(mut packets) = network {
                     while let Some(received) = packets.next() {
                         self.packet_counter.add(
                             1,
@@ -409,59 +427,64 @@ impl GatewayTunnel {
                             Ok(Some(packet)) => self
                                 .io
                                 .send_tun(packet.with_ecn_from_transport(received.ecn)),
-                            Ok(None) => self.role_state.handle_timeout(now, utc_now),
+                            Ok(None) => self.role_state.handle_timeout(now, now_utc),
                             Err(e) => error.push(e),
                         };
                     }
 
-                    if !error.is_empty() {
-                        return Poll::Ready(Err(error));
-                    }
-
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::UdpDnsQuery(query)) => {
-                    let Some(nameserver) = self.io.fastest_nameserver() else {
+
+                if let Some(query) = udp_dns_query {
+                    if let Some(nameserver) = self.io.fastest_nameserver() {
+                        self.io.send_dns_query(dns::RecursiveQuery::via_udp(
+                            query.source,
+                            SocketAddr::new(nameserver, dns::DNS_PORT),
+                            query.message,
+                        ));
+                    } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
-                        self.io
-                            .send_udp_dns_response(
-                                query.source,
-                                dns_types::Response::servfail(&query.message),
-                            )
-                            .map_err(TunnelError::single)?;
+                        if let Err(e) = self.io.send_udp_dns_response(
+                            query.source,
+                            dns_types::Response::servfail(&query.message),
+                        ) {
+                            error.push(e);
+                        }
+                    }
 
-                        continue;
-                    };
-
-                    self.io.send_dns_query(dns::RecursiveQuery::via_udp(
-                        query.source,
-                        SocketAddr::new(nameserver, dns::DNS_PORT),
-                        query.message,
-                    ));
+                    ready = true;
                 }
-                Poll::Ready(io::Input::TcpDnsQuery(query)) => {
-                    let Some(nameserver) = self.io.fastest_nameserver() else {
+
+                if let Some(query) = tcp_dns_query {
+                    if let Some(nameserver) = self.io.fastest_nameserver() {
+                        self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
+                            query.local,
+                            query.remote,
+                            SocketAddr::new(nameserver, dns::DNS_PORT),
+                            query.message,
+                        ));
+                    } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
 
-                        self.io
-                            .send_tcp_dns_response(
-                                query.remote,
-                                dns_types::Response::servfail(&query.message),
-                            )
-                            .map_err(TunnelError::single)?;
+                        if let Err(e) = self.io.send_tcp_dns_response(
+                            query.remote,
+                            dns_types::Response::servfail(&query.message),
+                        ) {
+                            error.push(e);
+                        }
+                    }
 
-                        continue;
-                    };
-
-                    self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
-                        query.local,
-                        query.remote,
-                        SocketAddr::new(nameserver, dns::DNS_PORT),
-                        query.message,
-                    ));
+                    ready = true;
                 }
-                Poll::Pending => {}
+
+                if !error.is_empty() {
+                    return Poll::Ready(Err(error));
+                }
+            }
+
+            if ready {
+                continue;
             }
 
             return Poll::Pending;
