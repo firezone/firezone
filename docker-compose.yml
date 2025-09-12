@@ -365,6 +365,8 @@ services:
 
   # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
   client:
+    healthcheck:
+      test: ["CMD-SHELL", "ip link | grep tun-firezone"]
     environment:
       FIREZONE_DNS_CONTROL: "${FIREZONE_DNS_CONTROL:-etc-resolv-conf}"
       FIREZONE_TOKEN: "n.SFMyNTY.g2gDaANtAAAAJGM4OWJjYzhjLTkzOTItNGRhZS1hNDBkLTg4OGFlZjZkMjhlMG0AAAAkN2RhN2QxY2QtMTExYy00NGE3LWI1YWMtNDAyN2I5ZDIzMGU1bQAAACtBaUl5XzZwQmstV0xlUkFQenprQ0ZYTnFJWktXQnMyRGR3XzJ2Z0lRdkZnbgYAR_ywiZQBYgABUYA.PLNlzyqMSgZlbQb1QX5EzZgYNuY9oeOddP0qDkTwtGg"
@@ -758,6 +760,8 @@ services:
       client-router:
         condition: "service_healthy"
       gateway:
+        condition: "service_healthy"
+      client:
         condition: "service_healthy"
 
   otel:
