@@ -48,8 +48,6 @@ services:
         condition: "service_healthy"
       postgres:
         condition: "service_healthy"
-      api-router:
-        condition: "service_healthy"
 
   api:
     extends:
