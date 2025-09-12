@@ -37,6 +37,11 @@ defmodule Domain.GatewaysTest do
 
       assert count_groups_for_account(account) == 0
     end
+
+    test "does not count internet site", %{account: account} do
+      Fixtures.Gateways.create_internet_group(account: account)
+      assert count_groups_for_account(account) == 0
+    end
   end
 
   describe "fetch_group_by_id/3" do
