@@ -48,3 +48,13 @@ services:
       timeout: 3s
       retries: 10
       start_period: 5s
+
+  common:
+    environment:
+      # Database
+      RUN_CONDITIONAL_MIGRATIONS: "true"
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: firezone_dev
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
