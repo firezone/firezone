@@ -140,7 +140,10 @@ impl ClientTunnel {
         self.io.reset();
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
+    pub fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<ClientEvent, TunnelError>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
@@ -293,7 +296,10 @@ impl GatewayTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
+    pub fn poll_next_event(
+        &mut self,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<GatewayEvent, TunnelError>> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
@@ -509,6 +515,30 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
+}
+
+pub struct TunnelError {
+    errors: Vec<anyhow::Error>,
+}
+
+impl<E> From<E> for TunnelError
+where
+    anyhow::Error: From<E>,
+{
+    fn from(value: E) -> Self {
+        Self {
+            errors: vec![anyhow::Error::from(value)],
+        }
+    }
+}
+
+impl IntoIterator for TunnelError {
+    type Item = anyhow::Error;
+    type IntoIter = std::vec::IntoIter<anyhow::Error>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.errors.into_iter()
+    }
 }
 
 /// Adapter-struct to [`fmt::Display`] a [`BTreeSet`].
