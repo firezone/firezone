@@ -1,7 +1,7 @@
 # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
 include:
-  - scripts/common/resources.yml
-  - scripts/common/edgeshark.yml
+  - scripts/compose/resources.yml
+  - scripts/compose/edgeshark.yml
 
 services:
   # Dependencies
