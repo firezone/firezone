@@ -9,6 +9,8 @@ defmodule Domain.Actors.Group do
     belongs_to :provider, Domain.Auth.Provider
     field :provider_identifier, :string
 
+    field :synced_at, :utc_datetime_usec
+
     # TODO: HARD-DELETE - Remove `where` after `deleted_at` column is removed from DB
     has_many :policies, Domain.Policies.Policy,
       foreign_key: :actor_group_id,
