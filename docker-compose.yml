@@ -48,8 +48,6 @@ services:
         condition: "service_healthy"
       api-router:
         condition: "service_healthy"
-    networks:
-      - app-internal
 
   api:
     extends:
@@ -145,8 +143,6 @@ services:
         condition: "service_healthy"
       postgres:
         condition: "service_healthy"
-    networks:
-      - app-internal
 
   # This is a service container which allows to run mix tasks for local development
   # without having to install Elixir and Erlang on the host machine.
@@ -173,8 +169,6 @@ services:
     depends_on:
       postgres:
         condition: "service_healthy"
-    networks:
-      - app-internal
 
   # Run with DOCKER_BUILD_TARGET=dev to build Rust inside Docker
   client:
