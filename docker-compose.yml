@@ -31,8 +31,6 @@ services:
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "web.cluster.local"
       RELEASE_NAME: "web"
-      # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -80,8 +78,6 @@ services:
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "api.cluster.local"
       RELEASE_NAME: "api"
-      # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -156,8 +152,6 @@ services:
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "domain.cluster.local"
       RELEASE_NAME: "domain"
-      # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Debugging
       LOG_LEVEL: "debug"
       # Emails
@@ -199,8 +193,6 @@ services:
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "mix.cluster.local"
       RELEASE_NAME: "mix"
-      # Auth
-      AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       # Higher log level not to make seeds output too verbose
       LOG_LEVEL: "info"
       # Emails
