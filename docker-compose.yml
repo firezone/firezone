@@ -32,9 +32,6 @@ services:
       RELEASE_NAME: "web"
       # Debugging
       LOG_LEVEL: "debug"
-      # Emails
-      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
-      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8080/healthz"]
       start_period: 10s
@@ -78,9 +75,6 @@ services:
       RELEASE_NAME: "api"
       # Debugging
       LOG_LEVEL: "debug"
-      # Emails
-      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
-      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
     user: root # Needed to run `ip route` commands
     cap_add:
       - NET_ADMIN # Needed to run `tc` commands to add simulated delay
@@ -151,9 +145,6 @@ services:
       RELEASE_NAME: "domain"
       # Debugging
       LOG_LEVEL: "debug"
-      # Emails
-      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
-      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:4000/healthz"]
       start_period: 10s
@@ -191,9 +182,6 @@ services:
       RELEASE_NAME: "mix"
       # Higher log level not to make seeds output too verbose
       LOG_LEVEL: "info"
-      # Emails
-      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
-      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
       # Mix env should be set to prod to use secrets declared above,
       # otherwise seeds will generate invalid tokens
       MIX_ENV: "prod"

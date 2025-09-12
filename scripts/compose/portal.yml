@@ -80,3 +80,6 @@ services:
       # Auth
       AUTH_PROVIDER_ADAPTERS: "email,openid_connect,userpass,token,google_workspace,microsoft_entra,okta,jumpcloud,mock"
       ERLANG_DISTRIBUTION_PORT: 9000
+      # Emails
+      OUTBOUND_EMAIL_FROM: "public-noreply@firez.one"
+      OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
