@@ -25,7 +25,6 @@ services:
       PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
-      ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
       ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
@@ -72,7 +71,6 @@ services:
       PHOENIX_HTTP_API_PORT: "8081"
       PHOENIX_SECURE_COOKIES: "false"
       # Erlang
-      ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
       ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
@@ -146,7 +144,6 @@ services:
     hostname: domain.cluster.local
     environment:
       # Erlang
-      ERLANG_DISTRIBUTION_PORT: 9000
       ERLANG_CLUSTER_ADAPTER: "Elixir.Cluster.Strategy.Epmd"
       ERLANG_CLUSTER_ADAPTER_CONFIG: '{"hosts":["api@api.cluster.local","web@web.cluster.local","domain@domain.cluster.local"]}'
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
@@ -189,7 +186,6 @@ services:
       WEB_EXTERNAL_URL: http://localhost:8080/
       API_EXTERNAL_URL: http://localhost:8081/
       # Erlang
-      ERLANG_DISTRIBUTION_PORT: 9000
       RELEASE_COOKIE: "NksuBhJFBhjHD1uUa9mDOHV"
       RELEASE_HOSTNAME: "mix.cluster.local"
       RELEASE_NAME: "mix"
