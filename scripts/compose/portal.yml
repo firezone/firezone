@@ -88,3 +88,8 @@ services:
       OUTBOUND_EMAIL_ADAPTER: "Elixir.Swoosh.Adapters.Postmark"
     networks:
       - app-internal
+
+volumes:
+  postgres-data:
+  elixir-build-cache:
+  assets-build-cache:
