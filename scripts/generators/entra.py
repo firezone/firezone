@@ -208,15 +208,10 @@ class EntraTestManager:
     # GENERATION METHODS
     # ============================================================================
 
-    def generate_fake_user_data(self, index: int, cleanup_tag: str = None) -> Dict:
+    def generate_fake_user_data(self, index: int, cleanup_tag: str) -> Dict:
         """Generate realistic fake user data"""
         first_name = self.fake.first_name()
         last_name = self.fake.last_name()
-
-        # Generate a unique cleanup tag if not provided
-        if not cleanup_tag:
-            cleanup_tag = f"LoadTest-{int(time.time())}"
-
         # Include cleanup tag in the username to ensure uniqueness across runs
         unique_username = f"u{cleanup_tag}{index:06d}"
         
