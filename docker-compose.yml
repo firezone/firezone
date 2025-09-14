@@ -216,7 +216,6 @@ services:
       - "api:203.0.113.10"
       - "api:203:0:113::10"
 
-  # Client Router (NAT only, symmetric NAT)
   client-router:
     extends:
       file: scripts/compose/router.yml
@@ -290,7 +289,6 @@ services:
       - "api:203.0.113.10"
       - "api:203:0:113::10"
 
-  # Gateway Router (NAT only, cone NAT)
   gateway-router:
     extends:
       file: scripts/compose/router.yml
