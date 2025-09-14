@@ -602,7 +602,7 @@ impl TunnelError {
         self.errors.is_empty()
     }
 
-    pub fn iter(&mut self) -> impl Iterator<Item = anyhow::Error> {
+    pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
         mem::take(&mut self.errors).into_iter()
     }
 }

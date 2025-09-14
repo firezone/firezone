@@ -255,7 +255,7 @@ impl Eventloop {
     }
 
     fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
-        for e in e.iter() {
+        for e in e.drain() {
             if e.root_cause()
                 .downcast_ref::<io::Error>()
                 .is_some_and(is_unreachable)
