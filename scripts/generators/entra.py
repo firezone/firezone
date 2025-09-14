@@ -282,9 +282,7 @@ class EntraTestManager:
         ]
         locations = ["US", "EU", "APAC", "Americas", "Global"]
 
-        # Generate a unique cleanup tag if not provided
-        if not cleanup_tag:
-            cleanup_tag = f"LoadTest-{int(time.time())}"
+        # cleanup_tag is always provided by the caller
 
         if parent_group:
             # Generate subgroup names that relate to parent
