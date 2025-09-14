@@ -116,7 +116,7 @@ impl Eventloop {
 enum CombinedEvent {
     SigIntTerm,
     ShutdownComplete(Result<()>),
-    Tunnel(Result<GatewayEvent, TunnelError>),
+    Tunnel(GatewayEvent),
     Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger)),
 }
@@ -125,11 +125,8 @@ impl Eventloop {
     pub async fn run(mut self) -> Result<()> {
         loop {
             match future::poll_fn(|cx| self.next_event(cx)).await {
-                CombinedEvent::Tunnel(Ok(event)) => {
+                CombinedEvent::Tunnel(event) => {
                     self.handle_tunnel_event(event).await?;
-                }
-                CombinedEvent::Tunnel(Err(e)) => {
-                    self.handle_tunnel_error(e)?;
                 }
                 CombinedEvent::Portal(Some(Ok(msg))) => {
                     self.handle_portal_message(msg).await?;
@@ -252,6 +249,7 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())

@@ -134,7 +134,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     Command(Option<Command>),
-    Tunnel(Result<ClientEvent, TunnelError>),
+    Tunnel(ClientEvent),
     Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
 }
 
@@ -149,8 +149,7 @@ impl Eventloop {
                         ControlFlow::Break(()) => return Ok(()),
                     }
                 }
-                CombinedEvent::Tunnel(Ok(event)) => self.handle_tunnel_event(event).await?,
-                CombinedEvent::Tunnel(Err(e)) => self.handle_tunnel_error(e)?,
+                CombinedEvent::Tunnel(event) => self.handle_tunnel_event(event).await?,
                 CombinedEvent::Portal(Some(event)) => {
                     let msg = event.context("Connection to portal failed")?;
 
@@ -246,9 +245,10 @@ impl Eventloop {
                     .send(Some(config))
                     .context("Failed to emit event")?;
             }
-            firezone_tunnel::ClientEvent::DnsRecordsChanged { records } => {
+            ClientEvent::DnsRecordsChanged { records } => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
+            ClientEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())

@@ -140,17 +140,14 @@ impl ClientTunnel {
         self.io.reset();
     }
 
-    pub fn poll_next_event(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<ClientEvent, TunnelError>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             let mut ready = false;
 
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
-            if let Some(e) = self.role_state.poll_event() {
-                return Poll::Ready(Ok(e));
+            if let Some(event) = self.role_state.poll_event() {
+                return Poll::Ready(event);
             }
 
             while let Some(packet) = self.role_state.poll_packets() {
@@ -252,7 +249,7 @@ impl ClientTunnel {
                 }
 
                 if !error.is_empty() {
-                    return Poll::Ready(Err(error));
+                    return Poll::Ready(ClientEvent::Error(error));
                 }
             }
 
@@ -315,17 +312,14 @@ impl GatewayTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Result<GatewayEvent, TunnelError>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<GatewayEvent> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             let mut ready = false;
 
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
             if let Some(other) = self.role_state.poll_event() {
-                return Poll::Ready(Ok(other));
+                return Poll::Ready(other);
             }
 
             while let Some(trans) = self.role_state.poll_transmit() {
@@ -479,7 +473,7 @@ impl GatewayTunnel {
                 }
 
                 if !error.is_empty() {
-                    return Poll::Ready(Err(error));
+                    return Poll::Ready(GatewayEvent::Error(error));
                 }
             }
 
@@ -496,7 +490,7 @@ impl GatewayTunnel {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: GatewayId,
@@ -518,6 +512,7 @@ pub enum ClientEvent {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
+    Error(TunnelError),
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq)]
@@ -570,6 +565,7 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
+    Error(TunnelError),
 }
 
 /// A collection of errors that occurred during a single event-loop tick.
