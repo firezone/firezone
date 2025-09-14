@@ -18,7 +18,7 @@ use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    fmt, future,
+    fmt, future, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{Context, Poll, ready},
@@ -595,14 +595,18 @@ impl TunnelError {
     pub fn is_empty(&self) -> bool {
         self.errors.is_empty()
     }
+
+    pub fn iter(&mut self) -> impl Iterator<Item = anyhow::Error> {
+        mem::take(&mut self.errors).into_iter()
+    }
 }
 
-impl IntoIterator for TunnelError {
-    type Item = anyhow::Error;
-    type IntoIter = std::vec::IntoIter<anyhow::Error>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.errors.into_iter()
+impl Drop for TunnelError {
+    fn drop(&mut self) {
+        debug_assert!(
+            self.errors.is_empty(),
+            "should never drop `TunnelError` without consuming errors"
+        );
     }
 }
 
