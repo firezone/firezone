@@ -146,30 +146,31 @@ impl ClientTunnel {
 
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
+            // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
                 return Poll::Ready(event);
             }
 
+            // Drain all buffered IP packets.
             while let Some(packet) = self.role_state.poll_packets() {
                 self.io.send_tun(packet);
                 ready = true;
             }
 
+            // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
                 ready = true;
             }
 
+            // Drain all scheduled DNS queries.
             while let Some(query) = self.role_state.poll_dns_queries() {
                 self.io.send_dns_query(query);
                 ready = true;
             }
 
-            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout, reason);
-            }
-
+            // Process all IO sources that are ready.
             if let Poll::Ready(input) = self.io.poll(cx, &mut self.buffers) {
                 let io::Input {
                     now,
@@ -248,6 +249,11 @@ impl ClientTunnel {
                     ready = true;
                 }
 
+                // Reset timer for time-based wakeup.
+                if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                    self.io.reset_timeout(timeout, reason);
+                }
+
                 if !error.is_empty() {
                     return Poll::Ready(ClientEvent::Error(error));
                 }
@@ -318,10 +324,12 @@ impl GatewayTunnel {
 
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
+            // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
                 return Poll::Ready(other);
             }
 
+            // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
@@ -329,10 +337,7 @@ impl GatewayTunnel {
                 ready = true;
             }
 
-            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout, reason);
-            }
-
+            // Process all IO sources that are ready.
             if let Poll::Ready(input) = self.io.poll(cx, &mut self.buffers) {
                 let io::Input {
                     now,
@@ -470,6 +475,11 @@ impl GatewayTunnel {
                     }
 
                     ready = true;
+                }
+
+                // Reset timer for time-based wakeup.
+                if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                    self.io.reset_timeout(timeout, reason);
                 }
 
                 if !error.is_empty() {
