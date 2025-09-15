@@ -143,7 +143,7 @@ rustls = { version = "0.23.31", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.8"
-semver = "1.0.26"
+semver = "1.0.27"
 sentry = { version = "0.41.0", default-features = false }
 sentry-tracing = "0.41.0"
 serde = "1.0.219"
