@@ -224,6 +224,7 @@ fn try_main() -> Result<()> {
         .enable_all()
         .build()?;
 
+    #[cfg(target_os = "linux")]
     if cli.is_inc_buf_allowed() {
         let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
         let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
