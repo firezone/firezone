@@ -101,8 +101,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     tracing::debug!(?cli);
 
-    #[cfg(target_os = "linux")]
-    if cli.is_inc_buf_allowed() {
+    if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
         let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
         let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
 
