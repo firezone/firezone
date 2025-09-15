@@ -315,6 +315,10 @@ jobs:
       - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
+      - name: Increase max UDP buffer sizes
+        run: |
+          sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
+          sudo sysctl -w net.core.rmem_max=134217728 # 128 MB
       - name: Start docker compose in the background
         run: |
           # We need to increase the log level to make sure that they don't hold off storm of packets
