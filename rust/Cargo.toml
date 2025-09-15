@@ -135,7 +135,7 @@ rand = "0.8.5"
 rand_core = "0.6.4"
 rangemap = "1.6.0"
 reqwest = { version = "0.12.23", default-features = false }
-resolv-conf = "0.7.3"
+resolv-conf = "0.7.5"
 ringbuffer = "0.15.0"
 roxmltree = "0.20"
 rtnetlink = { version = "0.17.0", default-features = false, features = ["tokio_socket"] }
