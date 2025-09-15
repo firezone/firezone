@@ -308,7 +308,7 @@ struct Cli {
     /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(
         long,
-        env = "FIREZONE_NO_INC_RECV_BUF",
+        env = "FIREZONE_NO_INC_BUF",
         hide = true,
         default_value_t = false
     )]
