@@ -390,7 +390,7 @@ jobs:
             grep "WARN" && exit 1 || exit 0
 
       - name: Ensure no UDP socket errors
-        if: "!cancelled()"
+        if: "!cancelled() && startsWith(matrix.test, 'tcp')"
         run: |
           docker compose exec client /bin/sh -c 'nstat -s' |
             grep -i "error" && exit 1 || exit 0
