@@ -101,6 +101,18 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     tracing::debug!(?cli);
 
+    if cli.is_inc_recv_buf_allowed() {
+        let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
+
+        let result =
+            tokio::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()).await;
+
+        match result {
+            Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
+            Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
+        };
+    }
+
     let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
 
@@ -290,6 +302,15 @@ struct Cli {
         default_value_t = false
     )]
     validate_checksums: bool,
+
+    /// Do not increase the `core.rmem_max` kernel parameter.
+    #[arg(
+        long,
+        env = "FIREZONE_NO_INC_RECV_BUF",
+        hide = true,
+        default_value_t = false
+    )]
+    no_inc_recv_buf: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -301,6 +322,10 @@ enum MetricsExporter {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
+    }
+
+    fn is_inc_recv_buf_allowed(&self) -> bool {
+        !self.no_inc_recv_buf
     }
 }
 
