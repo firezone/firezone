@@ -27,6 +27,17 @@ export default function Gateway() {
           Fixes a rare CPU-spike issue in case a Client connected with many
           possible IPv6 addresses.
         </ChangeItem>
+        <ChangeItem pull="10349">
+          Attempts to increase the system-wide parameters `core.rmem_max` to 128
+          MB and `core.wmem_max` to 16 MB for improved performance. See the{" "}
+          <Link
+            className="text-accent-500 underline hover:no-underline"
+            href="https://www.firezone.dev/kb/deploy/gateways#performance-tuning"
+          >
+            Performance tuning
+          </Link>
+          section for details.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.16" date={new Date("2025-09-10")}>
         <ChangeItem pull="10231">
