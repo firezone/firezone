@@ -22,7 +22,7 @@ pub trait SocketFactory<S>: Send + Sync + 'static {
     fn reset(&self);
 }
 
-pub const SEND_BUFFER_SIZE: usize = ONE_MB;
+pub const SEND_BUFFER_SIZE: usize = 16 * ONE_MB;
 pub const RECV_BUFFER_SIZE: usize = 128 * ONE_MB;
 const ONE_MB: usize = 1024 * 1024;
 

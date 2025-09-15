@@ -101,15 +101,17 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     tracing::debug!(?cli);
 
-    if cli.is_inc_recv_buf_allowed() {
+    if cli.is_inc_buf_allowed() {
         let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
+        let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
 
-        let result =
-            tokio::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()).await;
-
-        match result {
+        match tokio::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()).await {
             Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
             Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
+        };
+        match tokio::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()).await {
+            Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
+            Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
         };
     }
 
@@ -303,14 +305,14 @@ struct Cli {
     )]
     validate_checksums: bool,
 
-    /// Do not increase the `core.rmem_max` kernel parameter.
+    /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(
         long,
         env = "FIREZONE_NO_INC_RECV_BUF",
         hide = true,
         default_value_t = false
     )]
-    no_inc_recv_buf: bool,
+    no_inc_buf: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -324,8 +326,8 @@ impl Cli {
         !self.no_telemetry
     }
 
-    fn is_inc_recv_buf_allowed(&self) -> bool {
-        !self.no_inc_recv_buf
+    fn is_inc_buf_allowed(&self) -> bool {
+        !self.no_inc_buf
     }
 }
 
