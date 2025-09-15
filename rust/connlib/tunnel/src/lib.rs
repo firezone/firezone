@@ -171,19 +171,18 @@ impl ClientTunnel {
             }
 
             // Process all IO sources that are ready.
-            if let Poll::Ready(input) = self.io.poll(cx, &mut self.buffers) {
-                let io::Input {
-                    now,
-                    now_utc: _,
-                    timeout,
-                    dns_response,
-                    tcp_dns_query: _,
-                    udp_dns_query: _,
-                    device,
-                    network,
-                    error,
-                } = input;
-
+            if let Poll::Ready(io::Input {
+                now,
+                now_utc: _,
+                timeout,
+                dns_response,
+                tcp_dns_query: _,
+                udp_dns_query: _,
+                device,
+                network,
+                error,
+            }) = self.io.poll(cx, &mut self.buffers)
+            {
                 if let Some(response) = dns_response {
                     self.role_state.handle_dns_response(response);
                     self.role_state.handle_timeout(now);
@@ -338,19 +337,18 @@ impl GatewayTunnel {
             }
 
             // Process all IO sources that are ready.
-            if let Poll::Ready(input) = self.io.poll(cx, &mut self.buffers) {
-                let io::Input {
-                    now,
-                    now_utc,
-                    timeout,
-                    dns_response,
-                    tcp_dns_query,
-                    udp_dns_query,
-                    device,
-                    network,
-                    mut error,
-                } = input;
-
+            if let Poll::Ready(io::Input {
+                now,
+                now_utc,
+                timeout,
+                dns_response,
+                tcp_dns_query,
+                udp_dns_query,
+                device,
+                network,
+                mut error,
+            }) = self.io.poll(cx, &mut self.buffers)
+            {
                 if let Some(response) = dns_response {
                     let message = response.message.unwrap_or_else(|e| {
                         tracing::debug!("DNS query failed: {e}");

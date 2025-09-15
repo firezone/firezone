@@ -109,44 +109,6 @@ impl<D, I> Input<D, I> {
             error: TunnelError::single(e),
         }
     }
-
-    fn from_polls(
-        timeout: bool,
-        device: Poll<D>,
-        network: Poll<Result<I>>,
-        tcp_dns_query: Poll<Result<l4_tcp_dns_server::Query>>,
-        udp_dns_query: Poll<Result<l4_udp_dns_server::Query>>,
-        dns_response: Poll<dns::RecursiveResponse>,
-    ) -> Self {
-        let mut error = TunnelError::default();
-
-        Self {
-            now: Instant::now(),
-            now_utc: Utc::now(),
-            timeout,
-            device: poll_to_option(device),
-            network: poll_result_to_option(network, &mut error),
-            tcp_dns_query: poll_result_to_option(tcp_dns_query, &mut error),
-            udp_dns_query: poll_result_to_option(udp_dns_query, &mut error),
-            dns_response: poll_to_option(dns_response),
-            error,
-        }
-    }
-
-    fn into_poll(self) -> Poll<Self> {
-        if !self.timeout
-            && self.device.is_none()
-            && self.network.is_none()
-            && self.tcp_dns_query.is_none()
-            && self.udp_dns_query.is_none()
-            && self.dns_response.is_none()
-            && self.error.is_empty()
-        {
-            return Poll::Pending;
-        }
-
-        Poll::Ready(self)
-    }
 }
 
 fn poll_to_option<T>(poll: Poll<T>) -> Option<T> {
@@ -254,9 +216,11 @@ impl Io {
         let _ = self.nameservers.poll(cx);
 
         let network = self.sockets.poll_recv_from(cx).map(|network| {
-            Ok(network
-                .context("UDP socket failed")?
-                .filter(is_max_wg_packet_size))
+            anyhow::Ok(
+                network
+                    .context("UDP socket failed")?
+                    .filter(is_max_wg_packet_size),
+            )
         });
 
         let device = self
@@ -321,15 +285,29 @@ impl Io {
             .map(|timeout| timeout.poll_unpin(cx).is_ready())
             .unwrap_or(false);
 
-        Input::from_polls(
+        if !timeout
+            && device.is_pending()
+            && network.is_pending()
+            && tcp_dns_query.is_pending()
+            && udp_dns_query.is_pending()
+            && dns_response.is_pending()
+        {
+            return Poll::Pending;
+        }
+
+        let mut error = TunnelError::default();
+
+        Poll::Ready(Input {
+            now: Instant::now(),
+            now_utc: Utc::now(),
             timeout,
-            device,
-            network,
-            tcp_dns_query,
-            udp_dns_query,
-            dns_response,
-        )
-        .into_poll()
+            device: poll_to_option(device),
+            network: poll_result_to_option(network, &mut error),
+            tcp_dns_query: poll_result_to_option(tcp_dns_query, &mut error),
+            udp_dns_query: poll_result_to_option(udp_dns_query, &mut error),
+            dns_response: poll_to_option(dns_response),
+            error,
+        })
     }
 
     pub fn flush(&mut self, cx: &mut Context<'_>) -> Poll<Result<()>> {
