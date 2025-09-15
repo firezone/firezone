@@ -368,30 +368,31 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs iperf3
 
-      - name: Ensure Client emitted no warnings
+      - name: Ensure no warnings are logged
         if: "!cancelled()"
         run: |
           docker compose logs client |
             grep "WARN" && exit 1 || exit 0
-      - name: Ensure Relay-1 emitted no warnings
-        if: "!cancelled()"
-        run: |
+
+          docker compose logs gateway |
+            grep "WARN" && exit 1 || exit 0
+
           # BTF doesn't load for veth interfaces
           docker compose logs relay-1 | \
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
             grep "WARN" && exit 1 || exit 0
-      - name: Ensure Relay-2 emitted no warnings
-        if: "!cancelled()"
-        run: |
-          # BTF doesn't load for veth interfaces
           docker compose logs relay-2 | \
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
             grep "WARN" && exit 1 || exit 0
-      - name: Ensure Gateway emitted no warnings
+
+      - name: Ensure no UDP socket errors
         if: "!cancelled()"
         run: |
-          docker compose logs gateway |
-            grep "WARN" && exit 1 || exit 0
+          docker compose exec client /bin/sh -c 'nstat -s' |
+            grep -i "error" && exit 1 || exit 0
+
+          docker compose exec gateway /bin/sh -c 'nstat -s' |
+            grep -i "error" && exit 1 || exit 0
 
   upload-bencher:
     continue-on-error: true
