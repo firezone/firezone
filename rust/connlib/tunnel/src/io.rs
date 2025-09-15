@@ -285,6 +285,10 @@ impl Io {
             .map(|timeout| timeout.poll_unpin(cx).is_ready())
             .unwrap_or(false);
 
+        if timeout {
+            self.timeout = None;
+        }
+
         if !timeout
             && device.is_pending()
             && network.is_pending()
@@ -494,11 +498,11 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(1);
         io.reset_timeout(deadline, "");
 
-        let Input::Timeout(timeout) = io.next().await else {
-            panic!("Unexpected result");
-        };
+        let input = io.next().await;
 
-        assert!(timeout >= deadline, "timer expire after deadline");
+        assert!(input.timeout);
+        assert!(input.now >= deadline, "timer expire after deadline");
+        drop(input);
 
         let poll = io.poll_test();
 
@@ -513,9 +517,8 @@ mod tests {
 
         io.reset_timeout(now - Duration::from_secs(10), "");
 
-        let Input::Timeout(timeout) = io.next().await else {
-            panic!("Unexpected result");
-        };
+        let input = io.next().await;
+        let timeout = input.now;
 
         assert!(timeout >= now, "timeout = {timeout:?}, now = {now:?}");
     }
@@ -549,17 +552,14 @@ mod tests {
                 )
             })
             .await
-            .unwrap()
         }
 
         fn poll_test(
             &mut self,
         ) -> Poll<
-            Result<
-                Input<
-                    impl Iterator<Item = IpPacket> + use<>,
-                    impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
-                >,
+            Input<
+                impl Iterator<Item = IpPacket> + use<>,
+                impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
             >,
         > {
             self.poll(
