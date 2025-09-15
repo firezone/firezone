@@ -2519,6 +2519,7 @@ dependencies = [
  "rustls",
  "sd-notify",
  "secrecy",
+ "socket-factory",
  "tokio",
  "tokio-stream",
  "tracing",
