@@ -140,6 +140,7 @@ impl<D, I> Input<D, I> {
             && self.tcp_dns_query.is_none()
             && self.udp_dns_query.is_none()
             && self.dns_response.is_none()
+            && self.error.is_empty()
         {
             return Poll::Pending;
         }
