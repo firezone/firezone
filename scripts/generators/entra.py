@@ -77,37 +77,71 @@ class EntraTestManager:
         timestamp_short = str(int(time.time()))[-8:]
         self.cleanup_tag = f"LT{timestamp_short}{random.randint(1000, 9999)}"
 
+    def generate_random_password(self, length: int = 16) -> str:
+        """Generate a random password that meets Azure AD complexity requirements"""
+        import string
+        import secrets
+
+        # Ensure we have at least one of each required character type
+        lowercase = secrets.choice(string.ascii_lowercase)
+        uppercase = secrets.choice(string.ascii_uppercase)
+        digit = secrets.choice(string.digits)
+        special = secrets.choice("!@#$%^&*()_+-=[]{}|;:,.<>?")
+
+        # Fill the rest with random characters from all categories
+        all_chars = string.ascii_letters + string.digits + "!@#$%^&*()_+-=[]{}|;:,.<>?"
+        remaining_length = length - 4
+        other_chars = "".join(
+            secrets.choice(all_chars) for _ in range(remaining_length)
+        )
+
+        # Combine and shuffle
+        password_chars = list(lowercase + uppercase + digit + special + other_chars)
+        secrets.SystemRandom().shuffle(password_chars)
+
+        return "".join(password_chars)
+
     def _create_session_with_retry(self) -> requests.Session:
         """Create a requests session with automatic retry logic for rate limiting"""
         session = requests.Session()
-        
+
         # Configure retry strategy for 429 (Too Many Requests) and server errors
         # The Retry class will automatically handle Retry-After headers when respect_retry_after_header=True
         retry_strategy = Retry(
             total=self.generation_config.max_retries if self.generation_config else 5,
             status_forcelist=[429, 503, 504],  # Retry on rate limit and server errors
-            allowed_methods=["HEAD", "GET", "PUT", "DELETE", "OPTIONS", "TRACE", "POST"],
+            allowed_methods=[
+                "HEAD",
+                "GET",
+                "PUT",
+                "DELETE",
+                "OPTIONS",
+                "TRACE",
+                "POST",
+            ],
             backoff_factor=1,  # Used when no Retry-After header: 1, 2, 4, 8, 16 seconds
             respect_retry_after_header=True,  # Will sleep for the time specified in Retry-After header
-            raise_on_status=False  # Don't raise exception, let us handle it
+            raise_on_status=False,  # Don't raise exception, let us handle it
         )
-        
+
         adapter = HTTPAdapter(max_retries=retry_strategy)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
-        
+
         # Add hook to log when we hit rate limits
         original_send = adapter.send
-        
+
         def send_with_logging(request, **kwargs):
             response = original_send(request, **kwargs)
             if response.status_code == 429:
-                retry_after = response.headers.get('Retry-After', 'not specified')
-                logger.info(f"Rate limited (429). Server says Retry-After: {retry_after} seconds. Retrying automatically...")
+                retry_after = response.headers.get("Retry-After", "not specified")
+                logger.info(
+                    f"Rate limited (429). Server says Retry-After: {retry_after} seconds. Retrying automatically..."
+                )
             return response
-        
+
         adapter.send = send_with_logging
-        
+
         return session
 
     def get_access_token(self) -> str:
@@ -132,7 +166,9 @@ class EntraTestManager:
             # Set expiry time with 5 minute buffer for safety
             expires_in = token_data.get("expires_in", 3600)
             self.token_expires_at = time.time() + expires_in - 300  # 5 min buffer
-            logger.info(f"Access token obtained successfully (expires in {expires_in} seconds)")
+            logger.info(
+                f"Access token obtained successfully (expires in {expires_in} seconds)"
+            )
             return self.access_token
         except requests.exceptions.RequestException as e:
             logger.error(f"Failed to get access token: {e}")
@@ -141,7 +177,9 @@ class EntraTestManager:
     def get_headers(self) -> Dict[str, str]:
         """Get HTTP headers for Graph API requests"""
         # Check if token needs refresh
-        if not self.access_token or (self.token_expires_at and time.time() >= self.token_expires_at):
+        if not self.access_token or (
+            self.token_expires_at and time.time() >= self.token_expires_at
+        ):
             if self.token_expires_at and time.time() >= self.token_expires_at:
                 logger.info("Access token expired, refreshing...")
             self.get_access_token()
@@ -150,58 +188,66 @@ class EntraTestManager:
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
         }
-    
+
     def _wait_for_rate_limit(self):
         """Wait if we're currently rate limited"""
         if self.rate_limit_until and time.time() < self.rate_limit_until:
             wait_time = self.rate_limit_until - time.time()
             if wait_time > 0:
-                logger.info(f"Rate limited globally. Waiting {wait_time:.1f} seconds...")
+                logger.info(
+                    f"Rate limited globally. Waiting {wait_time:.1f} seconds..."
+                )
                 time.sleep(wait_time)
-    
+
     def _handle_rate_limit_response(self, response: requests.Response):
         """Update global rate limit tracking based on response"""
         if response.status_code == 429:
-            retry_after = response.headers.get('Retry-After')
+            retry_after = response.headers.get("Retry-After")
             if retry_after:
                 try:
                     # Retry-After can be in seconds or an HTTP date
                     wait_seconds = int(retry_after)
                     self.rate_limit_until = time.time() + wait_seconds
-                    logger.warning(f"Rate limited (429). Setting global pause for {wait_seconds} seconds")
+                    logger.warning(
+                        f"Rate limited (429). Setting global pause for {wait_seconds} seconds"
+                    )
                 except ValueError:
                     # If it's not an integer, it might be a date - default to 150 seconds
                     self.rate_limit_until = time.time() + 150
-                    logger.warning(f"Rate limited (429). Setting global pause for 150 seconds (default)")
+                    logger.warning(
+                        f"Rate limited (429). Setting global pause for 150 seconds (default)"
+                    )
             else:
                 # No Retry-After header, use default
                 self.rate_limit_until = time.time() + 150
-                logger.warning(f"Rate limited (429) without Retry-After header. Using 150 seconds default")
-    
+                logger.warning(
+                    f"Rate limited (429) without Retry-After header. Using 150 seconds default"
+                )
+
     def _make_api_request(self, method: str, url: str, **kwargs) -> requests.Response:
         """Make an API request with automatic 401 handling and rate limit checking"""
         # Wait if we're globally rate limited
         self._wait_for_rate_limit()
-        
-        headers = kwargs.pop('headers', {})
+
+        headers = kwargs.pop("headers", {})
         headers.update(self.get_headers())
-        
+
         response = self.session.request(method, url, headers=headers, **kwargs)
-        
+
         # Handle rate limiting
         if response.status_code == 429:
             self._handle_rate_limit_response(response)
             self._wait_for_rate_limit()
             # Retry after waiting
             response = self.session.request(method, url, headers=headers, **kwargs)
-        
+
         # Handle 401 - token expired
         if response.status_code == 401:
             logger.info("Got 401, refreshing access token...")
             self.access_token = None  # Force token refresh
             headers.update(self.get_headers())
             response = self.session.request(method, url, headers=headers, **kwargs)
-        
+
         return response
 
     # ============================================================================
@@ -214,7 +260,7 @@ class EntraTestManager:
         last_name = self.fake.last_name()
         # Include cleanup tag in the username to ensure uniqueness across runs
         unique_username = f"u{cleanup_tag}{index:06d}"
-        
+
         return {
             "displayName": f"{first_name} {last_name}",
             "givenName": first_name,
@@ -222,10 +268,10 @@ class EntraTestManager:
             "mailNickname": unique_username,
             "userPrincipalName": f"{unique_username}@{self.entra_config.tenant_domain}",
             "passwordProfile": {
-                "password": "TempPassword123!",
+                "password": self.generate_random_password(),
                 "forceChangePasswordNextSignIn": False,
             },
-            "accountEnabled": True,
+            "accountEnabled": False,  # Disabled by default for test accounts
             "jobTitle": self.fake.job(),
             "department": random.choice(
                 [
@@ -260,7 +306,7 @@ class EntraTestManager:
         }
 
     def generate_fake_group_data(
-        self, index: int, parent_group: Optional[str] = None, cleanup_tag: str = None
+        self, index: int, cleanup_tag: str, parent_group: Optional[str] = None
     ) -> Dict:
         """Generate realistic fake group data"""
         departments = [
@@ -282,8 +328,6 @@ class EntraTestManager:
         ]
         locations = ["US", "EU", "APAC", "Americas", "Global"]
 
-        # cleanup_tag is always provided by the caller
-
         if parent_group:
             # Generate subgroup names that relate to parent
             group_types = [
@@ -300,10 +344,10 @@ class EntraTestManager:
 
         # Include cleanup tag in displayName for better filtering
         display_name = f"TEST-{cleanup_tag}-{base_name}"
-        
+
         # Include cleanup tag in mailNickname for uniqueness
         unique_group_nickname = f"g{cleanup_tag}{index:06d}"
-        
+
         return {
             "displayName": display_name,
             "mailNickname": unique_group_nickname,
@@ -328,7 +372,13 @@ class EntraTestManager:
         requests_data = []
         for i, user_data in enumerate(user_data_list):
             requests_data.append(
-                {"id": str(i + 1), "method": "POST", "url": "/users", "body": user_data, "headers": {"Content-Type": "application/json"}}
+                {
+                    "id": str(i + 1),
+                    "method": "POST",
+                    "url": "/users",
+                    "body": user_data,
+                    "headers": {"Content-Type": "application/json"},
+                }
             )
 
         batch_payload = {"requests": requests_data}
@@ -336,17 +386,19 @@ class EntraTestManager:
         try:
             # Wait if we're globally rate limited
             self._wait_for_rate_limit()
-            
+
             # Log first user for debugging
             if requests_data:
-                logger.debug(f"Sample user data: {requests_data[0]['body']['userPrincipalName']}")
-            
+                logger.debug(
+                    f"Sample user data: {requests_data[0]['body']['userPrincipalName']}"
+                )
+
             response = self.session.post(
                 "https://graph.microsoft.com/v1.0/$batch",
                 headers=self.get_headers(),
                 json=batch_payload,
             )
-            
+
             # Handle 401 - token expired
             if response.status_code == 401:
                 logger.info("Got 401, refreshing access token...")
@@ -356,7 +408,7 @@ class EntraTestManager:
                     headers=self.get_headers(),
                     json=batch_payload,
                 )
-            
+
             if response.status_code != 200:
                 # Log the full error response for debugging
                 logger.error(f"Batch request failed with status {response.status_code}")
@@ -370,7 +422,7 @@ class EntraTestManager:
                                 logger.error(f"Individual error: {resp}")
                 except:
                     logger.error(f"Response text: {response.text[:1000]}")
-            
+
             # Check if we got rate limited at the batch level
             if response.status_code == 429:
                 self._handle_rate_limit_response(response)
@@ -381,7 +433,7 @@ class EntraTestManager:
                     headers=self.get_headers(),
                     json=batch_payload,
                 )
-            
+
             # Don't raise_for_status here - batch can return 200 with individual failures
             batch_response = response.json()
             created_users = []
@@ -399,30 +451,42 @@ class EntraTestManager:
                     retry_after = resp_headers.get("Retry-After")
                     if throttled_count == 1:  # Log once
                         if retry_after:
-                            logger.warning(f"Individual requests throttled (429). Retry-After: {retry_after} seconds")
+                            logger.warning(
+                                f"Individual requests throttled (429). Retry-After: {retry_after} seconds"
+                            )
                         else:
-                            error_msg = resp.get("body", {}).get("error", {}).get("message", "")
-                            logger.warning(f"Individual requests throttled (429). Message: {error_msg}")
+                            error_msg = (
+                                resp.get("body", {}).get("error", {}).get("message", "")
+                            )
+                            logger.warning(
+                                f"Individual requests throttled (429). Message: {error_msg}"
+                            )
                 else:
                     failed_count += 1
                     # Log first 3 non-throttle failures in detail
                     if failed_count <= 3 and resp.get("status") != 429:
-                        logger.error(f"Failed to create user {resp.get('id')}: Status {resp.get('status')}")
+                        logger.error(
+                            f"Failed to create user {resp.get('id')}: Status {resp.get('status')}"
+                        )
                         if "body" in resp and "error" in resp["body"]:
                             logger.error(f"Error details: {resp['body']['error']}")
-            
+
             # If all requests were throttled, we should wait and retry
             if throttled_count > 0 and created_users == 0:
                 # Set global rate limit for individual 429s in batch
                 # The message typically says "try after X seconds"
                 self.rate_limit_until = time.time() + 150  # Default 150 seconds
-                logger.info(f"All {throttled_count} requests in batch were throttled. Setting global rate limit for 150 seconds...")
+                logger.info(
+                    f"All {throttled_count} requests in batch were throttled. Setting global rate limit for 150 seconds..."
+                )
                 self._wait_for_rate_limit()
                 return []  # Return empty to signal retry needed
-            
+
             if failed_count > 3:
-                logger.info(f"Total failures in batch: {failed_count} ({throttled_count} throttled)")
-            
+                logger.info(
+                    f"Total failures in batch: {failed_count} ({throttled_count} throttled)"
+                )
+
             return created_users
 
         except requests.exceptions.RequestException as e:
@@ -434,13 +498,13 @@ class EntraTestManager:
         try:
             # Wait if we're globally rate limited
             self._wait_for_rate_limit()
-            
+
             response = self.session.post(
                 "https://graph.microsoft.com/v1.0/groups",
                 headers=self.get_headers(),
                 json=group_data,
             )
-            
+
             # Handle rate limiting
             if response.status_code == 429:
                 self._handle_rate_limit_response(response)
@@ -450,7 +514,7 @@ class EntraTestManager:
                     headers=self.get_headers(),
                     json=group_data,
                 )
-            
+
             # Handle 401 - token expired
             if response.status_code == 401:
                 logger.info("Got 401, refreshing access token...")
@@ -460,7 +524,7 @@ class EntraTestManager:
                     headers=self.get_headers(),
                     json=group_data,
                 )
-            
+
             response.raise_for_status()
             return response.json()
 
@@ -497,7 +561,9 @@ class EntraTestManager:
                     break
                 else:
                     # Empty list means we were throttled and should retry
-                    logger.info(f"Retrying batch {i // batch_size + 1} (attempt {retry + 2}/{max_retries})...")
+                    logger.info(
+                        f"Retrying batch {i // batch_size + 1} (attempt {retry + 2}/{max_retries})..."
+                    )
                     continue
 
         logger.info(f"Successfully created {len(all_created_users)} users")
@@ -518,7 +584,7 @@ class EntraTestManager:
 
         logger.info(f"Creating {num_root_groups} root-level groups...")
         for i in range(num_root_groups):
-            group_data = self.generate_fake_group_data(i + 1, None, self.cleanup_tag)
+            group_data = self.generate_fake_group_data(i + 1, self.cleanup_tag, None)
             created_group = self.create_group(group_data)
 
             if created_group:
@@ -541,7 +607,7 @@ class EntraTestManager:
             if not eligible_parents:
                 # Create more root groups if no eligible parents
                 group_data = self.generate_fake_group_data(
-                    current_group_index + 1, None, self.cleanup_tag
+                    current_group_index + 1, self.cleanup_tag, None
                 )
                 created_group = self.create_group(group_data)
                 if created_group:
@@ -570,8 +636,8 @@ class EntraTestManager:
 
                     group_data = self.generate_fake_group_data(
                         current_group_index + 1,
-                        parent_group["displayName"],
                         self.cleanup_tag,
+                        parent_group["displayName"],
                     )
                     created_group = self.create_group(group_data)
 
@@ -641,7 +707,7 @@ class EntraTestManager:
         try:
             # Wait if we're globally rate limited
             self._wait_for_rate_limit()
-            
+
             payload = {"@odata.id": f"https://graph.microsoft.com/v1.0/users/{user_id}"}
 
             response = self.session.post(
@@ -649,7 +715,7 @@ class EntraTestManager:
                 headers=self.get_headers(),
                 json=payload,
             )
-            
+
             # Handle rate limiting
             if response.status_code == 429:
                 self._handle_rate_limit_response(response)
@@ -659,7 +725,7 @@ class EntraTestManager:
                     headers=self.get_headers(),
                     json=payload,
                 )
-            
+
             # Handle 401 - token expired
             if response.status_code == 401:
                 logger.info("Got 401, refreshing access token...")
@@ -669,7 +735,7 @@ class EntraTestManager:
                     headers=self.get_headers(),
                     json=payload,
                 )
-            
+
             response.raise_for_status()
             return True
 
@@ -679,9 +745,11 @@ class EntraTestManager:
             logger.warning(f"Failed to add user {user_id} to group {group_id}: {e}")
             return False
 
-    def generate_all_test_data(self, skip_users=False, skip_groups=False, skip_memberships=False):
+    def generate_all_test_data(
+        self, skip_users=False, skip_groups=False, skip_memberships=False
+    ):
         """Main method to generate all test data
-        
+
         Args:
             skip_users: Skip user creation
             skip_groups: Skip group creation
@@ -692,7 +760,7 @@ class EntraTestManager:
 
         logger.info("Starting test data generation...")
         logger.info(f"Cleanup tag: {self.cleanup_tag}")
-        
+
         operations = []
         if not skip_users:
             operations.append(f"{self.generation_config.total_users} users")
@@ -700,9 +768,9 @@ class EntraTestManager:
             operations.append(f"{self.generation_config.total_groups} groups")
         if not skip_memberships:
             operations.append("group memberships")
-            
+
         logger.info(f"Configuration: Creating {', '.join(operations)}")
-        
+
         if skip_users:
             logger.info("Skipping user creation as requested")
         if skip_groups:
@@ -720,7 +788,9 @@ class EntraTestManager:
             else:
                 # Try to find existing users with this tag for membership assignment
                 if not skip_memberships:
-                    logger.info(f"Looking for existing users with tag {self.cleanup_tag}...")
+                    logger.info(
+                        f"Looking for existing users with tag {self.cleanup_tag}..."
+                    )
                     self.created_users = self.find_users_by_tag(self.cleanup_tag)
                     logger.info(f"Found {len(self.created_users)} existing users")
 
@@ -730,7 +800,9 @@ class EntraTestManager:
             else:
                 # Try to find existing groups with this tag for membership assignment
                 if not skip_memberships:
-                    logger.info(f"Looking for existing groups with tag {self.cleanup_tag}...")
+                    logger.info(
+                        f"Looking for existing groups with tag {self.cleanup_tag}..."
+                    )
                     self.created_groups = self.find_groups_by_tag(self.cleanup_tag)
                     logger.info(f"Found {len(self.created_groups)} existing groups")
 
@@ -752,7 +824,9 @@ class EntraTestManager:
         print("=" * 60)
         print(f"Cleanup tag: {self.cleanup_tag}")
         print(f"Users created: {len(self.created_users)}")
-        print(f"Groups created: {len(self.created_groups)} (prefixed with 'TEST-{self.cleanup_tag}-')")
+        print(
+            f"Groups created: {len(self.created_groups)} (prefixed with 'TEST-{self.cleanup_tag}-')"
+        )
         print(
             f"Group hierarchy depth: {max([self._get_group_depth(g['id']) for g in self.created_groups], default=0)}"
         )
@@ -917,8 +991,119 @@ class EntraTestManager:
 
         return sorted(list(cleanup_tags))
 
+    def delete_users_batch(self, users: List[Dict], max_retries: int = 3) -> int:
+        """Delete users in batch using Graph API batch endpoint with retry logic"""
+        if not users:
+            return 0
+
+        deleted_count = 0
+
+        for retry in range(max_retries):
+            failed_count = 0
+            throttled_count = 0
+
+            # Prepare batch request
+            requests_data = []
+            for i, user in enumerate(users):
+                requests_data.append(
+                    {
+                        "id": str(i + 1),
+                        "method": "DELETE",
+                        "url": f"/users/{user['id']}",
+                    }
+                )
+
+            batch_payload = {"requests": requests_data}
+
+            try:
+                response = self._make_api_request(
+                    "POST",
+                    "https://graph.microsoft.com/v1.0/$batch",
+                    json=batch_payload,
+                )
+
+                if response.status_code != 200:
+                    logger.error(
+                        f"Batch delete request failed with status {response.status_code}"
+                    )
+                    try:
+                        error_json = response.json()
+                        logger.error(f"Error response: {error_json}")
+                    except:
+                        logger.error(f"Response text: {response.text[:1000]}")
+                    return deleted_count
+
+                batch_response = response.json()
+                retry_after_seconds = None
+
+                for i, resp in enumerate(batch_response.get("responses", [])):
+                    if (
+                        resp.get("status") == 204
+                    ):  # 204 No Content is success for DELETE
+                        deleted_count += 1
+                    elif resp.get("status") == 429:
+                        throttled_count += 1
+                        failed_count += 1
+                        # Check for Retry-After header in individual response
+                        if throttled_count == 1:
+                            resp_headers = resp.get("headers", {})
+                            retry_after = resp_headers.get("Retry-After")
+                            if retry_after:
+                                try:
+                                    retry_after_seconds = int(retry_after)
+                                    logger.warning(
+                                        f"Batch throttled (429). Retry-After: {retry_after_seconds} seconds"
+                                    )
+                                except ValueError:
+                                    retry_after_seconds = 150
+                                    logger.warning(
+                                        f"Batch throttled (429). Using default 150 seconds"
+                                    )
+                            else:
+                                retry_after_seconds = 150
+                                logger.warning(
+                                    f"Batch throttled (429) without Retry-After header. Using 150 seconds"
+                                )
+                    else:
+                        failed_count += 1
+                        if (
+                            failed_count - throttled_count <= 3
+                        ):  # Log first 3 non-throttle failures
+                            logger.error(
+                                f"Failed to delete user {users[i]['displayName']}: Status {resp.get('status')}"
+                            )
+                            if "body" in resp and "error" in resp["body"]:
+                                logger.error(f"Error details: {resp['body']['error']}")
+
+                if failed_count - throttled_count > 3:
+                    logger.info(
+                        f"Total failures in batch: {failed_count} ({throttled_count} throttled)"
+                    )
+
+                # If all requests were throttled and we haven't exhausted retries, wait and retry
+                if (
+                    throttled_count > 0
+                    and deleted_count == 0
+                    and retry < max_retries - 1
+                ):
+                    wait_time = retry_after_seconds if retry_after_seconds else 150
+                    logger.info(
+                        f"All requests throttled. Waiting {wait_time} seconds before retry {retry + 2}/{max_retries}..."
+                    )
+                    time.sleep(wait_time)
+                    continue  # Retry the batch
+
+                # If we got some deletions or exhausted retries, return
+                return deleted_count
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Batch user deletion failed: {e}")
+                return deleted_count
+
+        return deleted_count
+
     def delete_users(self, users: List[Dict], confirm: bool = False) -> int:
-        """Delete specified users"""
+        """Delete specified users using batch operations"""
         if not users:
             logger.info("No users to delete")
             return 0
@@ -933,28 +1118,143 @@ class EntraTestManager:
                 logger.info(f"  ... and {len(users) - 10} more")
             return 0
 
-        logger.info(f"Deleting {len(users)} users...")
+        logger.info(f"Deleting {len(users)} users in batches...")
+        total_deleted = 0
+        batch_size = self.generation_config.batch_size if self.generation_config else 20
+
+        # Process in batches
+        for i in range(0, len(users), batch_size):
+            batch_end = min(i + batch_size, len(users))
+            batch_users = users[i:batch_end]
+
+            logger.info(
+                f"Deleting user batch {i // batch_size + 1}/{(len(users) + batch_size - 1) // batch_size} ({len(batch_users)} users)"
+            )
+
+            deleted = self.delete_users_batch(batch_users)
+            total_deleted += deleted
+
+            if deleted < len(batch_users):
+                logger.warning(
+                    f"Only deleted {deleted} out of {len(batch_users)} users in this batch"
+                )
+
+        logger.info(f"Successfully deleted {total_deleted} users")
+        return total_deleted
+
+    def delete_groups_batch(self, groups: List[Dict], max_retries: int = 3) -> int:
+        """Delete groups in batch using Graph API batch endpoint with retry logic"""
+        if not groups:
+            return 0
+
         deleted_count = 0
 
-        for i, user in enumerate(users, 1):
-            try:
-                response = self.session.delete(
-                    f"https://graph.microsoft.com/v1.0/users/{user['id']}",
-                    headers=self.get_headers(),
-                )
-                response.raise_for_status()
+        for retry in range(max_retries):
+            failed_count = 0
+            throttled_count = 0
 
-                logger.info(f"Deleted user {i}/{len(users)}: {user['displayName']}")
-                deleted_count += 1
+            # Prepare batch request
+            requests_data = []
+            for i, group in enumerate(groups):
+                requests_data.append(
+                    {
+                        "id": str(i + 1),
+                        "method": "DELETE",
+                        "url": f"/groups/{group['id']}",
+                    }
+                )
+
+            batch_payload = {"requests": requests_data}
+
+            try:
+                response = self._make_api_request(
+                    "POST",
+                    "https://graph.microsoft.com/v1.0/$batch",
+                    json=batch_payload,
+                )
+
+                if response.status_code != 200:
+                    logger.error(
+                        f"Batch delete request failed with status {response.status_code}"
+                    )
+                    try:
+                        error_json = response.json()
+                        logger.error(f"Error response: {error_json}")
+                    except:
+                        logger.error(f"Response text: {response.text[:1000]}")
+                    return deleted_count
+
+                batch_response = response.json()
+                retry_after_seconds = None
+
+                for i, resp in enumerate(batch_response.get("responses", [])):
+                    if (
+                        resp.get("status") == 204
+                    ):  # 204 No Content is success for DELETE
+                        deleted_count += 1
+                    elif resp.get("status") == 429:
+                        throttled_count += 1
+                        failed_count += 1
+                        # Check for Retry-After header in individual response
+                        if throttled_count == 1:
+                            resp_headers = resp.get("headers", {})
+                            retry_after = resp_headers.get("Retry-After")
+                            if retry_after:
+                                try:
+                                    retry_after_seconds = int(retry_after)
+                                    logger.warning(
+                                        f"Batch throttled (429). Retry-After: {retry_after_seconds} seconds"
+                                    )
+                                except ValueError:
+                                    retry_after_seconds = 150
+                                    logger.warning(
+                                        f"Batch throttled (429). Using default 150 seconds"
+                                    )
+                            else:
+                                retry_after_seconds = 150
+                                logger.warning(
+                                    f"Batch throttled (429) without Retry-After header. Using 150 seconds"
+                                )
+                    else:
+                        failed_count += 1
+                        if (
+                            failed_count - throttled_count <= 3
+                        ):  # Log first 3 non-throttle failures
+                            logger.error(
+                                f"Failed to delete group {groups[i]['displayName']}: Status {resp.get('status')}"
+                            )
+                            if "body" in resp and "error" in resp["body"]:
+                                logger.error(f"Error details: {resp['body']['error']}")
+
+                if failed_count - throttled_count > 3:
+                    logger.info(
+                        f"Total failures in batch: {failed_count} ({throttled_count} throttled)"
+                    )
+
+                # If all requests were throttled and we haven't exhausted retries, wait and retry
+                if (
+                    throttled_count > 0
+                    and deleted_count == 0
+                    and retry < max_retries - 1
+                ):
+                    wait_time = retry_after_seconds if retry_after_seconds else 150
+                    logger.info(
+                        f"All requests throttled. Waiting {wait_time} seconds before retry {retry + 2}/{max_retries}..."
+                    )
+                    time.sleep(wait_time)
+                    continue  # Retry the batch
+
+                # If we got some deletions or exhausted retries, return
+                return deleted_count
 
             except requests.exceptions.RequestException as e:
-                logger.error(f"Failed to delete user {user['displayName']}: {e}")
+                logger.error(f"Batch group deletion failed: {e}")
+                return deleted_count
 
-        logger.info(f"Successfully deleted {deleted_count} users")
         return deleted_count
 
     def delete_groups(self, groups: List[Dict], confirm: bool = False) -> int:
-        """Delete specified groups"""
+        """Delete specified groups using batch operations"""
         if not groups:
             logger.info("No groups to delete")
             return 0
@@ -967,25 +1267,29 @@ class EntraTestManager:
                 logger.info(f"  ... and {len(groups) - 10} more")
             return 0
 
-        logger.info(f"Deleting {len(groups)} groups...")
-        deleted_count = 0
+        logger.info(f"Deleting {len(groups)} groups in batches...")
+        total_deleted = 0
+        batch_size = self.generation_config.batch_size if self.generation_config else 20
 
-        for i, group in enumerate(groups, 1):
-            try:
-                response = self.session.delete(
-                    f"https://graph.microsoft.com/v1.0/groups/{group['id']}",
-                    headers=self.get_headers(),
+        # Process in batches
+        for i in range(0, len(groups), batch_size):
+            batch_end = min(i + batch_size, len(groups))
+            batch_groups = groups[i:batch_end]
+
+            logger.info(
+                f"Deleting group batch {i // batch_size + 1}/{(len(groups) + batch_size - 1) // batch_size} ({len(batch_groups)} groups)"
+            )
+
+            deleted = self.delete_groups_batch(batch_groups)
+            total_deleted += deleted
+
+            if deleted < len(batch_groups):
+                logger.warning(
+                    f"Only deleted {deleted} out of {len(batch_groups)} groups in this batch"
                 )
-                response.raise_for_status()
 
-                logger.info(f"Deleted group {i}/{len(groups)}: {group['displayName']}")
-                deleted_count += 1
-
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Failed to delete group {group['displayName']}: {e}")
-
-        logger.info(f"Successfully deleted {deleted_count} groups")
-        return deleted_count
+        logger.info(f"Successfully deleted {total_deleted} groups")
+        return total_deleted
 
     def cleanup_by_tag(
         self,
@@ -1069,11 +1373,9 @@ def main():
     parser.add_argument(
         "--total-users", type=int, default=1000, help="Total number of users to create"
     )
-    
+
     # Options to skip certain operations
-    parser.add_argument(
-        "--skip-users", action="store_true", help="Skip user creation"
-    )
+    parser.add_argument("--skip-users", action="store_true", help="Skip user creation")
     parser.add_argument(
         "--skip-groups", action="store_true", help="Skip group creation"
     )
@@ -1081,7 +1383,8 @@ def main():
         "--skip-memberships", action="store_true", help="Skip membership assignment"
     )
     parser.add_argument(
-        "--use-existing-tag", help="Use an existing cleanup tag to find users/groups for membership assignment"
+        "--use-existing-tag",
+        help="Use an existing cleanup tag to find users/groups for membership assignment",
     )
     parser.add_argument(
         "--avg-subgroups-per-group",
@@ -1176,7 +1479,7 @@ def main():
         )
 
         manager = EntraTestManager(entra_config, generation_config)
-        
+
         # Override cleanup tag if using existing one
         if args.use_existing_tag:
             manager.cleanup_tag = args.use_existing_tag
@@ -1186,7 +1489,7 @@ def main():
             manager.generate_all_test_data(
                 skip_users=args.skip_users,
                 skip_groups=args.skip_groups,
-                skip_memberships=args.skip_memberships
+                skip_memberships=args.skip_memberships,
             )
         except Exception as e:
             logger.error(f"Generation failed: {e}")
