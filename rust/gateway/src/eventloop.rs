@@ -79,7 +79,7 @@ enum PortalCommand {
 impl Eventloop {
     pub(crate) fn new(
         tunnel: GatewayTunnel,
-        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+        mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
     ) -> Result<Self> {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
@@ -637,7 +637,7 @@ impl Eventloop {
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+    mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
 ) {
@@ -661,7 +661,7 @@ async fn phoenix_channel_event_loop(
             }
             Either::Left((
                 Ok(
-                    phoenix_channel::Event::SuccessResponse { res: (), .. }
+                    phoenix_channel::Event::SuccessResponse { .. }
                     | phoenix_channel::Event::HeartbeatSent
                     | phoenix_channel::Event::JoinedRoom { .. },
                 ),

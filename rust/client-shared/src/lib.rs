@@ -57,7 +57,7 @@ impl Session {
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+        portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
