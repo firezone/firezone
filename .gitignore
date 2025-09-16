@@ -27,5 +27,8 @@ gha-creds-*.json
 # Ignore local `direnv` cache
 .direnv
 
+# Ignore personal spelling dictionary
+/cspell.json
+
 # Ignore build data for sourcekit-lsp (Swift code)
 buildServer.json

@@ -1,21 +1,49 @@
 # Creates a macOS debug build
 
-PLATFORM=macOS
+PLATFORM?=macOS
 ARCH=$(shell uname -m)
+CONFIGURATION?=Debug
+
+# Path to rust target directory (relative to this Makefile)
+RUST_TARGET_DIR=$(abspath ../../rust/target)
 
 # Set consistent environment to prevent Rust rebuilds
 # This must match the Xcode project setting
 export MACOSX_DEPLOYMENT_TARGET=12.4
 
-build-macos:
-	echo "Building debug build for ${PLATFORM}, ${ARCH}"
-	@xcodebuild build -scheme Firezone -sdk macosx -destination 'platform=${PLATFORM},arch=${ARCH}'
+# Map architecture names for Rust targets
+ifeq ($(ARCH),arm64)
+	RUST_TARGET=aarch64-apple-darwin
+else
+	RUST_TARGET=x86_64-apple-darwin
+endif
+
+# Get the current Git SHA for build identification
+GIT_SHA=$(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
+
+# Default target: build and install
+.PHONY: all
+all: build install
 
 # Info for sourcekit-lsp (LSP server for other IDEs)
 lsp:
 	@xcode-build-server config \
         -project Firezone.xcodeproj \
         -scheme Firezone
+
+.PHONY: build
+build:
+	@echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
+	@echo "Git SHA: ${GIT_SHA}"
+	@xcodebuild build \
+		-project Firezone.xcodeproj \
+		-scheme Firezone \
+		-configuration $(CONFIGURATION) \
+		-sdk macosx \
+		-destination 'platform=${PLATFORM},arch=${ARCH}' \
+		CONNLIB_TARGET_DIR="${RUST_TARGET_DIR}" \
+		GIT_SHA="${GIT_SHA}" \
+		ONLY_ACTIVE_ARCH=YES
 
 .PHONY: install
 install:
@@ -32,9 +60,18 @@ install:
 	@echo "Launching Firezone..."
 	@open /Applications/Firezone.app
 
+.PHONY: clean
 clean:
-	@xcodebuild clean -scheme Firezone -sdk macosx -destination 'platform=${PLATFORM},arch=${ARCH}'
-	cd ../../rust/apple-client-ffi && rm -rf ./Connlib.xcframework
+	@echo "Cleaning Xcode build"
+	@xcodebuild clean \
+		-project Firezone.xcodeproj \
+		-scheme Firezone \
+		-configuration $(CONFIGURATION) \
+		-sdk macosx
+	@echo "Cleaning Rust build artifacts"
+	@cd ../../rust/client-ffi && cargo clean
+	@echo "Removing Generated bindings"
+	@rm -rf FirezoneNetworkExtension/Connlib/Generated
 
 .PHONY: format
 format:
@@ -42,6 +79,14 @@ format:
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format format --in-place --parallel
 	@echo "Linting Swift code..."
 	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format lint --parallel --strict
+
+.PHONY: setup
+setup:
+	@echo "Installing required Rust targets..."
+	@rustup target add aarch64-apple-darwin x86_64-apple-darwin
+	@rustup target add aarch64-apple-ios x86_64-apple-ios
+	@echo "Setup complete!"
+
 .PHONY: show-client-log
 show-client-log:
 	@echo "Opening latest Firezone client log..."

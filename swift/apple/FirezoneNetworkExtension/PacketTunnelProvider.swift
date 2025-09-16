@@ -17,6 +17,8 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
+  private var hasReceivedFirstConfig = false
+  private var networkSettings: NetworkSettings?
 
   enum LogExportState {
     case inProgress(TunnelLogArchive)
@@ -35,6 +37,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     super.init()
 
+    // Log version information immediately on startup
+    let version =
+      Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+    let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
+    Log.info(
+      "NetworkExtension starting - Version: \(version), Build: \(build), Bundle ID: \(bundleId)")
+
     migrateFirezoneId()
     self.tunnelConfiguration = TunnelConfiguration.tryLoad()
   }
@@ -51,9 +61,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // Dummy start to get the extension running on macOS after upgrade
     if options?["dryRun"] as? Bool == true {
+      Log.info("Dry run startup requested - extension awakened but not starting tunnel")
       completionHandler(nil)
       return
     }
+
+    // Log version on actual tunnel start
+    let version =
+      Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
+    let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
+    Log.info("Starting tunnel - Version: \(version), Build: \(build)")
 
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
     // the old system settings-based config will still be present and the new configuration will be empty.
@@ -93,16 +110,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       let internetResourceEnabled =
         enabled != nil ? enabled == "true" : (tunnelConfiguration?.internetResourceEnabled ?? false)
 
+      // Create the adapter with all configuration
       let adapter = Adapter(
-        apiURL: apiURL,
+        apiUrl: apiURL,
         token: token,
-        id: id,
-        logFilter: logFilter,
+        deviceId: id,
         accountSlug: accountSlug,
+        logFilter: logFilter,
         internetResourceEnabled: internetResourceEnabled,
         packetTunnelProvider: self
       )
 
+      // Start the adapter
       try adapter.start()
 
       self.adapter = adapter
@@ -149,11 +168,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       case .setConfiguration(let tunnelConfiguration):
         tunnelConfiguration.save()
         self.tunnelConfiguration = tunnelConfiguration
+
         self.adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
         completionHandler?(nil)
 
       case .signOut:
         do { try Token.delete() } catch { Log.error(error) }
+        completionHandler?(nil)
       case .getResourceList(let hash):
         guard let adapter = adapter
         else {
@@ -163,6 +184,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
           return
         }
 
+        // Use hash comparison to only return resources if they've changed
         adapter.getResourcesIfVersionDifferentFrom(hash: hash) { resourceListJSON in
           completionHandler?(resourceListJSON?.data(using: .utf8))
         }
@@ -359,5 +381,70 @@ extension TunnelConfiguration {
       logFilter: logFilter,
       internetResourceEnabled: internetResourceEnabled
     )
+  }
+}
+
+// MARK: - Event Handlers from Adapter
+
+extension PacketTunnelProvider {
+  func onSetInterfaceConfig(
+    tunnelAddressIPv4: String,
+    tunnelAddressIPv6: String,
+    searchDomain: String?,
+    dnsAddresses: [String],
+    routeListv4: String,
+    routeListv6: String
+  ) {
+    Log.log("Setting interface config")
+
+    // Create network settings and apply configuration
+    let networkSettings = NetworkSettings(packetTunnelProvider: self)
+    networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
+    networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
+    networkSettings.dnsAddresses = dnsAddresses
+    networkSettings.setSearchDomain(domain: searchDomain)
+
+    // Store for later use (e.g., DNS cache flush on resource updates)
+    self.networkSettings = networkSettings
+
+    // Parse and set IPv4 routes
+    if let routesData = routeListv4.data(using: .utf8),
+      let cidrs = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routesData)
+    {
+      networkSettings.routes4 = cidrs.compactMap({ $0.asNEIPv4Route })
+    }
+
+    // Parse and set IPv6 routes
+    if let routesData = routeListv6.data(using: .utf8),
+      let cidrs = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routesData)
+    {
+      networkSettings.routes6 = cidrs.compactMap({ $0.asNEIPv6Route })
+    }
+
+    networkSettings.apply()
+  }
+
+  func onUpdateResources(resourceList: String) {
+    // The adapter now handles storing and hash comparison for the resource list
+    // The resourceList is already stored in the adapter as resourceListJSON
+    // and will be used for hash comparison in getResourcesIfVersionDifferentFrom
+    Log.log("Resources updated, stored in adapter for hash comparison")
+
+    // Apply network settings to flush DNS cache when resources change
+    // This ensures new DNS resources are immediately resolvable
+    if let networkSettings = networkSettings {
+      Log.log("Reapplying network settings to flush DNS cache after resource update")
+      networkSettings.apply()
+    }
+  }
+
+  func onDisconnect(error: String?) {
+    if let errorMessage = error {
+      Log.warning("Disconnecting with error: \(errorMessage)")
+    } else {
+      Log.info("Disconnecting")
+    }
+    // Handle disconnection
+    cancelTunnelWithError(nil)
   }
 }
