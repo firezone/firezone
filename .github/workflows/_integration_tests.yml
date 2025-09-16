@@ -170,16 +170,6 @@ jobs:
           sleep 3
 
           docker compose up veth-config
-      - name: Add 50ms simulated API latency
-        run: |
-          docker compose exec -T -u root api sh -c 'apk add --update --no-cache iproute2-tc'
-          docker compose exec -T -u root api sh -c 'tc qdisc add dev eth0 root netem delay 50ms'
-
-      - name: Add 10ms simulated gateway latency
-        run: |
-          # compatibility test images won't have the `tc` command
-          docker compose exec -T gateway sh -c 'apk add --update --no-cache iproute2-tc'
-          docker compose exec -T gateway sh -c 'tc qdisc add dev eth0 root netem delay 10ms'
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
 
