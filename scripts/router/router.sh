@@ -64,6 +64,14 @@ if [ -n "${PORT_FORWARDS:-}" ]; then
     done
 fi
 
+# Add configurable latency if specified
+if [ -n "${NETWORK_LATENCY_MS:-}" ]; then
+    LATENCY=$((NETWORK_LATENCY_MS / 2)) # Latency is only applied to outbound packets. To achieve the actual configured latency, we apply half of it to each interface.
+
+    tc qdisc add dev internet root netem delay "${LATENCY}ms"
+    tc qdisc add dev internal root netem delay "${LATENCY}ms"
+fi
+
 echo "-----------------------------------------------------------------------------------------------"
 cat "$CONFIG_FILE"
 echo "-----------------------------------------------------------------------------------------------"
