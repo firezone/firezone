@@ -1,6 +1,6 @@
 //
 //  Adapter.swift
-//  (c) 2024 Firezone, Inc.
+//  (c) 2024-2025 Firezone, Inc.
 //  LICENSE: Apache-2.0
 //
 
@@ -14,7 +14,7 @@ import OSLog
 
 enum AdapterError: Error {
   /// Failure to perform an operation in such state.
-  case invalidSession(WrappedSession?)
+  case invalidSession(Session?)
 
   /// connlib failed to start
   case connlibConnectError(String)
@@ -22,6 +22,8 @@ enum AdapterError: Error {
   case setDnsError(String)
 
   case setDisabledResourcesError(String)
+
+  case tunSetupFailed
 
   var localizedDescription: String {
     switch self {
@@ -34,39 +36,35 @@ enum AdapterError: Error {
       return "failed to set new DNS serversn: \(error)"
     case .setDisabledResourcesError(let error):
       return "failed to set new disabled resources: \(error)"
+    case .tunSetupFailed:
+      return "TUN device setup failed after all retry attempts"
     }
   }
 }
 
 // Loosely inspired from WireGuardAdapter from WireGuardKit
-class Adapter {
-  typealias StartTunnelCompletionHandler = ((AdapterError?) -> Void)
+/// Adapter using UniFFI polling-based event handling
+class Adapter: @unchecked Sendable {
+  // Configuration constants
+  private static let tunSetupMaxAttempts = 10
+  private static let tunSetupRetryDelayMilliseconds: UInt64 = 100  // 100ms
+  private static let eventPollingLogInterval = 100  // Log every N poll attempts
 
-  private var callbackHandler: CallbackHandler
-
-  private var session: WrappedSession?
-
-  // Our local copy of the accountSlug
-  private var accountSlug: String
-
-  /// Network settings
-  private var networkSettings: NetworkSettings?
-
+  private var session: Session?
+  private var eventTask: Task<Void, Never>?
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
 
-  /// Used to avoid path update callback cycles on iOS
-  #if os(iOS)
-    private var gateways: [Network.NWEndpoint] = []
-  #endif
-
   #if os(macOS)
     /// Used for finding system DNS resolvers on macOS when network conditions have changed.
     private let systemConfigurationResolvers = SystemConfigurationResolvers()
   #endif
+  init(packetTunnelProvider: PacketTunnelProvider) {
+    self.packetTunnelProvider = packetTunnelProvider
+  }
 
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
@@ -134,7 +132,7 @@ class Adapter {
         // out of a different interface even when 0.0.0.0 is used as the source.
         // If our primary interface changes, we can be certain the old socket shouldn't be
         // used anymore.
-        session?.reset("primary network path changed")
+        session?.reset(reason: "primary network path changed")
       }
 
       setSystemDefaultResolvers(path)
@@ -144,7 +142,7 @@ class Adapter {
   }
 
   /// Currently disabled resources
-  private var internetResourceEnabled: Bool
+  private var internetResourceEnabled: Bool = false
 
   /// Cache of internet resource
   private var internetResource: Resource?
@@ -152,32 +150,78 @@ class Adapter {
   /// Keep track of resources
   private var resourceListJSON: String?
 
-  /// Starting parameters
-  private let apiURL: String
-  private let token: Token
-  private let id: String
-  private let logFilter: String
-  private let connlibLogFolderPath: String
+  /// Trigger TUN device setup (called after network interface is configured)
+  /// This should be called from onSetInterfaceConfig after applying network settings
+  func setupTunDevice() {
+    guard let session = session else {
+      Log.error(AdapterError.invalidSession(nil))
+      return
+    }
 
-  init(
-    apiURL: String,
+    // Try to set TUN with retry logic like Android
+    Task {
+      var tunSetSuccessfully = false
+      for attempt in 1...Self.tunSetupMaxAttempts {
+        do {
+          try session.setTunFromSearch()
+          Log.log("TUN device set successfully on attempt \(attempt)")
+          tunSetSuccessfully = true
+          break
+        } catch {
+          Log.warning("TUN setup attempt \(attempt) failed: \(error)")
+          if attempt < Self.tunSetupMaxAttempts {
+            try await Task.sleep(nanoseconds: Self.tunSetupRetryDelayMilliseconds * 1_000_000)
+          }
+        }
+      }
+
+      if !tunSetSuccessfully {
+        Log.error(AdapterError.tunSetupFailed)
+      }
+    }
+  }
+
+  func start(
+    apiUrl: String,
     token: Token,
-    id: String,
-    logFilter: String,
+    deviceId: String,
     accountSlug: String,
-    internetResourceEnabled: Bool,
-    packetTunnelProvider: PacketTunnelProvider
-  ) {
-    self.apiURL = apiURL
-    self.token = token
-    self.id = id
-    self.packetTunnelProvider = packetTunnelProvider
-    self.callbackHandler = CallbackHandler()
-    self.logFilter = logFilter
-    self.accountSlug = accountSlug
-    self.connlibLogFolderPath = SharedAccess.connlibLogFolderURL?.path ?? ""
-    self.networkSettings = nil
-    self.internetResourceEnabled = internetResourceEnabled
+    logFilter: String
+  ) throws {
+    Log.log("Adapter.start: Creating session for account: \(accountSlug)")
+
+    // Get device metadata
+    let deviceName = DeviceMetadata.getDeviceName()
+    let osVersion = DeviceMetadata.getOSVersion()
+    let deviceInfo = try JSONEncoder().encode(DeviceMetadata.deviceInfo())
+    let deviceInfoStr = String(data: deviceInfo, encoding: .utf8) ?? "{}"
+    let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
+
+    // Create the session
+    do {
+      session = try Session.newApple(
+        apiUrl: apiUrl,
+        token: token.description,
+        deviceId: deviceId,
+        accountSlug: accountSlug,
+        deviceName: deviceName,
+        osVersion: osVersion,
+        logDir: logDir,
+        logFilter: logFilter,
+        deviceInfo: deviceInfoStr
+      )
+    } catch {
+      Log.error(error)
+      throw AdapterError.connlibConnectError(String(describing: error))
+    }
+
+    // Configure DNS and path monitoring
+    startNetworkPathMonitoring()
+
+    // Start the event polling loop
+    startEventPolling()
+
+    Log.log("Adapter.start: Session started successfully")
   }
 
   // Could happen abruptly if the process is killed.
@@ -188,38 +232,49 @@ class Adapter {
     networkMonitor?.cancel()
   }
 
-  /// Start the tunnel.
-  func start() throws {
-    Log.log("Adapter.start")
-
-    guard session == nil else {
-      throw AdapterError.invalidSession(session)
+  private func startEventPolling() {
+    if let existingTask = eventTask {
+      existingTask.cancel()
     }
 
-    callbackHandler.delegate = self
+    eventTask = Task {
+      guard let session = session else {
+        Log.log("No session available for event polling")
+        return
+      }
 
-    Log.log("Adapter.start: Starting connlib")
-    do {
-      let jsonEncoder = JSONEncoder()
-      jsonEncoder.keyEncodingStrategy = .convertToSnakeCase
+      Log.log("Starting event polling loop")
+      var eventCount = 0
+      var pollAttempts = 0
 
-      // Grab a session pointer
-      session = try WrappedSession.connect(
-        apiURL,
-        "\(token)",
-        "\(id)",
-        accountSlug,
-        DeviceMetadata.getDeviceName(),
-        DeviceMetadata.getOSVersion(),
-        connlibLogFolderPath,
-        logFilter,
-        callbackHandler,
-        String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!
-      )
-    } catch let error {
-      // `toString` needed to deep copy the string and avoid a possible dangling pointer
-      let msg = (error as? RustString)?.toString() ?? "Unknown error"
-      throw AdapterError.connlibConnectError(msg)
+      while !Task.isCancelled {
+        pollAttempts += 1
+
+        do {
+          // Poll for next event
+          if let event = try await session.nextEvent() {
+            eventCount += 1
+            Log.log("Event received: \(String(describing: event))")
+            await handleEvent(event)
+          } else {
+            // No event returned - this indicates the session has ended
+            Log.log("Event polling: no event returned, cancelling task")
+            eventTask?.cancel()
+            break
+          }
+        } catch {
+          Log.error(error)
+          // On error, stop polling gracefully like Android does
+          break
+        }
+
+        // Log periodically to show we're still active
+        if pollAttempts % Self.eventPollingLogInterval == 0 {
+          Log.log("Event polling active: \(eventCount) events processed")
+        }
+      }
+
+      Log.log("Event polling ended after \(eventCount) events")
     }
   }
 
@@ -235,11 +290,24 @@ class Adapter {
   func stop() {
     Log.log("Adapter.stop")
 
-    // Assigning `nil` will invoke `Drop` on the Rust side
-    session = nil
+    // Cancel event polling
+    eventTask?.cancel()
+    eventTask = nil
 
+    // Stop network monitoring
     networkMonitor?.cancel()
     networkMonitor = nil
+
+    // Disconnect the session
+    if let session = session {
+      do {
+        try session.disconnect()
+      } catch {
+        Log.error(error)
+      }
+    }
+
+    session = nil
   }
 
   /// Get the current set of resources in the completionHandler, only returning
@@ -260,8 +328,9 @@ class Adapter {
     }
   }
 
+  /// Reset the session and optionally update DNS resolvers
   func reset(reason: String, path: Network.NWPath? = nil) {
-    session?.reset(reason)
+    session?.reset(reason: reason)
 
     if let path = (path ?? lastPath) {
       setSystemDefaultResolvers(path)
@@ -302,104 +371,79 @@ class Adapter {
     }
 
     do {
-      try session?.setDisabledResources(toSet)
+      try session?.setDisabledResources(disabledResources: toSet)
     } catch let error {
       // `toString` needed to deep copy the string and avoid a possible dangling pointer
-      let msg = (error as? RustString)?.toString() ?? "Unknown error"
-      Log.error(AdapterError.setDisabledResourcesError(msg))
+      Log.error(AdapterError.setDisabledResourcesError(String(describing: error)))
     }
   }
-}
 
-// MARK: Responding to path updates
+  // MARK: - Event handling
 
-extension Adapter {
-  private func beginPathMonitoring() {
-    let networkMonitor = NWPathMonitor()
-    networkMonitor.pathUpdateHandler = self.pathUpdateHandler
-    networkMonitor.start(queue: self.workQueue)
-  }
-}
+  private func handleEvent(_ event: Event) async {
+    switch event {
+    case .tunInterfaceUpdated(
+      let ipv4, let ipv6, let dns, let searchDomain, let ipv4Routes, let ipv6Routes):
+      Log.log("Received TunInterfaceUpdated event")
 
-// MARK: Implementing CallbackHandlerDelegate
-
-extension Adapter: CallbackHandlerDelegate {
-  func onSetInterfaceConfig(
-    tunnelAddressIPv4: String,
-    tunnelAddressIPv6: String,
-    searchDomain: String?,
-    dnsAddresses: [String],
-    routeListv4: String,
-    routeListv6: String
-  ) {
-    // This is a queued callback to ensure ordering
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      let networkSettings =
-        networkSettings ?? NetworkSettings(packetTunnelProvider: packetTunnelProvider)
-
-      guard let data4 = routeListv4.data(using: .utf8),
-        let data6 = routeListv6.data(using: .utf8),
-        let decoded4 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data4),
-        let decoded6 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data6)
-      else {
-        fatalError("Could not decode route list from connlib")
+      // Parse DNS servers from JSON
+      let dnsAddresses: [String]
+      if let data = dns.data(using: .utf8),
+        let parsed = try? JSONDecoder().decode([String].self, from: data)
+      {
+        dnsAddresses = parsed
+      } else {
+        dnsAddresses = []
       }
 
-      let routes4 = decoded4.compactMap({ $0.asNEIPv4Route })
-      let routes6 = decoded6.compactMap({ $0.asNEIPv6Route })
-
-      networkSettings.tunnelAddressIPv4 = tunnelAddressIPv4
-      networkSettings.tunnelAddressIPv6 = tunnelAddressIPv6
-      networkSettings.dnsAddresses = dnsAddresses
-      networkSettings.routes4 = routes4
-      networkSettings.routes6 = routes6
-      networkSettings.setSearchDomain(domain: searchDomain)
-      self.networkSettings = networkSettings
-
-      // Now that we have our interface configured, start listening for events. The first one will be us applying
-      // our network settings in the call below. We need the physical interface name macOS chooses for us in order
-      // to get the correct DNS resolvers on macOS. For that, we need the path parameter from the path update callback.
-      beginPathMonitoring()
-
-      networkSettings.apply()
-    }
-  }
-
-  func onUpdateResources(resourceList: String) {
-    // This is a queued callback to ensure ordering
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      if resourceListJSON != resourceList, let networkSettings = self.networkSettings {
-        // Update resource List. We don't care what's inside.
-        resourceListJSON = resourceList
-
-        // Apply network settings to flush DNS cache when resources change
-        // This ensures new DNS resources are immediately resolvable
-        Log.log("Reapplying network settings to flush DNS cache after resource update")
-        networkSettings.apply()
+      // Apply network settings directly
+      guard let provider = packetTunnelProvider else {
+        Log.error(AdapterError.invalidSession(self.session))
+        return
       }
 
-      self.resourcesUpdated()
-    }
-  }
+      Log.log("Applying network settings...")
 
-  func onDisconnect(error: DisconnectError) {
-    // Since connlib has already shutdown by this point, we queue this callback
-    // to ensure that we can clean up even if connlib exits before we are done.
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
+      // Just call onSetInterfaceConfig which handles everything
+      // It creates NetworkSettings internally and applies them
+      provider.onSetInterfaceConfig(
+        tunnelAddressIPv4: ipv4,
+        tunnelAddressIPv6: ipv6,
+        searchDomain: searchDomain,
+        dnsAddresses: dnsAddresses,
+        routeListv4: ipv4Routes,
+        routeListv6: ipv6Routes
+      )
 
-      // Immediately invalidate our session pointer to prevent workQueue items from trying to use it.
-      // Assigning to `nil` will invoke `Drop` on the Rust side.
-      // This must happen asynchronously and not as part of the callback to allow Rust to break
-      // cyclic dependencies between the runtime and the task that is executing the callback.
-      self.session = nil
+    case .resourcesUpdated(let resources):
+      Log.log("Received ResourcesUpdated event with \(resources.count) bytes")
+
+      // Store resource list and update disabled resources based on toggle state
+      workQueue.async { [weak self] in
+        guard let self = self else { return }
+
+        self.resourceListJSON = resources
+        self.resourcesUpdated()
+      }
+
+      guard let provider = packetTunnelProvider else {
+        Log.error(AdapterError.invalidSession(self.session))
+        return
+      }
+      provider.onUpdateResources(resourceList: resources)
+
+    case .disconnected(let error):
+      let errorMessage = error.message()
+      Log.info("Received Disconnected event: \(errorMessage)")
+
+      guard let provider = packetTunnelProvider else {
+        Log.error(AdapterError.invalidSession(self.session))
+        return
+      }
 
       // If auth expired/is invalid, delete stored token and save the reason why so the GUI can act upon it.
       if error.isAuthenticationError() {
+        // Delete stored token and save the reason for the GUI
         do {
           try Token.delete()
           let reason: NEProviderStopReason = .authenticationCanceled
@@ -408,15 +452,28 @@ extension Adapter: CallbackHandlerDelegate {
         } catch {
           Log.error(error)
         }
+
         #if os(iOS)
           // iOS notifications should be shown from the tunnel process
           SessionNotification.showSignedOutNotificationiOS()
         #endif
+      } else {
+        Log.warning("Disconnected with error: \(errorMessage)")
       }
 
-      // Tell the system to shut us down
-      self.packetTunnelProvider?.cancelTunnelWithError(nil)
+      provider.onDisconnect(error: errorMessage)
+
+      // Cancel event polling task since we've disconnected
+      Log.log("Disconnected event received, cancelling event polling")
+      eventTask?.cancel()
+      eventTask = nil
     }
+  }
+
+  private func startNetworkPathMonitoring() {
+    networkMonitor = NWPathMonitor()
+    networkMonitor?.pathUpdateHandler = self.pathUpdateHandler
+    networkMonitor?.start(queue: workQueue)
   }
 
   private func setSystemDefaultResolvers(_ path: Network.NWPath) {
@@ -479,13 +536,13 @@ extension Adapter: CallbackHandlerDelegate {
     // Step 4: Send to connlib
     do {
       Log.log("Sending resolvers to connlib: \(jsonResolvers)")
-      try session?.setDns(jsonResolvers.intoRustString())
+      try session?.setDns(dnsServers: jsonResolvers)
     } catch let error {
-      // `toString` needed to deep copy the string and avoid a possible dangling pointer
-      let msg = (error as? RustString)?.toString() ?? "Unknown error"
+      let msg = error.localizedDescription
       Log.error(AdapterError.setDnsError(msg))
     }
   }
+
 }
 
 // MARK: Getting System Resolvers on iOS
