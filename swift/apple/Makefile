@@ -34,4 +34,7 @@ clean:
 
 .PHONY: format
 format:
-	@swiftformat .
+	@echo "Formatting Swift code..."
+	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format format --in-place --parallel
+	@echo "Linting Swift code..."
+	@find . -name "*.swift" -not -path "./FirezoneNetworkExtension/Connlib/Generated/*" -not -path "./FirezoneKit/.build/*" | xargs swift format lint --parallel --strict
