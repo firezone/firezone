@@ -62,18 +62,18 @@ defmodule Domain.Entra.APIClient do
         })
       )
 
-    walk(url, MapSet.new(), callback, headers: headers(access_token))
+    walk(url, callback, headers: headers(access_token))
   end
 
-  defp walk(url, seen_user_ids, callback, opts) do
+  defp walk(url, callback, opts) do
     case Req.get!(url, opts) do
       %{status: 200, body: %{"value" => value, "@odata.nextLink" => next_page}} ->
-        %{seen_user_ids: seen_user_ids, to_upsert: to_upsert} = transform(value, seen_user_ids)
+        to_upsert = reduce(value)
         callback.(to_upsert)
-        walk(next_page, seen_user_ids, callback, opts)
+        walk(next_page, callback, opts)
 
       %{status: 200, body: %{"value" => value}} ->
-        %{to_upsert: to_upsert} = transform(value, seen_user_ids)
+        to_upsert = reduce(value)
         callback.(to_upsert)
         :ok
 
@@ -96,42 +96,50 @@ defmodule Domain.Entra.APIClient do
 
   # groups_with_users will contain a flattened list of members for each group.
   # This means we'll see the same user multiple times if they are in multiple groups.
-  # To prevent re-upserting the same user multiple times, we keep track of seen_user_ids
-  # and skip any users we've already processed.
-  defp transform(groups_with_users, seen_user_ids) do
+  # We include all users in each batch to ensure memberships can be properly mapped,
+  # but deduplicate them to avoid database conflicts.
+  defp reduce(groups_with_users) do
     acc = %{
-      to_upsert: %{
-        groups: [],
-        identities: [],
-        memberships: []
-      },
-      seen_user_ids: seen_user_ids
+      groups: [],
+      identities: %{},
+      memberships: []
     }
 
-    Enum.reduce(groups_with_users, acc, fn group, acc ->
-      acc = put_in(acc, [:to_upsert, :groups], [map_group(group) | acc.to_upsert.groups])
+    result = Enum.reduce(groups_with_users, acc, fn group, acc ->
+      acc = store_group(acc, group)
 
-      Enum.reduce(group["transitiveMembers"] || [], acc, fn user, acc ->
-        if user["@odata.type"] == "#microsoft.graph.user" and user["accountEnabled"] == true do
-          acc =
-            put_in(acc, [:to_upsert, :memberships], [
-              map_membership(group, user) | acc.to_upsert.memberships
-            ])
-
-          if MapSet.member?(acc.seen_user_ids, user["id"]) do
-            acc
-          else
-            acc
-            |> put_in([:to_upsert, :identities], [
-              map_user(user) | acc.to_upsert.identities
-            ])
-            |> put_in([:seen_user_ids], MapSet.put(acc.seen_user_ids, user["id"]))
-          end
-        else
+      Enum.reduce(group["transitiveMembers"] || [], acc, fn
+        %{"@odata.type" => "#microsoft.graph.user", "accountEnabled" => true} = user, acc ->
           acc
-        end
+          |> store_membership(group, user)
+          |> store_identity(user)
+
+        _, acc ->
+          acc
       end)
     end)
+
+    # Convert the identities map to a list of unique values
+    %{
+      groups: result.groups,
+      identities: Map.values(result.identities),
+      memberships: result.memberships
+    }
+  end
+
+  defp store_group(acc, group) do
+    put_in(acc, [:groups], [map_group(group) | acc.groups])
+  end
+
+  defp store_identity(acc, user) do
+    # Store by user ID to automatically deduplicate
+    put_in(acc, [:identities, user["id"]], map_user(user))
+  end
+
+  defp store_membership(acc, group, user) do
+    put_in(acc, [:memberships], [
+      map_membership(group, user) | acc.memberships
+    ])
   end
 
   defp map_group(group) do

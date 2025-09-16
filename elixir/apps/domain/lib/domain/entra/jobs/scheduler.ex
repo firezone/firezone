@@ -3,21 +3,40 @@ defmodule Domain.Entra.Jobs.Scheduler do
   alias Domain.{Entra, Repo}
   require Logger
 
-  @insert_batch_size 1000
-
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     Logger.debug("Scheduling Entra directory sync jobs")
 
     result =
       Repo.transact(fn ->
-        total_scheduled =
-          Entra.stream_directories_for_sync()
-          |> Stream.map(&Entra.Jobs.Sync.new(%{id: &1.id}))
-          |> Stream.chunk_every(@insert_batch_size)
-          |> Stream.map(&batch_insert/1)
-          |> Enum.sum()
+        directories = Entra.stream_directories_for_sync() |> Enum.to_list()
+        Logger.debug("Found #{length(directories)} Entra directories to sync")
 
+        results =
+          Enum.map(directories, fn directory ->
+            job =
+              Entra.Jobs.Sync.new(%{id: directory.id},
+                unique: [
+                  # Give currently "executing" Entra sync jobs 10 minutes to complete before allowing a retry
+                  period: 600,
+                  states: [:executing],
+                  keys: [:id]
+                ]
+              )
+
+            # We insert one at a time to ensure uniqueness validations are respected
+            case Oban.insert(job) do
+              {:ok, _job} ->
+                Logger.debug("Scheduled sync job for directory #{directory.id}")
+                1
+
+              {:error, reason} ->
+                Logger.debug("Skipped sync job for directory #{directory.id}: #{inspect(reason)}")
+                0
+            end
+          end)
+
+        total_scheduled = Enum.sum(results)
         {:ok, total_scheduled}
       end)
 
@@ -33,10 +52,5 @@ defmodule Domain.Entra.Jobs.Scheduler do
 
         {:error, reason}
     end
-  end
-
-  defp batch_insert(batch) do
-    Oban.insert_all(batch)
-    |> length()
   end
 end

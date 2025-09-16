@@ -64,6 +64,10 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
   end
 
+  def not_synced_at(queryable, synced_at) do
+    where(queryable, [groups: groups], groups.synced_at != ^synced_at)
+  end
+
   # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
   def delete(queryable) do
     queryable

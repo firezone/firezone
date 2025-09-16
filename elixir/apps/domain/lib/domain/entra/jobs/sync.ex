@@ -1,6 +1,9 @@
 defmodule Domain.Entra.Jobs.Sync do
-  # Retries are handled by the scheduler
-  use Oban.Worker, queue: :entra_sync, max_attempts: 1
+  # Retries and uniqueness are handled by the scheduler
+  use Oban.Worker,
+    queue: :entra_sync,
+    max_attempts: 1
+
   alias Domain.Entra
   require Logger
 
@@ -12,7 +15,9 @@ defmodule Domain.Entra.Jobs.Sync do
 
   @impl Oban.Worker
   def perform(%Oban.Job{args: %{"id" => id}}) do
-    Logger.info("Starting Entra directory sync", entra_directory_id: id)
+    Logger.info("#{inspect(DateTime.utc_now(), pretty: true)} Starting Entra directory sync",
+      entra_directory_id: id
+    )
 
     case Entra.fetch_directory_for_sync(id) do
       {:ok, directory} ->
@@ -21,22 +26,14 @@ defmodule Domain.Entra.Jobs.Sync do
       {:error, :not_found} ->
         Logger.info("Entra directory deleted or sync disabled, skipping", entra_directory_id: id)
     end
+
+    :ok
   end
 
   defp sync(%Entra.Directory{} = directory) do
-    Logger.info("Syncing Entra directory",
-      entra_directory_id: directory.id,
-      account_id: directory.account_id,
-      auth_provider_id: directory.auth_provider_id
-    )
-
+    start = DateTime.utc_now()
     access_token = get_access_token!(directory)
     synced_at = DateTime.utc_now()
-
-    Logger.info("Group filtering is enabled, performing optimized full sync",
-      entra_directory_id: directory.id
-    )
-
     only_groups = Enum.map(directory.group_inclusions, & &1.external_id)
 
     case Entra.APIClient.fetch_all(
@@ -53,6 +50,13 @@ defmodule Domain.Entra.Jobs.Sync do
       {:error, %Req.Response{} = response} ->
         raise Entra.SyncError, response: response, directory_id: directory.id
     end
+
+    duration = DateTime.diff(DateTime.utc_now(), start)
+
+    # Show a human-friendly duration in hours, minutes, seconds
+    Logger.info("Finished Entra directory sync in #{duration} seconds",
+      entra_directory_id: directory
+    )
   end
 
   defp get_access_token!(directory) do
@@ -69,17 +73,51 @@ defmodule Domain.Entra.Jobs.Sync do
     end
   end
 
-  defp batch_upsert(directory, synced_at, %{
-         groups: groups,
-         identities: identities,
-         memberships: memberships
-       }) do
-    Logger.info(inspect(groups, pretty: true))
-    Logger.info(inspect(identities, pretty: true))
-    Logger.info(inspect(memberships, pretty: true))
+  defp batch_upsert(
+         directory,
+         synced_at,
+         %{
+           groups: groups,
+           identities: identities,
+           memberships: memberships
+         } = to_upsert
+       ) do
+    # TODO: batch size
+
+    {:ok, upserted_groups} =
+      Domain.Actors.batch_upsert_groups(directory.auth_provider, groups, synced_at)
+
+    {:ok, upserted_identities} =
+      Domain.Auth.batch_upsert_identities_with_actors(
+        directory.auth_provider,
+        identities,
+        synced_at
+      )
+
+    :ok =
+      Domain.Actors.batch_upsert_group_memberships(
+        directory.auth_provider,
+        memberships,
+        upserted_groups,
+        upserted_identities,
+        synced_at
+      )
   end
 
   defp delete_unsynced(directory, synced_at) do
-    Logger.info("Deleting unsynced groups and users", entra_directory_id: directory.id)
+    {:ok, count} = Domain.Actors.delete_unsynced_groups(directory.auth_provider, synced_at)
+    Logger.info("Deleted #{count} unsynced groups", entra_directory_id: directory.id)
+
+    {:ok, count} =
+      Domain.Auth.delete_unsynced_identities_and_actors(directory.auth_provider, synced_at)
+
+    Logger.info("Deleted #{count} unsynced identities and actors",
+      entra_directory_id: directory.id
+    )
+
+    {:ok, count} =
+      Domain.Actors.delete_unsynced_group_memberships(directory.auth_provider, synced_at)
+
+    Logger.info("Deleted #{count} unsynced group memberships", entra_directory_id: directory.id)
   end
 end

@@ -11,7 +11,8 @@ defmodule Domain.Actors.Membership do
   schema "actor_group_memberships" do
     belongs_to :group, Domain.Actors.Group
     belongs_to :actor, Domain.Actors.Actor
-
     belongs_to :account, Domain.Accounts.Account
+
+    field :synced_at, :utc_datetime_usec
   end
 end
