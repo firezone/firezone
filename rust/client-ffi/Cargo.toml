@@ -41,5 +41,8 @@ url = { workspace = true }
 [target.'cfg(target_os = "android")'.dependencies]
 android_log-sys = "0.3.2"
 
+[target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
+oslog = { version = "0.2.0", default-features = false }
+
 [lints]
 workspace = true

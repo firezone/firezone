@@ -68,6 +68,7 @@ class NetworkSettings {
     // completely breaking IPv6 on the user's system.
     let ipv6Settings = NEIPv6Settings(addresses: [tunnelAddressIPv6!], networkPrefixLengths: [120])
     let dnsSettings = NEDNSSettings(servers: dnsAddresses)
+
     ipv4Settings.includedRoutes = routes4
     ipv6Settings.includedRoutes = routes6
     dnsSettings.matchDomains = matchDomains

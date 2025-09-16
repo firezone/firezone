@@ -25,9 +25,18 @@ import System
 /// web), but can be easily enlarged in the future to reduce the number of IPC calls required to consume
 /// the entire archive.
 class TunnelLogArchive {
-  enum ArchiveError: Error {
+  enum ArchiveError: LocalizedError {
     case unableToWriteArchive
     case unableToReadArchive
+
+    var errorDescription: String? {
+      switch self {
+      case .unableToWriteArchive:
+        return "Unable to write archive"
+      case .unableToReadArchive:
+        return "Unable to read archive"
+      }
+    }
   }
 
   let chunkSize = 1024 * 1024  // 1 MiB

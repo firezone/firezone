@@ -8,15 +8,31 @@ import Foundation
 import OSLog
 
 public final class Log {
-  private static var logger =
-    switch Bundle.main.bundleIdentifier {
+  // Create a static OSLog instance for better performance
+  private static let os: OSLog = {
+    let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
+    switch bundleId {
     case "dev.firezone.firezone":
-      Logger(subsystem: "dev.firezone.firezone", category: "app")
+      return OSLog(subsystem: "dev.firezone.firezone", category: "app")
     case "dev.firezone.firezone.network-extension":
-      Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
+      return OSLog(subsystem: "dev.firezone.firezone", category: "tunnel")
     default:
-      fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
+      fatalError("Unknown bundle id: \(bundleId)")
     }
+  }()
+
+  // Keep a Logger instance for LogWriter
+  private static let logger: Logger = {
+    let bundleId = Bundle.main.bundleIdentifier ?? "unknown"
+    switch bundleId {
+    case "dev.firezone.firezone":
+      return Logger(subsystem: "dev.firezone.firezone", category: "app")
+    case "dev.firezone.firezone.network-extension":
+      return Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
+    default:
+      fatalError("Unknown bundle id: \(bundleId)")
+    }
+  }()
 
   private static var logWriter =
     switch Bundle.main.bundleIdentifier {
@@ -33,27 +49,28 @@ public final class Log {
   }
 
   public static func trace(_ message: String) {
-    logger.trace("\(message, privacy: .public)")
+    os_log(.debug, log: os, "[TRACE] %{public}s", message)
     logWriter?.write(severity: .trace, message: message)
   }
 
   public static func debug(_ message: String) {
-    self.logger.debug("\(message, privacy: .public)")
+    // Use .default level to ensure visibility in Console.app
+    os_log(.default, log: os, "%{public}s", message)
     logWriter?.write(severity: .debug, message: message)
   }
 
   public static func info(_ message: String) {
-    logger.info("\(message, privacy: .public)")
+    os_log(.info, log: os, "[INFO] %{public}s", message)
     logWriter?.write(severity: .info, message: message)
   }
 
   public static func warning(_ message: String) {
-    logger.warning("\(message, privacy: .public)")
+    os_log(.default, log: os, "[WARN] %{public}s", message)
     logWriter?.write(severity: .warning, message: message)
   }
 
   public static func error(_ err: Error) {
-    self.logger.error("\(err.localizedDescription, privacy: .public)")
+    os_log(.error, log: os, "[ERROR] %{public}s", err.localizedDescription)
     logWriter?.write(severity: .error, message: err.localizedDescription)
 
     if shouldCaptureError(err) {

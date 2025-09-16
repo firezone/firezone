@@ -114,6 +114,42 @@ impl Session {
         )
     }
 
+    #[uniffi::constructor]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "This is the API we want to expose over FFI."
+    )]
+    pub fn new_ios(
+        api_url: String,
+        token: String,
+        device_id: String,
+        account_slug: String,
+        device_name: Option<String>,
+        os_version: Option<String>,
+        log_dir: String,
+        log_filter: String,
+        device_info: String,
+    ) -> Result<Self, Error> {
+        // iOS doesn't need socket protection like Android
+        let tcp_socket_factory = Arc::new(socket_factory::tcp);
+        let udp_socket_factory = Arc::new(socket_factory::udp);
+
+        connect(
+            api_url,
+            token,
+            device_id,
+            account_slug,
+            device_name,
+            os_version,
+            log_dir,
+            log_filter,
+            device_info,
+            tcp_socket_factory,
+            udp_socket_factory,
+        )
+    }
+
     pub fn disconnect(&self) -> Result<(), Error> {
         let runtime = self.runtime.as_ref().context("No runtime")?;
 
@@ -165,6 +201,44 @@ impl Session {
         self.inner.set_tun(Box::new(tun));
 
         Ok(())
+    }
+
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
+    pub fn set_tun_from_search(&self) -> Result<(), Error> {
+        const MAX_TUN_SEARCH_ATTEMPTS: u32 = 5;
+        const TUN_SEARCH_RETRY_DELAY_MS: u64 = 100;
+
+        let _guard = self.runtime.as_ref().context("No runtime")?.enter();
+
+        // Retry a few times with a small delay, as the NetworkExtension
+        // might still be setting up the TUN interface
+        let mut last_error = None;
+        for attempt in 1..=MAX_TUN_SEARCH_ATTEMPTS {
+            tracing::info!("Attempting to find TUN device (attempt {})", attempt);
+            match platform::Tun::new() {
+                Ok(tun) => {
+                    tracing::info!("Successfully found and set TUN device");
+                    self.inner.set_tun(Box::new(tun));
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!("Attempt {} failed: {}", attempt, e);
+                    last_error = Some(e);
+                    if attempt < MAX_TUN_SEARCH_ATTEMPTS {
+                        std::thread::sleep(std::time::Duration::from_millis(
+                            TUN_SEARCH_RETRY_DELAY_MS,
+                        ));
+                    }
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "Failed to find TUN device after {} attempts: {}",
+            MAX_TUN_SEARCH_ATTEMPTS,
+            last_error.map_or_else(|| "unknown error".to_string(), |e| e.to_string())
+        )
+        .into())
     }
 
     pub async fn next_event(&self) -> Result<Option<Event>, Error> {
