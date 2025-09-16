@@ -1,8 +1,8 @@
 mod platform;
 
 use std::{
-    fmt, io,
-    os::fd::{AsRawFd as _, RawFd},
+    fmt,
+    os::fd::RawFd,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
     time::Duration,
@@ -32,7 +32,7 @@ pub struct Session {
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
 #[error("{0:#}")]
-pub struct Error(anyhow::Error);
+pub struct ConnlibError(anyhow::Error);
 
 #[derive(uniffi::Error, thiserror::Error, Debug)]
 pub enum CallbackError {
@@ -78,6 +78,7 @@ pub trait ProtectSocket: Send + Sync + fmt::Debug {
 }
 
 #[uniffi::export]
+#[cfg(target_os = "android")]
 impl Session {
     #[uniffi::constructor]
     #[expect(
@@ -96,7 +97,7 @@ impl Session {
         device_info: String,
         is_internet_resource_active: bool,
         protect_socket: Arc<dyn ProtectSocket>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, ConnlibError> {
         let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
         let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
 
@@ -115,8 +116,87 @@ impl Session {
             udp_socket_factory,
         )
     }
+}
 
-    pub fn disconnect(&self) -> Result<(), Error> {
+#[uniffi::export]
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+impl Session {
+    #[uniffi::constructor]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "This is the API we want to expose over FFI."
+    )]
+    pub fn new_apple(
+        api_url: String,
+        token: String,
+        device_id: String,
+        account_slug: String,
+        device_name: Option<String>,
+        os_version: Option<String>,
+        log_dir: String,
+        log_filter: String,
+        device_info: String,
+    ) -> Result<Self, ConnlibError> {
+        // iOS doesn't need socket protection like Android
+        let tcp_socket_factory = Arc::new(socket_factory::tcp);
+        let udp_socket_factory = Arc::new(socket_factory::udp);
+
+        connect(
+            api_url,
+            token,
+            device_id,
+            account_slug,
+            device_name,
+            os_version,
+            log_dir,
+            log_filter,
+            device_info,
+            tcp_socket_factory,
+            udp_socket_factory,
+        )
+    }
+
+    pub fn set_tun_from_search(&self) -> Result<(), ConnlibError> {
+        const MAX_TUN_SEARCH_ATTEMPTS: u32 = 5;
+        const TUN_SEARCH_RETRY_DELAY_MS: u64 = 100;
+
+        let _guard = self.runtime.as_ref().context("No runtime")?.enter();
+
+        // Retry a few times with a small delay, as the NetworkExtension
+        // might still be setting up the TUN interface
+        let mut last_error = None;
+        for attempt in 1..=MAX_TUN_SEARCH_ATTEMPTS {
+            tracing::debug!("Attempting to find TUN device (attempt {})", attempt);
+            match platform::Tun::new() {
+                Ok(tun) => {
+                    tracing::debug!("Successfully found and set TUN device");
+                    self.inner.set_tun(Box::new(tun));
+                    return Ok(());
+                }
+                Err(e) => {
+                    tracing::warn!("Attempt {} failed: {}", attempt, e);
+                    last_error = Some(e);
+                    if attempt < MAX_TUN_SEARCH_ATTEMPTS {
+                        std::thread::sleep(std::time::Duration::from_millis(
+                            TUN_SEARCH_RETRY_DELAY_MS,
+                        ));
+                    }
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "Failed to find TUN device after {} attempts: {}",
+            MAX_TUN_SEARCH_ATTEMPTS,
+            last_error.map_or_else(|| "unknown error".to_string(), |e| e.to_string())
+        )
+        .into())
+    }
+}
+
+#[uniffi::export]
+impl Session {
+    pub fn disconnect(&self) -> Result<(), ConnlibError> {
         let runtime = self.runtime.as_ref().context("No runtime")?;
 
         runtime.block_on(async {
@@ -131,7 +211,7 @@ impl Session {
         self.inner.set_internet_resource_state(active);
     }
 
-    pub fn set_dns(&self, dns_servers: String) -> Result<(), Error> {
+    pub fn set_dns(&self, dns_servers: String) -> Result<(), ConnlibError> {
         let dns_servers =
             serde_json::from_str(&dns_servers).context("Failed to deserialize DNS servers")?;
 
@@ -144,7 +224,7 @@ impl Session {
         self.inner.reset(reason)
     }
 
-    pub fn set_log_directives(&self, directives: String) -> Result<(), Error> {
+    pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
         let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
 
         reload_handle
@@ -154,7 +234,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn set_tun(&self, fd: RawFd) -> Result<(), Error> {
+    pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
         let _guard = self.runtime.as_ref().context("No runtime")?.enter();
         // SAFETY: FD must be open.
         let tun = unsafe { platform::Tun::from_fd(fd).context("Failed to create new Tun")? };
@@ -164,7 +244,7 @@ impl Session {
         Ok(())
     }
 
-    pub async fn next_event(&self) -> Result<Option<Event>, Error> {
+    pub async fn next_event(&self) -> Result<Option<Event>, ConnlibError> {
         match self.events.lock().await.next().await {
             Some(client_shared::Event::TunInterfaceUpdated(config)) => {
                 let dns = serde_json::to_string(
@@ -232,7 +312,7 @@ fn connect(
     is_internet_resource_active: bool,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-) -> Result<Session, Error> {
+) -> Result<Session, ConnlibError> {
     let device_info =
         serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
     let secret = SecretString::from(token);
@@ -338,23 +418,27 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "android")]
 fn protected_tcp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl SocketFactory<TcpSocket> {
     move |addr| {
         let socket = socket_factory::tcp(addr)?;
+        use std::os::fd::AsRawFd;
         callback
             .protect_socket(socket.as_raw_fd())
-            .map_err(io::Error::other)?;
+            .map_err(std::io::Error::other)?;
 
         Ok(socket)
     }
 }
 
+#[cfg(target_os = "android")]
 fn protected_udp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl SocketFactory<UdpSocket> {
     move |addr| {
         let socket = socket_factory::udp(addr)?;
+        use std::os::fd::AsRawFd;
         callback
             .protect_socket(socket.as_raw_fd())
-            .map_err(io::Error::other)?;
+            .map_err(std::io::Error::other)?;
 
         Ok(socket)
     }
@@ -369,7 +453,7 @@ fn install_rustls_crypto_provider() {
     }
 }
 
-impl From<anyhow::Error> for Error {
+impl From<anyhow::Error> for ConnlibError {
     fn from(value: anyhow::Error) -> Self {
         Self(value)
     }

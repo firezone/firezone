@@ -95,6 +95,19 @@
         fatalError("Version should exist in bundle")
       }
 
+      Log.info(
+        "Checking system extension - Client version: \(ourBundleShortVersion) (\(ourBundleVersion))"
+      )
+
+      // Log all found extensions for debugging
+      for sysex in properties {
+        if sysex.isEnabled {
+          Log.info(
+            "Found enabled extension - Version: \(sysex.bundleShortVersion) (\(sysex.bundleVersion))"
+          )
+        }
+      }
+
       // Up to date if version and build number match
       let isCurrentVersionInstalled = properties.contains { sysex in
         sysex.isEnabled
@@ -109,13 +122,17 @@
 
       // Needs replacement if we found our extension, but its version doesn't match
       // Note this can happen for upgrades _or_ downgrades
-      let isAnyVersionInstalled = properties.contains { $0.isEnabled }
-      if isAnyVersionInstalled {
+      let enabledExtension = properties.first { $0.isEnabled }
+      if let enabledExtension = enabledExtension {
+        Log.warning(
+          "Extension version mismatch - Installed: \(enabledExtension.bundleShortVersion) (\(enabledExtension.bundleVersion)), Expected: \(ourBundleShortVersion) (\(ourBundleVersion))"
+        )
         resume(returning: .needsReplacement)
 
         return
       }
 
+      Log.info("No system extension found - needs install")
       resume(returning: .needsInstall)
     }
 
