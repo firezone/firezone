@@ -113,15 +113,17 @@ Gateways are mostly performance-bound by the I/O rate at which they can process
 packets, so bare metal deployments or VMs with high I/O rates will make a big
 difference in both throughput and latency.
 
-Despite this, even tiny, shared vCPU VMs can perform acceptably well in many
-cases. An `f1-micro` instance with just 0.25 vCPU cores on Google Cloud, for
-example, can handle around 200 Mbps of sustained throughput.
+Gateways benefit from multi-threading with up to 6 CPU cores. On machines with
+shared CPUs or less than 4 cores, Gateways still perform acceptably well for
+smaller deployments but may experience contention around CPU resources,
+resulting in lower throughput. For ideal performance, we recommend providing at
+least 4 CPU cores.
 
 | Gateway size | Approx. users served | CPU cores | Memory | Recommended link speed |
 | ------------ | -------------------- | --------- | ------ | ---------------------- |
-| Micro        | 10 - 50              | 1         | 512 MB | 500 Mbps               |
-| Small        | 50 - 100             | 2         | 1 GB   | 1 Gbps                 |
-| Medium       | 100 - 500            | 4         | 2 GB   | 2.5 Gbps               |
+| Micro        | 10                   | 1         | 256 MB | 500 Mbps               |
+| Small        | 10 - 50              | 2         | 256 MB | 1 Gbps                 |
+| Medium       | 50+                  | 4         | 256 MB | 2.5 Gbps               |
 
 To go beyond the table above, you can deploy additional Gateways and use
 Firezone's
