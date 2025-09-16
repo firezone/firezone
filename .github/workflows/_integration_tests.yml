@@ -169,6 +169,8 @@ jobs:
           # Intended to mitigate <https://github.com/firezone/firezone/issues/5830>
           sleep 3
 
+          docker compose up veth-config
+
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
 
       - name: Ensure Client emitted no warnings
