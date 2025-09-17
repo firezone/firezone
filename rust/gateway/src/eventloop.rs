@@ -14,7 +14,7 @@ use firezone_tunnel::messages::gateway::{
 use firezone_tunnel::messages::{ConnectionAccepted, GatewayResponse, RelaysPresence};
 use firezone_tunnel::{
     DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
-    ResolveDnsRequest,
+    ResolveDnsRequest, TunnelError,
 };
 use futures::FutureExt;
 use futures::future::BoxFuture;
@@ -116,7 +116,7 @@ impl Eventloop {
 enum CombinedEvent {
     SigIntTerm,
     ShutdownComplete(Result<()>),
-    Tunnel(Result<GatewayEvent>),
+    Tunnel(GatewayEvent),
     Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
     DomainResolved((Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger)),
 }
@@ -125,11 +125,8 @@ impl Eventloop {
     pub async fn run(mut self) -> Result<()> {
         loop {
             match future::poll_fn(|cx| self.next_event(cx)).await {
-                CombinedEvent::Tunnel(Ok(event)) => {
+                CombinedEvent::Tunnel(event) => {
                     self.handle_tunnel_event(event).await?;
-                }
-                CombinedEvent::Tunnel(Err(e)) => {
-                    self.handle_tunnel_error(e)?;
                 }
                 CombinedEvent::Portal(Some(Ok(msg))) => {
                     self.handle_portal_message(msg).await?;
@@ -252,61 +249,64 @@ impl Eventloop {
                     tracing::warn!("Too many dns resolution requests, dropping existing one");
                 };
             }
+            GatewayEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())
     }
 
-    fn handle_tunnel_error(&mut self, e: anyhow::Error) -> Result<()> {
-        if e.root_cause()
-            .downcast_ref::<io::Error>()
-            .is_some_and(is_unreachable)
-        {
-            tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
-            return Ok(());
-        }
-
-        // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-        if e.root_cause()
-            .downcast_ref::<io::Error>()
-            .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
-        {
-            tracing::debug!("{e:#}");
-            return Ok(());
-        }
-
-        // Unknown connection just means packets are bouncing on the TUN device because the Client disconnected.
-        if e.root_cause().is::<snownet::UnknownConnection>() {
-            tracing::debug!("{e:#}");
-            return Ok(());
-        }
-
-        if e.root_cause()
-            .downcast_ref::<io::Error>()
-            .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
-        {
-            if !mem::replace(&mut self.logged_permission_denied, true) {
-                tracing::info!(
-                    "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
-                )
+    fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
+        for e in e.drain() {
+            if e.root_cause()
+                .downcast_ref::<io::Error>()
+                .is_some_and(is_unreachable)
+            {
+                tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
+                return Ok(());
             }
 
-            return Ok(());
-        }
+            // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
+            if e.root_cause()
+                .downcast_ref::<io::Error>()
+                .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
+            {
+                tracing::debug!("{e:#}");
+                return Ok(());
+            }
 
-        if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
-            // Some IP packets cannot be translated and should be dropped "silently".
-            // Do so by ignoring the error here.
-            return Ok(());
-        }
+            // Unknown connection just means packets are bouncing on the TUN device because the Client disconnected.
+            if e.root_cause().is::<snownet::UnknownConnection>() {
+                tracing::debug!("{e:#}");
+                return Ok(());
+            }
 
-        if e.root_cause()
-            .is::<firezone_tunnel::UdpSocketThreadStopped>()
-        {
-            return Err(e);
-        }
+            if e.root_cause()
+                .downcast_ref::<io::Error>()
+                .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
+            {
+                if !mem::replace(&mut self.logged_permission_denied, true) {
+                    tracing::info!(
+                        "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                    )
+                }
 
-        tracing::warn!("Tunnel error: {e:#}");
+                return Ok(());
+            }
+
+            if e.root_cause().is::<ip_packet::ImpossibleTranslation>() {
+                // Some IP packets cannot be translated and should be dropped "silently".
+                // Do so by ignoring the error here.
+                return Ok(());
+            }
+
+            if e.root_cause()
+                .is::<firezone_tunnel::UdpSocketThreadStopped>()
+            {
+                return Err(e);
+            }
+
+            tracing::warn!("Tunnel error: {e:#}");
+        }
 
         Ok(())
     }

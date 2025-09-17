@@ -869,6 +869,7 @@ impl TunnelTest {
 
                 Ok(())
             }
+            ClientEvent::Error(_) => unreachable!("ClientState never emits `TunnelError`"),
         }
     }
 
@@ -1006,5 +1007,6 @@ fn on_gateway_event(
                     .unwrap()
             })
         }
+        GatewayEvent::Error(_) => unreachable!("GatewayState never emits `TunnelError`"),
     }
 }
