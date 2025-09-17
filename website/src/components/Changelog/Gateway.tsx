@@ -22,7 +22,12 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10367">
+          Fixes a rare CPU-spike issue in case a Client connected with many
+          possible IPv6 addresses.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.16" date={new Date("2025-09-10")}>
         <ChangeItem pull="10231">
           Remove the FIREZONE_NUM_TUN_THREADS env variable. The Gateway will now
