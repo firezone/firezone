@@ -137,8 +137,8 @@ to distribute Client connections across them.
 The default receive and send buffer sizes on Linux are quite small which can
 limit the maximum throughput that users can achieve.
 
-The Gateway attempts to increase the UDP send and receive buffer sizes on the
-system to 16 and 128 MB respectively. It does that by setting
+The Gateway attempts to increase the _system-wide_ UDP send and receive buffer
+max sizes to 16 and 128 MB respectively. It does that by setting
 `net.core.wmem_max` and `net.core.rmem_max`. This will however only work for
 Gateways deployed on bare-metal and not via Docker as Docker mounts `/proc/sys`
 as a read-only file system.
