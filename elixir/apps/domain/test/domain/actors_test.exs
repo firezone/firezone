@@ -1,6 +1,7 @@
 defmodule Domain.ActorsTest do
   use Domain.DataCase, async: true
   import Domain.Actors
+  import ExUnit.CaptureLog
   alias Domain.Auth
   alias Domain.Clients
   alias Domain.Actors
@@ -3809,15 +3810,19 @@ defmodule Domain.ActorsTest do
         {"invalid-group", "user-001"}
       ]
 
-      assert_raise ArgumentError, ~r/Unknown group with provider_identifier/, fn ->
-        batch_upsert_group_memberships(
-          provider,
-          tuples,
-          groups,
-          identities,
-          synced_at
-        )
-      end
+      message =
+        capture_log(fn ->
+          batch_upsert_group_memberships(
+            provider,
+            tuples,
+            groups,
+            identities,
+            synced_at
+          )
+        end)
+
+      assert message =~
+               "Skipping membership upsert for unknown group or identity: invalid-group, user-001"
 
       # Test invalid identity
       tuples2 = [
@@ -3825,15 +3830,19 @@ defmodule Domain.ActorsTest do
         {"group-001", "invalid-user"}
       ]
 
-      assert_raise ArgumentError, ~r/Unknown identity with provider_identifier/, fn ->
-        batch_upsert_group_memberships(
-          provider,
-          tuples2,
-          groups,
-          identities,
-          synced_at
-        )
-      end
+      message =
+        capture_log(fn ->
+          batch_upsert_group_memberships(
+            provider,
+            tuples2,
+            groups,
+            identities,
+            synced_at
+          )
+        end)
+
+      assert message =~
+               "Skipping membership upsert for unknown group or identity: group-001, invalid-user"
     end
   end
 

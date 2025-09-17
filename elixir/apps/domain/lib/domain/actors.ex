@@ -201,30 +201,27 @@ defmodule Domain.Actors do
 
     memberships_to_upsert =
       tuples
-      |> Enum.filter(fn {group_provider_id, identity_provider_id} ->
-        # We should never see a membership for a group or identity that wasn't synced
-
-        if not Map.has_key?(group_provider_to_id, group_provider_id) do
-          raise ArgumentError,
-                "Unknown group with provider_identifier #{group_provider_id} in provider #{provider.id}"
-        end
-
-        if not Map.has_key?(identity_provider_to_actor_id, identity_provider_id) do
-          raise ArgumentError,
-                "Unknown identity with provider_identifier #{identity_provider_id} in provider #{provider.id}"
-        end
-
-        true
-      end)
       |> Enum.map(fn {group_provider_id, identity_provider_id} ->
-        %{
-          id: Ecto.UUID.generate(),
-          account_id: provider.account_id,
-          group_id: group_provider_to_id[group_provider_id],
-          actor_id: identity_provider_to_actor_id[identity_provider_id],
-          synced_at: synced_at
-        }
+        # We should never see a membership tuple for a group or identity that wasn't previously upserted
+        with {:ok, group_id} <- Map.fetch(group_provider_to_id, group_provider_id),
+             {:ok, actor_id} <- Map.fetch(identity_provider_to_actor_id, identity_provider_id) do
+          %{
+            id: Ecto.UUID.generate(),
+            account_id: provider.account_id,
+            group_id: group_id,
+            actor_id: actor_id,
+            synced_at: synced_at
+          }
+        else
+          :error ->
+            Logger.warning(
+              "Skipping membership upsert for unknown group or identity: #{group_provider_id}, #{identity_provider_id}"
+            )
+
+            nil
+        end
       end)
+      |> Enum.reject(&is_nil/1)
 
     {_count, _memberships} =
       Repo.insert_all(
