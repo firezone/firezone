@@ -128,6 +128,10 @@ struct Cli {
     // on disk somewhere anyway.)
     #[arg(default_value = platform::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
+
+    /// Increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
+    #[arg(long, env = "FIREZONE_INC_BUF", hide = true, default_value_t = false)]
+    inc_buf: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -139,6 +143,10 @@ enum MetricsExporter {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
+    }
+
+    fn is_inc_buf_allowed(&self) -> bool {
+        self.inc_buf
     }
 }
 
@@ -210,6 +218,20 @@ fn try_main() -> Result<()> {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
+
+    if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
+        let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
+        let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
+
+        match std::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()) {
+            Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
+            Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
+        };
+        match std::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()) {
+            Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
+            Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
+        };
+    }
 
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id.clone() {
