@@ -1303,6 +1303,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
                 .ok()
         })
         .filter(|c| !remote_candidates.contains(c))
+        .take(2)
         .collect::<Vec<_>>();
 
     for c in optimistic_candidates {
@@ -2716,5 +2717,40 @@ mod tests {
             Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
 
         assert!(!agent.remote_candidates().contains(&unexpected_candidate))
+    }
+
+    #[test]
+    fn limits_optimistic_ipv4_candidates_to_2() {
+        let base = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(10, 0, 0, 1), 52625));
+        let addr1 = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1));
+        let addr2 = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 2));
+        let addr3 = IpAddr::V4(Ipv4Addr::new(1, 1, 1, 3));
+
+        let host = Candidate::host(base, "udp").unwrap();
+        let srflx1 =
+            Candidate::server_reflexive(SocketAddr::new(addr1, 40000), base, "udp").unwrap();
+        let srflx2 =
+            Candidate::server_reflexive(SocketAddr::new(addr2, 40000), base, "udp").unwrap();
+        let srflx3 =
+            Candidate::server_reflexive(SocketAddr::new(addr3, 40000), base, "udp").unwrap();
+
+        let mut agent = IceAgent::new();
+        agent.add_remote_candidate(host);
+        agent.add_remote_candidate(srflx1);
+        agent.add_remote_candidate(srflx2);
+        agent.add_remote_candidate(srflx3);
+
+        generate_optimistic_candidates(&mut agent);
+
+        let expected_candidate1 =
+            Candidate::server_reflexive(SocketAddr::new(addr1, 52625), base, "udp").unwrap();
+        let expected_candidate2 =
+            Candidate::server_reflexive(SocketAddr::new(addr2, 52625), base, "udp").unwrap();
+        let unexpected_candidate3 =
+            Candidate::server_reflexive(SocketAddr::new(addr3, 52625), base, "udp").unwrap();
+
+        assert!(agent.remote_candidates().contains(&expected_candidate1));
+        assert!(agent.remote_candidates().contains(&expected_candidate2));
+        assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
     }
 }
