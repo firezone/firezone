@@ -129,14 +129,9 @@ struct Cli {
     #[arg(default_value = platform::default_token_path().display().to_string(), env = "FIREZONE_TOKEN_PATH", long)]
     token_path: PathBuf,
 
-    /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
-    #[arg(
-        long,
-        env = "FIREZONE_NO_INC_BUF",
-        hide = true,
-        default_value_t = false
-    )]
-    no_inc_buf: bool,
+    /// Increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
+    #[arg(long, env = "FIREZONE_INC_BUF", hide = true, default_value_t = false)]
+    inc_buf: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -151,7 +146,7 @@ impl Cli {
     }
 
     fn is_inc_buf_allowed(&self) -> bool {
-        !self.no_inc_buf
+        self.inc_buf
     }
 }
 

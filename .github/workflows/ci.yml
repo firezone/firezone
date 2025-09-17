@@ -295,6 +295,7 @@ jobs:
       CLIENT_TAG: ${{ github.sha }}
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
       RELAY_TAG: ${{ github.sha }}
+      FIREZONE_INC_BUF: true
     strategy:
       fail-fast: false
       matrix:
