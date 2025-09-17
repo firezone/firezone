@@ -6,7 +6,9 @@ use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
     GatewaysIceCandidates, IngressMessages, InitClient,
 };
-use firezone_tunnel::{ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig};
+use firezone_tunnel::{
+    ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError,
+};
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -132,7 +134,7 @@ impl Eventloop {
 
 enum CombinedEvent {
     Command(Option<Command>),
-    Tunnel(Result<ClientEvent>),
+    Tunnel(ClientEvent),
     Portal(Option<Result<IngressMessages, phoenix_channel::Error>>),
 }
 
@@ -147,8 +149,7 @@ impl Eventloop {
                         ControlFlow::Break(()) => return Ok(()),
                     }
                 }
-                CombinedEvent::Tunnel(Ok(event)) => self.handle_tunnel_event(event).await?,
-                CombinedEvent::Tunnel(Err(e)) => self.handle_tunnel_error(e)?,
+                CombinedEvent::Tunnel(event) => self.handle_tunnel_event(event).await?,
                 CombinedEvent::Portal(Some(event)) => {
                     let msg = event.context("Connection to portal failed")?;
 
@@ -244,52 +245,55 @@ impl Eventloop {
                     .send(Some(config))
                     .context("Failed to emit event")?;
             }
-            firezone_tunnel::ClientEvent::DnsRecordsChanged { records } => {
+            ClientEvent::DnsRecordsChanged { records } => {
                 *DNS_RESOURCE_RECORDS_CACHE.lock() = records;
             }
+            ClientEvent::Error(error) => self.handle_tunnel_error(error)?,
         }
 
         Ok(())
     }
 
-    fn handle_tunnel_error(&mut self, e: anyhow::Error) -> Result<()> {
-        if e.root_cause()
-            .downcast_ref::<io::Error>()
-            .is_some_and(is_unreachable)
-        {
-            tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
-            return Ok(());
-        }
-
-        // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
-        if e.root_cause()
-            .downcast_ref::<io::Error>()
-            .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
-        {
-            tracing::debug!("{e:#}");
-            return Ok(());
-        }
-
-        if e.root_cause()
-            .is::<firezone_tunnel::UdpSocketThreadStopped>()
-        {
-            return Err(e);
-        }
-
-        if e.root_cause()
-            .downcast_ref::<io::Error>()
-            .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
-        {
-            if !mem::replace(&mut self.logged_permission_denied, true) {
-                tracing::info!(
-                    "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
-                )
+    fn handle_tunnel_error(&mut self, mut e: TunnelError) -> Result<()> {
+        for e in e.drain() {
+            if e.root_cause()
+                .downcast_ref::<io::Error>()
+                .is_some_and(is_unreachable)
+            {
+                tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
+                return Ok(());
             }
 
-            return Ok(());
-        }
+            // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
+            if e.root_cause()
+                .downcast_ref::<io::Error>()
+                .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
+            {
+                tracing::debug!("{e:#}");
+                return Ok(());
+            }
 
-        tracing::warn!("Tunnel error: {e:#}");
+            if e.root_cause()
+                .is::<firezone_tunnel::UdpSocketThreadStopped>()
+            {
+                return Err(e);
+            }
+
+            if e.root_cause()
+                .downcast_ref::<io::Error>()
+                .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
+            {
+                if !mem::replace(&mut self.logged_permission_denied, true) {
+                    tracing::info!(
+                        "Encountered `PermissionDenied` IO error. Check your local firewall rules to allow outbound STUN/TURN/WireGuard and general UDP traffic."
+                    )
+                }
+
+                return Ok(());
+            }
+
+            tracing::warn!("Tunnel error: {e:#}");
+        }
 
         Ok(())
     }

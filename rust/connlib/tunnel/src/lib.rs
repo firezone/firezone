@@ -18,7 +18,7 @@ use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    fmt, future,
+    fmt, future, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{Context, Poll, ready},
@@ -140,42 +140,62 @@ impl ClientTunnel {
         self.io.reset();
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<ClientEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            let mut ready = false;
+
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
-            if let Some(e) = self.role_state.poll_event() {
-                return Poll::Ready(Ok(e));
+            // Pass up existing events.
+            if let Some(event) = self.role_state.poll_event() {
+                return Poll::Ready(event);
             }
 
-            if let Some(packet) = self.role_state.poll_packets() {
+            // Drain all buffered IP packets.
+            while let Some(packet) = self.role_state.poll_packets() {
                 self.io.send_tun(packet);
-                continue;
+                ready = true;
             }
 
-            if let Some(trans) = self.role_state.poll_transmit() {
+            // Drain all buffered transmits.
+            while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
-                continue;
+                ready = true;
             }
 
-            if let Some(query) = self.role_state.poll_dns_queries() {
+            // Drain all scheduled DNS queries.
+            while let Some(query) = self.role_state.poll_dns_queries() {
                 self.io.send_dns_query(query);
-                continue;
+                ready = true;
             }
 
-            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout, reason);
-            }
+            // Process all IO sources that are ready.
+            if let Poll::Ready(io::Input {
+                now,
+                now_utc: _,
+                timeout,
+                dns_response,
+                tcp_dns_query: _,
+                udp_dns_query: _,
+                device,
+                network,
+                error,
+            }) = self.io.poll(cx, &mut self.buffers)
+            {
+                if let Some(response) = dns_response {
+                    self.role_state.handle_dns_response(response);
+                    self.role_state.handle_timeout(now);
 
-            match self.io.poll(cx, &mut self.buffers)? {
-                Poll::Ready(io::Input::Timeout(timeout)) => {
-                    self.role_state.handle_timeout(timeout);
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::Device(packets)) => {
-                    let now = Instant::now();
 
+                if timeout {
+                    self.role_state.handle_timeout(now);
+                    ready = true;
+                }
+
+                if let Some(packets) = device {
                     for packet in packets {
                         if packet.is_fz_p2p_control() {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -183,20 +203,25 @@ impl ClientTunnel {
 
                         let ecn = packet.ecn();
 
-                        let Some(transmit) = self.role_state.handle_tun_input(packet, now) else {
-                            self.role_state.handle_timeout(now);
-                            continue;
-                        };
-
-                        self.io
-                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
+                        match self.role_state.handle_tun_input(packet, now) {
+                            Some(transmit) => {
+                                self.io.send_network(
+                                    transmit.src,
+                                    transmit.dst,
+                                    &transmit.payload,
+                                    ecn,
+                                );
+                            }
+                            None => {
+                                self.role_state.handle_timeout(now);
+                            }
+                        }
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::Network(mut packets)) => {
-                    let now = Instant::now();
 
+                if let Some(mut packets) = network {
                     while let Some(received) = packets.next() {
                         self.packet_counter.add(
                             1,
@@ -207,35 +232,34 @@ impl ClientTunnel {
                             ],
                         );
 
-                        let Some(packet) = self.role_state.handle_network_input(
+                        match self.role_state.handle_network_input(
                             received.local,
                             received.from,
                             received.packet,
                             now,
-                        ) else {
-                            self.role_state.handle_timeout(now);
-                            continue;
+                        ) {
+                            Some(packet) => self
+                                .io
+                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                            None => self.role_state.handle_timeout(now),
                         };
-
-                        self.io
-                            .send_tun(packet.with_ecn_from_transport(received.ecn));
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::DnsResponse(packet)) => {
-                    self.role_state.handle_dns_response(packet);
-                    self.role_state.handle_timeout(Instant::now());
-                    continue;
+
+                // Reset timer for time-based wakeup.
+                if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                    self.io.reset_timeout(timeout, reason);
                 }
-                Poll::Ready(io::Input::UdpDnsQuery(_) | io::Input::TcpDnsQuery(_)) => {
-                    debug_assert!(
-                        false,
-                        "Client does not (yet) use userspace DNS server sockets"
-                    );
-                    continue;
+
+                if !error.is_empty() {
+                    return Poll::Ready(ClientEvent::Error(error));
                 }
-                Poll::Pending => {}
+            }
+
+            if ready {
+                continue;
             }
 
             return Poll::Pending;
@@ -293,26 +317,39 @@ impl GatewayTunnel {
         .boxed()
     }
 
-    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<Result<GatewayEvent>> {
+    pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<GatewayEvent> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
+            let mut ready = false;
+
             ready!(self.io.poll_has_sockets(cx)); // Suspend everything if we don't have any sockets.
 
+            // Pass up existing events.
             if let Some(other) = self.role_state.poll_event() {
-                return Poll::Ready(Ok(other));
+                return Poll::Ready(other);
             }
 
-            if let Some(trans) = self.role_state.poll_transmit() {
+            // Drain all buffered transmits.
+            while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
                     .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
-                continue;
+
+                ready = true;
             }
 
-            if let Some((timeout, reason)) = self.role_state.poll_timeout() {
-                self.io.reset_timeout(timeout, reason);
-            }
-
-            match self.io.poll(cx, &mut self.buffers)? {
-                Poll::Ready(io::Input::DnsResponse(response)) => {
+            // Process all IO sources that are ready.
+            if let Poll::Ready(io::Input {
+                now,
+                now_utc,
+                timeout,
+                dns_response,
+                tcp_dns_query,
+                udp_dns_query,
+                device,
+                network,
+                mut error,
+            }) = self.io.poll(cx, &mut self.buffers)
+            {
+                if let Some(response) = dns_response {
                     let message = response.message.unwrap_or_else(|e| {
                         tracing::debug!("DNS query failed: {e}");
 
@@ -321,22 +358,26 @@ impl GatewayTunnel {
 
                     match response.transport {
                         dns::Transport::Udp { source } => {
-                            self.io.send_udp_dns_response(source, message)?;
+                            if let Err(e) = self.io.send_udp_dns_response(source, message) {
+                                error.push(e);
+                            }
                         }
                         dns::Transport::Tcp { remote, .. } => {
-                            self.io.send_tcp_dns_response(remote, message)?;
+                            if let Err(e) = self.io.send_tcp_dns_response(remote, message) {
+                                error.push(e);
+                            }
                         }
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::Timeout(timeout)) => {
-                    self.role_state.handle_timeout(timeout, Utc::now());
-                    continue;
-                }
-                Poll::Ready(io::Input::Device(packets)) => {
-                    let now = Instant::now();
 
+                if timeout {
+                    self.role_state.handle_timeout(now, now_utc);
+                    ready = true;
+                }
+
+                if let Some(packets) = device {
                     for packet in packets {
                         if packet.is_fz_p2p_control() {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
@@ -344,21 +385,26 @@ impl GatewayTunnel {
 
                         let ecn = packet.ecn();
 
-                        let Some(transmit) = self.role_state.handle_tun_input(packet, now)? else {
-                            self.role_state.handle_timeout(now, Utc::now());
-                            continue;
-                        };
-
-                        self.io
-                            .send_network(transmit.src, transmit.dst, &transmit.payload, ecn);
+                        match self.role_state.handle_tun_input(packet, now) {
+                            Ok(Some(transmit)) => {
+                                self.io.send_network(
+                                    transmit.src,
+                                    transmit.dst,
+                                    &transmit.payload,
+                                    ecn,
+                                );
+                            }
+                            Ok(None) => {
+                                self.role_state.handle_timeout(now, Utc::now());
+                            }
+                            Err(e) => error.push(e),
+                        }
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::Network(mut packets)) => {
-                    let now = Instant::now();
-                    let utc_now = Utc::now();
 
+                if let Some(mut packets) = network {
                     while let Some(received) = packets.next() {
                         self.packet_counter.add(
                             1,
@@ -369,61 +415,78 @@ impl GatewayTunnel {
                             ],
                         );
 
-                        let Some(packet) = self.role_state.handle_network_input(
+                        match self.role_state.handle_network_input(
                             received.local,
                             received.from,
                             received.packet,
                             now,
-                        )?
-                        else {
-                            self.role_state.handle_timeout(now, utc_now);
-                            continue;
+                        ) {
+                            Ok(Some(packet)) => self
+                                .io
+                                .send_tun(packet.with_ecn_from_transport(received.ecn)),
+                            Ok(None) => self.role_state.handle_timeout(now, now_utc),
+                            Err(e) => error.push(e),
                         };
-
-                        self.io
-                            .send_tun(packet.with_ecn_from_transport(received.ecn));
                     }
 
-                    continue;
+                    ready = true;
                 }
-                Poll::Ready(io::Input::UdpDnsQuery(query)) => {
-                    let Some(nameserver) = self.io.fastest_nameserver() else {
+
+                if let Some(query) = udp_dns_query {
+                    if let Some(nameserver) = self.io.fastest_nameserver() {
+                        self.io.send_dns_query(dns::RecursiveQuery::via_udp(
+                            query.source,
+                            SocketAddr::new(nameserver, dns::DNS_PORT),
+                            query.message,
+                        ));
+                    } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
-                        self.io.send_udp_dns_response(
+                        if let Err(e) = self.io.send_udp_dns_response(
                             query.source,
                             dns_types::Response::servfail(&query.message),
-                        )?;
+                        ) {
+                            error.push(e);
+                        }
+                    }
 
-                        continue;
-                    };
-
-                    self.io.send_dns_query(dns::RecursiveQuery::via_udp(
-                        query.source,
-                        SocketAddr::new(nameserver, dns::DNS_PORT),
-                        query.message,
-                    ));
+                    ready = true;
                 }
-                Poll::Ready(io::Input::TcpDnsQuery(query)) => {
-                    let Some(nameserver) = self.io.fastest_nameserver() else {
+
+                if let Some(query) = tcp_dns_query {
+                    if let Some(nameserver) = self.io.fastest_nameserver() {
+                        self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
+                            query.local,
+                            query.remote,
+                            SocketAddr::new(nameserver, dns::DNS_PORT),
+                            query.message,
+                        ));
+                    } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
 
-                        self.io.send_tcp_dns_response(
+                        if let Err(e) = self.io.send_tcp_dns_response(
                             query.remote,
                             dns_types::Response::servfail(&query.message),
-                        )?;
+                        ) {
+                            error.push(e);
+                        }
+                    }
 
-                        continue;
-                    };
-
-                    self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
-                        query.local,
-                        query.remote,
-                        SocketAddr::new(nameserver, dns::DNS_PORT),
-                        query.message,
-                    ));
+                    ready = true;
                 }
-                Poll::Pending => {}
+
+                // Reset timer for time-based wakeup.
+                if let Some((timeout, reason)) = self.role_state.poll_timeout() {
+                    self.io.reset_timeout(timeout, reason);
+                }
+
+                if !error.is_empty() {
+                    return Poll::Ready(GatewayEvent::Error(error));
+                }
+            }
+
+            if ready {
+                continue;
             }
 
             return Poll::Pending;
@@ -435,7 +498,7 @@ impl GatewayTunnel {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum ClientEvent {
     AddedIceCandidates {
         conn_id: GatewayId,
@@ -457,6 +520,7 @@ pub enum ClientEvent {
         records: BTreeSet<DnsResourceRecord>,
     },
     TunInterfaceUpdated(TunConfig),
+    Error(TunnelError),
 }
 
 #[derive(Clone, derive_more::Debug, PartialEq, Eq)]
@@ -509,6 +573,49 @@ pub enum GatewayEvent {
         candidates: BTreeSet<IceCandidate>,
     },
     ResolveDns(ResolveDnsRequest),
+    Error(TunnelError),
+}
+
+/// A collection of errors that occurred during a single event-loop tick.
+///
+/// This type purposely doesn't provide a `From` implementation for any errors.
+/// We want compile-time safety inside the event-loop that we don't abort processing in the middle of a packet batch.
+#[derive(Debug, Default)]
+pub struct TunnelError {
+    errors: Vec<anyhow::Error>,
+}
+
+impl TunnelError {
+    pub fn single(e: impl Into<anyhow::Error>) -> Self {
+        Self {
+            errors: vec![e.into()],
+        }
+    }
+
+    pub fn push(&mut self, e: impl Into<anyhow::Error>) {
+        self.errors.push(e.into());
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    pub fn drain(&mut self) -> impl Iterator<Item = anyhow::Error> {
+        mem::take(&mut self.errors).into_iter()
+    }
+}
+
+impl Drop for TunnelError {
+    fn drop(&mut self) {
+        debug_assert!(
+            self.errors.is_empty(),
+            "should never drop `TunnelError` without consuming errors"
+        );
+
+        if !self.errors.is_empty() {
+            tracing::error!("should never drop `TunnelError` without consuming errors")
+        }
+    }
 }
 
 /// Adapter-struct to [`fmt::Display`] a [`BTreeSet`].
