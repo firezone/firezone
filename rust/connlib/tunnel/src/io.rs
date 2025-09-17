@@ -83,6 +83,10 @@ impl Default for Buffers {
     }
 }
 
+/// Represents all IO sources that may be ready during a single event-loop tick.
+///
+/// This structure allows us to batch-process multiple ready sources rather than
+/// handling them one at a time, improving fairness and preventing starvation.
 pub struct Input<D, I> {
     pub now: Instant,
     pub now_utc: DateTime<Utc>,
