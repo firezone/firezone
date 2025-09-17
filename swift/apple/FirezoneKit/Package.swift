@@ -11,11 +11,15 @@ let package = Package(
     // other packages.
     .library(name: "FirezoneKit", targets: ["FirezoneKit"])
   ],
-  dependencies: [],
+  dependencies: [
+    .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.55.0")
+  ],
   targets: [
     .target(
       name: "FirezoneKit",
-      dependencies: []
+      dependencies: [
+        .product(name: "Sentry", package: "sentry-cocoa")
+      ]
     ),
     .testTarget(
       name: "FirezoneKitTests",
