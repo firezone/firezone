@@ -1292,7 +1292,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
 
     let optimistic_candidates = public_ips
         .cartesian_product(host_candidates)
-        .filter(|(ip, base)| ip.is_ipv4() == base.is_ipv4())
+        .filter(|(ip, base)| ip.is_ipv4() && base.is_ipv4())
         .filter_map(|(ip, base)| {
             let addr = SocketAddr::new(ip, base.port());
 
@@ -2649,7 +2649,7 @@ impl fmt::Display for SessionId {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr, SocketAddrV4};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
 
     use super::*;
 
@@ -2690,5 +2690,31 @@ mod tests {
             Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
 
         assert!(agent.remote_candidates().contains(&expected_candidate))
+    }
+
+    #[test]
+    fn skips_optimistic_candidates_for_ipv6() {
+        let base = SocketAddr::V6(SocketAddrV6::new(
+            Ipv6Addr::new(10, 0, 0, 0, 0, 0, 0, 1),
+            52625,
+            0,
+            0,
+        ));
+        let addr = IpAddr::V6(Ipv6Addr::new(1, 1, 1, 1, 1, 1, 1, 1));
+
+        let host = Candidate::host(base, "udp").unwrap();
+        let srvflx =
+            Candidate::server_reflexive(SocketAddr::new(addr, 40000), base, "udp").unwrap();
+
+        let mut agent = IceAgent::new();
+        agent.add_remote_candidate(host);
+        agent.add_remote_candidate(srvflx);
+
+        generate_optimistic_candidates(&mut agent);
+
+        let unexpected_candidate =
+            Candidate::server_reflexive(SocketAddr::new(addr, 52625), base, "udp").unwrap();
+
+        assert!(!agent.remote_candidates().contains(&unexpected_candidate))
     }
 }
