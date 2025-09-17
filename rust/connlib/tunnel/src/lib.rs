@@ -611,6 +611,10 @@ impl Drop for TunnelError {
             self.errors.is_empty(),
             "should never drop `TunnelError` without consuming errors"
         );
+
+        if !self.errors.is_empty() {
+            tracing::error!("should never drop `TunnelError` without consuming errors")
+        }
     }
 }
 
