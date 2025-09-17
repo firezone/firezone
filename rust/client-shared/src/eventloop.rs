@@ -96,7 +96,7 @@ impl Eventloop {
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-        mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+        mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
         tun_config_sender: watch::Sender<Option<TunConfig>>,
@@ -432,7 +432,7 @@ impl Eventloop {
 }
 
 async fn phoenix_channel_event_loop(
-    mut portal: PhoenixChannel<(), IngressMessages, (), PublicKeyParam>,
+    mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
 ) {
@@ -449,7 +449,7 @@ async fn phoenix_channel_event_loop(
                     break;
                 }
             }
-            Either::Left((Ok(phoenix_channel::Event::SuccessResponse { res: (), .. }), _)) => {}
+            Either::Left((Ok(phoenix_channel::Event::SuccessResponse { .. }), _)) => {}
             Either::Left((Ok(phoenix_channel::Event::ErrorResponse { res, req_id, topic }), _)) => {
                 match res {
                     ErrorReply::Disabled => {

@@ -70,7 +70,7 @@ async fn client_does_not_pipeline_messages() {
         .unwrap(),
     );
 
-    let mut channel = PhoenixChannel::<(), InboundMsg, (), _>::disconnected(
+    let mut channel = PhoenixChannel::<(), InboundMsg, _>::disconnected(
         login_url,
         "test/1.0.0".to_owned(),
         "test",
