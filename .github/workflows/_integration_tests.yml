@@ -96,6 +96,7 @@ jobs:
       ELIXIR_TAG: ${{ inputs.elixir_tag }}
       HTTP_TEST_SERVER_IMAGE: ${{ inputs.http_test_server_image }}
       HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
+      FIREZONE_INC_BUF: true
     strategy:
       fail-fast: false
       matrix:

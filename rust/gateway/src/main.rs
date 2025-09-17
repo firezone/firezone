@@ -101,6 +101,20 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
 
     tracing::debug!(?cli);
 
+    if cfg!(target_os = "linux") && cli.is_inc_buf_allowed() {
+        let recv_buf_size = socket_factory::RECV_BUFFER_SIZE;
+        let send_buf_size = socket_factory::SEND_BUFFER_SIZE;
+
+        match tokio::fs::write("/proc/sys/net/core/rmem_max", recv_buf_size.to_string()).await {
+            Ok(()) => tracing::info!("Set `core.rmem_max` to {recv_buf_size}",),
+            Err(e) => tracing::info!("Failed to increase `core.rmem_max`: {e}"),
+        };
+        match tokio::fs::write("/proc/sys/net/core/wmem_max", send_buf_size.to_string()).await {
+            Ok(()) => tracing::info!("Set `core.wmem_max` to {send_buf_size}",),
+            Err(e) => tracing::info!("Failed to increase `core.wmem_max`: {e}"),
+        };
+    }
+
     let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
 
@@ -290,6 +304,10 @@ struct Cli {
         default_value_t = false
     )]
     validate_checksums: bool,
+
+    /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
+    #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]
+    no_inc_buf: bool,
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -301,6 +319,10 @@ enum MetricsExporter {
 impl Cli {
     fn is_telemetry_allowed(&self) -> bool {
         !self.no_telemetry
+    }
+
+    fn is_inc_buf_allowed(&self) -> bool {
+        !self.no_inc_buf
     }
 }
 

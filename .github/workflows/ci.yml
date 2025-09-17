@@ -295,6 +295,7 @@ jobs:
       CLIENT_TAG: ${{ github.sha }}
       RELAY_IMAGE: "ghcr.io/firezone/perf/relay"
       RELAY_TAG: ${{ github.sha }}
+      FIREZONE_INC_BUF: true
     strategy:
       fail-fast: false
       matrix:
@@ -315,6 +316,10 @@ jobs:
       - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
+      - name: Increase max UDP buffer sizes
+        run: |
+          sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
+          sudo sysctl -w net.core.rmem_max=134217728 # 128 MB
       - name: Start docker compose in the background
         run: |
           # We need to increase the log level to make sure that they don't hold off storm of packets
@@ -352,9 +357,6 @@ jobs:
       - name: Show Client logs
         if: "!cancelled()"
         run: docker compose logs client
-      - name: Show Client UDP stats
-        if: "!cancelled()"
-        run: docker compose exec client cat /proc/net/udp
       - name: Show Relay-1 logs
         if: "!cancelled()"
         run: docker compose logs relay-1
@@ -364,9 +366,6 @@ jobs:
       - name: Show Gateway logs
         if: "!cancelled()"
         run: docker compose logs gateway
-      - name: Show Gateway UDP stats
-        if: "!cancelled()"
-        run: docker compose exec gateway cat /proc/net/udp
       - name: Show API logs
         if: "!cancelled()"
         run: docker compose logs api
@@ -374,30 +373,31 @@ jobs:
         if: "!cancelled()"
         run: docker compose logs iperf3
 
-      - name: Ensure Client emitted no warnings
+      - name: Ensure no warnings are logged
         if: "!cancelled()"
         run: |
           docker compose logs client |
             grep "WARN" && exit 1 || exit 0
-      - name: Ensure Relay-1 emitted no warnings
-        if: "!cancelled()"
-        run: |
+
+          docker compose logs gateway |
+            grep "WARN" && exit 1 || exit 0
+
           # BTF doesn't load for veth interfaces
           docker compose logs relay-1 | \
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
             grep "WARN" && exit 1 || exit 0
-      - name: Ensure Relay-2 emitted no warnings
-        if: "!cancelled()"
-        run: |
-          # BTF doesn't load for veth interfaces
           docker compose logs relay-2 | \
             grep --invert "Object BTF couldn't be loaded in the kernel: the BPF_BTF_LOAD syscall failed." | \
             grep "WARN" && exit 1 || exit 0
-      - name: Ensure Gateway emitted no warnings
-        if: "!cancelled()"
+
+      - name: Ensure no UDP socket errors
+        if: "!cancelled() && startsWith(matrix.test, 'tcp')"
         run: |
-          docker compose logs gateway |
-            grep "WARN" && exit 1 || exit 0
+          docker compose exec client /bin/sh -c 'nstat -s' |
+            grep -i "error" && exit 1 || exit 0
+
+          docker compose exec gateway /bin/sh -c 'nstat -s' |
+            grep -i "error" && exit 1 || exit 0
 
   upload-bencher:
     continue-on-error: true
