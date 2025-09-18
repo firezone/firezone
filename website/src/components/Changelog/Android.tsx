@@ -20,7 +20,8 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.4" date={new Date("2025-09-18")}>
         <ChangeItem pull="10371">
           Fixes a bug that could prevent sign-ins from completing successfully
           if Firefox is set as the default browser.
@@ -31,7 +32,7 @@ export default function Android() {
           connectivity for long-running services that don't re-resolve DNS, like
           SSH sessions or mongoose.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.3" date={new Date("2025-08-05")}>
         <ChangeItem pull="9985">
           Fixes an issue where control plane messages could be stuck forever on
