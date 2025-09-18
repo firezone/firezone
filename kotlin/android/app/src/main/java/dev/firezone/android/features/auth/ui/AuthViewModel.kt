@@ -20,8 +20,6 @@ internal class AuthViewModel
         private val actionMutableLiveData = MutableLiveData<ViewAction>()
         val actionLiveData: LiveData<ViewAction> = actionMutableLiveData
 
-        private var authFlowLaunched: Boolean = false
-
         fun onActivityResume() =
             viewModelScope.launch {
                 val state = generateRandomString(NONCE_LENGTH)
@@ -29,11 +27,10 @@ internal class AuthViewModel
                 repo.saveNonceSync(nonce)
                 repo.saveStateSync(state)
                 val config = repo.getConfigSync()
+                val authUrl = "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=client"
 
                 actionMutableLiveData.postValue(
-                    ViewAction.LaunchAuthFlow(
-                        "${config.authUrl}/${config.accountSlug}?state=$state&nonce=$nonce&as=client",
-                    ),
+                    ViewAction.LaunchAuthFlow(authUrl),
                 )
             }
 
