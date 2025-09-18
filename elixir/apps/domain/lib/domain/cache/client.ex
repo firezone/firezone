@@ -226,22 +226,17 @@ defmodule Domain.Cache.Client do
     gid_bytes = dump!(membership.group_id)
 
     updated_policies =
-      cache.policies
-      |> Enum.reject(fn {_id, p} -> p.actor_group_id == gid_bytes end)
-      |> Enum.into(%{})
+      for {id, p} <- cache.policies, p.actor_group_id != gid_bytes, do: {id, p}, into: %{}
 
     # Only remove resources that have no remaining policies
     remaining_resource_ids =
-      updated_policies
-      |> Enum.map(fn {_id, p} -> p.resource_id end)
-      |> MapSet.new()
+      for {_id, p} <- updated_policies, do: p.resource_id, into: MapSet.new()
 
     updated_resources =
-      cache.resources
-      |> Enum.filter(fn {rid_bytes, _resource} ->
-        MapSet.member?(remaining_resource_ids, rid_bytes)
-      end)
-      |> Enum.into(%{})
+      for {rid_bytes, resource} <- cache.resources,
+          MapSet.member?(remaining_resource_ids, rid_bytes),
+          do: {rid_bytes, resource},
+          into: %{}
 
     updated_memberships =
       cache.memberships
@@ -269,21 +264,14 @@ defmodule Domain.Cache.Client do
 
     # Get updated resources
     resources =
-      cache.resources
-      |> Enum.map(fn {id, resource} ->
-        # Replace old group with new
+      for {id, resource} <- cache.resources, into: %{} do
         gateway_groups =
-          Enum.map(resource.gateway_groups, fn gg ->
-            if gg.id == group.id do
-              group
-            else
-              gg
-            end
-          end)
+          for gg <- resource.gateway_groups do
+            if gg.id == group.id, do: group, else: gg
+          end
 
         {id, %{resource | gateway_groups: gateway_groups}}
-      end)
-      |> Enum.into(%{})
+      end
 
     cache = %{cache | resources: resources}
 
