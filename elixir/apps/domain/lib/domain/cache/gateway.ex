@@ -66,19 +66,15 @@ defmodule Domain.Cache.Gateway do
     now_unix = DateTime.utc_now() |> DateTime.to_unix(:second)
 
     # 1. Remove individual flows older than 14 days, then remove access entry if no flows left
-    cache
-    |> Enum.map(fn {tuple, flow_id_map} ->
-      flow_id_map =
-        Enum.reject(flow_id_map, fn {_fid_bytes, expires_at_unix} ->
-          expires_at_unix < now_unix
-        end)
-        |> Enum.into(%{})
-
-      {tuple, flow_id_map}
-    end)
-    |> Enum.into(%{})
-    |> Enum.reject(fn {_tuple, flow_id_map} -> map_size(flow_id_map) == 0 end)
-    |> Enum.into(%{})
+    for {tuple, flow_id_map} <- cache,
+        filtered =
+          Map.reject(flow_id_map, fn {_fid_bytes, expires_at_unix} ->
+            expires_at_unix < now_unix
+          end),
+        map_size(filtered) > 0,
+        into: %{} do
+      {tuple, filtered}
+    end
   end
 
   @doc """
