@@ -21,6 +21,10 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="10371">
+          Fixes a bug that could prevent sign-ins from completing successfully
+          if Firefox is set as the default browser.
+        </ChangeItem>
         <ChangeItem pull="10104">
           Fixes an issue where DNS resources would resolve to a different IP
           after signing out and back into Firezone. This would break

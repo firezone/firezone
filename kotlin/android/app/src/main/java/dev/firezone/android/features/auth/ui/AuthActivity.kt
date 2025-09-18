@@ -1,12 +1,14 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.auth.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.viewModels
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.browser.customtabs.CustomTabsIntent
 import dagger.hilt.android.AndroidEntryPoint
 import dev.firezone.android.R
 import dev.firezone.android.core.presentation.MainActivity
@@ -16,6 +18,7 @@ import dev.firezone.android.databinding.ActivityAuthBinding
 class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     private lateinit var binding: ActivityAuthBinding
     private val viewModel: AuthViewModel by viewModels()
+    private var hasLaunchedCustomTab = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -27,7 +30,12 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
     override fun onResume() {
         super.onResume()
 
-        viewModel.onActivityResume()
+        if (hasLaunchedCustomTab) {
+            // User returned from Custom Tab without completing auth, navigate back to main app
+            navigateToSignIn()
+        } else {
+            viewModel.onActivityResume()
+        }
     }
 
     private fun setupActionObservers() {
@@ -43,12 +51,24 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         }
     }
 
-    // We can't close this webview because it's opened with ACTION_VIEW.
-    // If we want more control over it we need to embed our own WebView which
-    // has its own set of tradeoffs.
     private fun setupWebView(url: String) {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-        startActivity(intent)
+        hasLaunchedCustomTab = true
+        val customTabsIntent =
+            CustomTabsIntent
+                .Builder()
+                .setShowTitle(true)
+                .build()
+        val url = Uri.parse(url)
+
+        // Try to use Custom Tabs with the default browser first
+        try {
+            customTabsIntent.launchUrl(this, url)
+        } catch (e: ActivityNotFoundException) {
+            // Fallback to default browser if Custom Tabs unavailable
+            val intent = Intent(Intent.ACTION_VIEW, url)
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        }
     }
 
     private fun navigateToSignIn() {
