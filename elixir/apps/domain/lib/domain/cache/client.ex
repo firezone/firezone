@@ -150,7 +150,7 @@ defmodule Domain.Cache.Client do
   end
 
   def recompute_connectable_resources(cache, client, opts \\ []) do
-    {toggle, _opts} = Keyword.pop(opts, :toggle)
+    {toggle, _opts} = Keyword.pop(opts, :toggle, false)
 
     connectable_resources =
       cache.policies
