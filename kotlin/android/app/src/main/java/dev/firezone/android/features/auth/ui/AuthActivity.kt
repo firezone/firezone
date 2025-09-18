@@ -1,6 +1,7 @@
 /* Licensed under Apache 2.0 (C) 2024 Firezone, Inc. */
 package dev.firezone.android.features.auth.ui
 
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -50,7 +51,6 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
         }
     }
 
-    // Use Custom Tabs with explicit package preference for better browser support
     private fun setupWebView(url: String) {
         hasLaunchedCustomTab = true
         val customTabsIntent =
@@ -58,13 +58,14 @@ class AuthActivity : AppCompatActivity(R.layout.activity_auth) {
                 .Builder()
                 .setShowTitle(true)
                 .build()
+        val url = Uri.parse(url)
 
         // Try to use Custom Tabs with the default browser first
         try {
-            customTabsIntent.launchUrl(this, Uri.parse(url))
-        } catch (e: Exception) {
+            customTabsIntent.launchUrl(this, url)
+        } catch (e: ActivityNotFoundException) {
             // Fallback to default browser if Custom Tabs unavailable
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+            val intent = Intent(Intent.ACTION_VIEW, url)
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             startActivity(intent)
         }
