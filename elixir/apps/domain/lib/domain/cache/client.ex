@@ -96,9 +96,7 @@ defmodule Domain.Cache.Client do
     resource = Enum.find(cache.connectable_resources, :not_found, fn r -> r.id == rid_bytes end)
 
     policy =
-      for {_id, %{resource_id: ^rid_bytes} = p} <- cache.policies do
-        p
-      end
+      for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
       |> Policies.longest_conforming_policy_for_client(client, subject.expires_at)
 
     with %Cache.Cacheable.Resource{} <- resource,
