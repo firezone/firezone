@@ -96,9 +96,7 @@ defmodule Domain.Cache.Client do
     resource = Enum.find(cache.connectable_resources, :not_found, fn r -> r.id == rid_bytes end)
 
     policy =
-      cache.policies
-      |> Enum.filter(fn {_id, policy} -> policy.resource_id == rid_bytes end)
-      |> Enum.map(fn {_id, policy} -> policy end)
+      for({_id, %{resource_id: ^rid_bytes} = p} <- cache.policies, do: p)
       |> Policies.longest_conforming_policy_for_client(client, subject.expires_at)
 
     with %Cache.Cacheable.Resource{} <- resource,
@@ -150,7 +148,7 @@ defmodule Domain.Cache.Client do
   end
 
   def recompute_connectable_resources(cache, client, opts \\ []) do
-    {toggle, _opts} = Keyword.pop(opts, :toggle)
+    {toggle, _opts} = Keyword.pop(opts, :toggle, false)
 
     connectable_resources =
       cache.policies
@@ -163,19 +161,15 @@ defmodule Domain.Cache.Client do
 
     # connlib can handle all resource attribute changes except for changing sites, so we can omit the deleted IDs
     # of added resources since they'll be updated gracefully.
-    removed =
-      (cache.connectable_resources -- connectable_resources)
-      |> Enum.filter(fn r ->
-        if toggle do
-          r
-        else
-          r.id not in added_ids
-        end
-      end)
+    removed_ids =
+      for r <- cache.connectable_resources -- connectable_resources,
+          toggle or r.id not in added_ids do
+        load!(r.id)
+      end
 
     cache = %{cache | connectable_resources: connectable_resources}
 
-    {:ok, added, Enum.map(removed, & &1.id) |> Enum.map(&load!/1), cache}
+    {:ok, added, removed_ids, cache}
   end
 
   @doc """
@@ -230,23 +224,17 @@ defmodule Domain.Cache.Client do
     gid_bytes = dump!(membership.group_id)
 
     updated_policies =
-      cache.policies
-      |> Enum.reject(fn {_id, p} -> p.actor_group_id == gid_bytes end)
-      |> Enum.into(%{})
+      for {id, p} <- cache.policies, p.actor_group_id != gid_bytes, do: {id, p}, into: %{}
 
     # Only remove resources that have no remaining policies
     remaining_resource_ids =
-      updated_policies
-      |> Enum.map(fn {_id, p} -> p.resource_id end)
-      |> Enum.uniq()
-      |> MapSet.new()
+      for {_id, p} <- updated_policies, do: p.resource_id, into: MapSet.new()
 
     updated_resources =
-      cache.resources
-      |> Enum.filter(fn {rid_bytes, _resource} ->
-        MapSet.member?(remaining_resource_ids, rid_bytes)
-      end)
-      |> Enum.into(%{})
+      for {rid_bytes, resource} <- cache.resources,
+          MapSet.member?(remaining_resource_ids, rid_bytes),
+          do: {rid_bytes, resource},
+          into: %{}
 
     updated_memberships =
       cache.memberships
@@ -274,21 +262,14 @@ defmodule Domain.Cache.Client do
 
     # Get updated resources
     resources =
-      cache.resources
-      |> Enum.map(fn {id, resource} ->
-        # Replace old group with new
+      for {id, resource} <- cache.resources, into: %{} do
         gateway_groups =
-          Enum.map(resource.gateway_groups, fn gg ->
-            if gg.id == group.id do
-              group
-            else
-              gg
-            end
-          end)
+          for gg <- resource.gateway_groups do
+            if gg.id == group.id, do: group, else: gg
+          end
 
         {id, %{resource | gateway_groups: gateway_groups}}
-      end)
-      |> Enum.into(%{})
+      end
 
     cache = %{cache | resources: resources}
 
@@ -522,11 +503,9 @@ defmodule Domain.Cache.Client do
         end)
 
       memberships =
-        Actors.all_memberships_for_actor_id!(client.actor_id)
-        |> Enum.map(fn membership ->
-          {dump!(membership.group_id), dump!(membership.id)}
-        end)
-        |> Enum.into(%{})
+        for memberships <- Actors.all_memberships_for_actor_id!(client.actor_id),
+            do: {dump!(memberships.group_id), dump!(memberships.id)},
+            into: %{}
 
       cache
       |> Map.put(:memberships, memberships)
@@ -535,11 +514,12 @@ defmodule Domain.Cache.Client do
   end
 
   defp adapted_resources(conforming_resource_ids, resources, client) do
-    conforming_resource_ids
-    |> Enum.map(fn id -> Map.get(resources, id) end)
-    |> Enum.map(fn r -> adapt(r, client) end)
-    |> Enum.reject(fn r -> is_nil(r) end)
-    |> Enum.filter(fn r -> r.gateway_groups != [] end)
+    for id <- conforming_resource_ids,
+        adapted_resource = Map.get(resources, id) |> adapt(client),
+        not is_nil(adapted_resource),
+        adapted_resource.gateway_groups != [] do
+      adapted_resource
+    end
   end
 
   defp conforming_resource_ids(policies, client) when is_map(policies) do
