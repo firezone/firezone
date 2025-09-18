@@ -53,7 +53,7 @@ services:
     image: alpine:latest # Dummy, will always be overridden.
     environment:
       # Database
-      RUN_CONDITIONAL_MIGRATIONS: "true"
+      RUN_MANUAL_MIGRATIONS: "true"
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
       DATABASE_NAME: firezone_dev
