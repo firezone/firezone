@@ -532,7 +532,7 @@ defmodule Domain.Cache.Client do
         adapted_resource = Map.get(resources, id) |> adapt(client),
         not is_nil(adapted_resource),
         adapted_resource.gateway_groups != [] do
-      id
+      adapted_resource
     end
   end
 
