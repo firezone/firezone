@@ -175,7 +175,9 @@ defmodule Domain.Cache.Client do
 
     cache = %{cache | connectable_resources: connectable_resources}
 
-    {:ok, added, Enum.map(removed, & &1.id) |> Enum.map(&load!/1), cache}
+    removed_ids = Enum.map(removed, fn r -> load!(r.id) end)
+
+    {:ok, added, removed_ids, cache}
   end
 
   @doc """
