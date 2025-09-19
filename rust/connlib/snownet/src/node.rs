@@ -2,7 +2,7 @@ use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
     HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
@@ -16,7 +16,7 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{Rng, RngCore, SeedableRng, random};
+use rand::{random, Rng, RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
@@ -502,7 +502,10 @@ where
         let conn = self
             .connections
             .get_established_mut(&cid)
-            .context(UnknownConnection(cid.to_string()))?;
+            .with_context(|| {
+                anyhow::Error::from(UnknownConnection(cid.to_string()))
+                    .context(format!("connection_id: {cid}"))
+            })?;
 
         if self.mode.is_server() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -1465,7 +1468,10 @@ where
         let id = self
             .established_by_wireguard_session_index
             .get(&index.global())
-            .with_context(|| format!("No connection for with index {index}"))?;
+            .with_context(|| {
+                anyhow::anyhow!("No connection for session index")
+                    .context(format!("index: {index}"))
+            })?;
         let connection = self
             .established
             .get_mut(id)
@@ -1482,7 +1488,10 @@ where
             .established
             .iter_mut()
             .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
-            .with_context(|| format!("No connection with public key {}", hex::encode(key)))?;
+            .with_context(|| {
+                anyhow::anyhow!("No connection with public key")
+                    .context(format!("public_key: {}", hex::encode(key)))
+            })?;
 
         Ok((*id, conn))
     }
@@ -1605,8 +1614,8 @@ fn remove_local_candidate<TId>(
 }
 
 #[derive(thiserror::Error, Debug)]
-#[error("Unknown connection: {0}")]
-pub struct UnknownConnection(String);
+#[error("Unknown connection")]
+pub struct UnknownConnection(pub String);
 
 #[deprecated]
 pub struct Offer {
