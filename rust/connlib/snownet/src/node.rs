@@ -499,10 +499,12 @@ where
         packet: IpPacket,
         now: Instant,
     ) -> Result<Option<Transmit>> {
-        let conn = self
-            .connections
-            .get_established_mut(&cid)
-            .context(UnknownConnection(cid.to_string()))?;
+        let Some(conn) = self.connections.get_established_mut(&cid) else {
+            return Err(anyhow::Error::new(UnknownConnection {
+                id: cid.to_string(),
+                packet,
+            }));
+        };
 
         if self.mode.is_server() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -1611,8 +1613,12 @@ fn remove_local_candidate<TId>(
 }
 
 #[derive(thiserror::Error, Debug)]
-#[error("Unknown connection: {0}")]
-pub struct UnknownConnection(String);
+#[error("Unknown connection: {id}")]
+pub struct UnknownConnection {
+    id: String,
+
+    pub packet: IpPacket,
+}
 
 #[deprecated]
 pub struct Offer {

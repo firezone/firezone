@@ -39,6 +39,7 @@ pub struct GatewayState {
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit>,
+    buffered_packets: VecDeque<IpPacket>,
 }
 
 #[derive(Debug)]
@@ -66,6 +67,7 @@ impl GatewayState {
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
+            buffered_packets: VecDeque::default(),
             tun_ip_config: None,
         }
     }
@@ -111,15 +113,29 @@ impl GatewayState {
             return Ok(None);
         };
 
-        let Some(encrypted_packet) = self
+        match self
             .node
             .encapsulate(cid, packet, now)
-            .context("Failed to encapsulate")?
-        else {
-            return Ok(None);
-        };
+            .context("Failed to encapsulate")
+        {
+            Ok(maybe_transmit) => Ok(maybe_transmit),
+            Err(e) => {
+                let Some(unknown_connection) =
+                    e.root_cause().downcast_ref::<snownet::UnknownConnection>()
+                else {
+                    return Err(e);
+                };
 
-        Ok(Some(encrypted_packet))
+                let icmp_error = ip_packet::make::icmp_dest_unreachable(
+                    &unknown_connection.packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::Host,
+                    ip_packet::icmpv6::DestUnreachableCode::Address,
+                )?;
+                self.buffered_packets.push_back(icmp_error);
+
+                Ok(None)
+            }
+        }
     }
 
     /// Handles UDP packets received on the network interface.
@@ -422,6 +438,10 @@ impl GatewayState {
             None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
             Some(_) => {}
         }
+    }
+
+    pub fn poll_packets(&mut self) -> Option<IpPacket> {
+        self.buffered_packets.pop_front()
     }
 
     fn drain_node_events(&mut self) {
