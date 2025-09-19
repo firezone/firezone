@@ -3392,6 +3392,69 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "delete_unsynced_actors/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{account: account, provider: provider, bypass: bypass}
+    end
+
+    test "deletes actors for provider that don't match the given synced_at", %{
+      account: account,
+      provider: provider
+    } do
+      yesterday = DateTime.add(DateTime.utc_now(), -1, :day)
+      now = DateTime.utc_now()
+
+      identity1 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: [last_synced_at: now, type: :account_admin_user]
+        )
+
+      identity2 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: [last_synced_at: yesterday]
+        )
+
+      # Identity for another provider should not be deleted
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      _other_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: other_provider
+        )
+
+      # Identity for another account should not be deleted
+      other_account = Fixtures.Accounts.create_account()
+
+      {other_account_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: other_account)
+
+      other_account_identity =
+        Fixtures.Auth.create_identity(
+          account: other_account,
+          provider: other_account_provider
+        )
+
+      assert delete_unsynced_actors(provider, now) == {:ok, %{deleted_actors: 1}}
+
+      assert Repo.get(Auth.Identity, other_account_identity.id)
+      assert Repo.get(Auth.Identity, identity1.id)
+      refute Repo.get(Auth.Identity, identity2.id)
+
+      assert Repo.aggregate(Auth.Identity, :count) == 3
+    end
+  end
+
   describe "delete_unsynced_groups/2" do
     setup do
       account = Fixtures.Accounts.create_account()
@@ -3593,7 +3656,7 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns 0 when no memberships to delete", %{provider: provider} do
-      last_synced_at = DateTime.utc_now()
+      synced_at = DateTime.utc_now()
 
       assert delete_unsynced_group_memberships(provider, synced_at) ==
                {:ok, %{deleted_memberships: 0}}

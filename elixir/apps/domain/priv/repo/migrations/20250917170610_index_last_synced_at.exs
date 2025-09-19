@@ -5,11 +5,14 @@ defmodule Domain.Repo.Migrations.IndexLastSyncedAt do
 
   def up do
     create_if_not_exists(
-      index(:auth_identities, [:last_synced_at], where: "last_synced_at IS NOT NULL", concurrently: true)
+      index(:actors, [:last_synced_at], where: "last_synced_at IS NOT NULL", concurrently: true)
     )
 
     create_if_not_exists(
-      index(:actor_groups, [:last_synced_at], where: "last_synced_at IS NOT NULL", concurrently: true)
+      index(:actor_groups, [:last_synced_at],
+        where: "last_synced_at IS NOT NULL",
+        concurrently: true
+      )
     )
 
     create_if_not_exists(
@@ -22,11 +25,17 @@ defmodule Domain.Repo.Migrations.IndexLastSyncedAt do
 
   def down do
     drop_if_exists(
-      index(:auth_identities, [:last_synced_at], where: "last_synced_at IS NOT NULL", concurrently: true)
+      index(:actors, [:last_synced_at],
+        where: "last_synced_at IS NOT NULL",
+        concurrently: true
+      )
     )
 
     drop_if_exists(
-      index(:actor_groups, [:last_synced_at], where: "last_synced_at IS NOT NULL", concurrently: true)
+      index(:actor_groups, [:last_synced_at],
+        where: "last_synced_at IS NOT NULL",
+        concurrently: true
+      )
     )
 
     drop_if_exists(

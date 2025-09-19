@@ -255,7 +255,7 @@ defmodule Domain.Auth.Identity.Query do
     )
     INSERT INTO auth_identities (
       id, actor_id, provider_id, provider_identifier, provider_state,
-      account_id, email, last_synced_at, created_by, inserted_at, created_by_subject
+      account_id, email, created_by, inserted_at, created_by_subject
     )
     SELECT
       COALESCE(ei.id, uuid_generate_v4()),
@@ -265,7 +265,6 @@ defmodule Domain.Auth.Identity.Query do
       jsonb_build_object('userinfo', jsonb_build_object('email', aam.email)),
       $#{account_id},
       aam.email,
-      $#{now},
       'provider',
       $#{now},
       jsonb_build_object('name', 'Provider', 'email', null)
@@ -275,8 +274,7 @@ defmodule Domain.Auth.Identity.Query do
     WHERE deleted_at IS NULL
     DO UPDATE SET
       email = EXCLUDED.email,
-      provider_state = EXCLUDED.provider_state,
-      last_synced_at = EXCLUDED.last_synced_at
+      provider_state = EXCLUDED.provider_state
     RETURNING 1
     """
   end

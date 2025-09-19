@@ -503,17 +503,6 @@ defmodule Domain.Auth do
     end
   end
 
-  def delete_unsynced_actors(%Provider{} = provider, synced_at) do
-    {count, _deleted_actors} =
-      Actors.Actor.Query.all()
-      |> Actors.Actor.Query.by_account_id(provider.account_id)
-      |> Actors.Actor.Query.by_identity_provider_id(provider.id)
-      |> Actors.Actor.Query.not_synced_at(synced_at)
-      |> Repo.delete_all()
-
-    {:ok, %{deleted_actors: count}}
-  end
-
   def delete_identities_for(%Actors.Actor{} = actor, %Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
       {num_deleted, _} =

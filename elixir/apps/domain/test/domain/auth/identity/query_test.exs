@@ -65,7 +65,6 @@ defmodule Domain.Auth.Identity.QueryTest do
         assert identity.actor.type == :account_user
         assert identity.provider_id == provider.id
         assert identity.account_id == account.id
-        assert identity.last_synced_at == now
         assert identity.provider_identifier in ["user-001", "user-002"]
         assert identity.email in ["user1@example.com", "user2@example.com"]
         assert identity.actor.name in ["User 1", "User 2"]
@@ -124,7 +123,6 @@ defmodule Domain.Auth.Identity.QueryTest do
         Repo.get(Identity, existing_identity.id)
         |> Repo.preload(:actor)
 
-      assert updated_identity.last_synced_at == now2
       assert updated_identity.email == "new@example.com"
       assert updated_identity.actor_id == existing_actor.id
       assert updated_identity.actor.name == "New Name"
