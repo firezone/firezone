@@ -1,4 +1,4 @@
-defmodule Domain.Repo.Migrations.IndexFlowsOnExpiresAt do
+defmodule Domain.Repo.Migrations.ReindexFlowsOnExpiresAt do
   use Ecto.Migration
 
   @disable_ddl_transaction true
