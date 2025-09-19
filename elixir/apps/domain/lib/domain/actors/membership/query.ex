@@ -1,5 +1,6 @@
 defmodule Domain.Actors.Membership.Query do
   use Domain, :query
+  alias Domain.Repo
   alias Domain.Actors.{Actor, Group, Membership}
 
   def all do
@@ -98,6 +99,76 @@ defmodule Domain.Actors.Membership.Query do
 
   def lock(queryable \\ all()) do
     lock(queryable, "FOR UPDATE")
+  end
+
+  def batch_upsert(_account_id, _provider_id, _now, []), do: {:ok, %{upserted_memberships: 0}}
+
+  def batch_upsert(account_id, provider_id, now, tuples) do
+    query = build_upsert_query(length(tuples))
+    params = build_upsert_params(account_id, provider_id, now, tuples)
+
+    case Repo.query(query, params) do
+      {:ok, %Postgrex.Result{num_rows: num_rows}} -> {:ok, %{upserted_memberships: num_rows}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp build_upsert_query(count) do
+    values_clause =
+      for i <- 1..count, base = (i - 1) * 2 do
+        "($#{base + 1}, $#{base + 2})"
+      end
+      |> Enum.join(", ")
+
+    offset = count * 2
+    account_id = offset + 1
+    provider_id = offset + 2
+    now = offset + 3
+
+    """
+    WITH membership_input AS (
+      SELECT * FROM (VALUES #{values_clause})
+      AS t(group_provider_identifier, user_provider_identifier)
+    ),
+    resolved_memberships AS (
+      SELECT
+        ai.actor_id,
+        ag.id as group_id
+      FROM membership_input mi
+      JOIN auth_identities ai ON (
+        ai.provider_identifier = mi.user_provider_identifier
+        AND ai.account_id = $#{account_id}
+        AND ai.provider_id = $#{provider_id}
+        AND ai.deleted_at IS NULL
+      )
+      JOIN actor_groups ag ON (
+        ag.provider_identifier = mi.group_provider_identifier
+        AND ag.account_id = $#{account_id}
+        AND ag.provider_id = $#{provider_id}
+        AND ag.deleted_at IS NULL
+      )
+    )
+    INSERT INTO actor_group_memberships (id, actor_id, group_id, account_id, synced_at)
+    SELECT
+      uuid_generate_v4(),
+      rm.actor_id,
+      rm.group_id,
+      $#{account_id} AS account_id,
+      $#{now} AS synced_at
+    FROM resolved_memberships rm
+    ON CONFLICT (actor_id, group_id) DO UPDATE SET
+      synced_at = EXCLUDED.synced_at
+    RETURNING 1
+    """
+  end
+
+  defp build_upsert_params(account_id, provider_id, now, tuples) do
+    params =
+      Enum.flat_map(tuples, fn {group_provider_identifier, user_provider_identifier} ->
+        [group_provider_identifier, user_provider_identifier]
+      end)
+
+    params ++ [Ecto.UUID.dump!(account_id), Ecto.UUID.dump!(provider_id), now]
   end
 
   # Pagination
