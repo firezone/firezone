@@ -315,7 +315,7 @@ jobs:
       # We need at least Docker v28.1 which is not yet available on GitHub actions runners
       - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
       - name: Seed database
-        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.seed --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations'
+        run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Increase max UDP buffer sizes
         run: |
           sudo sysctl -w net.core.wmem_max=16777216 # 16 MB
