@@ -336,6 +336,12 @@ impl GatewayTunnel {
                 ready = true;
             }
 
+            // Drain all buffered IP packets.
+            while let Some(packet) = self.role_state.poll_packets() {
+                self.io.send_tun(packet);
+                ready = true;
+            }
+
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 now,
