@@ -189,7 +189,7 @@ defmodule Domain.Auth.Identity.QueryTest do
       other_identity =
         Fixtures.Auth.create_identity(
           account: other_account,
-          provider_provider_identifier: "user-001",
+          provider_identifier: "user-001",
           actor: [type: :account_user, account: other_account]
         )
 
