@@ -1,7 +1,7 @@
 defmodule Domain.AuthTest do
   use Domain.DataCase, async: true
   import Domain.Auth
-  alias Domain.{Actors, Auth, Tokens}
+  alias Domain.{Auth, Tokens}
   alias Domain.Auth.Authorizer
 
   # Providers
