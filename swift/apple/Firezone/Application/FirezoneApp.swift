@@ -115,6 +115,7 @@ struct FirezoneApp: App {
           alert.addButton(withTitle: "OK")
 
           // Show alert
+          SentrySDK.pauseAppHangTracking()
           alert.runModal()
 
           // Exit this instance since we can't terminate the other one
