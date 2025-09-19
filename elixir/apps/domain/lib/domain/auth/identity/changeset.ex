@@ -21,7 +21,7 @@ defmodule Domain.Auth.Identity.Changeset do
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[email provider_identifier provider_virtual_state synced_at]a)
+    |> cast(attrs, ~w[email provider_identifier provider_virtual_state last_synced_at]a)
     |> validate_required(~w[provider_identifier]a)
     |> maybe_put_email_from_identifier()
     |> put_change(:actor_id, actor.id)

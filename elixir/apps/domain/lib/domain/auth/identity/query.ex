@@ -29,10 +29,6 @@ defmodule Domain.Auth.Identity.Query do
     |> where([provider: provider], is_nil(provider.disabled_at))
   end
 
-  def not_synced_at(queryable, synced_at) do
-    where(queryable, [identities: identities], identities.synced_at != ^synced_at)
-  end
-
   def by_id(queryable, id)
 
   def by_id(queryable, {:not, id}) do
@@ -259,7 +255,7 @@ defmodule Domain.Auth.Identity.Query do
     )
     INSERT INTO auth_identities (
       id, actor_id, provider_id, provider_identifier, provider_state,
-      account_id, email, synced_at, created_by, inserted_at, created_by_subject
+      account_id, email, last_synced_at, created_by, inserted_at, created_by_subject
     )
     SELECT
       COALESCE(ei.id, uuid_generate_v4()),
@@ -280,7 +276,7 @@ defmodule Domain.Auth.Identity.Query do
     DO UPDATE SET
       email = EXCLUDED.email,
       provider_state = EXCLUDED.provider_state,
-      synced_at = EXCLUDED.synced_at
+      last_synced_at = EXCLUDED.last_synced_at
     RETURNING 1
     """
   end

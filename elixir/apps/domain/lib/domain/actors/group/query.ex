@@ -66,7 +66,7 @@ defmodule Domain.Actors.Group.Query do
   end
 
   def not_synced_at(queryable, synced_at) do
-    where(queryable, [groups: groups], groups.synced_at != ^synced_at)
+    where(queryable, [groups: groups], groups.last_synced_at != ^synced_at)
   end
 
   # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
@@ -164,13 +164,13 @@ defmodule Domain.Actors.Group.Query do
           created_by: :provider,
           type: :static,
           created_by_subject: %{"name" => "Provider", "email" => nil},
-          synced_at: now
+          last_synced_at: now
         }
       end)
 
     {count, _} =
       Repo.insert_all(Actors.Group, values,
-        on_conflict: {:replace, [:name, :synced_at, :updated_at]},
+        on_conflict: {:replace, [:name, :last_synced_at, :updated_at]},
         conflict_target:
           {:unsafe_fragment,
            ~s/(account_id, provider_id, provider_identifier) WHERE provider_id IS NOT NULL and provider_identifier IS NOT NULL/},

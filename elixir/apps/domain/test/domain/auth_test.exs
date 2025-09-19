@@ -2501,7 +2501,7 @@ defmodule Domain.AuthTest do
 
       identity1 =
         Fixtures.Auth.create_identity(
-          synced_at: now,
+          last_synced_at: now,
           account: account,
           provider: provider,
           actor: [type: :account_admin_user]
@@ -2509,7 +2509,7 @@ defmodule Domain.AuthTest do
 
       identity2 =
         Fixtures.Auth.create_identity(
-          synced_at: yesterday,
+          last_synced_at: yesterday,
           account: account,
           provider: provider
         )

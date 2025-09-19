@@ -50,7 +50,7 @@ defmodule Domain.Actors.Membership.Query do
   end
 
   def not_synced_at(queryable, synced_at) do
-    where(queryable, [memberships: memberships], memberships.synced_at != ^synced_at)
+    where(queryable, [memberships: memberships], memberships.last_synced_at != ^synced_at)
   end
 
   def count_actors_by_group_id(queryable \\ all()) do
@@ -148,16 +148,16 @@ defmodule Domain.Actors.Membership.Query do
         AND ag.deleted_at IS NULL
       )
     )
-    INSERT INTO actor_group_memberships (id, actor_id, group_id, account_id, synced_at)
+    INSERT INTO actor_group_memberships (id, actor_id, group_id, account_id, last_synced_at)
     SELECT
       uuid_generate_v4(),
       rm.actor_id,
       rm.group_id,
       $#{account_id} AS account_id,
-      $#{now} AS synced_at
+      $#{now} AS last_synced_at
     FROM resolved_memberships rm
     ON CONFLICT (actor_id, group_id) DO UPDATE SET
-      synced_at = EXCLUDED.synced_at
+      last_synced_at = EXCLUDED.last_synced_at
     RETURNING 1
     """
   end

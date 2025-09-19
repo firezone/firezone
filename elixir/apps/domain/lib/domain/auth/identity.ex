@@ -10,7 +10,7 @@ defmodule Domain.Auth.Identity do
     field :provider_state, :map, redact: true
     field :provider_virtual_state, :map, virtual: true, redact: true
 
-    field :synced_at, :utc_datetime_usec
+    field :last_synced_at, :utc_datetime_usec
 
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP

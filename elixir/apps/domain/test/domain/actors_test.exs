@@ -3409,13 +3409,13 @@ defmodule Domain.ActorsTest do
       old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
       new_synced_at = DateTime.utc_now()
 
-      # Create groups with old synced_at
+      # Create groups with old last_synced_at
       old_group1 =
         Fixtures.Actors.create_group(
           account: account,
           provider: provider,
           provider_identifier: "old-001",
-          synced_at: old_synced_at
+          last_synced_at: old_synced_at
         )
 
       old_group2 =
@@ -3423,7 +3423,7 @@ defmodule Domain.ActorsTest do
           account: account,
           provider: provider,
           provider_identifier: "old-002",
-          synced_at: old_synced_at
+          last_synced_at: old_synced_at
         )
 
       # Create a group with new synced_at
@@ -3432,7 +3432,7 @@ defmodule Domain.ActorsTest do
           account: account,
           provider: provider,
           provider_identifier: "new-001",
-          synced_at: new_synced_at
+          last_synced_at: new_synced_at
         )
 
       assert delete_unsynced_groups(provider, new_synced_at) == {:ok, %{deleted_groups: 2}}
@@ -3457,7 +3457,7 @@ defmodule Domain.ActorsTest do
           account: account,
           provider: provider,
           provider_identifier: "our-001",
-          synced_at: DateTime.add(synced_at, -3600, :second)
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
         )
 
       other_group =
@@ -3465,7 +3465,7 @@ defmodule Domain.ActorsTest do
           account: account,
           provider: other_provider,
           provider_identifier: "other-001",
-          synced_at: DateTime.add(synced_at, -3600, :second)
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
         )
 
       assert delete_unsynced_groups(provider, synced_at) == {:ok, %{deleted_groups: 1}}
@@ -3515,13 +3515,13 @@ defmodule Domain.ActorsTest do
       old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
       new_synced_at = DateTime.utc_now()
 
-      # Create memberships with different synced_at times
+      # Create memberships with different last_synced_at times
       old_membership =
         Fixtures.Actors.create_membership(
           account: account,
           group: group,
           actor: actor,
-          synced_at: old_synced_at
+          last_synced_at: old_synced_at
         )
 
       new_membership =
@@ -3529,7 +3529,7 @@ defmodule Domain.ActorsTest do
           account: account,
           group: group,
           actor: Fixtures.Actors.create_actor(account: account),
-          synced_at: new_synced_at
+          last_synced_at: new_synced_at
         )
 
       assert delete_unsynced_group_memberships(provider, new_synced_at) ==
@@ -3573,7 +3573,7 @@ defmodule Domain.ActorsTest do
           account: account,
           group: our_group,
           actor: actor,
-          synced_at: DateTime.add(synced_at, -3600, :second)
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
         )
 
       other_membership =
@@ -3581,7 +3581,7 @@ defmodule Domain.ActorsTest do
           account: account,
           group: other_group,
           actor: actor,
-          synced_at: DateTime.add(synced_at, -3600, :second)
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
         )
 
       assert delete_unsynced_group_memberships(provider, synced_at) ==
@@ -3593,7 +3593,7 @@ defmodule Domain.ActorsTest do
     end
 
     test "returns 0 when no memberships to delete", %{provider: provider} do
-      synced_at = DateTime.utc_now()
+      last_synced_at = DateTime.utc_now()
 
       assert delete_unsynced_group_memberships(provider, synced_at) ==
                {:ok, %{deleted_memberships: 0}}

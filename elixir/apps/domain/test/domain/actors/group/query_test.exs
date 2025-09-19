@@ -57,7 +57,7 @@ defmodule Domain.Actors.Group.QueryTest do
         assert group.account_id == account.id
         assert group.type == :static
         assert group.created_by == :provider
-        assert group.synced_at == now
+        assert group.last_synced_at == now
         assert group.name in ["Engineering", "Marketing", "Sales"]
         assert group.provider_identifier in ["eng-001", "mkt-001", "sales-001"]
       end
@@ -99,15 +99,15 @@ defmodule Domain.Actors.Group.QueryTest do
       # Verify updates and new creation
       eng_group = Enum.find(updated_groups, &(&1.provider_identifier == "eng-001"))
       assert eng_group.name == "New Engineering"
-      assert eng_group.synced_at == now2
+      assert eng_group.last_synced_at == now2
 
       mkt_group = Enum.find(updated_groups, &(&1.provider_identifier == "mkt-001"))
       assert mkt_group.name == "New Marketing"
-      assert mkt_group.synced_at == now2
+      assert mkt_group.last_synced_at == now2
 
       sales_group = Enum.find(updated_groups, &(&1.provider_identifier == "sales-001"))
       assert sales_group.name == "Sales"
-      assert sales_group.synced_at == now2
+      assert sales_group.last_synced_at == now2
 
       # Verify total count (2 updated, 1 new)
       assert length(updated_groups) == 3

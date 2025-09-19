@@ -91,7 +91,7 @@ defmodule Domain.Actors.Membership.QueryTest do
       # Verify all memberships were created with correct attributes
       for membership <- memberships do
         assert membership.account_id == account.id
-        assert membership.synced_at == now
+        assert membership.last_synced_at == now
       end
 
       # Verify correct associations
@@ -128,7 +128,7 @@ defmodule Domain.Actors.Membership.QueryTest do
           account: account,
           actor_id: identity1.actor_id,
           group: group1,
-          synced_at: now1
+          last_synced_at: now1
         )
 
       # Batch upsert with overlapping membership
@@ -153,12 +153,12 @@ defmodule Domain.Actors.Membership.QueryTest do
       # Verify existing membership was updated
       updated_membership = Enum.find(memberships, &(&1.actor_id == identity1.actor_id))
       assert updated_membership.id == existing_membership.id
-      assert updated_membership.synced_at == now2
+      assert updated_membership.last_synced_at == now2
 
       # Verify new membership was created
       new_membership = Enum.find(memberships, &(&1.actor_id == identity2.actor_id))
       assert new_membership.id != existing_membership.id
-      assert new_membership.synced_at == now2
+      assert new_membership.last_synced_at == now2
     end
 
     test "ignores invalid tuples (nonexistent groups or identities)", %{
