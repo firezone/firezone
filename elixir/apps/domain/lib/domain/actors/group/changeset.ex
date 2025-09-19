@@ -3,7 +3,7 @@ defmodule Domain.Actors.Group.Changeset do
   alias Domain.{Auth, Accounts}
   alias Domain.Actors
 
-  @fields ~w[name type]a
+  @fields ~w[name type last_synced_at]a
 
   def upsert_conflict_target do
     {:unsafe_fragment,
@@ -17,7 +17,7 @@ defmodule Domain.Actors.Group.Changeset do
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Actors.Group{memberships: []}
     |> cast(attrs, @fields)
-    |> validate_required(@fields)
+    |> validate_required(~w[name type]a)
     |> validate_inclusion(:type, ~w[static]a)
     |> changeset()
     |> put_change(:account_id, account.id)
@@ -27,7 +27,7 @@ defmodule Domain.Actors.Group.Changeset do
 
   def create(%Accounts.Account{} = account, attrs) do
     %Actors.Group{memberships: []}
-    |> cast(attrs, ~w[name]a)
+    |> cast(attrs, ~w[name last_synced_at]a)
     |> validate_required(~w[name]a)
     |> put_change(:type, :managed)
     |> changeset()
@@ -39,7 +39,7 @@ defmodule Domain.Actors.Group.Changeset do
   # TODO: Update after `deleted_at` is removed from the DB
   def create(%Auth.Provider{} = provider, attrs) do
     %Actors.Group{memberships: []}
-    |> cast(attrs, ~w[name provider_identifier]a)
+    |> cast(attrs, ~w[name provider_identifier last_synced_at]a)
     |> validate_required(~w[name provider_identifier]a)
     |> put_change(:type, :static)
     |> changeset()
@@ -52,7 +52,7 @@ defmodule Domain.Actors.Group.Changeset do
 
   def update(%Actors.Group{} = group, attrs) do
     group
-    |> cast(attrs, ~w[name]a)
+    |> cast(attrs, ~w[name last_synced_at]a)
     |> validate_required(~w[name]a)
     |> validate_inclusion(:type, ~w[static]a)
     |> changeset()

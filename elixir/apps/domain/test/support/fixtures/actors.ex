@@ -140,7 +140,8 @@ defmodule Domain.Fixtures.Actors do
 
     Actors.Membership.Changeset.upsert(account.id, %Actors.Membership{}, %{
       group_id: group_id,
-      actor_id: actor_id
+      actor_id: actor_id,
+      last_synced_at: attrs[:last_synced_at]
     })
     |> Repo.insert!()
   end

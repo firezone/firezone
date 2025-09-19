@@ -1,5 +1,6 @@
 defmodule Domain.Auth.Identity.Query do
   use Domain, :query
+  alias Domain.Repo
 
   def all do
     from(identities in Domain.Auth.Identity, as: :identities)
@@ -123,6 +124,10 @@ defmodule Domain.Auth.Identity.Query do
     select(queryable, [identities: identities], identities.id)
   end
 
+  def returning_actor_ids(queryable) do
+    select(queryable, [identities: identities], identities.actor_id)
+  end
+
   def returning_distinct_actor_ids(queryable) do
     queryable
     |> select([identities: identities], identities.actor_id)
@@ -169,6 +174,122 @@ defmodule Domain.Auth.Identity.Query do
     with_named_binding(queryable, assoc, fn query, binding ->
       join(query, type, [identities: identities], a in assoc(identities, ^binding), as: ^binding)
     end)
+  end
+
+  def batch_upsert(_account_id, _provider_id, _now, []), do: {:ok, %{upserted_identities: 0}}
+
+  def batch_upsert(account_id, provider_id, now, identity_attrs) do
+    query = build_upsert_query(length(identity_attrs))
+    params = build_upsert_params(account_id, provider_id, now, identity_attrs)
+
+    case Repo.query(query, params) do
+      {:ok, %Postgrex.Result{rows: rows}} -> {:ok, %{upserted_identities: length(rows)}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp build_upsert_query(count) do
+    values_clause =
+      for i <- 1..count, base = (i - 1) * 3 do
+        "($#{base + 1}, $#{base + 2}, $#{base + 3})"
+      end
+      |> Enum.join(", ")
+
+    offset = count * 3
+    account_id = offset + 1
+    provider_id = offset + 2
+    now = offset + 3
+
+    """
+    WITH input_data AS (
+      SELECT * FROM (VALUES #{values_clause})
+      AS t(provider_identifier, email, name)
+    ),
+    existing_identities AS (
+      SELECT ai.id, ai.actor_id, ai.provider_identifier
+      FROM auth_identities ai
+      WHERE ai.account_id = $#{account_id}
+        AND ai.provider_id = $#{provider_id}
+        AND ai.provider_identifier IN (SELECT provider_identifier FROM input_data)
+        AND ai.deleted_at IS NULL
+    ),
+    actors_to_create AS (
+      SELECT
+        uuid_generate_v4() AS new_actor_id,
+        id.provider_identifier,
+        id.name
+      FROM input_data id
+      WHERE id.provider_identifier NOT IN (
+        SELECT provider_identifier FROM existing_identities
+      )
+    ),
+    new_actors AS (
+      INSERT INTO actors (id, type, account_id, name, last_synced_at, inserted_at, updated_at)
+      SELECT
+        new_actor_id,
+        'account_user',
+        $#{account_id},
+        name,
+        $#{now},
+        $#{now},
+        $#{now}
+      FROM actors_to_create
+      RETURNING id, name
+    ),
+    updated_actors AS (
+      UPDATE actors
+      SET name = id.name, last_synced_at = $#{now}, updated_at = $#{now}
+      FROM input_data id
+      JOIN existing_identities ei ON ei.provider_identifier = id.provider_identifier
+      WHERE actors.id = ei.actor_id
+      RETURNING actors.id
+    ),
+    all_actor_mappings AS (
+      SELECT atc.new_actor_id AS actor_id, atc.provider_identifier, id.email
+      FROM actors_to_create atc
+      JOIN input_data id ON id.provider_identifier = atc.provider_identifier
+      UNION ALL
+      SELECT ei.actor_id, ei.provider_identifier, id.email
+      FROM existing_identities ei
+      JOIN input_data id ON id.provider_identifier = ei.provider_identifier
+    )
+    INSERT INTO auth_identities (
+      id, actor_id, provider_id, provider_identifier, provider_state,
+      account_id, email, created_by, inserted_at, created_by_subject
+    )
+    SELECT
+      COALESCE(ei.id, uuid_generate_v4()),
+      aam.actor_id,
+      $#{provider_id},
+      aam.provider_identifier,
+      jsonb_build_object('userinfo', jsonb_build_object('email', aam.email)),
+      $#{account_id},
+      aam.email,
+      'provider',
+      $#{now},
+      jsonb_build_object('name', 'Provider', 'email', null)
+    FROM all_actor_mappings aam
+    LEFT JOIN existing_identities ei ON ei.provider_identifier = aam.provider_identifier
+    ON CONFLICT (account_id, provider_id, provider_identifier)
+    WHERE deleted_at IS NULL
+    DO UPDATE SET
+      email = EXCLUDED.email,
+      provider_state = COALESCE(auth_identities.provider_state, '{}'::jsonb) ||
+                      jsonb_build_object('userinfo',
+                        COALESCE(auth_identities.provider_state->'userinfo', '{}'::jsonb) ||
+                        jsonb_build_object('email', EXCLUDED.email)
+                      )
+    RETURNING 1
+    """
+  end
+
+  defp build_upsert_params(account_id, provider_id, now, attrs) do
+    params =
+      Enum.flat_map(attrs, fn a ->
+        [a.provider_identifier, a.email, a.name]
+      end)
+
+    params ++ [Ecto.UUID.dump!(account_id), Ecto.UUID.dump!(provider_id), now]
   end
 
   # Pagination

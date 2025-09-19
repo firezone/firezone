@@ -31,6 +31,22 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
+  def by_identity_provider_id(queryable, provider_id) do
+    queryable
+    |> join(:inner, [actors: actors], identities in ^Domain.Auth.Identity.Query.all(),
+      on: identities.actor_id == actors.id and identities.account_id == actors.account_id,
+      as: :identities
+    )
+    |> where(
+      [identities: identities],
+      identities.provider_id == ^provider_id
+    )
+  end
+
+  def not_synced_at(queryable, synced_at) do
+    where(queryable, [actors: actors], actors.last_synced_at != ^synced_at)
+  end
+
   # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
   def by_deleted_identity_provider_id(queryable, provider_id) do
     queryable
