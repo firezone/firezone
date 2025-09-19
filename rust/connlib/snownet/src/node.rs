@@ -1465,7 +1465,7 @@ where
         let id = self
             .established_by_wireguard_session_index
             .get(&index.global())
-            .with_context(|| format!("No connection for with index {index}"))?;
+            .with_context(|| format!("No connection for index {}", index.global()))?;
         let connection = self
             .established
             .get_mut(id)
@@ -1482,7 +1482,15 @@ where
             .established
             .iter_mut()
             .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
-            .with_context(|| format!("No connection with public key {}", hex::encode(key)))?;
+            .with_context(|| {
+                // SAFETY: Byte arrays are always valid types and don't have padding.
+                let digits = unsafe { mem::transmute::<[u8; 32], [u64; 4]>(key) };
+
+                format!(
+                    "No connection for public key {}",
+                    bnum::types::U256::from_digits(digits)
+                )
+            })?;
 
         Ok((*id, conn))
     }
