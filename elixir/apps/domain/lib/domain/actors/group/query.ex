@@ -1,5 +1,6 @@
 defmodule Domain.Actors.Group.Query do
   use Domain, :query
+  alias Domain.{Actors, Repo}
 
   def all do
     from(groups in Domain.Actors.Group, as: :groups)
@@ -62,6 +63,10 @@ defmodule Domain.Actors.Group.Query do
 
   def by_provider_identifier(queryable, provider_identifier) do
     where(queryable, [groups: groups], groups.provider_identifier == ^provider_identifier)
+  end
+
+  def not_synced_at(queryable, synced_at) do
+    where(queryable, [groups: groups], groups.last_synced_at != ^synced_at)
   end
 
   # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
@@ -141,6 +146,38 @@ defmodule Domain.Actors.Group.Query do
       on: actors.id == memberships.actor_id,
       as: :actors
     )
+  end
+
+  def batch_upsert(_account_id, _provider_id, _now, []), do: {:ok, %{upserted_groups: 0}}
+
+  def batch_upsert(account_id, provider_id, now, group_attrs) do
+    values =
+      Enum.map(group_attrs, fn attrs ->
+        %{
+          id: Ecto.UUID.generate(),
+          name: attrs.name,
+          provider_id: provider_id,
+          provider_identifier: attrs.provider_identifier,
+          account_id: account_id,
+          inserted_at: now,
+          updated_at: now,
+          created_by: :provider,
+          type: :static,
+          created_by_subject: %{"name" => "Provider", "email" => nil},
+          last_synced_at: now
+        }
+      end)
+
+    {count, _} =
+      Repo.insert_all(Actors.Group, values,
+        on_conflict: {:replace, [:name, :last_synced_at, :updated_at]},
+        conflict_target:
+          {:unsafe_fragment,
+           ~s/(account_id, provider_id, provider_identifier) WHERE provider_id IS NOT NULL and provider_identifier IS NOT NULL/},
+        returning: false
+      )
+
+    {:ok, %{upserted_groups: count}}
   end
 
   # TODO: Update after `deleted_at` is removed from DB

@@ -3392,6 +3392,277 @@ defmodule Domain.ActorsTest do
     end
   end
 
+  describe "delete_unsynced_actors/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{account: account, provider: provider, bypass: bypass}
+    end
+
+    test "deletes actors for provider that don't match the given synced_at", %{
+      account: account,
+      provider: provider
+    } do
+      yesterday = DateTime.add(DateTime.utc_now(), -1, :day)
+      now = DateTime.utc_now()
+
+      identity1 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: [last_synced_at: now, type: :account_admin_user]
+        )
+
+      identity2 =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          actor: [last_synced_at: yesterday]
+        )
+
+      # Identity for another provider should not be deleted
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      _other_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: other_provider
+        )
+
+      # Identity for another account should not be deleted
+      other_account = Fixtures.Accounts.create_account()
+
+      {other_account_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: other_account)
+
+      other_account_identity =
+        Fixtures.Auth.create_identity(
+          account: other_account,
+          provider: other_account_provider
+        )
+
+      assert delete_unsynced_actors(provider, now) == {:ok, %{deleted_actors: 1}}
+
+      assert Repo.get(Auth.Identity, other_account_identity.id)
+      assert Repo.get(Auth.Identity, identity1.id)
+      refute Repo.get(Auth.Identity, identity2.id)
+
+      assert Repo.aggregate(Auth.Identity, :count) == 3
+    end
+  end
+
+  describe "delete_unsynced_groups/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      %{
+        account: account,
+        provider: provider
+      }
+    end
+
+    test "deletes groups not synced at given timestamp", %{account: account, provider: provider} do
+      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      new_synced_at = DateTime.utc_now()
+
+      # Create groups with old last_synced_at
+      old_group1 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "old-001",
+          last_synced_at: old_synced_at
+        )
+
+      old_group2 =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "old-002",
+          last_synced_at: old_synced_at
+        )
+
+      # Create a group with new synced_at
+      new_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "new-001",
+          last_synced_at: new_synced_at
+        )
+
+      assert delete_unsynced_groups(provider, new_synced_at) == {:ok, %{deleted_groups: 2}}
+
+      # Verify old groups are deleted
+      refute Repo.get(Actors.Group, old_group1.id)
+      refute Repo.get(Actors.Group, old_group2.id)
+
+      # Verify new group still exists
+      assert Repo.get(Actors.Group, new_group.id)
+    end
+
+    test "doesn't delete groups from other providers", %{account: account, provider: provider} do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      synced_at = DateTime.utc_now()
+
+      # Create groups for different providers
+      our_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "our-001",
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      other_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: other_provider,
+          provider_identifier: "other-001",
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      assert delete_unsynced_groups(provider, synced_at) == {:ok, %{deleted_groups: 1}}
+
+      # Verify only our provider's group is deleted
+      refute Repo.get(Actors.Group, our_group.id)
+      assert Repo.get(Actors.Group, other_group.id)
+    end
+
+    test "returns 0 when no groups to delete", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      assert delete_unsynced_groups(provider, synced_at) == {:ok, %{deleted_groups: 0}}
+    end
+  end
+
+  describe "delete_unsynced_group_memberships/2" do
+    setup do
+      account = Fixtures.Accounts.create_account()
+
+      {provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "group-001"
+        )
+
+      actor = Fixtures.Actors.create_actor(account: account)
+
+      %{
+        account: account,
+        provider: provider,
+        group: group,
+        actor: actor
+      }
+    end
+
+    test "deletes memberships not synced at given timestamp", %{
+      account: account,
+      provider: provider,
+      group: group,
+      actor: actor
+    } do
+      old_synced_at = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      new_synced_at = DateTime.utc_now()
+
+      # Create memberships with different last_synced_at times
+      old_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: group,
+          actor: actor,
+          last_synced_at: old_synced_at
+        )
+
+      new_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: group,
+          actor: Fixtures.Actors.create_actor(account: account),
+          last_synced_at: new_synced_at
+        )
+
+      assert delete_unsynced_group_memberships(provider, new_synced_at) ==
+               {:ok, %{deleted_memberships: 1}}
+
+      # Verify old membership is deleted
+      refute Repo.get(Actors.Membership, old_membership.id)
+
+      # Verify new membership still exists
+      assert Repo.get(Actors.Membership, new_membership.id)
+    end
+
+    test "only deletes memberships for groups belonging to the provider", %{
+      account: account,
+      provider: provider,
+      actor: actor
+    } do
+      {other_provider, _bypass} =
+        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
+
+      synced_at = DateTime.utc_now()
+
+      # Create groups for different providers
+      our_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: provider,
+          provider_identifier: "our-001"
+        )
+
+      other_group =
+        Fixtures.Actors.create_group(
+          account: account,
+          provider: other_provider,
+          provider_identifier: "other-001"
+        )
+
+      # Create memberships for both groups
+      our_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: our_group,
+          actor: actor,
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      other_membership =
+        Fixtures.Actors.create_membership(
+          account: account,
+          group: other_group,
+          actor: actor,
+          last_synced_at: DateTime.add(synced_at, -3600, :second)
+        )
+
+      assert delete_unsynced_group_memberships(provider, synced_at) ==
+               {:ok, %{deleted_memberships: 1}}
+
+      # Verify only our provider's membership is deleted
+      refute Repo.get(Actors.Membership, our_membership.id)
+      assert Repo.get(Actors.Membership, other_membership.id)
+    end
+
+    test "returns 0 when no memberships to delete", %{provider: provider} do
+      synced_at = DateTime.utc_now()
+
+      assert delete_unsynced_group_memberships(provider, synced_at) ==
+               {:ok, %{deleted_memberships: 0}}
+    end
+  end
+
   # TODO: HARD-DELETE - This may not be needed anymore
   # defp allow_child_sandbox_access(parent_pid) do
   #  Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())

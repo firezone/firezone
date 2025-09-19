@@ -645,6 +645,39 @@ defmodule Domain.Actors do
     end
   end
 
+  def delete_unsynced_actors(%Auth.Provider{} = provider, synced_at) do
+    {count, _deleted_actors} =
+      Actor.Query.all()
+      |> Actor.Query.by_account_id(provider.account_id)
+      |> Actor.Query.by_identity_provider_id(provider.id)
+      |> Actor.Query.not_synced_at(synced_at)
+      |> Repo.delete_all()
+
+    {:ok, %{deleted_actors: count}}
+  end
+
+  def delete_unsynced_groups(%Auth.Provider{} = provider, synced_at) do
+    {count, _groups} =
+      Group.Query.all()
+      |> Group.Query.by_account_id(provider.account_id)
+      |> Group.Query.by_provider_id(provider.id)
+      |> Group.Query.not_synced_at(synced_at)
+      |> Repo.delete_all()
+
+    {:ok, %{deleted_groups: count}}
+  end
+
+  def delete_unsynced_group_memberships(%Auth.Provider{} = provider, synced_at) do
+    {count, _memberships} =
+      Membership.Query.all()
+      |> Membership.Query.by_account_id(provider.account_id)
+      |> Membership.Query.by_group_provider_id(provider.id)
+      |> Membership.Query.not_synced_at(synced_at)
+      |> Repo.delete_all()
+
+    {:ok, %{deleted_memberships: count}}
+  end
+
   def delete_stale_synced_actors_for_provider(
         %Auth.Provider{} = provider,
         %Auth.Subject{} = subject

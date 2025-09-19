@@ -13,5 +13,7 @@ defmodule Domain.Actors.Membership do
     belongs_to :actor, Domain.Actors.Actor
 
     belongs_to :account, Domain.Accounts.Account
+
+    field :last_synced_at, :utc_datetime_usec
   end
 end
