@@ -274,7 +274,11 @@ defmodule Domain.Auth.Identity.Query do
     WHERE deleted_at IS NULL
     DO UPDATE SET
       email = EXCLUDED.email,
-      provider_state = EXCLUDED.provider_state
+      provider_state = COALESCE(auth_identities.provider_state, '{}'::jsonb) ||
+                      jsonb_build_object('userinfo',
+                        COALESCE(auth_identities.provider_state->'userinfo', '{}'::jsonb) ||
+                        jsonb_build_object('email', EXCLUDED.email)
+                      )
     RETURNING 1
     """
   end

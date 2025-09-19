@@ -263,5 +263,106 @@ defmodule Domain.Auth.Identity.QueryTest do
       assert identity.actor.name == "User No Email"
       assert identity.email == nil
     end
+
+    test "preserves existing provider_state fields while updating userinfo.email", %{
+      account: account,
+      provider: provider
+    } do
+      now1 = DateTime.utc_now()
+      now2 = DateTime.add(now1, 60, :second)
+
+      # Create initial identity with complex provider_state
+      existing_actor =
+        Fixtures.Actors.create_actor(
+          account: account,
+          type: :account_user,
+          name: "Test User"
+        )
+
+      existing_identity =
+        Fixtures.Auth.create_identity(
+          account: account,
+          provider: provider,
+          provider_identifier: "merge-test-001",
+          actor: existing_actor,
+          email: "old@example.com",
+          provider_state: %{
+            "userinfo" => %{
+              "email" => "old@example.com",
+              "name" => "Test User",
+              "sub" => "123456789"
+            },
+            "access_token" => "secret_token",
+            "refresh_token" => "refresh_secret",
+            "custom_field" => "should_be_preserved"
+          }
+        )
+
+      # Update with new email via batch_upsert
+      attrs_list = [
+        %{
+          name: "Test User Updated",
+          provider_identifier: "merge-test-001",
+          email: "new@example.com"
+        }
+      ]
+
+      {:ok, %{upserted_identities: 1}} =
+        Identity.Query.batch_upsert(account.id, provider.id, now2, attrs_list)
+
+      # Verify the provider_state was properly merged
+      updated_identity =
+        Repo.get(Identity, existing_identity.id)
+        |> Repo.preload(:actor)
+
+      # Email should be updated
+      assert updated_identity.email == "new@example.com"
+      assert updated_identity.actor.name == "Test User Updated"
+
+      # provider_state should preserve existing fields while updating userinfo.email
+      provider_state = updated_identity.provider_state
+
+      # userinfo.email should be updated
+      assert provider_state["userinfo"]["email"] == "new@example.com"
+
+      # Other userinfo fields should be preserved
+      assert provider_state["userinfo"]["name"] == "Test User"
+      assert provider_state["userinfo"]["sub"] == "123456789"
+
+      # Non-userinfo fields should be preserved
+      assert provider_state["access_token"] == "secret_token"
+      assert provider_state["refresh_token"] == "refresh_secret"
+      assert provider_state["custom_field"] == "should_be_preserved"
+    end
+
+    test "creates proper provider_state for new identities without existing userinfo", %{
+      account: account,
+      provider: provider
+    } do
+      now = DateTime.utc_now()
+
+      attrs_list = [
+        %{
+          name: "New User",
+          provider_identifier: "new-user-001",
+          email: "new@example.com"
+        }
+      ]
+
+      {:ok, %{upserted_identities: 1}} =
+        Identity.Query.batch_upsert(account.id, provider.id, now, attrs_list)
+
+      identity =
+        Identity.Query.all()
+        |> Identity.Query.by_provider_identifier("new-user-001")
+        |> Repo.one()
+
+      # Should create basic provider_state structure
+      assert identity.provider_state == %{
+               "userinfo" => %{
+                 "email" => "new@example.com"
+               }
+             }
+    end
   end
 end
