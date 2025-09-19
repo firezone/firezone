@@ -1530,10 +1530,9 @@ where
 }
 
 fn into_u256(key: [u8; 32]) -> bnum::BUint<4> {
-    // SAFETY: Byte arrays are always valid types and don't have padding.
-    let digits = unsafe { mem::transmute::<[u8; 32], [u64; 4]>(key) };
-
-    bnum::types::U256::from_digits(digits)
+    // Note: `parse_str_radix` panics when the number is too big.
+    // We are passing 32 u8's though which fits exactly into a u256.
+    bnum::types::U256::parse_str_radix(&hex::encode(key), 16)
 }
 
 fn add_local_candidate<TId>(
