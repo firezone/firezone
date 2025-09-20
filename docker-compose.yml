@@ -19,7 +19,7 @@ x-phoenix-config: &phoenix-config
 
 x-health-check: &health-check
   interval: 1s
-  retries: 10
+  retries: 15
   timeout: 1s
 
 services:
