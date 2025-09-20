@@ -128,7 +128,8 @@ impl Eventloop {
                     return Ok(());
                 }
                 Err(e) => {
-                    self.shutdown_tunnel().await?;
+                    // Ignore shutdown error here to not obscure the original error.
+                    let _ = self.shutdown_tunnel().await;
 
                     return Err(e);
                 }
