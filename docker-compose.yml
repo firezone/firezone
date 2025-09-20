@@ -89,6 +89,7 @@ services:
         condition: "service_healthy"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
+      start_period: 5s # API could take a second or two to boot on slow GH runners
       <<: *health-check
     networks:
       app-internal:
