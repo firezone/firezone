@@ -38,6 +38,10 @@ export default function Gateway() {
           </Link>
           section for details.
         </ChangeItem>
+        <ChangeItem pull="10373">
+          Switches to user-space DNS resolution, allowing for accurate caching
+          based on the TTL in the DNS response.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.16" date={new Date("2025-09-10")}>
         <ChangeItem pull="10231">
