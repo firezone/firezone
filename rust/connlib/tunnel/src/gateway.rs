@@ -131,7 +131,19 @@ impl GatewayState {
                     ip_packet::icmpv4::DestUnreachableHeader::Host,
                     ip_packet::icmpv6::DestUnreachableCode::Address,
                 )?;
-                self.buffered_packets.push_back(icmp_error);
+
+                let maybe_packet = match peer.translate_outbound(icmp_error, now) {
+                    Ok(TranslateOutboundResult::Send(packet)) => Some(packet),
+                    Ok(TranslateOutboundResult::DestinationUnreachable(_)) => None,
+                    Ok(TranslateOutboundResult::Filtered(_)) => None,
+                    Err(e) => {
+                        tracing::debug!("Failed to translate ICMP error: {e:#}");
+
+                        None
+                    }
+                };
+
+                self.buffered_packets.extend(maybe_packet);
 
                 Ok(None)
             }
