@@ -26,3 +26,4 @@ gha-creds-*.json
 
 # Ignore local `direnv` cache
 .direnv
+/cspell.json

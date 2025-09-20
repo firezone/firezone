@@ -24,6 +24,12 @@ impl MakeWriter {
     }
 }
 
+impl Default for MakeWriter {
+    fn default() -> Self {
+        Self::new("dev.firezone.firezone", "connlib")
+    }
+}
+
 impl<'l> tracing_subscriber::fmt::MakeWriter<'l> for MakeWriter {
     type Writer = Writer<'l>;
 
@@ -61,7 +67,7 @@ mod oslog {
             self.inner.with_level(
                 match level {
                     tracing::Level::TRACE => ::oslog::Level::Debug,
-                    tracing::Level::DEBUG => ::oslog::Level::Info,
+                    tracing::Level::DEBUG => ::oslog::Level::Debug,
                     tracing::Level::INFO => ::oslog::Level::Default,
                     tracing::Level::WARN => ::oslog::Level::Error,
                     tracing::Level::ERROR => ::oslog::Level::Fault,
@@ -84,11 +90,11 @@ mod oslog {
 
     impl OsLog {
         pub fn with_level(&self, _: tracing::Level, _: &str) {
-            unimplemented!("Stub should never be called")
+            unimplemented!("oslog is only available on macOS/iOS")
         }
     }
 
     pub fn new(_: &'static str, _: &'static str) -> OsLog {
-        unimplemented!("Stub should never be called")
+        unimplemented!("oslog is only available on macOS/iOS")
     }
 }
