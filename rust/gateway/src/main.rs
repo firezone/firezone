@@ -178,7 +178,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
-        nameservers.clone(),
+        nameservers,
     );
     let portal = PhoenixChannel::disconnected(
         Secret::new(login),
