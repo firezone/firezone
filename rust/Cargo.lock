@@ -944,6 +944,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bnum"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "119771309b95163ec7aaf79810da82f7cd0599c19722d48b9c03894dca833966"
+
+[[package]]
 name = "boringtun"
 version = "0.6.1"
 source = "git+https://github.com/firezone/boringtun?branch=master#ed1de7c6ddf071d2895309f0fb153e9afb82fc99"
@@ -6907,6 +6913,7 @@ name = "snownet"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bnum",
  "boringtun",
  "bufferpool",
  "bytecodec",

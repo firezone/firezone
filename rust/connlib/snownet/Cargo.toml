@@ -6,6 +6,7 @@ license = { workspace = true }
 
 [dependencies]
 anyhow = { workspace = true }
+bnum = { workspace = true }
 boringtun = { workspace = true }
 bufferpool = { workspace = true }
 bytecodec = { workspace = true }

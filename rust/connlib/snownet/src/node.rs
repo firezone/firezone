@@ -1465,7 +1465,7 @@ where
         let id = self
             .established_by_wireguard_session_index
             .get(&index.global())
-            .with_context(|| format!("No connection for with index {index}"))?;
+            .with_context(|| format!("No connection for index {}", index.global()))?;
         let connection = self
             .established
             .get_mut(id)
@@ -1482,7 +1482,7 @@ where
             .established
             .iter_mut()
             .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
-            .with_context(|| format!("No connection with public key {}", hex::encode(key)))?;
+            .with_context(|| format!("No connection for public key {}", into_u256(key)))?;
 
         Ok((*id, conn))
     }
@@ -1527,6 +1527,12 @@ where
             )
             .min_by_key(|(instant, _)| *instant)
     }
+}
+
+fn into_u256(key: [u8; 32]) -> bnum::BUint<4> {
+    // Note: `parse_str_radix` panics when the number is too big.
+    // We are passing 32 u8's though which fits exactly into a u256.
+    bnum::types::U256::parse_str_radix(&hex::encode(key), 16)
 }
 
 fn add_local_candidate<TId>(
@@ -2752,5 +2758,21 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
+    }
+
+    #[test]
+    fn can_make_u256_out_of_byte_array() {
+        let bytes = random();
+        let _num = into_u256(bytes);
+    }
+
+    #[test]
+    fn u256_renders_as_int() {
+        let num = into_u256([1; 32]);
+
+        assert_eq!(
+            num.to_string(),
+            "454086624460063511464984254936031011189294057512315937409637584344757371137"
+        );
     }
 }
