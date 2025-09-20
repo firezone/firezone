@@ -281,6 +281,8 @@ impl ClientState {
     }
 
     pub fn shutdown(&mut self, now: Instant) {
+        tracing::info!("Initiating graceful shutdown");
+
         self.peers.clear();
         self.node.close_all(p2p_control::goodbye(), now);
     }

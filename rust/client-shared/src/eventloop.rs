@@ -141,54 +141,50 @@ enum CombinedEvent {
 impl Eventloop {
     pub async fn run(mut self) -> Result<(), DisconnectError> {
         loop {
-            match future::poll_fn(|cx| self.next_event(cx)).await {
-                CombinedEvent::Command(None) => {
-                    if let Some(tunnel) = self.tunnel.take() {
-                        tunnel
-                            .shutdown()
-                            .await
-                            .context("Failed to shutdown tunnel")?;
-                    }
+            match self.tick().await {
+                Ok(ControlFlow::Continue(())) => continue,
+                Ok(ControlFlow::Break(())) => {
+                    self.shutdown_tunnel().await?;
 
                     return Ok(());
                 }
-                CombinedEvent::Command(Some(cmd)) => {
-                    match self.handle_eventloop_command(cmd).await? {
-                        ControlFlow::Continue(()) => {}
-                        ControlFlow::Break(()) => return Ok(()),
-                    }
-                }
-                CombinedEvent::Tunnel(event) => self.handle_tunnel_event(event).await?,
-                CombinedEvent::Portal(Some(event)) => {
-                    let msg = event.context("Connection to portal failed")?;
+                Err(e) => {
+                    self.shutdown_tunnel().await?;
 
-                    self.handle_portal_message(msg).await?;
-                }
-                CombinedEvent::Portal(None) => {
-                    return Err(DisconnectError(anyhow::Error::msg(
-                        "portal task exited unexpectedly",
-                    )));
+                    return Err(e);
                 }
             }
         }
     }
 
+    async fn tick(&mut self) -> Result<ControlFlow<(), ()>, DisconnectError> {
+        match future::poll_fn(|cx| self.next_event(cx)).await {
+            CombinedEvent::Command(None) => Ok(ControlFlow::Break(())),
+            CombinedEvent::Command(Some(cmd)) => {
+                let cf = self.handle_eventloop_command(cmd).await?;
+
+                Ok(cf)
+            }
+            CombinedEvent::Tunnel(event) => {
+                self.handle_tunnel_event(event).await?;
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(Some(event)) => {
+                let msg = event.context("Connection to portal failed")?;
+                self.handle_portal_message(msg).await?;
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(None) => Err(DisconnectError(anyhow::Error::msg(
+                "portal task exited unexpectedly",
+            ))),
+        }
+    }
+
     async fn handle_eventloop_command(&mut self, command: Command) -> Result<ControlFlow<(), ()>> {
         match command {
-            Command::Stop => {
-                let Some(tunnel) = self.tunnel.take() else {
-                    tracing::debug!("Tunnel has already been shut down");
-
-                    return Ok(ControlFlow::Break(()));
-                };
-
-                tunnel
-                    .shutdown()
-                    .await
-                    .context("Failed to shutdown tunnel")?;
-
-                return Ok(ControlFlow::Break(()));
-            }
+            Command::Stop => return Ok(ControlFlow::Break(())),
             Command::SetDns(dns) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     return Ok(ControlFlow::Continue(()));
@@ -470,6 +466,20 @@ impl Eventloop {
         }
 
         Poll::Pending
+    }
+
+    async fn shutdown_tunnel(&mut self) -> Result<()> {
+        let Some(tunnel) = self.tunnel.take() else {
+            tracing::debug!("Tunnel has already been shut down");
+            return Ok(());
+        };
+
+        tunnel
+            .shutdown()
+            .await
+            .context("Failed to shutdown tunnel")?;
+
+        Ok(())
     }
 }
 
