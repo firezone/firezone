@@ -8,6 +8,7 @@ pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription
 use anyhow::Result;
 use connlib_model::{ResourceId, ResourceView};
 use eventloop::{Command, Eventloop};
+use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -38,7 +39,7 @@ pub struct Session {
 
 #[derive(Debug)]
 pub struct EventStream {
-    eventloop: JoinHandle<Result<(), DisconnectError>>,
+    eventloop: Fuse<JoinHandle<Result<(), DisconnectError>>>,
     resource_list_receiver: WatchStream<Vec<ResourceView>>,
     tun_config_receiver: WatchStream<Option<TunConfig>>,
 }
@@ -81,7 +82,7 @@ impl Session {
         (
             Self { channel: cmd_tx },
             EventStream {
-                eventloop,
+                eventloop: eventloop.fuse(),
                 resource_list_receiver: WatchStream::from_changes(resource_list_receiver),
                 tun_config_receiver: WatchStream::from_changes(tun_config_receiver),
             },
