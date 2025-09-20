@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.AddNonCompositeIndexesForCascadeFks do
 
   @disable_ddl_transaction true
 
-  def up do
+  def change do
     # Indexes for actor_groups table CASCADE foreign key
     create_if_not_exists(index(:actor_groups, [:provider_id], concurrently: true))
 
@@ -45,31 +45,5 @@ defmodule Domain.Repo.Migrations.AddNonCompositeIndexesForCascadeFks do
     create_if_not_exists(index(:tokens, [:gateway_group_id], concurrently: true))
     create_if_not_exists(index(:tokens, [:actor_id], concurrently: true))
     create_if_not_exists(index(:tokens, [:identity_id], concurrently: true))
-  end
-
-  def down do
-    # Drop indexes concurrently using raw SQL for non-blocking rollbacks
-    execute("DROP INDEX CONCURRENTLY IF EXISTS actor_groups_provider_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS auth_identities_actor_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS auth_identities_provider_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS clients_actor_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS clients_identity_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS flows_actor_group_membership_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS flows_client_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS flows_gateway_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS flows_policy_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS flows_resource_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS flows_token_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS gateways_group_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS policies_replaced_by_policy_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS relays_account_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS relays_group_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS resources_replaced_by_resource_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS resource_connections_resource_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS resource_connections_gateway_group_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS tokens_relay_group_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS tokens_gateway_group_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS tokens_actor_id_index")
-    execute("DROP INDEX CONCURRENTLY IF EXISTS tokens_identity_id_index")
   end
 end
