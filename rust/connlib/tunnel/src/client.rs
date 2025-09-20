@@ -280,6 +280,11 @@ impl ClientState {
         self.node.public_key()
     }
 
+    pub fn shutdown(&mut self, now: Instant) {
+        self.peers.clear();
+        self.node.close_all(p2p_control::goodbye(), now);
+    }
+
     /// Updates the NAT for all domains resolved by the stub resolver on the corresponding gateway.
     ///
     /// In order to route traffic for DNS resources, the designated gateway needs to set up NAT from
