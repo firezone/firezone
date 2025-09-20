@@ -3,6 +3,7 @@ defmodule API.IdentityProviderController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Auth
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -22,7 +23,8 @@ defmodule API.IdentityProviderController do
     responses: [
       ok:
         {"Identity Provider Response", "application/json",
-         API.Schemas.IdentityProvider.ListResponse}
+         API.Schemas.IdentityProvider.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def index(conn, params) do
@@ -46,7 +48,9 @@ defmodule API.IdentityProviderController do
     ],
     responses: [
       ok:
-        {"Identity Provider Response", "application/json", API.Schemas.IdentityProvider.Response}
+        {"Identity Provider Response", "application/json", API.Schemas.IdentityProvider.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def show(conn, %{"id" => id}) do
@@ -67,7 +71,9 @@ defmodule API.IdentityProviderController do
     ],
     responses: [
       ok:
-        {"Identity Provider Response", "application/json", API.Schemas.IdentityProvider.Response}
+        {"Identity Provider Response", "application/json", API.Schemas.IdentityProvider.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   def delete(conn, %{"id" => id}) do
