@@ -19,7 +19,7 @@ x-phoenix-config: &phoenix-config
 
 x-health-check: &health-check
   interval: 1s
-  retries: 10
+  retries: 15
   timeout: 1s
 
 services:
@@ -89,7 +89,6 @@ services:
         condition: "service_healthy"
     healthcheck:
       test: ["CMD-SHELL", "curl -f localhost:8081/healthz"]
-      start_period: 5s # API could take a second or two to boot on slow GH runners
       <<: *health-check
     networks:
       app-internal:
