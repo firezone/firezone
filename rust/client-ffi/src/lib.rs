@@ -208,7 +208,16 @@ impl Drop for Session {
             return;
         };
 
-        runtime.block_on(async { self.telemetry.lock().await.stop_on_crash().await });
+        self.inner.stop(); // Instruct the event-loop to shutdown.
+
+        runtime.block_on(async {
+            self.telemetry.lock().await.stop_on_crash().await;
+
+            // Draining the event-stream allows us to wait for the event-loop to finish its graceful shutdown.
+            let drain = async { self.events.lock().await.drain().await };
+            let _ = tokio::time::timeout(Duration::from_secs(1), drain).await;
+        });
+
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
     }
 }

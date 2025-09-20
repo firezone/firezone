@@ -29,6 +29,7 @@ use std::{
     time::Duration,
 };
 use tokio::runtime::Runtime;
+use tokio::task::JoinHandle;
 use tracing_subscriber::prelude::*;
 use tun::Tun;
 
@@ -119,6 +120,7 @@ mod ffi {
 pub struct WrappedSession {
     inner: Session,
     runtime: Option<Runtime>,
+    event_stream_handler: Option<JoinHandle<()>>,
 
     telemetry: Telemetry,
 }
@@ -305,7 +307,7 @@ impl WrappedSession {
 
         analytics::new_session(device_id, api_url.to_string());
 
-        runtime.spawn(async move {
+        let event_stream_handler = runtime.spawn(async move {
             let callback_handler = CallbackHandler {
                 inner: callback_handler,
             };
@@ -335,6 +337,7 @@ impl WrappedSession {
         Ok(Self {
             inner: session,
             runtime: Some(runtime),
+            event_stream_handler: Some(event_stream_handler),
             telemetry,
         })
     }
@@ -380,7 +383,19 @@ impl Drop for WrappedSession {
             return;
         };
 
-        runtime.block_on(self.telemetry.stop());
+        self.inner.stop(); // Instruct the event-loop to shutdown.
+        runtime.block_on(async {
+            self.telemetry.stop().await;
+
+            // The `event_stream_handler` task will exit once the stream is drained.
+            // That only happens once the event-loop has fully shut down.
+            // Hence, waiting for this task here allows us to wait for the graceful shutdown to complete.
+            let Some(event_stream_handler) = self.event_stream_handler.take() else {
+                return;
+            };
+
+            let _ = tokio::time::timeout(Duration::from_secs(1), event_stream_handler).await;
+        });
         runtime.shutdown_timeout(Duration::from_secs(1)); // Ensure we don't block forever on a task in the blocking pool.
     }
 }
