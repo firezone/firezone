@@ -11,6 +11,7 @@ use firezone_telemetry::{
     MaybePushMetricsExporter, NoopPushMetricsExporter, Telemetry, feature_flags, otel,
 };
 use firezone_tunnel::GatewayTunnel;
+use hickory_resolver::config::ResolveHosts;
 use ip_packet::IpPacket;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
@@ -177,7 +178,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     let mut tunnel = GatewayTunnel::new(
         Arc::new(tcp_socket_factory),
         Arc::new(UdpSocketFactory::default()),
-        nameservers,
+        nameservers.clone(),
     );
     let portal = PhoenixChannel::disconnected(
         Secret::new(login),
@@ -210,7 +211,13 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         || true,
     ));
 
-    Eventloop::new(tunnel, portal, tun_device_manager)?
+    let mut resolver_builder = hickory_resolver::TokioResolver::builder_tokio()?;
+    resolver_builder.options_mut().cache_size = 512;
+    resolver_builder.options_mut().use_hosts_file = ResolveHosts::Always;
+
+    let resolver = resolver_builder.build();
+
+    Eventloop::new(tunnel, portal, tun_device_manager, resolver)?
         .run()
         .await?;
 
