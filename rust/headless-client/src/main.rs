@@ -420,6 +420,9 @@ fn try_main() -> Result<()> {
 
         drop(session);
 
+        // Drain the event-stream to allow the event-loop to gracefully shutdown.
+        let _ = tokio::time::timeout(Duration::from_secs(1), event_stream.drain()).await;
+
         result
     })?;
 

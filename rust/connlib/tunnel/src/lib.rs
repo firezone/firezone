@@ -140,6 +140,31 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    /// Shutdown the Client tunnel.
+    pub fn shutdown(mut self) -> BoxFuture<'static, Result<()>> {
+        // Initiate shutdown.
+        self.role_state.shutdown(Instant::now());
+
+        // Drain all UDP packets that need to be sent.
+        while let Some(trans) = self.role_state.poll_transmit() {
+            self.io
+                .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+        }
+
+        // Return a future that "owns" our IO, polling it until all packets have been flushed.
+        async move {
+            tokio::time::timeout(
+                Duration::from_secs(1),
+                future::poll_fn(move |cx| self.io.flush(cx)),
+            )
+            .await
+            .context("Failed to flush within 1s")??;
+
+            Ok(())
+        }
+        .boxed()
+    }
+
     pub fn poll_next_event(&mut self, cx: &mut Context<'_>) -> Poll<ClientEvent> {
         for _ in 0..MAX_EVENTLOOP_ITERS {
             let mut ready = false;
