@@ -1,6 +1,6 @@
+#![cfg(not(windows))] // For some reason, Windows doesn't like this test.
 #![allow(clippy::unwrap_used)]
 
-#[cfg(not(windows))] // For some reason, Windows doesn't like this test.
 #[tokio::test]
 async fn client_does_not_pipeline_messages() {
     use std::{str::FromStr, sync::Arc, time::Duration};
