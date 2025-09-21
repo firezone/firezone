@@ -56,7 +56,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         <span :if={@provider.adapter_state["status"]}>
           <.button
             size="xs"
-            navigate={
+            href={
               ~p"/#{@provider.account_id}/settings/identity_providers/google_workspace/#{@provider}/redirect"
             }
           >
@@ -112,7 +112,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         <span :if={@provider.adapter_state["status"]}>
           <.button
             size="xs"
-            navigate={
+            href={
               ~p"/#{@provider.account_id}/settings/identity_providers/microsoft_entra/#{@provider}/redirect"
             }
           >
@@ -168,9 +168,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         <span :if={@provider.adapter_state["status"]}>
           <.button
             size="xs"
-            navigate={
-              ~p"/#{@provider.account_id}/settings/identity_providers/okta/#{@provider}/redirect"
-            }
+            href={~p"/#{@provider.account_id}/settings/identity_providers/okta/#{@provider}/redirect"}
           >
             Connect IdP
           </.button>
@@ -198,7 +196,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         <span :if={@provider.adapter_state["status"]}>
           <.button
             size="xs"
-            navigate={
+            href={
               ~p"/#{@provider.account_id}/settings/identity_providers/jumpcloud/#{@provider}/redirect"
             }
           >
@@ -228,7 +226,7 @@ defmodule Web.Settings.IdentityProviders.Components do
         <span :if={@provider.adapter_state["status"]}>
           <.button
             size="xs"
-            navigate={
+            href={
               ~p"/#{@provider.account_id}/settings/identity_providers/openid_connect/#{@provider}/redirect"
             }
           >
