@@ -28,13 +28,22 @@ defmodule API.AccountJSON do
 
     %{}
     |> put_limit(:users, account.limits.users_count, users_count)
-    |> put_limit(:monthly_active_users, account.limits.monthly_active_users_count, monthly_active_users_count)
+    |> put_limit(
+      :monthly_active_users,
+      account.limits.monthly_active_users_count,
+      monthly_active_users_count
+    )
     |> put_limit(:service_accounts, account.limits.service_accounts_count, service_accounts_count)
-    |> put_limit(:account_admin_users, account.limits.account_admin_users_count, admin_users_count)
+    |> put_limit(
+      :account_admin_users,
+      account.limits.account_admin_users_count,
+      admin_users_count
+    )
     |> put_limit(:gateway_groups, account.limits.gateway_groups_count, gateway_groups_count)
   end
 
   defp put_limit(limits, _key, nil, _used), do: limits
+
   defp put_limit(limits, key, total, used) do
     Map.put(limits, key, %{
       used: used,
