@@ -8,7 +8,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   require OpenTelemetry.Tracer
 
   alias Domain.Actors
-  alias Domain.{Accounts, Gateways, Mailer}
+  alias Domain.{Accounts, Clients, Gateways, Mailer}
 
   @impl true
   if Mix.env() == :prod do
@@ -24,7 +24,10 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   end
 
   defp run_check do
+    latest_version = Domain.ComponentVersions.gateway_version()
+
     Accounts.all_accounts_pending_notification!()
+    |> Clients.count_incompatible_clients(latest_version)
     |> Enum.each(fn account ->
       all_online_gateways_for_account(account)
       |> Enum.filter(&Gateways.gateway_outdated?/1)
