@@ -101,7 +101,13 @@ impl GatewayState {
         }
 
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            tracing::debug!(%dst, "Unknown client, perhaps already disconnected?");
+            self.buffered_packets
+                .push_back(ip_packet::make::icmp_dest_unreachable(
+                    &packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::Host,
+                    ip_packet::icmpv6::DestUnreachableCode::Address,
+                )?);
+
             return Ok(None);
         };
         let cid = peer.id();
