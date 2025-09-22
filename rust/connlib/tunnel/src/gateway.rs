@@ -140,10 +140,10 @@ impl GatewayState {
                     Ok(TranslateOutboundResult::Send(packet)) => {
                         Ok(TunInputResult::ClientDisconnected(packet))
                     }
-                    Ok(TranslateOutboundResult::DestinationUnreachable(_)) => {
-                        Ok(TunInputResult::None)
-                    }
-                    Ok(TranslateOutboundResult::Filtered(_)) => Ok(TunInputResult::None),
+                    Ok(
+                        TranslateOutboundResult::DestinationUnreachable(_)
+                        | TranslateOutboundResult::Filtered(_),
+                    ) => Ok(TunInputResult::None),
                     Err(e) => {
                         tracing::debug!("Failed to translate ICMP error: {e:#}");
 
