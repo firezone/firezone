@@ -133,7 +133,12 @@ impl SimGateway {
         udp_server_packets
             .chain(tcp_server_packets)
             .chain(tcp_resource_packets)
-            .filter_map(|packet| self.sut.handle_tun_input(packet, now).unwrap())
+            .filter_map(|packet| {
+                self.sut
+                    .handle_tun_input(packet, now)
+                    .unwrap()
+                    .into_transmit()
+            })
             .collect()
     }
 
@@ -234,7 +239,11 @@ impl SimGateway {
 
         if let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) {
             self.request_received(&packet);
-            let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
+            let transmit = self
+                .sut
+                .handle_tun_input(reply, now)
+                .unwrap()
+                .into_transmit()?;
 
             return Some(transmit);
         }
@@ -283,7 +292,11 @@ impl SimGateway {
             .expect("src and dst are taken from incoming packet")
         });
 
-        let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
+        let transmit = self
+            .sut
+            .handle_tun_input(reply, now)
+            .unwrap()
+            .into_transmit()?;
 
         Some(transmit)
     }

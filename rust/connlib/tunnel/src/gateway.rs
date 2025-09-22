@@ -39,7 +39,6 @@ pub struct GatewayState {
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit>,
-    buffered_packets: VecDeque<IpPacket>,
 }
 
 #[derive(Debug)]
@@ -67,7 +66,6 @@ impl GatewayState {
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
-            buffered_packets: VecDeque::default(),
             tun_ip_config: None,
         }
     }
@@ -93,22 +91,21 @@ impl GatewayState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
+    ) -> Result<TunInputResult> {
         let dst = packet.destination();
 
         if !crate::is_peer(dst) {
-            return Ok(None);
+            return Ok(TunInputResult::None);
         }
 
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            self.buffered_packets
-                .push_back(ip_packet::make::icmp_dest_unreachable(
-                    &packet,
-                    ip_packet::icmpv4::DestUnreachableHeader::Host,
-                    ip_packet::icmpv6::DestUnreachableCode::Address,
-                )?);
+            let icmp_error = ip_packet::make::icmp_dest_unreachable(
+                &packet,
+                ip_packet::icmpv4::DestUnreachableHeader::Host,
+                ip_packet::icmpv6::DestUnreachableCode::Address,
+            )?;
 
-            return Ok(None);
+            return Ok(TunInputResult::ClientDisconnected(icmp_error));
         };
         let cid = peer.id();
 
@@ -116,7 +113,7 @@ impl GatewayState {
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?
         else {
-            return Ok(None);
+            return Ok(TunInputResult::None); // TODO: Should we differentiate these filtered packets?
         };
 
         match self
@@ -124,7 +121,8 @@ impl GatewayState {
             .encapsulate(cid, packet, now)
             .context("Failed to encapsulate")
         {
-            Ok(maybe_transmit) => Ok(maybe_transmit),
+            Ok(Some(transmit)) => Ok(TunInputResult::Encrypted(transmit)),
+            Ok(None) => Ok(TunInputResult::None),
             Err(e) => {
                 let Some(unknown_connection) =
                     e.root_cause().downcast_ref::<snownet::UnknownConnection>()
@@ -138,20 +136,20 @@ impl GatewayState {
                     ip_packet::icmpv6::DestUnreachableCode::Address,
                 )?;
 
-                let maybe_packet = match peer.translate_outbound(icmp_error, now) {
-                    Ok(TranslateOutboundResult::Send(packet)) => Some(packet),
-                    Ok(TranslateOutboundResult::DestinationUnreachable(_)) => None,
-                    Ok(TranslateOutboundResult::Filtered(_)) => None,
+                match peer.translate_outbound(icmp_error, now) {
+                    Ok(TranslateOutboundResult::Send(packet)) => {
+                        Ok(TunInputResult::ClientDisconnected(packet))
+                    }
+                    Ok(TranslateOutboundResult::DestinationUnreachable(_)) => {
+                        Ok(TunInputResult::None)
+                    }
+                    Ok(TranslateOutboundResult::Filtered(_)) => Ok(TunInputResult::None),
                     Err(e) => {
                         tracing::debug!("Failed to translate ICMP error: {e:#}");
 
-                        None
+                        Ok(TunInputResult::None)
                     }
-                };
-
-                self.buffered_packets.extend(maybe_packet);
-
-                Ok(None)
+                }
             }
         }
     }
@@ -458,10 +456,6 @@ impl GatewayState {
         }
     }
 
-    pub fn poll_packets(&mut self) -> Option<IpPacket> {
-        self.buffered_packets.pop_front()
-    }
-
     fn drain_node_events(&mut self) {
         let mut added_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
         let mut removed_ice_candidates = BTreeMap::<ClientId, BTreeSet<IceCandidate>>::default();
@@ -556,6 +550,24 @@ impl GatewayState {
             };
 
             client.retain_authorizations(resources);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TunInputResult {
+    Encrypted(snownet::Transmit),
+    ClientDisconnected(IpPacket),
+    None,
+}
+
+impl TunInputResult {
+    #[cfg(test)]
+    pub fn into_transmit(self) -> Option<snownet::Transmit> {
+        match self {
+            TunInputResult::Encrypted(transmit) => Some(transmit),
+            TunInputResult::ClientDisconnected(_) => None,
+            TunInputResult::None => None,
         }
     }
 }
