@@ -128,7 +128,7 @@ parking_lot = "0.12.4"
 phoenix-channel = { path = "connlib/phoenix-channel" }
 png = "0.17.16"
 proc-macro2 = "1.0"
-proptest = "1.7.0"
+proptest = "1.8.0"
 proptest-state-machine = "0.3.1"
 quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
 quote = "1.0"
