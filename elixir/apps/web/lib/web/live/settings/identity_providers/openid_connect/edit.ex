@@ -58,7 +58,7 @@ defmodule Web.Settings.IdentityProviders.OpenIDConnect.Edit do
     with {:ok, provider} <-
            Auth.update_provider(socket.assigns.provider, attrs, socket.assigns.subject) do
       socket =
-        push_navigate(socket,
+        redirect(socket,
           to:
             ~p"/#{socket.assigns.account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"
         )

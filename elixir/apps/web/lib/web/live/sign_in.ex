@@ -120,7 +120,7 @@ defmodule Web.SignIn do
           </p>
           <p class="py-2">
             Looking for a different account?
-            <.link navigate={~p"/"} class={[link_style()]}>
+            <.link href={~p"/"} class={[link_style()]}>
               See recently used accounts.
             </.link>
           </p>
