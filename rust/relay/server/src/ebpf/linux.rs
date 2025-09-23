@@ -1,9 +1,12 @@
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::{
+    io,
+    net::{Ipv4Addr, Ipv6Addr, SocketAddr},
+};
 
 use anyhow::{Context as _, Result};
 use aya::{
     Pod,
-    maps::{AsyncPerfEventArray, HashMap, MapData, PerCpuArray, PerCpuValues},
+    maps::{HashMap, MapData, PerCpuArray, PerCpuValues, PerfEventArray},
     programs::{Xdp, XdpFlags},
 };
 use aya_log::EbpfLogger;
@@ -12,6 +15,7 @@ use ebpf_shared::{
     ClientAndChannelV4, ClientAndChannelV6, PortAndPeerV4, PortAndPeerV6, StatsEvent,
 };
 use stun_codec::rfc5766::attributes::ChannelNumber;
+use tokio::io::{Interest, unix::AsyncFd};
 
 use crate::ebpf::AttachMode;
 
@@ -28,7 +32,7 @@ pub struct Program {
     ebpf: aya::Ebpf,
 
     #[expect(dead_code, reason = "We are just keeping it alive.")]
-    stats: AsyncPerfEventArray<MapData>,
+    stats: PerfEventArray<MapData>,
 }
 
 impl Program {
@@ -60,7 +64,7 @@ impl Program {
             .attach(interface, xdp_flags)
             .with_context(|| format!("Failed to attached to interface {interface}"))?;
 
-        let mut stats = AsyncPerfEventArray::try_from(
+        let mut stats = PerfEventArray::try_from(
             ebpf.take_map("STATS")
                 .context("`STATS` perf array not found")?,
         )?;
@@ -76,7 +80,8 @@ impl Program {
             .context("Failed to determine number of CPUs")?
         {
             // open a separate perf buffer for each cpu
-            let mut stats_array_buf = stats.open(cpu_id, Some(PAGE_COUNT))?;
+            let stats_array_buf = stats.open(cpu_id, Some(PAGE_COUNT))?;
+            let mut fd = AsyncFd::new(stats_array_buf)?;
 
             tracing::debug!(%cpu_id, "Subscribing to stats events from eBPF kernel");
 
@@ -90,7 +95,17 @@ impl Program {
                         .collect::<Vec<_>>();
 
                     loop {
-                        let events = match stats_array_buf.read_events(&mut buffers).await {
+                        let events = fd
+                            .async_io_mut(Interest::READABLE, |fd| {
+                                if !fd.readable() {
+                                    return Err(io::Error::from(io::ErrorKind::WouldBlock));
+                                }
+
+                                fd.read_events(&mut buffers).map_err(io::Error::other)
+                            })
+                            .await;
+
+                        let events = match events {
                             Ok(events) => events,
                             Err(e) => {
                                 tracing::warn!("Failed to read perf events: {e}");
