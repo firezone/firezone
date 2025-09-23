@@ -12,8 +12,7 @@
     "dev": "run-script-os",
     "dev:win32": "call dev.bat",
     "dev:darwin:linux": "./dev.sh",
-    "tauri": "tauri",
-    "postinstall": "flowbite-react patch"
+    "tauri": "tauri"
   },
   "dependencies": {
     "@eslint/js": "^9.29.0",
