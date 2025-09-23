@@ -47,7 +47,7 @@ use tun::Tun;
 static DNS_RESOURCE_RECORDS_CACHE: Mutex<BTreeSet<DnsResourceRecord>> = Mutex::new(BTreeSet::new());
 
 pub struct Eventloop {
-    tunnel: ClientTunnel,
+    tunnel: Option<ClientTunnel>,
 
     cmd_rx: mpsc::UnboundedReceiver<Command>,
     resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -121,7 +121,7 @@ impl Eventloop {
         ));
 
         Self {
-            tunnel,
+            tunnel: Some(tunnel),
             cmd_rx,
             logged_permission_denied: false,
             portal_event_rx,
@@ -141,45 +141,83 @@ enum CombinedEvent {
 impl Eventloop {
     pub async fn run(mut self) -> Result<(), DisconnectError> {
         loop {
-            match future::poll_fn(|cx| self.next_event(cx)).await {
-                CombinedEvent::Command(None) => return Ok(()),
-                CombinedEvent::Command(Some(cmd)) => {
-                    match self.handle_eventloop_command(cmd).await? {
-                        ControlFlow::Continue(()) => {}
-                        ControlFlow::Break(()) => return Ok(()),
-                    }
-                }
-                CombinedEvent::Tunnel(event) => self.handle_tunnel_event(event).await?,
-                CombinedEvent::Portal(Some(event)) => {
-                    let msg = event.context("Connection to portal failed")?;
+            match self.tick().await {
+                Ok(ControlFlow::Continue(())) => continue,
+                Ok(ControlFlow::Break(())) => {
+                    self.shutdown_tunnel().await?;
 
-                    self.handle_portal_message(msg).await?;
+                    return Ok(());
                 }
-                CombinedEvent::Portal(None) => {
-                    return Err(DisconnectError(anyhow::Error::msg(
-                        "portal task exited unexpectedly",
-                    )));
+                Err(e) => {
+                    // Ignore error from shutdown to not obscure the original error.
+                    let _ = self.shutdown_tunnel().await;
+
+                    return Err(e);
                 }
             }
+        }
+    }
+
+    async fn tick(&mut self) -> Result<ControlFlow<(), ()>, DisconnectError> {
+        match future::poll_fn(|cx| self.next_event(cx)).await {
+            CombinedEvent::Command(None) => Ok(ControlFlow::Break(())),
+            CombinedEvent::Command(Some(cmd)) => {
+                let cf = self.handle_eventloop_command(cmd).await?;
+
+                Ok(cf)
+            }
+            CombinedEvent::Tunnel(event) => {
+                self.handle_tunnel_event(event).await?;
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(Some(event)) => {
+                let msg = event.context("Connection to portal failed")?;
+                self.handle_portal_message(msg).await?;
+
+                Ok(ControlFlow::Continue(()))
+            }
+            CombinedEvent::Portal(None) => Err(DisconnectError(anyhow::Error::msg(
+                "portal task exited unexpectedly",
+            ))),
         }
     }
 
     async fn handle_eventloop_command(&mut self, command: Command) -> Result<ControlFlow<(), ()>> {
         match command {
             Command::Stop => return Ok(ControlFlow::Break(())),
-            Command::SetDns(dns) => self.tunnel.state_mut().update_system_resolvers(dns),
-            Command::SetDisabledResources(resources) => self
-                .tunnel
-                .state_mut()
-                .set_disabled_resources(resources, Instant::now()),
+            Command::SetDns(dns) => {
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tunnel.state_mut().update_system_resolvers(dns);
+            }
+            Command::SetDisabledResources(resources) => {
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tunnel
+                    .state_mut()
+                    .set_disabled_resources(resources, Instant::now())
+            }
             Command::SetTun(tun) => {
-                self.tunnel.set_tun(tun);
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tunnel.set_tun(tun);
             }
             Command::Reset(reason) => {
-                self.tunnel.reset(&reason);
+                let Some(tunnel) = self.tunnel.as_mut() else {
+                    return Ok(ControlFlow::Continue(()));
+                };
+
+                tunnel.reset(&reason);
                 self.portal_cmd_tx
                     .send(PortalCommand::Connect(PublicKeyParam(
-                        self.tunnel.public_key().to_bytes(),
+                        tunnel.public_key().to_bytes(),
                     )))
                     .await
                     .context("Failed to connect phoenix-channel")?;
@@ -299,17 +337,20 @@ impl Eventloop {
     }
 
     async fn handle_portal_message(&mut self, msg: IngressMessages) -> Result<()> {
+        let Some(tunnel) = self.tunnel.as_mut() else {
+            return Ok(());
+        };
+
         match msg {
-            IngressMessages::ConfigChanged(config) => self
-                .tunnel
-                .state_mut()
-                .update_interface_config(config.interface),
+            IngressMessages::ConfigChanged(config) => {
+                tunnel.state_mut().update_interface_config(config.interface)
+            }
             IngressMessages::IceCandidates(GatewayIceCandidates {
                 gateway_id,
                 candidates,
             }) => {
                 for candidate in candidates {
-                    self.tunnel
+                    tunnel
                         .state_mut()
                         .add_ice_candidate(gateway_id, candidate, Instant::now())
                 }
@@ -319,7 +360,7 @@ impl Eventloop {
                 resources,
                 relays,
             }) => {
-                let state = self.tunnel.state_mut();
+                let state = tunnel.state_mut();
 
                 state.update_interface_config(interface);
                 state.set_resources(resources, Instant::now());
@@ -330,19 +371,15 @@ impl Eventloop {
                 );
             }
             IngressMessages::ResourceCreatedOrUpdated(resource) => {
-                self.tunnel
-                    .state_mut()
-                    .add_resource(resource, Instant::now());
+                tunnel.state_mut().add_resource(resource, Instant::now());
             }
             IngressMessages::ResourceDeleted(resource) => {
-                self.tunnel
-                    .state_mut()
-                    .remove_resource(resource, Instant::now());
+                tunnel.state_mut().remove_resource(resource, Instant::now());
             }
             IngressMessages::RelaysPresence(RelaysPresence {
                 disconnected_ids,
                 connected,
-            }) => self.tunnel.state_mut().update_relays(
+            }) => tunnel.state_mut().update_relays(
                 BTreeSet::from_iter(disconnected_ids),
                 firezone_tunnel::turn(&connected),
                 Instant::now(),
@@ -352,11 +389,9 @@ impl Eventloop {
                 candidates,
             }) => {
                 for candidate in candidates {
-                    self.tunnel.state_mut().remove_ice_candidate(
-                        gateway_id,
-                        candidate,
-                        Instant::now(),
-                    )
+                    tunnel
+                        .state_mut()
+                        .remove_ice_candidate(gateway_id, candidate, Instant::now())
                 }
             }
             IngressMessages::FlowCreated(FlowCreated {
@@ -370,7 +405,7 @@ impl Eventloop {
                 client_ice_credentials,
                 gateway_ice_credentials,
             }) => {
-                match self.tunnel.state_mut().handle_flow_created(
+                match tunnel.state_mut().handle_flow_created(
                     resource_id,
                     gateway_id,
                     PublicKey::from(gateway_public_key.0),
@@ -393,7 +428,7 @@ impl Eventloop {
                         // Re-connecting to the portal means we will receive another `init` and thus new TURN servers.
                         self.portal_cmd_tx
                             .send(PortalCommand::Connect(PublicKeyParam(
-                                self.tunnel.public_key().to_bytes(),
+                                tunnel.public_key().to_bytes(),
                             )))
                             .await
                             .context("Failed to connect phoenix-channel")?;
@@ -408,7 +443,7 @@ impl Eventloop {
                 reason: FailReason::Offline,
                 ..
             }) => {
-                self.tunnel.state_mut().set_resource_offline(resource_id);
+                tunnel.state_mut().set_resource_offline(resource_id);
             }
             IngressMessages::FlowCreationFailed(FlowCreationFailed { reason, .. }) => {
                 tracing::debug!("Failed to create flow: {reason:?}")
@@ -427,11 +462,25 @@ impl Eventloop {
             return Poll::Ready(CombinedEvent::Portal(event));
         }
 
-        if let Poll::Ready(event) = self.tunnel.poll_next_event(cx) {
+        if let Some(Poll::Ready(event)) = self.tunnel.as_mut().map(|t| t.poll_next_event(cx)) {
             return Poll::Ready(CombinedEvent::Tunnel(event));
         }
 
         Poll::Pending
+    }
+
+    async fn shutdown_tunnel(&mut self) -> Result<()> {
+        let Some(tunnel) = self.tunnel.take() else {
+            tracing::debug!("Tunnel has already been shut down");
+            return Ok(());
+        };
+
+        tunnel
+            .shutdown()
+            .await
+            .context("Failed to shutdown tunnel")?;
+
+        Ok(())
     }
 }
 

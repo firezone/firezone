@@ -166,6 +166,12 @@ impl EventStream {
     pub async fn next(&mut self) -> Option<Event> {
         future::poll_fn(|cx| self.poll_next(cx)).await
     }
+
+    pub async fn drain(&mut self) -> Vec<Event> {
+        futures::stream::poll_fn(|cx| self.poll_next(cx))
+            .collect()
+            .await
+    }
 }
 
 impl Drop for Session {
