@@ -90,7 +90,18 @@
                     </tr>
                   <% end %>
                   </table>
+                  <%= if @incompatible_client_count > 0 do %>
+                  <p style="margin: 16px 0">
+                    <span style="font-size: 12px; color: #9b9b9b">WARNING:</span>
+                    You have <span style="font-weight: 600; color: #d93025"><%= @incompatible_client_count %> client(s)</span> that are incompatible with the latest Gateway version.
+                    Clients must be within one minor version of the Gateway in order to connect.
+                    <a href="https://www.firezone.dev/kb/administer/upgrading#version-compatibility">Read the docs</a> for more information.
+                    <br>
+                    <a href="<%= @outdated_clients_url %>" target="_blank">See outdated clients</a> in your account.
+                  </p>
+                  <% else %>
                   <p></p>
+                  <% end %>
                   <div role="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;">&zwj;</div>
                   <p style="margin: 0; line-height: 24px;">
                     We recommend updating the Gateways at your earliest convenience. Help on how to update Gateways can be found

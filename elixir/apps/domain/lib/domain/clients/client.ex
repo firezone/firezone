@@ -18,6 +18,7 @@ defmodule Domain.Clients.Client do
           last_seen_version: String.t(),
           last_seen_at: DateTime.t(),
           online?: boolean(),
+          outdated?: boolean(),
           account_id: Ecto.UUID.t(),
           actor_id: Ecto.UUID.t(),
           identity_id: Ecto.UUID.t(),
@@ -54,6 +55,7 @@ defmodule Domain.Clients.Client do
     field :last_seen_at, :utc_datetime_usec
 
     field :online?, :boolean, virtual: true
+    field :outdated?, :boolean, virtual: true
 
     belongs_to :account, Domain.Accounts.Account
     belongs_to :actor, Domain.Actors.Actor

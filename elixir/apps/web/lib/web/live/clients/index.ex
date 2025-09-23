@@ -16,6 +16,7 @@ defmodule Web.Clients.Index do
         query_module: Clients.Client.Query,
         sortable_fields: [
           {:clients, :name},
+          {:clients, :last_seen_version},
           {:clients, :last_seen_at},
           {:clients, :inserted_at},
           {:clients, :last_seen_user_agent}
@@ -35,7 +36,7 @@ defmodule Web.Clients.Index do
   end
 
   def handle_clients_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
+    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?, :outdated?])
 
     with {:ok, clients, metadata} <- Clients.list_clients(socket.assigns.subject, list_opts) do
       {:ok,
@@ -99,6 +100,9 @@ defmodule Web.Clients.Index do
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
               <.actor_name_and_role account={@account} actor={client.actor} />
             </.link>
+          </:col>
+          <:col :let={client} field={{:clients, :last_seen_version}} label="version">
+            <.version current={client.last_seen_version} outdated?={client.outdated?} />
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />

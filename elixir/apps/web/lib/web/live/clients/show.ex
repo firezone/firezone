@@ -9,7 +9,8 @@ defmodule Web.Clients.Show do
            Clients.fetch_client_by_id(id, socket.assigns.subject,
              preload: [
                :online?,
-               :actor
+               :actor,
+               :outdated?
              ]
            ) do
       if connected?(socket) do
@@ -144,7 +145,9 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Version</:label>
-            <:value>{@client.last_seen_version}</:value>
+            <:value>
+              <.version current={@client.last_seen_version} outdated?={@client.outdated?} />
+            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>User agent</:label>

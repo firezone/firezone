@@ -54,6 +54,19 @@ defmodule Domain.Clients.Client.Query do
     })
   end
 
+  def by_incompatible_for(queryable, gateway_version) do
+    %{major: g_major, minor: g_minor} = Version.parse!(gateway_version)
+
+    # Incompatible if majors differ or client is two or more minors behind
+    where(
+      queryable,
+      [clients: clients],
+      fragment("split_part(?, '.', 1)::int", clients.last_seen_version) < ^g_major or
+        (fragment("split_part(?, '.', 1)::int", clients.last_seen_version) == ^g_major and
+           fragment("split_part(?, '.', 2)::int", clients.last_seen_version) <= ^(g_minor - 2))
+    )
+  end
+
   def returning_not_deleted(queryable) do
     select(queryable, [clients: clients], clients)
   end
@@ -108,7 +121,8 @@ defmodule Domain.Clients.Client.Query do
   @impl Domain.Repo.Query
   def preloads,
     do: [
-      online?: &Domain.Clients.preload_clients_presence/1
+      online?: &Domain.Clients.preload_clients_presence/1,
+      outdated?: &Domain.Clients.preload_clients_outdated/1
     ]
 
   @impl Domain.Repo.Query

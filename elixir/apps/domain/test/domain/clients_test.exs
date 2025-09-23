@@ -28,6 +28,64 @@ defmodule Domain.ClientsTest do
     }
   end
 
+  describe "count_incompatible_for/2" do
+    test "returns 0 when there are no clients", %{account: account} do
+      assert count_incompatible_for(account, "1.2.3") == 0
+    end
+
+    test "return 0 when clients are the same version", %{
+      account: account,
+      unprivileged_subject: subject
+    } do
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{subject.context | user_agent: "iOS/12.5 connlib/1.2.3"}
+      }
+
+      Fixtures.Clients.create_client(account: account, subject: subject)
+      assert count_incompatible_for(account, "1.2.3") == 0
+    end
+
+    test "returns 0 when client is one minor behind", %{
+      account: account,
+      unprivileged_subject: subject
+    } do
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{subject.context | user_agent: "iOS/12.5 connlib/1.1.2"}
+      }
+
+      Fixtures.Clients.create_client(account: account, subject: subject)
+      assert count_incompatible_for(account, "1.2.3") == 0
+    end
+
+    test "returns 1 when client is two minors behind", %{
+      account: account,
+      unprivileged_subject: subject
+    } do
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{subject.context | user_agent: "iOS/12.5 connlib/1.0.0"}
+      }
+
+      Fixtures.Clients.create_client(account: account, subject: subject)
+      assert count_incompatible_for(account, "1.2.3") == 1
+    end
+
+    test "returns 1 when client is one major behind", %{
+      account: account,
+      unprivileged_subject: subject
+    } do
+      subject = %{
+        subject
+        | context: %Domain.Auth.Context{subject.context | user_agent: "iOS/12.5 connlib/0.9.9"}
+      }
+
+      Fixtures.Clients.create_client(account: account, subject: subject)
+      assert count_incompatible_for(account, "1.2.3") == 1
+    end
+  end
+
   describe "count_by_account_id/0" do
     test "counts clients for an account", %{account: account} do
       Fixtures.Clients.create_client(account: account)
