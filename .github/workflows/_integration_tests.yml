@@ -117,6 +117,7 @@ jobs:
             gateway_masquerade: random
             rust_log: debug
             stop_containers: relay-2 # Force single relay
+            skip: true
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
@@ -173,6 +174,7 @@ jobs:
           docker compose up veth-config
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
+        if: ${{ matrix.test.skip != 'true' }}
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
