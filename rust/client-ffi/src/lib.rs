@@ -214,10 +214,10 @@ impl Session {
         // might still be setting up the TUN interface
         let mut last_error = None;
         for attempt in 1..=MAX_TUN_SEARCH_ATTEMPTS {
-            tracing::info!("Attempting to find TUN device (attempt {})", attempt);
+            tracing::debug!("Attempting to find TUN device (attempt {})", attempt);
             match platform::Tun::new() {
                 Ok(tun) => {
-                    tracing::info!("Successfully found and set TUN device");
+                    tracing::debug!("Successfully found and set TUN device");
                     self.inner.set_tun(Box::new(tun));
                     return Ok(());
                 }

@@ -30,7 +30,7 @@ impl Tun {
         set_non_blocking(fd)?;
         let name = name(fd)?;
 
-        tracing::info!("Creating TUN device from fd {} ({})", fd, name);
+        tracing::debug!("Creating TUN device from fd {} ({})", fd, name);
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
@@ -63,7 +63,7 @@ impl Tun {
         std::thread::Builder::new()
             .name("TUN send".to_owned())
             .spawn(move || {
-                tracing::info!("TUN send thread started for fd {}", fd_send.as_raw_fd());
+                tracing::debug!("TUN send thread started for fd {}", fd_send.as_raw_fd());
                 firezone_logging::unwrap_or_warn!(
                     tun::unix::tun_send(fd_send, outbound_rx, write),
                     "Failed to send to TUN device: {}"
@@ -74,7 +74,7 @@ impl Tun {
         std::thread::Builder::new()
             .name("TUN recv".to_owned())
             .spawn(move || {
-                tracing::info!("TUN recv thread started for fd {}", fd_recv.as_raw_fd());
+                tracing::debug!("TUN recv thread started for fd {}", fd_recv.as_raw_fd());
                 firezone_logging::unwrap_or_warn!(
                     tun::unix::tun_recv(fd_recv, inbound_tx, read),
                     "Failed to recv from TUN device: {}"
@@ -94,13 +94,13 @@ impl Tun {
     /// Create a new Tun device by searching for the file descriptor.
     /// This is used when the NetworkExtension has already created the utun interface.
     pub fn new() -> io::Result<Self> {
-        tracing::info!("Searching for TUN file descriptor...");
+        tracing::debug!("Searching for TUN file descriptor...");
         let fd = search_for_tun_fd()?;
-        tracing::info!("Found TUN file descriptor: {}", fd);
+        tracing::debug!("Found TUN file descriptor: {}", fd);
 
         // Verify the FD is actually valid before using it
         let name = name(fd)?;
-        tracing::info!("FD {} corresponds to interface: {}", fd, name);
+        tracing::debug!("FD {} corresponds to interface: {}", fd, name);
 
         // SAFETY: We just obtained and verified a valid file descriptor
         unsafe { Self::from_fd(fd) }
@@ -272,7 +272,7 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
     // Credit to Jason Donenfeld (@zx2c4) for this technique. See docs/NOTICE.txt for attribution.
     // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
     const MAX_FD_SEARCH: RawFd = 1024;
-    tracing::info!("Starting TUN FD search (checking FDs 0-{})", MAX_FD_SEARCH);
+    tracing::debug!("Starting TUN FD search (checking FDs 0-{})", MAX_FD_SEARCH);
     for fd in 0..MAX_FD_SEARCH {
         tracing::trace!("Checking fd {}", fd);
 
@@ -307,11 +307,11 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
         }
 
         if addr.sc_id == info.ctl_id {
-            tracing::info!("Found utun control socket at fd {}", fd);
+            tracing::debug!("Found utun control socket at fd {}", fd);
 
             // Get the interface name to verify it's the right one
             let interface_name = name(fd)?;
-            tracing::info!("FD {} corresponds to interface: {}", fd, interface_name);
+            tracing::debug!("FD {} corresponds to interface: {}", fd, interface_name);
 
             // Verify this is actually utun7 or the expected interface
             if !interface_name.starts_with("utun") {
@@ -324,7 +324,7 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
             }
 
             set_non_blocking(fd)?;
-            tracing::info!(
+            tracing::debug!(
                 "Successfully configured {} (fd {}) for packet I/O",
                 interface_name,
                 fd
