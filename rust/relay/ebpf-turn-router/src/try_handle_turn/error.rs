@@ -1,5 +1,3 @@
-use core::num::NonZeroUsize;
-
 #[derive(Debug, Clone, Copy)]
 pub enum Error {
     ArrayIndexOutOfBounds,
@@ -14,7 +12,7 @@ pub enum Error {
     NotAChannelDataMessage,
     BadChannelDataLength,
     NoEntry(SupportedChannel),
-    XdpAdjustHeadFailed(i64),
+    XdpAdjustHeadFailed,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -25,11 +23,10 @@ pub enum SupportedChannel {
     Chan6ToUdp,
 }
 
-impl aya_log_ebpf::WriteToBuf for Error {
+impl Error {
     #[inline(always)]
-    fn write(self, buf: &mut [u8]) -> Option<NonZeroUsize> {
-        // Use a simpler match structure to help the verifier
-        let msg = match self {
+    pub fn as_str(&self) -> &'static str {
+        match self {
             Error::ArrayIndexOutOfBounds => "Array index is out of bounds",
             Error::IpAddrUnset => "IP address has not been configured",
             Error::UdpChecksumMissing => "UDP checksum is missing",
@@ -47,54 +44,9 @@ impl aya_log_ebpf::WriteToBuf for Error {
                 SupportedChannel::Udp6ToChan => "No entry in UDPv6 to channel IPv4 or IPv6 map",
                 SupportedChannel::Chan6ToUdp => "No entry in channel IPv6 to UDPv4 or UDPv6 map",
             },
-            Error::XdpAdjustHeadFailed(ret) => {
-                // Handle this case separately to avoid complex control flow
-                let mut written = 0;
-                written += "Failed to adjust tail: ".write(buf)?.get();
-                written += errno_to_str(ret).write(buf)?.get();
-                return NonZeroUsize::new(written);
-            }
-        };
-
-        msg.write(buf)
+            Error::XdpAdjustHeadFailed => "Failed to adjust tail",
+        }
     }
 }
 
 impl aya_log_ebpf::macro_support::DefaultFormatter for Error {}
-
-/// Helper function to map Linux/eBPF error codes to human-readable strings
-/// This avoids integer formatting which can cause pointer arithmetic verifier issues
-#[inline(always)]
-fn errno_to_str(errno: i64) -> &'static str {
-    match errno {
-        -1 => "EPERM (Operation not permitted)",
-        -2 => "ENOENT (No such file or directory)",
-        -3 => "ESRCH (No such process)",
-        -4 => "EINTR (Interrupted system call)",
-        -5 => "EIO (I/O error)",
-        -6 => "ENXIO (No such device or address)",
-        -7 => "E2BIG (Argument list too long)",
-        -8 => "ENOEXEC (Exec format error)",
-        -9 => "EBADF (Bad file number)",
-        -10 => "ECHILD (No child processes)",
-        -11 => "EAGAIN (Try again)",
-        -12 => "ENOMEM (Out of memory)",
-        -13 => "EACCES (Permission denied)",
-        -14 => "EFAULT (Bad address)",
-        -16 => "EBUSY (Device or resource busy)",
-        -17 => "EEXIST (File exists)",
-        -19 => "ENODEV (No such device)",
-        -22 => "EINVAL (Invalid argument)",
-        -24 => "EMFILE (Too many open files)",
-        -28 => "ENOSPC (No space left on device)",
-        -32 => "EPIPE (Broken pipe)",
-        -34 => "ERANGE (Math result not representable)",
-        -61 => "ENODATA (No data available)",
-        -75 => "EOVERFLOW (Value too large for defined data type)",
-        -84 => "EILSEQ (Illegal byte sequence)",
-        -90 => "EMSGSIZE (Message too long)",
-        -95 => "ENOTSUP (Operation not supported)",
-        -105 => "ENOBUFS (No buffer space available)",
-        _ => "Unknown error",
-    }
-}

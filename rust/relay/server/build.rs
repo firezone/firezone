@@ -9,7 +9,7 @@ fn main() -> anyhow::Result<()> {
         .context("MetadataCommand::exec")?
         .packages
         .into_iter()
-        .find(|Package { name, .. }| name == "ebpf-turn-router")
+        .find(|Package { name, .. }| name.as_str() == "ebpf-turn-router")
         .context("`ebpf-turn-router` package not found")?;
 
     aya_build::build_ebpf(

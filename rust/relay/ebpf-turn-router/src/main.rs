@@ -34,13 +34,13 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             | Error::UdpChecksumMissing
             | Error::Ipv4PacketWithOptions),
         ) => {
-            debug!(&ctx, target: "eBPF", "^^^ pass packet to userspace: {}", e);
+            debug!(&ctx, target: "eBPF", "^^^ pass packet to userspace: {}", e.as_str());
 
             xdp_action::XDP_PASS
         }
         // In a double symmetric NAT setup, it is easily possible for packets to arrive from IPs that don't have channel bindings.
         Err(e @ Error::NoEntry(_)) => {
-            debug!(&ctx,target: "eBPF", "XXX drop packet: {}", e);
+            debug!(&ctx,target: "eBPF", "XXX drop packet: {}", e.as_str());
 
             xdp_action::XDP_DROP
         }
@@ -48,9 +48,9 @@ pub fn handle_turn(ctx: aya_ebpf::programs::XdpContext) -> u32 {
             e @ (Error::ArrayIndexOutOfBounds
             | Error::IpAddrUnset
             | Error::BadChannelDataLength
-            | Error::XdpAdjustHeadFailed(_)),
+            | Error::XdpAdjustHeadFailed),
         ) => {
-            warn!(&ctx,target: "eBPF", "XXX drop packet: {}", e);
+            warn!(&ctx,target: "eBPF", "XXX drop packet: {}", e.as_str());
 
             xdp_action::XDP_DROP
         }
