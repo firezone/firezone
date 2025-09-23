@@ -268,7 +268,7 @@ fn connect(
 
     let portal = PhoenixChannel::disconnected(
         Secret::new(url),
-        get_user_agent(os_version, platform::VERSION),
+        get_user_agent(os_version, platform::COMPONENT, platform::VERSION),
         "client",
         (),
         || {

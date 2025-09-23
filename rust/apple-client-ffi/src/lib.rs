@@ -287,7 +287,11 @@ impl WrappedSession {
 
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
-            get_user_agent(os_version_override, env!("CARGO_PKG_VERSION")),
+            get_user_agent(
+                os_version_override,
+                "apple-client",
+                env!("CARGO_PKG_VERSION"),
+            ),
             "client",
             (),
             || {

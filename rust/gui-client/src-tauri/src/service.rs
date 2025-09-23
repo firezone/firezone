@@ -620,7 +620,7 @@ impl<'a> Handler<'a> {
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
-            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            get_user_agent(None, "gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
             || {

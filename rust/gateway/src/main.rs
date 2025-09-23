@@ -182,7 +182,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     );
     let portal = PhoenixChannel::disconnected(
         Secret::new(login),
-        get_user_agent(None, env!("CARGO_PKG_VERSION")),
+        get_user_agent(None, "gateway", env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
         || {
