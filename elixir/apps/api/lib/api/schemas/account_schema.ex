@@ -36,13 +36,13 @@ defmodule API.Schemas.Account do
     })
   end
 
-  defmodule GetSchema do
+  defmodule Schema do
     require OpenApiSpex
     alias OpenApiSpex.Schema
 
     OpenApiSpex.schema(%{
-      title: "AccountGet",
-      description: "Get schema for retrieving Account details",
+      title: "Account",
+      description: "Account schema",
       type: :object,
       properties: %{
         id: %Schema{type: :string, description: "Account ID"},
@@ -64,7 +64,7 @@ defmodule API.Schemas.Account do
       description: "Response schema for Account",
       type: :object,
       properties: %{
-        data: API.Schemas.Account.GetSchema
+        data: API.Schemas.Account.Schema
       },
       required: [:data]
     })
