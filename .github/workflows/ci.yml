@@ -25,7 +25,7 @@ jobs:
     outputs:
       jobs_to_run: ${{ steps.plan.outputs.jobs_to_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Plan jobs to run
         id: plan
         run: |
@@ -118,7 +118,7 @@ jobs:
     needs: planner
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Wait for all jobs to complete
         timeout-minutes: 60
         env:
@@ -308,7 +308,7 @@ jobs:
           - direct
           - relayed
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -404,7 +404,7 @@ jobs:
       pull-requests: write
       checks: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: bencherdev/bencher@main
       - name: Download performance test results
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
