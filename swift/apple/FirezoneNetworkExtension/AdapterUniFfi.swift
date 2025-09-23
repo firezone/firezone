@@ -338,7 +338,7 @@ class AdapterUniFfi: @unchecked Sendable {
 
   // MARK: - Internet Resource Toggle Feature
 
-  func setInternetResourceEnabled(_ enabled: Bool) throws {
+  func setInternetResourceEnabled(_ enabled: Bool) {
     Log.info("setInternetResourceEnabled called with: \(enabled)")
     workQueue.async { [weak self] in
       guard let self = self else { return }
