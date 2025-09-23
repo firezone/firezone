@@ -48,7 +48,22 @@ impl Program {
             env!("OUT_DIR"),
             "/ebpf-turn-router-main"
         )))?;
-        let _ = EbpfLogger::init(&mut ebpf);
+        let logger = EbpfLogger::init(&mut ebpf)?;
+        let mut logger = AsyncFd::with_interest(logger, Interest::READABLE)?;
+        tokio::task::spawn(async move {
+            loop {
+                let mut guard = match logger.readable_mut().await {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        tracing::warn!("Failed to wait for logger to be readable: {e}");
+                        return;
+                    }
+                };
+                guard.get_inner_mut().flush();
+                guard.clear_ready();
+            }
+        });
+
         let program: &mut Xdp = ebpf
             .program_mut("handle_turn")
             .context("No program")?
