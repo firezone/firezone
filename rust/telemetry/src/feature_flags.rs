@@ -40,6 +40,10 @@ pub fn map_enobufs_to_would_block() -> bool {
     FEATURE_FLAGS.map_enobufs_to_wouldblock()
 }
 
+pub fn gateway_userspace_dns_a_aaaa_records() -> bool {
+    FEATURE_FLAGS.gateway_userspace_dns_a_aaaa_records()
+}
+
 pub fn export_metrics() -> bool {
     false // Placeholder until we actually deploy an OTEL collector.
 }
@@ -160,6 +164,8 @@ struct FeatureFlagsResponse {
     stream_logs: bool,
     #[serde(default)]
     map_enobufs_to_wouldblock: bool,
+    #[serde(default)]
+    gateway_userspace_dns_a_aaaa_records: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -175,6 +181,7 @@ struct FeatureFlags {
     drop_llmnr_nxdomain_responses: AtomicBool,
     stream_logs: RwLock<LogFilter>,
     map_enobufs_to_wouldblock: AtomicBool,
+    gateway_userspace_dns_a_aaaa_records: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -191,6 +198,7 @@ impl FeatureFlags {
             drop_llmnr_nxdomain_responses,
             stream_logs,
             map_enobufs_to_wouldblock,
+            gateway_userspace_dns_a_aaaa_records,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -200,6 +208,8 @@ impl FeatureFlags {
             .store(drop_llmnr_nxdomain_responses, Ordering::Relaxed);
         self.map_enobufs_to_wouldblock
             .store(map_enobufs_to_wouldblock, Ordering::Relaxed);
+        self.gateway_userspace_dns_a_aaaa_records
+            .store(gateway_userspace_dns_a_aaaa_records, Ordering::Relaxed);
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -226,6 +236,11 @@ impl FeatureFlags {
     fn map_enobufs_to_wouldblock(&self) -> bool {
         self.map_enobufs_to_wouldblock.load(Ordering::Relaxed)
     }
+
+    fn gateway_userspace_dns_a_aaaa_records(&self) -> bool {
+        self.gateway_userspace_dns_a_aaaa_records
+            .load(Ordering::Relaxed)
+    }
 }
 
 fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
@@ -236,6 +251,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         DropLlmnrNxdomainResponses { result: bool },
         StreamLogs { result: bool },
         MapENOBUFSToWouldBlock { result: bool },
+        GatewayUserspaceDnsAAaaaRecords { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -244,6 +260,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         drop_llmnr_nxdomain_responses,
         stream_logs,
         map_enobufs_to_wouldblock,
+        gateway_userspace_dns_a_aaaa_records,
     } = flags;
 
     let value = serde_json::json!({
@@ -254,6 +271,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             SentryFlag::DropLlmnrNxdomainResponses { result: drop_llmnr_nxdomain_responses },
             SentryFlag::StreamLogs { result: stream_logs },
             SentryFlag::MapENOBUFSToWouldBlock { result: map_enobufs_to_wouldblock },
+            SentryFlag::GatewayUserspaceDnsAAaaaRecords { result: gateway_userspace_dns_a_aaaa_records },
         ]
     });
 

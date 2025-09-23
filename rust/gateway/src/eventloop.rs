@@ -16,6 +16,8 @@ use firezone_tunnel::{
     DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
     ResolveDnsRequest, TunnelError,
 };
+use futures::FutureExt as _;
+use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::{self, Future, poll_fn};
@@ -32,7 +34,7 @@ use crate::RELEASE;
 
 pub const PHOENIX_TOPIC: &str = "gateway";
 
-/// How long we allow a DNS resolution via `libc::get_addr_info`.
+/// How long we allow a DNS resolution via hickory.
 const DNS_RESOLUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Cache DNS responses for 30 seconds.
@@ -55,6 +57,7 @@ pub struct Eventloop {
     // Tunnel is `Option` because we need to take ownership on shutdown.
     tunnel: Option<GatewayTunnel>,
     tun_device_manager: TunDeviceManager,
+    resolver: TokioResolver,
 
     resolve_tasks:
         futures_bounded::FuturesTupleSet<Result<Vec<IpAddr>, Arc<anyhow::Error>>, ResolveTrigger>,
@@ -79,6 +82,7 @@ impl Eventloop {
         tunnel: GatewayTunnel,
         mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
         tun_device_manager: TunDeviceManager,
+        resolver: TokioResolver,
     ) -> Result<Self> {
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));
 
@@ -94,6 +98,7 @@ impl Eventloop {
         Ok(Self {
             tunnel: Some(tunnel),
             tun_device_manager,
+            resolver,
             resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
             logged_permission_denied: false,
             dns_cache: moka::future::Cache::builder()
@@ -651,10 +656,26 @@ impl Eventloop {
         &self,
         domain: DomainName,
     ) -> impl Future<Output = Result<Vec<IpAddr>, Arc<anyhow::Error>>> + use<> {
-        let do_resolve = resolve(domain.clone());
-        let cache = self.dns_cache.clone();
+        if firezone_telemetry::feature_flags::gateway_userspace_dns_a_aaaa_records() {
+            let resolver = self.resolver.clone();
 
-        async move { cache.try_get_with(domain, do_resolve).await }
+            async move {
+                let ips = resolver
+                    .lookup_ip(domain.to_string())
+                    .await
+                    .with_context(|| format!("Failed to lookup domain '{domain}'"))?
+                    .iter()
+                    .collect::<Vec<_>>();
+
+                Ok(ips)
+            }
+            .boxed()
+        } else {
+            let do_resolve = resolve(domain.clone());
+            let cache = self.dns_cache.clone();
+
+            async move { cache.try_get_with(domain, do_resolve).await }.boxed()
+        }
     }
 }
 
