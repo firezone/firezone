@@ -5,22 +5,19 @@
 
 version: 2
 
-# Define reusable security configuration using YAML anchors
-x-security-config: &default-security-config
-  schedule:
-    interval: weekly
-  cooldown:
-    default-days: 7
-    semver-major-days: 7
-    semver-minor-days: 7
-    semver-patch-days: 7
 updates:
   - package-ecosystem: mix
     directory: elixir/
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
   - package-ecosystem: pip
     directory: /.github
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
   - package-ecosystem: github-actions
     directories:
       - "/"
@@ -33,11 +30,17 @@ updates:
       - "/.github/actions/setup-postgres"
       - "/.github/actions/setup-rust"
       - "/.github/actions/setup-tauri-v2"
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
   - package-ecosystem: cargo
     directory: rust/
     open-pull-requests-limit: 20
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
     groups:
       tauri:
         patterns:
@@ -73,7 +76,10 @@ updates:
           - rand_*
   - package-ecosystem: gradle
     directory: kotlin/android/
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
     ignore:
       # Depends on JDK version which is bundled with Android Studio (JDK 17)
       - dependency-name: org.jetbrains.kotlin:kotlin-gradle-plugin
@@ -132,13 +138,22 @@ updates:
 
   - package-ecosystem: swift
     directory: swift/apple/FirezoneKit
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
   - package-ecosystem: npm
     directory: website/
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
   - package-ecosystem: npm
     directory: rust/gui-client/
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
     groups:
       tauri:
         patterns:
@@ -163,4 +178,7 @@ updates:
           - "@types/react-dom"
   - package-ecosystem: npm
     directory: elixir/apps/web/assets/
-    <<: *default-security-config
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 28
