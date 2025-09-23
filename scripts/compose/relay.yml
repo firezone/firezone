@@ -11,7 +11,7 @@ services:
     init: true
     build:
       target: ${DOCKER_BUILD_TARGET:-debug}
-      context: rust
+      context: ../../rust
       dockerfile: Dockerfile
       args:
         PACKAGE: firezone-relay
