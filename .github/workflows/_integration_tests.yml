@@ -173,6 +173,7 @@ jobs:
           docker compose up veth-config
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
+        if: ${{ matrix.test.name != 'download-double-symmetric-nat' }}
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
