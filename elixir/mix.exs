@@ -48,7 +48,7 @@ defmodule Firezone.MixProject do
       {:sobelow, "~> 0.12", only: [:dev, :test]},
 
       # Formatter doesn't track dependencies of children applications
-      {:phoenix, "~> 1.7.0"},
+      {:phoenix, "~> 1.8.0"},
       {:phoenix_live_view, "~> 1.0.0-rc.0"},
       {:floki, "~> 0.37.0"}
     ]
