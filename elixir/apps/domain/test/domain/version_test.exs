@@ -1,4 +1,5 @@
 defmodule Domain.VersionTest do
+  use Domain.DataCase, async: true
   use Domain.Version
 
   describe "fetch_version" do
