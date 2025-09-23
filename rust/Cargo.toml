@@ -100,7 +100,7 @@ ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
 itertools = "0.14"
 jni = "0.21.1"
-keyring = "3.6.2"
+keyring = "3.6.3"
 known-folders = "1.2.0"
 l3-tcp = { path = "connlib/l3-tcp" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
