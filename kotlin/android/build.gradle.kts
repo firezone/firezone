@@ -17,7 +17,7 @@ plugins {
     id("org.jetbrains.kotlin.android") version "2.1.0" apply false
     id("com.android.application") version "8.12.0" apply false
     id("com.google.firebase.appdistribution") version "5.1.1" apply false
-    id("com.google.dagger.hilt.android") version "2.57" apply false
+    id("com.google.dagger.hilt.android") version "2.57.1" apply false
     id("com.google.gms.google-services") version "4.4.3" apply false
     id("com.google.firebase.crashlytics") version "3.0.5" apply false
 }
