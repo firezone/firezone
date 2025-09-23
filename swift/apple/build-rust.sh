@@ -75,23 +75,36 @@ echo "Architecture: $NATIVE_ARCH"
 echo "Target Directory: $CARGO_TARGET_DIR"
 echo "========================================="
 
-# Determine Rust target based on platform and architecture
+# Determine Rust targets based on platform and architecture
+TARGETS=()
 case "$PLATFORM_NAME" in
 macosx)
-    if [ "$NATIVE_ARCH" = "arm64" ]; then
-        RUST_TARGET="aarch64-apple-darwin"
+    if [[ "$CONFIGURATION" == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
+        # Build universal binary for Release
+        TARGETS=("aarch64-apple-darwin" "x86_64-apple-darwin")
     else
-        RUST_TARGET="x86_64-apple-darwin"
+        # Build only for native arch in Debug
+        if [[ "$NATIVE_ARCH" == "arm64" ]]; then
+            TARGETS=("aarch64-apple-darwin")
+        elif [[ "$NATIVE_ARCH" == "x86_64" ]]; then
+            TARGETS=("x86_64-apple-darwin")
+        else
+            echo "ERROR: Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH" >&2
+            exit 1
+        fi
     fi
     ;;
 iphoneos)
-    RUST_TARGET="aarch64-apple-ios"
+    TARGETS=("aarch64-apple-ios")
     ;;
 iphonesimulator)
-    if [ "$NATIVE_ARCH" = "arm64" ]; then
-        RUST_TARGET="aarch64-apple-ios-sim"
+    if [[ "$NATIVE_ARCH" == "arm64" ]]; then
+        TARGETS=("aarch64-apple-ios-sim")
+    elif [[ "$NATIVE_ARCH" == "x86_64" ]]; then
+        TARGETS=("x86_64-apple-ios")
     else
-        RUST_TARGET="x86_64-apple-ios"
+        echo "ERROR: Unsupported native arch for $PLATFORM_NAME: $NATIVE_ARCH" >&2
+        exit 1
     fi
     ;;
 *)
@@ -114,28 +127,44 @@ if [ -z "${RUSTUP_HOME:-}" ] && [ -d "$HOME/.rustup" ]; then
     export RUSTUP_HOME="$HOME/.rustup"
 fi
 
-# Ensure Rust target is installed
-if ! rustup target list --installed | grep -q "^$RUST_TARGET$"; then
-    echo "Installing Rust target: $RUST_TARGET"
-    rustup target add "$RUST_TARGET"
-fi
+# Ensure Rust targets are installed
+for target in "${TARGETS[@]}"; do
+    if ! rustup target list --installed | grep -q "^$target$"; then
+        echo "Installing Rust target: $target"
+        rustup target add "$target"
+    fi
+done
 
 # Step 1: Build Rust library
 echo ""
-echo "Step 1/3: Building Rust library for $RUST_TARGET..."
+echo "Step 1/3: Building Rust library..."
+
+# Build target list for cargo command
+target_list=""
+for target in "${TARGETS[@]}"; do
+    target_list+="--target $target "
+done
+target_list="${target_list% }"
+
 cd "$RUST_DIR"
-cargo build --package client-ffi --target "$RUST_TARGET" $CARGO_BUILD_FLAGS
+cargo build --package client-ffi $target_list $CARGO_BUILD_FLAGS
 
 # Remove any dylib files to ensure static linking
-LIBRARY_PATH="$CARGO_TARGET_DIR/$RUST_TARGET/$BUILD_DIR"
-if [ -f "$LIBRARY_PATH/libconnlib.dylib" ]; then
-    rm -f "$LIBRARY_PATH/libconnlib.dylib"
-fi
+for target in "${TARGETS[@]}"; do
+    LIBRARY_PATH="$CARGO_TARGET_DIR/$target/$BUILD_DIR"
+    if [ -f "$LIBRARY_PATH/libconnlib.dylib" ]; then
+        rm -f "$LIBRARY_PATH/libconnlib.dylib"
+    fi
+done
 
 # Step 2: Generate UniFFI bindings
 echo ""
 echo "Step 2/3: Generating UniFFI bindings..."
 mkdir -p "$GENERATED_DIR"
+
+# Use the first target's library for generating bindings (they're the same for all architectures)
+FIRST_TARGET="${TARGETS[0]}"
+LIBRARY_PATH="$CARGO_TARGET_DIR/$FIRST_TARGET/$BUILD_DIR"
 
 cargo run -p uniffi-bindgen -- generate \
     --library "$LIBRARY_PATH/libconnlib.a" \
@@ -169,5 +198,8 @@ echo ""
 echo "✅ Build completed successfully!"
 echo "   Swift bindings: $GENERATED_DIR/connlib.swift"
 echo "   C header: $GENERATED_DIR/connlibFFI.h"
-echo "   Static library: $LIBRARY_PATH/libconnlib.a"
+echo "   Built libraries:"
+for target in "${TARGETS[@]}"; do
+    echo "     - $CARGO_TARGET_DIR/$target/$BUILD_DIR/libconnlib.a"
+done
 echo "========================================="
