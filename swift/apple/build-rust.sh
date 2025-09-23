@@ -9,6 +9,56 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUST_DIR="$SCRIPT_DIR/../../rust"
 GENERATED_DIR="$SCRIPT_DIR/FirezoneNetworkExtension/Connlib/Generated"
 
+# Sanitize the environment to prevent Xcode's shenanigans from leaking
+# into our highly evolved Rust-based build system.
+for var in $(env | awk -F= '{print $1}'); do
+    if [[ "$var" != "HOME" ]] &&
+        [[ "$var" != "MACOSX_DEPLOYMENT_TARGET" ]] &&
+        [[ "$var" != "IPHONEOS_DEPLOYMENT_TARGET" ]] &&
+        [[ "$var" != "USER" ]] &&
+        [[ "$var" != "LOGNAME" ]] &&
+        [[ "$var" != "TERM" ]] &&
+        [[ "$var" != "PWD" ]] &&
+        [[ "$var" != "SHELL" ]] &&
+        [[ "$var" != "TMPDIR" ]] &&
+        [[ "$var" != "XPC_FLAGS" ]] &&
+        [[ "$var" != "XPC_SERVICE_NAME" ]] &&
+        [[ "$var" != "PLATFORM_NAME" ]] &&
+        [[ "$var" != "CONFIGURATION" ]] &&
+        [[ "$var" != "NATIVE_ARCH" ]] &&
+        [[ "$var" != "ONLY_ACTIVE_ARCH" ]] &&
+        [[ "$var" != "ARCHS" ]] &&
+        [[ "$var" != "SDKROOT" ]] &&
+        [[ "$var" != "OBJROOT" ]] &&
+        [[ "$var" != "SYMROOT" ]] &&
+        [[ "$var" != "SRCROOT" ]] &&
+        [[ "$var" != "TARGETED_DEVICE_FAMILY" ]] &&
+        [[ "$var" != "RUSTC_WRAPPER" ]] &&
+        [[ "$var" != "RUST_TOOLCHAIN" ]] &&
+        [[ "$var" != "SCCACHE_GCS_BUCKET" ]] &&
+        [[ "$var" != "SCCACHE_GCS_RW_MODE" ]] &&
+        [[ "$var" != "GOOGLE_CLOUD_PROJECT" ]] &&
+        [[ "$var" != "GCP_PROJECT" ]] &&
+        [[ "$var" != "GCLOUD_PROJECT" ]] &&
+        [[ "$var" != "CLOUDSDK_PROJECT" ]] &&
+        [[ "$var" != "CLOUDSDK_CORE_PROJECT" ]] &&
+        [[ "$var" != "GOOGLE_GHA_CREDS_PATH" ]] &&
+        [[ "$var" != "GOOGLE_APPLICATION_CREDENTIALS" ]] &&
+        [[ "$var" != "CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE" ]] &&
+        [[ "$var" != "ACTIONS_CACHE_URL" ]] &&
+        [[ "$var" != "ACTIONS_RUNTIME_TOKEN" ]] &&
+        [[ "$var" != "CARGO_INCREMENTAL" ]] &&
+        [[ "$var" != "CARGO_TERM_COLOR" ]] &&
+        [[ "$var" != "FIREZONE_PACKAGE_VERSION" ]] &&
+        [[ "$var" != "CONNLIB_TARGET_DIR" ]]; then
+        unset "$var"
+    fi
+done
+
+# Use pristine path; the PATH from Xcode is polluted with stuff we don't want which can
+# confuse rustc.
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:$HOME/.cargo/bin:/run/current-system/sw/bin/"
+
 # Parse Xcode environment
 PLATFORM_NAME="${PLATFORM_NAME:-macosx}"
 CONFIGURATION="${CONFIGURATION:-Debug}"
@@ -58,9 +108,6 @@ else
     CARGO_BUILD_FLAGS=""
     BUILD_DIR="debug"
 fi
-
-# Setup clean PATH to avoid Xcode pollution
-export PATH="$HOME/.cargo/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
 # Ensure RUSTUP_HOME is set
 if [ -z "${RUSTUP_HOME:-}" ] && [ -d "$HOME/.rustup" ]; then
