@@ -23,6 +23,7 @@ COPY ./docker-init-gateway.sh ./docker-init.sh
 
 # Relay specific runtime base image
 FROM runtime_base AS runtime_firezone-relay
+RUN apk add --no-cache --update xdp-tools
 COPY ./docker-init-relay.sh ./docker-init.sh
 
 # Headless-client specific runtime base image
