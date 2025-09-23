@@ -9,12 +9,7 @@ import NetworkExtension
 import System
 import os
 
-// IMPORTANT: We explicitly use Swift.Error here instead of just Error because
-// the UniFFI-generated code (connlib.swift) defines a class named `Error` which
-// shadows Swift's built-in Error protocol. Without the Swift. prefix, the compiler
-// would resolve to the UniFFI-generated Error class instead of the protocol.
-// By qualifying with Swift.Error, we ensure we're referring to the protocol.
-enum PacketTunnelProviderError: Swift.Error {
+enum PacketTunnelProviderError: Error {
   case tunnelConfigurationIsInvalid
   case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
@@ -22,7 +17,7 @@ enum PacketTunnelProviderError: Swift.Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: AdapterUniFfi?
-  private var startTunnelCompletionHandler: ((Swift.Error?) -> Void)?
+  private var startTunnelCompletionHandler: ((Error?) -> Void)?
   private var hasReceivedFirstConfig = false
   private var networkSettings: NetworkSettings?
 
@@ -61,7 +56,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   override func startTunnel(
     options: [String: NSObject]?,
-    completionHandler: @escaping ((any Swift.Error)?) -> Void
+    completionHandler: @escaping ((any Error)?) -> Void
   ) {
     Log.log("startTunnel called")
     super.startTunnel(options: options, completionHandler: completionHandler)

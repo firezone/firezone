@@ -32,7 +32,7 @@ pub struct Session {
 
 #[derive(uniffi::Object, thiserror::Error, Debug)]
 #[error("{0:#}")]
-pub struct Error(anyhow::Error);
+pub struct ConnlibError(anyhow::Error);
 
 #[derive(uniffi::Error, thiserror::Error, Debug)]
 pub enum CallbackError {
@@ -95,7 +95,7 @@ impl Session {
         log_filter: String,
         device_info: String,
         protect_socket: Arc<dyn ProtectSocket>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, ConnlibError> {
         let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
         let tcp_socket_factory = Arc::new(protected_tcp_socket_factory(protect_socket));
 
@@ -130,7 +130,7 @@ impl Session {
         log_dir: String,
         log_filter: String,
         device_info: String,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, ConnlibError> {
         // iOS doesn't need socket protection like Android
         let tcp_socket_factory = Arc::new(socket_factory::tcp);
         let udp_socket_factory = Arc::new(socket_factory::udp);
@@ -150,7 +150,7 @@ impl Session {
         )
     }
 
-    pub fn disconnect(&self) -> Result<(), Error> {
+    pub fn disconnect(&self) -> Result<(), ConnlibError> {
         let runtime = self.runtime.as_ref().context("No runtime")?;
 
         runtime.block_on(async {
@@ -161,7 +161,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn set_disabled_resources(&self, disabled_resources: String) -> Result<(), Error> {
+    pub fn set_disabled_resources(&self, disabled_resources: String) -> Result<(), ConnlibError> {
         let disabled_resources = serde_json::from_str(&disabled_resources)
             .context("Failed to deserialize disabled resource IDs")?;
 
@@ -170,7 +170,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn set_dns(&self, dns_servers: String) -> Result<(), Error> {
+    pub fn set_dns(&self, dns_servers: String) -> Result<(), ConnlibError> {
         let dns_servers =
             serde_json::from_str(&dns_servers).context("Failed to deserialize DNS servers")?;
 
@@ -183,7 +183,7 @@ impl Session {
         self.inner.reset(reason)
     }
 
-    pub fn set_log_directives(&self, directives: String) -> Result<(), Error> {
+    pub fn set_log_directives(&self, directives: String) -> Result<(), ConnlibError> {
         let (_, reload_handle) = LOGGER_STATE.get().context("Logger not yet initialised")?;
 
         reload_handle
@@ -193,7 +193,7 @@ impl Session {
         Ok(())
     }
 
-    pub fn set_tun(&self, fd: RawFd) -> Result<(), Error> {
+    pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
         let _guard = self.runtime.as_ref().context("No runtime")?.enter();
         // SAFETY: FD must be open.
         let tun = unsafe { platform::Tun::from_fd(fd).context("Failed to create new Tun")? };
@@ -204,7 +204,7 @@ impl Session {
     }
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
-    pub fn set_tun_from_search(&self) -> Result<(), Error> {
+    pub fn set_tun_from_search(&self) -> Result<(), ConnlibError> {
         const MAX_TUN_SEARCH_ATTEMPTS: u32 = 5;
         const TUN_SEARCH_RETRY_DELAY_MS: u64 = 100;
 
@@ -241,7 +241,7 @@ impl Session {
         .into())
     }
 
-    pub async fn next_event(&self) -> Result<Option<Event>, Error> {
+    pub async fn next_event(&self) -> Result<Option<Event>, ConnlibError> {
         match self.events.lock().await.next().await {
             Some(client_shared::Event::TunInterfaceUpdated(config)) => {
                 let dns = serde_json::to_string(
@@ -308,7 +308,7 @@ fn connect(
     device_info: String,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-) -> Result<Session, Error> {
+) -> Result<Session, ConnlibError> {
     let device_info =
         serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
     let secret = SecretString::from(token);
@@ -444,7 +444,7 @@ fn install_rustls_crypto_provider() {
     }
 }
 
-impl From<anyhow::Error> for Error {
+impl From<anyhow::Error> for ConnlibError {
     fn from(value: anyhow::Error) -> Self {
         Self(value)
     }

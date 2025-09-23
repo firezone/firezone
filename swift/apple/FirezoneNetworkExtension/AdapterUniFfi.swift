@@ -12,9 +12,6 @@ import Network
 import NetworkExtension
 import OSLog
 
-// Note: The UniFFI-generated connlib.swift defines a class named `Error` which
-// shadows Swift's built-in Error protocol. If you need to conform to the Error
-// protocol elsewhere, use Swift.Error to explicitly refer to the protocol.
 enum AdapterError: LocalizedError {
   case invalidSession
   case connlibConnectError(String)
