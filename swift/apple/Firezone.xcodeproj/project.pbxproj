@@ -16,9 +16,6 @@
 		794C38152970A2660029F38F /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 794C38142970A2660029F38F /* FirezoneKit */; };
 		79756C6629704A7A0018E2D5 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 79756C6529704A7A0018E2D5 /* FirezoneKit */; };
 		858AA13A09A55E3B1DD5DEDA /* AdapterUniFfi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 177FB893F19457A113042247 /* AdapterUniFfi.swift */; };
-		8D4087D52D24653B005B2BAF /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 8D4087D42D24653B005B2BAF /* Sentry */; };
-		8D4087D92D246541005B2BAF /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 8D4087D82D246541005B2BAF /* Sentry */; };
-		8D4087DD2D246651005B2BAF /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 8D4087DC2D246651005B2BAF /* Sentry */; };
 		8D41B9A52D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D41B9A62D15DD6800D16065 /* TunnelLogArchive.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D41B9A42D15DD6800D16065 /* TunnelLogArchive.swift */; };
 		8D5047F82CE6AA22009802E9 /* FirezoneKit in Frameworks */ = {isa = PBXBuildFile; productRef = 8D5047F72CE6AA22009802E9 /* FirezoneKit */; };
@@ -291,7 +288,6 @@
 			name = FirezoneNetworkExtensioniOS;
 			packageProductDependencies = (
 				794C38142970A2660029F38F /* FirezoneKit */,
-				8D4087D42D24653B005B2BAF /* Sentry */,
 			);
 			productName = FirezoneNetworkExtensioniOS;
 			productReference = 05CF1CF0290B1CEE00CF4755 /* dev.firezone.firezone.network-extension.appex */;
@@ -313,7 +309,6 @@
 			name = FirezoneNetworkExtensionmacOS;
 			packageProductDependencies = (
 				8D5047F72CE6AA22009802E9 /* FirezoneKit */,
-				8D4087D82D246541005B2BAF /* Sentry */,
 			);
 			productName = FirezoneNetworkExtensionStandalonemacOS;
 			productReference = 8D5047E32CE6A8F4009802E9 /* dev.firezone.firezone.network-extension.systemextension */;
@@ -340,7 +335,6 @@
 			name = Firezone;
 			packageProductDependencies = (
 				79756C6529704A7A0018E2D5 /* FirezoneKit */,
-				8D4087DC2D246651005B2BAF /* Sentry */,
 			);
 			productName = Firezone;
 			productReference = 8DCC021928D512AC007E12D2 /* Firezone.app */;
@@ -379,7 +373,6 @@
 			);
 			mainGroup = 8DCC021028D512AC007E12D2;
 			packageReferences = (
-				8D4087C72D2464D6005B2BAF /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 			productRefGroup = 8DCC021A28D512AC007E12D2 /* Products */;
 			projectDirPath = "";
@@ -992,16 +985,6 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		8D4087C72D2464D6005B2BAF /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 8.42.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		794C38142970A2660029F38F /* FirezoneKit */ = {
@@ -1011,21 +994,6 @@
 		79756C6529704A7A0018E2D5 /* FirezoneKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = FirezoneKit;
-		};
-		8D4087D42D24653B005B2BAF /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8D4087C72D2464D6005B2BAF /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
-		};
-		8D4087D82D246541005B2BAF /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8D4087C72D2464D6005B2BAF /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
-		};
-		8D4087DC2D246651005B2BAF /* Sentry */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 8D4087C72D2464D6005B2BAF /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
-			productName = Sentry;
 		};
 		8D5047F72CE6AA22009802E9 /* FirezoneKit */ = {
 			isa = XCSwiftPackageProductDependency;
