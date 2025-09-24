@@ -132,6 +132,10 @@ jobs:
       - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
+      - name: Disable checksum offloading
+        run: |
+          # Force checksum calculation on the host since some tests run on the host
+          sudo ethtool -K eth0 tx off
       - name: Start docker compose in the background
         run: |
           set -xe

@@ -30,9 +30,6 @@ sudo cp "scripts/tests/systemd/$SERVICE_NAME.service" /usr/lib/systemd/system/
 HTTPBIN=dns
 HTTPBIN_FQDN="$HTTPBIN.httpbin.search.test"
 
-# Force checksum calculation on the host so that checksum verification passes
-sudo ethtool -K eth0 tx off
-
 # I'm assuming the docker iface name is relatively constant
 DOCKER_IFACE="docker0"
 FZ_IFACE="tun-firezone"
