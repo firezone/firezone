@@ -217,7 +217,7 @@ jobs:
           docker compose exec relay-1 pkill xdpdump
           docker compose cp relay-1:/tmp/packets.pcap ./relay-1-packets.pcap
 
-          ! tcpdump -nr ./relay-1-packets.pcap -v | grep "bad"
+          ! tcpdump -nnnr ./relay-1-packets.pcap -v | grep "bad"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: "!success()"
@@ -234,7 +234,7 @@ jobs:
           docker compose exec relay-2 pkill xdpdump
           docker compose cp relay-2:/tmp/packets.pcap ./relay-2-packets.pcap
 
-          ! tcpdump -nr ./relay-2-packets.pcap -v | grep "bad"
+          ! tcpdump -nnnr ./relay-2-packets.pcap -v | grep "bad"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: "!success() && !matrix.test.single_relay"
