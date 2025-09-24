@@ -59,6 +59,18 @@ defmodule Domain.ClientsTest do
       assert count_incompatible_for(account, "1.2.3") == 0
     end
 
+    test "returns 0 for clients that haven't been seen in over a week", %{account: account} do
+      one_month_ago = DateTime.utc_now() |> DateTime.add(-30, :day)
+
+      client = Fixtures.Clients.create_client(account: account, subject: subject)
+
+      client
+      |> Ecto.Changeset.change(last_seen_at: one_month_ago)
+      |> Repo.update!()
+
+      assert count_incompatible_for(account, "1.99.3") == 0
+    end
+
     test "returns 1 when client is two minors behind", %{
       account: account,
       unprivileged_subject: subject
