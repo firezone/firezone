@@ -2,6 +2,7 @@ use crate::TUNNEL_NAME;
 use crate::windows::TUNNEL_UUID;
 use crate::windows::error::{NOT_FOUND, NOT_SUPPORTED, OBJECT_EXISTS};
 use anyhow::{Context as _, Result};
+use connlib_core_affinity::{ThreadId, set_core_affinity};
 use firezone_logging::err_with_src;
 use firezone_telemetry::otel;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -394,48 +395,52 @@ fn start_send_thread(
 
     std::thread::Builder::new()
         .name("TUN send".into())
-        .spawn(move || loop {
-            let Some(packet) = packet_rx.blocking_recv() else {
-                tracing::debug!(
-                    "Stopping TUN send worker thread because the packet channel closed"
-                );
-                break;
-            };
-
-            let bytes = packet.packet();
-
-            let Ok(len) = bytes.len().try_into() else {
-                tracing::warn!("Packet too large; length does not fit into u16");
-                continue;
-            };
+        .spawn(move || {
+            set_core_affinity(ThreadId::TunSend);
 
             loop {
-                let Some(session) = session.upgrade() else {
+                let Some(packet) = packet_rx.blocking_recv() else {
                     tracing::debug!(
-                        "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                        "Stopping TUN send worker thread because the packet channel closed"
                     );
-                    return;
+                    break;
                 };
 
-                match session.allocate_send_packet(len) {
-                    Ok(mut pkt) => {
-                        pkt.bytes_mut().copy_from_slice(bytes);
-                        // `send_packet` cannot fail to enqueue the packet, since we already allocated
-                        // space in the ring buffer.
-                        session.send_packet(pkt);
+                let bytes = packet.packet();
 
-                        break;
-                    }
-                    Err(wintun::Error::Io(e))
-                        if e.raw_os_error()
-                            .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
-                    {
-                        tracing::debug!("WinTUN ring buffer is full");
-                        std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to allocate WinTUN packet: {e}");
-                        break;
+                let Ok(len) = bytes.len().try_into() else {
+                    tracing::warn!("Packet too large; length does not fit into u16");
+                    continue;
+                };
+
+                loop {
+                    let Some(session) = session.upgrade() else {
+                        tracing::debug!(
+                            "Stopping TUN send worker thread because the `wintun::Session` was dropped"
+                        );
+                        return;
+                    };
+
+                    match session.allocate_send_packet(len) {
+                        Ok(mut pkt) => {
+                            pkt.bytes_mut().copy_from_slice(bytes);
+                            // `send_packet` cannot fail to enqueue the packet, since we already allocated
+                            // space in the ring buffer.
+                            session.send_packet(pkt);
+
+                            break;
+                        }
+                        Err(wintun::Error::Io(e))
+                            if e.raw_os_error()
+                                .is_some_and(|code| code == ERROR_BUFFER_OVERFLOW) =>
+                        {
+                            tracing::debug!("WinTUN ring buffer is full");
+                            std::thread::sleep(Duration::from_millis(10)); // Suspend for a bit to avoid busy-looping.
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to allocate WinTUN packet: {e}");
+                            break;
+                        }
                     }
                 }
             }
@@ -449,6 +454,8 @@ fn start_recv_thread(
     std::thread::Builder::new()
         .name("TUN recv".into())
         .spawn(move || {
+            set_core_affinity(ThreadId::TunRecv);
+
             loop {
                 let Some(receive_result) = session.upgrade().map(|s| s.receive_blocking()) else {
                     tracing::debug!(

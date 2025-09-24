@@ -5,6 +5,7 @@ members = [
     "client-ffi",
     "client-shared",
     "connlib/bufferpool",
+    "connlib/core-affinity",
     "connlib/dns-over-tcp",
     "connlib/dns-types",
     "connlib/etherparse-ext",
@@ -65,7 +66,9 @@ caps = "0.5.5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
 clap = "4.5.47"
 client-shared = { path = "client-shared" }
+connlib-core-affinity = { path = "connlib/core-affinity" }
 connlib-model = { path = "connlib/model" }
+core_affinity = "0.8.3"
 crossbeam-queue = "0.3.12"
 dashmap = "6.1.0"
 derive_more = { version = "2.0.1", default-features = false }
