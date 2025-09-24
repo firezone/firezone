@@ -48,6 +48,9 @@ and configurations without risking your main machine.
 
 1. Build and run the `Firezone` target.
 
+`Firezone` target will orchestrate building `connlib` with Rust as an Xcode build phase.
+Xcode build can be triggered both from Xcode UI or via the `Makefile`.
+
 **Note**: To test the iOS app, you'll need a physical iOS device such as an
 iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
 
