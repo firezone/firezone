@@ -62,7 +62,7 @@ defmodule Domain.ClientsTest do
     test "returns 0 for clients that haven't been seen in over a week", %{account: account} do
       one_month_ago = DateTime.utc_now() |> DateTime.add(-30, :day)
 
-      client = Fixtures.Clients.create_client(account: account, subject: subject)
+      client = Fixtures.Clients.create_client(account: account)
 
       client
       |> Ecto.Changeset.change(last_seen_at: one_month_ago)
