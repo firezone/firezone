@@ -1097,27 +1097,6 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders a version badge with the current version and icon based on whether the component is outdated.
-  """
-  attr :current, :string, required: true
-  attr :outdated?, :boolean
-
-  def version(assigns) do
-    title =
-      if assigns.outdated?, do: "An update for this component is available", else: "Up to date"
-
-    assigns = assign(assigns, :title, title)
-
-    ~H"""
-    <span title={@title} class="flex items-center">
-      <.icon :if={@outdated?} name="hero-arrow-up-circle" class="h-4 w-4 text-orange-500 mr-1" />
-      <.icon :if={not @outdated?} name="hero-check-circle" class="h-4 w-4 text-green-500 mr-1" />
-      {@current}
-    </span>
-    """
-  end
-
-  @doc """
   Renders online or offline status using an `online?` field of the schema.
   """
   attr :schema, :any, required: true

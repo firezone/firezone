@@ -52,7 +52,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGatewaysTest do
       assert execute(%{}) == :ok
 
       assert_email_sent(fn email ->
-        assert email.subject == "Firezone Gateway Upgrade Available"
+        assert email.subject == "Firezone Gateway Update Available"
         assert email.text_body =~ "The latest Firezone Gateway release is: #{new_version}"
       end)
     end

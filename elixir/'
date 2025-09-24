@@ -99,14 +99,11 @@
                   <%= if @incompatible_client_count > 0 do %>
                   <p style="margin: 0; line-height: 24px;">
                     <span style="font-weight: 600; color: #6b6b6b">WARNING:</span>
-                    <span style="font-weight: 600"><a href="<%= @outdated_clients_url %>" target="_blank"><%= @incompatible_client_count %> recently connected client(s)</a> are not compatible</span> with the latest Gateway version. We recommend updating these clients before updating the Gateways to prevent loss of connectivity.
+                    You have <span style="font-weight: 600; color: #1b1b1b"><%= @incompatible_client_count %> recently connected client(s)</span> that are incompatible with the latest Gateway version. We recommend updating these clients before updating the Gateways to prevent loss of connectivity.
                     <a href="<%= @outdated_clients_url %>" target="_blank">See all outdated clients</a> in your account.
                   </p>
                   <p style="margin: 0; line-height: 24px; margin-top: 16px;">
-                    <a href="https://www.firezone.dev/kb/administer/upgrading#version-compatibility">Read more</a> about version compatibility in Firezone.
-                  </p>
-                  <p style="margin: 0; line-height: 24px; margin-top: 16px;">
-                    Read more about upgrading in our <a href="https://www.firezone.dev/kb/administer/upgrading">upgrade guide</a>.
+                    <a href="https://www.firezone.dev/kb/administer/upgrading#version-compatibility">Read more</a> about version compatibility.
                   </p>
                   <% else %>
                   <p style="margin: 0; line-height: 24px;">
@@ -114,7 +111,9 @@
                     in our <a href="https://www.firezone.dev/kb/administer/upgrading">Firezone Gateway Upgrade Guide</a>.
                   </p>
                   <% end %>
-                  <p style="margin: 0; margin-top: 16px; line-height: 24px">
+                  <p style="margin: 0; line-height: 24px">
+                    <br>
+                    <br>
                     Thanks, <br>The Firezone Team
                   </p>
                   <div role="separator" style="line-height: 16px">&zwj;</div>

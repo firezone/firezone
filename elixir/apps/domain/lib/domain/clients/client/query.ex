@@ -121,8 +121,7 @@ defmodule Domain.Clients.Client.Query do
   @impl Domain.Repo.Query
   def preloads,
     do: [
-      online?: &Domain.Clients.preload_clients_presence/1,
-      outdated?: &Domain.Clients.preload_clients_outdated/1
+      online?: &Domain.Clients.preload_clients_presence/1
     ]
 
   @impl Domain.Repo.Query

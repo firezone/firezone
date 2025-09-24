@@ -11,7 +11,7 @@ defmodule Domain.Mailer.NotificationsTest do
     }
   end
 
-  describe "outdated_gateway_email/3" do
+  describe "outdated_gateway_email/4" do
     test "should contain current gateway version and list of outdated gateways", %{
       account: account
     } do
@@ -23,11 +23,35 @@ defmodule Domain.Mailer.NotificationsTest do
       current_version = "3.2.1"
       set_current_version(current_version)
 
-      email_body = outdated_gateway_email(account, [gateway_1, gateway_2], admin_email)
+      incompatible_client_count = 5
+
+      email_body =
+        outdated_gateway_email(
+          account,
+          [gateway_1, gateway_2],
+          incompatible_client_count,
+          admin_email
+        )
 
       assert email_body.text_body =~ "The latest Firezone Gateway release is: #{current_version}"
       assert email_body.text_body =~ gateway_1.name
       assert email_body.text_body =~ gateway_2.name
+
+      assert email_body.text_body =~
+               "#{incompatible_client_count} recently connected clients are not compatible"
+
+      assert email_body.text_body =~ "See all outdated clients"
+
+      assert email_body.html_body =~
+               "The latest Firezone Gateway release is: <span style=\"font-weight: 600\">#{current_version}</span>"
+
+      assert email_body.html_body =~ gateway_1.name
+      assert email_body.html_body =~ gateway_2.name
+
+      assert email_body.html_body =~
+               "/#{account.id}/clients?clients_order_by=clients%3Aasc%3Alast_seen_version\" target=\"_blank\">#{incompatible_client_count} recently connected client(s)</a> are not compatible"
+
+      assert email_body.html_body =~ "See all outdated clients"
     end
   end
 

@@ -9,7 +9,15 @@ The following list of Gateways in your Firezone Account can be updated:
 <%= "- #{gateway.name} -> #{gateway.last_seen_version}" %>
 <% end %>
 
+<%= if @incompatible_client_count > 0 do %>
+Warning: <%= @incompatible_client_count %> recently connected clients are not compatible with the latest Gateway version. We recommend updating these clients before updating the Gateways to prevent loss of connectivity.
+
+See all outdated clients in your account: <%= @outdated_clients_url %>
+
+Read more about version compatibility: https://www.firezone.dev/kb/administer/upgrading#version-compatibility
+<% else %>
 We recommend updating the Gateways at your earliest convenience.
+<% end %>
 
 Help on how to update Gateways can be found in our Firezone Documentation:
 https://www.firezone.dev/kb/administer/upgrading

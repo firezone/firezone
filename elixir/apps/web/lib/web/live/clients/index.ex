@@ -2,7 +2,7 @@ defmodule Web.Clients.Index do
   use Web, :live_view
   import Web.Actors.Components
   import Web.Clients.Components
-  alias Domain.Clients
+  alias Domain.{Clients, ComponentVersions}
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -36,7 +36,7 @@ defmodule Web.Clients.Index do
   end
 
   def handle_clients_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?, :outdated?])
+    list_opts = Keyword.put(list_opts, :preload, [:actor, :online?])
 
     with {:ok, clients, metadata} <- Clients.list_clients(socket.assigns.subject, list_opts) do
       {:ok,
@@ -102,7 +102,10 @@ defmodule Web.Clients.Index do
             </.link>
           </:col>
           <:col :let={client} field={{:clients, :last_seen_version}} label="version">
-            <.version current={client.last_seen_version} outdated?={client.outdated?} />
+            <.version
+              current={client.last_seen_version}
+              latest={ComponentVersions.client_version(client)}
+            />
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />

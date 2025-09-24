@@ -2,15 +2,14 @@ defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Clients.Components
-  alias Domain.{Clients, Flows}
+  alias Domain.{Clients, ComponentVersions, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, client} <-
            Clients.fetch_client_by_id(id, socket.assigns.subject,
              preload: [
                :online?,
-               :actor,
-               :outdated?
+               :actor
              ]
            ) do
       if connected?(socket) do
@@ -146,7 +145,10 @@ defmodule Web.Clients.Show do
           <.vertical_table_row>
             <:label>Version</:label>
             <:value>
-              <.version current={@client.last_seen_version} outdated?={@client.outdated?} />
+              <.version
+                current={@client.last_seen_version}
+                latest={ComponentVersions.client_version(@client)}
+              />
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>

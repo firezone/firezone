@@ -1,10 +1,9 @@
 defmodule Domain.Clients do
   use Supervisor
   alias Domain.{Repo, Auth}
-  alias Domain.{Accounts, Actors, ComponentVersions}
+  alias Domain.{Accounts, Actors}
   alias Domain.Clients.{Client, Authorizer, Presence}
   require Ecto.Query
-  require Logger
 
   def start_link(opts) do
     Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
@@ -147,16 +146,6 @@ defmodule Domain.Clients do
     end)
   end
 
-  def preload_clients_outdated(clients) do
-    for client <- clients do
-      component_type = get_component_type(client)
-      current = client.last_seen_version
-      latest = ComponentVersions.component_version(component_type)
-
-      %{client | outdated?: version_outdated?(current, latest)}
-    end
-  end
-
   def online_client_ids(account_id) do
     account_id
     |> Presence.Account.list()
@@ -274,28 +263,5 @@ defmodule Domain.Clients do
       |> Repo.delete_all()
 
     :ok
-  end
-
-  defp get_component_type(%Client{last_seen_user_agent: "Mac OS" <> _rest}), do: :apple
-  defp get_component_type(%Client{last_seen_user_agent: "iOS" <> _rest}), do: :apple
-
-  defp get_component_type(%Client{last_seen_user_agent: "Android" <> _rest}),
-    do: :android
-
-  defp get_component_type(%Client{actor: %Actors.Actor{type: :service_account}}), do: :headless
-
-  defp get_component_type(_), do: :gui
-
-  defp version_outdated?(nil, _latest), do: nil
-  defp version_outdated?(_current, nil), do: nil
-
-  defp version_outdated?(current, latest) do
-    Version.compare(current, latest) == :lt
-  rescue
-    # Don't crash if reported client version is invalid
-    Version.InvalidVersionError ->
-      Logger.warning("Invalid version format: #{inspect(current)} or #{inspect(latest)}")
-
-      nil
   end
 end
