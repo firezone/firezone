@@ -1,8 +1,8 @@
 mod platform;
 
 use std::{
-    fmt, io,
-    os::fd::{AsRawFd as _, RawFd},
+    fmt,
+    os::fd::RawFd,
     path::{Path, PathBuf},
     sync::{Arc, OnceLock},
     time::Duration,
@@ -419,23 +419,27 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "android")]
 fn protected_tcp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl SocketFactory<TcpSocket> {
     move |addr| {
         let socket = socket_factory::tcp(addr)?;
+        use std::os::fd::AsRawFd;
         callback
             .protect_socket(socket.as_raw_fd())
-            .map_err(io::Error::other)?;
+            .map_err(std::io::Error::other)?;
 
         Ok(socket)
     }
 }
 
+#[cfg(target_os = "android")]
 fn protected_udp_socket_factory(callback: Arc<dyn ProtectSocket>) -> impl SocketFactory<UdpSocket> {
     move |addr| {
         let socket = socket_factory::udp(addr)?;
+        use std::os::fd::AsRawFd;
         callback
             .protect_socket(socket.as_raw_fd())
-            .map_err(io::Error::other)?;
+            .map_err(std::io::Error::other)?;
 
         Ok(socket)
     }
