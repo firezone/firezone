@@ -136,6 +136,7 @@ jobs:
         run: |
           # Force checksum calculation on the host since some tests run on the host
           sudo ethtool -K eth0 tx off
+          sudo ethtool -K docker0 tx off
       - name: Start docker compose in the background
         run: |
           set -xe
