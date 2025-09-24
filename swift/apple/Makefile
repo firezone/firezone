@@ -25,6 +25,12 @@ GIT_SHA=$(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 .PHONY: all
 all: build install
 
+# Info for sourcekit-lsp (LSP server for other IDEs)
+lsp:
+	@xcode-build-server config \
+        -project Firezone.xcodeproj \
+        -scheme Firezone
+
 .PHONY: build
 build:
 	@echo "Building Xcode project for ${PLATFORM}, ${ARCH}"

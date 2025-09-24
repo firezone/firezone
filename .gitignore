@@ -27,3 +27,6 @@ gha-creds-*.json
 # Ignore local `direnv` cache
 .direnv
 /cspell.json
+
+# Ignore build data for sourcekit-lsp (Swift code)
+buildServer.json
