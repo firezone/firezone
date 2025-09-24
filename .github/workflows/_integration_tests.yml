@@ -108,7 +108,8 @@ jobs:
           - script: dns-api-down
           - script: dns-nm
           - script: dns-two-resources
-          - script: systemd/dns-systemd-resolved
+          - name: dns-systemd-resolved
+            script: systemd/dns-systemd-resolved
           - script: tcp-dns
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
           - name: download-double-symmetric-nat
