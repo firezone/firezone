@@ -116,7 +116,7 @@ jobs:
             client_masquerade: random
             gateway_masquerade: random
             rust_log: debug
-            stop_containers: relay-2 # Force single relay
+            single_relay: true # Force single relay
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
@@ -161,9 +161,14 @@ jobs:
           docker compose up -d client --no-build
           docker compose up -d veth-config
 
-          if [[ -n "${{ matrix.test.stop_containers }}" ]]; then
-            docker compose stop ${{ matrix.test.stop_containers }}
+          docker compose exec -d relay-1 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
+          docker compose exec -d relay-2 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
+
+          if [[ -n "${{ matrix.test.single_relay }}" ]]; then
+            docker compose stop relay-2
           fi
+
+          sleep 3 # Let everything settle for a bit
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
@@ -198,3 +203,37 @@ jobs:
       - name: Show API logs
         if: "!cancelled()"
         run: docker compose logs api
+
+      - name: Ensure no eBPF checksum errors on relay-1
+        if: "!cancelled()"
+        run: |
+          set -xe
+
+          docker compose exec relay-1 pkill xdpdump
+          docker compose cp relay-1:/tmp/packets.pcap ./relay-1-packets.pcap
+
+          ! tcpdump -r ./relay-1-packets.pcap -v | grep "bad"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: "!success()"
+        with:
+          overwrite: true
+          name: ${{ matrix.test.name || matrix.test.script }}-relay-1-xdpdump
+          path: ./relay-1-packets.pcap
+
+      - name: Ensure no eBPF checksum errors on relay-2
+        if: "!cancelled() && !matrix.test.single_relay"
+        run: |
+          set -xe
+
+          docker compose exec relay-2 pkill xdpdump
+          docker compose cp relay-2:/tmp/packets.pcap ./relay-2-packets.pcap
+
+          ! tcpdump -r ./relay-2-packets.pcap -v | grep "bad"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: "!success() && !matrix.test.single_relay"
+        with:
+          overwrite: true
+          name: ${{ matrix.test.name || matrix.test.script }}-relay-2-xdpdump
+          path: ./relay-2-packets.pcap
