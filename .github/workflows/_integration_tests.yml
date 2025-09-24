@@ -160,6 +160,7 @@ jobs:
           docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
+          docker compose up -d veth-config
 
           if [[ -n "${{ matrix.test.stop_containers }}" ]]; then
             docker compose stop ${{ matrix.test.stop_containers }}
@@ -170,8 +171,6 @@ jobs:
           # for example.
           # Intended to mitigate <https://github.com/firezone/firezone/issues/5830>
           sleep 3
-
-          docker compose up veth-config
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
         if: ${{ matrix.test.skip != 'true' }}
