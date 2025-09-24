@@ -125,12 +125,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       )
 
       // Set initial internet resource state after adapter is started
-      do {
-        try adapter.setInternetResourceEnabled(internetResourceEnabled)
-        Log.log("Initial internet resource enabled set to: \(internetResourceEnabled)")
-      } catch {
-        Log.error(error)
-      }
+      adapter.setInternetResourceEnabled(internetResourceEnabled)
+      Log.log("Initial internet resource enabled set to: \(internetResourceEnabled)")
 
       // Store the completion handler to be called after TUN setup completes
       // This ensures the tunnel is actually ready before reporting success
@@ -179,14 +175,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         tunnelConfiguration.save()
         self.tunnelConfiguration = tunnelConfiguration
 
-        do {
-          try self.adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
-          Log.info(
-            "Successfully set internet resource enabled to: \(tunnelConfiguration.internetResourceEnabled)"
-          )
-        } catch {
-          Log.error(error)
-        }
+        self.adapter?.setInternetResourceEnabled(tunnelConfiguration.internetResourceEnabled)
+        Log.info(
+          "Successfully set internet resource enabled to: \(tunnelConfiguration.internetResourceEnabled)"
+        )
         completionHandler?(nil)
 
       case .signOut:
