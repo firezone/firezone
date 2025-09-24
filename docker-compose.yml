@@ -326,6 +326,8 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.29.1.254
         ip -6 route add 203:0:113::/64 via 172:29:1::254
 
+        ethtool -K eth0 tx off
+
         firezone-relay
     depends_on:
       relay-1-router:
@@ -372,6 +374,8 @@ services:
         # Add static route to internet subnet via router
         ip -4 route add 203.0.113.0/24 via 172.29.2.254
         ip -6 route add 203:0:113::/64 via 172:29:2::254
+
+        ethtool -K eth0 tx off
 
         firezone-relay
     depends_on:
