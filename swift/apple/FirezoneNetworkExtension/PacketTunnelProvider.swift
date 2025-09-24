@@ -118,7 +118,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       try adapter.start(
         apiUrl: apiURL,
-        token: token.description,
+        token: token,
         deviceId: id,
         accountSlug: accountSlug,
         logFilter: logFilter

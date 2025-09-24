@@ -103,7 +103,7 @@ class AdapterUniFfi: @unchecked Sendable {
 
   func start(
     apiUrl: String,
-    token: String,
+    token: Token,
     deviceId: String,
     accountSlug: String,
     logFilter: String
@@ -121,7 +121,7 @@ class AdapterUniFfi: @unchecked Sendable {
     do {
       session = try Session.newIos(
         apiUrl: apiUrl,
-        token: token,
+        token: token.description,
         deviceId: deviceId,
         accountSlug: accountSlug,
         deviceName: deviceName,
