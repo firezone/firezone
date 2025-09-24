@@ -38,7 +38,7 @@ defmodule Domain.Mailer.NotificationsTest do
       assert email_body.text_body =~ gateway_2.name
 
       assert email_body.text_body =~
-               "#{incompatible_client_count} recently connected clients are not compatible"
+               "#{incompatible_client_count} recently connected client(s) are not compatible"
 
       assert email_body.text_body =~ "See all outdated clients"
 
