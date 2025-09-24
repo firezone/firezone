@@ -326,6 +326,7 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.29.1.254
         ip -6 route add 203:0:113::/64 via 172:29:1::254
 
+        apk add --no-cache ethtool
         ethtool -K eth0 tx off
 
         firezone-relay
@@ -375,6 +376,7 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.29.2.254
         ip -6 route add 203:0:113::/64 via 172:29:2::254
 
+        apk add --no-cache ethtool
         ethtool -K eth0 tx off
 
         firezone-relay
