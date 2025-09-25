@@ -181,7 +181,7 @@ export default function _Page() {
               <li className="flex space-x-2.5">
                 <FaCheck className="mt-0.5 flex-shrink-0 w-4 h-4 text-primary-450" />
                 <span className="leading-tight font-bold text-neutral-900">
-                  Up to 100 users
+                  Up to 500 users
                 </span>
               </li>
               <li className="flex space-x-2.5">
