@@ -136,12 +136,14 @@ updates:
           - com.google.firebase:firebase-crashlytics-ndk
           - com.google.firebase:firebase-analytics-ktx
 
+# FIXME: Bring back regular swift defaults (weekly, 28 day cooldown)
+# after confirming dependabot works with it
   - package-ecosystem: swift
     directory: swift/apple/FirezoneKit
     schedule:
-      interval: weekly
+      interval: daily
     cooldown:
-      default-days: 28
+      default-days: 1
   - package-ecosystem: npm
     directory: website/
     schedule:
