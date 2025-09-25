@@ -429,9 +429,10 @@ services:
       - |
         set -e
 
-        VETHS=$$(ip link show type veth | grep '^[0-9]' | awk '{print $$2}' | cut -d: -f1 | cut -d@ -f1)
+        apk add jq
 
-        # Safe to attach to all veth interfaces on the host
+        VETHS=$$(ip -json link show type veth | jq -r '.[].ifname')
+
         for dev in $$VETHS; do
           echo "Attaching XDP to: $$dev"
           ip link set dev $$dev xdpdrv off # Clear any existing XDP program.
@@ -441,6 +442,14 @@ services:
         done
 
         echo "Done configuring $$(echo "$$VETHS" | wc -w) veth interfaces"
+
+        BRIDGES=$$(ip -json link show type bridge | jq -r '.[].ifname')
+
+        for dev in $$BRIDGES; do
+          ethtool -K $$dev tx off # Disable offloading.
+        done
+
+        echo "Done configuring $$(echo "$$BRIDGES" | wc -w) bridge interfaces"
     depends_on:
       relay-1:
         condition: "service_healthy"
