@@ -417,7 +417,10 @@ services:
   # The "recommended" way to do this is to set both veth interfaces' GRO to on, or attach an XDP program
   # that does XDP_PASS to the host side veth interface. The GRO method is not reliable and was shown to
   # only pass packets in large bursts every 15-20 seconds which breaks ICE setup, so we use the XDP method.
-  veth-config:
+  #
+  # For correct behaviour, we also disable any kind of offloading for all veth and bridge devices.
+  # This forces the kernel to calculate all checksums in software.
+  network-config:
     image: ghcr.io/firezone/xdp-pass
     pid: host
     network_mode: host

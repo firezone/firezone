@@ -160,7 +160,7 @@ jobs:
           docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
-          docker compose up -d veth-config
+          docker compose up -d network-config
 
           docker compose exec -d relay-1 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
           docker compose exec -d relay-2 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
