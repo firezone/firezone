@@ -25,6 +25,9 @@ docker network connect firezone_client-internal firezone-client-1 --ip 172.30.0.
 client ip -4 route add 203.0.113.0/24 via 172.30.0.254
 client ip -6 route add 203:0:113::/64 via 172:30:0::254
 
+# Disable checksum offload again to calculate checksums in software so that checksum verification passes
+client ethtool -K eth0 tx off
+
 # Send SIGHUP, triggering `reconnect` internally
 sudo kill -s HUP "$(ps -C firezone-headless-client -o pid=)"
 

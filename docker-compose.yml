@@ -326,6 +326,9 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.29.1.254
         ip -6 route add 203:0:113::/64 via 172:29:1::254
 
+        apk add --no-cache ethtool
+        ethtool -K eth0 tx off
+
         firezone-relay
     depends_on:
       relay-1-router:
@@ -373,6 +376,9 @@ services:
         ip -4 route add 203.0.113.0/24 via 172.29.2.254
         ip -6 route add 203:0:113::/64 via 172:29:2::254
 
+        apk add --no-cache ethtool
+        ethtool -K eth0 tx off
+
         firezone-relay
     depends_on:
       relay-2-router:
@@ -411,7 +417,10 @@ services:
   # The "recommended" way to do this is to set both veth interfaces' GRO to on, or attach an XDP program
   # that does XDP_PASS to the host side veth interface. The GRO method is not reliable and was shown to
   # only pass packets in large bursts every 15-20 seconds which breaks ICE setup, so we use the XDP method.
-  veth-config:
+  #
+  # For correct behaviour, we also disable any kind of offloading for all veth and bridge devices.
+  # This forces the kernel to calculate all checksums in software.
+  network-config:
     image: ghcr.io/firezone/xdp-pass
     pid: host
     network_mode: host
@@ -423,16 +432,25 @@ services:
       - |
         set -e
 
-        VETHS=$$(ip link show type veth | grep '^[0-9]' | awk '{print $$2}' | cut -d: -f1 | cut -d@ -f1)
+        VETHS=$$(ip -json link show type veth | jq -r '.[].ifname')
 
-        # Safe to attach to all veth interfaces on the host
         for dev in $$VETHS; do
           echo "Attaching XDP to: $$dev"
           ip link set dev $$dev xdpdrv off # Clear any existing XDP program.
           ip link set dev $$dev xdpdrv obj /xdp/xdp_pass.o sec xdp
+
+          ethtool -K $$dev tx off # Disable offloading.
         done
 
         echo "Done configuring $$(echo "$$VETHS" | wc -w) veth interfaces"
+
+        BRIDGES=$$(ip -json link show type bridge | jq -r '.[].ifname')
+
+        for dev in $$BRIDGES; do
+          ethtool -K $$dev tx off # Disable offloading.
+        done
+
+        echo "Done configuring $$(echo "$$BRIDGES" | wc -w) bridge interfaces"
     depends_on:
       relay-1:
         condition: "service_healthy"

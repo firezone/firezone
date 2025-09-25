@@ -335,7 +335,7 @@ jobs:
           docker compose up -d relay-1 relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
-          docker compose up veth-config
+          docker compose up -d network-config
       - name: "Performance test: ${{ matrix.flavour }}-${{ matrix.test }}"
         timeout-minutes: 5
         env:
