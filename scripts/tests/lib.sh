@@ -46,17 +46,7 @@ account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
 [client_id | _] = Domain.Clients.Presence.Account.list(account_id) |> Map.keys()
 [resource] = Domain.Resources.Resource.Query.not_deleted() |> Domain.Resources.Resource.Query.by_account_id(account_id) |> Domain.Repo.all() |> Enum.filter(&(&1.name == \"$resource_name\"))
 
-# Load all flows for this resource from the database and simulate their deletion
-flows = Domain.Flows.Flow.Query.all()
-  |> Domain.Flows.Flow.Query.by_account_id(account_id)
-  |> Domain.Flows.Flow.Query.by_resource_id(resource.id)
-  |> Domain.Repo.all()
-
-# Send deletion events for all flows to trigger reject_access
-for flow <- flows do
-  change = %Domain.Changes.Change{op: :delete, old_struct: flow, lsn: System.system_time(:millisecond)}
-  Domain.PubSub.Account.broadcast(account_id, change)
-end
+Domain.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, client_id, resource.id})
 "
 }
 
