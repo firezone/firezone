@@ -7,7 +7,7 @@ client_curl_resource "172.20.0.100/get"
 client_curl_resource "[172:20:0::100]/get"
 
 # Authorize resource 2 (important, otherwise the Gateway will close the connection on the last resource being removed)
-client_ping_resource example.com
+client_ping_resource download.httpbin
 
 # Revoke access to resource 1
 api_send_reject_access "mycro-aws-gws" "MyCorp Network"        # This is the 172.20.0.1/16 network
