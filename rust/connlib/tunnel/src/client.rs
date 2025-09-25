@@ -834,6 +834,7 @@ impl ClientState {
         use std::collections::hash_map::Entry;
 
         let trigger = trigger.into();
+        let trigger_name = trigger.name();
 
         debug_assert!(self.resources_by_id.contains_key(&rid));
 
@@ -856,7 +857,7 @@ impl ClientState {
             }
         }
 
-        tracing::debug!("Sending connection intent");
+        tracing::debug!(trigger = %trigger_name, "Sending connection intent");
 
         self.buffered_events
             .push_back(ClientEvent::ConnectionIntent {
@@ -2033,6 +2034,19 @@ enum ConnectionTrigger {
     ///
     /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
     IcmpDestinationUnreachableProhibited,
+}
+
+impl ConnectionTrigger {
+    fn name(&self) -> &'static str {
+        match self {
+            ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
+            ConnectionTrigger::UdpDnsQueryForSite(_) => "udp-dns-query-for-site",
+            ConnectionTrigger::TcpDnsQueryForSite(_) => "tcp-dns-query-for-site",
+            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
+                "icmp-destination-unreachable-prohibited"
+            }
+        }
+    }
 }
 
 impl From<IpPacket> for ConnectionTrigger {
