@@ -429,8 +429,6 @@ services:
       - |
         set -e
 
-        apk add jq ethtool
-
         VETHS=$$(ip -json link show type veth | jq -r '.[].ifname')
 
         for dev in $$VETHS; do
