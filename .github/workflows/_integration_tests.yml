@@ -108,7 +108,8 @@ jobs:
           - script: dns-api-down
           - script: dns-nm
           - script: dns-two-resources
-          - script: systemd/dns-systemd-resolved
+          - name: dns-systemd-resolved
+            script: systemd/dns-systemd-resolved
           - script: tcp-dns
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
           - name: download-double-symmetric-nat
@@ -116,8 +117,7 @@ jobs:
             client_masquerade: random
             gateway_masquerade: random
             rust_log: debug
-            stop_containers: relay-2 # Force single relay
-            skip: true
+            single_relay: true # Force single relay
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
@@ -160,22 +160,24 @@ jobs:
           docker compose up -d relay-2 --no-build
           docker compose up -d gateway --no-build
           docker compose up -d client --no-build
+          docker compose up -d network-config
 
-          if [[ -n "${{ matrix.test.stop_containers }}" ]]; then
-            docker compose stop ${{ matrix.test.stop_containers }}
+          docker compose exec -d relay-1 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
+          docker compose exec -d relay-2 /bin/sh -c 'xdpdump -i eth0 -w /tmp/packets.pcap --rx-capture entry,exit'
+
+          if [[ -n "${{ matrix.test.single_relay }}" ]]; then
+            docker compose stop relay-2
           fi
 
-          # Wait a few seconds for the services to fully start. GH runners are
-          # slow, so this gives the Client enough time to initialize its tun interface,
-          # for example.
-          # Intended to mitigate <https://github.com/firezone/firezone/issues/5830>
-          sleep 3
+          sleep 3 # Let everything settle for a bit
 
-          docker compose up veth-config
+      - name: Disable checksum offloading
+        run: |
+          # Force checksum calculation on the host since some tests run on the host
+          sudo ethtool -K eth0 tx off
+          sudo ethtool -K docker0 tx off
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
-        if: ${{ matrix.test.skip != 'true' }}
-
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
         run: |
@@ -209,3 +211,37 @@ jobs:
       - name: Show API logs
         if: "!cancelled()"
         run: docker compose logs api
+
+      - name: Ensure no eBPF checksum errors on relay-1
+        if: "!cancelled()"
+        run: |
+          set -xe
+
+          docker compose exec relay-1 pkill xdpdump
+          docker compose cp relay-1:/tmp/packets.pcap ./relay-1-packets.pcap
+
+          ! tcpdump -nnnr ./relay-1-packets.pcap -v | grep "bad \w* cksum"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: "!success()"
+        with:
+          overwrite: true
+          name: ${{ matrix.test.name || matrix.test.script }}-relay-1-xdpdump
+          path: ./relay-1-packets.pcap
+
+      - name: Ensure no eBPF checksum errors on relay-2
+        if: "!cancelled() && !matrix.test.single_relay"
+        run: |
+          set -xe
+
+          docker compose exec relay-2 pkill xdpdump
+          docker compose cp relay-2:/tmp/packets.pcap ./relay-2-packets.pcap
+
+          ! tcpdump -nnnr ./relay-2-packets.pcap -v | grep "bad \w* cksum"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: "!success() && !matrix.test.single_relay"
+        with:
+          overwrite: true
+          name: ${{ matrix.test.name || matrix.test.script }}-relay-2-xdpdump
+          path: ./relay-2-packets.pcap
