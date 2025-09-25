@@ -172,7 +172,23 @@ where
     }
 }
 
-pub fn icmp_dest_unreachable(
+pub fn icmp_dest_unreachable_prohibited(original_packet: &IpPacket) -> Result<IpPacket> {
+    icmp_dest_unreachable(
+        original_packet,
+        icmpv4::DestUnreachableHeader::FilterProhibited,
+        icmpv6::DestUnreachableCode::Prohibited,
+    )
+}
+
+pub fn icmp_dest_unreachable_network(original_packet: &IpPacket) -> Result<IpPacket> {
+    icmp_dest_unreachable(
+        original_packet,
+        icmpv4::DestUnreachableHeader::Network,
+        icmpv6::DestUnreachableCode::Address,
+    )
+}
+
+fn icmp_dest_unreachable(
     original_packet: &IpPacket,
     icmpv4: icmpv4::DestUnreachableHeader,
     icmpv6: icmpv6::DestUnreachableCode,
@@ -271,12 +287,7 @@ mod tests {
         )
         .unwrap();
 
-        let icmp_error = icmp_dest_unreachable(
-            &unreachable_packet,
-            icmpv4::DestUnreachableHeader::Network,
-            icmpv6::DestUnreachableCode::Address,
-        )
-        .unwrap();
+        let icmp_error = icmp_dest_unreachable_network(&unreachable_packet).unwrap();
 
         assert_eq!(
             icmp_error.destination(),
@@ -299,12 +310,7 @@ mod tests {
         )
         .unwrap();
 
-        let icmp_error = icmp_dest_unreachable(
-            &unreachable_packet,
-            icmpv4::DestUnreachableHeader::Network,
-            icmpv6::DestUnreachableCode::Address,
-        )
-        .unwrap();
+        let icmp_error = icmp_dest_unreachable_network(&unreachable_packet).unwrap();
 
         assert_eq!(
             icmp_error.destination(),
