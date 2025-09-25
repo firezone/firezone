@@ -31,17 +31,6 @@ export function CustomerLogosGrayscale() {
           </Link>
           <Link
             className="h-16 mr-20 place-content-center"
-            href="https://bunq.com"
-          >
-            <Image
-              alt="bunq logo"
-              src="/images/logos/cust-logo-bunq-gray.svg"
-              width={80}
-              height={60}
-            />
-          </Link>
-          <Link
-            className="h-16 mr-20 place-content-center"
             href="https://wolfram.com"
           >
             <Image
@@ -100,17 +89,6 @@ export function CustomerLogosGrayscale() {
           </Link>
           <Link
             className="h-16 mr-20 place-content-center"
-            href="https://bunq.com"
-          >
-            <Image
-              alt="bunq logo"
-              src="/images/logos/cust-logo-bunq-gray.svg"
-              width={80}
-              height={60}
-            />
-          </Link>
-          <Link
-            className="h-16 mr-20 place-content-center"
             href="https://wolfram.com"
           >
             <Image
@@ -158,14 +136,6 @@ export function CustomerLogosColored() {
       </div>
       {/* Strangely, Safari has animation bugs with the default left direction */}
       <Marquee autoFill pauseOnHover direction="right">
-        <Link href="https://bunq.com" className="mx-12 flex items-center">
-          <Image
-            alt="bunq logo"
-            src="/images/logos/cust-logo-bunq.svg"
-            width={100}
-            height={60}
-          />
-        </Link>
         <Link
           href="https://caktusgroup.com"
           className="mx-12 flex items-center"
