@@ -21,8 +21,15 @@ pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
 // Process-wide storage of enabled feature flags.
 //
-// Defaults to everything off.
-static FEATURE_FLAGS: LazyLock<FeatureFlags> = LazyLock::new(FeatureFlags::default);
+// Defaults to everything off unless the env variables say otherwise.
+static FEATURE_FLAGS: LazyLock<FeatureFlags> = LazyLock::new(|| {
+    let flags = FeatureFlags::default();
+    let from_env = update_from_env(FeatureFlagsResponse::default());
+
+    flags.update(from_env, FeatureFlagPayloadsResponse::default());
+
+    flags
+});
 
 pub fn icmp_unreachable_instead_of_nat64() -> bool {
     FEATURE_FLAGS.icmp_unreachable_instead_of_nat64()
@@ -67,6 +74,8 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
         .await
         .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
         .unwrap_or_default();
+
+    let flags = update_from_env(flags);
 
     FEATURE_FLAGS.update(flags, payloads);
 
@@ -259,6 +268,39 @@ impl FeatureFlags {
         self.icmp_error_unreachable_prohibited_create_new_flow
             .load(Ordering::Relaxed)
     }
+}
+
+fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
+    FeatureFlagsResponse {
+        icmp_unreachable_instead_of_nat64: env_or(
+            "FZFF_ICMP_UNREACHABLE_INSTEAD_OF_NAT64",
+            flags.icmp_unreachable_instead_of_nat64,
+        ),
+        drop_llmnr_nxdomain_responses: env_or(
+            "FZFF_DROP_LLMNR_NXDOMAIN_RESPONSES",
+            flags.drop_llmnr_nxdomain_responses,
+        ),
+        stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
+        map_enobufs_to_wouldblock: env_or(
+            "FZFF_MAP_ENOBUFS_TO_WOULDBLOCK",
+            flags.map_enobufs_to_wouldblock,
+        ),
+        gateway_userspace_dns_a_aaaa_records: env_or(
+            "FZFF_GATEWAY_USERSPACE_DNS_A_AAAA_RECORDS",
+            flags.gateway_userspace_dns_a_aaaa_records,
+        ),
+        icmp_error_unreachable_prohibited_create_new_flow: env_or(
+            "FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW",
+            flags.icmp_error_unreachable_prohibited_create_new_flow,
+        ),
+    }
+}
+
+fn env_or(key: &str, fallback: bool) -> bool {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(fallback)
 }
 
 fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
