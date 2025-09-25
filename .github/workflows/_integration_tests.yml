@@ -177,12 +177,6 @@ jobs:
           sudo ethtool -K eth0 tx off
           sudo ethtool -K docker0 tx off
 
-          VETHS=$(ip -json link show type veth | jq -r '.[].ifname')
-
-          for dev in $VETHS; do
-            ethtool -K $dev tx off
-          done
-
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
