@@ -10,12 +10,12 @@ import Foundation
 import SystemConfiguration
 
 class SystemConfigurationResolvers {
-  enum SystemConfigurationError: Error {
+  enum SystemConfigurationError: LocalizedError {
     case failedToCreateDynamicStore(code: Int32)
     case unableToRetrieveNetworkServices(code: Int32)
     case unableToCopyValue(path: String, code: Int32)
 
-    var localizedDescription: String {
+    var errorDescription: String? {
       switch self {
       case .failedToCreateDynamicStore(let code):
         return "Failed to create dynamic store. Code: \(code)"

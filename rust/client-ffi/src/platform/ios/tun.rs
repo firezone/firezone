@@ -2,10 +2,11 @@ use firezone_telemetry::otel;
 use futures::SinkExt as _;
 use ip_packet::{IpPacket, IpPacketBuf, IpVersion};
 use libc::{AF_INET, AF_INET6, F_GETFL, F_SETFL, O_NONBLOCK, fcntl, iovec, msghdr, recvmsg};
+use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::{
     io,
-    os::fd::{AsRawFd as _, RawFd},
+    os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd},
 };
 use tokio::sync::mpsc;
 use tokio_util::sync::PollSender;
@@ -17,13 +18,19 @@ pub struct Tun {
     name: String,
     outbound_tx: PollSender<IpPacket>,
     inbound_rx: mpsc::Receiver<IpPacket>,
+    _fd: Arc<OwnedFd>, // Keep FD alive and allow safe sharing
 }
 
 impl Tun {
-    pub fn new() -> io::Result<Self> {
-        let fd = search_for_tun_fd()?;
+    /// Create a new Tun device from an existing file descriptor.
+    ///
+    /// # Safety
+    /// The file descriptor must be valid and open.
+    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
         set_non_blocking(fd)?;
         let name = name(fd)?;
+
+        tracing::debug!("Creating TUN device from fd {} ({})", fd, name);
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
@@ -43,22 +50,36 @@ impl Tun {
             ],
         ));
 
+        // Create an Arc<OwnedFd> that can be safely shared across threads
+        // SAFETY: The caller guarantees that fd is valid and open
+        // Note: The threads hold strong references to the FD, but this is OK because:
+        // 1. When Tun is dropped, the channels (outbound_rx/inbound_tx) are dropped
+        // 2. This causes tun_send/tun_recv to exit when they can't receive/send
+        // 3. When threads exit, Arc refcount goes to 0 and FD is properly closed
+        let owned_fd = Arc::new(unsafe { OwnedFd::from_raw_fd(fd) });
+        let fd_send = Arc::clone(&owned_fd);
+        let fd_recv = Arc::clone(&owned_fd);
+
         std::thread::Builder::new()
             .name("TUN send".to_owned())
             .spawn(move || {
+                tracing::debug!("TUN send thread started for fd {}", fd_send.as_raw_fd());
                 firezone_logging::unwrap_or_warn!(
-                    tun::unix::tun_send(fd, outbound_rx, write),
+                    tun::unix::tun_send(fd_send, outbound_rx, write),
                     "Failed to send to TUN device: {}"
-                )
+                );
+                tracing::error!("TUN send thread exited unexpectedly!");
             })
             .map_err(io::Error::other)?;
         std::thread::Builder::new()
             .name("TUN recv".to_owned())
             .spawn(move || {
+                tracing::debug!("TUN recv thread started for fd {}", fd_recv.as_raw_fd());
                 firezone_logging::unwrap_or_warn!(
-                    tun::unix::tun_recv(fd, inbound_tx, read),
+                    tun::unix::tun_recv(fd_recv, inbound_tx, read),
                     "Failed to recv from TUN device: {}"
-                )
+                );
+                tracing::error!("TUN recv thread exited unexpectedly!");
             })
             .map_err(io::Error::other)?;
 
@@ -66,7 +87,23 @@ impl Tun {
             name,
             outbound_tx: PollSender::new(outbound_tx),
             inbound_rx,
+            _fd: owned_fd,
         })
+    }
+
+    /// Create a new Tun device by searching for the file descriptor.
+    /// This is used when the NetworkExtension has already created the utun interface.
+    pub fn new() -> io::Result<Self> {
+        tracing::debug!("Searching for TUN file descriptor...");
+        let fd = search_for_tun_fd()?;
+        tracing::debug!("Found TUN file descriptor: {}", fd);
+
+        // Verify the FD is actually valid before using it
+        let name = name(fd)?;
+        tracing::debug!("FD {} corresponds to interface: {}", fd, name);
+
+        // SAFETY: We just obtained and verified a valid file descriptor
+        unsafe { Self::from_fd(fd) }
     }
 }
 
@@ -176,7 +213,7 @@ fn write(fd: RawFd, src: &IpPacket) -> io::Result<usize> {
         msg_flags: 0,
     };
 
-    match unsafe { libc::sendmsg(fd.as_raw_fd(), &msg_hdr, 0) } {
+    match unsafe { libc::sendmsg(fd, &msg_hdr, 0) } {
         -1 => Err(io::Error::last_os_error()),
         n => Ok(n as usize),
     }
@@ -234,8 +271,10 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
     //
     // Credit to Jason Donenfeld (@zx2c4) for this technique. See docs/NOTICE.txt for attribution.
     // https://github.com/WireGuard/wireguard-apple/blob/master/Sources/WireGuardKit/WireGuardAdapter.swift
-    for fd in 0..1024 {
-        tracing::debug!("Checking fd {}", fd);
+    const MAX_FD_SEARCH: RawFd = 1024;
+    tracing::debug!("Starting TUN FD search (checking FDs 0-{})", MAX_FD_SEARCH);
+    for fd in 0..MAX_FD_SEARCH {
+        tracing::trace!("Checking fd {}", fd);
 
         // initialize empty sockaddr_ctl to be populated by getpeername
         let mut addr = sockaddr_ctl {
@@ -268,21 +307,46 @@ fn search_for_tun_fd() -> io::Result<RawFd> {
         }
 
         if addr.sc_id == info.ctl_id {
+            tracing::debug!("Found utun control socket at fd {}", fd);
+
+            // Get the interface name to verify it's the right one
+            let interface_name = name(fd)?;
+            tracing::debug!("FD {} corresponds to interface: {}", fd, interface_name);
+
+            // Verify this is actually utun7 or the expected interface
+            if !interface_name.starts_with("utun") {
+                tracing::warn!(
+                    "FD {} is not a utun interface ({}), skipping",
+                    fd,
+                    interface_name
+                );
+                continue;
+            }
+
             set_non_blocking(fd)?;
+            tracing::debug!(
+                "Successfully configured {} (fd {}) for packet I/O",
+                interface_name,
+                fd
+            );
 
             return Ok(fd);
         }
     }
 
-    Err(get_last_error())
+    tracing::error!("Failed to find TUN file descriptor after checking all FDs");
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        "Could not find utun control socket file descriptor",
+    ))
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn search_for_tun_fd() -> io::Result<RawFd> {
-    unimplemented!("Stub")
+    unimplemented!("search_for_tun_fd is only available on macOS/iOS")
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
 fn name(_: RawFd) -> io::Result<String> {
-    unimplemented!("Stub")
+    unimplemented!("name is only available on macOS/iOS")
 }

@@ -24,6 +24,12 @@ impl MakeWriter {
     }
 }
 
+impl Default for MakeWriter {
+    fn default() -> Self {
+        Self::new("dev.firezone.firezone", "connlib")
+    }
+}
+
 impl<'l> tracing_subscriber::fmt::MakeWriter<'l> for MakeWriter {
     type Writer = Writer<'l>;
 
