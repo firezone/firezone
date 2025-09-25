@@ -101,6 +101,7 @@ jobs:
       fail-fast: false
       matrix:
         test:
+          - script: create-flow-from-icmp-error
           - script: curl-api-down
           - script: curl-api-restart
           - script: curl-ecn

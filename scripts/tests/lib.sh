@@ -33,6 +33,33 @@ function client_nslookup() {
     client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
 }
 
+function api_send_reject_access() {
+    local site_name="$1"
+    local resource_name="$2"
+
+    docker compose exec -T api bin/api rpc "
+Application.ensure_all_started(:domain)
+account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
+
+[gateway_group] = Domain.Gateways.Group.Query.not_deleted() |> Domain.Gateways.Group.Query.by_account_id(account_id) |> Domain.Gateways.Group.Query.by_name(\"$site_name\") |> Domain.Repo.all()
+[gateway_id | _] = Domain.Gateways.Presence.Group.list(gateway_group.id) |> Map.keys()
+[client_id | _] = Domain.Clients.Presence.Account.list(account_id) |> Map.keys()
+[resource] = Domain.Resources.Resource.Query.not_deleted() |> Domain.Resources.Resource.Query.by_account_id(account_id) |> Domain.Repo.all() |> Enum.filter(&(&1.name == \"$resource_name\"))
+
+# Load all flows for this resource from the database and simulate their deletion
+flows = Domain.Flows.Flow.Query.all()
+  |> Domain.Flows.Flow.Query.by_account_id(account_id)
+  |> Domain.Flows.Flow.Query.by_resource_id(resource.id)
+  |> Domain.Repo.all()
+
+# Send deletion events for all flows to trigger reject_access
+for flow <- flows do
+  change = %Domain.Changes.Change{op: :delete, old_struct: flow, lsn: System.system_time(:millisecond)}
+  Domain.PubSub.Account.broadcast(account_id, change)
+end
+"
+}
+
 function assert_equals() {
     local actual="$1"
     local expected="$2"
