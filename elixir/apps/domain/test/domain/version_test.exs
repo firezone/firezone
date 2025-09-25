@@ -1,5 +1,5 @@
 defmodule Domain.VersionTest do
-  use Domain.DataCase, async: true
+  use ExUnit.Case, async: true
 
   describe "fetch_version" do
     test "can decode linux headless-client version" do
