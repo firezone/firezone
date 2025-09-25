@@ -1,25 +1,25 @@
-Gateway Update Available!
+Gateway Upgrade Available!
 
 The latest Firezone Gateway release is: <%= @latest_version %>
 
 See what's changed: https://www.firezone.dev/changelog?tab=gateway
 
-The following list of Gateways in your Firezone Account can be updated:
+The following list of Gateways in your Firezone Account can be upgraded:
 <%= for gateway <- @gateways do %>
 <%= "- #{gateway.name} -> #{gateway.last_seen_version}" %>
 <% end %>
 
 <%= if @incompatible_client_count > 0 do %>
-Warning: <%= @incompatible_client_count %> recently connected client(s) are not compatible with the latest Gateway version. We recommend updating these clients before updating the Gateways to prevent loss of connectivity.
+Warning: <%= @incompatible_client_count %> recently connected client(s) are not compatible with the latest Gateway version. We recommend upgrading these clients before upgrading the Gateways to prevent loss of connectivity.
 
 See all outdated clients in your account: <%= @outdated_clients_url %>
 
 Read more about version compatibility: https://www.firezone.dev/kb/administer/upgrading#version-compatibility
 <% else %>
-We recommend updating the Gateways at your earliest convenience.
+We recommend upgrading the Gateways at your earliest convenience.
 <% end %>
 
-Help on how to update Gateways can be found in our Firezone Documentation:
+Help on how to upgrade Gateways can be found in our Firezone Documentation:
 https://www.firezone.dev/kb/administer/upgrading
 
 Thanks,

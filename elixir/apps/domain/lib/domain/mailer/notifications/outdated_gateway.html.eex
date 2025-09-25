@@ -19,7 +19,7 @@
     td,th,div,p,a,h1,h2,h3,h4,h5,h6 {font-family: "Segoe UI", sans-serif; mso-line-height-rule: exactly;}
   </style>
   <![endif]-->
-  <title>Firezone Gateway Update Available</title>
+  <title>Firezone Gateway Upgrade Available</title>
   <style>
     .hover-important-text-decoration-underline:hover {
       text-decoration: underline !important
@@ -48,9 +48,9 @@
 </head>
 <body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">
   <div style="display: none">
-    Firezone Gateway Update Available
+    Firezone Gateway Upgrade Available
   </div>
-  <div role="article" aria-roledescription="email" aria-label="Firezone Gateway Update Available" lang="en">
+  <div role="article" aria-roledescription="email" aria-label="Firezone Gateway Upgrade Available" lang="en">
     <div class="sm-px-4" style="background-color: #f6f6f6; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif">
       <table align="center" cellpadding="0" cellspacing="0" role="none">
         <tr>
@@ -66,7 +66,7 @@
               <tr>
                 <td class="sm-px-6" style="border-radius: 4px; background-color: #ffffff; padding: 48px; font-size: 16px; color: #4f4f4f; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05)">
                   <h1 class="sm-leading-8" style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000">
-                    Gateway Update Available!
+                    Gateway Upgrade Available!
                   </h1>
                   <p style="margin: 0; line-height: 24px">
                     The latest Firezone Gateway release is: <span style="font-weight: 600"><%= @latest_version %></span>

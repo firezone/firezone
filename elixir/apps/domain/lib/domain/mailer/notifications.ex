@@ -15,7 +15,7 @@ defmodule Domain.Mailer.Notifications do
       url(~p"/#{account.id}/clients?#{[clients_order_by: "clients:asc:last_seen_version"]}")
 
     default_email()
-    |> subject("Firezone Gateway Update Available")
+    |> subject("Firezone Gateway Upgrade Available")
     |> to(email)
     |> render_body(__MODULE__, :outdated_gateway,
       account: account,
