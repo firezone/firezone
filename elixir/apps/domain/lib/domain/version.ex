@@ -5,6 +5,11 @@ defmodule Domain.Version do
     |> Enum.find_value(fn
       "relay/" <> version -> version
       "connlib/" <> version -> version
+      "headless-client/" <> version -> version
+      "gui-client/" <> version -> version
+      "apple-client/" <> version -> version
+      "android-client/" <> version -> version
+      "gateway/" <> version -> version
       _ -> nil
     end)
     |> case do

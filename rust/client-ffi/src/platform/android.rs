@@ -8,6 +8,7 @@ mod tun;
 pub const RELEASE: &str = "connlib-android@1.5.2";
 // mark:next-android-version
 pub const VERSION: &str = "1.5.2";
+pub const COMPONENT: &str = "android-client";
 
 /// We have valid use cases for headless Android clients
 /// (IoT devices, point-of-sale devices, etc), so try to reconnect for 30 days.

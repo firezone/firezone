@@ -1,6 +1,8 @@
-pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) -> String {
-    const LIB_NAME: &str = "connlib";
-
+pub fn get_user_agent(
+    os_version_override: Option<String>,
+    component_name: &str,
+    app_version: &str,
+) -> String {
     // Note: we could switch to sys-info and get the hostname
     // but we lose the arch
     // and neither of the libraries provide the kernel version.
@@ -16,8 +18,7 @@ pub fn get_user_agent(os_version_override: Option<String>, app_version: &str) ->
 
     let os_version = os_version_override.unwrap_or(info.version().to_string());
     let additional_info = additional_info();
-    let lib_name = LIB_NAME;
-    format!("{os_type}/{os_version} {lib_name}/{app_version}{additional_info}")
+    format!("{os_type}/{os_version} {component_name}/{app_version}{additional_info}")
 }
 
 fn additional_info() -> String {
