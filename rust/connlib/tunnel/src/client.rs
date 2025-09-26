@@ -3,6 +3,7 @@ mod resource;
 
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
+use firezone_telemetry::{analytics, feature_flags};
 pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::{DnsResource, InternetResource};
@@ -183,6 +184,7 @@ impl PendingFlow {
             }
             ConnectionTrigger::UdpDnsQueryForSite(packet) => self.udp_dns_queries.push(packet),
             ConnectionTrigger::TcpDnsQueryForSite(query) => self.tcp_dns_queries.push(query),
+            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
         }
     }
 }
@@ -471,6 +473,20 @@ impl ClientState {
             packet,
             &mut self.udp_dns_sockets_by_upstream_and_query_id,
         );
+
+        if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
+            && let Ok(Some((failed_packet, error))) = packet.icmp_error()
+            && error.is_unreachable_prohibited()
+            && let Some(resource) = self.get_resource_by_destination(failed_packet.dst())
+        {
+            analytics::feature_flag_called("icmp-error-unreachable-prohibited-create-new-flow");
+
+            self.on_not_connected_resource(
+                resource,
+                ConnectionTrigger::IcmpDestinationUnreachableProhibited,
+                now,
+            );
+        }
 
         Some(packet)
     }
@@ -818,6 +834,7 @@ impl ClientState {
         use std::collections::hash_map::Entry;
 
         let trigger = trigger.into();
+        let trigger_name = trigger.name();
 
         debug_assert!(self.resources_by_id.contains_key(&rid));
 
@@ -840,7 +857,7 @@ impl ClientState {
             }
         }
 
-        tracing::debug!("Sending connection intent");
+        tracing::debug!(trigger = %trigger_name, "Sending connection intent");
 
         self.buffered_events
             .push_back(ClientEvent::ConnectionIntent {
@@ -2013,6 +2030,23 @@ enum ConnectionTrigger {
     UdpDnsQueryForSite(IpPacket),
     /// A TCP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
     TcpDnsQueryForSite(dns_over_tcp::Query),
+    /// We have received an ICMP error that is marked as "access prohibited".
+    ///
+    /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
+    IcmpDestinationUnreachableProhibited,
+}
+
+impl ConnectionTrigger {
+    fn name(&self) -> &'static str {
+        match self {
+            ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
+            ConnectionTrigger::UdpDnsQueryForSite(_) => "udp-dns-query-for-site",
+            ConnectionTrigger::TcpDnsQueryForSite(_) => "tcp-dns-query-for-site",
+            ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
+                "icmp-destination-unreachable-prohibited"
+            }
+        }
+    }
 }
 
 impl From<IpPacket> for ConnectionTrigger {
