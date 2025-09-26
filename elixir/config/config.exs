@@ -133,9 +133,13 @@ config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   token_endpoint: "https://oauth2.googleapis.com",
   finch_transport_opts: []
 
+# TODO: IdP Sync
+# Remove this when the new directory sync engine is live
 config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,
   endpoint: "https://graph.microsoft.com",
   finch_transport_opts: []
+
+config :domain, Domain.Entra.APIClient, endpoint: "https://graph.microsoft.com"
 
 config :domain, Domain.Auth.Adapters.Okta.APIClient, finch_transport_opts: []
 
