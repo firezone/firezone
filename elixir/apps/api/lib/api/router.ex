@@ -41,6 +41,8 @@ defmodule API.Router do
   scope "/", API do
     pipe_through :api
 
+    resources "/account", AccountController, only: [:show], singleton: true
+
     resources "/clients", ClientController, except: [:new, :edit, :create]
     put "/clients/:id/verify", ClientController, :verify
     put "/clients/:id/unverify", ClientController, :unverify
