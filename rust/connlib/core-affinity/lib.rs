@@ -11,6 +11,7 @@ pub enum ThreadId {
 
 const NUM_THREADS: usize = 5; // Should be equal to number of variants in `ThreadId`.
 
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub fn set_core_affinity(thread: ThreadId) {
     let Some(core_ids) = core_affinity::get_core_ids() else {
         tracing::debug!("Unable to retrieve core IDs");
@@ -35,4 +36,10 @@ pub fn set_core_affinity(thread: ThreadId) {
     }
 
     tracing::debug!(?thread, ?core, "Set core affinity");
+}
+
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn set_core_affinity(_: ThreadId) {
+    tracing::debug!("MacOS / iOS do not support setting core affinity");
+    return;
 }

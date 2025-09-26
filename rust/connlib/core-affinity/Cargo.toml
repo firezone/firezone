@@ -7,8 +7,10 @@ license = { workspace = true }
 [lib]
 path = "lib.rs"
 
-[dependencies]
+[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
 core_affinity = { workspace = true }
+
+[dependencies]
 tracing = { workspace = true }
 
 [lints]
