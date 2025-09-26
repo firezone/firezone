@@ -48,6 +48,9 @@ and configurations without risking your main machine.
 
 1. Build and run the `Firezone` target.
 
+`Firezone` target will orchestrate building `connlib` with Rust as an Xcode build phase.
+Xcode build can be triggered both from Xcode UI or via the `Makefile`.
+
 **Note**: To test the iOS app, you'll need a physical iOS device such as an
 iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
 
@@ -88,6 +91,22 @@ iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
    ```bash
    scripts/build/macos-standalone.sh
    ```
+
+## Developing
+
+The most obvious IDE choice for Firezone macOS/iOS development is XCode.
+However, if you prefer to use another IDE, you can use any LSP-compatible editor
+(such as Neovim, VSCode, Zed, Emacs etc) with `sourcekit-lsp` support.
+
+In order to configure your IDE follow these steps:
+
+```sh
+brew install xcode-build-server
+make lsp
+make build
+```
+
+Note: Although Swift and sourcekit-lsp are technically cross-platform, this method still relies on XCode to build the project.
 
 ## Debugging
 
