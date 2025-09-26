@@ -102,6 +102,7 @@ jobs:
       matrix:
         test:
           - script: create-flow-from-icmp-error
+            min_client_version: 1.5.4
           - script: curl-api-down
           - script: curl-api-restart
           - script: curl-ecn
@@ -129,6 +130,16 @@ jobs:
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check minimum client version
+        id: version_check
+        if: ${{ matrix.test.min_client_version }}
+        continue-on-error: true
+        run: |
+          ACTUAL_VERSION=$(docker run ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
+          MIN_VERSION="${{ matrix.test.min_client_version }}"
+          if [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" != "$MIN_VERSION" ]; then
+            exit 1
+          fi
       # We need at least Docker v28.1 which is not yet available on GitHub actions runners
       - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
       - name: Seed database
@@ -179,6 +190,8 @@ jobs:
           sudo ethtool -K docker0 tx off
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
+        if: ${{ steps.version_check.outcome != 'failure' }}
+
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
         run: |
