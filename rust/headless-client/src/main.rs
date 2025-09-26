@@ -327,7 +327,7 @@ fn try_main() -> Result<()> {
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let portal = PhoenixChannel::disconnected(
             Secret::new(url),
-            get_user_agent(None, env!("CARGO_PKG_VERSION")),
+            get_user_agent(None, "headless-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
             move || {

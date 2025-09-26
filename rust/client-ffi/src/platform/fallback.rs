@@ -4,6 +4,7 @@ use firezone_telemetry::Dsn;
 
 pub const RELEASE: &str = "";
 pub const VERSION: &str = "";
+pub const COMPONENT: &str = "";
 
 pub const DSN: Dsn = firezone_telemetry::TESTING;
 

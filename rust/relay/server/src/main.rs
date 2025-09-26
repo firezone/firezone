@@ -12,7 +12,7 @@ use firezone_relay::{
 };
 use firezone_telemetry::{RELAY_DSN, Telemetry};
 use futures::{FutureExt, future};
-use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel};
+use phoenix_channel::{Event, LoginUrl, NoParams, PhoenixChannel, get_user_agent};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use secrecy::{ExposeSecret, Secret, SecretString};
@@ -240,7 +240,7 @@ async fn try_main(args: Args) -> Result<()> {
 
     let mut channel = PhoenixChannel::disconnected(
         Secret::new(login),
-        format!("relay/{}", env!("CARGO_PKG_VERSION")),
+        get_user_agent(None, "relay", env!("CARGO_PKG_VERSION")),
         "relay",
         JoinMessage {
             stamp_secret: server.auth_secret().expose_secret().to_string(),
