@@ -2,6 +2,7 @@
 
 use crate::FIREZONE_MARK;
 use anyhow::{Context as _, Result, anyhow};
+use connlib_core_affinity::{ThreadId, set_core_affinity};
 use firezone_logging::err_with_src;
 use firezone_telemetry::otel;
 use futures::{SinkExt, TryStreamExt};
@@ -371,6 +372,8 @@ impl Tun {
                 let fd = fd.clone();
 
                 move || {
+                    set_core_affinity(ThreadId::TunSend);
+
                     firezone_logging::unwrap_or_warn!(
                         tun::unix::tun_send(fd, outbound_rx, write),
                         "Failed to send to TUN device: {}"
@@ -381,6 +384,8 @@ impl Tun {
         std::thread::Builder::new()
             .name("TUN recv".to_owned())
             .spawn(move || {
+                set_core_affinity(ThreadId::TunRecv);
+
                 firezone_logging::unwrap_or_warn!(
                     tun::unix::tun_recv(fd, inbound_tx, read),
                     "Failed to recv from TUN device: {}"

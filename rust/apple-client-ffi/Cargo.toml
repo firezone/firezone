@@ -14,6 +14,7 @@ doc = false
 anyhow = { workspace = true }
 backoff = { workspace = true }
 client-shared = { workspace = true }
+connlib-core-affinity = { workspace = true }
 connlib-model = { workspace = true }
 dns-types = { workspace = true }
 firezone-logging = { workspace = true }

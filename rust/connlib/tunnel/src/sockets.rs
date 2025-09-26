@@ -1,5 +1,6 @@
 use crate::otel;
 use anyhow::{Context as _, Result};
+use connlib_core_affinity::{ThreadId, set_core_affinity};
 use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
 use socket_factory::DatagramOut;
@@ -210,6 +211,11 @@ impl ThreadedUdpSocket {
         let join_handle = std::thread::Builder::new()
             .name(thread_name.clone())
             .spawn(move || {
+                match preferred_addr {
+                    SocketAddr::V4(_) => set_core_affinity(ThreadId::UdpV4),
+                    SocketAddr::V6(_) => set_core_affinity(ThreadId::UdpV6),
+                }
+
                 let runtime = match tokio::runtime::Builder::new_current_thread()
                     .enable_all()
                     .build()

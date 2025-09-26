@@ -6,6 +6,7 @@ mod udp_dns;
 use crate::{TunnelError, device_channel::Device, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, Result};
 use chrono::{DateTime, Utc};
+use connlib_core_affinity::{ThreadId, set_core_affinity};
 use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
 use gat_lending_iterator::LendingIterator;
@@ -151,6 +152,8 @@ impl Io {
     ) -> Self {
         let mut sockets = Sockets::default();
         sockets.rebind(udp_socket_factory.clone()); // Bind sockets on startup.
+
+        set_core_affinity(ThreadId::Main);
 
         Self {
             outbound_packet_buffer: VecDeque::default(),
