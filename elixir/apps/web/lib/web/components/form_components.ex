@@ -384,6 +384,133 @@ defmodule Web.FormComponents do
 
   ### Dialogs ###
 
+  @doc """
+  Renders a modal dialog.
+
+  ## Examples
+
+      <.modal id="my-modal">
+        <:title>Welcome</:title>
+        <:body>
+          This is the modal content.
+        </:body>
+        <:footer>
+          <.button phx-click="close-modal">Close</.button>
+        </:footer>
+      </.modal>
+
+      <.modal id="wizard-modal" on_back="prev-step" on_confirm="next-step">
+        <:title>Step 1</:title>
+        <:body>
+          Complete this step.
+        </:body>
+        <:back_button>Previous</:back_button>
+        <:confirm_button>Next</:confirm_button>
+      </.modal>
+  """
+  attr :id, :string, required: true, doc: "The id of the modal"
+  attr :class, :string, default: "", doc: "Custom classes to be added to the modal"
+
+  attr :on_back, :string,
+    default: nil,
+    doc: "The phx event to broadcast when back button is clicked"
+
+  attr :on_confirm, :string,
+    default: nil,
+    doc: "The phx event to broadcast when confirm button is clicked"
+
+  attr :on_close, :string,
+    default: nil,
+    doc: "The phx event to broadcast when modal is closed"
+
+  attr :confirm_style, :string, default: "primary", doc: "The style of the confirm button"
+
+  attr :confirm_type, :string,
+    default: "button",
+    doc: "The type of the confirm button (button or submit)"
+
+  attr :confirm_disabled, :boolean,
+    default: false,
+    doc: "Whether the confirm button is disabled"
+
+  attr :show, :boolean, default: false, doc: "Whether the modal is shown by default"
+
+  slot :title, doc: "The title of the modal"
+  slot :body, required: true, doc: "The content of the modal"
+  slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
+  slot :back_button, doc: "The content of the back button"
+  slot :confirm_button, doc: "The content of the confirm button"
+
+  def modal(assigns) do
+    ~H"""
+    <dialog
+      id={@id}
+      class={[
+        "backdrop:bg-gray-800/75 bg-transparent",
+        "p-4 w-full md:inset-0 max-h-full",
+        "overflow-y-auto overflow-x-hidden",
+        @class
+      ]}
+      phx-hook="Modal"
+      phx-on-close={@on_close}
+      data-show={@show}
+    >
+      <form method="dialog" class="flex items-center justify-center">
+        <div class="relative bg-white rounded-lg shadow w-full max-w-2xl">
+          <div
+            :if={@title != []}
+            class="flex items-center justify-between p-4 md:p-5 border-b rounded-t"
+          >
+            <h3 class="text-xl font-semibold text-neutral-900">
+              {render_slot(@title)}
+            </h3>
+            <button
+              class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
+              type="submit"
+              value="cancel"
+            >
+              <.icon name="hero-x-mark" class="h-4 w-4" />
+              <span class="sr-only">Close modal</span>
+            </button>
+          </div>
+          <div class="p-4 md:p-5 text-neutral-500 text-base">
+            {render_slot(@body)}
+          </div>
+          <div
+            :if={@footer != [] or @back_button != [] or @confirm_button != []}
+            class="flex items-center justify-between p-4 md:p-5 border-t border-gray-200 rounded-b gap-3"
+          >
+            <%= if @footer != [] do %>
+              {render_slot(@footer)}
+            <% else %>
+              <.button
+                :if={@back_button != []}
+                phx-click={@on_back}
+                type="button"
+                style="info"
+                class="px-5 py-2.5"
+              >
+                {render_slot(@back_button)}
+              </.button>
+              <div :if={@back_button == []}></div>
+              <.button
+                :if={@confirm_button != []}
+                phx-click={@on_confirm}
+                type={@confirm_type}
+                style={@confirm_style}
+                class="py-2.5 px-5"
+                disabled={@confirm_disabled}
+              >
+                {render_slot(@confirm_button)}
+              </.button>
+            <% end %>
+          </div>
+        </div>
+      </form>
+    </dialog>
+    """
+  end
+
   attr :id, :string, required: true, doc: "The id of the dialog"
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: "danger", doc: "The style of the button"
@@ -532,8 +659,16 @@ defmodule Web.FormComponents do
   end
 
   def button(assigns) do
+    disabled = Map.get(assigns.rest, :disabled, false)
+    style = if disabled, do: "disabled", else: assigns.style
+    assigns = assign(assigns, :computed_style, style)
+
     ~H"""
-    <button type={@type} class={button_style(@style) ++ button_size(@size) ++ [@class]} {@rest}>
+    <button
+      type={@type}
+      class={button_style(@computed_style) ++ button_size(@size) ++ [@class]}
+      {@rest}
+    >
       <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
     </button>

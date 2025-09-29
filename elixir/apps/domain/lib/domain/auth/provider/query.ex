@@ -29,6 +29,10 @@ defmodule Domain.Auth.Provider.Query do
     where(queryable, [providers: providers], providers.adapter not in ^adapters)
   end
 
+  def by_adapter(queryable, {:in, adapters}) do
+    where(queryable, [providers: providers], providers.adapter in ^adapters)
+  end
+
   def by_adapter(queryable, adapter) do
     where(queryable, [providers: providers], providers.adapter == ^adapter)
   end

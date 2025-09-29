@@ -1,17 +1,18 @@
 defmodule Web.Endpoint do
   use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :web
-  import Web.Auth
 
   if Application.compile_env(:domain, :sql_sandbox) do
     plug Phoenix.Ecto.SQL.Sandbox
-    plug Web.Sandbox
+    plug Web.Plugs.AllowEctoSandbox
   end
 
   plug Plug.RewriteOn, [:x_forwarded_host, :x_forwarded_port, :x_forwarded_proto]
   plug Plug.MethodOverride
-  plug :put_hsts_header
-  plug Web.Plugs.SecureHeaders
+
+  # Security Headers
+  plug Web.Plugs.PutSTSHeader
+  plug Web.Plugs.PutCSPHeader
 
   plug RemoteIp,
     headers: ["x-forwarded-for"],
@@ -40,6 +41,18 @@ defmodule Web.Endpoint do
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :domain
   end
 
+  plug Plug.Parsers,
+    parsers: [:urlencoded, :multipart, :json],
+    pass: ["*/*"],
+    json_decoder: Phoenix.json_library()
+
+  plug Web.Plugs.FetchUserAgent
+  # TODO: IDP REFACTOR
+  # This can be removed once all accounts are migrated
+  plug Web.Session
+  plug Web.Router
+  plug Sentry.PlugContext
+
   socket "/live", Phoenix.LiveView.Socket,
     websocket: [
       connect_info: [
@@ -48,39 +61,13 @@ defmodule Web.Endpoint do
         :peer_data,
         :x_headers,
         :uri,
+
+        # TODO: IDP REFACTOR
+        # This can be removed once all accounts are migrated since we're passing token via query param
         session: {Web.Session, :options, []}
       ]
     ],
     longpoll: false
-
-  plug Plug.Parsers,
-    parsers: [:urlencoded, :multipart, :json],
-    pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
-
-  plug :fetch_user_agent
-
-  plug Web.Session
-
-  plug Web.Router
-
-  plug Sentry.PlugContext
-
-  def put_hsts_header(conn, _opts) do
-    scheme =
-      config(:url, [])
-      |> Keyword.get(:scheme)
-
-    if scheme == "https" do
-      put_resp_header(
-        conn,
-        "strict-transport-security",
-        "max-age=63072000; includeSubDomains; preload"
-      )
-    else
-      conn
-    end
-  end
 
   def real_ip_opts do
     [

@@ -56,7 +56,14 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     actor_groups
     actors
     auth_identities
+    legacy_auth_providers
     auth_providers
+    google_auth_providers
+    entra_auth_providers
+    okta_auth_providers
+    oidc_auth_providers
+    email_otp_auth_providers
+    userpass_auth_providers
     clients
     gateway_groups
     gateways
@@ -127,6 +134,32 @@ config :domain, Domain.Telemetry, metrics_reporter: nil, healthz_port: 4000
 config :domain, Domain.Analytics,
   mixpanel_token: nil,
   hubspot_workspace_id: nil
+
+config :domain, Domain.Google.AuthProvider,
+  # Should match an external OAuth2 client in Google Cloud Console
+  client_id: "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com",
+  client_secret: System.get_env("GOOGLE_OIDC_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email profile",
+  discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
+config :domain, Domain.Okta.AuthProvider,
+  # Should match an external OAuth2 client in Okta
+  response_type: "code",
+  scope: "openid email profile"
+
+config :domain, Domain.Entra.AuthProvider,
+  # Should match an external OAuth2 client in Azure
+  client_id: "d0b74799-63b8-4c10-8255-1c03c48a3029",
+  client_secret: System.get_env("ENTRA_OIDC_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email profile",
+  discovery_document_uri:
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
+
+config :domain, Domain.OIDC.AuthProvider,
+  response_type: "code",
+  scope: "openid email profile"
 
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
@@ -243,7 +276,7 @@ config :web,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
-config :web, Web.Plugs.SecureHeaders,
+config :web, Web.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
     "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com",

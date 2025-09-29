@@ -261,7 +261,7 @@ defmodule Web.NavigationComponents do
       <ol class="inline-flex items-center space-x-1 md:space-x-2">
         <li class="inline-flex items-center">
           <.link
-            navigate={if @account, do: ~p"/#{@account}", else: @home_path}
+            navigate={if @account, do: ~p"/#{@account}/sites", else: @home_path}
             class="inline-flex items-center text-neutral-700 hover:text-neutral-900"
           >
             <.icon name="hero-home-solid" class="w-3.5 h-3.5 mr-2" /> Home

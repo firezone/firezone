@@ -1,7 +1,7 @@
-defmodule Web.Nav do
+defmodule Web.LiveHooks.SetActiveSidebarItem do
   use Web, :verified_routes
 
-  def on_mount(:set_active_sidebar_item, _params, _session, socket) do
+  def on_mount(:default, _params, _session, socket) do
     {:cont,
      Phoenix.LiveView.attach_hook(socket, :current_path, :handle_params, &set_current_path/3)}
   end

@@ -94,7 +94,9 @@ defmodule Domain.Auth.Adapters.UserPass do
     |> Identity.Query.by_id(identity.id)
     |> Repo.fetch_and_update(Identity.Query,
       with: fn identity ->
-        password_hash = identity.provider_state["password_hash"]
+        # TODO: IDP REFACTOR
+        # This can be updated to just use identity.password_hash after all accounts are migrated
+        password_hash = identity.password_hash || identity.provider_state["password_hash"]
 
         cond do
           is_nil(password_hash) ->

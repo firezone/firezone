@@ -99,6 +99,25 @@
 </.sidebar>
 
 <main class="lg:ml-64 h-auto pt-14">
+  <.flash
+    :if={
+      not Domain.Migrator.migrated?(@account) and
+        not String.ends_with?(@current_path, "/settings/identity_providers")
+    }
+    kind={:warning}
+    class="m-1"
+  >
+    Your account needs to be migrated to the new authentication system.
+    Please
+    <.link
+      class={link_style()}
+      href={~p"/#{@account}/settings/identity_providers"}
+    >
+      go to Identity Providers settings
+    </.link>
+    to migrate now.
+  </.flash>
+
   <.flash :if={@account.warning} kind={:warning} class="m-1">
     {@account.warning}.
     <span :if={Domain.Billing.account_provisioned?(@account)}>

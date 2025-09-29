@@ -48,6 +48,9 @@ config :domain, Oban,
   engine: Oban.Engines.Basic,
   repo: Domain.Repo
 
+config :domain, Domain.Okta.AuthProvider,
+  redirect_uri: "https://localhost:13443/auth/oidc/callback"
+
 ###############################
 ##### Web #####################
 ###############################

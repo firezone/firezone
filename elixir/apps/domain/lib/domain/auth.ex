@@ -435,7 +435,9 @@ defmodule Domain.Auth do
     Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
     |> Repo.insert(
-      conflict_target: {:unsafe_fragment, "(account_id, provider_id, provider_identifier)"},
+      conflict_target:
+        {:unsafe_fragment,
+         "(account_id, provider_id, provider_identifier) WHERE provider_id IS NOT NULL"},
       on_conflict: {:replace, [:provider_state]},
       returning: true
     )
@@ -831,7 +833,6 @@ defmodule Domain.Auth do
   end
 
   def email_regex do
-    # Regex to check if string is in the shape of an email
-    ~r/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z0-9]+$/
+    ~r/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
   end
 end

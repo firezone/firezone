@@ -23,14 +23,14 @@ defmodule Domain.RepoTest do
       assert {:ok, account} =
                fetch(queryable, query_module,
                  preload: [
-                   :auth_providers,
+                   :legacy_auth_providers,
                    policies: [],
                    actors: [identities: :provider],
                    clients: [:online?, :actor]
                  ]
                )
 
-      assert Ecto.assoc_loaded?(account.auth_providers)
+      assert Ecto.assoc_loaded?(account.legacy_auth_providers)
 
       assert Ecto.assoc_loaded?(account.policies)
 
@@ -164,14 +164,14 @@ defmodule Domain.RepoTest do
                fetch_and_update(queryable, query_module,
                  with: changeset_cb,
                  preload: [
-                   :auth_providers,
+                   :legacy_auth_providers,
                    policies: [],
                    actors: [identities: :provider],
                    clients: [:online?, :actor]
                  ]
                )
 
-      assert Ecto.assoc_loaded?(updated_account.auth_providers)
+      assert Ecto.assoc_loaded?(updated_account.legacy_auth_providers)
 
       assert Ecto.assoc_loaded?(updated_account.policies)
 
@@ -248,7 +248,7 @@ defmodule Domain.RepoTest do
       assert {:ok, accounts, _metadata} =
                list(queryable, query_module,
                  preload: [
-                   :auth_providers,
+                   :legacy_auth_providers,
                    policies: [],
                    actors: [identities: :provider],
                    clients: [:online?, :actor]
@@ -256,7 +256,7 @@ defmodule Domain.RepoTest do
                )
 
       for account <- accounts do
-        assert Ecto.assoc_loaded?(account.auth_providers)
+        assert Ecto.assoc_loaded?(account.legacy_auth_providers)
 
         assert Ecto.assoc_loaded?(account.policies)
 

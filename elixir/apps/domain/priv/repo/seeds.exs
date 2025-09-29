@@ -377,6 +377,96 @@ defmodule Domain.Repo.Seeds do
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
 
+    # {:ok, _google_directory} =
+    #   Google.create_directory(
+    #     %{name: "Google", issuer: "https://accounts.google.com", hosted_domain: "firezone.dev"},
+    #     admin_subject
+    #   )
+    #
+    # {:ok, _google_identity} =
+    #   Identities.create_identity(
+    #     admin_actor,
+    #     %{
+    #       "name" => "Firezone Admin",
+    #       "idp_id" => "CHANGE_ME",
+    #       "issuer" => "https://accounts.google.com"
+    #     }
+    #   )
+    #
+    # {:ok, _google_auth_provider} =
+    #   Google.create_auth_provider(
+    #     %{
+    #       name: "Google",
+    #       issuer: "https://accounts.google.com",
+    #       hosted_domain: "firezone.dev"
+    #     },
+    #     admin_subject
+    #   )
+    #
+    # {:ok, _entra_directory} =
+    #   Entra.create_directory(
+    #     %{
+    #       name: "Entra",
+    #       issuer: "https://login.microsoftonline.com/CHANGE_ME/v2.0",
+    #       tenant_id: "CHANGE_ME"
+    #     },
+    #     admin_subject
+    #   )
+    #
+    # {:ok, _entra_identity} =
+    #   Identities.create_identity(
+    #     admin_actor,
+    #     %{
+    #       "name" => "Firezone Admin",
+    #       "idp_id" => "CHANGE_ME",
+    #       "issuer" => "https://login.microsoftonline.com/CHANGE_ME/v2.0"
+    #     }
+    #   )
+    #
+    # {:ok, _entra_auth_provider} =
+    #   Entra.create_auth_provider(
+    #     %{
+    #       name: "Entra",
+    #       issuer: "https://login.microsoftonline.com/CHANGE_ME/v2.0",
+    #       tenant_id: "CHANGE_ME"
+    #     },
+    #     admin_subject
+    #   )
+    #
+    # {:ok, _okta_directory} =
+    #   Domain.Okta.create_directory(
+    #     %{
+    #       name: "Okta",
+    #       org_domain: "CHANGE_ME",
+    #       issuer: "https://CHANGE_ME.okta.com/oauth2/default",
+    #       client_id: "SERVICE_APP_CLIENT_ID",
+    #       client_secret: "SERVICE_APP_CLIENT_SECRET"
+    #     },
+    #     admin_subject
+    #   )
+    #
+    # {:ok, _okta_identity} =
+    #   Identities.create_identity(
+    #     admin_actor,
+    #     %{
+    #       "name" => "Firezone Admin",
+    #       "idp_id" => "CHANGE_ME",
+    #       "issuer" => "https://CHANGE_ME.okta.com/oauth2/default"
+    #     }
+    #   )
+    #
+    # {:ok, _okta_auth_provider} =
+    #   Domain.Okta.create_auth_provider(
+    #     %{
+    #       name: "Okta",
+    #       issuer: "https://CHANGE_ME.okta.com/oauth2/default",
+    #       org_domain: "CHANGE_ME",
+    #       client_id: "CHANGE_ME",
+    #       client_secret: "CHANGE_ME"
+    #     },
+    #     admin_subject
+    #   )
+
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(
         service_account_actor,

@@ -278,21 +278,44 @@ defmodule Domain.Geo do
     @radius_of_earth_km * c
   end
 
+  def location_from_headers(headers) do
+    region = get_header(headers, "x-geo-location-region")
+    city = get_header(headers, "x-geo-location-city")
+
+    coords =
+      case get_header(headers, "x-geo-location-coordinates") do
+        nil ->
+          {nil, nil}
+
+        coords ->
+          [lat, lon] = String.split(coords, ",", parts: 2)
+          {String.to_float(lat), String.to_float(lon)}
+      end
+
+    {region, city, maybe_put_default_coordinates(region, coords)}
+  end
+
   defp degrees_to_radians(deg) do
     deg * :math.pi() / 180
   end
 
-  def maybe_put_default_coordinates(country_code, {nil, nil}) do
+  defp maybe_put_default_coordinates(country_code, {nil, nil}) do
     with {:ok, country} <- Map.fetch(@countries, country_code),
-         {:ok, {lat, lon}} <- Map.fetch(country, :coordinates) do
-      {lat, lon}
+         {:ok, coords} <- Map.fetch(country, :coordinates) do
+      coords
     else
-      _other -> {nil, nil}
+      :error -> {nil, nil}
     end
   end
 
-  def maybe_put_default_coordinates(_country_code, {lat, lon}) do
-    {lat, lon}
+  defp maybe_put_default_coordinates(_country_code, coords), do: coords
+
+  defp get_header(headers, key) do
+    case List.keyfind(headers, key, 0) do
+      {^key, ""} -> nil
+      {^key, value} -> value
+      _other -> nil
+    end
   end
 
   def all_country_codes! do

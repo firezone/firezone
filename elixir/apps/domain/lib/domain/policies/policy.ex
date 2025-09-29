@@ -24,11 +24,9 @@ defmodule Domain.Policies.Policy do
     belongs_to :resource, Domain.Resources.Resource
     belongs_to :account, Domain.Accounts.Account
 
-    field :created_by, Ecto.Enum, values: ~w[actor identity]a
-    field :created_by_subject, :map
-
     field :disabled_at, :utc_datetime_usec
 
+    subject_trail(~w[actor identity]a)
     timestamps()
   end
 end

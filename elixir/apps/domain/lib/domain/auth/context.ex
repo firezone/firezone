@@ -23,4 +23,20 @@ defmodule Domain.Auth.Context do
             remote_ip_location_lat: nil,
             remote_ip_location_lon: nil,
             user_agent: nil
+
+  alias Domain.Geo
+
+  def build(remote_ip, user_agent, headers, type) do
+    {region, city, {lat, lon}} = Geo.location_from_headers(headers)
+
+    %__MODULE__{
+      type: type,
+      user_agent: user_agent,
+      remote_ip: remote_ip,
+      remote_ip_location_region: region,
+      remote_ip_location_city: city,
+      remote_ip_location_lat: lat,
+      remote_ip_location_lon: lon
+    }
+  end
 end

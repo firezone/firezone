@@ -1,15 +1,11 @@
-defmodule Web.Plugs.SecureHeaders do
+defmodule Web.Plugs.PutCSPHeader do
   @behaviour Plug
 
+  @impl true
   def init(opts), do: opts
 
+  @impl true
   def call(%Plug.Conn{} = conn, _opts) do
-    conn
-    |> put_csp_nonce_and_header()
-    |> maybe_put_sts_header()
-  end
-
-  defp put_csp_nonce_and_header(conn) do
     csp_nonce = Domain.Crypto.random_token(8)
 
     policy =
@@ -24,21 +20,5 @@ defmodule Web.Plugs.SecureHeaders do
     |> Phoenix.Controller.put_secure_browser_headers(%{
       "content-security-policy" => Enum.join(policy, "; ")
     })
-  end
-
-  defp maybe_put_sts_header(conn) do
-    scheme =
-      conn.private.phoenix_endpoint.config(:url, [])
-      |> Keyword.get(:scheme)
-
-    if scheme == "https" do
-      Plug.Conn.put_resp_header(
-        conn,
-        "strict-transport-security",
-        "max-age=63072000; includeSubDomains; preload"
-      )
-    else
-      conn
-    end
   end
 end

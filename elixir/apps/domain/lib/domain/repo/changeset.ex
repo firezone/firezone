@@ -228,6 +228,43 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
+  def normalize_email(%Ecto.Changeset{} = changeset, field) do
+    update_change(changeset, field, fn
+      nil ->
+        nil
+
+      email when is_binary(email) ->
+        [local, domain] = String.split(email, "@", parts: 2)
+
+        # 1. Trim and downcase domain
+        local = String.trim(local)
+        domain = String.trim(domain) |> String.downcase()
+
+        # 2. Convert internationalized domains to punycode
+        case try_encode_domain(domain) do
+          {:ok, punycode_domain} ->
+            local <> "@" <> to_string(punycode_domain)
+
+          _error ->
+            add_error(changeset, field, "has an invalid domain")
+            email
+        end
+
+      other ->
+        other
+    end)
+  end
+
+  defp try_encode_domain(domain) do
+    charlist = String.to_charlist(domain)
+
+    try do
+      {:ok, :idna.encode(charlist, :uts46) |> to_string()}
+    catch
+      error -> error
+    end
+  end
+
   def validate_email(%Ecto.Changeset{} = changeset, field) do
     changeset
     |> validate_format(field, Domain.Auth.email_regex(), message: "is an invalid email address")
