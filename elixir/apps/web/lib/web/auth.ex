@@ -317,7 +317,9 @@ defmodule Web.Auth do
   def fetch_subject(%Plug.Conn{} = conn, _opts) do
     params = take_sign_in_params(conn.params)
     context_type = fetch_auth_context_type!(params)
-    context = get_auth_context(conn, context_type)
+    user_agent = conn.assigns[:user_agent]
+    remote_ip = conn.remote_ip
+    context = Domain.Auth.get_auth_context(remote_ip, user_agent, conn.req_headers, context_type)
 
     if account = Map.get(conn.assigns, :account) do
       sessions = Plug.Conn.get_session(conn, :sessions, [])
@@ -349,100 +351,6 @@ defmodule Web.Auth do
       {_context_type, _account_id, encoded_fragment} -> {:ok, encoded_fragment}
       _ -> :error
     end
-  end
-
-  def get_auth_context(%Plug.Conn{} = conn, type) do
-    {location_region, location_city, {location_lat, location_lon}} =
-      get_load_balancer_ip_location(conn)
-
-    %Auth.Context{
-      type: type,
-      user_agent: Map.get(conn.assigns, :user_agent),
-      remote_ip: conn.remote_ip,
-      remote_ip_location_region: location_region,
-      remote_ip_location_city: location_city,
-      remote_ip_location_lat: location_lat,
-      remote_ip_location_lon: location_lon
-    }
-  end
-
-  defp get_load_balancer_ip_location(%Plug.Conn{} = conn) do
-    location_region =
-      case Plug.Conn.get_req_header(conn, "x-geo-location-region") do
-        ["" | _] -> nil
-        [location_region | _] -> location_region
-        [] -> nil
-      end
-
-    location_city =
-      case Plug.Conn.get_req_header(conn, "x-geo-location-city") do
-        ["" | _] -> nil
-        [location_city | _] -> location_city
-        [] -> nil
-      end
-
-    {location_lat, location_lon} =
-      case Plug.Conn.get_req_header(conn, "x-geo-location-coordinates") do
-        ["" | _] ->
-          {nil, nil}
-
-        ["," | _] ->
-          {nil, nil}
-
-        [coordinates | _] ->
-          [lat, lon] = String.split(coordinates, ",", parts: 2)
-          lat = String.to_float(lat)
-          lon = String.to_float(lon)
-          {lat, lon}
-
-        [] ->
-          {nil, nil}
-      end
-
-    {location_lat, location_lon} =
-      Domain.Geo.maybe_put_default_coordinates(location_region, {location_lat, location_lon})
-
-    {location_region, location_city, {location_lat, location_lon}}
-  end
-
-  defp get_load_balancer_ip_location(x_headers) do
-    location_region =
-      case get_socket_header(x_headers, "x-geo-location-region") do
-        {"x-geo-location-region", ""} -> nil
-        {"x-geo-location-region", location_region} -> location_region
-        _other -> nil
-      end
-
-    location_city =
-      case get_socket_header(x_headers, "x-geo-location-city") do
-        {"x-geo-location-city", ""} -> nil
-        {"x-geo-location-city", location_city} -> location_city
-        _other -> nil
-      end
-
-    {location_lat, location_lon} =
-      case get_socket_header(x_headers, "x-geo-location-coordinates") do
-        {"x-geo-location-coordinates", ""} ->
-          {nil, nil}
-
-        {"x-geo-location-coordinates", coordinates} ->
-          [lat, lon] = String.split(coordinates, ",", parts: 2)
-          lat = String.to_float(lat)
-          lon = String.to_float(lon)
-          {lat, lon}
-
-        _other ->
-          {nil, nil}
-      end
-
-    {location_lat, location_lon} =
-      Domain.Geo.maybe_put_default_coordinates(location_region, {location_lat, location_lon})
-
-    {location_region, location_city, {location_lat, location_lon}}
-  end
-
-  defp get_socket_header(x_headers, key) do
-    List.keyfind(x_headers, key, 0)
   end
 
   @doc """
@@ -628,20 +536,7 @@ defmodule Web.Auth do
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
       real_ip = real_ip(socket)
       x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers) || []
-
-      {location_region, location_city, {location_lat, location_lon}} =
-        get_load_balancer_ip_location(x_headers)
-
-      context = %Auth.Context{
-        type: context_type,
-        user_agent: user_agent,
-        remote_ip: real_ip,
-        remote_ip_location_region: location_region,
-        remote_ip_location_city: location_city,
-        remote_ip_location_lat: location_lat,
-        remote_ip_location_lon: location_lon
-      }
-
+      context = Domain.Auth.get_auth_context(real_ip, user_agent, x_headers, context_type)
       sessions = session["sessions"] || []
 
       with account when not is_nil(account) <- Map.get(socket.assigns, :account),

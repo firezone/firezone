@@ -31,6 +31,9 @@ defmodule Domain.Config.Definitions do
   alias Domain.Config.Dumper
   alias Domain.Types
 
+  @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
+  @entra_oidc_client_id "d0b74799-63b8-4c10-8255-1c03c48a3029"
+
   if Mix.env() in [:test, :dev] do
     @local_development_adapters [Swoosh.Adapters.Local]
   else
@@ -497,6 +500,8 @@ defmodule Domain.Config.Definitions do
   It will affect on which auth providers can be created per an account but will not disable
   already active providers when setting is changed.
   """
+  # TODO: IdP refactor
+  # Remove google / okta / entra / jumpcloud
   defconfig(
     :auth_provider_adapters,
     {:array, ",", Ecto.ParameterizedType.init(Ecto.Enum, values: ~w[
@@ -521,6 +526,17 @@ defmodule Domain.Config.Definitions do
       token
     ]a
   )
+
+  ##############################################
+  ## Google / Entra / Okta authentication
+  ##############################################
+
+  defconfig(:google_oidc_client_id, :string, default: @google_oidc_client_id)
+  defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
+  defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
+  defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
+
+  # Okta uses a per-tenant client_id/secret
 
   ##############################################
   ## Telemetry
