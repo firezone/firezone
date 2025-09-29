@@ -4,6 +4,7 @@ import App from "./components/App";
 import { BrowserRouter } from "react-router";
 import { createTheme, ThemeProvider } from "flowbite-react";
 import * as Sentry from "@sentry/react";
+import { ThemeInit } from "../.flowbite-react/init";
 
 const customTheme = createTheme({
   sidebar: {
@@ -58,6 +59,7 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement, {
   <StrictMode>
     <BrowserRouter>
       <ThemeProvider theme={customTheme}>
+        <ThemeInit />
         <App />
       </ThemeProvider>
     </BrowserRouter>
