@@ -402,6 +402,18 @@ defmodule Domain.Auth do
     end
   end
 
+  def fetch_identity_for_sign_in(
+        %Accounts.Account{} = account,
+        provider_kind,
+        provider_identifier
+      ) do
+    Identity.Query.not_deleted()
+    |> Identity.Query.by_account_id(account.id)
+    |> Identity.Query.by_kind(provider_kind)
+    |> Identity.Query.by_provider_identifier(provider_identifier)
+    |> Repo.fetch(Identity.Query, preload: :actor)
+  end
+
   # TODO: can be replaced with peek for consistency
   def fetch_identities_count_grouped_by_provider_id(%Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do
@@ -654,6 +666,8 @@ defmodule Domain.Auth do
     {:error, :unauthorized}
   end
 
+  # TODO: IdP sync
+  # Remove this after all customers have migrated to the new sync / auth flow
   def sign_in(%Provider{} = provider, token_nonce, payload, %Context{} = context) do
     with {:ok, identity, expires_at} <- Adapters.verify_and_update_identity(provider, payload),
          identity = Repo.preload(identity, :actor),

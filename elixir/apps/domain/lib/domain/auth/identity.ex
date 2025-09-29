@@ -7,8 +7,13 @@ defmodule Domain.Auth.Identity do
 
     field :email, :string
     field :provider_identifier, :string
+
+    # TODO: IdP sync
+    # Remove these field after all customers have migrated to the new sync
     field :provider_state, :map, redact: true
     field :provider_virtual_state, :map, virtual: true, redact: true
+
+    field :kind, :string
 
     field :last_seen_user_agent, :string
     field :last_seen_remote_ip, Domain.Types.IP

@@ -128,6 +128,15 @@ config :domain, Domain.Analytics,
   mixpanel_token: nil,
   hubspot_workspace_id: nil
 
+config :domain, Domain.Google.OIDCProvider,
+  # Should match an external OAuth2 client in Google Cloud Console
+  client_id: "1089352316583-hb01caep30rk7k5ko44pcjvlvfgbb9jg.apps.googleusercontent.com",
+  client_secret: System.get_env("GOOGLE_OIDC_CLIENT_SECRET"),
+  redirect_uri: "http://localhost:13000/auth/oidc/callback",
+  response_type: "code",
+  scope: "openid email profile",
+  discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
   token_endpoint: "https://oauth2.googleapis.com",

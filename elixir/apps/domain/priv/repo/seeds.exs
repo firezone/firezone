@@ -7,6 +7,7 @@ defmodule Domain.Repo.Seeds do
     Accounts,
     Auth,
     Actors,
+    Google,
     Relays,
     Gateways,
     Resources,
@@ -376,6 +377,9 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
+
+    {:ok, _google_oidc_provider} =
+      Google.create_oidc_provider(%{hosted_domain: "firez.one"}, admin_subject)
 
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(

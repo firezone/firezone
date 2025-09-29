@@ -126,8 +126,10 @@ config :api, API.Endpoint,
 ##### Third-party configs #####
 ###############################
 
-# Do not include metadata nor timestamps in development logs
-config :logger, :default_formatter, format: "[$level] $message\n"
+# Include extra logger attributes in development logs
+config :logger, :default_formatter,
+  format: "[$level] $message $metadata\n",
+  metadata: :all
 
 # Disable caching for OpenAPI spec to ensure it is refreshed
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache

@@ -128,6 +128,16 @@ if config_env() == :prod do
 
   config :domain, web_external_url: env_var_to_config!(:web_external_url)
 
+  config :domain, Domain.Google.Authn,
+    client_id: env_var_to_config!(:google_oidc_client_id),
+    client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  # config :domain, Domain.Entra.Auth,
+  #   client_id: env_var_to_config!(:microsoft_entra_oidc_client_id),
+  #   client_secret: env_var_to_config!(:microsoft_entra_oidc_client_secret)
+
+  # Okta uses per-tenant client ID and secret
+
   # Enable background jobs only on dedicated nodes
   config :domain, Domain.Tokens.Jobs.DeleteExpiredTokens,
     enabled: env_var_to_config!(:background_jobs_enabled)
