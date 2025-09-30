@@ -21,8 +21,15 @@ pub(crate) const RE_EVAL_DURATION: Duration = Duration::from_secs(5 * 60);
 
 // Process-wide storage of enabled feature flags.
 //
-// Defaults to everything off.
-static FEATURE_FLAGS: LazyLock<FeatureFlags> = LazyLock::new(FeatureFlags::default);
+// Defaults to everything off unless the env variables say otherwise.
+static FEATURE_FLAGS: LazyLock<FeatureFlags> = LazyLock::new(|| {
+    let flags = FeatureFlags::default();
+    let from_env = update_from_env(FeatureFlagsResponse::default());
+
+    flags.update(from_env, FeatureFlagPayloadsResponse::default());
+
+    flags
+});
 
 pub fn icmp_unreachable_instead_of_nat64() -> bool {
     FEATURE_FLAGS.icmp_unreachable_instead_of_nat64()
@@ -44,6 +51,10 @@ pub fn gateway_userspace_dns_a_aaaa_records() -> bool {
     FEATURE_FLAGS.gateway_userspace_dns_a_aaaa_records()
 }
 
+pub fn icmp_error_unreachable_prohibited_create_new_flow() -> bool {
+    FEATURE_FLAGS.icmp_error_unreachable_prohibited_create_new_flow()
+}
+
 pub fn export_metrics() -> bool {
     false // Placeholder until we actually deploy an OTEL collector.
 }
@@ -63,6 +74,8 @@ pub(crate) async fn evaluate_now(user_id: String, env: Env) {
         .await
         .inspect_err(|e| tracing::debug!("Failed to evaluate feature flags: {e:#}"))
         .unwrap_or_default();
+
+    let flags = update_from_env(flags);
 
     FEATURE_FLAGS.update(flags, payloads);
 
@@ -166,6 +179,8 @@ struct FeatureFlagsResponse {
     map_enobufs_to_wouldblock: bool,
     #[serde(default)]
     gateway_userspace_dns_a_aaaa_records: bool,
+    #[serde(default)]
+    icmp_error_unreachable_prohibited_create_new_flow: bool,
 }
 
 #[derive(Debug, Deserialize, Default, Clone)]
@@ -182,6 +197,7 @@ struct FeatureFlags {
     stream_logs: RwLock<LogFilter>,
     map_enobufs_to_wouldblock: AtomicBool,
     gateway_userspace_dns_a_aaaa_records: AtomicBool,
+    icmp_error_unreachable_prohibited_create_new_flow: AtomicBool,
 }
 
 /// Accessors to the actual feature flags.
@@ -199,6 +215,7 @@ impl FeatureFlags {
             stream_logs,
             map_enobufs_to_wouldblock,
             gateway_userspace_dns_a_aaaa_records,
+            icmp_error_unreachable_prohibited_create_new_flow,
         }: FeatureFlagsResponse,
         payloads: FeatureFlagPayloadsResponse,
     ) {
@@ -210,6 +227,11 @@ impl FeatureFlags {
             .store(map_enobufs_to_wouldblock, Ordering::Relaxed);
         self.gateway_userspace_dns_a_aaaa_records
             .store(gateway_userspace_dns_a_aaaa_records, Ordering::Relaxed);
+        self.icmp_error_unreachable_prohibited_create_new_flow
+            .store(
+                icmp_error_unreachable_prohibited_create_new_flow,
+                Ordering::Relaxed,
+            );
 
         let log_filter = if stream_logs {
             LogFilter::parse(payloads.stream_logs)
@@ -241,6 +263,44 @@ impl FeatureFlags {
         self.gateway_userspace_dns_a_aaaa_records
             .load(Ordering::Relaxed)
     }
+
+    fn icmp_error_unreachable_prohibited_create_new_flow(&self) -> bool {
+        self.icmp_error_unreachable_prohibited_create_new_flow
+            .load(Ordering::Relaxed)
+    }
+}
+
+fn update_from_env(flags: FeatureFlagsResponse) -> FeatureFlagsResponse {
+    FeatureFlagsResponse {
+        icmp_unreachable_instead_of_nat64: env_or(
+            "FZFF_ICMP_UNREACHABLE_INSTEAD_OF_NAT64",
+            flags.icmp_unreachable_instead_of_nat64,
+        ),
+        drop_llmnr_nxdomain_responses: env_or(
+            "FZFF_DROP_LLMNR_NXDOMAIN_RESPONSES",
+            flags.drop_llmnr_nxdomain_responses,
+        ),
+        stream_logs: env_or("FZFF_stream_logs", flags.stream_logs),
+        map_enobufs_to_wouldblock: env_or(
+            "FZFF_MAP_ENOBUFS_TO_WOULDBLOCK",
+            flags.map_enobufs_to_wouldblock,
+        ),
+        gateway_userspace_dns_a_aaaa_records: env_or(
+            "FZFF_GATEWAY_USERSPACE_DNS_A_AAAA_RECORDS",
+            flags.gateway_userspace_dns_a_aaaa_records,
+        ),
+        icmp_error_unreachable_prohibited_create_new_flow: env_or(
+            "FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW",
+            flags.icmp_error_unreachable_prohibited_create_new_flow,
+        ),
+    }
+}
+
+fn env_or(key: &str, fallback: bool) -> bool {
+    std::env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(fallback)
 }
 
 fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context {
@@ -252,6 +312,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         StreamLogs { result: bool },
         MapENOBUFSToWouldBlock { result: bool },
         GatewayUserspaceDnsAAaaaRecords { result: bool },
+        IcmpErrorUnreachableProhibitedCreateNewFlow { result: bool },
     }
 
     // Exhaustive destruction so we don't forget to update this when we add a flag.
@@ -261,6 +322,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
         stream_logs,
         map_enobufs_to_wouldblock,
         gateway_userspace_dns_a_aaaa_records,
+        icmp_error_unreachable_prohibited_create_new_flow,
     } = flags;
 
     let value = serde_json::json!({
@@ -272,6 +334,7 @@ fn sentry_flag_context(flags: FeatureFlagsResponse) -> sentry::protocol::Context
             SentryFlag::StreamLogs { result: stream_logs },
             SentryFlag::MapENOBUFSToWouldBlock { result: map_enobufs_to_wouldblock },
             SentryFlag::GatewayUserspaceDnsAAaaaRecords { result: gateway_userspace_dns_a_aaaa_records },
+            SentryFlag::IcmpErrorUnreachableProhibitedCreateNewFlow { result: icmp_error_unreachable_prohibited_create_new_flow },
         ]
     });
 

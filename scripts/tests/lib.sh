@@ -33,6 +33,23 @@ function client_nslookup() {
     client timeout 30 sh -c "nslookup $1 | tee >(cat 1>&2) | tail -n +4"
 }
 
+function api_send_reject_access() {
+    local site_name="$1"
+    local resource_name="$2"
+
+    docker compose exec -T api bin/api rpc "
+Application.ensure_all_started(:domain)
+account_id = \"c89bcc8c-9392-4dae-a40d-888aef6d28e0\"
+
+[gateway_group] = Domain.Gateways.Group.Query.not_deleted() |> Domain.Gateways.Group.Query.by_account_id(account_id) |> Domain.Gateways.Group.Query.by_name(\"$site_name\") |> Domain.Repo.all()
+[gateway_id | _] = Domain.Gateways.Presence.Group.list(gateway_group.id) |> Map.keys()
+[client_id | _] = Domain.Clients.Presence.Account.list(account_id) |> Map.keys()
+[resource] = Domain.Resources.Resource.Query.not_deleted() |> Domain.Resources.Resource.Query.by_account_id(account_id) |> Domain.Repo.all() |> Enum.filter(&(&1.name == \"$resource_name\"))
+
+Domain.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, client_id, resource.id})
+"
+}
+
 function assert_equals() {
     local actual="$1"
     local expected="$2"
@@ -68,4 +85,14 @@ function create_token_file {
     # Also put it in `token.txt` for backwards compat, until pull #4666 merges and is
     # cut into a release.
     sudo cp "$TOKEN_PATH" "$TOKEN_PATH.txt"
+}
+
+# Expects a command to fail (non-zero exit code)
+# Usage: expect_error your_command arg1 arg2
+function expect_error() {
+    if "$@"; then
+        return 1
+    else
+        return 0
+    fi
 }

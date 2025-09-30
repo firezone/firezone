@@ -343,11 +343,7 @@ impl ClientOnGateway {
         if let Err(e) = self.ensure_allowed_src_and_dst(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             return Ok(TranslateOutboundResult::Filtered(
-                ip_packet::make::icmp_dest_unreachable(
-                    &packet,
-                    ip_packet::icmpv4::DestUnreachableHeader::FilterProhibited,
-                    ip_packet::icmpv6::DestUnreachableCode::Prohibited,
-                )?,
+                ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
             ));
         }
 
@@ -421,11 +417,7 @@ impl ClientOnGateway {
             tracing::debug!(%dst, "No translation entry");
 
             return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dest_unreachable(
-                    &packet,
-                    ip_packet::icmpv4::DestUnreachableHeader::Network,
-                    ip_packet::icmpv6::DestUnreachableCode::Address,
-                )?,
+                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         };
 
@@ -437,11 +429,7 @@ impl ClientOnGateway {
             );
 
             return Ok(TranslateOutboundResult::DestinationUnreachable(
-                ip_packet::make::icmp_dest_unreachable(
-                    &packet,
-                    ip_packet::icmpv4::DestUnreachableHeader::Network,
-                    ip_packet::icmpv6::DestUnreachableCode::Address,
-                )?,
+                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
             ));
         }
 

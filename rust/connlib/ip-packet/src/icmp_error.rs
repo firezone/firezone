@@ -46,6 +46,17 @@ impl IcmpError {
             IcmpError::V6TimeExceeded(code) => Ok(Icmpv6Type::TimeExceeded(code)),
         }
     }
+
+    pub fn is_unreachable_prohibited(&self) -> bool {
+        use IcmpError::*;
+        use icmpv4::DestUnreachableHeader::*;
+        use icmpv6::DestUnreachableCode::*;
+
+        matches!(
+            self,
+            V4Unreachable(FilterProhibited) | V6Unreachable(Prohibited)
+        )
+    }
 }
 
 /// A packet that failed to route to its destination, extracted from the payload of an ICMP/ICMP6 error message.
