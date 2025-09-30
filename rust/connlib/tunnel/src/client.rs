@@ -24,7 +24,7 @@ use connlib_model::{Site, SiteId};
 use firezone_logging::{err_with_src, unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
+use ip_packet::{IpPacket, IpPacketBuf, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::ClientEvent;
@@ -388,9 +388,25 @@ impl ClientState {
     /// In that case, this function will return `None` and you should call [`ClientState::handle_timeout`] next to fully advance the internal state.
     pub(crate) fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        packet: IpPacketBuf,
         now: Instant,
     ) -> Option<snownet::Transmit> {
+        let packet = match IpPacket::new(packet) {
+            Ok(p) => p,
+            Err(e) => match e.downcast::<ip_packet::Fragmented>() {
+                Ok(ip_packet::Fragmented { response }) => {
+                    self.buffered_packets.push_back(response);
+
+                    return None;
+                }
+                Err(e) => {
+                    tracing::debug!("Failed to parse IP packet: {e:#}");
+
+                    return None;
+                }
+            },
+        };
+
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }

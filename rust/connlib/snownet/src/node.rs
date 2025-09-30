@@ -2424,9 +2424,10 @@ where
             // In our API, we parse the packets directly as an IpPacket.
             // Thus, the caller can query whatever data they'd like, not just the source IP so we don't return it in addition.
             TunnResult::WriteToTunnelV4(packet, ip) => {
-                let packet_len = packet.len();
+                let len = packet.len();
+                ip_packet.set_len(len);
 
-                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
+                match IpPacket::new(ip_packet).context("Failed to parse IP packet") {
                     Ok(p) => {
                         debug_assert_eq!(p.source(), IpAddr::V4(ip));
 
@@ -2436,9 +2437,10 @@ where
                 }
             }
             TunnResult::WriteToTunnelV6(packet, ip) => {
-                let packet_len = packet.len();
+                let len = packet.len();
+                ip_packet.set_len(len);
 
-                match IpPacket::new(ip_packet, packet_len).context("Failed to parse IP packet") {
+                match IpPacket::new(ip_packet).context("Failed to parse IP packet") {
                     Ok(p) => {
                         debug_assert_eq!(p.source(), IpAddr::V6(ip));
 

@@ -8,7 +8,7 @@ use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
-use ip_packet::{FzP2pControlSlice, IpPacket};
+use ip_packet::{FzP2pControlSlice, IpPacket, IpPacketBuf};
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -39,6 +39,7 @@ pub struct GatewayState {
 
     buffered_events: VecDeque<GatewayEvent>,
     buffered_transmits: VecDeque<Transmit>,
+    buffered_packets: VecDeque<IpPacket>,
 }
 
 #[derive(Debug)]
@@ -66,6 +67,7 @@ impl GatewayState {
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
+            buffered_packets: VecDeque::default(),
             tun_ip_config: None,
         }
     }
@@ -89,9 +91,21 @@ impl GatewayState {
     /// Handles packets received on the TUN device.
     pub(crate) fn handle_tun_input(
         &mut self,
-        packet: IpPacket,
+        packet: IpPacketBuf,
         now: Instant,
     ) -> Result<Option<snownet::Transmit>> {
+        let packet = match IpPacket::new(packet) {
+            Ok(p) => p,
+            Err(e) => match e.downcast::<ip_packet::Fragmented>() {
+                Ok(ip_packet::Fragmented { response }) => {
+                    self.buffered_packets.push_back(response);
+
+                    return Ok(None);
+                }
+                Err(e) => return Err(e),
+            },
+        };
+
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -499,6 +513,10 @@ impl GatewayState {
         }
 
         None
+    }
+
+    pub(crate) fn poll_packets(&mut self) -> Option<IpPacket> {
+        self.buffered_packets.pop_front()
     }
 
     pub fn update_relays(

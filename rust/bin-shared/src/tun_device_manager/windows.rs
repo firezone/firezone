@@ -343,7 +343,7 @@ impl tun::Tun for Tun {
     fn poll_recv_many(
         &mut self,
         cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
+        buf: &mut Vec<IpPacketBuf>,
         max: usize,
     ) -> Poll<usize> {
         self.state
@@ -443,7 +443,7 @@ fn start_send_thread(
 }
 
 fn start_recv_thread(
-    packet_tx: mpsc::Sender<IpPacket>,
+    packet_tx: mpsc::Sender<IpPacketBuf>,
     session: Weak<wintun::Session>,
 ) -> io::Result<std::thread::JoinHandle<()>> {
     std::thread::Builder::new()
@@ -482,21 +482,14 @@ fn start_recv_thread(
                 }
 
                 dst[..src.len()].copy_from_slice(src);
-
-                let pkt = match IpPacket::new(ip_packet_buf, src.len()) {
-                    Ok(pkt) => pkt,
-                    Err(e) => {
-                        tracing::debug!("Failed to parse IP packet: {e:#}");
-                        continue;
-                    }
-                };
+                ip_packet_buf.set_len(src.len());
 
                 // Use `blocking_send` so that if connlib is behind by a few packets,
                 // Wintun will queue up new packets in its ring buffer while we
                 // wait for our MPSC channel to clear.
                 // Unfortunately we don't know if Wintun is dropping packets, since
                 // it doesn't expose a sequence number or anything.
-                match packet_tx.blocking_send(pkt) {
+                match packet_tx.blocking_send(ip_packet_buf) {
                     Ok(()) => {}
                     Err(_) => {
                         tracing::debug!(

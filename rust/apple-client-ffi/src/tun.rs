@@ -16,7 +16,7 @@ const QUEUE_SIZE: usize = 10_000;
 pub struct Tun {
     name: String,
     outbound_tx: PollSender<IpPacket>,
-    inbound_rx: mpsc::Receiver<IpPacket>,
+    inbound_rx: mpsc::Receiver<IpPacketBuf>,
 }
 
 impl Tun {
@@ -92,7 +92,7 @@ impl tun::Tun for Tun {
     fn poll_recv_many(
         &mut self,
         cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
+        buf: &mut Vec<IpPacketBuf>,
         max: usize,
     ) -> Poll<usize> {
         self.inbound_rx.poll_recv_many(cx, buf, max)

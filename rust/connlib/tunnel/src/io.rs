@@ -10,7 +10,7 @@ use futures::FutureExt as _;
 use futures_bounded::FuturesTupleSet;
 use gat_lending_iterator::LendingIterator;
 use gso_queue::GsoQueue;
-use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
+use ip_packet::{Ecn, IpPacket, IpPacketBuf, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
@@ -72,7 +72,7 @@ struct DnsQueryMetaData {
 }
 
 pub(crate) struct Buffers {
-    ip: Vec<IpPacket>,
+    ip: Vec<IpPacketBuf>,
 }
 
 impl Default for Buffers {
@@ -204,7 +204,7 @@ impl Io {
         buffers: &'b mut Buffers,
     ) -> Poll<
         Input<
-            impl Iterator<Item = IpPacket> + use<'b>,
+            impl Iterator<Item = IpPacketBuf> + use<'b>,
             impl for<'a> LendingIterator<Item<'a> = DatagramIn<'a>> + use<>,
         >,
     > {
@@ -233,9 +233,12 @@ impl Io {
             .map(|num_packets| {
                 let num_ipv4 = buffers.ip[..num_packets]
                     .iter()
-                    .filter(|p| p.ipv4_header().is_some())
+                    .filter(|p| p.is_ipv4())
                     .count();
-                let num_ipv6 = num_packets - num_ipv4;
+                let num_ipv6 = buffers.ip[..num_packets]
+                    .iter()
+                    .filter(|p| p.is_ipv6())
+                    .count();
 
                 self.packet_counter.add(
                     num_ipv4 as u64,

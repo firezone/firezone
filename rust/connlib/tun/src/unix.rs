@@ -39,7 +39,7 @@ where
 
 pub fn tun_recv<T>(
     fd: T,
-    inbound_tx: mpsc::Sender<IpPacket>,
+    inbound_tx: mpsc::Sender<IpPacketBuf>,
     read: impl Fn(i32, &mut IpPacketBuf) -> std::result::Result<usize, io::Error>,
 ) -> Result<()>
 where
@@ -63,10 +63,9 @@ where
                             return Ok(None);
                         }
 
-                        let packet = IpPacket::new(ip_packet_buf, len)
-                            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
+                        ip_packet_buf.set_len(len);
 
-                        Ok(Some(packet))
+                        Ok(Some(ip_packet_buf))
                     })
                     .await;
 

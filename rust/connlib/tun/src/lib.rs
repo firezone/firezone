@@ -3,7 +3,7 @@ use std::{
     task::{Context, Poll},
 };
 
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, IpPacketBuf};
 
 #[cfg(target_family = "unix")]
 pub mod ioctl;
@@ -20,7 +20,7 @@ pub trait Tun: Send + Sync + 'static {
     fn poll_recv_many(
         &mut self,
         cx: &mut Context,
-        buf: &mut Vec<IpPacket>,
+        buf: &mut Vec<IpPacketBuf>,
         max: usize,
     ) -> Poll<usize>;
 

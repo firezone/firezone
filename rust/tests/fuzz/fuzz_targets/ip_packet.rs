@@ -14,8 +14,9 @@ fuzz_target!(|input: Input| {
     let mut buf = IpPacketBuf::new();
     let len = input.data.len();
     buf.buf()[..len].copy_from_slice(&input.data[..len]);
+    buf.set_len(len);
 
-    if let Ok(mut packet) = IpPacket::new(buf, len) {
+    if let Ok(mut packet) = IpPacket::new(buf) {
         test_all_getters(&packet);
 
         for action in input.setters {

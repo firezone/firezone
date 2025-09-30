@@ -2,7 +2,7 @@
 
 use crate::{IpPacket, IpPacketBuf, MAX_IP_SIZE};
 use anyhow::{Context as _, Result, bail};
-use etherparse::{Icmpv6Header, Ipv6Header, PacketBuilder, icmpv4, icmpv6};
+use etherparse::{Icmpv6Header, Ipv4Header, Ipv6Header, PacketBuilder, icmpv4, icmpv6};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 /// Helper macro to turn a [`PacketBuilder`] into an [`IpPacket`].
@@ -13,12 +13,13 @@ macro_rules! build {
 
         let size = $packet.size($payload.len());
         let mut ip = $crate::IpPacketBuf::new();
+        ip.set_len(size);
 
         $packet
             .write(&mut std::io::Cursor::new(ip.buf()), &$payload)
             .with_context(|| format!("Payload is too big; len={size}"))?;
 
-        let packet = IpPacket::new(ip, size).context("Failed to create IP packet")?;
+        let packet = IpPacket::new(ip).context("Failed to create IP packet")?;
 
         ::anyhow::Ok(packet)
     }};
@@ -34,9 +35,9 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
         crate::fz_p2p_control::ADDR.octets(),
         0,
     );
-    let packet_size = builder.size(ip_payload_size);
 
     let mut packet_buf = IpPacketBuf::new();
+    packet_buf.set_len(builder.size(ip_payload_size));
 
     let mut payload_buf = vec![0u8; 8 + control_payload.len()];
     payload_buf[..8].copy_from_slice(&header);
@@ -51,7 +52,7 @@ pub fn fz_p2p_control(header: [u8; 8], control_payload: &[u8]) -> Result<IpPacke
         .with_context(|| {
             format!("Buffer should be big enough; ip_payload_size={ip_payload_size}")
         })?;
-    let ip_packet = IpPacket::new(packet_buf, packet_size).context("Unable to create IP packet")?;
+    let ip_packet = IpPacket::new(packet_buf).context("Unable to create IP packet")?;
 
     Ok(ip_packet)
 }
@@ -182,11 +183,33 @@ pub fn icmp_dest_unreachable(
 
     let icmp_error = match (src, dst) {
         (IpAddr::V4(src), IpAddr::V4(dst)) => {
-            icmpv4_unreachable(dst, src, original_packet, icmpv4)?
+            icmpv4_unreachable(dst, src, original_packet.packet(), icmpv4)?
         }
         (IpAddr::V6(src), IpAddr::V6(dst)) => {
-            icmpv6_unreachable(dst, src, original_packet, icmpv6)?
+            icmpv6_unreachable(dst, src, original_packet.packet(), icmpv6)?
         }
+        (IpAddr::V4(_), IpAddr::V6(_)) => {
+            bail!("Invalid IP packet: Inconsistent IP address versions")
+        }
+        (IpAddr::V6(_), IpAddr::V4(_)) => {
+            bail!("Invalid IP packet: Inconsistent IP address versions")
+        }
+    };
+
+    Ok(icmp_error)
+}
+
+pub fn icmp_too_big(src: IpAddr, dst: IpAddr, original_packet: &[u8]) -> Result<IpPacket> {
+    let icmp_error = match (src, dst) {
+        (IpAddr::V4(src), IpAddr::V4(dst)) => icmpv4_unreachable(
+            dst,
+            src,
+            original_packet,
+            icmpv4::DestUnreachableHeader::FragmentationNeeded {
+                next_hop_mtu: crate::MAX_IP_SIZE as u16 - 80,
+            },
+        )?,
+        (IpAddr::V6(src), IpAddr::V6(dst)) => icmpv6_packet_too_big(src, dst, original_packet)?,
         (IpAddr::V4(_), IpAddr::V6(_)) => {
             bail!("Invalid IP packet: Inconsistent IP address versions")
         }
@@ -201,21 +224,18 @@ pub fn icmp_dest_unreachable(
 fn icmpv4_unreachable(
     src: Ipv4Addr,
     dst: Ipv4Addr,
-    original_packet: &IpPacket,
+    original_packet: &[u8],
     code: icmpv4::DestUnreachableHeader,
 ) -> Result<IpPacket, anyhow::Error> {
     let builder = PacketBuilder::ipv4(src.octets(), dst.octets(), 20)
         .icmpv4(crate::Icmpv4Type::DestinationUnreachable(code));
-    let payload = original_packet.packet();
 
-    let header_len = original_packet
-        .ipv4_header()
-        .context("Not an IPv4 packet")?
-        .header_len();
+    let (header, _) = Ipv4Header::from_slice(original_packet).context("Not an IPv4 packet")?;
+    let header_len = header.header_len();
     let icmp_error_payload_len = header_len + 8;
 
-    let actual_payload_len = std::cmp::min(payload.len(), icmp_error_payload_len);
-    let error_payload = &payload[..actual_payload_len];
+    let actual_payload_len = std::cmp::min(original_packet.len(), icmp_error_payload_len);
+    let error_payload = &original_packet[..actual_payload_len];
 
     let ip_packet = crate::build!(builder, error_payload)?;
 
@@ -225,17 +245,37 @@ fn icmpv4_unreachable(
 fn icmpv6_unreachable(
     src: Ipv6Addr,
     dst: Ipv6Addr,
-    original_packet: &IpPacket,
+    original_packet: &[u8],
     code: icmpv6::DestUnreachableCode,
 ) -> Result<IpPacket, anyhow::Error> {
     const MAX_ICMP_ERROR_PAYLOAD_LEN: usize = MAX_IP_SIZE - Ipv6Header::LEN - Icmpv6Header::MAX_LEN;
 
     let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20)
         .icmpv6(crate::Icmpv6Type::DestinationUnreachable(code));
-    let payload = original_packet.packet();
 
-    let actual_payload_len = std::cmp::min(payload.len(), MAX_ICMP_ERROR_PAYLOAD_LEN);
-    let error_payload = &payload[..actual_payload_len];
+    let actual_payload_len = std::cmp::min(original_packet.len(), MAX_ICMP_ERROR_PAYLOAD_LEN);
+    let error_payload = &original_packet[..actual_payload_len];
+
+    let ip_packet = crate::build!(builder, error_payload)?;
+
+    Ok(ip_packet)
+}
+
+fn icmpv6_packet_too_big(
+    src: Ipv6Addr,
+    dst: Ipv6Addr,
+    original_packet: &[u8],
+) -> Result<IpPacket, anyhow::Error> {
+    const MAX_ICMP_ERROR_PAYLOAD_LEN: usize = MAX_IP_SIZE - Ipv6Header::LEN - Icmpv6Header::MAX_LEN;
+
+    let builder = PacketBuilder::ipv6(src.octets(), dst.octets(), 20).icmpv6(
+        crate::Icmpv6Type::PacketTooBig {
+            mtu: crate::MAX_IP_SIZE as u32 - 80,
+        },
+    );
+
+    let actual_payload_len = std::cmp::min(original_packet.len(), MAX_ICMP_ERROR_PAYLOAD_LEN);
+    let error_payload = &original_packet[..actual_payload_len];
 
     let ip_packet = crate::build!(builder, error_payload)?;
 

@@ -102,12 +102,14 @@ pub enum Layer4Protocol {
 /// A buffer for reading a new [`IpPacket`] from the network.
 pub struct IpPacketBuf {
     inner: Buffer<Vec<u8>>,
+    len: usize,
 }
 
 impl Default for IpPacketBuf {
     fn default() -> Self {
         Self {
             inner: BUFFER_POOL.pull(),
+            len: 0,
         }
     }
 }
@@ -119,6 +121,18 @@ impl IpPacketBuf {
 
     pub fn buf(&mut self) -> &mut [u8] {
         &mut self.inner
+    }
+
+    pub fn set_len(&mut self, len: usize) {
+        self.len = len;
+    }
+
+    pub fn is_ipv4(&self) -> bool {
+        Ipv4HeaderSlice::from_slice(&self.inner).is_ok()
+    }
+
+    pub fn is_ipv6(&self) -> bool {
+        Ipv6HeaderSlice::from_slice(&self.inner).is_ok()
     }
 }
 
@@ -199,7 +213,9 @@ impl std::fmt::Debug for IpPacket {
 }
 
 impl IpPacket {
-    pub fn new(buf: IpPacketBuf, len: usize) -> Result<Self> {
+    pub fn new(buf: IpPacketBuf) -> Result<Self> {
+        let len = buf.len;
+
         anyhow::ensure!(len <= MAX_IP_SIZE, "Packet too large (len: {len})");
         anyhow::ensure!(len <= buf.inner.len(), "Length exceeds buffer size");
 
@@ -207,6 +223,13 @@ impl IpPacket {
 
         let src_ip = ip.source_addr();
         let dst_ip = ip.destination_addr();
+
+        anyhow::ensure!(
+            !ip.is_fragmenting_payload(),
+            Fragmented {
+                response: crate::make::icmp_too_big(src_ip, dst_ip, &buf.inner[..len])?,
+            }
+        );
 
         // Validate the packet contents
         match ip.payload_ip_number() {
@@ -955,6 +978,12 @@ fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol
         }
     };
     Ok(proto)
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Packet is fragmented")]
+pub struct Fragmented {
+    pub response: IpPacket,
 }
 
 #[derive(Debug, thiserror::Error)]

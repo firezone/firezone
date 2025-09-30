@@ -72,8 +72,9 @@ impl smoltcp::phy::TxToken for SmolTxToken<'_> {
 
         let mut ip_packet_buf = IpPacketBuf::new();
         let result = f(ip_packet_buf.buf());
+        ip_packet_buf.set_len(len);
 
-        let mut ip_packet = match IpPacket::new(ip_packet_buf, len) {
+        let mut ip_packet = match IpPacket::new(ip_packet_buf) {
             Ok(p) => p,
             Err(e) => {
                 tracing::warn!("Received invalid IP packet: {e:#}");

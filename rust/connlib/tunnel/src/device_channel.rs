@@ -1,4 +1,4 @@
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, IpPacketBuf};
 use std::io;
 use std::task::{Context, Poll, Waker};
 use tun::Tun;
@@ -29,7 +29,7 @@ impl Device {
     pub(crate) fn poll_read_many(
         &mut self,
         cx: &mut Context<'_>,
-        buf: &mut Vec<IpPacket>,
+        buf: &mut Vec<IpPacketBuf>,
         max: usize,
     ) -> Poll<usize> {
         let Some(tun) = self.tun.as_mut() else {

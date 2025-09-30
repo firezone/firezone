@@ -12,7 +12,7 @@ use firezone_telemetry::{
 };
 use firezone_tunnel::GatewayTunnel;
 use hickory_resolver::config::ResolveHosts;
-use ip_packet::IpPacket;
+use ip_packet::{IpPacket, IpPacketBuf};
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::LoginUrl;
@@ -384,7 +384,7 @@ impl Tun for ValidateChecksumAdapter {
     fn poll_recv_many(
         &mut self,
         cx: &mut std::task::Context,
-        buf: &mut Vec<IpPacket>,
+        buf: &mut Vec<IpPacketBuf>,
         max: usize,
     ) -> std::task::Poll<usize> {
         self.inner.poll_recv_many(cx, buf, max)

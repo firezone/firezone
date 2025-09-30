@@ -10,6 +10,7 @@ use anyhow::{Context as _, Result};
 use dns_types::{ResponseBuilder, ResponseCode};
 use firezone_bin_shared::TunDeviceManager;
 use ip_network::Ipv4Network;
+use ip_packet::IpPacket;
 use tokio::task::JoinSet;
 use tun::Tun;
 
@@ -117,9 +118,10 @@ impl Eventloop {
                 continue;
             }
 
-            let mut buf = Vec::with_capacity(1);
-            ready!(self.tun.poll_recv_many(cx, &mut buf, 1));
-            let ip_packet = buf.remove(0);
+            let mut bufs = Vec::with_capacity(1);
+            ready!(self.tun.poll_recv_many(cx, &mut bufs, 1));
+            let ip_packet_buf = bufs.remove(0);
+            let ip_packet = IpPacket::new(ip_packet_buf).unwrap();
 
             if self.dns_server.accepts(&ip_packet) {
                 self.dns_server.handle_inbound(ip_packet);
