@@ -351,6 +351,15 @@ defmodule API.Gateway.Channel do
     end
   end
 
+  # Helper to directly send reject_access in integration tests
+  def handle_info(
+        {{:reject_access, gateway_id}, client_id, resource_id},
+        %{assigns: %{gateway: %{id: gateway_id}}} = socket
+      ) do
+    push(socket, "reject_access", %{client_id: client_id, resource_id: resource_id})
+    {:noreply, socket}
+  end
+
   # Catch-all for messages we don't handle
   def handle_info(_message, socket), do: {:noreply, socket}
 

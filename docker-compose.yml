@@ -176,6 +176,7 @@ services:
       RUST_LOG: ${RUST_LOG:-wire=trace,debug}
       FIREZONE_API_URL: ws://api:8081
       FIREZONE_ID: EFC7A9E3-3576-4633-B633-7D47BA9E14AC
+      FZFF_ICMP_ERROR_UNREACHABLE_PROHIBITED_CREATE_NEW_FLOW: true
     command:
       - sh
       - -c
