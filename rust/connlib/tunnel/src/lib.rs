@@ -222,10 +222,6 @@ impl ClientTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        if packet.is_fz_p2p_control() {
-                            tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
-                        }
-
                         match self.role_state.handle_tun_input(packet, now) {
                             Some(transmit) => {
                                 self.io.send_network(
@@ -402,10 +398,6 @@ impl GatewayTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        if packet.is_fz_p2p_control() {
-                            tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
-                        }
-
                         match self.role_state.handle_tun_input(packet, now) {
                             Ok(Some(transmit)) => {
                                 self.io.send_network(
