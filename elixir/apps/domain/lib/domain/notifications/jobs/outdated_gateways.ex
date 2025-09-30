@@ -8,7 +8,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   require OpenTelemetry.Tracer
 
   alias Domain.Actors
-  alias Domain.{Accounts, Gateways, Mailer}
+  alias Domain.{Accounts, Clients, Gateways, Mailer}
 
   @impl true
   if Mix.env() == :prod do
@@ -24,11 +24,15 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   end
 
   defp run_check do
+    latest_version = Domain.ComponentVersions.gateway_version()
+
     Accounts.all_accounts_pending_notification!()
     |> Enum.each(fn account ->
+      incompatible_client_count = Clients.count_incompatible_for(account, latest_version)
+
       all_online_gateways_for_account(account)
       |> Enum.filter(&Gateways.gateway_outdated?/1)
-      |> send_notifications(account)
+      |> send_notifications(account, incompatible_client_count)
     end)
   end
 
@@ -42,14 +46,14 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
     |> Enum.flat_map(&Map.get(gateways_by_id, &1))
   end
 
-  defp send_notifications([], _account) do
+  defp send_notifications([], _account, _incompatible_client_count) do
     Logger.debug("No outdated gateways for account")
   end
 
-  defp send_notifications(gateways, account) do
+  defp send_notifications(gateways, account, incompatible_client_count) do
     Domain.Actors.all_admins_for_account!(account, preload: :identities)
     |> Enum.flat_map(&list_emails_for_actor/1)
-    |> Enum.each(&send_email(account, gateways, &1))
+    |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1))
 
     Domain.Accounts.update_account(account, %{
       config: %{
@@ -68,8 +72,13 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
     |> Enum.uniq()
   end
 
-  defp send_email(account, gateways, email) do
-    Mailer.Notifications.outdated_gateway_email(account, gateways, email)
+  defp send_email(account, gateways, incompatible_client_count, email) do
+    Mailer.Notifications.outdated_gateway_email(
+      account,
+      gateways,
+      incompatible_client_count,
+      email
+    )
     |> Mailer.deliver_with_rate_limit()
   end
 

@@ -78,6 +78,50 @@ defmodule Web.Clients.Components do
     end
   end
 
+  @doc """
+  Renders a version badge with the current version and icon based on whether the component is outdated.
+  """
+  attr :current, :string, required: true
+  attr :latest, :string
+
+  def version(assigns) do
+    assigns =
+      assign(assigns, outdated?: not is_nil(assigns.latest) and assigns.current != assigns.latest)
+
+    ~H"""
+    <span class="flex items-center">
+      <.popover>
+        <:target>
+          {# icon viewbox is ever so slightly off, hence the top adjustment}
+          <.icon
+            :if={@outdated?}
+            name="hero-arrow-up-circle"
+            class="relative top-[-0.5px] h-4 w-4 text-orange-500 mr-1"
+          />
+          <.icon
+            :if={not @outdated?}
+            name="hero-check-circle"
+            class="relative top-[-0.5px] h-4 w-4 text-green-500 mr-1"
+          />
+        </:target>
+        <:content>
+          <p :if={not @outdated?}>
+            This component is up to date.
+          </p>
+          <p :if={@outdated?}>
+            A newer version
+            <.website_link path="/changelog">{@latest}</.website_link>
+            is available.
+          </p>
+        </:content>
+      </.popover>
+      <span>
+        {@current}
+      </span>
+    </span>
+    """
+  end
+
   # This is more complex than it needs to be, but
   # connlib can send "Mac OS" (with a space) violating the User-Agent spec
   defp get_client_os_name_and_version(user_agent) do
