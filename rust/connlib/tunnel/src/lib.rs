@@ -14,7 +14,6 @@ use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
