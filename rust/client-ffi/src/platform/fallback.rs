@@ -57,7 +57,7 @@ impl tun::Tun for Tun {
     fn poll_recv_many(
         &mut self,
         _: &mut std::task::Context,
-        _: &mut Vec<ip_packet::IpPacket>,
+        _: &mut Vec<ip_packet::IpPacketBuf>,
         _: usize,
     ) -> std::task::Poll<usize> {
         todo!()
