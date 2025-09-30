@@ -2,7 +2,7 @@ defmodule Web.Clients.Show do
   use Web, :live_view
   import Web.Policies.Components
   import Web.Clients.Components
-  alias Domain.{Clients, Flows}
+  alias Domain.{Clients, ComponentVersions, Flows}
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, client} <-
@@ -144,7 +144,12 @@ defmodule Web.Clients.Show do
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>Version</:label>
-            <:value>{@client.last_seen_version}</:value>
+            <:value>
+              <.version
+                current={@client.last_seen_version}
+                latest={ComponentVersions.client_version(@client)}
+              />
+            </:value>
           </.vertical_table_row>
           <.vertical_table_row>
             <:label>User agent</:label>

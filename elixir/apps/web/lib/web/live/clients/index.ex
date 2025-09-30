@@ -2,7 +2,7 @@ defmodule Web.Clients.Index do
   use Web, :live_view
   import Web.Actors.Components
   import Web.Clients.Components
-  alias Domain.Clients
+  alias Domain.{Clients, ComponentVersions}
 
   def mount(_params, _session, socket) do
     if connected?(socket) do
@@ -16,6 +16,7 @@ defmodule Web.Clients.Index do
         query_module: Clients.Client.Query,
         sortable_fields: [
           {:clients, :name},
+          {:clients, :last_seen_version},
           {:clients, :last_seen_at},
           {:clients, :inserted_at},
           {:clients, :last_seen_user_agent}
@@ -99,6 +100,12 @@ defmodule Web.Clients.Index do
             <.link navigate={~p"/#{@account}/actors/#{client.actor.id}"} class={[link_style()]}>
               <.actor_name_and_role account={@account} actor={client.actor} />
             </.link>
+          </:col>
+          <:col :let={client} field={{:clients, :last_seen_version}} label="version">
+            <.version
+              current={client.last_seen_version}
+              latest={ComponentVersions.client_version(client)}
+            />
           </:col>
           <:col :let={client} label="status">
             <.connection_status schema={client} />

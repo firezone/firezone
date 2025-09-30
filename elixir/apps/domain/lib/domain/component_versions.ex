@@ -1,5 +1,5 @@
 defmodule Domain.ComponentVersions do
-  alias Domain.ComponentVersions
+  alias Domain.{Actors.Actor, Clients.Client, ComponentVersions}
   use Supervisor
   require Logger
 
@@ -32,6 +32,12 @@ defmodule Domain.ComponentVersions do
 
   def gateway_version do
     ComponentVersions.component_version(:gateway)
+  end
+
+  def client_version(%Client{} = client) do
+    client
+    |> get_component_type()
+    |> component_version()
   end
 
   def component_version(component) do
@@ -85,4 +91,14 @@ defmodule Domain.ComponentVersions do
         |> Keyword.fetch!(:versions)
     end
   end
+
+  defp get_component_type(%Client{last_seen_user_agent: "Mac OS" <> _rest}), do: :apple
+  defp get_component_type(%Client{last_seen_user_agent: "iOS" <> _rest}), do: :apple
+
+  defp get_component_type(%Client{last_seen_user_agent: "Android" <> _rest}),
+    do: :android
+
+  defp get_component_type(%Client{actor: %Actor{type: :service_account}}), do: :headless
+
+  defp get_component_type(_), do: :gui
 end

@@ -93,6 +93,7 @@ defmodule Web.Live.Clients.IndexTest do
     |> render()
     |> table_to_map()
     |> with_table_row("name", online_client.name, fn row ->
+      assert row["version"] =~ "1.3.0"
       assert row["status"] == "Online"
       name = Repo.preload(online_client, :actor).actor.name
       assert row["user"] =~ name
@@ -101,6 +102,7 @@ defmodule Web.Live.Clients.IndexTest do
       assert row["created"]
     end)
     |> with_table_row("name", offline_client.name, fn row ->
+      assert row["version"] =~ "1.3.0"
       assert row["status"] == "Offline"
       name = Repo.preload(offline_client, :actor).actor.name
       assert row["user"] =~ name

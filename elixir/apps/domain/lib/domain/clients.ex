@@ -39,6 +39,15 @@ defmodule Domain.Clients do
     |> Repo.aggregate(:count)
   end
 
+  def count_incompatible_for(account, gateway_version) do
+    Client.Query.not_deleted()
+    |> Client.Query.by_account_id(account.id)
+    |> Client.Query.by_last_seen_within(1, "week")
+    |> Client.Query.by_incompatible_for(gateway_version)
+    |> Client.Query.only_for_active_actors()
+    |> Repo.aggregate(:count)
+  end
+
   def fetch_client_by_id(id, preload: :identity) do
     Client.Query.not_deleted()
     |> Client.Query.by_id(id)
