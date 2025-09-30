@@ -157,6 +157,9 @@ defmodule Domain.Mailer do
       .footer-text {
         color: #a3a3a3 !important;
       }
+      .footer-text a {
+        color: #a78bfa !important;
+      }
       .logo-light {
         display: none !important;
         max-height: 0 !important;
