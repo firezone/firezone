@@ -17,6 +17,9 @@
   <a href="https://discourse.firez.one/?utm_source=readme">
     <img src="https://img.shields.io/static/v1?logo=discourse&logoColor=959DA5&label=support%20forum&labelColor=333a41&message=join&color=611f69" alt="firezone Discourse" />
   </a>
+  <a href="https://discord.gg/DY8gxpSgep">
+    <img src="https://img.shields.io/discord/1228082899023298741?logo=discord&logoColor=959DA5&label=discord&labelColor=333a41&color=5865F2" alt="firezone Discord" />
+  </a>
   <img src="https://img.shields.io/static/v1?logo=github&logoColor=959DA5&label=Test&labelColor=333a41&message=passing&color=3AC358" alt="firezone" />
   <a href="https://coveralls.io/github/firezone/firezone?branch=legacy">
     <img src="https://coveralls.io/repos/github/firezone/firezone/badge.svg?branch=legacy" alt="Coverage Status" />
