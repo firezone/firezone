@@ -219,7 +219,7 @@
                       <a
                         href="https://www.firezone.dev/kb?utm_source=email"
                         class="hover-important-text-decoration-underline"
-                        style="color: #37007f; text-decoration: none"
+                        style="color: #5e00d6; text-decoration: none"
                       >
                         Docs
                       </a>
@@ -227,15 +227,15 @@
                       <a
                         href="https://github.com/firezone?utm_source=email"
                         class="hover-important-text-decoration-underline"
-                        style="color: #37007f; text-decoration: none;"
+                        style="color: #5e00d6; text-decoration: none;"
                       >
-                        Github
+                        GitHub
                       </a>
                       &bull;
                       <a
                         href="https://x.com/firezonehq?utm_source=email"
                         class="hover-important-text-decoration-underline"
-                        style="color: #37007f; text-decoration: none;"
+                        style="color: #5e00d6; text-decoration: none;"
                       >
                         X
                       </a>
