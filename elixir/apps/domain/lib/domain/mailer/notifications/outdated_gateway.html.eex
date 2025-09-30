@@ -110,7 +110,7 @@
                   </p>
                   <% else %>
                   <p style="margin: 0; line-height: 24px;">
-                    We recommend updating the Gateways at your earliest convenience. Help on how to update Gateways can be found
+                    We recommend updating the Gateways at your earliest convenience. Help on how to upgrade Gateways can be found
                     in our <a href="https://www.firezone.dev/kb/administer/upgrading">Firezone Gateway Upgrade Guide</a>.
                   </p>
                   <% end %>
