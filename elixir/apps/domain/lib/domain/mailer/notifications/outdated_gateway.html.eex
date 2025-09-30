@@ -44,38 +44,7 @@
     .rtl-text-right:where([dir="rtl"], [dir="rtl"] *) {
       text-align: right !important
     }
-    @media (prefers-color-scheme: dark) {
-      body {
-        background-color: #1a1a1a !important;
-      }
-      .email-container {
-        background-color: #1a1a1a !important;
-      }
-      .content-box {
-        background-color: #2d2d2d !important;
-        color: #e5e5e5 !important;
-      }
-      .content-box h1,
-      .content-box h2 {
-        color: #ffffff !important;
-      }
-      .content-box p,
-      .content-box td {
-        color: #e5e5e5 !important;
-      }
-      .content-box th {
-        color: #d4d4d4 !important;
-      }
-      .content-box table tr {
-        background-color: #2d2d2d !important;
-      }
-      .separator {
-        background-color: #525252 !important;
-      }
-      .footer-text {
-        color: #a3a3a3 !important;
-      }
-    }
+    <%= Domain.Mailer.dark_mode_styles() %>
   </style>
 </head>
 <body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">
