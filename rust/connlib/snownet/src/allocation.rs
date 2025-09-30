@@ -7,6 +7,7 @@ use bufferpool::BufferPool;
 use bytecodec::{DecodeExt as _, EncodeExt as _};
 use firezone_logging::err_with_src;
 use hex_display::HexDisplayExt as _;
+use ip_packet::Ecn;
 use rand::random;
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use std::{
@@ -1138,6 +1139,7 @@ impl Allocation {
             src: None,
             dst,
             payload: self.buffer_pool.pull_initialised(&encode(message)),
+            ecn: Ecn::NonEct,
         });
 
         true
