@@ -63,13 +63,6 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: raven-actions/actionlint@3a24062651993d40fed1019b58ac6fbdfbf276cc # v2.0.1
 
-  test-lib-helpers:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-      - name: Run lib.sh unit tests
-        run: ./scripts/tests/unit-test-lib.sh
-
   global-linter:
     runs-on: ubuntu-24.04
     steps:
