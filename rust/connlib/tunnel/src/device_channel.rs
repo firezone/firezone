@@ -39,16 +39,6 @@ impl Device {
 
         let n = std::task::ready!(tun.poll_recv_many(cx, buf, max));
 
-        #[cfg(debug_assertions)]
-        {
-            // Having these trace statements is quite expensive, even if they are not turned on.
-            // We are talking 5+ % of CPU time here just for checking whether or not this should get logged.
-
-            for packet in &buf[..n] {
-                tracing::trace!(target: "wire::dev::recv", ?packet);
-            }
-        }
-
         Poll::Ready(n)
     }
 

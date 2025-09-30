@@ -96,6 +96,9 @@ impl GatewayState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
+        #[cfg(debug_assertions)]
+        tracing::trace!(target: "wire::dev::recv", ?packet);
+
         let dst = packet.destination();
 
         if !crate::is_peer(dst) {

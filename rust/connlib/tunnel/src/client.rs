@@ -395,6 +395,9 @@ impl ClientState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
+        #[cfg(debug_assertions)]
+        tracing::trace!(target: "wire::dev::recv", ?packet);
+
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,
