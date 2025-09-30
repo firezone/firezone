@@ -9,9 +9,7 @@ use dns_types::{Query, RecordType, ResponseBuilder, ResponseCode};
 
 #[test]
 fn smoke() {
-    let _guard = firezone_logging::test(
-        "netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,smoltcp=trace,debug",
-    );
+    let _guard = firezone_logging::test("netlink_proto=off,dns_over_tcp=trace,smoltcp=trace,debug");
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);
@@ -46,9 +44,7 @@ fn smoke() {
 
 #[test]
 fn no_panic_after_set_listen_address() {
-    let _guard = firezone_logging::test(
-        "netlink_proto=off,wire::dns::res=trace,dns_over_tcp=trace,smoltcp=trace,debug",
-    );
+    let _guard = firezone_logging::test("netlink_proto=off,dns_over_tcp=trace,smoltcp=trace,debug");
 
     let ipv4 = Ipv4Addr::from([100, 90, 215, 97]);
     let ipv6 = Ipv6Addr::from([0xfd00, 0x2021, 0x1111, 0x0, 0x0, 0x0, 0x0016, 0x588f]);

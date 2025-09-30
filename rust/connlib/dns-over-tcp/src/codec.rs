@@ -28,25 +28,6 @@ pub fn try_send(socket: &mut l3_tcp::Socket, message: &[u8]) -> Result<()> {
         "Not enough space in write buffer for DNS message"
     );
 
-    // if tracing::event_enabled!(target: "wire::dns::tcp::send", tracing::Level::TRACE) {
-    //     if let Some(ParsedMessage {
-    //         qid,
-    //         qname,
-    //         qtype,
-    //         response,
-    //         rcode,
-    //         records,
-    //     }) = parse(message)
-    //     {
-    //         if response {
-    //             let records = records.into_iter().join(" | ");
-    //             tracing::trace!(target: "wire::dns::tcp::send", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
-    //         } else {
-    //             tracing::trace!(target: "wire::dns::tcp::send", %qid, "{:5} {qname}", qtype.to_string());
-    //         }
-    //     }
-    // }
-
     Ok(())
 }
 
@@ -70,25 +51,6 @@ where
         .context("Failed to recv TCP data")?
         .transpose()
         .context("Failed to parse DNS message")?;
-
-    // if tracing::event_enabled!(target: "wire::dns::tcp::recv", tracing::Level::TRACE) {
-    //     if let Some(ParsedMessage {
-    //         qid,
-    //         qname,
-    //         qtype,
-    //         rcode,
-    //         response,
-    //         records,
-    //     }) = maybe_message.and_then(parse)
-    //     {
-    //         if response {
-    //             let records = records.into_iter().join(" | ");
-    //             tracing::trace!(target: "wire::dns::tcp::recv", %qid, %rcode, "{:5} {qname} => [{records}]", qtype.to_string());
-    //         } else {
-    //             tracing::trace!(target: "wire::dns::tcp::recv", %qid, "{:5} {qname}", qtype.to_string());
-    //         }
-    //     }
-    // }
 
     Ok(maybe_message)
 }

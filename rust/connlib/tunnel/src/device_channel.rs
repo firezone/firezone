@@ -46,10 +46,6 @@ impl Device {
 
             for packet in &buf[..n] {
                 tracing::trace!(target: "wire::dev::recv", ?packet);
-
-                if let Some(query) = parse_dns_query(packet) {
-                    tracing::trace!(target: "wire::dns::qry", ?query);
-                }
             }
         }
 
@@ -68,10 +64,6 @@ impl Device {
     pub fn send(&mut self, packet: IpPacket) -> io::Result<()> {
         #[cfg(debug_assertions)]
         {
-            if let Some(response) = parse_dns_response(&packet) {
-                tracing::trace!(target: "wire::dns::res", ?response);
-            }
-
             tracing::trace!(target: "wire::dev::send", ?packet);
         }
 
@@ -96,24 +88,4 @@ impl Device {
 
 fn io_error_not_initialized() -> io::Error {
     io::Error::new(io::ErrorKind::NotConnected, "device is not initialized yet")
-}
-
-#[cfg(debug_assertions)]
-fn parse_dns_query(packet: &IpPacket) -> Option<dns_types::Query> {
-    let udp = packet.as_udp()?;
-    if udp.destination_port() != crate::dns::DNS_PORT {
-        return None;
-    }
-
-    dns_types::Query::parse(udp.payload()).ok()
-}
-
-#[cfg(debug_assertions)]
-fn parse_dns_response(packet: &IpPacket) -> Option<dns_types::Response> {
-    let udp = packet.as_udp()?;
-    if udp.source_port() != crate::dns::DNS_PORT {
-        return None;
-    }
-
-    dns_types::Response::parse(udp.payload()).ok()
 }
