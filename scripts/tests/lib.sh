@@ -86,3 +86,33 @@ function create_token_file {
     # cut into a release.
     sudo cp "$TOKEN_PATH" "$TOKEN_PATH.txt"
 }
+
+# Expects a command to fail (non-zero exit code)
+# Usage: expect_error your_command arg1 arg2
+function expect_error() {
+    if "$@"; then
+        echo "ERROR: Command succeeded when it should have failed: $*"
+        return 1
+    else
+        echo "✓ Command failed as expected: $*"
+        return 0
+    fi
+}
+
+# Expects a command to fail with a specific exit code
+# Usage: expect_error_code 255 your_command arg1 arg2
+function expect_error_code() {
+    local expected_code=$1
+    shift
+
+    "$@"
+    local actual_code=$?
+
+    if [ $actual_code -eq $expected_code ]; then
+        echo "✓ Command returned expected code $expected_code: $*"
+        return 0
+    else
+        echo "ERROR: Expected code $expected_code but got $actual_code: $*"
+        return 1
+    fi
+}
