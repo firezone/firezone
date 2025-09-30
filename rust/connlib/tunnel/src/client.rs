@@ -391,6 +391,10 @@ impl ClientState {
         packet: IpPacket,
         now: Instant,
     ) -> Option<snownet::Transmit> {
+        if packet.is_fz_p2p_control() {
+            tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
+        }
+
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,

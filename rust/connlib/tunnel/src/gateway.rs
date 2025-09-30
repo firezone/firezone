@@ -92,6 +92,10 @@ impl GatewayState {
         packet: IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::Transmit>> {
+        if packet.is_fz_p2p_control() {
+            tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
+        }
+
         let dst = packet.destination();
 
         if !crate::is_peer(dst) {
