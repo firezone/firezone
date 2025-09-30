@@ -60,10 +60,18 @@
                 <a href="https://firezone.dev?utm_source=email">
                   <div>
                     <img
+                      class="logo-light"
                       src="https://www.firezone.dev/images/logo-lockup.png"
                       width="250"
                       alt="Firezone logo"
                       style="max-width: 100%; vertical-align: middle; line-height: 1"
+                    />
+                    <img
+                      class="logo-dark"
+                      src="https://www.firezone.dev/images/logo-text-dark.svg"
+                      width="250"
+                      alt="Firezone logo"
+                      style="display: none; max-width: 100%; vertical-align: middle; line-height: 1"
                     />
                   </div>
                 </a>
