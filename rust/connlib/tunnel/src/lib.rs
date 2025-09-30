@@ -148,7 +148,7 @@ impl ClientTunnel {
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io
-                .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -185,7 +185,7 @@ impl ClientTunnel {
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
                 ready = true;
             }
 
@@ -226,15 +226,13 @@ impl ClientTunnel {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
                         }
 
-                        let ecn = packet.ecn();
-
                         match self.role_state.handle_tun_input(packet, now) {
                             Some(transmit) => {
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
                                     &transmit.payload,
-                                    ecn,
+                                    transmit.ecn,
                                 );
                             }
                             None => {
@@ -325,7 +323,7 @@ impl GatewayTunnel {
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io
-                .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -356,7 +354,7 @@ impl GatewayTunnel {
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
 
                 ready = true;
             }
@@ -408,15 +406,13 @@ impl GatewayTunnel {
                             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
                         }
 
-                        let ecn = packet.ecn();
-
                         match self.role_state.handle_tun_input(packet, now) {
                             Ok(Some(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
                                     &transmit.payload,
-                                    ecn,
+                                    transmit.ecn,
                                 );
                             }
                             Ok(None) => {
