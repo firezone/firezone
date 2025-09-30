@@ -157,6 +157,21 @@ defmodule Domain.Mailer do
       .footer-text {
         color: #a3a3a3 !important;
       }
+      .logo-light {
+        display: none !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+      }
+      .logo-dark {
+        display: inline-block !important;
+      }
+    }
+    @media (prefers-color-scheme: light) {
+      .logo-dark {
+        display: none !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+      }
     }
     """
   end
