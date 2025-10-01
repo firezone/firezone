@@ -9,9 +9,13 @@ export MACOSX_DEPLOYMENT_TARGET=12.4
 
 build-macos:
 	echo "Building debug build for ${PLATFORM}, ${ARCH}"
-	cd ../../rust/apple-client-ffi && rm -rf ./Connlib.xcframework && ./build-rust.sh && ./build-xcframework-dev.sh
 	@xcodebuild build -scheme Firezone -sdk macosx -destination 'platform=${PLATFORM},arch=${ARCH}'
 
+# Info for sourcekit-lsp (LSP server for other IDEs)
+lsp:
+	@xcode-build-server config \
+        -project Firezone.xcodeproj \
+        -scheme Firezone
 
 .PHONY: install
 install:
