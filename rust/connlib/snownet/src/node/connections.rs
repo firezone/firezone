@@ -46,7 +46,7 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+    const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
         self.initial.retain(|id, conn| {
@@ -445,11 +445,11 @@ mod tests {
         connections.remove_established(&id, now);
         connections.handle_timeout(&mut VecDeque::default(), now);
 
-        now += Duration::from_secs(10);
+        now += Duration::from_secs(1);
 
         assert_disconnected(&mut connections, id, idx, key, now, true);
 
-        now += Duration::from_secs(60);
+        now += Duration::from_secs(5);
         connections.handle_timeout(&mut VecDeque::default(), now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
@@ -464,11 +464,11 @@ mod tests {
 
         connections.get_established_mut(&id, now).unwrap().state = ConnectionState::Failed;
         connections.handle_timeout(&mut VecDeque::default(), now);
-        now += Duration::from_secs(10);
+        now += Duration::from_secs(1);
 
         assert_disconnected(&mut connections, id, idx, key, now, true);
 
-        now += Duration::from_secs(60);
+        now += Duration::from_secs(5);
         connections.handle_timeout(&mut VecDeque::default(), now);
 
         assert_disconnected(&mut connections, id, idx, key, now, false);
