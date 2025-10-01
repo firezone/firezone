@@ -23,8 +23,6 @@ enum AdapterError: Error {
 
   case setDisabledResourcesError(String)
 
-  case tunSetupFailed
-
   var localizedDescription: String {
     switch self {
     case .invalidSession(let session):
@@ -36,8 +34,6 @@ enum AdapterError: Error {
       return "failed to set new DNS serversn: \(error)"
     case .setDisabledResourcesError(let error):
       return "failed to set new disabled resources: \(error)"
-    case .tunSetupFailed:
-      return "TUN device setup failed after all retry attempts"
     }
   }
 }
@@ -150,26 +146,15 @@ class Adapter: @unchecked Sendable {
 
   /// Trigger TUN device setup (called after network interface is configured)
   /// This should be called from onSetInterfaceConfig after applying network settings
+  ///
+  /// Note: Retry logic is handled in Rust's set_tun_from_search() (5 attempts with 100ms delay)
   func setupTunDevice() {
-    // Try to set TUN with retry logic like Android
     Task {
-      var tunSetSuccessfully = false
-      for attempt in 1...Self.tunSetupMaxAttempts {
-        do {
-          try await sessionManager?.setTunFromSearch()
-          Log.log("TUN device set successfully on attempt \(attempt)")
-          tunSetSuccessfully = true
-          break
-        } catch {
-          Log.warning("TUN setup attempt \(attempt) failed: \(error)")
-          if attempt < Self.tunSetupMaxAttempts {
-            try await Task.sleep(nanoseconds: Self.tunSetupRetryDelayMilliseconds * 1_000_000)
-          }
-        }
-      }
-
-      if !tunSetSuccessfully {
-        Log.error(AdapterError.tunSetupFailed)
+      do {
+        try await sessionManager?.setTunFromSearch()
+        Log.log("TUN device set successfully")
+      } catch {
+        Log.error(error)
       }
     }
   }
