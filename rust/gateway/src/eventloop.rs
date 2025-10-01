@@ -320,8 +320,7 @@ impl Eventloop {
                 return Ok(());
             }
 
-            if e.root_cause()
-                .downcast_ref::<snownet::UnknownConnection>()
+            if e.downcast_ref::<snownet::UnknownConnection>()
                 .is_some_and(|e| e.recently_disconnected())
             {
                 tracing::debug!("{e:#}");
