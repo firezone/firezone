@@ -48,10 +48,8 @@ class Adapter: @unchecked Sendable {
   // Configuration constants
   private static let tunSetupMaxAttempts = 10
   private static let tunSetupRetryDelayMilliseconds: UInt64 = 100  // 100ms
-  private static let eventPollingLogInterval = 100  // Log every N poll attempts
 
-  private var session: Session?
-  private var eventTask: Task<Void, Never>?
+  private var sessionManager: SessionManager?
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
@@ -132,7 +130,7 @@ class Adapter: @unchecked Sendable {
         // out of a different interface even when 0.0.0.0 is used as the source.
         // If our primary interface changes, we can be certain the old socket shouldn't be
         // used anymore.
-        session?.reset(reason: "primary network path changed")
+        self.sessionManager?.sendCommand(.reset("primary network path changed"))
       }
 
       setSystemDefaultResolvers(path)
@@ -153,17 +151,12 @@ class Adapter: @unchecked Sendable {
   /// Trigger TUN device setup (called after network interface is configured)
   /// This should be called from onSetInterfaceConfig after applying network settings
   func setupTunDevice() {
-    guard let session = session else {
-      Log.error(AdapterError.invalidSession(nil))
-      return
-    }
-
     // Try to set TUN with retry logic like Android
     Task {
       var tunSetSuccessfully = false
       for attempt in 1...Self.tunSetupMaxAttempts {
         do {
-          try session.setTunFromSearch()
+          try await sessionManager?.setTunFromSearch()
           Log.log("TUN device set successfully on attempt \(attempt)")
           tunSetSuccessfully = true
           break
@@ -188,38 +181,33 @@ class Adapter: @unchecked Sendable {
     accountSlug: String,
     logFilter: String
   ) throws {
-    Log.log("Adapter.start: Creating session for account: \(accountSlug)")
+    Log.log("Adapter.start: Creating session manager for account: \(accountSlug)")
 
-    // Get device metadata
-    let deviceName = DeviceMetadata.getDeviceName()
-    let osVersion = DeviceMetadata.getOSVersion()
-    let deviceInfo = try JSONEncoder().encode(DeviceMetadata.deviceInfo())
-    let deviceInfoStr = String(data: deviceInfo, encoding: .utf8) ?? "{}"
-    let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
+    // Create session manager with event handler
+    let manager = SessionManager { [weak self] event in
+      await self?.handleEvent(event)
+    }
 
-    // Create the session
-    do {
-      session = try Session.newApple(
-        apiUrl: apiUrl,
-        token: token.description,
-        deviceId: deviceId,
-        accountSlug: accountSlug,
-        deviceName: deviceName,
-        osVersion: osVersion,
-        logDir: logDir,
-        logFilter: logFilter,
-        deviceInfo: deviceInfoStr
-      )
-    } catch {
-      Log.error(error)
-      throw AdapterError.connlibConnectError(String(describing: error))
+    self.sessionManager = manager
+
+    // Start the session (async call)
+    Task {
+      do {
+        try await manager.start(
+          apiUrl: apiUrl,
+          token: token,
+          deviceId: deviceId,
+          accountSlug: accountSlug,
+          logFilter: logFilter
+        )
+      } catch {
+        Log.error(error)
+        throw error
+      }
     }
 
     // Configure DNS and path monitoring
     startNetworkPathMonitoring()
-
-    // Start the event polling loop
-    startEventPolling()
 
     Log.log("Adapter.start: Session started successfully")
   }
@@ -230,52 +218,6 @@ class Adapter: @unchecked Sendable {
 
     // Cancel network monitor
     networkMonitor?.cancel()
-  }
-
-  private func startEventPolling() {
-    if let existingTask = eventTask {
-      existingTask.cancel()
-    }
-
-    eventTask = Task {
-      guard let session = session else {
-        Log.log("No session available for event polling")
-        return
-      }
-
-      Log.log("Starting event polling loop")
-      var eventCount = 0
-      var pollAttempts = 0
-
-      while !Task.isCancelled {
-        pollAttempts += 1
-
-        do {
-          // Poll for next event
-          if let event = try await session.nextEvent() {
-            eventCount += 1
-            Log.log("Event received: \(String(describing: event))")
-            await handleEvent(event)
-          } else {
-            // No event returned - this indicates the session has ended
-            Log.log("Event polling: no event returned, cancelling task")
-            eventTask?.cancel()
-            break
-          }
-        } catch {
-          Log.error(error)
-          // On error, stop polling gracefully like Android does
-          break
-        }
-
-        // Log periodically to show we're still active
-        if pollAttempts % Self.eventPollingLogInterval == 0 {
-          Log.log("Event polling active: \(eventCount) events processed")
-        }
-      }
-
-      Log.log("Event polling ended after \(eventCount) events")
-    }
   }
 
   /// Final callback called by packetTunnelProvider when tunnel is to be stopped.
@@ -290,24 +232,15 @@ class Adapter: @unchecked Sendable {
   func stop() {
     Log.log("Adapter.stop")
 
-    // Cancel event polling
-    eventTask?.cancel()
-    eventTask = nil
+    // Stop session manager
+    Task {
+      await sessionManager?.stop()
+    }
+    sessionManager = nil
 
     // Stop network monitoring
     networkMonitor?.cancel()
     networkMonitor = nil
-
-    // Disconnect the session
-    if let session = session {
-      do {
-        try session.disconnect()
-      } catch {
-        Log.error(error)
-      }
-    }
-
-    session = nil
   }
 
   /// Get the current set of resources in the completionHandler, only returning
@@ -330,7 +263,7 @@ class Adapter: @unchecked Sendable {
 
   /// Reset the session and optionally update DNS resolvers
   func reset(reason: String, path: Network.NWPath? = nil) {
-    session?.reset(reason: reason)
+    sessionManager?.sendCommand(.reset(reason))
 
     if let path = (path ?? lastPath) {
       setSystemDefaultResolvers(path)
@@ -370,12 +303,7 @@ class Adapter: @unchecked Sendable {
       fatalError("Should be able to encode 'disablingResources'")
     }
 
-    do {
-      try session?.setDisabledResources(disabledResources: toSet)
-    } catch let error {
-      // `toString` needed to deep copy the string and avoid a possible dangling pointer
-      Log.error(AdapterError.setDisabledResourcesError(String(describing: error)))
-    }
+    sessionManager?.sendCommand(.setDisabledResources(toSet))
   }
 
   // MARK: - Event handling
@@ -398,7 +326,7 @@ class Adapter: @unchecked Sendable {
 
       // Apply network settings directly
       guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(self.session))
+        Log.error(AdapterError.invalidSession(nil))
         return
       }
 
@@ -427,7 +355,7 @@ class Adapter: @unchecked Sendable {
       }
 
       guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(self.session))
+        Log.error(AdapterError.invalidSession(nil))
         return
       }
       provider.onUpdateResources(resourceList: resources)
@@ -437,7 +365,7 @@ class Adapter: @unchecked Sendable {
       Log.info("Received Disconnected event: \(errorMessage)")
 
       guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(self.session))
+        Log.error(AdapterError.invalidSession(nil))
         return
       }
 
@@ -462,11 +390,6 @@ class Adapter: @unchecked Sendable {
       }
 
       provider.onDisconnect(error: errorMessage)
-
-      // Cancel event polling task since we've disconnected
-      Log.log("Disconnected event received, cancelling event polling")
-      eventTask?.cancel()
-      eventTask = nil
     }
   }
 
@@ -534,13 +457,8 @@ class Adapter: @unchecked Sendable {
     }
 
     // Step 4: Send to connlib
-    do {
-      Log.log("Sending resolvers to connlib: \(jsonResolvers)")
-      try session?.setDns(dnsServers: jsonResolvers)
-    } catch let error {
-      let msg = error.localizedDescription
-      Log.error(AdapterError.setDnsError(msg))
-    }
+    Log.log("Sending resolvers to connlib: \(jsonResolvers)")
+    sessionManager?.sendCommand(.setDns(jsonResolvers))
   }
 
 }
