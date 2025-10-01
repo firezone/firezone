@@ -208,7 +208,7 @@ impl Drop for Session {
             return;
         };
 
-        self.inner.stop(); // Instruct the event-loop to shutdown.
+        self.inner.stop(); // Instruct the event-loop to shut down.
 
         runtime.block_on(async {
             self.telemetry.lock().await.stop_on_crash().await;

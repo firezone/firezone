@@ -144,13 +144,13 @@ impl Eventloop {
             match self.tick().await {
                 Ok(ControlFlow::Continue(())) => continue,
                 Ok(ControlFlow::Break(())) => {
-                    self.shutdown_tunnel().await?;
+                    self.shut_down_tunnel().await?;
 
                     return Ok(());
                 }
                 Err(e) => {
                     // Ignore error from shutdown to not obscure the original error.
-                    let _ = self.shutdown_tunnel().await;
+                    let _ = self.shut_down_tunnel().await;
 
                     return Err(e);
                 }
@@ -469,16 +469,16 @@ impl Eventloop {
         Poll::Pending
     }
 
-    async fn shutdown_tunnel(&mut self) -> Result<()> {
+    async fn shut_down_tunnel(&mut self) -> Result<()> {
         let Some(tunnel) = self.tunnel.take() else {
             tracing::debug!("Tunnel has already been shut down");
             return Ok(());
         };
 
         tunnel
-            .shutdown()
+            .shut_down()
             .await
-            .context("Failed to shutdown tunnel")?;
+            .context("Failed to shut down tunnel")?;
 
         Ok(())
     }
