@@ -48,6 +48,10 @@ and configurations without risking your main machine.
 
 1. Build and run the `Firezone` target.
 
+`Firezone` target will orchestrate building `connlib` with Rust as an Xcode
+build phase. Xcode build can be triggered both from Xcode UI or via the
+`Makefile`.
+
 **Note**: To test the iOS app, you'll need a physical iOS device such as an
 iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
 
@@ -88,6 +92,52 @@ iPhone or iPad. Network Extensions can't be debugged in the iOS simulator.
    ```bash
    scripts/build/macos-standalone.sh
    ```
+
+## Developing
+
+### IDE
+
+The most obvious and encouraged IDE choice for Firezone macOS/iOS development is
+Xcode. It is required for:
+
+- configuring code signing / provisioning
+- performing any project-related changes (editing Xcode project manually can
+  break it)
+- debugging
+- analyzing the app in [Instruments](#instruments)
+
+Note: Although Swift and sourcekit-lsp are technically cross-platform, this
+method still relies on Xcode to build the project. However, if you prefer to use
+another IDE for code editing, you can use any LSP-compatible editor (such as
+Neovim, VSCode, Zed, Emacs etc) with `sourcekit-lsp` support.
+
+In order to configure your IDE follow these steps:
+
+```sh
+brew install xcode-build-server
+make lsp
+make build
+```
+
+Note: Although Swift and sourcekit-lsp are technically cross-platform, this
+method still relies on Xcode to build the project.
+
+### Instruments
+
+`Instruments` is a powerful performance analyzer and visualizer application
+developed by Apple, integrated in Xcode. It helps developers profile, debug, and
+optimize their applications by tracking various metrics such as CPU activity,
+memory allocation, file and network usage, graphics rendering, and energy
+consumption. Instruments uses a timeline view to show events in apps like CPU
+usage spikes, memory leaks, and UI responsiveness issues.
+
+#### What to look for in Instruments
+
+##### network extension memory usage
+
+iOS has a 50 MB hard cap on memory usage in the network extension. Whenever we
+make changes to our threading model it's a good idea to double-check we don't go
+over there.
 
 ## Debugging
 
