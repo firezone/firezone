@@ -47,6 +47,19 @@ defmodule Domain.Auth.Provider.Query do
     )
   end
 
+  # TODO: IdP sync
+  # This query is used to filter out providers that have the new directory sync enabled
+  def has_no_associated_directory(queryable) do
+    where(
+      queryable,
+      [providers: providers],
+      fragment(
+        "NOT EXISTS (SELECT 1 FROM entra_directories ed WHERE ed.auth_provider_id = ?)",
+        providers.id
+      )
+    )
+  end
+
   def only_ready_to_be_synced(queryable) do
     queryable
     |> where(

@@ -41,7 +41,11 @@ config :domain, Oban,
     #    {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
     #  ]}
   ],
-  queues: [default: 10],
+  queues: [
+    default: 10,
+    entra_scheduler: 1,
+    entra_sync: 5
+  ],
   engine: Oban.Engines.Basic,
   repo: Domain.Repo
 

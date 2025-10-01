@@ -18,6 +18,12 @@ defmodule Domain.Auth.Provider do
     has_many :actor_groups, Domain.Actors.Group, where: [deleted_at: nil]
     has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
 
+    # TODO: IdP sync
+    # Can be removed once we rip out the old sync implementation
+    has_one :entra_directory, Domain.Entra.Directory,
+      where: [adapter: :microsoft_entra],
+      foreign_key: :auth_provider_id
+
     field :created_by, Ecto.Enum, values: ~w[system identity actor]a
     field :created_by_subject, :map
 
