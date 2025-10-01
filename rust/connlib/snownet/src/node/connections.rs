@@ -405,7 +405,7 @@ impl fmt::Display for UnknownConnection {
         write!(f, "No connection for {} {}", self.kind, self.id)?;
 
         if let Some(disconnected_for) = self.disconnected_for {
-            write!(f, " (disconnected for {disconnected_for:?}")?;
+            write!(f, " (disconnected for {disconnected_for:?})")?;
         }
 
         Ok(())
