@@ -75,6 +75,8 @@ pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
+use crate::gateway::TunInputResult;
+
 /// [`Tunnel`] glues together connlib's [`Io`] component and the respective (pure) state of a client or gateway.
 ///
 /// Most of connlib's functionality is implemented as a pure state machine in [`ClientState`] and [`GatewayState`].
@@ -411,7 +413,7 @@ impl GatewayTunnel {
                         let ecn = packet.ecn();
 
                         match self.role_state.handle_tun_input(packet, now) {
-                            Ok(Some(transmit)) => {
+                            Ok(TunInputResult::Encrypted(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
@@ -419,7 +421,10 @@ impl GatewayTunnel {
                                     ecn,
                                 );
                             }
-                            Ok(None) => {
+                            Ok(TunInputResult::ClientDisconnected(icmp_error)) => {
+                                self.io.send_tun(icmp_error);
+                            }
+                            Ok(TunInputResult::None) => {
                                 self.role_state.handle_timeout(now, Utc::now());
                             }
                             Err(e) => error.push(e),

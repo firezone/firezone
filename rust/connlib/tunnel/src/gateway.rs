@@ -91,16 +91,21 @@ impl GatewayState {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> Result<Option<snownet::Transmit>> {
+    ) -> Result<TunInputResult> {
         let dst = packet.destination();
 
         if !crate::is_peer(dst) {
-            return Ok(None);
+            return Ok(TunInputResult::None);
         }
 
         let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            tracing::debug!(%dst, "Unknown client, perhaps already disconnected?");
-            return Ok(None);
+            let icmp_error = ip_packet::make::icmp_dest_unreachable(
+                &packet,
+                ip_packet::icmpv4::DestUnreachableHeader::Host,
+                ip_packet::icmpv6::DestUnreachableCode::Address,
+            )?;
+
+            return Ok(TunInputResult::ClientDisconnected(icmp_error));
         };
         let cid = peer.id();
 
@@ -108,18 +113,45 @@ impl GatewayState {
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?
         else {
-            return Ok(None);
+            return Ok(TunInputResult::None); // TODO: Should we differentiate these filtered packets?
         };
 
-        let Some(encrypted_packet) = self
+        match self
             .node
             .encapsulate(cid, packet, now)
-            .context("Failed to encapsulate")?
-        else {
-            return Ok(None);
-        };
+            .context("Failed to encapsulate")
+        {
+            Ok(Some(transmit)) => Ok(TunInputResult::Encrypted(transmit)),
+            Ok(None) => Ok(TunInputResult::None),
+            Err(e) => {
+                let Some(unknown_connection) =
+                    e.root_cause().downcast_ref::<snownet::UnknownConnection>()
+                else {
+                    return Err(e);
+                };
 
-        Ok(Some(encrypted_packet))
+                let icmp_error = ip_packet::make::icmp_dest_unreachable(
+                    &unknown_connection.packet,
+                    ip_packet::icmpv4::DestUnreachableHeader::Host,
+                    ip_packet::icmpv6::DestUnreachableCode::Address,
+                )?;
+
+                match peer.translate_outbound(icmp_error, now) {
+                    Ok(TranslateOutboundResult::Send(packet)) => {
+                        Ok(TunInputResult::ClientDisconnected(packet))
+                    }
+                    Ok(
+                        TranslateOutboundResult::DestinationUnreachable(_)
+                        | TranslateOutboundResult::Filtered(_),
+                    ) => Ok(TunInputResult::None),
+                    Err(e) => {
+                        tracing::debug!("Failed to translate ICMP error: {e:#}");
+
+                        Ok(TunInputResult::None)
+                    }
+                }
+            }
+        }
     }
 
     /// Handles UDP packets received on the network interface.
@@ -518,6 +550,24 @@ impl GatewayState {
             };
 
             client.retain_authorizations(resources);
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TunInputResult {
+    Encrypted(snownet::Transmit),
+    ClientDisconnected(IpPacket),
+    None,
+}
+
+impl TunInputResult {
+    #[cfg(test)]
+    pub fn into_transmit(self) -> Option<snownet::Transmit> {
+        match self {
+            TunInputResult::Encrypted(transmit) => Some(transmit),
+            TunInputResult::ClientDisconnected(_) => None,
+            TunInputResult::None => None,
         }
     }
 }
