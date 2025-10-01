@@ -21,7 +21,7 @@ use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
@@ -256,7 +256,7 @@ where
         // Only if all of those things are the same, will:
         // - ICE be able to establish a connection
         // - boringtun be able to handshake a session
-        if let Some(c) = self.connections.get_established_mut(&cid)
+        if let Ok(c) = self.connections.get_established_mut(&cid, now)
             && c.agent.local_credentials() == &local_creds
             && c.agent
                 .remote_credentials()
@@ -290,7 +290,7 @@ where
             return Ok(());
         }
 
-        let existing = self.connections.established.remove(&cid);
+        let existing = self.connections.remove_established(&cid, now);
         let index = self.index.next();
 
         if let Some(existing) = existing {
@@ -333,8 +333,8 @@ where
 
     /// Removes a connection by just clearing its local memory.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
-    pub fn remove_connection(&mut self, cid: TId, reason: impl fmt::Display) {
-        let existing = self.connections.established.remove(&cid);
+    pub fn remove_connection(&mut self, cid: TId, reason: impl fmt::Display, now: Instant) {
+        let existing = self.connections.remove_established(&cid, now);
 
         if existing.is_none() {
             return;
@@ -348,7 +348,7 @@ where
     /// If we are connected, sends the provided "goodbye" packet before discarding the connection.
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn close_connection(&mut self, cid: TId, goodbye: IpPacket, now: Instant) {
-        let Some(mut connection) = self.connections.established.remove(&cid) else {
+        let Some(mut connection) = self.connections.remove_established(&cid, now) else {
             tracing::debug!("Cannot close unknown connection");
 
             return;
@@ -433,7 +433,7 @@ where
 
         allocation.bind_channel(candidate.addr(), now);
 
-        let Some(connection) = self.connections.get_established_mut(&cid) else {
+        let Ok(connection) = self.connections.get_established_mut(&cid, now) else {
             return;
         };
 
@@ -499,10 +499,7 @@ where
         packet: IpPacket,
         now: Instant,
     ) -> Result<Option<Transmit>> {
-        let conn = self
-            .connections
-            .get_established_mut(&cid)
-            .context(UnknownConnection(cid.to_string()))?;
+        let conn = self.connections.get_established_mut(&cid, now)?;
 
         if self.mode.is_server() && !conn.state.has_nominated_socket() {
             tracing::debug!(
@@ -619,7 +616,8 @@ where
             &mut self.pending_events,
             &mut self.rng,
         );
-        self.connections.gc(&mut self.pending_events);
+        self.connections
+            .handle_timeout(&mut self.pending_events, now);
     }
 
     /// Returns buffered data that needs to be sent on the socket.
@@ -780,6 +778,7 @@ where
 
         Connection {
             agent,
+            index,
             tunnel,
             next_wg_timer_update: now,
             stats: Default::default(),
@@ -958,7 +957,7 @@ where
 
                 match self
                     .connections
-                    .get_established_mut_by_public_key(handshake.peer_static_public)
+                    .get_established_mut_by_public_key(handshake.peer_static_public, now)
                 {
                     Ok(c) => c,
                     Err(e) => return ControlFlow::Break(Err(e)),
@@ -969,7 +968,7 @@ where
             | Packet::PacketCookieReply(PacketCookieReply { receiver_idx, .. })
             | Packet::PacketData(PacketData { receiver_idx, .. }) => match self
                 .connections
-                .get_established_mut_session_index(Index::from_peer(*receiver_idx))
+                .get_established_mut_session_index(Index::from_peer(*receiver_idx), now)
             {
                 Ok(c) => c,
                 Err(e) => return ControlFlow::Break(Err(e)),
@@ -1066,7 +1065,7 @@ where
             tracing::info!("Replacing existing initial connection");
         };
 
-        if self.connections.established.remove(&cid).is_some() {
+        if self.connections.remove_established(&cid, now).is_some() {
             tracing::info!("Replacing existing established connection");
         };
 
@@ -1174,7 +1173,7 @@ where
             "server to not use `initial_connections`"
         );
 
-        if self.connections.established.remove(&cid).is_some() {
+        if self.connections.remove_established(&cid, now).is_some() {
             tracing::info!("Replacing existing established connection");
         };
 
@@ -1318,6 +1317,10 @@ struct Connections<TId, RId> {
     established: BTreeMap<TId, Connection<RId>>,
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
+
+    disconnected_ids: HashMap<TId, Instant>,
+    disconnected_public_keys: HashMap<[u8; 32], Instant>,
+    disconnected_session_indices: HashMap<usize, Instant>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -1326,6 +1329,9 @@ impl<TId, RId> Default for Connections<TId, RId> {
             initial: Default::default(),
             established: Default::default(),
             established_by_wireguard_session_index: Default::default(),
+            disconnected_ids: Default::default(),
+            disconnected_public_keys: Default::default(),
+            disconnected_session_indices: Default::default(),
         }
     }
 }
@@ -1335,7 +1341,9 @@ where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
 {
-    fn gc(&mut self, events: &mut VecDeque<Event<TId>>) {
+    const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(60);
+
+    fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
         self.initial.retain(|id, conn| {
             if conn.is_failed {
                 events.push_back(Event::ConnectionFailed(*id));
@@ -1349,12 +1357,42 @@ where
             if conn.is_failed() {
                 events.push_back(Event::ConnectionFailed(*id));
                 self.established_by_wireguard_session_index
-                    .retain(|_, c| c != id);
+                    .retain(|index, c| {
+                        if c == id {
+                            self.disconnected_session_indices.insert(*index, now);
+
+                            return false;
+                        }
+
+                        true
+                    });
+                self.disconnected_public_keys
+                    .insert(conn.tunnel.remote_static_public().to_bytes(), now);
+                self.disconnected_ids.insert(*id, now);
                 return false;
             }
 
             true
         });
+
+        self.disconnected_ids
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+        self.disconnected_public_keys
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+        self.disconnected_session_indices
+            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
+    }
+
+    fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
+        let connection = self.established.remove(id)?;
+
+        self.disconnected_ids.insert(*id, now);
+        self.disconnected_public_keys
+            .insert(connection.tunnel.remote_static_public().to_bytes(), now);
+        self.disconnected_session_indices
+            .insert(connection.index.global(), now);
+
+        Some(connection)
     }
 
     fn check_relays_available(
@@ -1454,22 +1492,33 @@ where
         initial_agents.chain(negotiated_agents)
     }
 
-    fn get_established_mut(&mut self, id: &TId) -> Option<&mut Connection<RId>> {
-        self.established.get_mut(id)
+    fn get_established_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
+        let connection = self
+            .established
+            .get_mut(id)
+            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
+
+        Ok(connection)
     }
 
     fn get_established_mut_session_index(
         &mut self,
         index: Index,
+        now: Instant,
     ) -> Result<(TId, &mut Connection<RId>)> {
         let id = self
             .established_by_wireguard_session_index
             .get(&index.global())
-            .with_context(|| format!("No connection for index {}", index.global()))?;
+            .context(UnknownConnection::by_index(
+                index.global(),
+                &self.disconnected_session_indices,
+                now,
+            ))?;
+
         let connection = self
             .established
             .get_mut(id)
-            .with_context(|| format!("No connection for ID {id}"))?;
+            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
 
         Ok((*id, connection))
     }
@@ -1477,12 +1526,17 @@ where
     fn get_established_mut_by_public_key(
         &mut self,
         key: [u8; 32],
+        now: Instant,
     ) -> Result<(TId, &mut Connection<RId>)> {
         let (id, conn) = self
             .established
             .iter_mut()
             .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
-            .with_context(|| format!("No connection for public key {}", into_u256(key)))?;
+            .context(UnknownConnection::by_public_key(
+                key,
+                &self.disconnected_public_keys,
+                now,
+            ))?;
 
         Ok((*id, conn))
     }
@@ -1525,7 +1579,104 @@ where
                     .values_mut()
                     .filter_map(|c| c.poll_timeout()),
             )
+            .chain(
+                self.disconnected_ids
+                    .values()
+                    .map(|t| {
+                        (
+                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
+                            "recently disconnected IDs",
+                        )
+                    })
+                    .min_by_key(|(t, _)| *t),
+            )
+            .chain(
+                self.disconnected_public_keys
+                    .values()
+                    .map(|t| {
+                        (
+                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
+                            "recently disconnected public keys",
+                        )
+                    })
+                    .min_by_key(|(t, _)| *t),
+            )
+            .chain(
+                self.disconnected_session_indices
+                    .values()
+                    .map(|t| {
+                        (
+                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
+                            "recently disconnected session indices",
+                        )
+                    })
+                    .min_by_key(|(t, _)| *t),
+            )
             .min_by_key(|(instant, _)| *instant)
+    }
+}
+
+#[derive(Debug)]
+pub struct UnknownConnection {
+    kind: &'static str,
+    id: String,
+    disconnected_for: Option<Duration>,
+}
+
+impl UnknownConnection {
+    fn by_id<TId>(id: TId, disconnected_ids: &HashMap<TId, Instant>, now: Instant) -> Self
+    where
+        TId: fmt::Display + Eq + Hash,
+    {
+        Self {
+            id: id.to_string(),
+            kind: "id",
+            disconnected_for: disconnected_ids
+                .get(&id)
+                .map(|disconnected| now.duration_since(*disconnected)),
+        }
+    }
+
+    fn by_index(id: usize, disconnected_indices: &HashMap<usize, Instant>, now: Instant) -> Self {
+        Self {
+            id: id.to_string(),
+            kind: "index",
+            disconnected_for: disconnected_indices
+                .get(&id)
+                .map(|disconnected| now.duration_since(*disconnected)),
+        }
+    }
+
+    fn by_public_key(
+        key: [u8; 32],
+        disconnected_public_keys: &HashMap<[u8; 32], Instant>,
+        now: Instant,
+    ) -> Self {
+        Self {
+            id: into_u256(key).to_string(),
+            kind: "public key",
+            disconnected_for: disconnected_public_keys
+                .get(&key)
+                .map(|disconnected| now.duration_since(*disconnected)),
+        }
+    }
+
+    pub fn recently_disconnected(&self) -> bool {
+        self.disconnected_for.is_some()
+    }
+}
+
+impl std::error::Error for UnknownConnection {}
+
+impl fmt::Display for UnknownConnection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "No connection for {} {}", self.kind, self.id)?;
+
+        if let Some(disconnected_for) = self.disconnected_for {
+            write!(f, " (disconnected for {disconnected_for:?}")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -1609,10 +1760,6 @@ fn remove_local_candidate<TId>(
         })
     }
 }
-
-#[derive(thiserror::Error, Debug)]
-#[error("Unknown connection: {0}")]
-pub struct UnknownConnection(String);
 
 #[deprecated]
 pub struct Offer {
@@ -1755,6 +1902,7 @@ impl<RId> InitialConnection<RId> {
 struct Connection<RId> {
     agent: IceAgent,
 
+    index: Index,
     tunnel: Tunn,
     remote_pub_key: PublicKey,
     /// When to next update the [`Tunn`]'s timers.

@@ -452,7 +452,7 @@ impl ClientState {
                     }
                 }
                 p2p_control::GOODBYE_EVENT => {
-                    self.node.remove_connection(gid, "received `goodbye`");
+                    self.node.remove_connection(gid, "received `goodbye`", now);
                     self.cleanup_connected_gateway(&gid);
                 }
                 code => {

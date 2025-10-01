@@ -301,12 +301,6 @@ impl Eventloop {
                 return Ok(());
             }
 
-            // Unknown connection just means packets are bouncing on the TUN device because the Client disconnected.
-            if e.root_cause().is::<snownet::UnknownConnection>() {
-                tracing::debug!("{e:#}");
-                return Ok(());
-            }
-
             if e.root_cause()
                 .downcast_ref::<io::Error>()
                 .is_some_and(|e| e.kind() == io::ErrorKind::PermissionDenied)
@@ -324,6 +318,14 @@ impl Eventloop {
                 // Some IP packets cannot be translated and should be dropped "silently".
                 // Do so by ignoring the error here.
                 return Ok(());
+            }
+
+            if e.root_cause()
+                .downcast_ref::<snownet::UnknownConnection>()
+                .is_some_and(|e| e.recently_disconnected())
+            {
+                tracing::debug!("{e:#}");
+                continue;
             }
 
             if e.root_cause()
