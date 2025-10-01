@@ -387,7 +387,7 @@ impl Drop for WrappedSession {
             return;
         };
 
-        self.inner.stop(); // Instruct the event-loop to shutdown.
+        self.inner.stop(); // Instruct the event-loop to shut down.
         runtime.block_on(async {
             self.telemetry.stop().await;
 

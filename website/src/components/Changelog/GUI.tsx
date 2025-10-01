@@ -288,7 +288,7 @@ export default function GUI({ os }: { os: OS }) {
       <Entry version="1.4.4" date={new Date("2025-02-11")}>
         <ChangeItem pull="8035">
           Shows a non-disruptive toast notification and quits the GUI client in
-          case the IPC service gets shutdown through the service manager.
+          case the IPC service gets shut down through the service manager.
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="8083">
