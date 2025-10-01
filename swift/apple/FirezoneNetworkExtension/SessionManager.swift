@@ -153,13 +153,9 @@ actor SessionManager {
     }
 
     // Cleanup when event loop exits
-    // This ensures Session's Drop is called on the Rust side
+    // Assigning to `nil` will invoke `Drop` on the Rust side
+    // Do NOT call disconnect() explicitly - let Drop handle everything
     Log.log("SessionManager: Event loop finished, cleaning up session")
-    do {
-      try session.disconnect()
-    } catch {
-      Log.error(error)
-    }
     self.session = nil
     Log.log("SessionManager: Session cleaned up")
   }
@@ -169,11 +165,9 @@ actor SessionManager {
     switch command {
     case .disconnect:
       Log.log("SessionManager: Handling disconnect command")
-      do {
-        try session.disconnect()
-      } catch {
-        Log.error(error)
-      }
+      // Assigning to `nil` will invoke `Drop` on the Rust side
+      // Do NOT call disconnect() explicitly - let Drop handle everything
+      self.session = nil
 
     case .setDisabledResources(let resources):
       Log.log("SessionManager: Handling setDisabledResources command")
@@ -210,6 +204,16 @@ actor SessionManager {
       throw AdapterError.invalidSession(nil)
     }
     try session.setTunFromSearch()
+  }
+
+  /// Clears the session, triggering Drop on the Rust side.
+  ///
+  /// This must happen asynchronously to allow Rust to break cyclic dependencies
+  /// between the runtime and the task that is executing the callback.
+  func clearSession() async {
+    // Assigning to `nil` will invoke `Drop` on the Rust side
+    Log.log("SessionManager: Clearing session")
+    self.session = nil
   }
 
   /// Stops the session by sending a disconnect command and cancelling the event loop.

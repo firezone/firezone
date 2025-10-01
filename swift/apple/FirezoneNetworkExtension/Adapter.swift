@@ -364,6 +364,13 @@ class Adapter: @unchecked Sendable {
       let errorMessage = error.message()
       Log.info("Received Disconnected event: \(errorMessage)")
 
+      // Immediately invalidate session pointer to trigger Drop on Rust side
+      // This must happen asynchronously to allow Rust to break cyclic dependencies
+      // between the runtime and the task that is executing this callback
+      Task { [weak self] in
+        await self?.sessionManager?.clearSession()
+      }
+
       guard let provider = packetTunnelProvider else {
         Log.error(AdapterError.invalidSession(nil))
         return
