@@ -95,6 +95,9 @@ where
     pub(crate) fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
         let connection = self.established.remove(id)?;
 
+        self.established_by_wireguard_session_index
+            .remove(&connection.index.global());
+
         self.disconnected_ids.insert(*id, now);
         self.disconnected_public_keys
             .insert(connection.tunnel.remote_static_public().to_bytes(), now);
@@ -420,9 +423,140 @@ fn into_u256(key: [u8; 32]) -> bnum::BUint<4> {
 
 #[cfg(test)]
 mod tests {
+    use boringtun::{
+        noise::Tunn,
+        x25519::{PublicKey, StaticSecret},
+    };
+    use bufferpool::BufferPool;
     use rand::random;
+    use ringbuffer::AllocRingBuffer;
+
+    use crate::node::{ConnectionState, SelectedRelay};
 
     use super::*;
+
+    #[test]
+    fn explicitly_removed_connection() {
+        let mut connections = Connections::default();
+        let mut now = Instant::now();
+
+        let (id, idx, key) = insert_dummy_connection(&mut connections);
+
+        connections.remove_established(&id, now);
+        connections.handle_timeout(&mut VecDeque::default(), now);
+
+        now += Duration::from_secs(10);
+
+        assert_disconnected(&mut connections, id, idx, key, now, true);
+
+        now += Duration::from_secs(60);
+        connections.handle_timeout(&mut VecDeque::default(), now);
+
+        assert_disconnected(&mut connections, id, idx, key, now, false);
+    }
+
+    #[test]
+    fn failed_connection() {
+        let mut connections = Connections::default();
+        let mut now = Instant::now();
+
+        let (id, idx, key) = insert_dummy_connection(&mut connections);
+
+        connections.get_established_mut(&id, now).unwrap().state = ConnectionState::Failed;
+        connections.handle_timeout(&mut VecDeque::default(), now);
+        now += Duration::from_secs(10);
+
+        assert_disconnected(&mut connections, id, idx, key, now, true);
+
+        now += Duration::from_secs(60);
+        connections.handle_timeout(&mut VecDeque::default(), now);
+
+        assert_disconnected(&mut connections, id, idx, key, now, false);
+    }
+
+    fn insert_dummy_connection(connections: &mut Connections<u32, u32>) -> (u32, Index, PublicKey) {
+        let conn = new_connection(12345, [1u8; 32]);
+        let id = 1;
+        let idx = conn.index;
+        let key = conn.tunnel.remote_static_public();
+        connections.insert_established(id, conn.index, conn);
+
+        (id, idx, key)
+    }
+
+    fn assert_disconnected(
+        connections: &mut Connections<u32, u32>,
+        id: u32,
+        idx: Index,
+        key: PublicKey,
+        now: Instant,
+        is_recently_disconnected: bool,
+    ) {
+        // Get by ID
+        let err = connections
+            .get_established_mut(&id, now)
+            .unwrap_err()
+            .downcast::<UnknownConnection>()
+            .unwrap();
+
+        assert_eq!(err.recently_disconnected(), is_recently_disconnected);
+
+        // Get by index
+        let err = connections
+            .get_established_mut_session_index(idx, now)
+            .unwrap_err()
+            .downcast::<UnknownConnection>()
+            .unwrap();
+
+        assert_eq!(err.recently_disconnected(), is_recently_disconnected);
+
+        // Get by key
+        let err = connections
+            .get_established_mut_by_public_key(key.to_bytes(), now)
+            .unwrap_err()
+            .downcast::<UnknownConnection>()
+            .unwrap();
+
+        assert_eq!(err.recently_disconnected(), is_recently_disconnected);
+    }
+
+    fn new_connection(idx: u32, key: [u8; 32]) -> Connection<u32> {
+        let private = StaticSecret::random_from_rng(rand::thread_rng());
+        let new_local = Index::new_local(idx);
+
+        Connection {
+            agent: IceAgent::new(),
+            index: new_local,
+            tunnel: Tunn::new_at(
+                private,
+                PublicKey::from(key),
+                None,
+                None,
+                new_local,
+                None,
+                0,
+                Instant::now(),
+            ),
+            remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
+            next_wg_timer_update: Instant::now(),
+            last_proactive_handshake_sent_at: None,
+            relay: SelectedRelay {
+                id: 0,
+                logged_sample_failure: false,
+            },
+            state: crate::node::ConnectionState::Connecting {
+                wg_buffer: AllocRingBuffer::new(1),
+                ip_buffer: AllocRingBuffer::new(1),
+            },
+            disconnected_at: None,
+            stats: Default::default(),
+            intent_sent_at: Instant::now(),
+            signalling_completed_at: Instant::now(),
+            first_handshake_completed_at: None,
+            buffer: Default::default(),
+            buffer_pool: BufferPool::new(0, "test"),
+        }
+    }
 
     #[test]
     fn can_make_u256_out_of_byte_array() {

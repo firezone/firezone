@@ -1530,10 +1530,12 @@ impl<RId> InitialConnection<RId> {
     }
 }
 
+#[derive(derive_more::Debug)]
 struct Connection<RId> {
     agent: IceAgent,
 
     index: Index,
+    #[debug(skip)]
     tunnel: Tunn,
     remote_pub_key: PublicKey,
     /// When to next update the [`Tunn`]'s timers.
@@ -1554,15 +1556,18 @@ struct Connection<RId> {
 
     buffer: Vec<u8>,
 
+    #[debug(skip)]
     buffer_pool: BufferPool<Vec<u8>>,
 }
 
+#[derive(Debug)]
 struct SelectedRelay<RId> {
     id: RId,
     /// Whether we've already logged failure to sample a new relay.
     logged_sample_failure: bool,
 }
 
+#[derive(Debug)]
 enum ConnectionState {
     /// We are still running ICE to figure out, which socket to use to send data.
     Connecting {
@@ -1731,7 +1736,7 @@ fn idle_at(last_activity: Instant) -> Instant {
 }
 
 /// The socket of the peer we are connected to.
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy, Debug)]
 enum PeerSocket {
     PeerToPeer {
         source: SocketAddr,
