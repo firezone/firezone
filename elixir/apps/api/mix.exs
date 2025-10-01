@@ -60,7 +60,7 @@ defmodule API.MixProject do
       # Other deps
       {:jason, "~> 1.2"},
       {:remote_ip, "~> 1.1"},
-      {:open_api_spex, "~> 3.21.2"},
+      {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},
       {:hammer, "~> 7.1.0"},
 
