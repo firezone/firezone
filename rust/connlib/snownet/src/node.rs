@@ -1,5 +1,10 @@
+mod connections;
+
+pub use connections::UnknownConnection;
+
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
+use crate::node::connections::Connections;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
 use anyhow::{Context, Result, anyhow};
@@ -16,12 +21,12 @@ use ip_packet::{IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{Rng, RngCore, SeedableRng, random};
+use rand::{RngCore, SeedableRng, random};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
@@ -236,7 +241,7 @@ where
         let local_creds = local_creds.into();
         let remote_creds = remote_creds.into();
 
-        if self.connections.initial.contains_key(&cid) {
+        if self.connections.contains_initial(&cid) {
             debug_assert!(
                 false,
                 "The new `upsert_connection` API is incompatible with the previous `new_connection` API"
@@ -586,7 +591,7 @@ where
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
         }
 
-        for (id, connection) in self.connections.initial.iter_mut() {
+        for (id, connection) in self.connections.iter_initial_mut() {
             connection.handle_timeout(id, now);
         }
 
@@ -1061,7 +1066,7 @@ where
         intent_sent_at: Instant,
         now: Instant,
     ) -> Result<Offer, NoTurnServers> {
-        if self.connections.initial.remove(&cid).is_some() {
+        if self.connections.remove_initial(&cid).is_some() {
             tracing::info!("Replacing existing initial connection");
         };
 
@@ -1093,7 +1098,7 @@ where
         };
         let duration_since_intent = initial_connection.duration_since_intent(now);
 
-        let existing = self.connections.initial.insert(cid, initial_connection);
+        let existing = self.connections.insert_initial(cid, initial_connection);
         debug_assert!(existing.is_none());
 
         tracing::info!(?duration_since_intent, "Establishing new connection");
@@ -1106,7 +1111,7 @@ where
     #[deprecated]
     #[expect(deprecated)]
     pub fn accept_answer(&mut self, cid: TId, remote: PublicKey, answer: Answer, now: Instant) {
-        let Some(initial) = self.connections.initial.remove(&cid) else {
+        let Some(initial) = self.connections.remove_initial(&cid) else {
             tracing::debug!("No initial connection state, ignoring answer"); // This can happen if the connection setup timed out.
             return;
         };
@@ -1169,7 +1174,7 @@ where
         now: Instant,
     ) -> Result<Answer, NoTurnServers> {
         debug_assert!(
-            !self.connections.initial.contains_key(&cid),
+            !self.connections.contains_initial(&cid),
             "server to not use `initial_connections`"
         );
 
@@ -1310,380 +1315,6 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
 
         agent.add_remote_candidate(c);
     }
-}
-
-struct Connections<TId, RId> {
-    initial: BTreeMap<TId, InitialConnection<RId>>,
-    established: BTreeMap<TId, Connection<RId>>,
-
-    established_by_wireguard_session_index: BTreeMap<usize, TId>,
-
-    disconnected_ids: HashMap<TId, Instant>,
-    disconnected_public_keys: HashMap<[u8; 32], Instant>,
-    disconnected_session_indices: HashMap<usize, Instant>,
-}
-
-impl<TId, RId> Default for Connections<TId, RId> {
-    fn default() -> Self {
-        Self {
-            initial: Default::default(),
-            established: Default::default(),
-            established_by_wireguard_session_index: Default::default(),
-            disconnected_ids: Default::default(),
-            disconnected_public_keys: Default::default(),
-            disconnected_session_indices: Default::default(),
-        }
-    }
-}
-
-impl<TId, RId> Connections<TId, RId>
-where
-    TId: Eq + Hash + Copy + Ord + fmt::Display,
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
-{
-    const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(60);
-
-    fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
-        self.initial.retain(|id, conn| {
-            if conn.is_failed {
-                events.push_back(Event::ConnectionFailed(*id));
-                return false;
-            }
-
-            true
-        });
-
-        self.established.retain(|id, conn| {
-            if conn.is_failed() {
-                events.push_back(Event::ConnectionFailed(*id));
-                self.established_by_wireguard_session_index
-                    .retain(|index, c| {
-                        if c == id {
-                            self.disconnected_session_indices.insert(*index, now);
-
-                            return false;
-                        }
-
-                        true
-                    });
-                self.disconnected_public_keys
-                    .insert(conn.tunnel.remote_static_public().to_bytes(), now);
-                self.disconnected_ids.insert(*id, now);
-                return false;
-            }
-
-            true
-        });
-
-        self.disconnected_ids
-            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_public_keys
-            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-        self.disconnected_session_indices
-            .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);
-    }
-
-    fn remove_established(&mut self, id: &TId, now: Instant) -> Option<Connection<RId>> {
-        let connection = self.established.remove(id)?;
-
-        self.disconnected_ids.insert(*id, now);
-        self.disconnected_public_keys
-            .insert(connection.tunnel.remote_static_public().to_bytes(), now);
-        self.disconnected_session_indices
-            .insert(connection.index.global(), now);
-
-        Some(connection)
-    }
-
-    fn check_relays_available(
-        &mut self,
-        allocations: &BTreeMap<RId, Allocation>,
-        pending_events: &mut VecDeque<Event<TId>>,
-        rng: &mut impl Rng,
-    ) {
-        for (_, c) in self.iter_initial_mut() {
-            if allocations.contains_key(&c.relay) {
-                continue;
-            }
-
-            let Some(new_rid) = allocations.keys().copied().choose(rng) else {
-                continue;
-            };
-
-            tracing::info!(old_rid = ?c.relay, %new_rid, "Updating relay");
-            c.relay = new_rid;
-        }
-
-        for (cid, c) in self.iter_established_mut() {
-            if allocations.contains_key(&c.relay.id) {
-                continue; // Our relay is still there, no problems.
-            }
-
-            let Some((rid, allocation)) = allocations.iter().choose(rng) else {
-                if !c.relay.logged_sample_failure {
-                    tracing::debug!(%cid, "Failed to sample new relay for connection");
-                }
-                c.relay.logged_sample_failure = true;
-
-                continue;
-            };
-
-            tracing::info!(%cid, old = %c.relay.id, new = %rid, "Attempting to migrate connection to new relay");
-
-            c.relay.id = *rid;
-
-            for candidate in allocation.current_relay_candidates() {
-                add_local_candidate(cid, &mut c.agent, candidate, pending_events);
-            }
-        }
-    }
-
-    fn stats(&self) -> impl Iterator<Item = (TId, ConnectionStats)> + '_ {
-        self.established.iter().map(move |(id, c)| (*id, c.stats))
-    }
-
-    fn insert_established(
-        &mut self,
-        id: TId,
-        index: Index,
-        connection: Connection<RId>,
-    ) -> Option<Connection<RId>> {
-        let existing = self.established.insert(id, connection);
-
-        // Remove previous mappings for connection.
-        self.established_by_wireguard_session_index
-            .retain(|_, c| c != &id);
-        self.established_by_wireguard_session_index
-            .insert(index.global(), id);
-
-        existing
-    }
-
-    fn agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, RId)> {
-        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
-        let maybe_established_connection = self
-            .established
-            .get_mut(&id)
-            .map(|c| (&mut c.agent, c.relay.id));
-
-        maybe_initial_connection.or(maybe_established_connection)
-    }
-
-    fn agents_by_relay_mut(&mut self, id: RId) -> impl Iterator<Item = (TId, &mut IceAgent)> + '_ {
-        let initial_connections = self
-            .initial
-            .iter_mut()
-            .filter_map(move |(cid, i)| (i.relay == id).then_some((*cid, &mut i.agent)));
-        let established_connections = self
-            .established
-            .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay.id == id).then_some((*cid, &mut c.agent)));
-
-        initial_connections.chain(established_connections)
-    }
-
-    fn agents_mut(&mut self) -> impl Iterator<Item = (TId, &mut IceAgent)> {
-        let initial_agents = self.initial.iter_mut().map(|(id, c)| (*id, &mut c.agent));
-        let negotiated_agents = self
-            .established
-            .iter_mut()
-            .map(|(id, c)| (*id, &mut c.agent));
-
-        initial_agents.chain(negotiated_agents)
-    }
-
-    fn get_established_mut(&mut self, id: &TId, now: Instant) -> Result<&mut Connection<RId>> {
-        let connection = self
-            .established
-            .get_mut(id)
-            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
-
-        Ok(connection)
-    }
-
-    fn get_established_mut_session_index(
-        &mut self,
-        index: Index,
-        now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>)> {
-        let id = self
-            .established_by_wireguard_session_index
-            .get(&index.global())
-            .context(UnknownConnection::by_index(
-                index.global(),
-                &self.disconnected_session_indices,
-                now,
-            ))?;
-
-        let connection = self
-            .established
-            .get_mut(id)
-            .context(UnknownConnection::by_id(*id, &self.disconnected_ids, now))?;
-
-        Ok((*id, connection))
-    }
-
-    fn get_established_mut_by_public_key(
-        &mut self,
-        key: [u8; 32],
-        now: Instant,
-    ) -> Result<(TId, &mut Connection<RId>)> {
-        let (id, conn) = self
-            .established
-            .iter_mut()
-            .find(|(_, c)| c.tunnel.remote_static_public().as_bytes() == &key)
-            .context(UnknownConnection::by_public_key(
-                key,
-                &self.disconnected_public_keys,
-                now,
-            ))?;
-
-        Ok((*id, conn))
-    }
-
-    fn iter_initial_mut(&mut self) -> impl Iterator<Item = (TId, &mut InitialConnection<RId>)> {
-        self.initial.iter_mut().map(|(id, conn)| (*id, conn))
-    }
-
-    fn iter_established(&self) -> impl Iterator<Item = (TId, &Connection<RId>)> {
-        self.established.iter().map(|(id, conn)| (*id, conn))
-    }
-
-    fn iter_established_mut(&mut self) -> impl Iterator<Item = (TId, &mut Connection<RId>)> {
-        self.established.iter_mut().map(|(id, conn)| (*id, conn))
-    }
-
-    fn len(&self) -> usize {
-        self.initial.len() + self.established.len()
-    }
-
-    fn clear(&mut self) {
-        self.initial.clear();
-        self.established.clear();
-        self.established_by_wireguard_session_index.clear();
-    }
-
-    fn iter_ids(&self) -> impl Iterator<Item = TId> + '_ {
-        self.initial.keys().chain(self.established.keys()).copied()
-    }
-
-    fn all_idle(&self) -> bool {
-        self.established.values().all(|c| c.is_idle())
-    }
-
-    fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
-        iter::empty()
-            .chain(self.initial.values_mut().filter_map(|c| c.poll_timeout()))
-            .chain(
-                self.established
-                    .values_mut()
-                    .filter_map(|c| c.poll_timeout()),
-            )
-            .chain(
-                self.disconnected_ids
-                    .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected IDs",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
-            )
-            .chain(
-                self.disconnected_public_keys
-                    .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected public keys",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
-            )
-            .chain(
-                self.disconnected_session_indices
-                    .values()
-                    .map(|t| {
-                        (
-                            *t + Self::RECENT_DISCONNECT_TIMEOUT,
-                            "recently disconnected session indices",
-                        )
-                    })
-                    .min_by_key(|(t, _)| *t),
-            )
-            .min_by_key(|(instant, _)| *instant)
-    }
-}
-
-#[derive(Debug)]
-pub struct UnknownConnection {
-    kind: &'static str,
-    id: String,
-    disconnected_for: Option<Duration>,
-}
-
-impl UnknownConnection {
-    fn by_id<TId>(id: TId, disconnected_ids: &HashMap<TId, Instant>, now: Instant) -> Self
-    where
-        TId: fmt::Display + Eq + Hash,
-    {
-        Self {
-            id: id.to_string(),
-            kind: "id",
-            disconnected_for: disconnected_ids
-                .get(&id)
-                .map(|disconnected| now.duration_since(*disconnected)),
-        }
-    }
-
-    fn by_index(id: usize, disconnected_indices: &HashMap<usize, Instant>, now: Instant) -> Self {
-        Self {
-            id: id.to_string(),
-            kind: "index",
-            disconnected_for: disconnected_indices
-                .get(&id)
-                .map(|disconnected| now.duration_since(*disconnected)),
-        }
-    }
-
-    fn by_public_key(
-        key: [u8; 32],
-        disconnected_public_keys: &HashMap<[u8; 32], Instant>,
-        now: Instant,
-    ) -> Self {
-        Self {
-            id: into_u256(key).to_string(),
-            kind: "public key",
-            disconnected_for: disconnected_public_keys
-                .get(&key)
-                .map(|disconnected| now.duration_since(*disconnected)),
-        }
-    }
-
-    pub fn recently_disconnected(&self) -> bool {
-        self.disconnected_for.is_some()
-    }
-}
-
-impl std::error::Error for UnknownConnection {}
-
-impl fmt::Display for UnknownConnection {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "No connection for {} {}", self.kind, self.id)?;
-
-        if let Some(disconnected_for) = self.disconnected_for {
-            write!(f, " (disconnected for {disconnected_for:?}")?;
-        }
-
-        Ok(())
-    }
-}
-
-fn into_u256(key: [u8; 32]) -> bnum::BUint<4> {
-    // Note: `parse_str_radix` panics when the number is too big.
-    // We are passing 32 u8's though which fits exactly into a u256.
-    bnum::types::U256::parse_str_radix(&hex::encode(key), 16)
 }
 
 fn add_local_candidate<TId>(
@@ -2906,21 +2537,5 @@ mod tests {
         assert!(agent.remote_candidates().contains(&expected_candidate1));
         assert!(agent.remote_candidates().contains(&expected_candidate2));
         assert!(!agent.remote_candidates().contains(&unexpected_candidate3));
-    }
-
-    #[test]
-    fn can_make_u256_out_of_byte_array() {
-        let bytes = random();
-        let _num = into_u256(bytes);
-    }
-
-    #[test]
-    fn u256_renders_as_int() {
-        let num = into_u256([1; 32]);
-
-        assert_eq!(
-            num.to_string(),
-            "454086624460063511464984254936031011189294057512315937409637584344757371137"
-        );
     }
 }
