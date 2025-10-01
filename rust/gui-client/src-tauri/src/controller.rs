@@ -660,7 +660,7 @@ impl<I: GuiIntegration> Controller<I> {
                     .set_tray_icon(system_tray::icon_terminating());
                 self.integration.show_notification(
                     "Firezone disconnected",
-                    "The Firezone Tunnel service was shutdown, quitting GUI process.",
+                    "The Firezone Tunnel service was shut down, quitting GUI process.",
                 )?;
 
                 return Ok(ControlFlow::Break(()));

@@ -287,7 +287,7 @@ export default function Android() {
           Advanced screen.
         </ChangeItem>
         <ChangeItem pull="6495">
-          Fixes a bug where the Firezone tunnel wasn't shutdown properly if you
+          Fixes a bug where the Firezone tunnel wasn't shut down properly if you
           disconnect the VPN in system settings.
         </ChangeItem>
         <ChangeItem pull="6434">Adds the Internet Resource feature.</ChangeItem>

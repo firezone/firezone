@@ -140,10 +140,10 @@ impl ClientTunnel {
         self.io.reset();
     }
 
-    /// Shutdown the Client tunnel.
-    pub fn shutdown(mut self) -> BoxFuture<'static, Result<()>> {
+    /// Shut down the Client tunnel.
+    pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
-        self.role_state.shutdown(Instant::now());
+        self.role_state.shut_down(Instant::now());
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
@@ -317,10 +317,10 @@ impl GatewayTunnel {
         self.role_state.public_key()
     }
 
-    /// Shutdown the Gateway tunnel.
-    pub fn shutdown(mut self) -> BoxFuture<'static, Result<()>> {
+    /// Shut down the Gateway tunnel.
+    pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
-        self.role_state.shutdown(Instant::now());
+        self.role_state.shut_down(Instant::now());
 
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
