@@ -8,7 +8,7 @@ defmodule Domain.Entra.AuthProvider do
     field :tenant_id, :string, primary_key: true
     field :disabled_at, :utc_datetime_usec
 
-    subject_trail(~w[actor identity]a)
+    subject_trail(~w[actor identity system]a)
     timestamps()
   end
 end

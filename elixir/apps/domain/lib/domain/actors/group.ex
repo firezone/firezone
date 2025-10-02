@@ -23,6 +23,7 @@ defmodule Domain.Actors.Group do
     has_many :actors, through: [:memberships, :actor]
 
     belongs_to :account, Domain.Accounts.Account
+    belongs_to :directory, Domain.Directories.Directory
 
     # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec

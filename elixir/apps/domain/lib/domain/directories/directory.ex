@@ -4,7 +4,7 @@ defmodule Domain.Directories.Directory do
   @primary_key false
   schema "directories" do
     belongs_to :account, Domain.Accounts.Account, primary_key: true
-    field :id, Ecto.UUID, primary_key: true
+    field :id, Ecto.UUID, primary_key: true, read_after_writes: true
     field :type, Ecto.Enum, values: [:firezone, :google, :entra, :okta]
 
     has_one :google_directory, Domain.Google.Directory, references: :id, where: [type: :google]
@@ -31,6 +31,9 @@ defmodule Domain.Directories.Directory do
     has_one :userpass_auth_provider, Domain.Userpass.AuthProvider,
       references: :id,
       where: [type: :firezone]
+
+    has_many :identities, Domain.Auth.Identity, references: :id
+    has_many :groups, Domain.Actors.Group, references: :id
 
     subject_trail(~w[actor identity system]a)
     timestamps()

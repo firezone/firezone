@@ -10,7 +10,7 @@ defmodule Domain.Okta.AuthProvider do
     field :client_secret, :string
     field :disabled_at, :utc_datetime_usec
 
-    subject_trail(~w[actor identity]a)
+    subject_trail(~w[actor identity system]a)
     timestamps()
   end
 end

@@ -22,6 +22,7 @@ defmodule Domain.Auth.Identity do
     field :last_seen_at, :utc_datetime_usec
 
     belongs_to :account, Domain.Accounts.Account
+    belongs_to :directory, Domain.Directories.Directory
 
     # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
     has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]

@@ -18,13 +18,9 @@ defmodule Domain.Google do
     |> Repo.all()
   end
 
-  def create_directory(attrs, %Auth.Subject{} = subject) do
-    required_permission = Google.Authorizer.manage_directories_permission()
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
-      Google.Directory.Changeset.create(attrs, subject)
-      |> Repo.insert()
-    end
+  def create_auth_provider(attrs, %Accounts.Account{} = account) do
+    Google.AuthProvider.Changeset.create(attrs, account)
+    |> Repo.insert()
   end
 
   def create_auth_provider(attrs, %Auth.Subject{} = subject) do
@@ -32,6 +28,20 @@ defmodule Domain.Google do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
       Google.AuthProvider.Changeset.create(attrs, subject)
+      |> Repo.insert()
+    end
+  end
+
+  def create_directory(attrs, %Accounts.Account{} = account) do
+    Google.Directory.Changeset.create(attrs, account)
+    |> Repo.insert()
+  end
+
+  def create_directory(attrs, %Auth.Subject{} = subject) do
+    required_permission = Google.Authorizer.manage_directories_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Google.Directory.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end

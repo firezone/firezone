@@ -7,6 +7,8 @@ defmodule Domain.Repo.Seeds do
     Accounts,
     Auth,
     Actors,
+    Directories,
+    Entra,
     Google,
     Relays,
     Gateways,
@@ -378,8 +380,46 @@ defmodule Domain.Repo.Seeds do
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
 
-    {:ok, _google_oidc_provider} =
-      Google.create_oidc_provider(%{hosted_domain: "firezone.dev"}, admin_subject)
+    {:ok, directory} = Directories.create_directory(%{type: :google}, admin_subject)
+
+    {:ok, _google_auth_provider} =
+      Google.create_auth_provider(
+        %{directory_id: directory.id, hosted_domain: "firezone.dev"},
+        admin_subject
+      )
+
+    {:ok, _google_directory} =
+      Google.create_directory(
+        %{hosted_domain: "firezone.dev", directory_id: directory.id},
+        admin_subject
+      )
+
+    {:ok, directory} = Directories.create_directory(%{type: :entra}, admin_subject)
+
+    {:ok, _entra_auth_provider} =
+      Entra.create_auth_provider(%{directory_id: directory.id, tenant_id: "dummy"}, admin_subject)
+
+    {:ok, _entra_directory} =
+      Entra.create_directory(%{directory_id: directory.id, tenant_id: "dummy"}, admin_subject)
+
+    {:ok, directory} = Directories.create_directory(%{type: :okta}, admin_subject)
+
+    {:ok, _okta_auth_provider} =
+      Domain.Okta.create_auth_provider(
+        %{
+          directory_id: directory.id,
+          org_domain: "foobar.okta.com",
+          client_id: "dummy",
+          client_secret: "dummy"
+        },
+        admin_subject
+      )
+
+    {:ok, _okta_directory} =
+      Domain.Okta.create_directory(
+        %{directory_id: directory.id, org_domain: "foobar.okta.com"},
+        admin_subject
+      )
 
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(

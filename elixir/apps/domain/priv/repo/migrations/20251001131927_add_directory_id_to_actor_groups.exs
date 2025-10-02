@@ -3,7 +3,7 @@ defmodule Domain.Repo.Migrations.AddDirectoryIdToActorGroups do
 
   def change do
     alter table(:actor_groups) do
-      add(:directory_id, :binary_id, null: false)
+      add(:directory_id, :binary_id)
     end
 
     create(

@@ -8,7 +8,7 @@ defmodule Domain.Google.AuthProvider do
     field :hosted_domain, :string, primary_key: true
     field :disabled_at, :utc_datetime_usec
 
-    subject_trail(~w[actor identity]a)
+    subject_trail(~w[actor identity system]a)
     timestamps()
   end
 end

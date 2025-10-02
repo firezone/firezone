@@ -14,7 +14,7 @@ defmodule Domain.Okta.Directory do
     field :error, :string
     field :error_emailed_at, :utc_datetime_usec
 
-    subject_trail(~w[actor identity]a)
+    subject_trail(~w[actor identity system]a)
     timestamps()
   end
 end

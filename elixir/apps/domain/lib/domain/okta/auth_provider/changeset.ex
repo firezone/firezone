@@ -2,11 +2,20 @@ defmodule Domain.Okta.AuthProvider.Changeset do
   use Domain, :changeset
 
   alias Domain.{
+    Accounts,
     Auth,
     Okta.AuthProvider
   }
 
   @required_fields ~w(account_id directory_id org_domain client_id client_secret created_by created_by_subject)a
+
+  def create(attrs, %Accounts.Account{} = account) do
+    %AuthProvider{}
+    |> cast(attrs, @required_fields)
+    |> put_change(:account_id, account.id)
+    |> put_subject_trail(:created_by, :system)
+    |> changeset()
+  end
 
   def create(attrs, %Auth.Subject{} = subject) do
     %AuthProvider{}

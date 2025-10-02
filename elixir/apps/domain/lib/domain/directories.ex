@@ -6,6 +6,11 @@ defmodule Domain.Directories do
     Repo
   }
 
+  def create_directory(attrs, %Accounts.Account{} = account) do
+    Directories.Directory.Changeset.create(attrs, account)
+    |> Repo.insert()
+  end
+
   def create_directory(attrs, %Auth.Subject{} = subject) do
     required_permission = Directories.Authorizer.manage_directories_permission()
 
