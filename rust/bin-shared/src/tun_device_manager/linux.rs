@@ -1,19 +1,24 @@
 //! Virtual network interface
 
 use crate::FIREZONE_MARK;
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result, anyhow, bail};
 use firezone_logging::err_with_src;
 use firezone_telemetry::otel;
-use futures::{SinkExt, TryStreamExt};
+use futures::{SinkExt, StreamExt as _, TryStreamExt};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
 };
+use netlink_packet_core::{
+    NLM_F_ACK, NLM_F_CREATE, NLM_F_REPLACE, NLM_F_REQUEST, NetlinkMessage, NetlinkPayload,
+};
+use netlink_packet_route::RouteNetlinkMessage;
 use netlink_packet_route::link::LinkAttribute;
 use netlink_packet_route::route::{RouteMessage, RouteProtocol, RouteScope};
 use netlink_packet_route::rule::RuleAction;
+use netlink_packet_route::tc::{TcAttribute, TcHandle, TcMessage};
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 use std::os::fd::{FromRawFd as _, OwnedFd};
@@ -87,8 +92,11 @@ impl TunDeviceManager {
             let handle = self.connection.handle.clone();
 
             async move {
-                if let Err(e) = set_txqueue_length(handle, 10_000).await {
+                if let Err(e) = set_txqueue_length(handle.clone(), 10_000).await {
                     tracing::warn!("Failed to set TX queue length: {e}")
+                }
+                if let Err(e) = set_qdisk_fq(handle).await {
+                    tracing::warn!("Failed to set qdisc policy to `fq`: {e}")
                 }
             }
         });
@@ -234,6 +242,38 @@ async fn set_txqueue_length(handle: Handle, queue_len: u32) -> Result<()> {
         )
         .execute()
         .await?;
+
+    Ok(())
+}
+
+async fn set_qdisk_fq(mut handle: Handle) -> Result<()> {
+    let index = handle
+        .link()
+        .get()
+        .match_name(TunDeviceManager::IFACE_NAME.to_string())
+        .execute()
+        .try_next()
+        .await?
+        .context("No interface")?
+        .header
+        .index;
+
+    // Need to manually build the request because setting the policy kind is not supported out of the box.
+
+    let mut msg = TcMessage::with_index(index as i32);
+    msg.attributes.push(TcAttribute::Kind("fq".to_owned()));
+    msg.header.parent = TcHandle::ROOT;
+
+    let mut req = NetlinkMessage::from(RouteNetlinkMessage::NewQueueDiscipline(msg));
+    req.header.flags = NLM_F_ACK | NLM_F_REQUEST | NLM_F_CREATE | NLM_F_REPLACE;
+
+    let mut response = handle.request(req)?;
+
+    while let Some(message) = response.next().await {
+        if let NetlinkPayload::Error(err) = message.payload {
+            bail!(err)
+        }
+    }
 
     Ok(())
 }
