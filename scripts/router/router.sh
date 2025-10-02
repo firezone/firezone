@@ -67,9 +67,10 @@ fi
 # Add configurable latency if specified
 if [ -n "${NETWORK_LATENCY_MS:-}" ]; then
     LATENCY=$((NETWORK_LATENCY_MS / 2)) # Latency is only applied to outbound packets. To achieve the actual configured latency, we apply half of it to each interface.
+    JITTER=$((LATENCY / 5))             # Vary latency by 20%
 
-    tc qdisc add dev internet root netem delay "${LATENCY}ms"
-    tc qdisc add dev internal root netem delay "${LATENCY}ms"
+    tc qdisc add dev internet root netem delay "${LATENCY}ms" "${JITTER}ms"
+    tc qdisc add dev internal root netem delay "${LATENCY}ms" "${JITTER}ms"
 fi
 
 echo "-----------------------------------------------------------------------------------------------"
