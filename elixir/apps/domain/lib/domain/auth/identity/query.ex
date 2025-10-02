@@ -56,8 +56,8 @@ defmodule Domain.Auth.Identity.Query do
     |> where([identities: identities], identities.provider_id == ^provider_id)
   end
 
-  def by_kind(queryable, kind) do
-    where(queryable, [identities: identities], identities.kind == ^kind)
+  def by_directory_id(queryable, directory_id) do
+    where(queryable, [identities: identities], identities.directory_id == ^directory_id)
   end
 
   def by_adapter(queryable, adapter) do

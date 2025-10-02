@@ -13,6 +13,10 @@ defmodule Domain.OIDC.AuthProvider.Query do
     where(queryable, [providers: providers], providers.account_id == ^account_id)
   end
 
+  def by_id(querable, id) do
+    where(querable, [providers: providers], providers.id == ^id)
+  end
+
   def by_client_id(queryable, client_id) do
     where(queryable, [providers: providers], providers.client_id == ^client_id)
   end

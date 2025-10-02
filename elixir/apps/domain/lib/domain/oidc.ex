@@ -21,13 +21,13 @@ defmodule Domain.OIDC do
     end
   end
 
-  def fetch_auth_provider_for_account_and_client_id(
+  def fetch_auth_provider_by_id(
         %Accounts.Account{} = account,
-        client_id
+        id
       ) do
-    OIDC.AuthProvider.Query.all()
+    OIDC.AuthProvider.Query.not_disabled()
     |> OIDC.AuthProvider.Query.by_account_id(account.id)
-    |> OIDC.AuthProvider.Query.by_client_id(client_id)
+    |> OIDC.AuthProvider.Query.by_id(id)
     |> Repo.fetch(OIDC.AuthProvider.Query)
   end
 end

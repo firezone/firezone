@@ -7,13 +7,14 @@ defmodule Domain.Google.Directory.Changeset do
     Google.Directory
   }
 
-  @required_fields ~w[account_id directory_id hosted_domain created_by created_by_subject]a
+  @required_fields ~w[name account_id hosted_domain created_by created_by_subject]a
 
   def create(attrs, %Accounts.Account{} = account) do
     %Directory{}
     |> cast(attrs, @required_fields)
     |> put_change(:account_id, account.id)
     |> put_subject_trail(:created_by, :system)
+    |> maybe_create_parent_directory(account.id)
     |> changeset()
   end
 
@@ -22,6 +23,7 @@ defmodule Domain.Google.Directory.Changeset do
     |> cast(attrs, @required_fields)
     |> put_change(:account_id, subject.account.id)
     |> put_subject_trail(:created_by, subject)
+    |> maybe_create_parent_directory(subject.account.id)
     |> changeset()
   end
 
@@ -29,7 +31,7 @@ defmodule Domain.Google.Directory.Changeset do
     directory
     |> cast(
       attrs,
-      ~w[hosted_domain error_count disabled_at disabled_reason synced_at error error_emailed_at]a
+      ~w[jit_provisioning name hosted_domain error_count disabled_at disabled_reason synced_at error error_emailed_at]a
     )
     |> changeset()
   end
@@ -45,5 +47,19 @@ defmodule Domain.Google.Directory.Changeset do
     |> unique_constraint([:account_id, :hosted_domain],
       message: "is already configured for this account and Google Workspace domain"
     )
+  end
+
+  defp maybe_create_parent_directory(changeset, account_id) do
+    case {get_field(changeset, :directory_id), get_assoc(changeset, :directory)} do
+      {nil, nil} ->
+        changeset
+        |> put_assoc(:directory, %Domain.Directories.Directory{
+          account_id: account_id,
+          type: :google
+        })
+
+      _directory_id ->
+        changeset
+    end
   end
 end

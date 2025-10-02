@@ -6,6 +6,7 @@ defmodule Web.OIDCController do
     Auth,
     Entra,
     Google,
+    Identities,
     Okta,
     OIDC,
     Tokens
@@ -34,7 +35,6 @@ defmodule Web.OIDCController do
   ]
 
   @recent_sessions 6
-  @provider_contexts ~w(hosted_domain org_domain tenant_id client_id)a
 
   action_fallback Web.FallbackController
 
@@ -53,16 +53,16 @@ defmodule Web.OIDCController do
 
     with {:ok, cookie} <- Map.fetch(conn.cookies, @cookie_key),
          conn = delete_resp_cookie(conn, @cookie_key),
-         true = Plug.Crypto.secure_compare(cookie.state, state),
-         {:ok, account} <- Accounts.fetch_account_by_id_or_slug(cookie.account_id),
+         true = Plug.Crypto.secure_compare(cookie["state"], state),
+         {:ok, account} <- Accounts.fetch_account_by_id_or_slug(cookie["account_id"]),
          {:ok, provider} <- fetch_provider(account, cookie),
          {:ok, config} <- fetch_config(provider),
-         {:ok, tokens} <- fetch_tokens(config, code, cookie.verifier),
+         {:ok, tokens} <- fetch_tokens(config, code, cookie["verifier"]),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
-         {:ok, identity} <- fetch_identity(account, cookie.provider, claims["sub"]),
-         :ok <- check_admin(identity, context_type(cookie.params)),
-         {:ok, token} <- create_token(conn, identity, cookie.params, claims["nonce"]) do
-      signed_in(conn, context_type(cookie.params), account, identity, token, cookie)
+         {:ok, identity} <- fetch_identity(account, provider.directory_id, claims),
+         :ok <- check_admin(identity, context_type(cookie["params"])),
+         {:ok, token} <- create_token(conn, identity, cookie["params"]) do
+      signed_in(conn, context_type(cookie["params"]), account, identity, token, cookie)
     else
       error -> handle_error(conn, error, params)
     end
@@ -74,17 +74,21 @@ defmodule Web.OIDCController do
     |> handle_error(:invalid_callback_params, params)
   end
 
+  def verify(conn, %{"state" => state, "code" => code} = params) do
+    conn
+  end
+
   defp provider_redirect(conn, account, config, params) do
     with {:ok, uri, {state, verifier}} <- build_redirect_uri(config) do
       cookie =
         %{
+          "provider_type" => params["provider_type"],
+          "provider_id" => params["provider_id"],
           "account_id" => account.id,
-          "params" => sanitize(params),
           "state" => state,
-          "verifier" => verifier
+          "verifier" => verifier,
+          "params" => sanitize(params)
         }
-        # Store provider context to re-fetch the provider on callback
-        |> Map.merge(Map.take(params, @provider_contexts))
 
       conn =
         conn
@@ -117,20 +121,20 @@ defmodule Web.OIDCController do
     OpenIDConnect.fetch_tokens(config, params)
   end
 
-  defp fetch_provider(account, %{"hosted_domain" => hosted_domain}) do
-    Google.fetch_auth_provider_for_account_and_hosted_domain(account, hosted_domain)
+  defp fetch_provider(account, %{"provider_type" => "google", "provider_id" => provider_id}) do
+    Google.fetch_auth_provider_by_id(account, provider_id)
   end
 
-  defp fetch_provider(account, %{"org_domain" => org_domain}) do
-    Okta.fetch_auth_provider_for_account_and_org_domain(account, org_domain)
+  defp fetch_provider(account, %{"provider_type" => "okta", "provider_id" => provider_id}) do
+    Okta.fetch_auth_provider_by_id(account, provider_id)
   end
 
-  defp fetch_provider(account, %{"tenant_id" => tenant_id}) do
-    Entra.fetch_auth_provider_for_account_and_tenant_id(account, tenant_id)
+  defp fetch_provider(account, %{"provider_type" => "entra", "provider_id" => provider_id}) do
+    Entra.fetch_auth_provider_by_id(account, provider_id)
   end
 
-  defp fetch_provider(account, %{"client_id" => client_id}) do
-    OIDC.fetch_auth_provider_for_account_and_client_id(account, client_id)
+  defp fetch_provider(account, %{"provider_type" => "oidc", "provider_id" => provider_id}) do
+    OIDC.fetch_auth_provider_by_id(account, provider_id)
   end
 
   defp fetch_provider(_account, _provider) do
@@ -194,22 +198,22 @@ defmodule Web.OIDCController do
     {:error, :invalid_provider}
   end
 
-  defp fetch_identity(account, provider, sub) do
-    Domain.Auth.fetch_identity_for_sign_in(account, provider, sub)
+  defp fetch_identity(account, directory_id, claims) do
+    Identities.fetch_identity_for_sign_in(account, directory_id, claims)
   end
 
   defp check_admin(%Auth.Identity{actor: %{role: :account_admin_user}}, _context_type), do: :ok
   defp check_admin(%Auth.Identity{actor: %{role: :account_user}}, :client), do: :ok
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
 
-  defp create_token(conn, identity, params, nonce) do
+  defp create_token(conn, identity, params) do
     # TODO: IdP sync
     # This will use the default session duration in Domain.Auth which needs to be extended
     # for browser sessions to fix some UX issues. See https://github.com/firezone/firezone/issues/6789
     expires_at = nil
     context = Web.Auth.get_auth_context(conn, context_type(params))
 
-    with {:ok, token} <- Domain.Auth.create_token(identity, context, nonce, expires_at) do
+    with {:ok, token} <- Domain.Auth.create_token(identity, context, params["nonce"], expires_at) do
       {:ok, Tokens.encode_fragment!(token)}
     end
   end
@@ -224,7 +228,7 @@ defmodule Web.OIDCController do
       actor_name: identity.actor.name,
       fragment: token,
       identity_provider_identifier: identity.provider_identifier,
-      state: cookie.state
+      state: cookie["state"]
     }
 
     conn
@@ -238,7 +242,6 @@ defmodule Web.OIDCController do
   # 1. Store session into session list
   # 2. Redirect to sanitized redirect_to param if present
   defp signed_in(conn, :browser, account, _identity, token, params) do
-    redirect_to = normalize_redirect_to(params["redirect_to"], account)
     session = {:browser, account.id, token}
 
     sessions =
@@ -249,13 +252,8 @@ defmodule Web.OIDCController do
 
     conn
     |> put_session(:sessions, sessions)
-    |> redirect(to: redirect_to)
+    |> redirect(to: params["redirect_to"])
   end
-
-  # TODO: Is this needed? Shouldn't the router / plug pipeline already handle this?
-  defp normalize_redirect_to(nil, account), do: ~p"/#{account}/sites"
-  defp normalize_redirect_to("", account), do: ~p"/#{account}/sites"
-  defp normalize_redirect_to(to, _account), do: to
 
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :browser
@@ -283,6 +281,9 @@ defmodule Web.OIDCController do
     |> halt()
   end
 
-  defp sanitize(params), do: Web.Auth.take_sign_in_params(params)
+  defp sanitize(params) do
+    Map.take(params, ["as", "redirect_to", "state", "nonce"])
+  end
+
   defp callback_url, do: url(~p"/auth/oidc/callback")
 end

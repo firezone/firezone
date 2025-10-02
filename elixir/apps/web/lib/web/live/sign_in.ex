@@ -314,7 +314,7 @@ defmodule Web.SignIn do
     ~H"""
     <.link
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}/sign_in/google/#{@provider.hosted_domain}?#{@params}"}
+      href={~p"/#{@account}/sign_in/google/#{@provider.id}?#{@params}"}
     >
       <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-5 h-5 mr-2" />
       Sign in with <strong>Google</strong>
@@ -326,7 +326,7 @@ defmodule Web.SignIn do
     ~H"""
     <.link
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}//sign_in/entra/#{@provider.tenant_id}?#{@params}"}
+      href={~p"/#{@account}//sign_in/entra/#{@provider.id}?#{@params}"}
     >
       <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5 mr-2" />
       Sign in with <strong>Microsoft Entra</strong>
@@ -338,7 +338,7 @@ defmodule Web.SignIn do
     ~H"""
     <.link
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}/sign_in/okta/#{@provider.org_domain}?#{@params}"}
+      href={~p"/#{@account}/sign_in/okta/#{@provider.id}?#{@params}"}
     >
       <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5 mr-2" /> Sign in with
       <strong>Okta</strong>
@@ -350,7 +350,7 @@ defmodule Web.SignIn do
     ~H"""
     <.link
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}/sign_in/oidc/#{@provider.client_id}?#{@params}"}
+      href={~p"/#{@account}/sign_in/oidc/#{@provider.id}?#{@params}"}
     >
       <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" /> Sign in with
       <strong>OpenID Connect</strong>

@@ -1,41 +1,19 @@
 defmodule Domain.Directories.Directory do
   use Domain, :schema
 
+  # This table is used as a foreign key target only
   @primary_key false
   schema "directories" do
     belongs_to :account, Domain.Accounts.Account, primary_key: true
-    field :id, Ecto.UUID, primary_key: true, read_after_writes: true
-    field :type, Ecto.Enum, values: [:firezone, :google, :entra, :okta]
+    field :id, :binary_id, primary_key: true, read_after_writes: true
 
-    has_one :google_directory, Domain.Google.Directory, references: :id, where: [type: :google]
+    field :type, Ecto.Enum, values: [:okta, :google, :entra, :firezone]
+    has_many :okta_directories, Domain.Okta.Directory, where: [type: :okta], references: :id
+    has_many :google_directories, Domain.Google.Directory, where: [type: :google], references: :id
+    has_many :entra_directories, Domain.Entra.Directory, where: [type: :entra], references: :id
 
-    has_one :google_auth_provider, Domain.Google.AuthProvider,
-      references: :id,
-      where: [type: :google]
-
-    has_one :entra_directory, Domain.Entra.Directory, references: :id, where: [type: :entra]
-
-    has_one :entra_auth_provider, Domain.Entra.AuthProvider,
-      references: :id,
-      where: [type: :entra]
-
-    has_one :okta_directory, Domain.Okta.Directory, references: :id, where: [type: :okta]
-    has_one :okta_auth_provider, Domain.Okta.AuthProvider, references: :id, where: [type: :okta]
-
-    has_many :oidc_auth_providers, Domain.OIDC.AuthProvider, references: :id
-
-    has_one :email_auth_provider, Domain.Email.AuthProvider,
-      references: :id,
-      where: [type: :firezone]
-
-    has_one :userpass_auth_provider, Domain.Userpass.AuthProvider,
-      references: :id,
-      where: [type: :firezone]
-
-    has_many :identities, Domain.Auth.Identity, references: :id
-    has_many :groups, Domain.Actors.Group, references: :id
-
-    subject_trail(~w[actor identity system]a)
-    timestamps()
+    has_one :firezone_directory, Domain.Firezone.Directory,
+      where: [type: :firezone],
+      references: :id
   end
 end

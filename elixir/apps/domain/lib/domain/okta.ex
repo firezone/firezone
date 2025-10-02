@@ -46,13 +46,13 @@ defmodule Domain.Okta do
     end
   end
 
-  def fetch_auth_provider_for_account_and_org_domain(
+  def fetch_auth_provider_by_id(
         %Accounts.Account{} = account,
-        org_domain
+        id
       ) do
-    Okta.AuthProvider.Query.all()
+    Okta.AuthProvider.Query.not_disabled()
     |> Okta.AuthProvider.Query.by_account_id(account.id)
-    |> Okta.AuthProvider.Query.by_org_domain(org_domain)
+    |> Okta.AuthProvider.Query.by_id(id)
     |> Repo.fetch(Okta.AuthProvider.Query)
   end
 end

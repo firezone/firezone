@@ -12,4 +12,8 @@ defmodule Domain.Email.AuthProvider.Query do
   def by_account_id(queryable, account_id) do
     where(queryable, [providers: providers], providers.account_id == ^account_id)
   end
+
+  def by_id(querable, id) do
+    where(querable, [providers: providers], providers.id == ^id)
+  end
 end

@@ -7,7 +7,7 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     Okta.AuthProvider
   }
 
-  @required_fields ~w(account_id directory_id org_domain client_id client_secret created_by created_by_subject)a
+  @required_fields ~w(name account_id directory_id org_domain client_id client_secret created_by created_by_subject)a
 
   def create(attrs, %Accounts.Account{} = account) do
     %AuthProvider{}
@@ -27,7 +27,7 @@ defmodule Domain.Okta.AuthProvider.Changeset do
 
   def update(%AuthProvider{} = auth_provider, attrs) do
     auth_provider
-    |> cast(attrs, ~w[org_domain disabled_at client_id client_secret]a)
+    |> cast(attrs, ~w[name org_domain disabled_at client_id client_secret]a)
     |> changeset()
   end
 

@@ -53,13 +53,13 @@ defmodule Domain.Google do
     |> Repo.fetch(Google.Directory.Query)
   end
 
-  def fetch_auth_provider_for_account_and_hosted_domain(
+  def fetch_auth_provider_by_id(
         %Accounts.Account{} = account,
-        hosted_domain
+        id
       ) do
-    Google.AuthProvider.Query.all()
+    Google.AuthProvider.Query.not_disabled()
     |> Google.AuthProvider.Query.by_account_id(account.id)
-    |> Google.AuthProvider.Query.by_hosted_domain(hosted_domain)
+    |> Google.AuthProvider.Query.by_id(id)
     |> Repo.fetch(Google.AuthProvider.Query)
   end
 end

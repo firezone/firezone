@@ -1,17 +1,17 @@
-defmodule Domain.Okta.Directory.Changeset do
+defmodule Domain.Firezone.Directory.Changeset do
   use Domain, :changeset
 
   alias Domain.{
     Accounts,
     Auth,
-    Okta.Directory
+    Firezone.Directory
   }
 
-  @required_fields ~w[name account_id org_domain created_by created_by_subject]a
+  @required_fields ~w[account_id created_by created_by_subject]a
 
   def create(attrs, %Accounts.Account{} = account) do
     %Directory{}
-    |> cast(attrs, @required_fields ++ [:jit_provisioning])
+    |> cast(attrs, @required_fields)
     |> put_change(:account_id, account.id)
     |> put_subject_trail(:created_by, :system)
     |> maybe_create_parent_directory(account.id)
@@ -31,7 +31,7 @@ defmodule Domain.Okta.Directory.Changeset do
     directory
     |> cast(
       attrs,
-      ~w[jit_provisioning name org_domain error_count disabled_at disabled_reason synced_at error error_emailed_at]a
+      ~w[jit_provisioning]a
     )
     |> changeset()
   end
@@ -39,13 +39,10 @@ defmodule Domain.Okta.Directory.Changeset do
   def changeset(changeset) do
     changeset
     |> validate_required(@required_fields)
-    |> validate_length(:org_domain, min: 1, max: 255)
-    |> validate_number(:error_count, greater_than_or_equal_to: 0)
-    |> validate_length(:error, max: 2_000)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
-    |> unique_constraint([:account_id, :org_domain],
-      message: "is already configured for this account and Okta organization"
+    |> unique_constraint([:account_id],
+      message: "is already configured for this account"
     )
   end
 
@@ -55,10 +52,10 @@ defmodule Domain.Okta.Directory.Changeset do
         changeset
         |> put_assoc(:directory, %Domain.Directories.Directory{
           account_id: account_id,
-          type: :okta
+          type: :firezone
         })
 
-      _ ->
+      _directory_id ->
         changeset
     end
   end

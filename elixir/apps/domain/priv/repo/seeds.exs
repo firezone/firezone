@@ -10,6 +10,7 @@ defmodule Domain.Repo.Seeds do
     Directories,
     Entra,
     Google,
+    Identities,
     Relays,
     Gateways,
     Resources,
@@ -380,34 +381,69 @@ defmodule Domain.Repo.Seeds do
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
 
-    {:ok, directory} = Directories.create_directory(%{type: :google}, admin_subject)
+    {:ok, google_directory} =
+      Google.create_directory(%{name: "Google", hosted_domain: "firezone.dev"}, admin_subject)
+
+    {:ok, _google_identity} =
+      Identities.create_identity_for_directory(
+        account,
+        %Directories.Directory{type: :google, id: google_directory.directory_id},
+        admin_actor,
+        %{
+          "sub" => "dummy-google-sub",
+          "email" => "firezone@localhost.local"
+        }
+      )
 
     {:ok, _google_auth_provider} =
       Google.create_auth_provider(
-        %{directory_id: directory.id, hosted_domain: "firezone.dev"},
+        %{
+          name: "Google",
+          directory_id: google_directory.directory_id,
+          hosted_domain: "firezone.dev"
+        },
         admin_subject
       )
 
-    {:ok, _google_directory} =
-      Google.create_directory(
-        %{hosted_domain: "firezone.dev", directory_id: directory.id},
-        admin_subject
-      )
+    {:ok, entra_directory} =
+      Entra.create_directory(%{name: "Entra", tenant_id: "dummy"}, admin_subject)
 
-    {:ok, directory} = Directories.create_directory(%{type: :entra}, admin_subject)
+    {:ok, _entra_identity} =
+      Identities.create_identity_for_directory(
+        account,
+        %Directories.Directory{type: :entra, id: entra_directory.directory_id},
+        admin_actor,
+        %{
+          "oid" => "dummy-entra-oid",
+          "email" => "firezone@localhost.local"
+        }
+      )
 
     {:ok, _entra_auth_provider} =
-      Entra.create_auth_provider(%{directory_id: directory.id, tenant_id: "dummy"}, admin_subject)
+      Entra.create_auth_provider(
+        %{name: "Entra", directory_id: entra_directory.directory_id, tenant_id: "dummy"},
+        admin_subject
+      )
 
-    {:ok, _entra_directory} =
-      Entra.create_directory(%{directory_id: directory.id, tenant_id: "dummy"}, admin_subject)
+    {:ok, okta_directory} =
+      Domain.Okta.create_directory(%{name: "Okta", org_domain: "foobar.okta.com"}, admin_subject)
 
-    {:ok, directory} = Directories.create_directory(%{type: :okta}, admin_subject)
+    {:ok, _okta_identity} =
+      Identities.create_identity_for_directory(
+        account,
+        %Directories.Directory{type: :okta, id: okta_directory.directory_id},
+        admin_actor,
+        %{
+          "sub" => "dummy-okta-sub",
+          "email" => "firezone@localhost.local"
+        }
+      )
 
     {:ok, _okta_auth_provider} =
       Domain.Okta.create_auth_provider(
         %{
-          directory_id: directory.id,
+          name: "Okta",
+          directory_id: okta_directory.directory_id,
           org_domain: "foobar.okta.com",
           client_id: "dummy",
           client_secret: "dummy"
@@ -415,11 +451,7 @@ defmodule Domain.Repo.Seeds do
         admin_subject
       )
 
-    {:ok, _okta_directory} =
-      Domain.Okta.create_directory(
-        %{directory_id: directory.id, org_domain: "foobar.okta.com"},
-        admin_subject
-      )
+    {:ok, firezone_directory} = Domain.Firezone.create_directory(%{}, account)
 
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(

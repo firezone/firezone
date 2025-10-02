@@ -77,6 +77,7 @@ defmodule Web.Router do
     pipe_through :public
 
     get "/oidc/callback", OIDCController, :callback
+    get "/oidc/verify", OIDCController, :verify
   end
 
   scope "/:account_id_or_slug", Web do
@@ -87,10 +88,7 @@ defmodule Web.Router do
       Web.Plugs.AutoRedirectDefaultProvider
     ]
 
-    get "/sign_in/google/:hosted_domain", OIDCController, :sign_in
-    get "/sign_in/okta/:org_domain", OIDCController, :sign_in
-    get "/sign_in/entra/:tenant_id", OIDCController, :sign_in
-    get "/sign_in/oidc/:client_id", OIDCController, :sign_in
+    get "/sign_in/:provider_type/:provider_id", OIDCController, :sign_in
 
     live_session :redirect_if_user_is_authenticated,
       on_mount: [

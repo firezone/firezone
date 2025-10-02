@@ -3,21 +3,27 @@ defmodule Domain.Repo.Migrations.CreateOktaAuthProviders do
 
   def change do
     create table(:okta_auth_providers, primary_key: false) do
-      account(primary_key: true)
+      account()
 
-      add(:org_domain, :string, null: false, primary_key: true)
+      add(:id, :binary_id, primary_key: true)
+      add(:directory_id, :binary_id, null: false)
+
+      add(:name, :string, null: false)
+      add(:org_domain, :string, null: false)
       add(:client_id, :string, null: false)
       add(:client_secret, :string, null: false)
-      add(:directory_id, :binary_id, null: false)
       add(:disabled_at, :utc_datetime_usec)
 
       subject_trail()
       timestamps()
     end
 
+    create(index(:okta_auth_providers, [:account_id, :org_domain], unique: true))
+    create(index(:okta_auth_providers, [:account_id, :name], unique: true))
+
     up = """
     ALTER TABLE okta_auth_providers
-    ADD CONSTRAINT okta_auth_providers_account_directory_fk
+    ADD CONSTRAINT okta_auth_providers_directory_id_fkey
     FOREIGN KEY (account_id, directory_id)
     REFERENCES directories(account_id, id)
     ON DELETE CASCADE
@@ -25,7 +31,7 @@ defmodule Domain.Repo.Migrations.CreateOktaAuthProviders do
 
     down = """
     ALTER TABLE okta_auth_providers
-    DROP CONSTRAINT okta_auth_providers_account_directory_fk
+    DROP CONSTRAINT okta_auth_providers_directory_id_fkey
     """
 
     execute(up, down)

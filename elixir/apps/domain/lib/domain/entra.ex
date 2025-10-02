@@ -46,13 +46,13 @@ defmodule Domain.Entra do
     end
   end
 
-  def fetch_auth_provider_for_account_and_tenant_id(
+  def fetch_auth_provider_by_id(
         %Accounts.Account{} = account,
-        tenant_id
+        id
       ) do
-    Entra.AuthProvider.Query.all()
+    Entra.AuthProvider.Query.not_disabled()
     |> Entra.AuthProvider.Query.by_account_id(account.id)
-    |> Entra.AuthProvider.Query.by_tenant_id(tenant_id)
+    |> Entra.AuthProvider.Query.by_id(id)
     |> Repo.fetch(Entra.AuthProvider.Query)
   end
 end

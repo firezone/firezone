@@ -23,7 +23,7 @@ defmodule Domain.Repo.Migrations.AddDirectoryIdToAuthIdentities do
 
     up = """
     ALTER TABLE auth_identities
-    ADD CONSTRAINT auth_identities_account_directory_fk
+    ADD CONSTRAINT auth_identities_directory_id_fkey
     FOREIGN KEY (account_id, directory_id)
     REFERENCES directories(account_id, id)
     ON DELETE CASCADE
@@ -31,7 +31,7 @@ defmodule Domain.Repo.Migrations.AddDirectoryIdToAuthIdentities do
 
     down = """
     ALTER TABLE auth_identities
-    DROP CONSTRAINT auth_identities_account_directory_fk
+    DROP CONSTRAINT auth_identities_directory_id_fkey
     """
 
     execute(up, down)

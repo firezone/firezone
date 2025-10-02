@@ -402,18 +402,6 @@ defmodule Domain.Auth do
     end
   end
 
-  def fetch_identity_for_sign_in(
-        %Accounts.Account{} = account,
-        provider_kind,
-        provider_identifier
-      ) do
-    Identity.Query.not_deleted()
-    |> Identity.Query.by_account_id(account.id)
-    |> Identity.Query.by_kind(provider_kind)
-    |> Identity.Query.by_provider_identifier(provider_identifier)
-    |> Repo.fetch(Identity.Query, preload: :actor)
-  end
-
   # TODO: can be replaced with peek for consistency
   def fetch_identities_count_grouped_by_provider_id(%Subject{} = subject) do
     with :ok <- ensure_has_permissions(subject, Authorizer.manage_identities_permission()) do

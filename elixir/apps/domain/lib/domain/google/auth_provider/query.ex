@@ -13,6 +13,10 @@ defmodule Domain.Google.AuthProvider.Query do
     where(queryable, [providers: providers], providers.account_id == ^account_id)
   end
 
+  def by_id(querable, id) do
+    where(querable, [providers: providers], providers.id == ^id)
+  end
+
   def by_directory_id(queryable, directory_id) do
     where(queryable, [providers: providers], providers.directory_id == ^directory_id)
   end
