@@ -4,9 +4,12 @@ defmodule Web.SignIn do
   alias Domain.{
     Auth,
     Accounts,
-    Google
-    # Entra,
-    # Okta,
+    Google,
+    Email,
+    Entra,
+    Okta,
+    OIDC,
+    Userpass
   }
 
   @root_adapters_whitelist [:email, :userpass, :openid_connect]
@@ -26,9 +29,12 @@ defmodule Web.SignIn do
           params: params,
           account: account,
           providers_by_adapter: providers_by_adapter,
-          google_oidc_provider: google_oidc_provider(account),
-          # entra_oidc_providers: fetch_entra_oidc_providers(account),
-          # okta_oidc_providers: fetch_okta_oidc_providers(account),
+          google_auth_providers: google_auth_providers(account),
+          okta_auth_providers: okta_auth_providers(account),
+          entra_auth_providers: entra_auth_providers(account),
+          oidc_auth_providers: oidc_auth_providers(account),
+          email_auth_provider: email_auth_provider(account),
+          userpass_auth_provider: userpass_auth_provider(account),
           page_title: "Sign In"
         )
 
@@ -80,12 +86,52 @@ defmodule Web.SignIn do
                 <.separator />
               </:separator>
 
-              <:item :if={@google_oidc_provider}>
+              <:item :for={provider <- @google_auth_providers}>
                 <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
                   Sign in with Google
                 </h2>
 
-                <.google_oidc_button account={@account} params={@params} />
+                <.google_button account={@account} params={@params} provider={provider} />
+              </:item>
+
+              <:item :for={provider <- @okta_auth_providers}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with Okta
+                </h2>
+
+                <.okta_button account={@account} params={@params} provider={provider} />
+              </:item>
+
+              <:item :for={provider <- @entra_auth_providers}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with Entra
+                </h2>
+
+                <.entra_button account={@account} params={@params} provider={provider} />
+              </:item>
+
+              <:item :for={provider <- @oidc_auth_providers}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with OpenID Connect
+                </h2>
+
+                <.oidc_button account={@account} params={@params} provider={provider} />
+              </:item>
+
+              <:item :if={@email_auth_provider}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with Email
+                </h2>
+
+                {# <.email_button account={@account} params={@params} provider={@email_auth_provider} />}
+              </:item>
+
+              <:item :if={@userpass_auth_provider}>
+                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
+                  Sign in with Username and Password
+                </h2>
+
+                {# <.userpass_button account={@account} params={@params} provider={@userpass_auth_provider} />}
               </:item>
 
               <:item :if={adapter_enabled?(@providers_by_adapter, :openid_connect)}>
@@ -264,11 +310,11 @@ defmodule Web.SignIn do
     """
   end
 
-  defp google_oidc_button(assigns) do
+  defp google_button(assigns) do
     ~H"""
     <.link
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}/sign_in/oidc/google?#{@params}"}
+      href={~p"/#{@account}/sign_in/google/#{@provider.hosted_domain}?#{@params}"}
     >
       <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-5 h-5 mr-2" />
       Sign in with <strong>Google</strong>
@@ -276,26 +322,61 @@ defmodule Web.SignIn do
     """
   end
 
-  # def entra_oidc_button(assigns) do
+  defp entra_button(assigns) do
+    ~H"""
+    <.link
+      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
+      href={~p"/#{@account}//sign_in/entra/#{@provider.tenant_id}?#{@params}"}
+    >
+      <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5 mr-2" />
+      Sign in with <strong>Microsoft Entra</strong>
+    </.link>
+    """
+  end
+
+  defp okta_button(assigns) do
+    ~H"""
+    <.link
+      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
+      href={~p"/#{@account}/sign_in/okta/#{@provider.org_domain}?#{@params}"}
+    >
+      <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5 mr-2" /> Sign in with
+      <strong>Okta</strong>
+    </.link>
+    """
+  end
+
+  defp oidc_button(assigns) do
+    ~H"""
+    <.link
+      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
+      href={~p"/#{@account}/sign_in/oidc/#{@provider.client_id}?#{@params}"}
+    >
+      <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" /> Sign in with
+      <strong>OpenID Connect</strong>
+    </.link>
+    """
+  end
+
+  # defp email_button(assigns) do
   #   ~H"""
   #   <.link
   #     class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-  #     href={~p"/#{@account}/entra/sign_in?#{@params}"}
+  #     href={~p"/#{@account}/sign_in/email?#{@params}"}
   #   >
-  #   <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5 mr-2" /> Sign in with
-  #     <strong>Microsoft Entra</strong>
+  #     <.icon name="hero-envelope" class="w-5 h-5 mr-2" /> Sign in with <strong>Email</strong>
   #   </.link>
   #   """
   # end
   #
-  # def okta_oidc_button(assigns) do
+  # defp userpass_button(assigns) do
   #   ~H"""
   #   <.link
   #     class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-  #     href={~p"/#{@account}/okta/sign_in?#{@params}"}
+  #     href={~p"/#{@account}/sign_in/userpass?#{@params}"}
   #   >
-  #     <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-5 h-5 mr-2" /> Sign in with
-  #     <strong>Okta</strong>
+  #     <.icon name="hero-key" class="w-5 h-5 mr-2" /> Sign in with
+  #     <strong>Username and Password</strong>
   #   </.link>
   #   """
   # end
@@ -304,24 +385,33 @@ defmodule Web.SignIn do
     Map.get(providers_by_adapter, adapter, []) != []
   end
 
-  defp google_oidc_provider(account) do
-    case Google.fetch_oidc_provider_for_account(account) do
+  defp google_auth_providers(account) do
+    Google.all_enabled_auth_providers_for_account!(account)
+  end
+
+  defp okta_auth_providers(account) do
+    Okta.all_enabled_auth_providers_for_account!(account)
+  end
+
+  defp entra_auth_providers(account) do
+    Entra.all_enabled_auth_providers_for_account!(account)
+  end
+
+  defp oidc_auth_providers(account) do
+    OIDC.all_enabled_auth_providers_for_account!(account)
+  end
+
+  defp email_auth_provider(account) do
+    case Email.fetch_auth_provider_for_account(account) do
       {:ok, provider} -> provider
       {:error, :not_found} -> nil
     end
   end
 
-  # defp entra_oidc_provider(account) do
-  #   case Entra.fetch_oidc_provider_for_account(account) do
-  #     {:ok, provider} -> provider
-  #     {:error, :not_found} -> nil
-  #   end
-  # end
-  #
-  # defp okta_oidc_provider(account) do
-  #   case Okta.fetch_oidc_provider_for_account(account) do
-  #     {:ok, provider} -> provider
-  #     {:error, :not_found} -> nil
-  #   end
-  # end
+  defp userpass_auth_provider(account) do
+    case Userpass.fetch_auth_provider_for_account(account) do
+      {:ok, provider} -> provider
+      {:error, :not_found} -> nil
+    end
+  end
 end

@@ -23,10 +23,10 @@ defmodule Domain.GoogleTest do
     }
   end
 
-  describe "create_oidc_provider/2" do
-    test "admin can create OIDC provider", %{account: account, admin_subject: subject} do
+  describe "create_auth_provider/2" do
+    test "admin can create auth provider", %{account: account, admin_subject: subject} do
       attrs = %{hosted_domain: "example.com"}
-      assert {:ok, provider} = create_oidc_provider(attrs, subject)
+      assert {:ok, provider} = create_auth_provider(attrs, subject)
 
       assert provider.account_id == account.id
       assert provider.hosted_domain == "example.com"
@@ -40,16 +40,22 @@ defmodule Domain.GoogleTest do
     end
   end
 
-  describe "fetch_oidc_provider_by_account/1" do
-    test "returns the OIDC provider for the account", %{account: account, admin_subject: subject} do
+  describe "fetch_auth_provider_for_account_and_hosted_domain/2" do
+    test "returns the auth provider for the account and hosted domain", %{
+      account: account,
+      admin_subject: subject
+    } do
       attrs = %{hosted_domain: "example.com"}
 
-      assert {:ok, provider} = create_oidc_provider(attrs, subject)
-      assert {:ok, ^provider} = fetch_oidc_provider_by_account(account)
+      assert {:ok, provider} = create_auth_provider(attrs, subject)
+
+      assert {:ok, ^provider} =
+               fetch_auth_provider_for_account_and_hosted_domain(account, "example.com")
     end
 
     test "returns error if no OIDC provider exists for the account", %{account: account} do
-      assert {:error, :not_found} = fetch_oidc_provider_by_account(account)
+      assert {:error, :not_found} =
+               fetch_auth_provider_for_account_and_hosted_domain(account, "example.com")
     end
   end
 end

@@ -4,7 +4,10 @@ defmodule Web.OIDCController do
   alias Domain.{
     Accounts,
     Auth,
+    Entra,
     Google,
+    Okta,
+    OIDC,
     Tokens
   }
 
@@ -31,12 +34,13 @@ defmodule Web.OIDCController do
   ]
 
   @recent_sessions 6
+  @provider_contexts ~w(hosted_domain org_domain tenant_id client_id)a
 
   action_fallback Web.FallbackController
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, provider} <- fetch_provider(account, params["provider"]),
+         {:ok, provider} <- fetch_provider(account, params),
          {:ok, config} <- fetch_config(provider) do
       provider_redirect(conn, account, config, params)
     else
@@ -51,7 +55,7 @@ defmodule Web.OIDCController do
          conn = delete_resp_cookie(conn, @cookie_key),
          true = Plug.Crypto.secure_compare(cookie.state, state),
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(cookie.account_id),
-         {:ok, provider} <- fetch_provider(account, cookie.provider),
+         {:ok, provider} <- fetch_provider(account, cookie),
          {:ok, config} <- fetch_config(provider),
          {:ok, tokens} <- fetch_tokens(config, code, cookie.verifier),
          {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
@@ -72,13 +76,15 @@ defmodule Web.OIDCController do
 
   defp provider_redirect(conn, account, config, params) do
     with {:ok, uri, {state, verifier}} <- build_redirect_uri(config) do
-      cookie = %{
-        account_id: account.id,
-        provider: params["provider"],
-        params: sanitize(params),
-        state: state,
-        verifier: verifier
-      }
+      cookie =
+        %{
+          "account_id" => account.id,
+          "params" => sanitize(params),
+          "state" => state,
+          "verifier" => verifier
+        }
+        # Store provider context to re-fetch the provider on callback
+        |> Map.merge(Map.take(params, @provider_contexts))
 
       conn =
         conn
@@ -111,18 +117,81 @@ defmodule Web.OIDCController do
     OpenIDConnect.fetch_tokens(config, params)
   end
 
-  defp fetch_provider(account, "google") do
-    Google.fetch_oidc_provider_for_account(account)
+  defp fetch_provider(account, %{"hosted_domain" => hosted_domain}) do
+    Google.fetch_auth_provider_for_account_and_hosted_domain(account, hosted_domain)
+  end
+
+  defp fetch_provider(account, %{"org_domain" => org_domain}) do
+    Okta.fetch_auth_provider_for_account_and_org_domain(account, org_domain)
+  end
+
+  defp fetch_provider(account, %{"tenant_id" => tenant_id}) do
+    Entra.fetch_auth_provider_for_account_and_tenant_id(account, tenant_id)
+  end
+
+  defp fetch_provider(account, %{"client_id" => client_id}) do
+    OIDC.fetch_auth_provider_for_account_and_client_id(account, client_id)
   end
 
   defp fetch_provider(_account, _provider) do
     {:error, :invalid_provider}
   end
 
-  defp fetch_config(struct) do
-    with {:ok, config} <- Application.fetch_env(:domain, struct.__struct__) do
-      {:ok, Enum.into(config, %{})}
+  defp fetch_config(%Google.AuthProvider{}) do
+    with {:ok, config} <- Application.fetch_env(:domain, Domain.Google.AuthProvider) do
+      config = Enum.into(config, %{redirect_uri: callback_url()})
+
+      {:ok, config}
     end
+  end
+
+  defp fetch_config(%Okta.AuthProvider{} = provider) do
+    with {:ok, config} <- Application.fetch_env(:domain, Domain.Okta.AuthProvider) do
+      discovery_document_uri = "https://#{provider.org_domain}/.well-known/openid-configuration"
+
+      config =
+        Enum.into(config, %{
+          redirect_uri: callback_url(),
+          client_id: provider.client_id,
+          client_secret: provider.client_secret,
+          discovery_document_uri: discovery_document_uri
+        })
+
+      {:ok, config}
+    end
+  end
+
+  defp fetch_config(%Entra.AuthProvider{} = provider) do
+    with {:ok, config} <- Application.fetch_env(:domain, Domain.Entra.AuthProvider) do
+      discovery_document_uri =
+        "https://login.microsoftonline.com/#{provider.tenant_id}/v2.0/.well-known/openid-configuration"
+
+      config =
+        Enum.into(config, %{
+          redirect_uri: callback_url(),
+          discovery_document_uri: discovery_document_uri
+        })
+
+      {:ok, config}
+    end
+  end
+
+  defp fetch_config(%OIDC.AuthProvider{} = provider) do
+    with {:ok, config} <- Application.fetch_env(:domain, Domain.OIDC.AuthProvider) do
+      config =
+        Enum.into(config, %{
+          redirect_uri: callback_url(),
+          client_id: provider.client_id,
+          client_secret: provider.client_secret,
+          discovery_document_uri: provider.discovery_document_uri
+        })
+
+      {:ok, config}
+    end
+  end
+
+  defp fetch_config(_provider) do
+    {:error, :invalid_provider}
   end
 
   defp fetch_identity(account, provider, sub) do
@@ -169,7 +238,7 @@ defmodule Web.OIDCController do
   # 1. Store session into session list
   # 2. Redirect to sanitized redirect_to param if present
   defp signed_in(conn, :browser, account, _identity, token, params) do
-    redirect_to = sanitize_redirect_to(params["redirect_to"], account)
+    redirect_to = normalize_redirect_to(params["redirect_to"], account)
     session = {:browser, account.id, token}
 
     sessions =
@@ -184,26 +253,9 @@ defmodule Web.OIDCController do
   end
 
   # TODO: Is this needed? Shouldn't the router / plug pipeline already handle this?
-  defp sanitize_redirect_to(nil, account), do: ~p"/#{account}/sites"
-  defp sanitize_redirect_to("", account), do: ~p"/#{account}/sites"
-
-  defp sanitize_redirect_to(to, account) do
-    if String.starts_with?(to, "/#{account.slug}") or String.starts_with?(to, "/#{account.id}") do
-      to
-    else
-      ~p"/#{account}/sites"
-    end
-  end
-
-  # defp config(%Entra.OIDCProvider{}) do
-  #   Application.fetch_env!(:domain, Domain.Entra.OIDCProvider)
-  # end
-  #
-  # defp config(%Okta.OIDCProvider{} = provider) do
-  #   Application.fetch_env!(:domain, Domain.Okta.OIDCProvider)
-  #   |> Keyword.put(:client_id, provider.client_id)
-  #   |> Keyword.put(:client_secret, provider.client_secret)
-  # end
+  defp normalize_redirect_to(nil, account), do: ~p"/#{account}/sites"
+  defp normalize_redirect_to("", account), do: ~p"/#{account}/sites"
+  defp normalize_redirect_to(to, _account), do: to
 
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :browser
@@ -216,6 +268,7 @@ defmodule Web.OIDCController do
   end
 
   defp handle_error(conn, error, params) do
+    Logger.warning("OIDC sign in error: #{inspect(error)}")
     Logger.warning("Failed to sign in", error: inspect(error))
     error = "An unexpected error occurred while signing you in. Please try again."
     path = ~p"/?#{sanitize(params)}"
@@ -225,7 +278,6 @@ defmodule Web.OIDCController do
 
   defp redirect_for_error(conn, error, path) do
     conn
-    |> delete_resp_cookie(@cookie_key)
     |> put_flash(:error, error)
     |> redirect(to: path)
     |> halt()

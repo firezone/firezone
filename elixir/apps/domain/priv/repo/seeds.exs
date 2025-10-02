@@ -379,7 +379,7 @@ defmodule Domain.Repo.Seeds do
       Auth.build_subject(admin_actor_token, admin_actor_context)
 
     {:ok, _google_oidc_provider} =
-      Google.create_oidc_provider(%{hosted_domain: "firez.one"}, admin_subject)
+      Google.create_oidc_provider(%{hosted_domain: "firezone.dev"}, admin_subject)
 
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(

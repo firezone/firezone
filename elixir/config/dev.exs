@@ -48,6 +48,9 @@ config :domain, Oban,
   engine: Oban.Engines.Basic,
   repo: Domain.Repo
 
+config :domain, Domain.Okta.AuthProvider,
+  redirect_uri: "https://localhost:13443/auth/oidc/callback"
+
 ###############################
 ##### Web #####################
 ###############################
@@ -126,10 +129,8 @@ config :api, API.Endpoint,
 ##### Third-party configs #####
 ###############################
 
-# Include extra logger attributes in development logs
-config :logger, :default_formatter,
-  format: "[$level] $message $metadata\n",
-  metadata: :all
+# Do not include metadata nor timestamps in development logs
+config :logger, :default_formatter, format: "[$level] $message\n"
 
 # Disable caching for OpenAPI spec to ensure it is refreshed
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache

@@ -79,6 +79,12 @@ if config_env() == :prod do
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
 
+  config :domain, Domain.Google.AuthProvider,
+    client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  config :domain, Domain.Entra.AuthProvider,
+    client_secret: env_var_to_config!(:entra_oidc_client_secret)
+
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
 

@@ -61,9 +61,17 @@ defmodule Domain.Accounts.Account do
     # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
     has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
 
-    has_one :google_oidc_provider, Domain.Google.OIDCProvider
-    # has_one :entra_oidc_provider, Domain.Entra.OIDCProvider
-    # has_one :okta_oidc_provider, Domain.Okta.OIDCProvider
+    has_many :directories, Domain.Directories.Directory
+    has_many :google_directories, Domain.Google.Directory
+    has_many :google_auth_providers, Domain.Google.AuthProvider
+    has_many :okta_directories, Domain.Okta.Directory
+    has_many :okta_auth_providers, Domain.Okta.AuthProvider
+    has_many :entra_directories, Domain.Entra.Directory
+    has_many :entra_auth_providers, Domain.Entra.AuthProvider
+
+    has_many :oidc_auth_providers, Domain.OIDC.AuthProvider
+    has_one :email_auth_provider, Domain.Email.AuthProvider
+    has_one :userpass_auth_provider, Domain.Userpass.AuthProvider
 
     field :warning, :string
     field :warning_delivery_attempts, :integer, default: 0
