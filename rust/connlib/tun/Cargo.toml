@@ -11,7 +11,7 @@ ip-packet = { workspace = true }
 
 [target.'cfg(target_family = "unix")'.dependencies]
 libc = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["net", "rt", "sync"] }
 tracing = { workspace = true }
 
 [lints]

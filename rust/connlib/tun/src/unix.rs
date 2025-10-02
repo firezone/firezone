@@ -64,13 +64,14 @@ where
                         }
 
                         let packet = IpPacket::new(ip_packet_buf, len)
+                            .context("Failed to parse IP packet") // Add an extra layer to ensure any inner error is the `cause`
                             .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e))?;
 
                         Ok(Some(packet))
                     })
                     .await;
 
-                match next_inbound_packet {
+                match next_inbound_packet.context("Failed to read from TUN FD") {
                     Ok(None) => bail!("TUN file descriptor is closed"),
                     Ok(Some(packet)) => {
                         if inbound_tx.send(packet).await.is_err() {
@@ -79,8 +80,12 @@ where
                             break;
                         };
                     }
+                    Err(e) if e.root_cause().is::<ip_packet::Fragmented>() => {
+                        tracing::debug!("{e:#}"); // Log on debug to be less noisy.
+                        continue;
+                    }
                     Err(e) => {
-                        tracing::warn!("Failed to read from TUN FD: {:#}", anyhow::Error::new(e));
+                        tracing::warn!("{e:#}");
                         continue;
                     }
                 }
@@ -90,4 +95,20 @@ where
         })?;
 
     anyhow::Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn can_detect_ip_fragmented_error() {
+        let ip_packet_error =
+            anyhow::Error::new(ip_packet::Fragmented).context("Failed to parse IP packet");
+        let io_error = io::Error::new(io::ErrorKind::InvalidInput, ip_packet_error);
+
+        let final_error = anyhow::Error::new(io_error).context("Failed to read from TUN fd");
+
+        assert!(final_error.root_cause().is::<ip_packet::Fragmented>())
+    }
 }

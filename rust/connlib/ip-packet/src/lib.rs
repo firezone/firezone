@@ -205,6 +205,8 @@ impl IpPacket {
 
         let ip = IpSlice::from_slice(&buf.inner[..len]).context("Failed to parse IP packet")?;
 
+        anyhow::ensure!(!ip.is_fragmenting_payload(), Fragmented);
+
         let src_ip = ip.source_addr();
         let dst_ip = ip.destination_addr();
 
@@ -901,6 +903,10 @@ impl IpPacket {
         &mut self.buf[self.ip_header_length..self.len]
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Fragmented IP packets are unsupported")]
+pub struct Fragmented;
 
 fn extract_l4_proto(payload: &[u8], protocol: IpNumber) -> Result<Layer4Protocol> {
     // ICMP messages SHOULD always contain at least 8 bytes of the original L4 payload.
