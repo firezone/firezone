@@ -95,7 +95,7 @@ impl TunDeviceManager {
                 if let Err(e) = set_txqueue_length(handle.clone(), 10_000).await {
                     tracing::warn!("Failed to set TX queue length: {e}")
                 }
-                if let Err(e) = set_qdisk_fq(handle).await {
+                if let Err(e) = set_qdisc_fq(handle).await {
                     tracing::warn!("Failed to set qdisc policy to `fq`: {e}")
                 }
             }
@@ -246,7 +246,7 @@ async fn set_txqueue_length(handle: Handle, queue_len: u32) -> Result<()> {
     Ok(())
 }
 
-async fn set_qdisk_fq(mut handle: Handle) -> Result<()> {
+async fn set_qdisc_fq(mut handle: Handle) -> Result<()> {
     let index = handle
         .link()
         .get()
