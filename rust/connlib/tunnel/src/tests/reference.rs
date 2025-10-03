@@ -228,10 +228,10 @@ impl ReferenceState {
             .with_if_not_empty(
                 5,
                 state.all_resources_not_known_to_client(),
-                |resource_ids| sample::select(resource_ids).prop_map(Transition::ActivateResource),
+                |resource_ids| sample::select(resource_ids).prop_map(Transition::AddResource),
             )
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resource_ids| {
-                sample::select(resource_ids).prop_map(Transition::DeactivateResource)
+                sample::select(resource_ids).prop_map(Transition::RemoveResource)
             })
             .with(1, roam_client())
             .with(1, relays(relay_id()).prop_map(Transition::DeployNewRelays))
@@ -246,10 +246,10 @@ impl ReferenceState {
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with(1, private_key().prop_map(Transition::RestartClient))
-            .with_if_not_empty(1, state.client.inner().internet_resource(), |resource| {
-                Just(Transition::EnableInternetResource(resource.unwrap()))
-            })
-            .with(1, Just(Transition::DisableInternetResource))
+            .with(
+                1,
+                any::<bool>().prop_map(Transition::SetInternetResourceState),
+            )
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
                 sample::select(resources_id)
                     .prop_map(Transition::DeauthorizeWhileGatewayIsPartitioned)
@@ -394,7 +394,7 @@ impl ReferenceState {
     /// Here is where we implement the "expected" logic.
     pub(crate) fn apply(mut state: Self, transition: &Transition) -> Self {
         match transition {
-            Transition::ActivateResource(resource) => {
+            Transition::AddResource(resource) => {
                 state.client.exec_mut(|client| match resource {
                     client::Resource::Dns(r) => {
                         client.add_dns_resource(r.clone());
@@ -413,16 +413,13 @@ impl ReferenceState {
                     client::Resource::Internet(r) => client.add_internet_resource(r.clone()),
                 });
             }
-            Transition::DeactivateResource(id) => {
+            Transition::RemoveResource(id) => {
                 state.client.exec_mut(|client| {
                     client.remove_resource(id);
                 });
             }
-            Transition::EnableInternetResource(r) => state.client.exec_mut(|client| {
-                client.enable_internet_resource(*r);
-            }),
-            Transition::DisableInternetResource => state.client.exec_mut(|client| {
-                client.disable_internet_resource();
+            Transition::SetInternetResourceState(active) => state.client.exec_mut(|client| {
+                client.set_internet_resource_state(*active);
             }),
             Transition::SendDnsQueries(queries) => {
                 for query in queries {
@@ -533,7 +530,7 @@ impl ReferenceState {
     /// Any additional checks on whether a particular [`Transition`] can be applied to a certain state.
     pub(crate) fn is_valid_transition(state: &Self, transition: &Transition) -> bool {
         match transition {
-            Transition::ActivateResource(resource) => {
+            Transition::AddResource(resource) => {
                 // Don't add resource we already have.
                 if state.client.inner().has_resource(resource.id()) {
                     return false;
@@ -541,7 +538,7 @@ impl ReferenceState {
 
                 true
             }
-            Transition::DisableInternetResource | Transition::EnableInternetResource(_) => true,
+            Transition::SetInternetResourceState(_) => true,
             Transition::SendIcmpPacket {
                 src,
                 dst: Destination::DomainName { name, .. },
@@ -674,7 +671,7 @@ impl ReferenceState {
                 !is_assigned_ip4 && !is_assigned_ip6
             }
             Transition::ReconnectPortal => true,
-            Transition::DeactivateResource(r) => {
+            Transition::RemoveResource(r) => {
                 let has_resource = state.client.inner().has_resource(*r);
                 let has_tcp_connection = state
                     .client

@@ -21,8 +21,6 @@ enum AdapterError: Error {
 
   case setDnsError(String)
 
-  case enableInternetResourceError(String)
-
   var localizedDescription: String {
     switch self {
     case .invalidSession(let session):
@@ -32,9 +30,6 @@ enum AdapterError: Error {
       return "connlib failed to start: \(error)"
     case .setDnsError(let error):
       return "failed to set new DNS serversn: \(error)"
-    case .enableInternetResourceError(let error):
-      return "failed to set new disabled resources: \(error)"
-    }
   }
 }
 
@@ -288,19 +283,7 @@ class Adapter {
     let decoder = JSONDecoder()
     decoder.keyDecodingStrategy = .convertFromSnakeCase
 
-    internetResource = resources().filter { $0.isInternetResource() }.first
-
-    if let internetResource = internetResource, internetResourceEnabled {
-        do {
-          try session?.enableInternetResource(internetResource.id.toString())
-        } catch let error {
-          // `toString` needed to deep copy the string and avoid a possible dangling pointer
-          let msg = (error as? RustString)?.toString() ?? "Unknown error"
-          Log.error(AdapterError.enableInternetResourceError(msg))
-        }
-    } else {
-        session?.disableInternetResource()
-    }
+    session?.setInternetResourceState(internetResourceEnabled)
   }
 }
 

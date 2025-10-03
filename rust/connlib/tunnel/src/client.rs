@@ -4,9 +4,9 @@ mod resource;
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
 use firezone_telemetry::{analytics, feature_flags};
-pub(crate) use resource::{CidrResource, Resource};
 #[cfg(all(feature = "proptest", test))]
-pub(crate) use resource::{DnsResource, InternetResource};
+pub(crate) use resource::DnsResource;
+pub(crate) use resource::{CidrResource, InternetResource, Resource};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::dns::{DnsResourceRecord, StubResolver};
@@ -38,7 +38,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
-use std::{io, iter};
+use std::{io, iter, mem};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
@@ -107,8 +107,7 @@ pub struct ClientState {
 
     /// All CIDR resources we know about, indexed by the IP range they cover (like `1.1.0.0/8`).
     active_cidr_resources: IpNetworkTable<CidrResource>,
-    /// `Some` if the Internet resource is enabled.
-    internet_resource: Option<ResourceId>,
+    is_internet_resource_active: bool,
     /// All resources indexed by their ID.
     resources_by_id: BTreeMap<ResourceId, Resource>,
 
@@ -204,7 +203,7 @@ impl ClientState {
             udp_dns_sockets_by_upstream_and_query_id: Default::default(),
             stub_resolver: StubResolver::new(records),
             buffered_transmits: Default::default(),
-            internet_resource: None,
+            is_internet_resource_active: false,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             upstream_dns: Default::default(),
             buffered_dns_queries: Default::default(),
@@ -786,7 +785,7 @@ impl ClientState {
         if !self.is_upstream_set_by_the_portal() {
             return false;
         }
-        if self.internet_resource.is_some() {
+        if self.active_internet_resource().is_some() {
             return true;
         }
 
@@ -906,37 +905,29 @@ impl ClientState {
 
     /// Sets the Internet Resource state.
     ///
-    /// If `Some`, sets the given ID as the Internet Resource.
     /// In order for the Internet Resource to actually be active, the user must also have access to it.
     /// In other words, it needs to be present in the resources list provided by the portal.
     ///
     /// That list may be provided asynchronously to this call, which is why set it as active,
     /// regardless as to whether it is present or not.
-    pub fn set_internet_resource_state(&mut self, id: Option<ResourceId>, now: Instant) {
+    pub fn set_internet_resource_state(&mut self, active: bool, now: Instant) {
         // Be idempotent.
-        if self.internet_resource == id {
+        if self.is_internet_resource_active == active {
             return;
         }
 
-        let resource = id.and_then(|r| self.resources_by_id.get(&r));
+        let previous = std::mem::replace(&mut self.is_internet_resource_active, active);
 
-        if let Some(resource) = resource
-            && !matches!(resource, Resource::Internet(_))
-        {
-            tracing::warn!(?resource, ?id, "Given ID is not an Internet Resource");
-            return;
-        }
-
-        let current = std::mem::replace(&mut self.internet_resource, id);
+        let resource = self.internet_resource();
 
         // If we are enabling an known Internet Resource, log it.
-        if let Some(resource) = resource.filter(|r| matches!(r, Resource::Internet(_))) {
-            self.log_activating_resource(resource);
+        if active && let Some(resource) = resource.cloned() {
+            self.log_activating_resource(&Resource::Internet(resource));
         }
 
         // Check if we need to disable the current one.
-        if let Some(current) = current {
-            self.disable_resource(current, now);
+        if previous && let Some(current) = resource {
+            self.disable_resource(current.id, now);
         }
 
         self.maybe_update_tun_routes();
@@ -966,11 +957,11 @@ impl ClientState {
             .chain(iter::once(DNS_SENTINELS_V4.into()))
             .chain(iter::once(DNS_SENTINELS_V6.into()))
             .chain(
-                self.internet_resource
+                self.active_internet_resource()
                     .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
             )
             .chain(
-                self.internet_resource
+                self.active_internet_resource()
                     .map(|_| Ipv6Network::DEFAULT_ROUTE.into()),
             )
     }
@@ -994,14 +985,31 @@ impl ClientState {
                 |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for CIDR resource"),
             );
 
+        let maybe_internet_resource = self.active_internet_resource()
+            .map(|r| r.id)
+            .inspect(|rid| {
+                tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for Internet resource")
+            });
+
         maybe_dns_resource_id
             .or(maybe_cidr_resource_id)
-            .or(self.internet_resource)
-            .inspect(|r| {
-                if Some(*r) == self.internet_resource {
-                    tracing::trace!(target: "tunnel_test_coverage", %destination, "Packet for Internet resource")
-                }
-            })
+            .or(maybe_internet_resource)
+    }
+
+    fn active_internet_resource(&self) -> Option<&InternetResource> {
+        if !self.is_internet_resource_active {
+            return None;
+        }
+
+        self.internet_resource()
+    }
+
+    fn internet_resource(&self) -> Option<&InternetResource> {
+        self.resources_by_id.values().find_map(|r| match r {
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(internet_resource) => Some(internet_resource),
+        })
     }
 
     pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
@@ -1688,10 +1696,7 @@ impl ClientState {
                     None => true,
                 }
             }
-            Resource::Internet(resource) => self
-                .internet_resource
-                .replace(resource.id)
-                .is_some_and(|r| r != resource.id),
+            Resource::Internet(_) => !mem::replace(&mut self.is_internet_resource_active, true),
         };
 
         if activated {
@@ -1751,11 +1756,7 @@ impl ClientState {
         match resource {
             Resource::Dns(_) => self.stub_resolver.remove_resource(id),
             Resource::Cidr(_) => {}
-            Resource::Internet(_) => {
-                if self.internet_resource.is_some_and(|r_id| r_id == id) {
-                    self.internet_resource = None;
-                }
-            }
+            Resource::Internet(_) => self.is_internet_resource_active = false,
         }
 
         let name = resource.name();

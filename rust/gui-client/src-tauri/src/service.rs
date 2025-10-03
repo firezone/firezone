@@ -5,7 +5,7 @@ use crate::{
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::ResourceView;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
@@ -58,7 +58,7 @@ pub enum ClientMsg {
     ApplyLogFilter {
         directives: String,
     },
-    SetInternetResourceState(Option<ResourceId>),
+    SetInternetResourceState(bool),
     StartTelemetry {
         environment: String,
         release: String,

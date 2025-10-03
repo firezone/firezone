@@ -21,15 +21,13 @@ use std::{
 /// The possible transitions of the state machine.
 #[derive(Clone, Debug)]
 pub(crate) enum Transition {
-    /// Activate a resource on the client.
-    ActivateResource(Resource),
-    /// Deactivate a resource on the client.
-    DeactivateResource(ResourceId),
+    /// Add a resource on the client.
+    AddResource(Resource),
+    /// Remove a resource on the client.
+    RemoveResource(ResourceId),
 
-    /// Disable the Internet Resource
-    DisableInternetResource,
-    /// Enable the Internet Resource
-    EnableInternetResource(ResourceId),
+    /// Toggle the Internet Resource on / off
+    SetInternetResourceState(bool),
 
     /// Send an ICMP packet to destination (IP resource, DNS resource or IP non-resource).
     SendIcmpPacket {

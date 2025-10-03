@@ -1,6 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, Result};
-use connlib_model::{PublicKey, ResourceId, ResourceView};
+use connlib_model::{PublicKey, ResourceView};
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
@@ -65,7 +65,7 @@ pub enum Command {
     Stop,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
-    SetInternetResourceState(Option<ResourceId>),
+    SetInternetResourceState(bool),
 }
 
 enum PortalCommand {
@@ -193,14 +193,14 @@ impl Eventloop {
 
                 tunnel.state_mut().update_system_resolvers(dns);
             }
-            Command::SetInternetResourceState(resource) => {
+            Command::SetInternetResourceState(active) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     return Ok(ControlFlow::Continue(()));
                 };
 
                 tunnel
                     .state_mut()
-                    .set_internet_resource_state(resource, Instant::now())
+                    .set_internet_resource_state(active, Instant::now())
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
