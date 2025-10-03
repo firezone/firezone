@@ -951,8 +951,7 @@ impl RefClient {
             .filter_map(|r| r.into_dns())
             .filter(|r| is_subdomain(&domain.to_string(), &r.address))
             .sorted_by_key(|r| r.address.len())
-            .rev()
-            .next()
+            .next_back()
     }
 
     fn resolved_domains(&self) -> impl Iterator<Item = (DomainName, BTreeSet<RecordType>)> + '_ {
