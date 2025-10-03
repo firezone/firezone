@@ -908,6 +908,39 @@ impl ClientState {
             .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(sentinel_sockets);
     }
 
+    /// Sets the Internet Resource state.
+    ///
+    /// If `Some`, sets the given ID as the Internet Resource.
+    /// In order for the Internet Resource to actually be active, the user must also have access to it.
+    /// In other words, it needs to be present in the resources list provided by the portal.
+    ///
+    /// That list may be provided asynchronously to this call, which is why set it as active,
+    /// regardless as to whether it is present or not.
+    pub fn set_internet_resource_state(&mut self, id: Option<ResourceId>, now: Instant) {
+        let resource = id.and_then(|r| self.resources_by_id.get(&r));
+
+        if let Some(resource) = resource
+            && !matches!(resource, Resource::Internet(_))
+        {
+            tracing::warn!(?resource, ?id, "Given ID is not an Internet Resource");
+            return;
+        }
+
+        let current = std::mem::replace(&mut self.internet_resource, id);
+
+        // If we are enabling an known Internet Resource, log it.
+        if let Some(resource) = resource.filter(|r| matches!(r, Resource::Internet(_))) {
+            self.log_activating_resource(resource);
+        }
+
+        // Check if we need to disable the current one.
+        if let Some(current) = current {
+            self.disable_resource(current, now);
+        }
+
+        self.maybe_update_tun_routes();
+    }
+
     pub fn set_disabled_resources(
         &mut self,
         new_disabled_resources: BTreeSet<ResourceId>,
@@ -1696,16 +1729,12 @@ impl ClientState {
                 }
             }
             Resource::Internet(resource) => {
-                self.internet_resource.replace(resource.id) != Some(resource.id)
+                self.internet_resource.is_some_and(|id| id == resource.id)
             }
         };
 
         if activated {
-            let name = new_resource.name();
-            let address = new_resource.address_string().map(tracing::field::display);
-            let sites = new_resource.sites_string();
-
-            tracing::info!(%name, address, %sites, "Activating resource");
+            self.log_activating_resource(&new_resource);
         }
 
         if matches!(new_resource, Resource::Cidr(_)) {
@@ -1714,6 +1743,14 @@ impl ClientState {
 
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
+    }
+
+    fn log_activating_resource(&self, resource: &Resource) {
+        let name = resource.name();
+        let address = resource.address_string().map(tracing::field::display);
+        let sites = resource.sites_string();
+
+        tracing::info!(%name, address, %sites, "Activating resource");
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(?id))]
