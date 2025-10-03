@@ -65,7 +65,7 @@ pub enum Command {
     Stop,
     SetDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
-    SetDisabledResources(BTreeSet<ResourceId>),
+    SetInternetResourceState(Option<ResourceId>),
 }
 
 enum PortalCommand {
@@ -193,14 +193,14 @@ impl Eventloop {
 
                 tunnel.state_mut().update_system_resolvers(dns);
             }
-            Command::SetDisabledResources(resources) => {
+            Command::SetInternetResourceState(resource) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
                     return Ok(ControlFlow::Continue(()));
                 };
 
                 tunnel
                     .state_mut()
-                    .set_disabled_resources(resources, Instant::now())
+                    .set_internet_resource_state(resource, Instant::now())
             }
             Command::SetTun(tun) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
