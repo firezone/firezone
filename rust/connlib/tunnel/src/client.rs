@@ -129,9 +129,6 @@ pub struct ClientState {
     /// Configuration of the TUN device, when it is up.
     tun_config: Option<TunConfig>,
 
-    /// Resources that have been disabled by the UI
-    disabled_resources: BTreeSet<ResourceId>,
-
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
     /// Tracks the TCP stream (i.e. socket-pair) on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
@@ -206,7 +203,6 @@ impl ClientState {
             gateways_site: Default::default(),
             udp_dns_sockets_by_upstream_and_query_id: Default::default(),
             stub_resolver: StubResolver::new(records),
-            disabled_resources: Default::default(),
             buffered_transmits: Default::default(),
             internet_resource: None,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
@@ -941,31 +937,8 @@ impl ClientState {
         self.maybe_update_tun_routes();
     }
 
-    pub fn set_disabled_resources(
-        &mut self,
-        new_disabled_resources: BTreeSet<ResourceId>,
-        now: Instant,
-    ) {
-        let current_disabled_resources = self.disabled_resources.clone();
-
-        // We set disabled_resources before anything else so that add_resource knows what resources are enabled right now.
-        self.disabled_resources.clone_from(&new_disabled_resources);
-
-        for re_enabled_resource in current_disabled_resources.difference(&new_disabled_resources) {
-            let Some(resource) = self.resources_by_id.get(re_enabled_resource) else {
-                continue;
-            };
-
-            self.add_resource(resource.clone(), now);
-        }
-
-        for new_disabled_resource in new_disabled_resources.difference(&current_disabled_resources)
-        {
-            self.disable_resource(*new_disabled_resource, now);
-        }
-
-        self.active_cidr_resources = self.recalculate_active_cidr_resources();
-        self.maybe_update_tun_routes();
+    pub fn set_disabled_resources(&mut self, _: BTreeSet<ResourceId>, _: Instant) {
+        // TODO: Remove fn.
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
