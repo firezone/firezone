@@ -30,6 +30,7 @@ enum AdapterError: Error {
       return "connlib failed to start: \(error)"
     case .setDnsError(let error):
       return "failed to set new DNS serversn: \(error)"
+    }
   }
 }
 
