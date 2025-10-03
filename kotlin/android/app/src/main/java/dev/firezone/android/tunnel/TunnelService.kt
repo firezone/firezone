@@ -235,14 +235,13 @@ class TunnelService : VpnService() {
 
     // UI updates for resources
     fun resourcesUpdated() {
-        val currentlyDisabled =
-            if (internetResource() != null && !resourceState.isEnabled()) {
-                setOf(internetResource()!!.id)
-            } else {
-                emptySet()
-            }
-
-        sendTunnelCommand(TunnelCommand.SetDisabledResources(Gson().toJson(currentlyDisabled)))
+        if (internetResource() != null && resourceState.isEnabled()) {
+            sendTunnelCommand(
+                TunnelCommand.EnableInternetResource(internetResource()!!.id.toString()),
+            )
+        } else {
+            sendTunnelCommand(TunnelCommand.DisableInternetResource)
+        }
     }
 
     fun internetResourceToggled(state: ResourceState) {
@@ -446,10 +445,11 @@ class TunnelService : VpnService() {
     sealed class TunnelCommand {
         data object Disconnect : TunnelCommand()
 
-        data class SetDisabledResources(
-            val disabledResources: String,
+        data class EnableInternetResource(
+            val id: String,
         ) : TunnelCommand()
 
+        data object DisableInternetResource : TunnelCommand()
         data class SetDns(
             val dnsServers: String,
         ) : TunnelCommand()
@@ -487,9 +487,11 @@ class TunnelService : VpnService() {
                                 session.disconnect()
                                 // Sending disconnect will close the event-stream which will exit this loop
                             }
-
-                            is TunnelCommand.SetDisabledResources -> {
-                                session.setDisabledResources(command.disabledResources)
+                            is TunnelCommand.EnableInternetResource -> {
+                                session.enableInternetResource(command.id)
+                            }
+                            is TunnelCommand.DisableInternetResource -> {
+                                session.disableInternetResource()
                             }
 
                             is TunnelCommand.SetDns -> {

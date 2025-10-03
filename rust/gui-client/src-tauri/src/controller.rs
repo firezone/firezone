@@ -17,7 +17,7 @@ use futures::{
     stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -765,16 +765,13 @@ impl<I: GuiIntegration> Controller<I> {
             return Ok(());
         };
 
-        let mut disabled_resources = BTreeSet::new();
+        let state = self
+            .general_settings
+            .internet_resource_enabled()
+            .then_some(internet_resource.id());
 
-        if !self.general_settings.internet_resource_enabled() {
-            disabled_resources.insert(internet_resource.id());
-        }
-
-        self.send_ipc(&service::ClientMsg::SetDisabledResources(
-            disabled_resources,
-        ))
-        .await?;
+        self.send_ipc(&service::ClientMsg::SetInternetResourceState(state))
+            .await?;
         self.refresh_ui_state();
 
         Ok(())

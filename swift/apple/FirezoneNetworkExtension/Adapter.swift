@@ -21,7 +21,7 @@ enum AdapterError: Error {
 
   case setDnsError(String)
 
-  case setDisabledResourcesError(String)
+  case enableInternetResourceError(String)
 
   var localizedDescription: String {
     switch self {
@@ -32,7 +32,7 @@ enum AdapterError: Error {
       return "connlib failed to start: \(error)"
     case .setDnsError(let error):
       return "failed to set new DNS serversn: \(error)"
-    case .setDisabledResourcesError(let error):
+    case .enableInternetResourceError(let error):
       return "failed to set new disabled resources: \(error)"
     }
   }
@@ -290,23 +290,16 @@ class Adapter {
 
     internetResource = resources().filter { $0.isInternetResource() }.first
 
-    var disablingResources: Set<String> = []
-    if let internetResource = internetResource, !internetResourceEnabled {
-      disablingResources.insert(internetResource.id)
-    }
-
-    guard let currentlyDisabled = try? JSONEncoder().encode(disablingResources),
-      let toSet = String(data: currentlyDisabled, encoding: .utf8)
-    else {
-      fatalError("Should be able to encode 'disablingResources'")
-    }
-
-    do {
-      try session?.setDisabledResources(toSet)
-    } catch let error {
-      // `toString` needed to deep copy the string and avoid a possible dangling pointer
-      let msg = (error as? RustString)?.toString() ?? "Unknown error"
-      Log.error(AdapterError.setDisabledResourcesError(msg))
+    if let internetResource = internetResource, internetResourceEnabled {
+        do {
+          try session?.enableInternetResource(internetResource.id.toString())
+        } catch let error {
+          // `toString` needed to deep copy the string and avoid a possible dangling pointer
+          let msg = (error as? RustString)?.toString() ?? "Unknown error"
+          Log.error(AdapterError.enableInternetResourceError(msg))
+        }
+    } else {
+        session?.disableInternetResource()
     }
   }
 }
