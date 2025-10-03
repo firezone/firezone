@@ -341,6 +341,7 @@ fn try_main() -> Result<()> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
+            false,
             rt.handle().clone(),
         );
 

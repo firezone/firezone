@@ -114,6 +114,7 @@ impl ClientTunnel {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         records: BTreeSet<DnsResourceRecord>,
+        is_internet_resource_active: bool,
     ) -> Self {
         Self {
             io: Io::new(
@@ -121,7 +122,12 @@ impl ClientTunnel {
                 udp_socket_factory.clone(),
                 BTreeSet::default(),
             ),
-            role_state: ClientState::new(rand::random(), records, Instant::now()),
+            role_state: ClientState::new(
+                rand::random(),
+                records,
+                is_internet_resource_active,
+                Instant::now(),
+            ),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
                 .u64_counter("system.network.packets")

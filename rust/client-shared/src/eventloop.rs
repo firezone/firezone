@@ -98,6 +98,7 @@ impl Eventloop {
     pub(crate) fn new(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
+        is_internet_resource_active: bool,
         mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
         cmd_rx: mpsc::UnboundedReceiver<Command>,
         resource_list_sender: watch::Sender<Vec<ResourceView>>,
@@ -110,6 +111,7 @@ impl Eventloop {
             tcp_socket_factory,
             udp_socket_factory,
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
+            is_internet_resource_active,
         );
 
         portal.connect(PublicKeyParam(tunnel.public_key().to_bytes()));

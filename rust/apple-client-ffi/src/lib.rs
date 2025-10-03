@@ -302,6 +302,7 @@ impl WrappedSession {
             Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
             portal,
+            false,
             runtime.handle().clone(),
         );
         session.set_tun(Box::new(Tun::new()?));
