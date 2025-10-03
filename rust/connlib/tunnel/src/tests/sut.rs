@@ -19,6 +19,7 @@ use bufferpool::BufferPool;
 use connlib_model::{ClientId, GatewayId, PublicKey, RelayId};
 use dns_types::ResponseCode;
 use dns_types::prelude::*;
+use ip_packet::Ecn;
 use rand::SeedableRng;
 use rand::distributions::DistString;
 use sha2::Digest;
@@ -529,6 +530,7 @@ impl TunnelTest {
                                 src: Some(src),
                                 dst,
                                 payload: self.buffer_pool.pull_initialised(&payload),
+                                ecn: Ecn::NonEct,
                             },
                             relay,
                             now,
