@@ -1695,11 +1695,6 @@ impl ClientState {
         self.resources_by_id
             .insert(new_resource.id(), new_resource.clone());
 
-        if !self.is_resource_enabled(&(new_resource.id())) {
-            self.emit_resources_changed(); // We still have a new resource but it is disabled, let the client know.
-            return;
-        }
-
         let activated = match &new_resource {
             Resource::Dns(dns) => {
                 self.stub_resolver
