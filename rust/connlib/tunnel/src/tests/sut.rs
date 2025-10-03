@@ -125,7 +125,7 @@ impl TunnelTest {
 
         // Act: Apply the transition
         match transition {
-            Transition::ActivateResource(resource) => {
+            Transition::AddResource(resource) => {
                 state.client.exec_mut(|c| {
                     // Flush DNS.
                     match &resource {
@@ -145,7 +145,7 @@ impl TunnelTest {
                     c.sut.add_resource(resource, now);
                 });
             }
-            Transition::DeactivateResource(rid) => {
+            Transition::RemoveResource(rid) => {
                 state.client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
                 if let Some(gateway) = ref_state
@@ -156,12 +156,9 @@ impl TunnelTest {
                     gateway.exec_mut(|g| g.sut.remove_access(&state.client.inner().id, &rid, now));
                 }
             }
-            Transition::DisableInternetResource => state
+            Transition::SetInternetResourceState(active) => state
                 .client
-                .exec_mut(|c| c.sut.set_internet_resource_state(None, now)),
-            Transition::EnableInternetResource(r) => state
-                .client
-                .exec_mut(|c| c.sut.set_internet_resource_state(Some(r), now)),
+                .exec_mut(|c| c.sut.set_internet_resource_state(active, now)),
             Transition::SendIcmpPacket {
                 src,
                 dst,
@@ -382,7 +379,7 @@ impl TunnelTest {
 
                     // Apply to new instance.
                     c.sut
-                        .set_internet_resource_state(internet_resource_state, now);
+                        .set_internet_resource_state(internet_resource_state.is_some(), now);
                     c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,

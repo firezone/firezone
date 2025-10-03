@@ -125,16 +125,8 @@ impl Session {
         Ok(())
     }
 
-    pub fn enable_internet_resource(&self, id: String) -> Result<(), Error> {
-        let resource = id.parse().context("Failed to parse Internet Resource ID")?;
-
-        self.inner.set_internet_resource_state(Some(resource));
-
-        Ok(())
-    }
-
-    pub fn disable_internet_resource(&self) {
-        self.inner.set_internet_resource_state(None)
+    pub fn set_internet_resource_state(&self, active: bool) {
+        self.inner.set_internet_resource_state(active);
     }
 
     pub fn set_dns(&self, dns_servers: String) -> Result<(), Error> {

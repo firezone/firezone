@@ -235,13 +235,9 @@ class TunnelService : VpnService() {
 
     // UI updates for resources
     fun resourcesUpdated() {
-        if (internetResource() != null && resourceState.isEnabled()) {
-            sendTunnelCommand(
-                TunnelCommand.EnableInternetResource(internetResource()!!.id.toString()),
-            )
-        } else {
-            sendTunnelCommand(TunnelCommand.DisableInternetResource)
-        }
+        sendTunnelCommand(
+            TunnelCommand.SetInternetResourceState(resourceState.isEnabled()),
+        )
     }
 
     fun internetResourceToggled(state: ResourceState) {
@@ -445,11 +441,10 @@ class TunnelService : VpnService() {
     sealed class TunnelCommand {
         data object Disconnect : TunnelCommand()
 
-        data class EnableInternetResource(
-            val id: String,
+        data class SetInternetResourceState(
+            val active: Boolean,
         ) : TunnelCommand()
 
-        data object DisableInternetResource : TunnelCommand()
         data class SetDns(
             val dnsServers: String,
         ) : TunnelCommand()
@@ -487,13 +482,9 @@ class TunnelService : VpnService() {
                                 session.disconnect()
                                 // Sending disconnect will close the event-stream which will exit this loop
                             }
-                            is TunnelCommand.EnableInternetResource -> {
-                                session.enableInternetResource(command.id)
+                            is TunnelCommand.SetInternetResourceState -> {
+                                session.enableInternetResource(command.active)
                             }
-                            is TunnelCommand.DisableInternetResource -> {
-                                session.disableInternetResource()
-                            }
-
                             is TunnelCommand.SetDns -> {
                                 session.setDns(command.dnsServers)
                             }

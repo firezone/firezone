@@ -145,16 +145,6 @@ impl Status {
             Status::TunnelReady { .. } | Status::WaitingForTunnel => true,
         }
     }
-
-    fn internet_resource(&self) -> Option<ResourceView> {
-        #[expect(clippy::wildcard_enum_match_arm)]
-        match self {
-            Status::TunnelReady { resources } => {
-                resources.iter().find(|r| r.is_internet_resource()).cloned()
-            }
-            _ => None,
-        }
-    }
 }
 
 enum EventloopTick {
@@ -761,14 +751,7 @@ impl<I: GuiIntegration> Controller<I> {
     async fn update_disabled_resources(&mut self) -> Result<()> {
         settings::save_general(&self.general_settings).await?;
 
-        let Some(internet_resource) = self.status.internet_resource() else {
-            return Ok(());
-        };
-
-        let state = self
-            .general_settings
-            .internet_resource_enabled()
-            .then_some(internet_resource.id());
+        let state = self.general_settings.internet_resource_enabled();
 
         self.send_ipc(&service::ClientMsg::SetInternetResourceState(state))
             .await?;

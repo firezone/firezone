@@ -436,7 +436,7 @@ pub struct RefClient {
     resources: Vec<Resource>,
 
     #[debug(skip)]
-    internet_resource_state: Option<ResourceId>,
+    internet_resource_active: bool,
 
     /// The CIDR resources the client is aware of.
     #[debug(skip)]
@@ -511,7 +511,7 @@ impl RefClient {
         self.connected_cidr_resources.remove(resource);
         self.connected_dns_resources.remove(resource);
 
-        if self.internet_resource_state.is_some_and(|r| &r == resource) {
+        if self.internet_resource().is_some_and(|r| r == *resource) {
             self.connected_internet_resource = false;
         }
 
@@ -536,37 +536,33 @@ impl RefClient {
         }
     }
 
-    pub(crate) fn disable_internet_resource(&mut self) {
-        if let Some(r) = self.internet_resource_state.take() {
-            self.disconnect_resource(&r)
-        }
-    }
+    pub(crate) fn set_internet_resource_state(&mut self, active: bool) {
+        let resource = self
+            .resources
+            .iter()
+            .find(|r| matches!(r, Resource::Internet(_)));
 
-    pub(crate) fn enable_internet_resource(&mut self, id: ResourceId) {
-        let resource = self.resources.iter().find(|r| r.id() == id);
+        self.internet_resource_active = active;
 
-        if let Some(resource) = resource
-            && !matches!(resource, Resource::Internet(_))
-        {
-            tracing::error!(?resource, ?id, "Given ID is not an Internet Resource");
+        let Some(resource) = resource else {
             return;
+        };
+
+        if active {
+            self.ipv4_routes
+                .insert(resource.id(), Ipv4Network::DEFAULT_ROUTE);
+            self.ipv6_routes
+                .insert(resource.id(), Ipv6Network::DEFAULT_ROUTE);
+        } else {
+            self.disconnect_resource(&resource.id());
         }
-
-        self.internet_resource_state = Some(id);
-
-        if resource.is_none() {
-            return;
-        }
-
-        self.ipv4_routes.insert(id, Ipv4Network::DEFAULT_ROUTE);
-        self.ipv6_routes.insert(id, Ipv6Network::DEFAULT_ROUTE);
     }
 
     pub(crate) fn remove_resource(&mut self, resource: &ResourceId) {
         self.disconnect_resource(resource);
 
-        if self.internet_resource_state.is_some_and(|r| &r == resource) {
-            self.internet_resource_state = None;
+        if self.internet_resource().is_some_and(|r| r == *resource) {
+            self.internet_resource_active = false;
         }
 
         self.resources.retain(|r| r.id() != *resource);
@@ -579,8 +575,9 @@ impl RefClient {
             .chain(self.connected_cidr_resources.clone())
             .chain(self.connected_dns_resources.clone())
             .chain(
-                self.internet_resource_state
-                    .filter(|_| self.connected_internet_resource),
+                self.connected_internet_resource
+                    .then(|| self.internet_resource())
+                    .flatten(),
             )
     }
 
@@ -630,7 +627,7 @@ impl RefClient {
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
         self.resources.push(Resource::Internet(resource.clone()));
-        self.internet_resource_state = Some(resource.id);
+        self.internet_resource_active = true;
 
         self.ipv4_routes
             .insert(resource.id, Ipv4Network::DEFAULT_ROUTE);
@@ -659,7 +656,7 @@ impl RefClient {
     /// Re-adds all resources in the order they have been initially added.
     pub(crate) fn readd_all_resources(&mut self) {
         self.cidr_resources = IpNetworkTable::new();
-        self.internet_resource_state = None;
+        self.internet_resource_active = false;
 
         for resource in mem::take(&mut self.resources) {
             match resource {
@@ -845,7 +842,10 @@ impl RefClient {
     }
 
     fn connect_to_internet_or_cidr_resource(&mut self, rid: ResourceId) {
-        if self.internet_resource_state.is_some_and(|r| r == rid) {
+        if self.internet_resource_active
+            && let Some(internet) = self.internet_resource()
+            && internet == rid
+        {
             self.connected_internet_resource = true;
             return;
         }
@@ -922,7 +922,9 @@ impl RefClient {
     }
 
     pub(crate) fn active_internet_resource(&self) -> Option<ResourceId> {
-        self.internet_resource_state
+        self.internet_resource_active
+            .then(|| self.internet_resource())
+            .flatten()
     }
 
     fn resource_by_dst(&self, destination: &Destination) -> Option<ResourceId> {
@@ -1135,14 +1137,6 @@ impl RefClient {
         Some(self.dns_resource_by_domain(&query.domain)?.id)
     }
 
-    pub(crate) fn internet_resource(&self) -> Option<ResourceId> {
-        self.resources.iter().find_map(|r| match r {
-            Resource::Dns(_) => None,
-            Resource::Cidr(_) => None,
-            Resource::Internet(internet_resource) => Some(internet_resource.id),
-        })
-    }
-
     pub(crate) fn all_resource_ids(&self) -> Vec<ResourceId> {
         self.resources.iter().map(|r| r.id()).collect()
     }
@@ -1153,6 +1147,14 @@ impl RefClient {
 
     pub(crate) fn all_resources(&self) -> Vec<Resource> {
         self.resources.clone()
+    }
+
+    fn internet_resource(&self) -> Option<ResourceId> {
+        self.resources.iter().find_map(|r| match r {
+            Resource::Dns(_) => None,
+            Resource::Cidr(_) => None,
+            Resource::Internet(internet_resource) => Some(internet_resource.id),
+        })
     }
 
     pub(crate) fn system_dns_resolvers(&self) -> Vec<IpAddr> {
@@ -1276,7 +1278,7 @@ fn ref_client(
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     search_domain,
-                    internet_resource_state: Default::default(),
+                    internet_resource_active: Default::default(),
                     cidr_resources: IpNetworkTable::new(),
                     dns_records: Default::default(),
                     connected_cidr_resources: Default::default(),
