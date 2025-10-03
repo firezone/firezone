@@ -159,7 +159,7 @@ impl GatewayState {
                 }
                 p2p_control::GOODBYE_EVENT => {
                     self.peers.remove(&cid);
-                    self.node.remove_connection(cid, "received `goodbye`");
+                    self.node.remove_connection(cid, "received `goodbye`", now);
 
                     None
                 }
