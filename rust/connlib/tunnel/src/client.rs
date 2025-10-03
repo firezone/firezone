@@ -1011,7 +1011,6 @@ impl ClientState {
             .stub_resolver
             .resolve_resource_by_ip(&destination)
             .map(|(_, r)| *r)
-            .filter(|resource| self.is_resource_enabled(resource))
             .inspect(
                 |rid| tracing::trace!(target: "tunnel_test_coverage", %destination, %rid, "Packet for DNS resource"),
             );
