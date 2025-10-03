@@ -483,7 +483,7 @@ class TunnelService : VpnService() {
                                 // Sending disconnect will close the event-stream which will exit this loop
                             }
                             is TunnelCommand.SetInternetResourceState -> {
-                                session.enableInternetResource(command.active)
+                                session.setInternetResourceState(command.active)
                             }
                             is TunnelCommand.SetDns -> {
                                 session.setDns(command.dnsServers)
