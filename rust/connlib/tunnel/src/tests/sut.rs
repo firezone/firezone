@@ -157,9 +157,12 @@ impl TunnelTest {
                     gateway.exec_mut(|g| g.sut.remove_access(&state.client.inner().id, &rid, now));
                 }
             }
-            Transition::DisableResources(resources) => state
+            Transition::DisableInternetResource => state
                 .client
-                .exec_mut(|c| c.sut.set_disabled_resources(resources, now)),
+                .exec_mut(|c| c.sut.set_internet_resource_state(None, now)),
+            Transition::EnableInternetResource(r) => state
+                .client
+                .exec_mut(|c| c.sut.set_internet_resource_state(Some(r), now)),
             Transition::SendIcmpPacket {
                 src,
                 dst,
@@ -373,13 +376,14 @@ impl TunnelTest {
                 let system_dns = ref_state.client.inner().system_dns_resolvers();
                 let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
-                let disabled_resources = ref_state.client.inner().disabled_resources.clone();
+                let internet_resource_state = ref_state.client.inner().active_internet_resource();
 
                 state.client.exec_mut(|c| {
                     c.restart(key, now);
 
                     // Apply to new instance.
-                    c.sut.set_disabled_resources(disabled_resources, now);
+                    c.sut
+                        .set_internet_resource_state(internet_resource_state, now);
                     c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,

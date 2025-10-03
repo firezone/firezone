@@ -246,11 +246,10 @@ impl ReferenceState {
             .with(1, Just(Transition::ReconnectPortal))
             .with(1, Just(Transition::Idle))
             .with(1, private_key().prop_map(Transition::RestartClient))
-            .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
-                sample::subsequence(resources_id.clone(), resources_id.len()).prop_map(
-                    |resources_id| Transition::DisableResources(BTreeSet::from_iter(resources_id)),
-                )
+            .with_if_not_empty(1, state.client.inner().internet_resource(), |resource| {
+                Just(Transition::EnableInternetResource(resource.unwrap()))
             })
+            .with(1, Just(Transition::DisableInternetResource))
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resources_id| {
                 sample::select(resources_id)
                     .prop_map(Transition::DeauthorizeWhileGatewayIsPartitioned)
@@ -419,12 +418,11 @@ impl ReferenceState {
                     client.remove_resource(id);
                 });
             }
-            Transition::DisableResources(resources) => state.client.exec_mut(|client| {
-                client.disabled_resources.clone_from(resources);
-
-                for id in resources {
-                    client.disconnect_resource(id)
-                }
+            Transition::EnableInternetResource(r) => state.client.exec_mut(|client| {
+                client.enable_internet_resource(*r);
+            }),
+            Transition::DisableInternetResource => state.client.exec_mut(|client| {
+                client.disable_internet_resource();
             }),
             Transition::SendDnsQueries(queries) => {
                 for query in queries {
@@ -543,18 +541,7 @@ impl ReferenceState {
 
                 true
             }
-            Transition::DisableResources(resources) => resources.iter().all(|r| {
-                let has_resource = state.client.inner().has_resource(*r);
-                let has_tcp_connection = state
-                    .client
-                    .inner()
-                    .tcp_connection_tuple_to_resource(*r)
-                    .is_some();
-
-                // Don't disabled resources we don't have. It doesn't hurt but makes the logs of reduced testcases weird.
-                // Also don't disable resources where we have TCP connections as those would get interrupted.
-                has_resource && !has_tcp_connection
-            }),
+            Transition::DisableInternetResource | Transition::EnableInternetResource(_) => true,
             Transition::SendIcmpPacket {
                 src,
                 dst: Destination::DomainName { name, .. },

@@ -913,6 +913,11 @@ impl ClientState {
     /// That list may be provided asynchronously to this call, which is why set it as active,
     /// regardless as to whether it is present or not.
     pub fn set_internet_resource_state(&mut self, id: Option<ResourceId>, now: Instant) {
+        // Be idempotent.
+        if self.internet_resource == id {
+            return;
+        }
+
         let resource = id.and_then(|r| self.resources_by_id.get(&r));
 
         if let Some(resource) = resource
@@ -935,10 +940,6 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
-    }
-
-    pub fn set_disabled_resources(&mut self, _: BTreeSet<ResourceId>, _: Instant) {
-        // TODO: Remove fn.
     }
 
     pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
@@ -1687,9 +1688,10 @@ impl ClientState {
                     None => true,
                 }
             }
-            Resource::Internet(resource) => {
-                self.internet_resource.is_some_and(|id| id == resource.id)
-            }
+            Resource::Internet(resource) => self
+                .internet_resource
+                .replace(resource.id)
+                .is_some_and(|r| r != resource.id),
         };
 
         if activated {
