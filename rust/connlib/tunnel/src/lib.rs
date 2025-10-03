@@ -14,7 +14,6 @@ use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
 use ip_network::{Ipv4Network, Ipv6Network};
-use ip_packet::Ecn;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
@@ -148,7 +147,7 @@ impl ClientTunnel {
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io
-                .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -185,7 +184,7 @@ impl ClientTunnel {
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
                 ready = true;
             }
 
@@ -222,15 +221,13 @@ impl ClientTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        let ecn = packet.ecn();
-
                         match self.role_state.handle_tun_input(packet, now) {
                             Some(transmit) => {
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
                                     &transmit.payload,
-                                    ecn,
+                                    transmit.ecn,
                                 );
                             }
                             None => {
@@ -321,7 +318,7 @@ impl GatewayTunnel {
         // Drain all UDP packets that need to be sent.
         while let Some(trans) = self.role_state.poll_transmit() {
             self.io
-                .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
         }
 
         // Return a future that "owns" our IO, polling it until all packets have been flushed.
@@ -352,7 +349,7 @@ impl GatewayTunnel {
             // Drain all buffered transmits.
             while let Some(trans) = self.role_state.poll_transmit() {
                 self.io
-                    .send_network(trans.src, trans.dst, &trans.payload, Ecn::NonEct);
+                    .send_network(trans.src, trans.dst, &trans.payload, trans.ecn);
 
                 ready = true;
             }
@@ -400,15 +397,13 @@ impl GatewayTunnel {
 
                 if let Some(packets) = device {
                     for packet in packets {
-                        let ecn = packet.ecn();
-
                         match self.role_state.handle_tun_input(packet, now) {
                             Ok(Some(transmit)) => {
                                 self.io.send_network(
                                     transmit.src,
                                     transmit.dst,
                                     &transmit.payload,
-                                    ecn,
+                                    transmit.ecn,
                                 );
                             }
                             Ok(None) => {

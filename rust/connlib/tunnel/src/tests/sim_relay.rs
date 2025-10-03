@@ -5,6 +5,7 @@ use super::{
 use bufferpool::Buffer;
 use connlib_model::RelayId;
 use firezone_relay::{AddressFamily, AllocationPort, ClientSocket, IpStack, PeerSocket};
+use ip_packet::Ecn;
 use proptest::prelude::*;
 use rand::{SeedableRng as _, rngs::StdRng};
 use secrecy::SecretString;
@@ -151,6 +152,7 @@ impl SimRelay {
             src: Some(src),
             dst,
             payload,
+            ecn: Ecn::NonEct,
         })
     }
 
@@ -176,6 +178,7 @@ impl SimRelay {
             src: Some(sending_socket),
             dst: receiving_socket,
             payload,
+            ecn: Ecn::NonEct,
         })
     }
 

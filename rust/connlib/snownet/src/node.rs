@@ -12,7 +12,7 @@ use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
 use hex_display::HexDisplayExt;
-use ip_packet::{IpPacket, IpPacketBuf};
+use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
@@ -1691,6 +1691,8 @@ pub struct Transmit {
     pub dst: SocketAddr,
     /// The data that should be sent.
     pub payload: Buffer<Vec<u8>>,
+    /// The ECN bits to set for the UDP packet.
+    pub ecn: Ecn,
 }
 
 impl fmt::Debug for Transmit {
@@ -2252,6 +2254,7 @@ where
                     src: Some(source),
                     dst,
                     payload: self.buffer_pool.pull_initialised(&Vec::from(stun_packet)),
+                    ecn: Ecn::NonEct,
                 });
                 continue;
             };
@@ -2273,6 +2276,7 @@ where
                 src: None,
                 dst: encode_ok.socket,
                 payload: self.buffer_pool.pull_initialised(&data_channel_packet),
+                ecn: Ecn::NonEct,
             });
         }
     }
@@ -2366,6 +2370,7 @@ where
                 src: Some(source),
                 dst: remote,
                 payload: buffer,
+                ecn: packet.ecn(),
             })),
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
                 let Some(allocation) = allocations.get_mut(&self.relay.id) else {
@@ -2384,6 +2389,7 @@ where
                     src: None,
                     dst: encode_ok.socket,
                     payload: buffer,
+                    ecn: packet.ecn(),
                 }))
             }
         }
@@ -2594,6 +2600,7 @@ where
             src: Some(source),
             dst: remote,
             payload: buffer_pool.pull_initialised(message),
+            ecn: Ecn::NonEct,
         },
         PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
             let allocation = allocations.get_mut(&relay)?;
@@ -2605,6 +2612,7 @@ where
                 src: None,
                 dst: encode_ok.socket,
                 payload: buffer_pool.pull_initialised(&channel_data),
+                ecn: Ecn::NonEct,
             }
         }
     };
