@@ -326,7 +326,7 @@ defmodule Web.SignIn do
     ~H"""
     <.link
       class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}//sign_in/entra/#{@provider.id}?#{@params}"}
+      href={~p"/#{@account}/sign_in/entra/#{@provider.id}?#{@params}"}
     >
       <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-5 h-5 mr-2" />
       Sign in with <strong>Microsoft Entra</strong>

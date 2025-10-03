@@ -3,7 +3,7 @@ defmodule Web.OIDCController do
 
   alias Domain.{
     Accounts,
-    Auth,
+    Actors,
     Entra,
     Google,
     Identities,
@@ -18,7 +18,7 @@ defmodule Web.OIDCController do
   @cookie_key "oidc"
   @cookie_options [
     sign: true,
-    max_age: 5 * 60,
+    max_age: 30 * 60,
     same_site: "Lax",
     secure: true,
     http_only: true
@@ -28,11 +28,13 @@ defmodule Web.OIDCController do
   @client_cookie_key "client"
   @client_cookie_options [
     sign: true,
-    max_age: 2 * 60,
+    max_age: 30 * 60,
     same_site: "Strict",
     secure: true,
     http_only: true
   ]
+
+  @session_duration_hours 10
 
   @recent_sessions 6
 
@@ -62,7 +64,7 @@ defmodule Web.OIDCController do
          {:ok, identity} <- fetch_identity(account, provider.directory_id, claims),
          :ok <- check_admin(identity, context_type(cookie["params"])),
          {:ok, token} <- create_token(conn, identity, cookie["params"]) do
-      signed_in(conn, context_type(cookie["params"]), account, identity, token, cookie)
+      signed_in(conn, context_type(cookie["params"]), account, identity, token, cookie["params"])
     else
       error -> handle_error(conn, error, params)
     end
@@ -72,10 +74,6 @@ defmodule Web.OIDCController do
     conn
     |> delete_resp_cookie(@cookie_key)
     |> handle_error(:invalid_callback_params, params)
-  end
-
-  def verify(conn, %{"state" => state, "code" => code} = params) do
-    conn
   end
 
   defp provider_redirect(conn, account, config, params) do
@@ -202,18 +200,35 @@ defmodule Web.OIDCController do
     Identities.fetch_identity_for_sign_in(account, directory_id, claims)
   end
 
-  defp check_admin(%Auth.Identity{actor: %{role: :account_admin_user}}, _context_type), do: :ok
-  defp check_admin(%Auth.Identity{actor: %{role: :account_user}}, :client), do: :ok
+  defp check_admin(
+         %Identities.Identity{actor: %Actors.Actor{type: :account_admin_user}},
+         _context_type
+       ),
+       do: :ok
+
+  defp check_admin(%Identities.Identity{actor: %Actors.Actor{type: :account_user}}, :client),
+    do: :ok
+
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
 
   defp create_token(conn, identity, params) do
-    # TODO: IdP sync
-    # This will use the default session duration in Domain.Auth which needs to be extended
-    # for browser sessions to fix some UX issues. See https://github.com/firezone/firezone/issues/6789
-    expires_at = nil
     context = Web.Auth.get_auth_context(conn, context_type(params))
 
-    with {:ok, token} <- Domain.Auth.create_token(identity, context, params["nonce"], expires_at) do
+    attrs = %{
+      type: context.type,
+      secret_nonce: params["nonce"],
+      secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
+      account_id: identity.account_id,
+      actor_id: identity.actor_id,
+      identity_id: identity.id,
+      # TODO: IdP refactor
+      # session length
+      expires_at: DateTime.add(DateTime.utc_now(), @session_duration_hours, :hour),
+      created_by_user_agent: context.user_agent,
+      created_by_remote_ip: context.remote_ip
+    }
+
+    with {:ok, token} <- Tokens.create_token(attrs) do
       {:ok, Tokens.encode_fragment!(token)}
     end
   end
@@ -250,9 +265,11 @@ defmodule Web.OIDCController do
       |> Enum.uniq_by(fn {context, account_id, _token} -> {context, account_id} end)
       |> Enum.take(@recent_sessions)
 
+    redirect_to = params["redirect_to"] || ~p"/#{account.slug}/sites"
+
     conn
     |> put_session(:sessions, sessions)
-    |> redirect(to: params["redirect_to"])
+    |> redirect(to: redirect_to)
   end
 
   defp context_type(%{"as" => "client"}), do: :client
@@ -260,7 +277,7 @@ defmodule Web.OIDCController do
 
   defp handle_error(conn, {:error, :not_admin}, params) do
     error = "This action requires admin privileges."
-    path = ~p"/#{params["account_id"]}"
+    path = ~p"/#{params["account_id_or_slug"]}"
 
     redirect_for_error(conn, error, path)
   end

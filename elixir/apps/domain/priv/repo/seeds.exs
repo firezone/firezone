@@ -390,7 +390,7 @@ defmodule Domain.Repo.Seeds do
         %Directories.Directory{type: :google, id: google_directory.directory_id},
         admin_actor,
         %{
-          "sub" => "dummy-google-sub",
+          "sub" => "CHANGE_ME",
           "email" => "firezone@localhost.local"
         }
       )
@@ -406,7 +406,10 @@ defmodule Domain.Repo.Seeds do
       )
 
     {:ok, entra_directory} =
-      Entra.create_directory(%{name: "Entra", tenant_id: "dummy"}, admin_subject)
+      Entra.create_directory(
+        %{name: "Entra", tenant_id: "CHANGE_ME"},
+        admin_subject
+      )
 
     {:ok, _entra_identity} =
       Identities.create_identity_for_directory(
@@ -414,19 +417,23 @@ defmodule Domain.Repo.Seeds do
         %Directories.Directory{type: :entra, id: entra_directory.directory_id},
         admin_actor,
         %{
-          "oid" => "dummy-entra-oid",
+          "oid" => "CHANGE_ME",
           "email" => "firezone@localhost.local"
         }
       )
 
     {:ok, _entra_auth_provider} =
       Entra.create_auth_provider(
-        %{name: "Entra", directory_id: entra_directory.directory_id, tenant_id: "dummy"},
+        %{
+          name: "Entra",
+          directory_id: entra_directory.directory_id,
+          tenant_id: "CHANGE_ME"
+        },
         admin_subject
       )
 
     {:ok, okta_directory} =
-      Domain.Okta.create_directory(%{name: "Okta", org_domain: "foobar.okta.com"}, admin_subject)
+      Domain.Okta.create_directory(%{name: "Okta", org_domain: "CHANGE_ME"}, admin_subject)
 
     {:ok, _okta_identity} =
       Identities.create_identity_for_directory(
@@ -434,7 +441,7 @@ defmodule Domain.Repo.Seeds do
         %Directories.Directory{type: :okta, id: okta_directory.directory_id},
         admin_actor,
         %{
-          "sub" => "dummy-okta-sub",
+          "sub" => "CHANGE_ME",
           "email" => "firezone@localhost.local"
         }
       )
@@ -444,9 +451,9 @@ defmodule Domain.Repo.Seeds do
         %{
           name: "Okta",
           directory_id: okta_directory.directory_id,
-          org_domain: "foobar.okta.com",
-          client_id: "dummy",
-          client_secret: "dummy"
+          org_domain: "CHANGE_ME",
+          client_id: "CHANGE_ME",
+          client_secret: "CHANGE_ME"
         },
         admin_subject
       )

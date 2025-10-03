@@ -22,11 +22,21 @@ defmodule Domain.Auth.Identity.Query do
   def not_disabled(queryable \\ not_deleted()) do
     queryable
     |> with_assoc(:inner, :actor)
-    |> where([actor: actor], is_nil(actor.deleted_at))
-    |> where([actor: actor], is_nil(actor.disabled_at))
-    |> with_assoc(:inner, :provider)
-    |> where([provider: provider], is_nil(provider.deleted_at))
-    |> where([provider: provider], is_nil(provider.disabled_at))
+    |> where([actor: actor], is_nil(actor.deleted_at) and is_nil(actor.disabled_at))
+    # Don't join providers; instead allow identities with no provider,
+    # or where an enabled+not-deleted provider exists.
+    |> where(
+      [identities: identities],
+      is_nil(identities.provider_id) or
+        exists(
+          from provider in Domain.Auth.Provider,
+            where:
+              provider.id == parent_as(:identities).provider_id and
+                is_nil(provider.deleted_at) and
+                is_nil(provider.disabled_at),
+            select: 1
+        )
+    )
   end
 
   def by_id(queryable, id)
