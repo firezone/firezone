@@ -920,7 +920,7 @@ impl ClientState {
 
         let resource = self.internet_resource();
 
-        // If we are enabling an known Internet Resource, log it.
+        // If we are enabling a known Internet Resource, log it.
         if active && let Some(resource) = resource.cloned() {
             self.log_activating_resource(&Resource::Internet(resource));
         }
