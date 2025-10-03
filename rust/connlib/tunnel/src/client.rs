@@ -1486,10 +1486,6 @@ impl ClientState {
                 continue;
             };
 
-            if !self.is_resource_enabled(&resource.id) {
-                continue;
-            }
-
             if let Some(active_resource) = active_cidr_resources.exact_match(resource.address)
                 && self.is_cidr_resource_connected(&active_resource.id)
             {
