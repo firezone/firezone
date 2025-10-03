@@ -636,6 +636,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
+            false,
             tokio::runtime::Handle::current(),
         );
 

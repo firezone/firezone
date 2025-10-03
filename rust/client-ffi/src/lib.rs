@@ -278,6 +278,7 @@ fn connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
+        false,
         runtime.handle().clone(),
     );
 

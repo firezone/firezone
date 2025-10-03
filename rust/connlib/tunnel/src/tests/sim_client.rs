@@ -105,7 +105,12 @@ impl SimClient {
         }
     }
 
-    pub(crate) fn restart(&mut self, key: PrivateKey, now: Instant) {
+    pub(crate) fn restart(
+        &mut self,
+        key: PrivateKey,
+        is_internet_resource_active: bool,
+        now: Instant,
+    ) {
         let dns_resource_records = self.dns_resource_record_cache.clone();
 
         // Overwrite the ClientState with a new key.
@@ -113,7 +118,12 @@ impl SimClient {
         //
         // We keep all the state in `SimClient` which is equivalent to host system.
         // That is where we cache resolved DNS names for example.
-        self.sut = ClientState::new(key.0, dns_resource_records, now);
+        self.sut = ClientState::new(
+            key.0,
+            dns_resource_records,
+            is_internet_resource_active,
+            now,
+        );
 
         self.search_domain = None;
         self.dns_by_sentinel.clear();
@@ -492,7 +502,12 @@ impl RefClient {
     ///
     /// This simulates receiving the `init` message from the portal.
     pub(crate) fn init(self, now: Instant) -> SimClient {
-        let mut client_state = ClientState::new(self.key.0, Default::default(), now); // Cheating a bit here by reusing the key as seed.
+        let mut client_state = ClientState::new(
+            self.key.0,
+            Default::default(),
+            self.internet_resource_active,
+            now,
+        ); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
@@ -627,12 +642,13 @@ impl RefClient {
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
         self.resources.push(Resource::Internet(resource.clone()));
-        self.internet_resource_active = true;
 
-        self.ipv4_routes
-            .insert(resource.id, Ipv4Network::DEFAULT_ROUTE);
-        self.ipv6_routes
-            .insert(resource.id, Ipv6Network::DEFAULT_ROUTE);
+        if self.internet_resource_active {
+            self.ipv4_routes
+                .insert(resource.id, Ipv4Network::DEFAULT_ROUTE);
+            self.ipv6_routes
+                .insert(resource.id, Ipv6Network::DEFAULT_ROUTE);
+        }
     }
 
     pub(crate) fn add_cidr_resource(&mut self, r: CidrResource) {
@@ -1256,6 +1272,7 @@ fn ref_client(
         system_dns,
         upstream_dns,
         search_domain,
+        any::<bool>(),
         client_id(),
         private_key(),
     )
@@ -1266,6 +1283,7 @@ fn ref_client(
                 system_dns_resolvers,
                 upstream_dns_resolvers,
                 search_domain,
+                internet_resource_active,
                 id,
                 key,
             )| {
@@ -1277,7 +1295,7 @@ fn ref_client(
                     system_dns_resolvers,
                     upstream_dns_resolvers,
                     search_domain,
-                    internet_resource_active: Default::default(),
+                    internet_resource_active,
                     cidr_resources: IpNetworkTable::new(),
                     dns_records: Default::default(),
                     connected_cidr_resources: Default::default(),

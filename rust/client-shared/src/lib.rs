@@ -58,6 +58,7 @@ impl Session {
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
         portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
+        is_internet_resource_active: bool,
         handle: tokio::runtime::Handle,
     ) -> (Self, EventStream) {
         let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
@@ -70,6 +71,7 @@ impl Session {
             Eventloop::new(
                 tcp_socket_factory,
                 udp_socket_factory,
+                is_internet_resource_active,
                 portal,
                 cmd_rx,
                 resource_list_sender,
