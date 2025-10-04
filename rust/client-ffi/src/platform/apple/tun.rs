@@ -23,6 +23,22 @@ impl Tun {
     pub fn new() -> io::Result<Self> {
         let fd = search_for_tun_fd()?;
         set_non_blocking(fd)?;
+        Self::from_fd_inner(fd)
+    }
+
+    /// Create a new [`Tun`] from a raw file descriptor.
+    ///
+    /// # Safety
+    ///
+    /// - The file descriptor must be open.
+    /// - The file descriptor must not get closed by anyone else.
+    /// - On iOS/macOS, the NetworkExtension owns the fd, so we don't take ownership.
+    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
+        set_non_blocking(fd)?;
+        Self::from_fd_inner(fd)
+    }
+
+    fn from_fd_inner(fd: RawFd) -> io::Result<Self> {
         let name = name(fd)?;
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
