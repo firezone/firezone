@@ -672,7 +672,6 @@ impl RefClient {
     /// Re-adds all resources in the order they have been initially added.
     pub(crate) fn readd_all_resources(&mut self) {
         self.cidr_resources = IpNetworkTable::new();
-        self.internet_resource_active = false;
 
         for resource in mem::take(&mut self.resources) {
             match resource {
