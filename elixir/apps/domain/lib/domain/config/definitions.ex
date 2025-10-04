@@ -497,6 +497,8 @@ defmodule Domain.Config.Definitions do
   It will affect on which auth providers can be created per an account but will not disable
   already active providers when setting is changed.
   """
+  # TODO: IdP refactor
+  # Remove google / okta / entra / jumpcloud
   defconfig(
     :auth_provider_adapters,
     {:array, ",", Ecto.ParameterizedType.init(Ecto.Enum, values: ~w[
@@ -521,6 +523,17 @@ defmodule Domain.Config.Definitions do
       token
     ]a
   )
+
+  ##############################################
+  ## Google / Entra / Okta authentication
+  ##############################################
+
+  defconfig(:google_oidc_client_id, :string, default: nil)
+  defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
+  # defconfig(:entra_oidc_client_id, :string, default: nil)
+  # defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
+
+  # Okta uses a per-tenant client_id/secret
 
   ##############################################
   ## Telemetry

@@ -1,6 +1,6 @@
 defmodule Domain.Accounts do
   alias Web.Settings.Account
-  alias Domain.{Repo, Config}
+  alias Domain.{Repo, Config, Firezone}
   alias Domain.{Auth, Billing}
   alias Domain.Accounts.{Account, Features, Authorizer}
 
@@ -150,5 +150,10 @@ defmodule Domain.Accounts do
 
   def type(%Account{}) do
     "Starter"
+  end
+
+  # For checking if this account has been migrated to use the new auth and directory system
+  def firezone_directory_enabled?(%Account{} = account) do
+    Firezone.directory_exists?(account)
   end
 end

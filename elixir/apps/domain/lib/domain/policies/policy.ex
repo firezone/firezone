@@ -29,9 +29,6 @@ defmodule Domain.Policies.Policy do
     belongs_to :resource, Domain.Resources.Resource
     belongs_to :account, Domain.Accounts.Account
 
-    field :created_by, Ecto.Enum, values: ~w[actor identity]a
-    field :created_by_subject, :map
-
     belongs_to :replaced_by_policy, Domain.Policies.Policy
     has_one :replaces_policy, Domain.Policies.Policy, foreign_key: :replaced_by_policy_id
 
@@ -39,6 +36,8 @@ defmodule Domain.Policies.Policy do
 
     # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
+
+    subject_trail(~w[actor identity]a)
     timestamps()
   end
 end

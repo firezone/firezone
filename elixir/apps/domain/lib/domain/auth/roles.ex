@@ -9,12 +9,18 @@ defmodule Domain.Auth.Roles do
       Domain.Auth.Authorizer,
       Domain.Billing.Authorizer,
       Domain.Clients.Authorizer,
+      Domain.Email.Authorizer,
+      Domain.Entra.Authorizer,
+      Domain.Firezone.Authorizer,
       Domain.Gateways.Authorizer,
+      Domain.Google.Authorizer,
+      Domain.Okta.Authorizer,
       Domain.Policies.Authorizer,
       Domain.Relays.Authorizer,
       Domain.Resources.Authorizer,
       Domain.Flows.Authorizer,
-      Domain.Tokens.Authorizer
+      Domain.Tokens.Authorizer,
+      Domain.Userpass.Authorizer
     ]
   end
 

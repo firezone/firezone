@@ -4,9 +4,17 @@ defmodule Domain do
   making sure our code structure is consistent and predictable.
   """
 
+  defmacro subject_trail(values \\ []) do
+    quote do
+      field(:created_by, Ecto.Enum, values: unquote(values))
+      field(:created_by_subject, :map)
+    end
+  end
+
   def schema do
     quote do
       use Ecto.Schema
+      import Domain, only: [subject_trail: 1]
 
       @primary_key {:id, :binary_id, autogenerate: true}
       @foreign_key_type :binary_id
@@ -31,6 +39,13 @@ defmodule Domain do
       import Domain.Repo.Query
 
       @behaviour Domain.Repo.Query
+    end
+  end
+
+  def migration do
+    quote do
+      use Ecto.Migration
+      import Domain.Repo.Migration
     end
   end
 

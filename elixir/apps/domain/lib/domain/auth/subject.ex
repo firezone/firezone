@@ -1,8 +1,9 @@
 defmodule Domain.Auth.Subject do
   alias Domain.Actors
-  alias Domain.Auth.{Permission, Context, Identity}
+  alias Domain.Auth.{Permission, Context}
+  alias Domain.Auth
 
-  @type identity :: %Identity{}
+  @type identity :: %Auth.Identity{}
   @type actor :: %Actors.Actor{}
   @type permission :: Permission.t()
 

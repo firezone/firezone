@@ -7,6 +7,10 @@ defmodule Domain.Repo.Seeds do
     Accounts,
     Auth,
     Actors,
+    Directories,
+    Entra,
+    Google,
+    Identities,
     Relays,
     Gateways,
     Resources,
@@ -376,6 +380,85 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
+
+    {:ok, google_directory} =
+      Google.create_directory(%{name: "Google", hosted_domain: "firezone.dev"}, admin_subject)
+
+    {:ok, _google_identity} =
+      Identities.create_identity_for_directory(
+        account,
+        %Directories.Directory{type: :google, id: google_directory.directory_id},
+        admin_actor,
+        %{
+          "sub" => "CHANGE_ME",
+          "email" => "firezone@localhost.local"
+        }
+      )
+
+    {:ok, _google_auth_provider} =
+      Google.create_auth_provider(
+        %{
+          name: "Google",
+          directory_id: google_directory.directory_id,
+          hosted_domain: "firezone.dev"
+        },
+        admin_subject
+      )
+
+    {:ok, entra_directory} =
+      Entra.create_directory(
+        %{name: "Entra", tenant_id: "CHANGE_ME"},
+        admin_subject
+      )
+
+    {:ok, _entra_identity} =
+      Identities.create_identity_for_directory(
+        account,
+        %Directories.Directory{type: :entra, id: entra_directory.directory_id},
+        admin_actor,
+        %{
+          "oid" => "CHANGE_ME",
+          "email" => "firezone@localhost.local"
+        }
+      )
+
+    {:ok, _entra_auth_provider} =
+      Entra.create_auth_provider(
+        %{
+          name: "Entra",
+          directory_id: entra_directory.directory_id,
+          tenant_id: "CHANGE_ME"
+        },
+        admin_subject
+      )
+
+    {:ok, okta_directory} =
+      Domain.Okta.create_directory(%{name: "Okta", org_domain: "CHANGE_ME"}, admin_subject)
+
+    {:ok, _okta_identity} =
+      Identities.create_identity_for_directory(
+        account,
+        %Directories.Directory{type: :okta, id: okta_directory.directory_id},
+        admin_actor,
+        %{
+          "sub" => "CHANGE_ME",
+          "email" => "firezone@localhost.local"
+        }
+      )
+
+    {:ok, _okta_auth_provider} =
+      Domain.Okta.create_auth_provider(
+        %{
+          name: "Okta",
+          directory_id: okta_directory.directory_id,
+          org_domain: "CHANGE_ME",
+          client_id: "CHANGE_ME",
+          client_secret: "CHANGE_ME"
+        },
+        admin_subject
+      )
+
+    {:ok, firezone_directory} = Domain.Firezone.create_directory(%{}, account)
 
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(

@@ -654,6 +654,8 @@ defmodule Domain.Auth do
     {:error, :unauthorized}
   end
 
+  # TODO: IdP sync
+  # Remove this after all customers have migrated to the new sync / auth flow
   def sign_in(%Provider{} = provider, token_nonce, payload, %Context{} = context) do
     with {:ok, identity, expires_at} <- Adapters.verify_and_update_identity(provider, payload),
          identity = Repo.preload(identity, :actor),

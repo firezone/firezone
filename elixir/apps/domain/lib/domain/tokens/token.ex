@@ -43,8 +43,6 @@ defmodule Domain.Tokens.Token do
     field :last_seen_at, :utc_datetime_usec
 
     # Maybe this is not needed and they should be in the join tables (eg. relay_group_tokens)
-    field :created_by, Ecto.Enum, values: ~w[actor identity system]a
-    field :created_by_subject, :map
     field :created_by_user_agent, :string
     field :created_by_remote_ip, Domain.Types.IP
 
@@ -52,6 +50,8 @@ defmodule Domain.Tokens.Token do
 
     # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
+
+    subject_trail(~w[actor identity system]a)
     timestamps()
   end
 end
