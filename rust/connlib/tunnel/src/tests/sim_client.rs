@@ -445,8 +445,7 @@ pub struct RefClient {
     #[debug(skip)]
     resources: Vec<Resource>,
 
-    #[debug(skip)]
-    internet_resource_active: bool,
+    pub(crate) internet_resource_active: bool,
 
     /// The CIDR resources the client is aware of.
     #[debug(skip)]
