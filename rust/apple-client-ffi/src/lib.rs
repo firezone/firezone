@@ -78,11 +78,8 @@ mod ffi {
         #[swift_bridge(swift_name = "setDns", return_with = err_to_string)]
         fn set_dns(self: &mut WrappedSession, dns_servers: String) -> Result<(), String>;
 
-        #[swift_bridge(swift_name = "setDisabledResources", return_with = err_to_string)]
-        fn set_disabled_resources(
-            self: &mut WrappedSession,
-            disabled_resources: String,
-        ) -> Result<(), String>;
+        #[swift_bridge(swift_name = "setInternetResourceState")]
+        fn set_internet_resource_state(self: &mut WrappedSession, active: bool);
 
         #[swift_bridge(swift_name = "setLogDirectives", return_with = err_to_string)]
         fn set_log_directives(self: &mut WrappedSession, directives: String) -> Result<(), String>;
@@ -361,15 +358,8 @@ impl WrappedSession {
         Ok(())
     }
 
-    fn set_disabled_resources(&mut self, disabled_resources: String) -> Result<()> {
-        tracing::debug!(%disabled_resources);
-
-        let disabled_resources = serde_json::from_str(&disabled_resources)
-            .context("Failed to deserialize disabled resources from JSON")?;
-
-        self.inner.set_disabled_resources(disabled_resources);
-
-        Ok(())
+    fn set_internet_resource_state(&mut self, active: bool) {
+        self.inner.set_internet_resource_state(active);
     }
 
     fn set_log_directives(&mut self, directives: String) -> Result<()> {

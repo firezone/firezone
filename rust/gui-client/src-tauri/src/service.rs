@@ -5,7 +5,7 @@ use crate::{
 use anyhow::{Context as _, Result, bail};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use backoff::ExponentialBackoffBuilder;
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::ResourceView;
 use firezone_bin_shared::{
     DnsControlMethod, DnsController, TunDeviceManager,
     device_id::{self, DeviceId},
@@ -24,7 +24,6 @@ use futures::{
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
 use secrecy::{Secret, SecretString};
 use std::{
-    collections::BTreeSet,
     io::{self, Write},
     mem,
     pin::pin,
@@ -59,7 +58,7 @@ pub enum ClientMsg {
     ApplyLogFilter {
         directives: String,
     },
-    SetDisabledResources(BTreeSet<ResourceId>),
+    SetInternetResourceState(bool),
     StartTelemetry {
         environment: String,
         release: String,
@@ -555,14 +554,14 @@ impl<'a> Handler<'a> {
                     tracing::warn!(path = %path.display(), %directives, "Failed to write new log directives: {}", err_with_src(&e));
                 }
             }
-            ClientMsg::SetDisabledResources(disabled_resources) => {
+            ClientMsg::SetInternetResourceState(state) => {
                 let Some(connlib) = self.session.as_connlib() else {
-                    // At this point, the GUI has already saved the disabled Resources to disk, so it'll be correct on the next sign-in anyway.
-                    tracing::debug!("Cannot set disabled resources if we're signed out");
+                    // At this point, the GUI has already saved the state to disk, so it'll be correct on the next sign-in anyway.
+                    tracing::debug!("Cannot enable/disable Internet Resource if we're signed out");
                     return Ok(());
                 };
 
-                connlib.set_disabled_resources(disabled_resources);
+                connlib.set_internet_resource_state(state);
             }
             ClientMsg::StartTelemetry {
                 environment,
