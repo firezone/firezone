@@ -8,6 +8,7 @@ defmodule Domain.Google.AuthProvider.Changeset do
   }
 
   @required_fields ~w(name account_id directory_id hosted_domain created_by created_by_subject)a
+  @update_fields ~w[name hosted_domain disabled_at]a
 
   def create(attrs, %Accounts.Account{} = account) do
     %AuthProvider{}
@@ -27,7 +28,7 @@ defmodule Domain.Google.AuthProvider.Changeset do
 
   def update(%AuthProvider{} = auth_provider, attrs) do
     auth_provider
-    |> cast(attrs, ~w[name hosted_domain disabled_at]a)
+    |> cast(attrs, @update_fields)
     |> changeset()
   end
 

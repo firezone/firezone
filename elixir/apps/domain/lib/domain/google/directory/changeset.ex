@@ -8,6 +8,7 @@ defmodule Domain.Google.Directory.Changeset do
   }
 
   @required_fields ~w[name account_id hosted_domain created_by created_by_subject]a
+  @update_fields ~w[jit_provisioning name hosted_domain error_count disabled_at disabled_reason synced_at error error_emailed_at]a
 
   def create(attrs, %Accounts.Account{} = account) do
     %Directory{}
@@ -29,10 +30,7 @@ defmodule Domain.Google.Directory.Changeset do
 
   def update(%Directory{} = directory, attrs) do
     directory
-    |> cast(
-      attrs,
-      ~w[jit_provisioning name hosted_domain error_count disabled_at disabled_reason synced_at error error_emailed_at]a
-    )
+    |> cast(attrs, @update_fields)
     |> changeset()
   end
 

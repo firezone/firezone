@@ -11,6 +11,7 @@ defmodule Domain.Auth.Roles do
       Domain.Clients.Authorizer,
       Domain.Email.Authorizer,
       Domain.Entra.Authorizer,
+      Domain.Firezone.Authorizer,
       Domain.Gateways.Authorizer,
       Domain.Google.Authorizer,
       Domain.Okta.Authorizer,

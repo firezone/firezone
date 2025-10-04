@@ -1,13 +1,16 @@
 defmodule Domain.Auth.Subject do
   alias Domain.Actors
-  alias Domain.Auth.{Permission, Context, Identity}
+  alias Domain.Auth.{Permission, Context}
+  alias Domain.Auth
+  alias Domain.Identities
 
-  @type identity :: %Identity{}
+  @type auth_identity :: %Auth.Identity{}
+  @type identity :: %Identities.Identity{}
   @type actor :: %Actors.Actor{}
   @type permission :: Permission.t()
 
   @type t :: %__MODULE__{
-          identity: identity() | nil,
+          identity: auth_identity() | identity() | nil,
           actor: actor(),
           permissions: MapSet.t(permission),
           account: %Domain.Accounts.Account{},

@@ -62,4 +62,34 @@ defmodule Domain.Google do
     |> Google.AuthProvider.Query.by_id(id)
     |> Repo.fetch(Google.AuthProvider.Query)
   end
+
+  def update_auth_provider(
+        %Google.AuthProvider{} = auth_provider,
+        attrs,
+        %Auth.Subject{} = subject
+      ) do
+    required_permission = Google.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Google.AuthProvider.Query.all()
+      |> Google.AuthProvider.Query.by_account_id(subject.account.id)
+      |> Google.AuthProvider.Query.by_id(auth_provider.id)
+      |> Repo.fetch_and_update(Google.AuthProvider.Query,
+        with: &Google.AuthProvider.Changeset.update(&1, attrs)
+      )
+    end
+  end
+
+  def update_directory(%Google.Directory{} = directory, attrs, %Auth.Subject{} = subject) do
+    required_permission = Google.Authorizer.manage_directories_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Google.Directory.Query.all()
+      |> Google.Directory.Query.by_account_id(subject.account.id)
+      |> Google.Directory.Query.by_directory_id(directory.directory_id)
+      |> Repo.fetch_and_update(Google.Directory.Query,
+        with: &Google.Directory.Changeset.update(&1, attrs)
+      )
+    end
+  end
 end

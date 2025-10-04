@@ -9,7 +9,7 @@ defmodule Domain.Firezone.Directory.Query do
     where(queryable, [directories: directories], directories.account_id == ^account_id)
   end
 
-  def by_id(queryable, id) do
-    where(queryable, [directories: directories], directories.id == ^id)
+  def by_directory_id(queryable, directory_id) do
+    where(queryable, [directories: directories], directories.directory_id == ^directory_id)
   end
 end
