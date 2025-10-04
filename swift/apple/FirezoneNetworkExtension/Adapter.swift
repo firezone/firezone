@@ -209,6 +209,7 @@ class Adapter {
         DeviceMetadata.getOSVersion(),
         connlibLogFolderPath,
         logFilter,
+        internetResourceEnabled,
         callbackHandler,
         String(data: jsonEncoder.encode(DeviceMetadata.deviceInfo()), encoding: .utf8)!
       )
