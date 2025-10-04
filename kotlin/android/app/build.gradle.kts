@@ -211,7 +211,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.1")
 
     // Security
-    implementation("androidx.security:security-crypto:1.1.0-beta01")
+    implementation("androidx.security:security-crypto:1.1.0")
 
     // JUnit
     testImplementation("junit:junit:4.13.2")
