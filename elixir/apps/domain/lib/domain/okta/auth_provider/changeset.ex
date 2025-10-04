@@ -39,9 +39,9 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     |> validate_length(:client_secret, min: 1, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:directory)
-    |> unique_constraint([:account_id, :org_domain],
-      name: :okta_auth_providers_pkey,
-      message: "is already configured for this account and Okta organization"
+    |> unique_constraint([:account_id, :client_id],
+      name: :okta_auth_providers_account_id_client_id_index,
+      message: "is already configured for this account and client_id"
     )
   end
 end

@@ -18,7 +18,7 @@ defmodule Domain.Repo.Migrations.CreateOktaAuthProviders do
       timestamps()
     end
 
-    create(index(:okta_auth_providers, [:account_id, :org_domain], unique: true))
+    create(index(:okta_auth_providers, [:account_id, :client_id], unique: true))
     create(index(:okta_auth_providers, [:account_id, :name], unique: true))
 
     up = """

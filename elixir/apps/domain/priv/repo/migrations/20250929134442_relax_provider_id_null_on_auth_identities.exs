@@ -37,5 +37,22 @@ defmodule Domain.Repo.Migrations.RelaxProviderIdNullOnAuthIdentities do
         name: :auth_identities_acct_id_provider_id_email_prov_ident_unique_idx
       )
     )
+
+    # Enforce either directory_id or provider_id to be set but not both
+    up = """
+    ALTER TABLE auth_identities
+    ADD CONSTRAINT auth_identities_directory_id_xor_provider_id_check
+    CHECK (
+      (directory_id IS NOT NULL AND provider_id IS NULL) OR
+      (directory_id IS NULL AND provider_id IS NOT NULL)
+    )
+    """
+
+    down = """
+    ALTER TABLE auth_identities
+    DROP CONSTRAINT auth_identities_directory_id_xor_provider_id_check
+    """
+
+    execute(up, down)
   end
 end
