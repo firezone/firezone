@@ -37,7 +37,7 @@ defmodule Web.MixProject do
       {:domain, in_umbrella: true},
 
       # Phoenix/Plug deps
-      {:phoenix, "~> 1.8.1"},
+      {:phoenix, "~> 1.8"},
       {:phoenix_live_view, "~> 1.1"},
       {:phoenix_html, "~> 4.0"},
       {:phoenix_ecto, "~> 4.4"},

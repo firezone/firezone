@@ -43,6 +43,7 @@ defmodule API.MixProject do
       {:domain, in_umbrella: true},
 
       # Phoenix deps
+      {:phoenix, "~> 1.8"},
       {:phoenix_ecto, "~> 4.4"},
       {:plug_cowboy, "~> 2.7"},
 
