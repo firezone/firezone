@@ -24,7 +24,12 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10509">
+          Fixes an issue where the Internet Resource could be briefly active on
+          startup, despite it being disabled.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-09-10")}>
         <ChangeItem pull="10313">
           Fixes an issue where multiple concurrent Firezone macOS clients could

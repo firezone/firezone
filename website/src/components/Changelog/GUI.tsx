@@ -10,7 +10,12 @@ export default function GUI({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10509">
+          Fixes an issue where the Internet Resource could be briefly active on
+          startup, despite it being disabled.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-09-10")}>
         <ChangeItem pull="10104">
           Fixes an issue where DNS resources would resolve to a different IP
