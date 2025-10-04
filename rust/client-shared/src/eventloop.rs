@@ -299,7 +299,7 @@ impl Eventloop {
                 .is_some_and(is_unreachable)
             {
                 tracing::debug!("{e:#}"); // Log these on DEBUG so they don't go completely unnoticed.
-                return Ok(());
+                continue;
             }
 
             // Invalid Input can be all sorts of things but we mostly see it with unreachable addresses.
@@ -308,13 +308,7 @@ impl Eventloop {
                 .is_some_and(|e| e.kind() == io::ErrorKind::InvalidInput)
             {
                 tracing::debug!("{e:#}");
-                return Ok(());
-            }
-
-            if e.root_cause()
-                .is::<firezone_tunnel::UdpSocketThreadStopped>()
-            {
-                return Err(e);
+                continue;
             }
 
             if e.root_cause()
@@ -327,7 +321,13 @@ impl Eventloop {
                     )
                 }
 
-                return Ok(());
+                continue;
+            }
+
+            if e.root_cause()
+                .is::<firezone_tunnel::UdpSocketThreadStopped>()
+            {
+                return Err(e);
             }
 
             tracing::warn!("Tunnel error: {e:#}");
