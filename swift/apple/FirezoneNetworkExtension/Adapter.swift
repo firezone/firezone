@@ -272,12 +272,8 @@ class Adapter {
   }
 
   func setInternetResourceEnabled(_ enabled: Bool) {
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
-
-      self.internetResourceEnabled = enabled
-      session?.setInternetResourceState(enabled)
-    }
+    self.internetResourceEnabled = enabled
+    session?.setInternetResourceState(enabled)
   }
 }
 
