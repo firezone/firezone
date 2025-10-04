@@ -53,6 +53,7 @@ pub enum ClientMsg {
     Connect {
         api_url: String,
         token: String,
+        is_internet_resource_active: bool,
     },
     Disconnect,
     ApplyLogFilter {
@@ -191,6 +192,7 @@ enum Session {
     WaitingForNetwork {
         api_url: String,
         token: SecretString,
+        is_internet_resource_active: bool,
     },
     #[default]
     None,
@@ -372,10 +374,18 @@ impl<'a> Handler<'a> {
                     Session::Connected { connlib, .. } => {
                         connlib.reset("network changed".to_owned());
                     }
-                    Session::WaitingForNetwork { api_url, token } => {
+                    Session::WaitingForNetwork {
+                        api_url,
+                        token,
+                        is_internet_resource_active,
+                    } => {
                         tracing::info!("Attempting to re-connect upon network change");
 
-                        let result = self.try_connect(&api_url.clone(), token.clone());
+                        let result = self.try_connect(
+                            &api_url.clone(),
+                            token.clone(),
+                            *is_internet_resource_active,
+                        );
 
                         if let Some(e) = result
                             .as_ref()
@@ -501,14 +511,18 @@ impl<'a> Handler<'a> {
                 self.send_ipc(ServerMsg::ClearedLogs(result.map_err(|e| e.to_string())))
                     .await?
             }
-            ClientMsg::Connect { api_url, token } => {
+            ClientMsg::Connect {
+                api_url,
+                token,
+                is_internet_resource_active,
+            } => {
                 let token = SecretString::new(token);
 
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Connecting despite existing session");
                 }
 
-                let result = self.try_connect(&api_url, token.clone());
+                let result = self.try_connect(&api_url, token.clone(), is_internet_resource_active);
 
                 if let Some(e) = result
                     .as_ref()
@@ -518,7 +532,11 @@ impl<'a> Handler<'a> {
                     tracing::debug!(
                         "Encountered IO error when connecting to portal, most likely we don't have Internet: {e}"
                     );
-                    self.session = Session::WaitingForNetwork { api_url, token };
+                    self.session = Session::WaitingForNetwork {
+                        api_url,
+                        token,
+                        is_internet_resource_active,
+                    };
 
                     return Ok(());
                 }
@@ -598,7 +616,12 @@ impl<'a> Handler<'a> {
         Ok(())
     }
 
-    fn try_connect(&mut self, api_url: &str, token: SecretString) -> Result<Session> {
+    fn try_connect(
+        &mut self,
+        api_url: &str,
+        token: SecretString,
+        is_internet_resource_active: bool,
+    ) -> Result<Session> {
         let started_at = Instant::now();
 
         let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
@@ -636,7 +659,7 @@ impl<'a> Handler<'a> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            false,
+            is_internet_resource_active,
             tokio::runtime::Handle::current(),
         );
 
