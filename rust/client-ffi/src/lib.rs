@@ -94,6 +94,7 @@ impl Session {
         log_dir: String,
         log_filter: String,
         device_info: String,
+        is_internet_resource_active: bool,
         protect_socket: Arc<dyn ProtectSocket>,
     ) -> Result<Self, Error> {
         let udp_socket_factory = Arc::new(protected_udp_socket_factory(protect_socket.clone()));
@@ -109,6 +110,7 @@ impl Session {
             log_dir,
             log_filter,
             device_info,
+            is_internet_resource_active,
             tcp_socket_factory,
             udp_socket_factory,
         )
@@ -227,6 +229,7 @@ fn connect(
     log_dir: String,
     log_filter: String,
     device_info: String,
+    is_internet_resource_active: bool,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) -> Result<Session, Error> {
@@ -278,7 +281,7 @@ fn connect(
         tcp_socket_factory,
         udp_socket_factory,
         portal,
-        false,
+        is_internet_resource_active,
         runtime.handle().clone(),
     );
 
