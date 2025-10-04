@@ -276,15 +276,8 @@ class Adapter {
       guard let self = self else { return }
 
       self.internetResourceEnabled = enabled
-      self.resourcesUpdated()
+      session?.setInternetResourceState(enabled)
     }
-  }
-
-  func resourcesUpdated() {
-    let decoder = JSONDecoder()
-    decoder.keyDecodingStrategy = .convertFromSnakeCase
-
-    session?.setInternetResourceState(internetResourceEnabled)
   }
 }
 
@@ -359,7 +352,7 @@ extension Adapter: CallbackHandlerDelegate {
         networkSettings.apply()
       }
 
-      self.resourcesUpdated()
+      session?.setInternetResourceState(self.internetResourceEnabled)
     }
   }
 
