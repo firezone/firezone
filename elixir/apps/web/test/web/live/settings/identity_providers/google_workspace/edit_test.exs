@@ -169,10 +169,16 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.EditTest do
         }
       )
 
+    adapter_config =
+      Map.merge(provider_attrs.adapter_config, %{
+        "client_id" => "",
+        "service_account_json_key" => nil
+      })
+
     changed_values = %{
       provider: %{
         name: String.duplicate("a", 256),
-        adapter_config: %{provider_attrs.adapter_config | "client_id" => ""}
+        adapter_config: adapter_config
       }
     }
 

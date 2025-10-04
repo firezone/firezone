@@ -95,7 +95,7 @@ defmodule Web.Live.Policies.NewTest do
     html = render(form)
 
     disabled_input = Floki.find(html, "input[name='policy[actor_group_id]_name']")
-    assert Floki.attribute(disabled_input, "disabled") == ["disabled"]
+    assert Floki.attribute(disabled_input, "disabled") == [""]
     assert Floki.attribute(disabled_input, "value") == [actor_group.name]
 
     value_input = Floki.find(html, "input[name='policy[actor_group_id]']")
@@ -151,7 +151,7 @@ defmodule Web.Live.Policies.NewTest do
     html = render(form)
 
     disabled_input = Floki.find(html, "input[name='policy[resource_id]_name']")
-    assert Floki.attribute(disabled_input, "disabled") == ["disabled"]
+    assert Floki.attribute(disabled_input, "disabled") == [""]
     assert Floki.attribute(disabled_input, "value") == [resource.name]
 
     value_input = Floki.find(html, "input[name='policy[resource_id]']")
