@@ -57,6 +57,7 @@ runs:
         cache: true
         cache-on-failure: true
         rustflags: "" # Don't set -D warnings by default
+        rust-src-dir: "rust"
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
     # For this to work, you need an Azure Storage account and a blob container named `sccache`.
