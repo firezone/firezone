@@ -54,9 +54,7 @@ runs:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
         target: ${{ inputs.targets }}
-        cache: true
-        cache-on-failure: true
-        rustflags: "" # Don't set -D warnings by default
+        cache: false
         rust-src-dir: "rust"
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
