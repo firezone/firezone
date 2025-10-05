@@ -55,7 +55,7 @@ runs:
         components: rustfmt,clippy
         target: ${{ inputs.targets }}
         cache: true
-        cache-targets: false
+        cache-targets: false # Disable caching of `target` directory, we use sccache for that.
         rust-src-dir: "rust"
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
