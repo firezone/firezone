@@ -61,6 +61,7 @@ runs:
       with:
         workspaces: rust
         cache-targets: false # Don't cache `target` directory, we use sccache for that.
+        save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
     # For this to work, you need an Azure Storage account and a blob container named `sccache`.
