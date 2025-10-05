@@ -54,9 +54,13 @@ runs:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
         target: ${{ inputs.targets }}
-        cache: true
-        cache-targets: false # Disable caching of `target` directory, we use sccache for that.
-        rust-src-dir: "rust"
+        cache: false # We explicitly configure the cache below because it doesn't forward `cache-targets`.
+
+    - name: Cache registry
+      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      with:
+        workspaces: rust
+        cache-targets: false # Don't cache `target` directory, we use sccache for that.
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
     # For this to work, you need an Azure Storage account and a blob container named `sccache`.
