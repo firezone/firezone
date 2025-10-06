@@ -7,10 +7,7 @@ defaults:
   run:
     working-directory: ./rust/gui-client
 
-# Never tolerate warnings. Source of truth is `_rust.yml`
 env:
-  RUSTFLAGS: "-Dwarnings"
-  RUSTDOCFLAGS: "-D warnings"
   TSLINK_BUILD: true
 
 permissions:

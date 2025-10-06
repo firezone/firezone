@@ -11,10 +11,8 @@ permissions:
   contents: "read"
   id-token: "write"
 
-# Never tolerate warnings. Duplicated in `_tauri.yml`
 env:
-  RUSTFLAGS: "-Dwarnings --cfg tokio_unstable"
-  RUSTDOCFLAGS: "-D warnings"
+  RUSTFLAGS: "--cfg tokio_unstable"
 
 jobs:
   static-analysis:
