@@ -6,7 +6,7 @@ plugins {
     id("com.google.dagger.hilt.android")
     id("com.google.gms.google-services")
     id("com.google.firebase.crashlytics")
-    id("com.diffplug.spotless") version "7.0.4"
+    id("com.diffplug.spotless") version "8.0.0"
     id("com.google.firebase.appdistribution")
     id("kotlin-parcelize")
     id("androidx.navigation.safeargs")
@@ -181,13 +181,13 @@ dependencies {
     implementation("com.google.dagger:hilt-android:2.57.1")
     implementation("androidx.browser:browser:1.9.0")
     implementation("com.google.firebase:firebase-installations-ktx:18.0.0")
-    implementation("com.google.android.gms:play-services-tasks:18.3.0")
+    implementation("com.google.android.gms:play-services-tasks:18.4.0")
     kapt("androidx.hilt:hilt-compiler:1.3.0")
     kapt("com.google.dagger:hilt-android-compiler:2.57.1")
     // Instrumented Tests
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.57.1")
     kaptAndroidTest("com.google.dagger:hilt-android-compiler:2.57.1")
-    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.navigation:navigation-testing:2.9.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
     androidTestImplementation("androidx.test.espresso:espresso-contrib:3.7.0")
@@ -228,7 +228,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics-ktx")
 
     // UniFFI
-    implementation("net.java.dev.jna:jna:5.17.0@aar")
+    implementation("net.java.dev.jna:jna:5.18.1@aar")
 }
 
 cargo {
