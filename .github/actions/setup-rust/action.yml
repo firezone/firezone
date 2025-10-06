@@ -48,15 +48,20 @@ runs:
         echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
       shell: bash
 
-    - uses: actions-rust-lang/setup-rust-toolchain@ab6845274e2ff01cd4462007e1a9d9df1ab49f42 # v1
+    - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
       id: toolchain
       with:
         toolchain: ${{ env.RUST_TOOLCHAIN }}
         components: rustfmt,clippy
         target: ${{ inputs.targets }}
-        cache: true
-        cache-on-failure: true
-        rustflags: "" # Don't set -D warnings by default
+        cache: false # We explicitly configure the cache below because it doesn't forward `cache-targets`.
+
+    - name: Cache registry
+      uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
+      with:
+        workspaces: rust
+        cache-targets: false # Don't cache `target` directory, we use sccache for that.
+        save-if: ${{ github.ref == 'refs/heads/main' }} # Only save on main
 
     # We use Azure Blob Storage for sccache because credits and GHA cache is too small (10 GB).
     # For this to work, you need an Azure Storage account and a blob container named `sccache`.
