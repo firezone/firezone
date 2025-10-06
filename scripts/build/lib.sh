@@ -10,7 +10,7 @@ function setup_runner() {
     local ne_profile_file="$4"
 
     # Use the latest version of Xcode - matches what we typically use for development
-    sudo xcode-select --switch "$(ls -d /Applications/Xcode*${XCODE_MAJOR}*.app | sort -V | tail -n 1)"
+    sudo xcode-select --switch "$(ls -d /Applications/Xcode*${XCODE_VERSION}*.app | sort -V | tail -n 1)"
 
     profiles_path="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
     keychain_pass=$(openssl rand -base64 32)
