@@ -151,7 +151,9 @@ public final class Store: ObservableObject {
 
       // If already installed but the wrong version, go ahead and install. This shouldn't prompt the user.
       if systemExtensionStatus == .needsReplacement {
+        Log.info("Replacing system extension with current version")
         try await systemExtensionRequest(.install)
+        Log.info("System extension replacement completed successfully")
       }
     #endif
   }
