@@ -43,25 +43,21 @@ impl DnsCache {
     pub fn insert(&mut self, domain: DomainName, response: &dns_types::Response, now: Instant) {
         if response.response_code() != dns_types::ResponseCode::NOERROR {
             tracing::trace!("Refusing to cache failed response");
-
             return;
         }
 
         if response.truncated() {
             tracing::trace!("Refusing to cache truncated response");
-
             return;
         }
 
         if response.records().count() == 0 {
             tracing::trace!("Cannot cache response without entries");
-
             return;
         }
 
         let Some(ttl) = response.ttl() else {
             tracing::trace!(?response, "Cannot cache DNS response without a TTL");
-
             return;
         };
 
