@@ -85,6 +85,7 @@ where
     }
 }
 
+#[derive(Debug, PartialEq)]
 pub struct Entry<'a, V> {
     pub value: &'a V,
     pub expires_at: Instant,
@@ -123,7 +124,7 @@ mod tests {
         map.handle_timeout(now + Duration::from_secs(1));
 
         assert_eq!(map.get(&"key1"), None);
-        assert_eq!(map.get(&"key2"), Some(&"value2"));
+        assert_eq!(map.get(&"key2").unwrap().value, &"value2");
     }
 
     #[test]

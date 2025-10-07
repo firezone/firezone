@@ -140,6 +140,8 @@ impl fmt::Debug for FmtFriendlyRecord<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::{iter, net::Ipv4Addr};
+
     use dns_types::{RecordType, ResponseCode, records};
 
     use super::*;
@@ -159,13 +161,13 @@ mod tests {
             )))
             .build();
 
-        cache.insert(domain, &response, now);
+        cache.insert(domain.clone(), &response, now);
 
         now += Duration::from_secs(100);
 
-        let query2 = Query::new(domain.clone(), RecordType::A);
+        let query2 = Query::new(domain, RecordType::A);
 
-        let records = cache.try_answer(&query2, now).unwrap();
+        let response = cache.try_answer(&query2, now).unwrap();
 
         assert_eq!(response.ttl().unwrap(), Duration::from_secs(3500));
         assert_eq!(response.id(), query2.id());
