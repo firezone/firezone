@@ -206,8 +206,11 @@ impl Response {
         self.inner.header().rcode()
     }
 
-    pub fn ttl(&self) -> Option<Duration> {
-        self.records().map(|r| r.ttl().into_duration()).min()
+    pub fn ttl(&self, rtype: RecordType) -> Option<Duration> {
+        self.records()
+            .filter(|r| r.rtype() == rtype)
+            .map(|r| r.ttl().into_duration())
+            .min()
     }
 
     pub fn records(&self) -> impl Iterator<Item = Record<'_>> {

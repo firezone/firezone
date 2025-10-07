@@ -1,7 +1,7 @@
 use std::time::Duration;
 use std::{fmt, net::IpAddr, time::Instant};
 
-use dns_types::{DomainName, ResponseBuilder, ResponseCode, Ttl};
+use dns_types::{DomainName, RecordType, ResponseBuilder, ResponseCode, Ttl};
 use dns_types::{OwnedRecord, Query};
 use dns_types::{Response, prelude::*};
 
@@ -9,38 +9,42 @@ use crate::expiring_map::{self, ExpiringMap};
 
 #[derive(Debug, Default)]
 pub struct DnsCache {
-    inner: ExpiringMap<DomainName, Response>,
+    inner: ExpiringMap<(DomainName, RecordType), Response>,
 }
 
 impl DnsCache {
     pub fn try_answer(&self, query: &Query, now: Instant) -> Option<Response> {
         let domain = query.domain();
+        let qtype = query.qtype();
 
         let expiring_map::Entry {
             value: response,
             expires_at,
-        } = self.inner.get(&domain)?;
+        } = self.inner.get(&(domain.clone(), qtype))?;
 
-        let records = response.records().map(|r| {
-            let original_ttl = r.ttl();
-            let inserted_at = expires_at - original_ttl.into_duration();
-            let expired_ttl = Ttl::from_secs(now.duration_since(inserted_at).as_secs() as u32);
+        let records = response
+            .records()
+            .filter(|r| r.rtype() == qtype) // Filter here just to be sure.
+            .map(|r| {
+                let original_ttl = r.ttl();
+                let inserted_at = expires_at - original_ttl.into_duration();
+                let expired_ttl = Ttl::from_secs(now.duration_since(inserted_at).as_secs() as u32);
 
-            let new_ttl = original_ttl.saturating_sub(expired_ttl);
+                let new_ttl = original_ttl.saturating_sub(expired_ttl);
 
-            OwnedRecord::new(
-                r.owner().flatten_into(),
-                r.class(),
-                new_ttl,
-                r.into_data().flatten_into(),
-            )
-        });
+                OwnedRecord::new(
+                    r.owner().flatten_into(),
+                    r.class(),
+                    new_ttl,
+                    r.into_data().flatten_into(),
+                )
+            });
 
         let response = ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(records)
             .build();
 
-        tracing::trace!(%domain, records = ?fmt_friendly_records(&response), remaining_ttl = ?response.ttl(), "Cache hit");
+        tracing::trace!(%domain, records = ?fmt_friendly_records(&response), remaining_ttl = ?response.ttl(qtype), "Cache hit");
 
         Some(response)
     }
@@ -50,6 +54,8 @@ impl DnsCache {
     }
 
     pub fn insert(&mut self, domain: DomainName, response: &dns_types::Response, now: Instant) {
+        let qtype = response.qtype();
+
         if response.response_code() != dns_types::ResponseCode::NOERROR {
             tracing::trace!("Refusing to cache failed response");
             return;
@@ -65,7 +71,7 @@ impl DnsCache {
             return;
         }
 
-        let Some(ttl) = response.ttl() else {
+        let Some(ttl) = response.ttl(qtype) else {
             tracing::trace!(?response, "Cannot cache DNS response without a TTL");
             return;
         };
@@ -75,9 +81,10 @@ impl DnsCache {
             return;
         }
 
-        tracing::trace!(%domain, records = ?fmt_friendly_records(response), ?ttl, "New entry");
+        tracing::trace!(%domain, %qtype, records = ?fmt_friendly_records(response), ?ttl, "New entry");
 
-        self.inner.insert(domain, response.clone(), now + ttl);
+        self.inner
+            .insert((domain, qtype), response.clone(), now + ttl);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -85,11 +92,11 @@ impl DnsCache {
 
         while let Some(event) = self.inner.poll_event() {
             let expiring_map::Event::EntryExpired {
-                key,
+                key: (domain, qtype),
                 value: response,
             } = event;
 
-            tracing::trace!(domain = %key, records = ?fmt_friendly_records(&response), "Entry expired");
+            tracing::trace!(%domain, %qtype, records = ?fmt_friendly_records(&response), "Entry expired");
         }
     }
 
@@ -164,7 +171,10 @@ mod tests {
 
         let response = cache.try_answer(&query2, now).unwrap();
 
-        assert_eq!(response.ttl().unwrap(), Duration::from_secs(3500));
+        assert_eq!(
+            response.ttl(RecordType::A).unwrap(),
+            Duration::from_secs(3500)
+        );
         assert_eq!(response.id(), query2.id());
     }
 }
