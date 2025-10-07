@@ -22,23 +22,20 @@ impl DnsCache {
             expires_at,
         } = self.inner.get(&(domain.clone(), qtype))?;
 
-        let records = response
-            .records()
-            .filter(|r| r.rtype() == qtype) // Filter here just to be sure.
-            .map(|r| {
-                let original_ttl = r.ttl();
-                let inserted_at = expires_at - original_ttl.into_duration();
-                let expired_ttl = Ttl::from_secs(now.duration_since(inserted_at).as_secs() as u32);
+        let records = response.records().map(|r| {
+            let original_ttl = r.ttl();
+            let inserted_at = expires_at - original_ttl.into_duration();
+            let expired_ttl = Ttl::from_secs(now.duration_since(inserted_at).as_secs() as u32);
 
-                let new_ttl = original_ttl.saturating_sub(expired_ttl);
+            let new_ttl = original_ttl.saturating_sub(expired_ttl);
 
-                OwnedRecord::new(
-                    r.owner().flatten_into(),
-                    r.class(),
-                    new_ttl,
-                    r.into_data().flatten_into(),
-                )
-            });
+            OwnedRecord::new(
+                r.owner().flatten_into(),
+                r.class(),
+                new_ttl,
+                r.into_data().flatten_into(),
+            )
+        });
 
         let response = ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(records)
