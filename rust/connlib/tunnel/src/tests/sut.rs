@@ -501,12 +501,15 @@ impl TunnelTest {
                 let response =
                     self.on_recursive_dns_query(&query.message, &ref_state.global_dns_records);
                 self.client.exec_mut(|c| {
-                    c.sut.handle_dns_response(dns::RecursiveResponse {
-                        server,
-                        query: query.message,
-                        message: Ok(response), // TODO: Vary this?
-                        transport,
-                    })
+                    c.sut.handle_dns_response(
+                        dns::RecursiveResponse {
+                            server,
+                            query: query.message,
+                            message: Ok(response), // TODO: Vary this?
+                            transport,
+                        },
+                        now,
+                    )
                 });
 
                 continue;

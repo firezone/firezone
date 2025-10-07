@@ -1,3 +1,4 @@
+mod dns_cache;
 mod dns_resource_nat;
 mod resource;
 
@@ -9,8 +10,9 @@ pub(crate) use resource::DnsResource;
 pub(crate) use resource::{CidrResource, InternetResource, Resource};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
+use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
-use crate::expiring_map::ExpiringMap;
+use crate::expiring_map::{self, ExpiringMap};
 use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
@@ -124,6 +126,8 @@ pub struct ClientState {
     udp_dns_sockets_by_upstream_and_query_id: ExpiringMap<(SocketAddr, u16), SocketAddr>,
     /// Manages internal dns records and emits forwarding event when not internally handled
     stub_resolver: StubResolver,
+    /// Caches responses from DNS servers.
+    dns_cache: DnsCache,
 
     /// Configuration of the TUN device, when it is up.
     tun_config: Option<TunConfig>,
@@ -207,6 +211,7 @@ impl ClientState {
             gateways_site: Default::default(),
             udp_dns_sockets_by_upstream_and_query_id: Default::default(),
             stub_resolver: StubResolver::new(records),
+            dns_cache: Default::default(),
             buffered_transmits: Default::default(),
             is_internet_resource_active,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
@@ -476,6 +481,8 @@ impl ClientState {
         let packet = maybe_mangle_dns_response_from_upstream_dns_server(
             packet,
             &mut self.udp_dns_sockets_by_upstream_and_query_id,
+            &mut self.dns_cache,
+            now,
         );
 
         if feature_flags::icmp_error_unreachable_prohibited_create_new_flow()
@@ -495,7 +502,7 @@ impl ClientState {
         Some(packet)
     }
 
-    pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse) {
+    pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
         let qid = response.query.id();
         let server = response.server;
         let domain = response.query.domain();
@@ -514,6 +521,8 @@ impl ClientState {
                         if message.truncated() {
                             tracing::debug!("Upstream DNS server had to truncate response");
                         }
+
+                        self.dns_cache.insert(domain, message, now);
                     })
                     .unwrap_or_else(|e| {
                         tracing::debug!("Recursive UDP DNS query failed: {}", err_with_src(&e));
@@ -528,8 +537,10 @@ impl ClientState {
             }
             (dns::Transport::Tcp { local, remote }, result) => {
                 let message = result
-                    .inspect(|_| {
+                    .inspect(|message| {
                         tracing::trace!("Received recursive TCP DNS response");
+
+                        self.dns_cache.insert(domain, message, now);
                     })
                     .unwrap_or_else(|e| {
                         tracing::debug!("Recursive TCP DNS query failed: {}", err_with_src(&e));
@@ -1081,6 +1092,11 @@ impl ClientState {
                     .map(|instant| (instant, "DNS socket timeout")),
             )
             .chain(
+                self.dns_cache
+                    .poll_timeout()
+                    .map(|instant| (instant, "DNS cache")),
+            )
+            .chain(
                 self.tcp_dns_client
                     .poll_timeout()
                     .map(|instant| (instant, "TCP DNS client")),
@@ -1101,8 +1117,20 @@ impl ClientState {
         self.udp_dns_sockets_by_upstream_and_query_id
             .handle_timeout(now);
 
+        while let Some(event) = self.udp_dns_sockets_by_upstream_and_query_id.poll_event() {
+            let expiring_map::Event::EntryExpired { key, value } = event;
+
+            tracing::debug!(
+                ?key,
+                ?value,
+                "Mapping entry for forwarded DNS query expired"
+            );
+        }
+
         self.advance_dns_tcp_sockets(now);
         self.send_dns_resource_nat_packets(now);
+
+        self.dns_cache.handle_timeout(now);
     }
 
     /// Advance the TCP DNS server and client state machines.
@@ -1143,14 +1171,17 @@ impl ClientState {
                     continue;
                 };
 
-                self.handle_dns_response(dns::RecursiveResponse {
-                    server,
-                    query: query_result.query,
-                    message: query_result
-                        .result
-                        .map_err(|e| io::Error::other(format!("{e:#}"))),
-                    transport: dns::Transport::Tcp { local, remote },
-                });
+                self.handle_dns_response(
+                    dns::RecursiveResponse {
+                        server,
+                        query: query_result.query,
+                        message: query_result
+                            .result
+                            .map_err(|e| io::Error::other(format!("{e:#}"))),
+                        transport: dns::Transport::Tcp { local, remote },
+                    },
+                    now,
+                );
                 continue;
             }
 
@@ -1202,10 +1233,20 @@ impl ClientState {
 
         let source = SocketAddr::new(packet.source(), datagram.source_port());
 
+        if let Some(cached_response) = self.dns_cache.get(&message.domain()) {
+            unwrap_or_debug!(
+                self.try_queue_udp_dns_response(upstream, source, cached_response.clone()),
+                "Failed to queue UDP DNS response: {}"
+            );
+
+            return ControlFlow::Break(());
+        }
+
         match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
+                self.dns_cache.insert(message.domain(), &response, now);
 
                 unwrap_or_debug!(
                     self.try_queue_udp_dns_response(upstream, source, response),
@@ -1355,10 +1396,25 @@ impl ClientState {
         };
         let server = upstream.address();
 
+        if let Some(cached_response) = self.dns_cache.get(&query.message.domain()) {
+            unwrap_or_debug!(
+                self.tcp_dns_server.send_message(
+                    query.local,
+                    query.remote,
+                    cached_response.clone()
+                ),
+                "Failed to send TCP DNS response: {}"
+            );
+
+            return;
+        }
+
         match self.stub_resolver.handle(&query.message) {
             dns::ResolveStrategy::LocalResponse(response) => {
                 self.dns_resource_nat.recreate(query.message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
+                self.dns_cache
+                    .insert(query.message.domain(), &response, now);
 
                 unwrap_or_debug!(
                     self.tcp_dns_server
@@ -1992,6 +2048,8 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 fn maybe_mangle_dns_response_from_upstream_dns_server(
     mut packet: IpPacket,
     udp_dns_sockets_by_upstream_and_query_id: &mut ExpiringMap<(SocketAddr, u16), SocketAddr>,
+    dns_cache: &mut DnsCache,
+    now: Instant,
 ) -> IpPacket {
     let src_ip = packet.source();
 
@@ -2011,6 +2069,8 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
     else {
         return packet;
     };
+
+    dns_cache.insert(message.domain(), &message, now);
 
     tracing::trace!(server = %src_ip, query_id = %message.id(), domain = %message.domain(), "Received UDP DNS response via tunnel");
 

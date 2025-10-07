@@ -1,5 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use std::time::Duration;
+
 use domain::{
     base::{
         HeaderCounts, Message, MessageBuilder, ParsedName, Question, RecordSection,
@@ -134,6 +136,7 @@ impl TryFrom<&[u8]> for Response {
     }
 }
 
+#[derive(Clone)]
 pub struct Response {
     inner: Message<Vec<u8>>,
 }
@@ -200,6 +203,10 @@ impl Response {
 
     pub fn response_code(&self) -> ResponseCode {
         self.inner.header().rcode()
+    }
+
+    pub fn ttl(&self) -> Option<Duration> {
+        self.records().map(|r| r.ttl().into_duration()).min()
     }
 
     pub fn records(&self) -> impl Iterator<Item = Record<'_>> {

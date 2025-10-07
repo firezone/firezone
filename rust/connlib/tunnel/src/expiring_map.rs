@@ -1,25 +1,33 @@
 use core::fmt;
-use std::{collections::BTreeMap, mem, time::Instant};
+use std::{
+    collections::{BTreeMap, HashMap, VecDeque},
+    hash::Hash,
+    mem,
+    time::Instant,
+};
 
 /// A map that automatically removes entries after a given expiration time.
 #[derive(Debug)]
 pub struct ExpiringMap<K, V> {
-    inner: BTreeMap<K, V>,
+    inner: HashMap<K, V>,
     expiration: BTreeMap<Instant, Vec<K>>,
+
+    events: VecDeque<Event<K, V>>,
 }
 
 impl<K, V> Default for ExpiringMap<K, V> {
     fn default() -> Self {
         Self {
-            inner: BTreeMap::new(),
-            expiration: BTreeMap::new(),
+            inner: HashMap::default(),
+            expiration: BTreeMap::default(),
+            events: VecDeque::default(),
         }
     }
 }
 
 impl<K, V> ExpiringMap<K, V>
 where
-    K: Ord + Clone + fmt::Debug,
+    K: Hash + Eq + Clone + fmt::Debug,
     V: fmt::Debug,
 {
     pub fn insert(&mut self, key: K, value: V, expiration: Instant) -> Option<V> {
@@ -29,7 +37,6 @@ where
         old_value
     }
 
-    #[cfg(test)]
     pub fn get(&self, key: &K) -> Option<&V> {
         self.inner.get(key)
     }
@@ -64,9 +71,18 @@ where
                 continue;
             };
 
-            tracing::debug!(?key, ?value, "Entry expired");
+            self.events.push_back(Event::EntryExpired { key, value });
         }
     }
+
+    pub fn poll_event(&mut self) -> Option<Event<K, V>> {
+        self.events.pop_front()
+    }
+}
+
+#[derive(Debug)]
+pub enum Event<K, V> {
+    EntryExpired { key: K, value: V },
 }
 
 #[cfg(test)]
