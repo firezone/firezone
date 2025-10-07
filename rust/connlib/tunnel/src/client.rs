@@ -1767,6 +1767,7 @@ impl ClientState {
 
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
+        self.dns_cache.flush();
     }
 
     fn log_activating_resource(&self, resource: &Resource) {
@@ -1791,6 +1792,7 @@ impl ClientState {
 
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
+        self.dns_cache.flush();
     }
 
     /// Emit a [`ClientEvent::ResourcesChanged`] event.

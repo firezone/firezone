@@ -45,6 +45,10 @@ impl DnsCache {
         Some(response)
     }
 
+    pub fn flush(&mut self) {
+        self.inner.clear()
+    }
+
     pub fn insert(&mut self, domain: DomainName, response: &dns_types::Response, now: Instant) {
         if response.response_code() != dns_types::ResponseCode::NOERROR {
             tracing::trace!("Refusing to cache failed response");

@@ -58,6 +58,10 @@ where
         self.expiration.keys().next().cloned()
     }
 
+    pub fn clear(&mut self) {
+        self.inner.clear();
+    }
+
     #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
