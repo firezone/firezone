@@ -6,13 +6,12 @@ pub use firezone_tunnel::TunConfig;
 pub use firezone_tunnel::messages::client::{IngressMessages, ResourceDescription};
 
 use anyhow::Result;
-use connlib_model::{ResourceId, ResourceView};
+use connlib_model::ResourceView;
 use eventloop::{Command, Eventloop};
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::collections::BTreeSet;
 use std::future;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -123,10 +122,8 @@ impl Session {
         let _ = self.channel.send(Command::SetDns(new_dns));
     }
 
-    pub fn set_disabled_resources(&self, disabled_resources: BTreeSet<ResourceId>) {
-        let _ = self
-            .channel
-            .send(Command::SetDisabledResources(disabled_resources));
+    pub fn set_internet_resource_state(&self, active: bool) {
+        let _ = self.channel.send(Command::SetInternetResourceState(active));
     }
 
     /// Sets a new [`Tun`] device handle.

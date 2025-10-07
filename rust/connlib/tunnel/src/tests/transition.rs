@@ -13,7 +13,7 @@ use crate::messages::DnsServer;
 use prop::collection;
 use proptest::{prelude::*, sample};
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeMap,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
 };
@@ -21,12 +21,14 @@ use std::{
 /// The possible transitions of the state machine.
 #[derive(Clone, Debug)]
 pub(crate) enum Transition {
-    /// Activate a resource on the client.
-    ActivateResource(Resource),
-    /// Deactivate a resource on the client.
-    DeactivateResource(ResourceId),
-    /// Client-side disable resource
-    DisableResources(BTreeSet<ResourceId>),
+    /// Add a resource on the client.
+    AddResource(Resource),
+    /// Remove a resource on the client.
+    RemoveResource(ResourceId),
+
+    /// Toggle the Internet Resource on / off
+    SetInternetResourceState(bool),
+
     /// Send an ICMP packet to destination (IP resource, DNS resource or IP non-resource).
     SendIcmpPacket {
         src: IpAddr,

@@ -125,13 +125,8 @@ impl Session {
         Ok(())
     }
 
-    pub fn set_disabled_resources(&self, disabled_resources: String) -> Result<(), Error> {
-        let disabled_resources = serde_json::from_str(&disabled_resources)
-            .context("Failed to deserialize disabled resource IDs")?;
-
-        self.inner.set_disabled_resources(disabled_resources);
-
-        Ok(())
+    pub fn set_internet_resource_state(&self, active: bool) {
+        self.inner.set_internet_resource_state(active);
     }
 
     pub fn set_dns(&self, dns_servers: String) -> Result<(), Error> {
