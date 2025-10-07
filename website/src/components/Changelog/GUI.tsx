@@ -15,6 +15,9 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where the Internet Resource could be briefly active on
           startup, despite it being disabled.
         </ChangeItem>
+        <ChangeItem pull="10533">
+          Improves reliability by caching DNS responses as per their TTL.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-09-10")}>
         <ChangeItem pull="10104">
