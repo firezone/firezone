@@ -9,7 +9,7 @@ use std::{
 /// A map that automatically removes entries after a given expiration time.
 #[derive(Debug)]
 pub struct ExpiringMap<K, V> {
-    inner: HashMap<K, V>,
+    inner: HashMap<K, (V, Instant)>,
     expiration: BTreeMap<Instant, Vec<K>>,
 
     events: VecDeque<Event<K, V>>,
@@ -30,18 +30,23 @@ where
     K: Hash + Eq + Clone + fmt::Debug,
     V: fmt::Debug,
 {
-    pub fn insert(&mut self, key: K, value: V, expiration: Instant) -> Option<V> {
-        let old_value = self.inner.insert(key.clone(), value);
+    pub fn insert(&mut self, key: K, value: V, expiration: Instant) -> Option<(V, Instant)> {
+        let old_value = self.inner.insert(key.clone(), (value, expiration));
         self.expiration.entry(expiration).or_default().push(key);
 
         old_value
     }
 
-    pub fn get(&self, key: &K) -> Option<&V> {
-        self.inner.get(key)
+    pub fn get<'v>(&'v self, key: &K) -> Option<Entry<'v, V>> {
+        let (value, expires_at) = self.inner.get(key)?;
+
+        Some(Entry {
+            value,
+            expires_at: *expires_at,
+        })
     }
 
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn remove(&mut self, key: &K) -> Option<(V, Instant)> {
         self.expiration.retain(|_, keys| {
             keys.retain(|k| k != key);
             !keys.is_empty()
@@ -67,7 +72,7 @@ where
             .chain(now_entry)
             .flatten()
         {
-            let Some(value) = self.inner.remove(&key) else {
+            let Some((value, _)) = self.inner.remove(&key) else {
                 continue;
             };
 
@@ -78,6 +83,11 @@ where
     pub fn poll_event(&mut self) -> Option<Event<K, V>> {
         self.events.pop_front()
     }
+}
+
+pub struct Entry<'a, V> {
+    pub value: &'a V,
+    pub expires_at: Instant,
 }
 
 #[derive(Debug)]

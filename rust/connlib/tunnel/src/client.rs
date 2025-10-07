@@ -1233,9 +1233,9 @@ impl ClientState {
 
         let source = SocketAddr::new(packet.source(), datagram.source_port());
 
-        if let Some(cached_response) = self.dns_cache.get(&message.domain()) {
+        if let Some(response) = self.dns_cache.try_answer(&message, now) {
             unwrap_or_debug!(
-                self.try_queue_udp_dns_response(upstream, source, cached_response.clone()),
+                self.try_queue_udp_dns_response(upstream, source, response),
                 "Failed to queue UDP DNS response: {}"
             );
 
@@ -1396,13 +1396,10 @@ impl ClientState {
         };
         let server = upstream.address();
 
-        if let Some(cached_response) = self.dns_cache.get(&query.message.domain()) {
+        if let Some(response) = self.dns_cache.try_answer(&query.message, now) {
             unwrap_or_debug!(
-                self.tcp_dns_server.send_message(
-                    query.local,
-                    query.remote,
-                    cached_response.clone()
-                ),
+                self.tcp_dns_server
+                    .send_message(query.local, query.remote, response),
                 "Failed to send TCP DNS response: {}"
             );
 
@@ -2064,7 +2061,7 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
         return packet;
     };
 
-    let Some(original_dst) =
+    let Some((original_dst, _)) =
         udp_dns_sockets_by_upstream_and_query_id.remove(&(src_socket, message.id()))
     else {
         return packet;

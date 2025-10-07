@@ -33,6 +33,7 @@ pub type OwnedRecord = domain::base::Record<DomainName, AllRecordData<Vec<u8>, D
 pub type OwnedRecordData = AllRecordData<Vec<u8>, DomainName>;
 
 pub type ResponseCode = domain::base::iana::Rcode;
+pub type Ttl = domain::base::Ttl;
 
 #[derive(Clone)]
 pub struct Query {
