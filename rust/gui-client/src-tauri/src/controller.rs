@@ -17,7 +17,7 @@ use futures::{
     stream::{self, BoxStream},
 };
 use secrecy::{ExposeSecret as _, SecretString};
-use std::{collections::BTreeSet, ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
+use std::{ops::ControlFlow, path::PathBuf, task::Poll, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tokio_stream::wrappers::ReceiverStream;
 use url::Url;
@@ -143,16 +143,6 @@ impl Status {
         match self {
             Status::Disconnected | Status::Quitting | Status::WaitingForPortal => false,
             Status::TunnelReady { .. } | Status::WaitingForTunnel => true,
-        }
-    }
-
-    fn internet_resource(&self) -> Option<ResourceView> {
-        #[expect(clippy::wildcard_enum_match_arm)]
-        match self {
-            Status::TunnelReady { resources } => {
-                resources.iter().find(|r| r.is_internet_resource()).cloned()
-            }
-            _ => None,
         }
     }
 }
@@ -761,20 +751,10 @@ impl<I: GuiIntegration> Controller<I> {
     async fn update_disabled_resources(&mut self) -> Result<()> {
         settings::save_general(&self.general_settings).await?;
 
-        let Some(internet_resource) = self.status.internet_resource() else {
-            return Ok(());
-        };
+        let state = self.general_settings.internet_resource_enabled();
 
-        let mut disabled_resources = BTreeSet::new();
-
-        if !self.general_settings.internet_resource_enabled() {
-            disabled_resources.insert(internet_resource.id());
-        }
-
-        self.send_ipc(&service::ClientMsg::SetDisabledResources(
-            disabled_resources,
-        ))
-        .await?;
+        self.send_ipc(&service::ClientMsg::SetInternetResourceState(state))
+            .await?;
         self.refresh_ui_state();
 
         Ok(())
