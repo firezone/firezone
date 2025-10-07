@@ -9,7 +9,7 @@ use crate::expiring_map::{self, ExpiringMap};
 
 #[derive(Debug, Default)]
 pub struct DnsCache {
-    inner: ExpiringMap<DomainName, Vec<OwnedRecord>>,
+    inner: ExpiringMap<DomainName, Response>,
 }
 
 impl DnsCache {
@@ -21,21 +21,28 @@ impl DnsCache {
             expires_at,
         } = self.inner.get(&domain)?;
 
-        tracing::trace!(%domain, records = ?fmt_friendly_records(response), "Cache hit");
-
-        let records = response.clone().into_iter().map(|mut r| {
+        let records = response.records().map(|r| {
             let original_ttl = r.ttl();
             let inserted_at = expires_at - original_ttl.into_duration();
             let expired_ttl = Ttl::from_secs(now.duration_since(inserted_at).as_secs() as u32);
 
-            r.set_ttl(original_ttl.saturating_sub(expired_ttl));
+            let new_ttl = original_ttl.saturating_sub(expired_ttl);
 
-            r
+            OwnedRecord::new(
+                r.owner().flatten_into(),
+                r.class(),
+                new_ttl,
+                r.into_data().flatten_into(),
+            )
         });
 
         let response = ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(records)
             .build();
+
+        let remaining_ttl = response.ttl();
+
+        tracing::trace!(%domain, records = ?fmt_friendly_records(&response), ?remaining_ttl, "Cache hit");
 
         Some(response)
     }
@@ -66,21 +73,9 @@ impl DnsCache {
             return;
         }
 
-        let records = response
-            .records()
-            .map(|r| {
-                OwnedRecord::new(
-                    r.owner().flatten_into(),
-                    r.class(),
-                    r.ttl(),
-                    r.into_data().flatten_into(),
-                )
-            })
-            .collect::<Vec<_>>();
+        tracing::trace!(%domain, records = ?fmt_friendly_records(response), ?ttl, "New entry");
 
-        tracing::trace!(%domain, records = ?fmt_friendly_records(&records), ?ttl, "New entry");
-
-        self.inner.insert(domain, records, now + ttl);
+        self.inner.insert(domain, response.clone(), now + ttl);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -89,10 +84,10 @@ impl DnsCache {
         while let Some(event) = self.inner.poll_event() {
             let expiring_map::Event::EntryExpired {
                 key,
-                value: records,
+                value: response,
             } = event;
 
-            tracing::trace!(domain = %key, records = ?fmt_friendly_records(&records), "Entry expired");
+            tracing::trace!(domain = %key, records = ?fmt_friendly_records(&response), "Entry expired");
         }
     }
 
@@ -105,13 +100,15 @@ impl DnsCache {
     clippy::wildcard_enum_match_arm,
     reason = "We don't want to enumerate all record types."
 )]
-fn fmt_friendly_records(records: &[OwnedRecord]) -> Vec<FmtFriendlyRecord<'_>> {
-    records
-        .iter()
-        .map(|r| match r.data() {
-            dns_types::OwnedRecordData::A(a) => FmtFriendlyRecord::Ip(a.addr().into()),
-            dns_types::OwnedRecordData::Aaaa(aaaa) => FmtFriendlyRecord::Ip(aaaa.addr().into()),
-            dns_types::OwnedRecordData::Cname(cname) => FmtFriendlyRecord::Domain(cname.cname()),
+fn fmt_friendly_records(response: &Response) -> Vec<FmtFriendlyRecord<'_>> {
+    response
+        .records()
+        .map(|r| match r.into_data() {
+            dns_types::RecordData::A(a) => FmtFriendlyRecord::Ip(a.addr().into()),
+            dns_types::RecordData::Aaaa(aaaa) => FmtFriendlyRecord::Ip(aaaa.addr().into()),
+            dns_types::RecordData::Cname(cname) => {
+                FmtFriendlyRecord::Domain(cname.cname().flatten_into())
+            }
             other => FmtFriendlyRecord::Other(other),
         })
         .collect::<Vec<_>>()
@@ -120,8 +117,8 @@ fn fmt_friendly_records(records: &[OwnedRecord]) -> Vec<FmtFriendlyRecord<'_>> {
 // Wrapper around `RecordData` that is more friendly to look at in the logs.
 enum FmtFriendlyRecord<'a> {
     Ip(IpAddr),
-    Domain(&'a dns_types::DomainName),
-    Other(&'a dns_types::OwnedRecordData),
+    Domain(dns_types::DomainName),
+    Other(dns_types::RecordData<'a>),
 }
 
 impl fmt::Debug for FmtFriendlyRecord<'_> {
