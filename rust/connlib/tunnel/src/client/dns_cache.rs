@@ -40,9 +40,7 @@ impl DnsCache {
             .with_records(records)
             .build();
 
-        let remaining_ttl = response.ttl();
-
-        tracing::trace!(%domain, records = ?fmt_friendly_records(&response), ?remaining_ttl, "Cache hit");
+        tracing::trace!(%domain, records = ?fmt_friendly_records(&response), remaining_ttl = ?response.ttl(), "Cache hit");
 
         Some(response)
     }
