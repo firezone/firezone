@@ -65,6 +65,7 @@ mod ffi {
             os_version_override: Option<String>,
             log_dir: String,
             log_filter: String,
+            is_internet_resource_active: bool,
             callback_handler: CallbackHandler,
             device_info: String,
         ) -> Result<WrappedSession, String>;
@@ -250,6 +251,7 @@ impl WrappedSession {
         os_version_override: Option<String>,
         log_dir: String,
         log_filter: String,
+        is_internet_resource_active: bool,
         callback_handler: ffi::CallbackHandler,
         device_info: String,
     ) -> Result<Self> {
@@ -302,6 +304,7 @@ impl WrappedSession {
             Arc::new(socket_factory::tcp),
             Arc::new(socket_factory::udp),
             portal,
+            is_internet_resource_active,
             runtime.handle().clone(),
         );
         session.set_tun(Box::new(Tun::new()?));

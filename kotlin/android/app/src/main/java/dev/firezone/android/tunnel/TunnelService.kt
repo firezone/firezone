@@ -296,6 +296,7 @@ class TunnelService : VpnService() {
                         osVersion = Build.VERSION.RELEASE,
                         logDir = getLogDir(),
                         logFilter = config.logFilter,
+                        isInternetResourceActive = resourceState.isEnabled(),
                         protectSocket = protectSocket,
                         deviceInfo = gson.toJson(deviceInfo),
                     ).use { session ->

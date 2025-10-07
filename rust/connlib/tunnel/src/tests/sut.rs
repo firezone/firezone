@@ -373,14 +373,12 @@ impl TunnelTest {
                 let system_dns = ref_state.client.inner().system_dns_resolvers();
                 let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
-                let internet_resource_state = ref_state.client.inner().active_internet_resource();
+                let internet_resource_state = ref_state.client.inner().internet_resource_active;
 
                 state.client.exec_mut(|c| {
-                    c.restart(key, now);
+                    c.restart(key, internet_resource_state, now);
 
                     // Apply to new instance.
-                    c.sut
-                        .set_internet_resource_state(internet_resource_state.is_some(), now);
                     c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,
