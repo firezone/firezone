@@ -172,10 +172,12 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
     const MAX_TUN_SETUP_ATTEMPTS: u32 = 5;
     const TUN_SETUP_RETRY_DELAY_MS: u64 = 100;
 
+    let runtime = session.runtime.as_ref().context("No runtime")?;
+
     let mut last_error = None;
     for attempt in 1..=MAX_TUN_SETUP_ATTEMPTS {
         tracing::debug!("Attempting to find TUN device (attempt {})", attempt);
-        match platform::Tun::new() {
+        match platform::Tun::new(runtime.handle()) {
             Ok(tun) => {
                 tracing::debug!("Successfully found and set TUN device");
                 session.inner.set_tun(Box::new(tun));
@@ -240,9 +242,11 @@ impl Session {
     }
 
     pub fn set_tun(&self, fd: RawFd) -> Result<(), ConnlibError> {
-        let _guard = self.runtime.as_ref().context("No runtime")?.enter();
+        let runtime = self.runtime.as_ref().context("No runtime")?;
         // SAFETY: FD must be open.
-        let tun = unsafe { platform::Tun::from_fd(fd).context("Failed to create new Tun")? };
+        let tun = unsafe {
+            platform::Tun::from_fd(fd, runtime.handle()).context("Failed to create new Tun")?
+        };
 
         self.inner.set_tun(Box::new(tun));
 
