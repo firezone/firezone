@@ -79,8 +79,8 @@ echo "========================================="
 TARGETS=()
 case "$PLATFORM_NAME" in
 macosx)
-    if [[ "$CONFIGURATION" == "Release" ]] || [[ -z "$NATIVE_ARCH" ]]; then
-        # Build universal binary for Release
+    if [[ "$CONFIGURATION" == "Release" ]] || [[ "$CONFIGURATION" == "Profile" ]] || [[ -z "$NATIVE_ARCH" ]]; then
+        # Build universal binary for Release and Profile
         TARGETS=("aarch64-apple-darwin" "x86_64-apple-darwin")
     else
         # Build only for native arch in Debug
@@ -114,7 +114,7 @@ iphonesimulator)
 esac
 
 # Prepare cargo build flags
-if [ "$CONFIGURATION" = "Release" ]; then
+if [ "$CONFIGURATION" = "Release" ] || [ "$CONFIGURATION" = "Profile" ]; then
     CARGO_BUILD_FLAGS="--release"
     BUILD_DIR="release"
 else
@@ -127,7 +127,8 @@ if [ -z "${RUSTUP_HOME:-}" ] && [ -d "$HOME/.rustup" ]; then
     export RUSTUP_HOME="$HOME/.rustup"
 fi
 
-# Ensure Rust targets are installed
+# Ensure Rust targets are installed (from rust directory to use correct toolchain)
+cd "$RUST_DIR"
 for target in "${TARGETS[@]}"; do
     if ! rustup target list --installed | grep -q "^$target$"; then
         echo "Installing Rust target: $target"
