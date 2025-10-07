@@ -38,7 +38,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
-use std::{io, iter, mem};
+use std::{io, iter};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
@@ -186,7 +186,12 @@ impl PendingFlow {
 }
 
 impl ClientState {
-    pub(crate) fn new(seed: [u8; 32], records: BTreeSet<DnsResourceRecord>, now: Instant) -> Self {
+    pub(crate) fn new(
+        seed: [u8; 32],
+        records: BTreeSet<DnsResourceRecord>,
+        is_internet_resource_active: bool,
+        now: Instant,
+    ) -> Self {
         Self {
             resources_gateways: Default::default(),
             active_cidr_resources: IpNetworkTable::new(),
@@ -203,7 +208,7 @@ impl ClientState {
             udp_dns_sockets_by_upstream_and_query_id: Default::default(),
             stub_resolver: StubResolver::new(records),
             buffered_transmits: Default::default(),
-            is_internet_resource_active: false,
+            is_internet_resource_active,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             upstream_dns: Default::default(),
             buffered_dns_queries: Default::default(),
@@ -1696,7 +1701,7 @@ impl ClientState {
                     None => true,
                 }
             }
-            Resource::Internet(_) => !mem::replace(&mut self.is_internet_resource_active, true),
+            Resource::Internet(_) => self.is_internet_resource_active,
         };
 
         if activated {
@@ -2167,7 +2172,7 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(rand::random(), Default::default(), Instant::now())
+            ClientState::new(rand::random(), Default::default(), false, Instant::now())
         }
     }
 
