@@ -191,13 +191,6 @@ class Adapter: @unchecked Sendable {
       throw AdapterError.connlibConnectError(String(describing: error))
     }
 
-    do {
-      try session.setTunFromSearch()
-      Log.log("TUN device set successfully")
-    } catch {
-      throw AdapterError.connlibConnectError("Failed to set TUN device: \(error)")
-    }
-
     // Create channels - following Rust pattern with separate sender/receiver
     let (commandSender, commandReceiver): (Sender<SessionCommand>, Receiver<SessionCommand>) =
       Channel.create()
