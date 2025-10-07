@@ -46,6 +46,9 @@ class Adapter: @unchecked Sendable {
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
+  /// Network settings for tunnel configuration.
+  private var networkSettings: NetworkSettings?
+
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
 
@@ -321,18 +324,33 @@ class Adapter: @unchecked Sendable {
         return
       }
 
-      Log.log("Applying network settings...")
+      Log.log("Setting interface config")
 
-      // Just call onSetInterfaceConfig which handles everything
-      // It creates NetworkSettings internally and applies them
-      provider.onSetInterfaceConfig(
-        tunnelAddressIPv4: ipv4,
-        tunnelAddressIPv6: ipv6,
-        searchDomain: searchDomain,
-        dnsAddresses: dnsAddresses,
-        routeListv4: ipv4Routes,
-        routeListv6: ipv6Routes
-      )
+      // Create network settings and apply configuration
+      let networkSettings = NetworkSettings(packetTunnelProvider: provider)
+      networkSettings.tunnelAddressIPv4 = ipv4
+      networkSettings.tunnelAddressIPv6 = ipv6
+      networkSettings.dnsAddresses = dnsAddresses
+      networkSettings.setSearchDomain(domain: searchDomain)
+
+      // Parse and set IPv4 routes
+      if let routesData = ipv4Routes.data(using: .utf8),
+        let cidrs = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routesData)
+      {
+        networkSettings.routes4 = cidrs.compactMap({ $0.asNEIPv4Route })
+      }
+
+      // Parse and set IPv6 routes
+      if let routesData = ipv6Routes.data(using: .utf8),
+        let cidrs = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routesData)
+      {
+        networkSettings.routes6 = cidrs.compactMap({ $0.asNEIPv6Route })
+      }
+
+      // Store for later use (e.g., DNS cache flush on resource updates)
+      self.networkSettings = networkSettings
+
+      networkSettings.apply()
 
     case .resourcesUpdated(let resources):
       Log.log("Received ResourcesUpdated event with \(resources.count) bytes")
@@ -343,11 +361,12 @@ class Adapter: @unchecked Sendable {
         self.resourceListJSON = resources
       }
 
-      guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(nil))
-        return
+      // Apply network settings to flush DNS cache when resources change
+      // This ensures new DNS resources are immediately resolvable
+      if let networkSettings = networkSettings {
+        Log.log("Reapplying network settings to flush DNS cache after resource update")
+        networkSettings.apply()
       }
-      provider.onUpdateResources(resourceList: resources)
 
     case .disconnected(let error):
       let errorMessage = error.message()
@@ -378,7 +397,8 @@ class Adapter: @unchecked Sendable {
         Log.warning("Disconnected with error: \(errorMessage)")
       }
 
-      provider.onDisconnect(error: errorMessage)
+      // Handle disconnection
+      provider.cancelTunnelWithError(nil)
     }
   }
 
