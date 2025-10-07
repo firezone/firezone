@@ -146,13 +146,10 @@ class Adapter: @unchecked Sendable {
     }
   }
 
-  /// Currently disabled resources
-  private var internetResourceEnabled: Bool = false
+  /// Internet resource enabled state
+  private var internetResourceEnabled: Bool
 
-  /// Cache of internet resource
-  private var internetResource: Resource?
-
-  /// Keep track of resources
+  /// Keep track of resources for UI
   private var resourceListJSON: String?
 
   /// Starting parameters
@@ -184,7 +181,8 @@ class Adapter: @unchecked Sendable {
         osVersion: osVersion,
         logDir: logDir,
         logFilter: logFilter,
-        deviceInfo: deviceInfoStr
+        deviceInfo: deviceInfoStr,
+        isInternetResourceActive: internetResourceEnabled
       )
     } catch {
       throw AdapterError.connlibConnectError(String(describing: error))
@@ -288,13 +286,6 @@ class Adapter: @unchecked Sendable {
     if let path = (path ?? lastPath) {
       setSystemDefaultResolvers(path)
     }
-  }
-
-  func resources() -> [Resource] {
-    let decoder = JSONDecoder()
-    decoder.keyDecodingStrategy = .convertFromSnakeCase
-    guard let resourceList = resourceListJSON else { return [] }
-    return (try? decoder.decode([Resource].self, from: resourceList.data(using: .utf8)!)) ?? []
   }
 
   func setInternetResourceEnabled(_ enabled: Bool) {

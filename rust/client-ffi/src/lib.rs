@@ -136,6 +136,7 @@ impl Session {
         log_dir: String,
         log_filter: String,
         device_info: String,
+        is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
         // iOS doesn't need socket protection like Android
         let tcp_socket_factory = Arc::new(socket_factory::tcp);
@@ -151,6 +152,7 @@ impl Session {
             log_dir,
             log_filter,
             device_info,
+            is_internet_resource_active,
             tcp_socket_factory,
             udp_socket_factory,
         )
