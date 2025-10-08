@@ -110,11 +110,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       // Create the adapter with all configuration
       let adapter = Adapter(
-        apiUrl: apiURL,
+        apiURL: apiURL,
         token: token,
         deviceId: id,
-        accountSlug: accountSlug,
         logFilter: logFilter,
+        accountSlug: accountSlug,
         internetResourceEnabled: internetResourceEnabled,
         packetTunnelProvider: self
       )

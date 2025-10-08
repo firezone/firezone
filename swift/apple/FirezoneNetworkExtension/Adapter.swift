@@ -57,19 +57,19 @@ class Adapter: @unchecked Sendable {
     private let systemConfigurationResolvers = SystemConfigurationResolvers()
   #endif
   init(
-    apiUrl: String,
+    apiURL: String,
     token: Token,
     deviceId: String,
-    accountSlug: String,
     logFilter: String,
+    accountSlug: String,
     internetResourceEnabled: Bool,
     packetTunnelProvider: PacketTunnelProvider
   ) {
-    self.apiUrl = apiUrl
+    self.apiURL = apiURL
     self.token = token
     self.deviceId = deviceId
-    self.accountSlug = accountSlug
     self.logFilter = logFilter
+    self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.packetTunnelProvider = packetTunnelProvider
   }
@@ -156,11 +156,11 @@ class Adapter: @unchecked Sendable {
   private var resourceListJSON: String?
 
   /// Starting parameters
-  private let apiUrl: String
+  private let apiURL: String
   private let token: Token
   private let deviceId: String
-  private let accountSlug: String
   private let logFilter: String
+  private let accountSlug: String
 
   func start() throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
@@ -176,7 +176,7 @@ class Adapter: @unchecked Sendable {
     let session: Session
     do {
       session = try Session.newApple(
-        apiUrl: apiUrl,
+        apiUrl: apiURL,
         token: token.description,
         deviceId: deviceId,
         accountSlug: accountSlug,
