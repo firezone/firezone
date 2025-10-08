@@ -1,5 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use std::time::Duration;
+
 use domain::{
     base::{
         HeaderCounts, Message, MessageBuilder, ParsedName, Question, RecordSection,
@@ -31,6 +33,7 @@ pub type OwnedRecord = domain::base::Record<DomainName, AllRecordData<Vec<u8>, D
 pub type OwnedRecordData = AllRecordData<Vec<u8>, DomainName>;
 
 pub type ResponseCode = domain::base::iana::Rcode;
+pub type Ttl = domain::base::Ttl;
 
 #[derive(Clone)]
 pub struct Query {
@@ -134,6 +137,7 @@ impl TryFrom<&[u8]> for Response {
     }
 }
 
+#[derive(Clone)]
 pub struct Response {
     inner: Message<Vec<u8>>,
 }
@@ -200,6 +204,13 @@ impl Response {
 
     pub fn response_code(&self) -> ResponseCode {
         self.inner.header().rcode()
+    }
+
+    pub fn ttl(&self, rtype: RecordType) -> Option<Duration> {
+        self.records()
+            .filter(|r| r.rtype() == rtype)
+            .map(|r| r.ttl().into_duration())
+            .min()
     }
 
     pub fn records(&self) -> impl Iterator<Item = Record<'_>> {
