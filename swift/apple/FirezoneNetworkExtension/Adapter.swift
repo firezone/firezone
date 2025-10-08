@@ -40,6 +40,10 @@ class Adapter: @unchecked Sendable {
   /// Command sender for sending commands to the session
   private var commandSender: Sender<SessionCommand>?
 
+  /// Task handles for explicit cancellation during cleanup
+  private var eventLoopTask: Task<Void, Never>?
+  private var eventConsumerTask: Task<Void, Never>?
+
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
@@ -196,7 +200,7 @@ class Adapter: @unchecked Sendable {
     let (eventSender, eventReceiver): (Sender<Event>, Receiver<Event>) = Channel.create()
 
     // Start event loop - owns session, receives commands, sends events
-    Task { [weak self] in
+    eventLoopTask = Task { [weak self] in
       defer {
         // ALWAYS cleanup, even if event loop crashes
         self?.commandSender = nil
@@ -211,9 +215,15 @@ class Adapter: @unchecked Sendable {
     }
 
     // Start event consumer - consumes events from receiver (Rust pattern: receiver outside)
-    Task { [weak self] in
+    eventConsumerTask = Task { [weak self] in
       for await event in eventReceiver.stream {
-        await self?.handleEvent(event)
+        // Check self on each iteration - if Adapter is deallocated, stop processing events
+        guard let self = self else {
+          Log.log("Adapter: Event consumer stopping - Adapter deallocated")
+          break
+        }
+
+        await self.handleEvent(event)
       }
 
       Log.log("Adapter: Event consumer finished")
@@ -228,6 +238,12 @@ class Adapter: @unchecked Sendable {
   // Could happen abruptly if the process is killed.
   deinit {
     Log.log("Adapter.deinit")
+
+    // Cancel all Tasks - this triggers cooperative cancellation
+    // Event loop checks Task.isCancelled in its polling loop
+    // Event consumer will exit when eventSender.deinit closes the stream
+    eventLoopTask?.cancel()
+    eventConsumerTask?.cancel()
 
     // Cancel network monitor
     networkMonitor?.cancel()
@@ -249,6 +265,9 @@ class Adapter: @unchecked Sendable {
 
     networkMonitor?.cancel()
     networkMonitor = nil
+
+    // Tasks will finish naturally after disconnect command is processed
+    // No need to cancel them here - they'll clean up via their defer blocks
   }
 
   /// Get the current set of resources in the completionHandler, only returning
