@@ -104,7 +104,7 @@ jobs:
           name: macos-client-standalone-pkg
           path: "${{ runner.temp }}/${{ matrix.pkg-artifact-file }}"
       - run: ${{ matrix.upload-script }}
-        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        if: "${{ github.event_name == 'workflow_dispatch' && (github.ref_name == 'main' || matrix.job_name != 'build-macos-standalone') }}"
         env:
           ARTIFACT_PATH: "${{ runner.temp }}/${{ matrix.artifact-file }}"
           ISSUER_ID: "${{ secrets.APPLE_APP_STORE_CONNECT_ISSUER_ID }}"
