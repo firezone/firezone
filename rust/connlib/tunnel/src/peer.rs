@@ -71,7 +71,7 @@ pub struct ClientOnGateway {
     resources: BTreeMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
     internet_resource_enabled: Option<ResourceId>,
-    filters: IpNetworkTable<FilterEngine>,
+    filters: IpNetworkTable<(FilterEngine, ResourceId)>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
@@ -317,7 +317,7 @@ impl ClientOnGateway {
     }
 
     fn recalculate_cidr_filters(&mut self) {
-        for resource in self.resources.values().filter(|r| r.is_cidr()) {
+        for (id, resource) in self.resources.iter().filter(|(_, r)| r.is_cidr()) {
             for ip in &resource.ips() {
                 let filters = self.resources.values().filter_map(|r| {
                     r.ips()
@@ -326,7 +326,7 @@ impl ClientOnGateway {
                         .then_some(r.filters())
                 });
 
-                insert_filters(&mut self.filters, *ip, filters);
+                insert_filters(&mut self.filters, *ip, *id, filters);
             }
         }
     }
@@ -342,6 +342,7 @@ impl ClientOnGateway {
             insert_filters(
                 &mut self.filters,
                 IpNetwork::from(*addr),
+                *resource_id,
                 iter::once(resource.filters()),
             );
         }
@@ -541,7 +542,7 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        let (_, filter) = self
+        let (_, (filter, _)) = self
             .filters
             .longest_match(ip)
             .context("No filter")
@@ -751,14 +752,15 @@ fn is_dns_addr(addr: IpAddr) -> bool {
 }
 
 fn insert_filters<'a>(
-    filter_store: &mut IpNetworkTable<FilterEngine>,
+    filter_store: &mut IpNetworkTable<(FilterEngine, ResourceId)>,
     ip: IpNetwork,
+    id: ResourceId,
     filters: impl Iterator<Item = &'a Filters> + Clone,
 ) {
     let filter_engine = FilterEngine::with_filters(filters);
 
     tracing::trace!(%ip, filters = ?filter_engine, "Installing new filters");
-    filter_store.insert(ip, filter_engine);
+    filter_store.insert(ip, (filter_engine, id));
 }
 
 #[cfg(test)]
