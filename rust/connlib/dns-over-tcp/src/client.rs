@@ -29,7 +29,7 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
 
     sockets: SocketSet<'static>,
     sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
-    local_ports_by_socket: HashMap<l3_tcp::SocketHandle, u16>,
+    local_ports_by_socket: BTreeMap<l3_tcp::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
     pending_queries_by_remote: HashMap<SocketAddr, VecDeque<dns_types::Query>>,
     /// Queries we have sent to a DNS resolver and are waiting for a reply.

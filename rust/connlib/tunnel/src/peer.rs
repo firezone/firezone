@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque, hash_map};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque, btree_map};
 use std::iter;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Instant;
@@ -68,7 +68,7 @@ pub struct ClientOnGateway {
     client_tun: IpConfig,
     gateway_tun: IpConfig,
 
-    resources: HashMap<ResourceId, ResourceOnGateway>,
+    resources: BTreeMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
     internet_resource_enabled: bool,
     filters: IpNetworkTable<FilterEngine>,
@@ -89,7 +89,7 @@ impl ClientOnGateway {
             id,
             client_tun,
             gateway_tun,
-            resources: HashMap::new(),
+            resources: BTreeMap::new(),
             filters: IpNetworkTable::new(),
             permanent_translations: Default::default(),
             nat_table: Default::default(),
@@ -187,10 +187,17 @@ impl ClientOnGateway {
         let cid = self.id;
         let mut any_expired = false;
 
-        for (rid, _) in self.resources.extract_if(|_, r| !r.is_allowed(&now)) {
-            any_expired = true;
+        // TODO: Replace with `extract_if` once we are on Rust 1.91
+        self.resources.retain(|rid, r| {
+            if r.is_allowed(&now) {
+                return true;
+            }
+
             tracing::info!(%cid, %rid, "Access to resource expired");
-        }
+
+            any_expired = true;
+            false
+        });
 
         if any_expired {
             self.recalculate_filters();
@@ -218,10 +225,10 @@ impl ClientOnGateway {
         tracing::info!(cid = %self.id, rid = %resource.id(), expires = ?expires_at.map(|e| e.to_rfc3339()), "Allowing access to resource");
 
         match self.resources.entry(resource.id()) {
-            hash_map::Entry::Vacant(v) => {
+            btree_map::Entry::Vacant(v) => {
                 v.insert(ResourceOnGateway::new(resource, expires_at));
             }
-            hash_map::Entry::Occupied(mut o) => o.get_mut().update(&resource),
+            btree_map::Entry::Occupied(mut o) => o.get_mut().update(&resource),
         }
 
         self.recalculate_filters();
@@ -258,12 +265,15 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
-        for (rid, _) in self
-            .resources
-            .extract_if(|resource, _| !authorization.contains(resource))
-        {
+        // TODO: Replace with `extract_if` once we are on Rust 1.91
+        self.resources.retain(|rid, _| {
+            if authorization.contains(rid) {
+                return true;
+            }
+
             tracing::info!(%rid, "Revoking resource authorization");
-        }
+            false
+        });
 
         self.recalculate_filters();
     }
@@ -588,7 +598,7 @@ enum ResourceOnGateway {
     },
     Dns {
         address: String,
-        domains: HashMap<DomainName, BTreeSet<IpAddr>>,
+        domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
         filters: Filters,
         expires_at: Option<DateTime<Utc>>,
     },
@@ -601,7 +611,7 @@ impl ResourceOnGateway {
     fn new(resource: ResourceDescription, expires_at: Option<DateTime<Utc>>) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
-                domains: HashMap::default(),
+                domains: BTreeMap::default(),
                 filters: r.filters,
                 address: r.address,
                 expires_at,
