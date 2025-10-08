@@ -9,7 +9,11 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10533">
+          Improves reliability by caching DNS responses as per their TTL.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.3" date={new Date("2025-09-10")}>
         <ChangeItem pull="10126">
           Sets <code>FIREZONE_DNS_CONTROL=etc-resolv-conf</code> by default in

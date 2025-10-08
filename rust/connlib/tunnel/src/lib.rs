@@ -214,7 +214,7 @@ impl ClientTunnel {
             }) = self.io.poll(cx, &mut self.buffers)
             {
                 if let Some(response) = dns_response {
-                    self.role_state.handle_dns_response(response);
+                    self.role_state.handle_dns_response(response, now);
                     self.role_state.handle_timeout(now);
 
                     ready = true;
