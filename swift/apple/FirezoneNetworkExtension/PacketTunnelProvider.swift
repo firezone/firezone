@@ -17,7 +17,6 @@ enum PacketTunnelProviderError: Error {
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
   private var adapter: Adapter?
-  private var hasReceivedFirstConfig = false
 
   enum LogExportState {
     case inProgress(TunnelLogArchive)
