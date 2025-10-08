@@ -44,11 +44,14 @@ class Adapter: @unchecked Sendable {
   private var eventLoopTask: Task<Void, Never>?
   private var eventConsumerTask: Task<Void, Never>?
 
-  /// Packet tunnel provider.
-  private weak var packetTunnelProvider: PacketTunnelProvider?
+  // Our local copy of the accountSlug
+  private let accountSlug: String
 
   /// Network settings for tunnel configuration.
   private var networkSettings: NetworkSettings?
+
+  /// Packet tunnel provider.
+  private weak var packetTunnelProvider: PacketTunnelProvider?
 
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
@@ -57,23 +60,6 @@ class Adapter: @unchecked Sendable {
     /// Used for finding system DNS resolvers on macOS when network conditions have changed.
     private let systemConfigurationResolvers = SystemConfigurationResolvers()
   #endif
-  init(
-    apiURL: String,
-    token: Token,
-    deviceId: String,
-    logFilter: String,
-    accountSlug: String,
-    internetResourceEnabled: Bool,
-    packetTunnelProvider: PacketTunnelProvider
-  ) {
-    self.apiURL = apiURL
-    self.token = token
-    self.deviceId = deviceId
-    self.logFilter = logFilter
-    self.accountSlug = accountSlug
-    self.internetResourceEnabled = internetResourceEnabled
-    self.packetTunnelProvider = packetTunnelProvider
-  }
 
   /// Remembers the last _relevant_ path update.
   /// A path update is considered relevant if certain properties change that require us to reset connlib's
@@ -161,7 +147,24 @@ class Adapter: @unchecked Sendable {
   private let token: Token
   private let deviceId: String
   private let logFilter: String
-  private let accountSlug: String
+
+  init(
+    apiURL: String,
+    token: Token,
+    deviceId: String,
+    logFilter: String,
+    accountSlug: String,
+    internetResourceEnabled: Bool,
+    packetTunnelProvider: PacketTunnelProvider
+  ) {
+    self.apiURL = apiURL
+    self.token = token
+    self.deviceId = deviceId
+    self.logFilter = logFilter
+    self.accountSlug = accountSlug
+    self.internetResourceEnabled = internetResourceEnabled
+    self.packetTunnelProvider = packetTunnelProvider
+  }
 
   // Could happen abruptly if the process is killed.
   deinit {
