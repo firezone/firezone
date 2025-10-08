@@ -163,6 +163,21 @@ class Adapter: @unchecked Sendable {
   private let logFilter: String
   private let accountSlug: String
 
+  // Could happen abruptly if the process is killed.
+  deinit {
+    Log.log("Adapter.deinit")
+
+    // Cancel all Tasks - this triggers cooperative cancellation
+    // Event loop checks Task.isCancelled in its polling loop
+    // Event consumer will exit when eventSender.deinit closes the stream
+    eventLoopTask?.cancel()
+    eventConsumerTask?.cancel()
+
+    // Cancel network monitor
+    networkMonitor?.cancel()
+  }
+
+
   func start() throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
 
@@ -233,20 +248,6 @@ class Adapter: @unchecked Sendable {
     startNetworkPathMonitoring()
 
     Log.log("Adapter.start: Session started successfully")
-  }
-
-  // Could happen abruptly if the process is killed.
-  deinit {
-    Log.log("Adapter.deinit")
-
-    // Cancel all Tasks - this triggers cooperative cancellation
-    // Event loop checks Task.isCancelled in its polling loop
-    // Event consumer will exit when eventSender.deinit closes the stream
-    eventLoopTask?.cancel()
-    eventConsumerTask?.cancel()
-
-    // Cancel network monitor
-    networkMonitor?.cancel()
   }
 
   /// Final callback called by packetTunnelProvider when tunnel is to be stopped.
