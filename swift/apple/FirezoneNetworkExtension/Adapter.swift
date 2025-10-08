@@ -40,9 +40,6 @@ class Adapter: @unchecked Sendable {
   /// Command sender for sending commands to the session
   private var commandSender: Sender<SessionCommand>?
 
-  /// Event receiver for receiving events from the session
-  private var eventReceiver: Receiver<Event>?
-
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
 
@@ -197,14 +194,12 @@ class Adapter: @unchecked Sendable {
     self.commandSender = commandSender
 
     let (eventSender, eventReceiver): (Sender<Event>, Receiver<Event>) = Channel.create()
-    self.eventReceiver = eventReceiver
 
     // Start event loop - owns session, receives commands, sends events
     Task { [weak self] in
       defer {
         // ALWAYS cleanup, even if event loop crashes
         self?.commandSender = nil
-        self?.eventReceiver = nil
         Log.log("Adapter: Event loop finished, session dropped")
       }
 
@@ -217,8 +212,6 @@ class Adapter: @unchecked Sendable {
 
     // Start event consumer - consumes events from receiver (Rust pattern: receiver outside)
     Task { [weak self] in
-      guard let eventReceiver = self?.eventReceiver else { return }
-
       for await event in eventReceiver.stream {
         await self?.handleEvent(event)
       }
@@ -301,14 +294,7 @@ class Adapter: @unchecked Sendable {
       let ipv4, let ipv6, let dns, let searchDomain, let ipv4Routes, let ipv6Routes):
       Log.log("Received TunInterfaceUpdated event")
 
-      guard let provider = packetTunnelProvider else {
-        Log.error(AdapterError.invalidSession(nil))
-        return
-      }
-
-      let networkSettings =
-        networkSettings ?? NetworkSettings(packetTunnelProvider: provider)
-
+      // Decode all data into local variables first to ensure all parsing succeeds before applying
       guard let dnsData = dns.data(using: .utf8),
         let dnsAddresses = try? JSONDecoder().decode([String].self, from: dnsData),
         let data4 = ipv4Routes.data(using: .utf8),
@@ -316,12 +302,21 @@ class Adapter: @unchecked Sendable {
         let decoded4 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data4),
         let decoded6 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data6)
       else {
-        fatalError("Could not decode route list from connlib")
+        fatalError("Could not decode network configuration from connlib")
       }
 
       let routes4 = decoded4.compactMap({ $0.asNEIPv4Route })
       let routes6 = decoded6.compactMap({ $0.asNEIPv6Route })
 
+      // All decoding succeeded - now apply settings atomically
+      guard let provider = packetTunnelProvider else {
+        Log.error(AdapterError.invalidSession(nil))
+        return
+      }
+
+      Log.log("Setting interface config")
+
+      let networkSettings = NetworkSettings(packetTunnelProvider: provider)
       networkSettings.tunnelAddressIPv4 = ipv4
       networkSettings.tunnelAddressIPv6 = ipv6
       networkSettings.dnsAddresses = dnsAddresses
