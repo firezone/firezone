@@ -301,46 +301,33 @@ class Adapter: @unchecked Sendable {
       let ipv4, let ipv6, let dns, let searchDomain, let ipv4Routes, let ipv6Routes):
       Log.log("Received TunInterfaceUpdated event")
 
-      // Parse DNS servers from JSON
-      let dnsAddresses: [String]
-      if let data = dns.data(using: .utf8),
-        let parsed = try? JSONDecoder().decode([String].self, from: data)
-      {
-        dnsAddresses = parsed
-      } else {
-        dnsAddresses = []
-      }
-
-      // Apply network settings directly
       guard let provider = packetTunnelProvider else {
         Log.error(AdapterError.invalidSession(nil))
         return
       }
 
-      Log.log("Setting interface config")
+      let networkSettings =
+        networkSettings ?? NetworkSettings(packetTunnelProvider: provider)
 
-      // Create network settings and apply configuration
-      let networkSettings = NetworkSettings(packetTunnelProvider: provider)
+      guard let dnsData = dns.data(using: .utf8),
+        let dnsAddresses = try? JSONDecoder().decode([String].self, from: dnsData),
+        let data4 = ipv4Routes.data(using: .utf8),
+        let data6 = ipv6Routes.data(using: .utf8),
+        let decoded4 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data4),
+        let decoded6 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data6)
+      else {
+        fatalError("Could not decode route list from connlib")
+      }
+
+      let routes4 = decoded4.compactMap({ $0.asNEIPv4Route })
+      let routes6 = decoded6.compactMap({ $0.asNEIPv6Route })
+
       networkSettings.tunnelAddressIPv4 = ipv4
       networkSettings.tunnelAddressIPv6 = ipv6
       networkSettings.dnsAddresses = dnsAddresses
+      networkSettings.routes4 = routes4
+      networkSettings.routes6 = routes6
       networkSettings.setSearchDomain(domain: searchDomain)
-
-      // Parse and set IPv4 routes
-      if let routesData = ipv4Routes.data(using: .utf8),
-        let cidrs = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routesData)
-      {
-        networkSettings.routes4 = cidrs.compactMap({ $0.asNEIPv4Route })
-      }
-
-      // Parse and set IPv6 routes
-      if let routesData = ipv6Routes.data(using: .utf8),
-        let cidrs = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: routesData)
-      {
-        networkSettings.routes6 = cidrs.compactMap({ $0.asNEIPv6Route })
-      }
-
-      // Store for later use (e.g., DNS cache flush on resource updates)
       self.networkSettings = networkSettings
 
       networkSettings.apply()
