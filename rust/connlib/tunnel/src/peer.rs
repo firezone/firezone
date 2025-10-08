@@ -70,7 +70,7 @@ pub struct ClientOnGateway {
 
     resources: BTreeMap<ResourceId, ResourceOnGateway>,
     /// Caches the existence of internet resource
-    internet_resource_enabled: bool,
+    internet_resource_enabled: Option<ResourceId>,
     filters: IpNetworkTable<FilterEngine>,
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
@@ -94,7 +94,7 @@ impl ClientOnGateway {
             permanent_translations: Default::default(),
             nat_table: Default::default(),
             buffered_events: Default::default(),
-            internet_resource_enabled: false,
+            internet_resource_enabled: None,
             num_dropped_packets: otel::metrics::network_packet_dropped(),
         }
     }
@@ -310,7 +310,10 @@ impl ClientOnGateway {
         self.recalculate_cidr_filters();
         self.recalculate_dns_filters();
 
-        self.internet_resource_enabled = self.resources.values().any(|r| r.is_internet_resource());
+        self.internet_resource_enabled = self
+            .resources
+            .iter()
+            .find_map(|(id, r)| r.is_internet_resource().then_some(*id));
     }
 
     fn recalculate_cidr_filters(&mut self) {
@@ -534,7 +537,7 @@ impl ClientOnGateway {
         protocol: Result<Protocol, UnsupportedProtocol>,
     ) -> anyhow::Result<()> {
         // Note a Gateway with Internet resource should never get packets for other resources
-        if self.internet_resource_enabled && !is_dns_addr(ip) {
+        if self.internet_resource_enabled.is_some() && !is_dns_addr(ip) {
             return Ok(());
         }
 
