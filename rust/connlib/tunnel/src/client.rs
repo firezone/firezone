@@ -1369,7 +1369,8 @@ impl ClientState {
         self.udp_dns_sockets_by_upstream_and_query_id.insert(
             (upstream, query_id),
             connlib_dns_server,
-            now + IDS_EXPIRE,
+            now,
+            IDS_EXPIRE,
         );
         if let Err(e) = packet.set_dst(upstream.ip()) {
             tracing::warn!("Failed to set destination IP for UDP DNS query: {e:#}");
@@ -2064,8 +2065,10 @@ fn maybe_mangle_dns_response_from_upstream_dns_server(
         return packet;
     };
 
-    let Some((original_dst, _)) =
-        udp_dns_sockets_by_upstream_and_query_id.remove(&(src_socket, message.id()))
+    let Some(expiring_map::Entry {
+        value: original_dst,
+        ..
+    }) = udp_dns_sockets_by_upstream_and_query_id.remove(&(src_socket, message.id()))
     else {
         return packet;
     };

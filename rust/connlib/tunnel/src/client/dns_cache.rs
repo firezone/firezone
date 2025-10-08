@@ -17,17 +17,14 @@ impl DnsCache {
         let domain = query.domain();
         let qtype = query.qtype();
 
-        let expiring_map::Entry {
-            value: response,
-            expires_at,
-        } = self.inner.get(&(domain.clone(), qtype))?;
+        let entry = self.inner.get(&(domain.clone(), qtype))?;
 
-        let records = response.records().map(|r| {
+        let records = entry.value.records().map(|r| {
             let original_ttl = r.ttl();
-            let inserted_at = expires_at - original_ttl.into_duration();
-            let expired_ttl = Ttl::from_secs(now.duration_since(inserted_at).as_secs() as u32);
-
-            let new_ttl = original_ttl.saturating_sub(expired_ttl);
+            let elapsed = now.saturating_duration_since(entry.inserted_at);
+            let elapsed_secs = elapsed.as_secs().min(original_ttl.as_secs() as u64);
+            let new_ttl =
+                Ttl::from_secs(original_ttl.as_secs().saturating_sub(elapsed_secs as u32));
 
             OwnedRecord::new(
                 r.owner().flatten_into(),
@@ -83,7 +80,7 @@ impl DnsCache {
         tracing::trace!(%domain, %qtype, records = ?fmt_friendly_records(response), ?ttl, "New entry");
 
         self.inner
-            .insert((domain, qtype), response.clone(), now + ttl);
+            .insert((domain, qtype), response.clone(), now, ttl);
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
@@ -175,5 +172,35 @@ mod tests {
             Duration::from_secs(3500)
         );
         assert_eq!(response.id(), query2.id());
+    }
+
+    #[test]
+    fn cache_with_multiple_ttls_calculates_correctly() {
+        let mut cache = DnsCache::default();
+        let mut now = Instant::now();
+
+        let domain = DomainName::vec_from_str("example.com").unwrap();
+        let query1 = Query::new(domain.clone(), RecordType::A);
+
+        // Create a response with two A records with different TTLs
+        let response = dns_types::ResponseBuilder::for_query(&query1, ResponseCode::NOERROR)
+            .with_records(vec![
+                (domain.clone(), 1800, records::a(Ipv4Addr::new(1, 1, 1, 1))),
+                (domain.clone(), 3600, records::a(Ipv4Addr::new(2, 2, 2, 2))),
+            ])
+            .build();
+
+        cache.insert(domain.clone(), &response, now);
+
+        // Advance time by 100 seconds
+        now += Duration::from_secs(100);
+
+        let query2 = Query::new(domain, RecordType::A);
+        let response = cache.try_answer(&query2, now).unwrap();
+
+        // Both records should have their TTLs reduced by 100 seconds
+        let ttls: Vec<_> = response.records().map(|r| r.ttl().as_secs()).collect();
+
+        assert_eq!(ttls, vec![1700, 3500]);
     }
 }

@@ -3,13 +3,13 @@ use std::{
     collections::{BTreeMap, HashMap, VecDeque},
     hash::Hash,
     mem,
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 /// A map that automatically removes entries after a given expiration time.
 #[derive(Debug)]
 pub struct ExpiringMap<K, V> {
-    inner: HashMap<K, (V, Instant)>,
+    inner: HashMap<K, Entry<V>>,
     expiration: BTreeMap<Instant, Vec<K>>,
 
     events: VecDeque<Event<K, V>>,
@@ -30,23 +30,30 @@ where
     K: Hash + Eq + Clone + fmt::Debug,
     V: fmt::Debug,
 {
-    pub fn insert(&mut self, key: K, value: V, expiration: Instant) -> Option<(V, Instant)> {
-        let old_value = self.inner.insert(key.clone(), (value, expiration));
+    pub fn insert(
+        &mut self,
+        key: K,
+        value: V,
+        now: Instant,
+        ttl: Duration,
+    ) -> Option<(V, Instant, Instant)> {
+        let expiration = now + ttl;
+        let entry = Entry {
+            value,
+            inserted_at: now,
+            expires_at: expiration,
+        };
+        let old_entry = self.inner.insert(key.clone(), entry);
         self.expiration.entry(expiration).or_default().push(key);
 
-        old_value
+        old_entry.map(|e| (e.value, e.inserted_at, e.expires_at))
     }
 
-    pub fn get<'v>(&'v self, key: &K) -> Option<Entry<'v, V>> {
-        let (value, expires_at) = self.inner.get(key)?;
-
-        Some(Entry {
-            value,
-            expires_at: *expires_at,
-        })
+    pub fn get(&self, key: &K) -> Option<&Entry<V>> {
+        self.inner.get(key)
     }
 
-    pub fn remove(&mut self, key: &K) -> Option<(V, Instant)> {
+    pub fn remove(&mut self, key: &K) -> Option<Entry<V>> {
         self.expiration.retain(|_, keys| {
             keys.retain(|k| k != key);
             !keys.is_empty()
@@ -76,11 +83,14 @@ where
             .chain(now_entry)
             .flatten()
         {
-            let Some((value, _)) = self.inner.remove(&key) else {
+            let Some(entry) = self.inner.remove(&key) else {
                 continue;
             };
 
-            self.events.push_back(Event::EntryExpired { key, value });
+            self.events.push_back(Event::EntryExpired {
+                key,
+                value: entry.value,
+            });
         }
     }
 
@@ -89,9 +99,10 @@ where
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Entry<'a, V> {
-    pub value: &'a V,
+#[derive(Debug, PartialEq, Clone)]
+pub struct Entry<V> {
+    pub value: V,
+    pub inserted_at: Instant,
     pub expires_at: Instant,
 }
 
@@ -111,8 +122,8 @@ mod tests {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
-        map.insert("key1", "value1", now + Duration::from_secs(1));
-        map.insert("key2", "value2", now + Duration::from_secs(2));
+        map.insert("key1", "value1", now, Duration::from_secs(1));
+        map.insert("key2", "value2", now, Duration::from_secs(2));
 
         assert_eq!(map.poll_timeout(), Some(now + Duration::from_secs(1)));
     }
@@ -122,13 +133,13 @@ mod tests {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
-        map.insert("key1", "value1", now + Duration::from_secs(1));
-        map.insert("key2", "value2", now + Duration::from_secs(2));
+        map.insert("key1", "value1", now, Duration::from_secs(1));
+        map.insert("key2", "value2", now, Duration::from_secs(2));
 
         map.handle_timeout(now + Duration::from_secs(1));
 
         assert_eq!(map.get(&"key1"), None);
-        assert_eq!(map.get(&"key2").unwrap().value, &"value2");
+        assert_eq!(map.get(&"key2").unwrap().value, "value2");
     }
 
     #[test]
@@ -136,8 +147,8 @@ mod tests {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
-        map.insert("key1", "value1", now + Duration::from_secs(1));
-        map.insert("key2", "value2", now + Duration::from_secs(2));
+        map.insert("key1", "value1", now, Duration::from_secs(1));
+        map.insert("key2", "value2", now, Duration::from_secs(2));
 
         map.remove(&"key1");
 
@@ -149,11 +160,11 @@ mod tests {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
-        map.insert("key1", "value1", now + Duration::from_secs(1));
-        map.insert("key2", "value2", now + Duration::from_secs(1));
-        map.insert("key3", "value3", now + Duration::from_secs(1));
-        map.insert("key4", "value4", now + Duration::from_secs(1));
-        map.insert("key5", "value5", now + Duration::from_secs(1));
+        map.insert("key1", "value1", now, Duration::from_secs(1));
+        map.insert("key2", "value2", now, Duration::from_secs(1));
+        map.insert("key3", "value3", now, Duration::from_secs(1));
+        map.insert("key4", "value4", now, Duration::from_secs(1));
+        map.insert("key5", "value5", now, Duration::from_secs(1));
 
         while let Some(timeout) = map.poll_timeout() {
             map.handle_timeout(timeout);
@@ -167,9 +178,9 @@ mod tests {
         let mut map = ExpiringMap::default();
         let now = Instant::now();
 
-        map.insert("key1", "value1", now + Duration::from_secs(1));
-        map.insert("key2", "value2", now + Duration::from_secs(1));
-        map.insert("key3", "value3", now + Duration::from_secs(1));
+        map.insert("key1", "value1", now, Duration::from_secs(1));
+        map.insert("key2", "value2", now, Duration::from_secs(1));
+        map.insert("key3", "value3", now, Duration::from_secs(1));
 
         map.handle_timeout(now + Duration::from_secs(1));
 
