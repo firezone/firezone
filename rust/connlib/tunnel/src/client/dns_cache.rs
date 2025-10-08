@@ -46,8 +46,10 @@ impl DnsCache {
         Some(response)
     }
 
-    pub fn flush(&mut self) {
-        self.inner.clear()
+    pub fn flush(&mut self, reason: &'static str) {
+        tracing::trace!("Flushing DNS cache ({reason})");
+
+        self.inner.clear();
     }
 
     pub fn insert(&mut self, domain: DomainName, response: &dns_types::Response, now: Instant) {

@@ -1767,7 +1767,7 @@ impl ClientState {
 
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
-        self.dns_cache.flush();
+        self.dns_cache.flush("Resource added");
     }
 
     fn log_activating_resource(&self, resource: &Resource) {
@@ -1792,7 +1792,7 @@ impl ClientState {
 
         self.maybe_update_tun_routes();
         self.emit_resources_changed();
-        self.dns_cache.flush();
+        self.dns_cache.flush("Resource removed");
     }
 
     /// Emit a [`ClientEvent::ResourcesChanged`] event.
@@ -1915,6 +1915,7 @@ impl ClientState {
 
         self.set_dns_mapping(dns_mapping);
         self.maybe_update_tun_config(new_tun_config);
+        self.dns_cache.flush("DNS servers changed");
     }
 
     pub fn update_relays(
