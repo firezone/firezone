@@ -19,7 +19,7 @@ Linux host:
    - Set the `FIREZONE_TOKEN=<gateway_token>` environment variable
    - Use systemd credentials by placing the token in a file accessible via
      `$CREDENTIALS_DIRECTORY/FIREZONE_TOKEN`
-   The Gateway requires this token at startup.
+     The Gateway requires this token at startup.
 1. Set `FIREZONE_ID` to a unique string to identify this gateway in the portal,
    e.g. `export FIREZONE_ID=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)`. The Gateway requires this variable at
    startup. We recommend this to be a 64 character hex string.
