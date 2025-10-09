@@ -197,9 +197,15 @@ Starting with version 1.4.17, the Firezone Gateway supports loading the
 `FIREZONE_TOKEN` from a [systemd credential](https://systemd.io/CREDENTIALS/).
 
 ```sh
-LoadCredential=FIREZONE_TOKEN:/path/to/firezone-token
+[Service]
+Type=simple
+User=firezone
+Group=firezone
 
-# Encrypted credentials are also supported.
+# ...
+
+LoadCredential=FIREZONE_TOKEN:/path/to/firezone-token
+# Encrypted credentials are also supported!.
 LoadCredentialEncrypted=FIREZONE_TOKEN:/path/to/firezone-token
 ```
 
