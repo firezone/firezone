@@ -264,7 +264,7 @@ jobs:
         run: ${{ matrix.arch.install_dependencies }}
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         with:
-          tool: bpf-linker
+          tool: bpf-linker,cargo-deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build binaries
@@ -318,6 +318,9 @@ jobs:
             --overwrite true \
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+      - name: Create Firezone Gateway .deb package
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+        run: cargo deb --package firezone-gateway
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
@@ -339,6 +342,7 @@ jobs:
           gh release upload ${{ matrix.name.release_name }} \
             "$BINARY_DEST_PATH" \
             "$BINARY_DEST_PATH".sha256sum.txt \
+            ${{ matrix.name.artifact }}_${{ matrix.name.version }}_*.deb \
             "$clobber" \
             --repo ${{ github.repository }}
       - name: Set up QEMU
