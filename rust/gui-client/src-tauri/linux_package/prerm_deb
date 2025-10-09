@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Usage: dpkg will call this after installing our files
 
 set -euo pipefail
 

@@ -18,6 +18,12 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="10533">
           Improves reliability by caching DNS responses as per their TTL.
         </ChangeItem>
+        {os == OS.Linux && (
+          <ChangeItem pull="10539">
+            Fixes an issue where the Tunnel Service was not running after a
+            version upgrade.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-09-10")}>
         <ChangeItem pull="10104">
