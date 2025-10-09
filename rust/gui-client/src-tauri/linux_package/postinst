@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# Usage: dpkg will call this after installing our files
-# This must be idempotent
 
 set -euo pipefail
 
