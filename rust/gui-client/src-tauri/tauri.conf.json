@@ -11,7 +11,7 @@
       "deb": {
         "preInstallScript": "./linux_package/preinst",
         "postInstallScript": "./linux_package/postinst",
-        "preRemoveScript": "./linux_package/prerm",
+        "preRemoveScript": "./linux_package/prerm_deb",
         "files": {
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
@@ -21,7 +21,7 @@
       },
       "rpm": {
         "postInstallScript": "./linux_package/postinst",
-        "preRemoveScript": "./linux_package/prerm",
+        "preRemoveScript": "./linux_package/prerm_rpm",
         "files": {
           "/usr/lib/systemd/system/firezone-client-tunnel.service": "./linux_package/firezone-client-tunnel.service",
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
