@@ -43,7 +43,7 @@ export default function Gateway() {
           based on the TTL in the DNS response.
         </ChangeItem>
         <ChangeItem pull="10538">
-          Allows passing the FIREZONE_TOKEN as a systemd-credential. See the{" "}
+          Supports loading the FIREZONE_TOKEN from a systemd-credential. See the{" "}
           <Link
             className="text-accent-500 underline hover:no-underline"
             href="https://www.firezone.dev/kb/deploy/gateways#systemd-credential-integration"
