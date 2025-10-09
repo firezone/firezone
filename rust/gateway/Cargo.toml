@@ -8,7 +8,7 @@ description = "Gateway for the Firezone zero-trust access product."
 
 [package.metadata.deb]
 maintainer-scripts = "debian/"
-systemd-units = {  }
+systemd-units = { enable = false }
 copyright = "2025, Firezone Inc."
 extended-description = "Gateway for the Firezone zero-trust access product."
 revision = ""
