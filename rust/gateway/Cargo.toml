@@ -4,7 +4,19 @@ name = "firezone-gateway"
 version = "1.4.17"
 edition = { workspace = true }
 license = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Gateway for the Firezone zero-trust access product."
+
+[package.metadata.deb]
+maintainer-scripts = "debian/"
+systemd-units = {  }
+copyright = "2025, Firezone Inc."
+extended-description = "Gateway for the Firezone zero-trust access product."
+revision = ""
+section = "Network"
+assets = [
+    ["target/release/firezone-gateway", "usr/bin/", "755"],
+    ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
+]
 
 [dependencies]
 anyhow = { workspace = true }
