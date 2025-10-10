@@ -2,17 +2,14 @@ defmodule Domain.Mailer.Notifications do
   import Swoosh.Email
   import Domain.Mailer
   import Phoenix.Template, only: [embed_templates: 2]
-  import Phoenix.VerifiedRoutes
-
-  @endpoint Web.Endpoint
-  @router Web.Router
 
   embed_templates "notifications/*.html", suffix: "_html"
   embed_templates "notifications/*.text", suffix: "_text"
 
   def outdated_gateway_email(account, gateways, incompatible_client_count, email) do
-    outdated_clients_url =
-      url(~p"/#{account.id}/clients?#{[clients_order_by: "clients:asc:last_seen_version"]}")
+    url_generator = Application.fetch_env!(:domain, :url_generator)
+
+    outdated_clients_url = url_generator.outdated_clients_url(account.id)
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")

@@ -1,5 +1,5 @@
 defmodule API.FallbackController do
-  use Phoenix.Controller
+  use API, :controller
 
   def call(conn, {:error, :not_found}) do
     conn
