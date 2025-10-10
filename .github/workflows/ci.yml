@@ -189,13 +189,13 @@ jobs:
   control-plane:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
-    uses: ./.github/workflows/_control_plane.yml
+    uses: ./.github/workflows/_control-plane.yml
     secrets: inherit
 
   data-plane:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
-    uses: ./.github/workflows/_data_plane.yml
+    uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
       # Build debug/ on PRs and merge group, no prefix for production release images
@@ -206,7 +206,7 @@ jobs:
   data-plane-perf:
     needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'data-plane-perf')
-    uses: ./.github/workflows/_data_plane.yml
+    uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
       sha: ${{ github.sha }}
