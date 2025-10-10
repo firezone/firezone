@@ -40,7 +40,7 @@ impl io::Write for DevNull {
 pub struct Tun;
 
 impl Tun {
-    pub unsafe fn from_fd(_: RawFd) -> io::Result<Self> {
+    pub unsafe fn from_fd(_: RawFd, _: &tokio::runtime::Handle) -> io::Result<Self> {
         Err(io::Error::other("Stub!"))
     }
 }
