@@ -1,4 +1,4 @@
-name: Data plane
+name: Build data plane
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_dispatch:

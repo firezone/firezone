@@ -1,4 +1,4 @@
-name: Swift
+name: Build macOS/iOS app
 on:
   workflow_call:
   workflow_dispatch:

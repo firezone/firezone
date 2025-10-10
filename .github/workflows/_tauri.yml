@@ -1,4 +1,4 @@
-name: Tauri
+name: Build Tauri app
 on:
   workflow_call:
   workflow_dispatch:

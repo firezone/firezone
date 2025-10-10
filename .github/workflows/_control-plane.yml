@@ -1,4 +1,4 @@
-name: Control plane
+name: Build control plane
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_call:
