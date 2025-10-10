@@ -9,8 +9,6 @@ on:
         default: ${{ github.sha }}
 
 permissions:
-  # write permission is required to create a github release
-  contents: write
   id-token: write
   packages: write
 
