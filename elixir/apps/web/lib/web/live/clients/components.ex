@@ -109,9 +109,7 @@ defmodule Web.Clients.Components do
             This component is up to date.
           </p>
           <p :if={@outdated?}>
-            A newer version
-            <.website_link path="/changelog">{@latest}</.website_link>
-            is available.
+            A newer version <.website_link path="/changelog">{@latest}</.website_link> is available.
           </p>
         </:content>
       </.popover>

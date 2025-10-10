@@ -48,7 +48,7 @@ defmodule Domain.MixProject do
       {:ecto_sql, "~> 3.7"},
 
       # PubSub and Presence
-      {:phoenix, "~> 1.7"},
+      {:phoenix, "~> 1.8"},
       {:phoenix_pubsub, "~> 2.0"},
 
       # Auth-related deps
