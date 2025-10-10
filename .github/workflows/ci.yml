@@ -186,42 +186,14 @@ jobs:
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
-  update-release-draft:
-    name: update-release-draft-${{ matrix.config_name }}
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # mark:next-gateway-version
-          - release_name: gateway-1.4.17
-            config_name: release-drafter-gateway.yml
-          # mark:next-headless-version
-          - release_name: headless-client-1.5.4
-            config_name: release-drafter-headless-client.yml
-
-    steps:
-      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
-        # Only draft releases on merges to main
-        if: ${{ github.ref_name == 'main' }}
-        id: update-release-draft
-        with:
-          config-name: ${{ matrix.config_name }}
-          tag: ${{ matrix.release_name }}
-          version: ${{ matrix.release_name }}
-          name: ${{ matrix.release_name }}
-          commitish: ${{ github.sha }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   build-control-plane:
-    needs: [update-release-draft, planner]
+    needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'build-control-plane')
     uses: ./.github/workflows/_build_control_plane.yml
     secrets: inherit
 
   build-data-plane:
-    needs: [update-release-draft, planner]
+    needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'build-data-plane')
     uses: ./.github/workflows/_build_data_plane.yml
     secrets: inherit
@@ -232,7 +204,7 @@ jobs:
       stage: ${{ inputs.stage || 'debug' }}
 
   build-data-plane-perf:
-    needs: [update-release-draft, planner]
+    needs: planner
     if: contains(needs.planner.outputs.jobs_to_run, 'build-data-plane-perf')
     uses: ./.github/workflows/_build_data_plane.yml
     secrets: inherit

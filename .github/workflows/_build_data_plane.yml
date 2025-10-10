@@ -1,6 +1,7 @@
 name: Build Artifacts
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
+  workflow_dispatch:
   workflow_call:
     inputs:
       image_prefix:
@@ -44,9 +45,37 @@ permissions:
   packages: write
 
 jobs:
+  update-release-draft:
+    name: update-release-draft-${{ matrix.config_name }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # mark:next-gateway-version
+          - release_name: gateway-1.4.17
+            config_name: release-drafter-gateway.yml
+          # mark:next-headless-version
+          - release_name: headless-client-1.5.4
+            config_name: release-drafter-headless-client.yml
+
+    steps:
+      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
+        with:
+          config-name: ${{ matrix.config_name }}
+          tag: ${{ matrix.release_name }}
+          version: ${{ matrix.release_name }}
+          name: ${{ matrix.release_name }}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
     if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
+    needs: update-release-draft
     runs-on: windows-2022
     defaults:
       run:
@@ -100,7 +129,7 @@ jobs:
           AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
         run: ../scripts/build/sign.sh "$ARTIFACT_PATH"
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name }}
+        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,6 +138,7 @@ jobs:
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-24.04
+    needs: update-release-draft
     defaults:
       run:
         working-directory: rust
@@ -266,7 +296,7 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
