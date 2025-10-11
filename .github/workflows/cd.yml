@@ -9,8 +9,8 @@ on:
 jobs:
   # Builds images that match what's default in docker-compose.yml for
   # local development.
-  build-dev-images:
-    uses: ./.github/workflows/_build_artifacts.yml
+  build-data-plane-dev-images:
+    uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
       image_prefix: "dev"
@@ -18,13 +18,17 @@ jobs:
       profile: "debug"
 
   # Builds debug images with release binaries for compatibility tests in case the merge_group was skipped.
-  build-test-images:
-    uses: ./.github/workflows/_build_artifacts.yml
+  build-data-plane-test-images:
+    uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
       image_prefix: "debug"
       stage: "debug"
       profile: "release"
+
+  build-control-plane-images:
+    uses: ./.github/workflows/_control-plane.yml
+    secrets: inherit
 
   # Re-run CI checks to make sure everything's green, since "Merging as administrator"
   # won't trigger these in the merge group.
