@@ -46,7 +46,7 @@ export default function Gateway() {
           Supports loading the FIREZONE_TOKEN from a systemd-credential. See the{" "}
           <Link
             className="text-accent-500 underline hover:no-underline"
-            href="https://www.firezone.dev/kb/deploy/gateways#systemd-credential-integration"
+            href="/kb/deploy/gateways#systemd-credential-integration"
           >
             systemd integration
           </Link>
