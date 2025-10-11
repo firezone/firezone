@@ -391,6 +391,13 @@ defmodule Domain.Actors do
     |> Repo.aggregate(:count)
   end
 
+  def fetch_actor_by_account_and_email(%Accounts.Account{} = account, email) do
+    Actor.Query.all()
+    |> Actor.Query.by_account_id(account.id)
+    |> Actor.Query.by_email(email)
+    |> Repo.fetch(Actor.Query)
+  end
+
   def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          true <- Repo.valid_uuid?(id) do

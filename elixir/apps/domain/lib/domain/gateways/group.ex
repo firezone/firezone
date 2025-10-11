@@ -29,11 +29,10 @@ defmodule Domain.Gateways.Group do
 
     has_many :connections, Domain.Resources.Connection, foreign_key: :gateway_group_id
 
-    field :created_by, Ecto.Enum, values: ~w[actor identity system]a
-    field :created_by_subject, :map
-
     # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
+
+    subject_trail(~w[actor identity system]a)
     timestamps()
   end
 end

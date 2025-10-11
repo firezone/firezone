@@ -53,14 +53,13 @@ defmodule Domain.Resources.Resource do
     # because the actual preload query should also use joins and process policy conditions
     has_many :authorized_by_policies, Domain.Policies.Policy, where: [id: {:fragment, "FALSE"}]
 
-    field :created_by, Ecto.Enum, values: ~w[identity actor system]a
-    field :created_by_subject, :map
-
     belongs_to :replaced_by_resource, Domain.Resources.Resource
     has_one :replaces_resource, Domain.Resources.Resource, foreign_key: :replaced_by_resource_id
 
     # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
+
+    subject_trail(~w[identity actor system]a)
     timestamps()
   end
 end

@@ -31,6 +31,10 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.account_id == ^account_id)
   end
 
+  def by_email(queryable, email) do
+    where(queryable, [actors: actors], actors.email == ^email)
+  end
+
   def by_identity_provider_id(queryable, provider_id) do
     queryable
     |> join(:inner, [actors: actors], identities in ^Domain.Auth.Identity.Query.all(),

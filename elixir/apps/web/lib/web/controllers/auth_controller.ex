@@ -39,7 +39,7 @@ defmodule Web.AuthController do
       ) do
     redirect_params = Web.Auth.take_sign_in_params(params)
     context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
-    context = Web.Auth.get_auth_context(conn, context_type)
+    context = auth_context(conn, context_type)
     nonce = Web.Auth.fetch_token_nonce!(redirect_params)
 
     with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
@@ -130,7 +130,7 @@ defmodule Web.AuthController do
 
   defp maybe_send_email_otp(conn, provider, provider_identifier, redirect_params) do
     context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
-    context = Web.Auth.get_auth_context(conn, context_type)
+    context = auth_context(conn, context_type)
 
     fragment =
       Web.Auth.execute_with_constant_time(
@@ -219,7 +219,7 @@ defmodule Web.AuthController do
       conn = delete_auth_state(conn, provider_id)
       secret = String.downcase(nonce) <> fragment
       context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
-      context = Web.Auth.get_auth_context(conn, context_type)
+      context = auth_context(conn, context_type)
       nonce = Web.Auth.fetch_token_nonce!(redirect_params)
 
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
@@ -348,7 +348,7 @@ defmodule Web.AuthController do
       }
 
       context_type = Web.Auth.fetch_auth_context_type!(redirect_params)
-      context = Web.Auth.get_auth_context(conn, context_type)
+      context = auth_context(conn, context_type)
       nonce = Web.Auth.fetch_token_nonce!(redirect_params)
 
       with {:ok, provider} <- Domain.Auth.fetch_active_provider_by_id(provider_id),
@@ -438,5 +438,13 @@ defmodule Web.AuthController do
 
   defp state_cookie_key(provider_id) do
     @state_cookie_key_prefix <> provider_id
+  end
+
+  defp auth_context(conn, context_type) do
+    remote_ip = conn.remote_ip
+    user_agent = conn.assigns[:user_agent]
+    headers = conn.req_headers
+
+    Domain.Auth.get_auth_context(remote_ip, user_agent, headers, context_type)
   end
 end

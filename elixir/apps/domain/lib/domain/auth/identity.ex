@@ -5,8 +5,27 @@ defmodule Domain.Auth.Identity do
     belongs_to :actor, Domain.Actors.Actor, on_replace: :update
     belongs_to :provider, Domain.Auth.Provider
 
+    # Unique identifiers
     field :email, :string
     field :provider_identifier, :string
+
+    # Identity Provider fields
+    field :issuer
+    field :idp_tenant, :string
+    field :idp_id, :string
+
+    # Optional profile fields
+    field :name, :string
+    field :given_name, :string
+    field :family_name, :string
+    field :middle_name, :string
+    field :nickname, :string
+    field :preferred_username, :string
+    field :profile, :string
+    field :picture, :string
+
+    # TODO: IdP sync
+    # Remove these field after all customers have migrated to the new sync
     field :provider_state, :map, redact: true
     field :provider_virtual_state, :map, virtual: true, redact: true
 
@@ -20,9 +39,6 @@ defmodule Domain.Auth.Identity do
 
     belongs_to :account, Domain.Accounts.Account
 
-    field :created_by, Ecto.Enum, values: ~w[system provider identity]a
-    field :created_by_subject, :map
-
     # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
     has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
 
@@ -31,6 +47,8 @@ defmodule Domain.Auth.Identity do
 
     # TODO: HARD-DELETE - Remove field after soft deletion is removed
     field :deleted_at, :utc_datetime_usec
+
+    subject_trail(~w[system provider identity]a)
     timestamps(updated_at: false)
   end
 end

@@ -5,6 +5,10 @@ defmodule Domain.Actors.Actor do
     field :type, Ecto.Enum,
       values: [:account_user, :account_admin_user, :service_account, :api_client]
 
+    field :email, :string
+
+    # TODO: IdP refactor
+    # Move this to auth_identities
     field :name, :string
 
     # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from DB

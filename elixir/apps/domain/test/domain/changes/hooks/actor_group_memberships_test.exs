@@ -61,7 +61,12 @@ defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
 
       assert :ok == on_delete(0, old_data)
 
-      assert_receive %Change{op: :delete, old_struct: %Actors.Membership{} = membership, lsn: 0}
+      assert_receive %Change{
+        op: :delete,
+        old_struct: %Actors.Membership{} = membership,
+        lsn: 0
+      }
+
       assert membership.id == "00000000-0000-0000-0000-000000000000"
       assert membership.account_id == "00000000-0000-0000-0000-000000000001"
       assert membership.actor_id == "00000000-0000-0000-0000-000000000002"
@@ -69,7 +74,7 @@ defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
     end
 
     test "deletes flows for membership", %{account: account, membership: membership} do
-      flow = Fixtures.Flows.create_flow(account: account, actor_group_membership: membership)
+      flow = Fixtures.Flows.create_flow(account: account, membership: membership)
       unrelated_flow = Fixtures.Flows.create_flow(account: account)
 
       old_data = %{
@@ -79,9 +84,9 @@ defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
         "group_id" => membership.group_id
       }
 
-      assert ^flow = Repo.get_by(Flows.Flow, actor_group_membership_id: membership.id)
+      assert ^flow = Repo.get_by(Flows.Flow, membership_id: membership.id)
       assert :ok == on_delete(0, old_data)
-      assert nil == Repo.get_by(Flows.Flow, actor_group_membership_id: membership.id)
+      assert nil == Repo.get_by(Flows.Flow, membership_id: membership.id)
       assert ^unrelated_flow = Repo.get_by(Flows.Flow, id: unrelated_flow.id)
     end
   end
