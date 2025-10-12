@@ -31,7 +31,7 @@ jobs:
         run: |
           set -e
 
-          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,build-artifacts,build-perf-artifacts";
+          jobs="static-analysis,elixir,rust,tauri,kotlin,swift,codeql,control-plane,data-plane,data-plane-perf";
 
           # For workflow_dispatch or workflow_call, run all jobs
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.event_name }}" = "workflow_call" ]; then
@@ -87,7 +87,7 @@ jobs:
           jobs="static-analysis" # Always run static-analysis
 
           if grep -q '^rust/' changed_files.txt; then
-            jobs="${jobs},rust,kotlin,swift,build-artifacts,build-perf-artifacts"
+            jobs="${jobs},rust,kotlin,swift,control-plane,data-plane,data-plane-perf"
           fi
           if grep -q '^rust/gui-client/' changed_files.txt; then
             jobs="${jobs},tauri"
@@ -96,7 +96,7 @@ jobs:
             jobs="${jobs},tauri"
           fi
           if grep -q '^elixir/' changed_files.txt; then
-            jobs="${jobs},elixir,codeql,build-artifacts"
+            jobs="${jobs},elixir,codeql,control-plane,data-plane"
           fi
           if grep -q '^kotlin/' changed_files.txt; then
             jobs="${jobs},kotlin"
@@ -108,7 +108,7 @@ jobs:
             jobs="${jobs},codeql"
           fi
           if grep -q '^scripts/tests/' changed_files.txt; then
-            jobs="${jobs},build-artifacts,build-perf-artifacts"
+            jobs="${jobs},control-plane,data-plane,data-plane-perf"
           fi
 
           echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
@@ -186,38 +186,16 @@ jobs:
     uses: ./.github/workflows/_codeql.yml
     secrets: inherit
 
-  update-release-draft:
-    name: update-release-draft-${{ matrix.config_name }}
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # mark:next-gateway-version
-          - release_name: gateway-1.4.17
-            config_name: release-drafter-gateway.yml
-          # mark:next-headless-version
-          - release_name: headless-client-1.5.4
-            config_name: release-drafter-headless-client.yml
+  control-plane:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'control-plane')
+    uses: ./.github/workflows/_control-plane.yml
+    secrets: inherit
 
-    steps:
-      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
-        # Only draft releases on merges to main
-        if: ${{ github.ref_name == 'main' }}
-        id: update-release-draft
-        with:
-          config-name: ${{ matrix.config_name }}
-          tag: ${{ matrix.release_name }}
-          version: ${{ matrix.release_name }}
-          name: ${{ matrix.release_name }}
-          commitish: ${{ github.sha }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-artifacts:
-    needs: [update-release-draft, planner]
-    if: contains(needs.planner.outputs.jobs_to_run, 'build-artifacts')
-    uses: ./.github/workflows/_build_artifacts.yml
+  data-plane:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane')
+    uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
       # Build debug/ on PRs and merge group, no prefix for production release images
@@ -225,10 +203,10 @@ jobs:
       profile: ${{ inputs.profile || 'debug' }}
       stage: ${{ inputs.stage || 'debug' }}
 
-  build-perf-artifacts:
-    needs: [update-release-draft, planner]
-    if: contains(needs.planner.outputs.jobs_to_run, 'build-perf-artifacts')
-    uses: ./.github/workflows/_build_artifacts.yml
+  data-plane-perf:
+    needs: planner
+    if: contains(needs.planner.outputs.jobs_to_run, 'data-plane-perf')
+    uses: ./.github/workflows/_data-plane.yml
     secrets: inherit
     with:
       sha: ${{ github.sha }}
@@ -238,13 +216,13 @@ jobs:
 
   integration-tests:
     uses: ./.github/workflows/_integration_tests.yml
-    needs: build-artifacts
+    needs: [control-plane, data-plane]
     secrets: inherit
     with:
-      gateway_image: ${{ needs.build-artifacts.outputs.gateway_image }}
-      client_image: ${{ needs.build-artifacts.outputs.client_image }}
-      relay_image: ${{ needs.build-artifacts.outputs.relay_image }}
-      http_test_server_image: ${{ needs.build-artifacts.outputs.http_test_server_image }}
+      gateway_image: ${{ needs.data-plane.outputs.gateway_image }}
+      client_image: ${{ needs.data-plane.outputs.client_image }}
+      relay_image: ${{ needs.data-plane.outputs.relay_image }}
+      http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
 
   compatibility-tests:
     strategy:
@@ -254,7 +232,7 @@ jobs:
           - image: "ghcr.io/firezone/client"
             tag: "latest"
         gateway:
-          - image: ${{ needs.build-artifacts.outputs.gateway_image }}
+          - image: ${{ needs.data-plane.outputs.gateway_image }}
             tag: ${{ github.sha }}
             ci-name: sha
           - image: "ghcr.io/firezone/gateway"
@@ -266,7 +244,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     name: compatibility-tests-client(${{ matrix.client.tag }})-gateway(${{ matrix.gateway.ci-name }})
     uses: ./.github/workflows/_integration_tests.yml
-    needs: build-artifacts
+    needs: [control-plane, data-plane]
     secrets: inherit
     with:
       gateway_image: ${{ matrix.gateway.image }}
@@ -276,7 +254,7 @@ jobs:
 
   perf-tests:
     name: perf-tests
-    needs: build-perf-artifacts
+    needs: [control-plane, data-plane-perf]
     runs-on: ubuntu-24.04
     permissions:
       contents: read

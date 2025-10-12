@@ -1,6 +1,7 @@
-name: Build Artifacts
+name: Build data plane
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
+  workflow_dispatch:
   workflow_call:
     inputs:
       image_prefix:
@@ -44,94 +45,37 @@ permissions:
   packages: write
 
 jobs:
-  control-plane:
-    name: ${{ matrix.image_name }}
+  update-release-draft:
+    name: update-release-draft-${{ matrix.config_name }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         include:
-          - image_name: domain
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=domain
-              GIT_SHA=${{ inputs.sha }}
-          - image_name: api
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=api
-              GIT_SHA=${{ inputs.sha }}
-          - image_name: web
-            target: runtime
-            build-args: |
-              APPLICATION_NAME=web
-              GIT_SHA=${{ inputs.sha }}
-          - image_name: elixir
-            target: compiler
-            build-args: |
-              APPLICATION_NAME=api
-              GIT_SHA=${{ inputs.sha }}
-    steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
-        with:
-          ref: ${{ inputs.sha }}
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
-      - uses: ./.github/actions/ghcr-docker-login
-        id: login
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@c1e51972afc2121e065aed6d45c65596fe445f3f # v5.8.0
-        with:
-          images: ${{ steps.login.outputs.registry }}/firezone/${{matrix.image_name }}
-          tags: |
-            type=raw,value=${{ inputs.sha }}
-      - name: Sanitize github.ref_name
-        run: |
-          # `ref_name` contains `/`, '_' or '=' which is not a valid docker image tag
-          REF="${{ github.ref_name }}"
-          CACHE_TAG="${REF//[\/_=]/-}"
-          echo "CACHE_TAG=$CACHE_TAG" >> "$GITHUB_ENV"
-      # PRs & non-main branches: read-only cache
-      - name: Build and push control plane images (read-only cache)
-        if: ${{ github.ref != 'refs/heads/main' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
-        with:
-          build-args: ${{ matrix.build-args }}
-          target: ${{ matrix.target }}
-          context: elixir
-          cache-from: |
-            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=gha,scope=${{ matrix.image_name }}:main
-          # no cache-to here -> read-only
-          push: true
-          tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+          # mark:next-gateway-version
+          - release_name: gateway-1.4.17
+            config_name: release-drafter-gateway.yml
+          # mark:next-headless-version
+          - release_name: headless-client-1.5.4
+            config_name: release-drafter-headless-client.yml
 
-      # main: read/write cache
-      - name: Build and push control plane images (read/write cache)
-        if: ${{ github.ref == 'refs/heads/main' }}
-        uses: docker/build-push-action@263435318d21b8e681c14492fe198d362a7d2c83 # v6.18.0
+    steps:
+      - uses: release-drafter/release-drafter@b1476f6e6eb133afa41ed8589daba6dc69b4d3f5 # v6.1.0
+        if: "${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}"
+        id: update-release-draft
         with:
-          build-args: ${{ matrix.build-args }}
-          target: ${{ matrix.target }}
-          context: elixir
-          cache-from: |
-            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }}
-            type=gha,scope=${{ matrix.image_name }}:main
-          cache-to: |
-            type=gha,scope=${{ matrix.image_name }}:${{ env.CACHE_TAG }},mode=max,ignore-error=true
-          push: true
-          tags: |
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ inputs.sha }}
-            ${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_name }}:${{ env.CACHE_TAG }}
+          config-name: ${{ matrix.config_name }}
+          tag: ${{ matrix.release_name }}
+          version: ${{ matrix.release_name }}
+          name: ${{ matrix.release_name }}
+          commitish: ${{ github.sha }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   data-plane-windows:
     name: client-windows-${{ matrix.target }}
     if: ${{ inputs.image_prefix != 'perf' }} # Perf testing happens only on Linux
+    needs: update-release-draft
     runs-on: windows-2022
     defaults:
       run:
@@ -185,7 +129,7 @@ jobs:
           AZURE_CERT_NAME: ${{ secrets.AZURE_CERT_NAME }}
         run: ../scripts/build/sign.sh "$ARTIFACT_PATH"
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name }}
+        if: ${{ inputs.profile == 'release' && inputs.stage == 'release' && matrix.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -194,6 +138,7 @@ jobs:
   data-plane-linux:
     name: ${{ matrix.name.image_name }}-${{ matrix.arch.shortname }}
     runs-on: ubuntu-24.04
+    needs: update-release-draft
     defaults:
       run:
         working-directory: rust
@@ -351,7 +296,7 @@ jobs:
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Upload Release Assets
-        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name }}
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

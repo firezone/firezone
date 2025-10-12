@@ -1,4 +1,4 @@
-name: Kotlin
+name: Build Android app
 on:
   workflow_call:
   workflow_dispatch:
