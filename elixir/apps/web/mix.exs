@@ -71,7 +71,6 @@ defmodule Web.MixProject do
 
       # Other deps
       {:jason, "~> 1.2"},
-      {:file_size, "~> 3.0.1"},
       {:nimble_csv, "~> 1.2"},
 
       # Test deps
