@@ -191,26 +191,6 @@ Resources in a Site. This effectively shards Client connections across all
 Gateways in a Site, achieving higher overall throughput than otherwise possible
 with a single Gateway.
 
-### systemd credential integration
-
-Starting with version 1.4.17, the Firezone Gateway supports loading the
-`FIREZONE_TOKEN` from a [systemd credential](https://systemd.io/CREDENTIALS/).
-
-```sh
-# firezone-gateway.service
-
-[Service]
-Type=simple
-User=firezone
-Group=firezone
-
-# ...
-
-LoadCredential=FIREZONE_TOKEN:/path/to/firezone-token
-# Encrypted credentials are also supported!.
-LoadCredentialEncrypted=FIREZONE_TOKEN:/path/to/firezone-token
-```
-
 ### Automated Gateway deployment
 
 See [our automation recipes](/kb/automate) for deploying Gateways on various
