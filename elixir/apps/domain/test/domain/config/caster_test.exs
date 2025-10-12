@@ -50,7 +50,9 @@ defmodule Domain.Config.CasterTest do
 
     test "raises when JSON is not valid" do
       assert {:error, {:invalid_byte, _offset, _byte}} = cast("invalid json", :embed)
-      assert {:error, {:invalid_byte, _offset, _byte}} = cast("invalid json", {:json_array, :embed})
+
+      assert {:error, {:invalid_byte, _offset, _byte}} =
+               cast("invalid json", {:json_array, :embed})
     end
   end
 end

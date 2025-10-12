@@ -83,7 +83,14 @@ defmodule Domain.ComponentVersions do
 
   defp decode_versions_response(response) do
     case JSON.decode(response) do
-      {:ok, %{"apple" => apple, "android" => android, "gateway" => gateway, "gui" => gui, "headless" => headless}} ->
+      {:ok,
+       %{
+         "apple" => apple,
+         "android" => android,
+         "gateway" => gateway,
+         "gui" => gui,
+         "headless" => headless
+       }} ->
         %{apple: apple, android: android, gateway: gateway, gui: gui, headless: headless}
 
       _ ->
