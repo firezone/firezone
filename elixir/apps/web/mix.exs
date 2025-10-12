@@ -69,9 +69,6 @@ defmodule Web.MixProject do
       {:hackney, "~> 1.19"},
       {:logger_json, "~> 7.0"},
 
-      # Other deps
-      {:nimble_csv, "~> 1.2"},
-
       # Test deps
       {:floki, "~> 0.37.0", only: :test},
       {:bypass, "~> 2.1", only: :test},
