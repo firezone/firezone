@@ -58,14 +58,14 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
 
     with {:ok, %Finch.Response{body: response, status: status}} when status in 200..299 <-
            Finch.request(request, @pool_name),
-         {:ok, %{"access_token" => access_token}} <- Jason.decode(response) do
+         {:ok, %{"access_token" => access_token}} <- JSON.decode(response) do
       {:ok, access_token}
     else
       {:ok, %Finch.Response{status: status}} when status in 500..599 ->
         {:error, :retry_later}
 
       {:ok, %Finch.Response{body: response, status: status}} ->
-        case Jason.decode(response) do
+        case JSON.decode(response) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
 
@@ -202,7 +202,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
     response = Finch.request(request, @pool_name)
 
     with {:ok, %Finch.Response{body: raw_body, status: 200}} <- response,
-         {:ok, json_response} <- Jason.decode(raw_body),
+         {:ok, json_response} <- JSON.decode(raw_body),
          {:ok, list} when is_list(list) <- Map.fetch(json_response, key) do
       {:ok, list, json_response["nextPageToken"]}
     else
@@ -225,7 +225,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClient do
           response: inspect(response)
         )
 
-        case Jason.decode(raw_body) do
+        case JSON.decode(raw_body) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
 

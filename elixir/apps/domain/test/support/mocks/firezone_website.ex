@@ -6,7 +6,7 @@ defmodule Domain.Mocks.FirezoneWebsite do
     Bypass.stub(bypass, "GET", versions_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(versions))
+      Plug.Conn.send_resp(conn, 200, JSON.encode!(versions))
     end)
   end
 end

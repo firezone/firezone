@@ -57,9 +57,12 @@ defmodule Domain.Config.Errors do
     values_and_errors
     |> List.wrap()
     |> Enum.map_join("\n", fn {value, errors} ->
-      " - `#{format_value(sensitive?, value)}`: #{Enum.join(errors, ", ")}"
+      " - `#{format_value(sensitive?, value)}`: #{Enum.map_join(errors, ", ", &error_to_string/1)}"
     end)
   end
+
+  defp error_to_string(error) when is_binary(error), do: error
+  defp error_to_string(tuple) when is_tuple(tuple), do: inspect(tuple)
 
   defp format_value(true, _value), do: "**SENSITIVE-VALUE-REDACTED**"
   defp format_value(false, value), do: inspect(value)

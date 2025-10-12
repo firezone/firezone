@@ -53,7 +53,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     Bypass.stub(bypass, "GET", token_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
     end)
 
     override_endpoint_url(:metadata_endpoint_url, "http://localhost:#{bypass.port}/")
@@ -70,7 +70,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
       {:ok, binary, conn} = Plug.Conn.read_body(conn)
-      %{"payload" => payload} = Jason.decode!(binary)
+      %{"payload" => payload} = JSON.decode!(binary)
 
       resp =
         resp ||
@@ -79,7 +79,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
             "signedBlob" => Domain.Crypto.hash(:md5, service_account_email <> payload)
           }
 
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
     end)
 
     override_endpoint_url(
@@ -199,7 +199,7 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     Bypass.expect(bypass, "GET", aggregated_instances_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
     end)
 
     override_endpoint_url(
@@ -218,9 +218,9 @@ defmodule Domain.Mocks.GoogleCloudPlatform do
     Bypass.expect(bypass, "POST", metrics_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       {:ok, binary, conn} = Plug.Conn.read_body(conn)
-      body = Jason.decode!(binary)
+      body = JSON.decode!(binary)
       send(test_pid, {:bypass_request, conn, body})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(%{}))
+      Plug.Conn.send_resp(conn, 200, JSON.encode!(%{}))
     end)
 
     override_endpoint_url(

@@ -70,7 +70,6 @@ defmodule Web.MixProject do
       {:logger_json, "~> 7.0"},
 
       # Other deps
-      {:jason, "~> 1.2"},
       {:nimble_csv, "~> 1.2"},
 
       # Test deps

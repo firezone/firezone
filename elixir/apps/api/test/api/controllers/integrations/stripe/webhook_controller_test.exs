@@ -39,7 +39,7 @@ defmodule API.Integrations.Stripe.WebhookControllerTest do
           "customer.subscription.updated",
           Mocks.Stripe.subscription_object(customer_id, %{}, %{}, 0)
         )
-        |> Jason.encode!()
+        |> JSON.encode!()
 
       signed_at = System.system_time(:second) - 15
       signature = generate_signature(signed_at, payload)
@@ -60,7 +60,7 @@ defmodule API.Integrations.Stripe.WebhookControllerTest do
           "customer.subscription.updated",
           Mocks.Stripe.subscription_object("cus_xxx", %{}, %{}, 0)
         )
-        |> Jason.encode!()
+        |> JSON.encode!()
 
       signed_at = System.system_time(:second) - 301
       signature = generate_signature(signed_at, payload)

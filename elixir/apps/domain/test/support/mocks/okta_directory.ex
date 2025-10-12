@@ -8,7 +8,7 @@ defmodule Domain.Mocks.OktaDirectory do
 
     resp =
       resp ||
-        Jason.encode!([
+        JSON.encode!([
           %{
             "id" => "OT6AZkcmzkDXwkXcjTHY",
             "status" => "ACTIVE",
@@ -76,7 +76,7 @@ defmodule Domain.Mocks.OktaDirectory do
 
     resp =
       resp ||
-        Jason.encode!([
+        JSON.encode!([
           %{
             "id" => "00gezqhvv4IFj2Avg5d7",
             "created" => "2024-02-07T04:32:03.000Z",
@@ -233,7 +233,7 @@ defmodule Domain.Mocks.OktaDirectory do
 
     resp =
       resp ||
-        Jason.encode!([
+        JSON.encode!([
           %{
             "id" => "00ue1rr3zgV1DjyfL5d7",
             "status" => "ACTIVE",

@@ -35,8 +35,8 @@ defmodule Domain.Config.Fetcher do
       {:ok, value} ->
         {:ok, value}
 
-      {:error, %Jason.DecodeError{} = decode_error} ->
-        reason = Jason.DecodeError.message(decode_error)
+      {:error, %JSON.DecodeError{} = decode_error} ->
+        reason = Exception.message(decode_error)
         {:error, {{value, [reason]}, module: module, key: key, source: source}}
 
       {:error, reason} ->

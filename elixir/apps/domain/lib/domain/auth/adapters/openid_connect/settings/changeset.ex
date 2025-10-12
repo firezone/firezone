@@ -30,7 +30,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnect.Settings.Changeset do
         {:error, %Mint.TransportError{reason: reason}} ->
           [{:discovery_document_uri, "is invalid, got #{inspect(reason)}"}]
 
-        {:error, %Jason.DecodeError{} = _error} ->
+        {:error, %JSON.DecodeError{} = _error} ->
           [{:discovery_document_uri, "is invalid, unable to parse response"}]
 
         {:error, {404, _body}} ->

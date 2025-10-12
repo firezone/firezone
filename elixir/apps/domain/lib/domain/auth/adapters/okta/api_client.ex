@@ -126,7 +126,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     response = Finch.request(request, @pool_name)
 
     with {:ok, %Finch.Response{headers: headers, body: raw_body, status: 200}} <- response,
-         {:ok, list} when is_list(list) <- Jason.decode(raw_body) do
+         {:ok, list} when is_list(list) <- JSON.decode(raw_body) do
       {:ok, list, fetch_next_link(headers)}
     else
       {:ok, %Finch.Response{status: status}} when status in 201..299 ->
@@ -149,7 +149,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
           response: inspect(response)
         )
 
-        case Jason.decode(raw_body) do
+        case JSON.decode(raw_body) do
           {:ok, json_response} ->
             # Errors are in JSON body
             {:error, {status, json_response}}
@@ -277,7 +277,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     {:ok, JOSE.JWT.peek(token)}
   rescue
     ArgumentError -> {:error, "Could not parse token"}
-    Jason.DecodeError -> {:error, "Could not decode token json"}
+    JSON.DecodeError -> {:error, "Could not decode token json"}
     _ -> {:error, "Unknown error while parsing jwt"}
   end
 end

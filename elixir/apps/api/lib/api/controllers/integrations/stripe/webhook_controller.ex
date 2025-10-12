@@ -13,7 +13,7 @@ defmodule API.Integrations.Stripe.WebhookController do
          :ok <- verify_timestamp(timestamp, @tolerance),
          secret = Billing.fetch_webhook_signing_secret!(),
          :ok <- verify_signatures(signatures, timestamp, body, secret),
-         {:ok, payload} <- Jason.decode(body),
+         {:ok, payload} <- JSON.decode(body),
          :ok <- Billing.handle_events([payload]) do
       send_resp(conn, 200, "")
     else

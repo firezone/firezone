@@ -82,9 +82,9 @@ defmodule Domain.ComponentVersions do
   end
 
   defp decode_versions_response(response) do
-    case Jason.decode(response, keys: :atoms) do
-      {:ok, %{apple: _, android: _, gateway: _, gui: _, headless: _} = decoded_json} ->
-        decoded_json
+    case JSON.decode(response) do
+      {:ok, %{"apple" => apple, "android" => android, "gateway" => gateway, "gui" => gui, "headless" => headless}} ->
+        %{apple: apple, android: android, gateway: gateway, gui: gui, headless: headless}
 
       _ ->
         fetch_config!()

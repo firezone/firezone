@@ -254,15 +254,15 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         }
       ]
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!(groups))
-      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, JSON.encode!(groups))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, JSON.encode!(users))
 
       Enum.each(groups, fn group ->
         OktaDirectory.mock_group_members_list_endpoint(
           bypass,
           group["id"],
           200,
-          Jason.encode!(members)
+          JSON.encode!(members)
         )
       end)
 
@@ -359,8 +359,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
           provider_identifier: "USER_JDOE_ID"
         )
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!([]))
-      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, JSON.encode!([]))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, JSON.encode!(users))
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
@@ -681,28 +681,28 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       deleted_membership = Fixtures.Actors.create_membership(account: account, group: group)
       Fixtures.Actors.create_membership(account: account, actor: actor, group: deleted_group)
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!(groups))
-      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, JSON.encode!(groups))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, JSON.encode!(users))
 
       OktaDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_ENGINEERING_ID",
         200,
-        Jason.encode!(two_members)
+        JSON.encode!(two_members)
       )
 
       OktaDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_DEVOPS_ID",
         200,
-        Jason.encode!(one_member)
+        JSON.encode!(one_member)
       )
 
       OktaDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_FINANCE_ID",
         200,
-        Jason.encode!([])
+        JSON.encode!([])
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -798,8 +798,8 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         }
       ]
 
-      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!([]))
-      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!(users))
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, JSON.encode!([]))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, JSON.encode!(users))
 
       {:ok, pid} = Task.Supervisor.start_link()
       assert execute(%{task_supervisor: pid}) == :ok
@@ -872,14 +872,14 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
         }
       ]
 
-      OktaDirectory.mock_users_list_endpoint(bypass, 200, Jason.encode!([]))
-      OktaDirectory.mock_groups_list_endpoint(bypass, 200, Jason.encode!(groups))
+      OktaDirectory.mock_users_list_endpoint(bypass, 200, JSON.encode!([]))
+      OktaDirectory.mock_groups_list_endpoint(bypass, 200, JSON.encode!(groups))
 
       OktaDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_DEVOPS_ID",
         200,
-        Jason.encode!([])
+        JSON.encode!([])
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -909,7 +909,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
             "api/v1/groups"
           ] do
         Bypass.stub(bypass, "GET", path, fn conn ->
-          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+          Plug.Conn.send_resp(conn, 401, JSON.encode!(response))
         end)
       end
 
@@ -962,7 +962,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
             "api/v1/groups"
           ] do
         Bypass.stub(bypass, "GET", path, fn conn ->
-          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+          Plug.Conn.send_resp(conn, 401, JSON.encode!(response))
         end)
       end
 

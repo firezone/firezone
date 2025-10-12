@@ -79,7 +79,7 @@ defmodule Domain.Mocks.WorkOSDirectory do
 
       conn
       |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
-      |> Plug.Conn.send_resp(200, Jason.encode!(resp))
+      |> Plug.Conn.send_resp(200, JSON.encode!(resp))
     end)
 
     bypass
@@ -105,7 +105,7 @@ defmodule Domain.Mocks.WorkOSDirectory do
 
       conn
       |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
-      |> Plug.Conn.send_resp(200, Jason.encode!(resp))
+      |> Plug.Conn.send_resp(200, JSON.encode!(resp))
     end)
 
     bypass
@@ -131,7 +131,7 @@ defmodule Domain.Mocks.WorkOSDirectory do
 
       conn
       |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
-      |> Plug.Conn.send_resp(200, Jason.encode!(resp))
+      |> Plug.Conn.send_resp(200, JSON.encode!(resp))
     end)
 
     bypass

@@ -37,7 +37,7 @@ defmodule Domain.Mocks.Stripe do
               resp
             )
 
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
       end
     end)
 
@@ -70,7 +70,7 @@ defmodule Domain.Mocks.Stripe do
           conn = Plug.Conn.fetch_query_params(conn)
           conn = fetch_request_params(conn)
           send(test_pid, {:bypass_request, conn})
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
       end
     end)
 
@@ -102,7 +102,7 @@ defmodule Domain.Mocks.Stripe do
         :ok ->
           conn = Plug.Conn.fetch_query_params(conn)
           send(test_pid, {:bypass_request, conn})
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
       end
     end)
 
@@ -125,7 +125,7 @@ defmodule Domain.Mocks.Stripe do
         :ok ->
           conn = Plug.Conn.fetch_query_params(conn)
           send(test_pid, {:bypass_request, conn})
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(customer))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(customer))
       end
     end)
 
@@ -148,7 +148,7 @@ defmodule Domain.Mocks.Stripe do
         :ok ->
           conn = Plug.Conn.fetch_query_params(conn)
           send(test_pid, {:bypass_request, conn})
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(product))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(product))
       end
     end)
 
@@ -207,7 +207,7 @@ defmodule Domain.Mocks.Stripe do
         :ok ->
           conn = Plug.Conn.fetch_query_params(conn)
           send(test_pid, {:bypass_request, conn})
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
       end
     end)
 
@@ -251,7 +251,7 @@ defmodule Domain.Mocks.Stripe do
           conn = Plug.Conn.fetch_query_params(conn)
           conn = fetch_request_params(conn)
           send(test_pid, {:bypass_request, conn})
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
       end
     end)
 
@@ -282,7 +282,7 @@ defmodule Domain.Mocks.Stripe do
           conn = Plug.Conn.fetch_query_params(conn)
           conn = fetch_request_params(conn)
           send(test_pid, {:bypass_request, conn})
-          Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+          Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
       end
     end)
 
@@ -442,7 +442,7 @@ defmodule Domain.Mocks.Stripe do
     }
 
     conn
-    |> Plug.Conn.send_resp(429, Jason.encode!(error_response))
+    |> Plug.Conn.send_resp(429, JSON.encode!(error_response))
   end
 
   def customer_object(id, name, email \\ nil, metadata \\ %{}) do
