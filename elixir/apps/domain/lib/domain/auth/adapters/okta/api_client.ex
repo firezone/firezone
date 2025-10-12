@@ -277,7 +277,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClient do
     {:ok, JOSE.JWT.peek(token)}
   rescue
     ArgumentError -> {:error, "Could not parse token"}
-    JSON.DecodeError -> {:error, "Could not decode token json"}
+    Jason.DecodeError -> {:error, "Could not decode token json"}
     _ -> {:error, "Unknown error while parsing jwt"}
   end
 end
