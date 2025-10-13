@@ -402,6 +402,14 @@ impl ClientState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
+        let tun_config = self.tun_config.as_ref()?;
+
+        if !tun_config.ip.is_ip(packet.source()) {
+            tracing::debug!(?packet, "Dropping packet with bad source IP");
+
+            return None;
+        }
+
         let non_dns_packet = match self.try_handle_dns(packet, now) {
             ControlFlow::Break(()) => return None,
             ControlFlow::Continue(non_dns_packet) => non_dns_packet,

@@ -862,7 +862,9 @@ impl TunnelTest {
                     c.set_new_dns_servers(config.dns_by_sentinel);
                     c.ipv4_routes = config.ipv4_routes;
                     c.ipv6_routes = config.ipv6_routes;
-                    c.search_domain = config.search_domain
+                    c.search_domain = config.search_domain;
+                    c.tcp_dns_client
+                        .set_source_interface(config.ip.v4, config.ip.v6);
                 });
 
                 Ok(())
