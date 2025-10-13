@@ -211,6 +211,11 @@ impl TunDeviceManager {
     }
 }
 
+/// Worker function that triggers a link-scope route sync on every notification from netlink.
+///
+/// We add/remove routes one-by-one and a new notification is triggered for each.
+/// To avoid unnecessary syncs, we debounce the sync by delaying its start by 500ms, resetting
+/// the timer on each new notification.
 async fn sync_link_scope_routes_worker(
     mut messages: futures::channel::mpsc::UnboundedReceiver<(
         netlink_packet_core::NetlinkMessage<netlink_packet_route::RouteNetlinkMessage>,
