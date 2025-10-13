@@ -80,7 +80,6 @@ impl TunDeviceManager {
 
         subscribe_to_route_changes(&mut cxn)?;
 
-        // Spawn task to monitor network changes and sync link-scope routes
         let connection = Connection {
             link_scope_route_sync_task: tokio::spawn(sync_link_scope_routes_worker(
                 messages,
