@@ -98,19 +98,8 @@ impl TunDeviceManager {
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
-        let name = Self::IFACE_NAME;
-
         let handle = &self.connection.handle;
-        let index = handle
-            .link()
-            .get()
-            .match_name(name.to_string())
-            .execute()
-            .try_next()
-            .await?
-            .ok_or_else(|| anyhow!("Interface '{name}' does not exist"))?
-            .header
-            .index;
+        let index = tun_device_index(handle).await?;
 
         let ips = handle
             .address()
@@ -188,17 +177,7 @@ impl TunDeviceManager {
         tracing::info!(?new_routes, "Setting new routes");
 
         let handle = &self.connection.handle;
-
-        let index = handle
-            .link()
-            .get()
-            .match_name(Self::IFACE_NAME.to_string())
-            .execute()
-            .try_next()
-            .await?
-            .context("No interface")?
-            .header
-            .index;
+        let index = tun_device_index(handle).await?;
 
         for route in self.routes.difference(&new_routes) {
             remove_route(route, index, handle).await;
@@ -214,16 +193,7 @@ impl TunDeviceManager {
 }
 
 async fn set_txqueue_length(handle: Handle, queue_len: u32) -> Result<()> {
-    let index = handle
-        .link()
-        .get()
-        .match_name(TunDeviceManager::IFACE_NAME.to_string())
-        .execute()
-        .try_next()
-        .await?
-        .context("No interface")?
-        .header
-        .index;
+    let index = tun_device_index(&handle).await?;
 
     handle
         .link()
@@ -258,6 +228,21 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
         ));
 
     rule
+}
+
+async fn tun_device_index(handle: &Handle) -> Result<u32, anyhow::Error> {
+    let index = handle
+        .link()
+        .get()
+        .match_name(TunDeviceManager::IFACE_NAME.to_string())
+        .execute()
+        .try_next()
+        .await?
+        .context("No interface")?
+        .header
+        .index;
+
+    Ok(index)
 }
 
 fn make_route_v4(idx: u32, route: Ipv4Network) -> RouteMessage {
