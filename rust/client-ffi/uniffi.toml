@@ -1,0 +1,16 @@
+# UniFFI Configuration for client-ffi
+
+[bindings.swift]
+# Enable experimental features for better async support
+experimental_sendable_value_types = true
+
+# Configure async runtime for Swift
+# This enables proper async/await bridging from Rust to Swift
+async_runtime = "tokio"
+
+# Generate proper Swift concurrency annotations
+generate_immutable_records = true
+
+[bindings.kotlin]
+# Kotlin configuration (already working)
+async_runtime = "tokio"

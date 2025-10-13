@@ -21,12 +21,12 @@ outputs:
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
       (runner.os == 'macOS' && '--workspace') ||
-      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude apple-client-ffi --exclude client-ffi') }}
+      (runner.os == 'Windows' && '--workspace --exclude ebpf-turn-router --exclude client-ffi') }}
   test-packages:
     description: Testable packages for the current OS
     value: ${{
       (runner.os == 'Linux' && '--workspace') ||
-      (runner.os == 'macOS' && '-p apple-client-ffi -p client-shared -p firezone-tunnel -p snownet') ||
+      (runner.os == 'macOS' && '-p client-ffi -p client-shared -p firezone-tunnel -p snownet') ||
       (runner.os == 'Windows' && '-p client-shared -p connlib-model -p firezone-bin-shared -p firezone-gui-client -p firezone-headless-client -p firezone-logging -p firezone-telemetry -p firezone-tunnel -p gui-smoke-test -p http-test-server -p ip-packet -p phoenix-channel -p snownet -p socket-factory -p tun') }}
   nightly_version:
     description: The nightly version of Rust
