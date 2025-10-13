@@ -7,9 +7,8 @@ defmodule Domain.Mailer.Notifications do
   embed_templates "notifications/*.text", suffix: "_text"
 
   def outdated_gateway_email(account, gateways, incompatible_client_count, email) do
-    url_generator = Application.fetch_env!(:domain, :url_generator)
-
-    outdated_clients_url = url_generator.outdated_clients_url(account.id)
+    outdated_clients_url =
+      url("/#{account.id}/clients", %{clients_order_by: "clients:asc:last_seen_version"})
 
     default_email()
     |> subject("Firezone Gateway Upgrade Available")

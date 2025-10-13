@@ -202,8 +202,6 @@ config :domain, outbound_email_adapter_configured?: false
 
 config :domain, web_external_url: "http://localhost:13000"
 
-config :domain, :url_generator, Web.UrlGenerator
-
 ###############################
 ##### Web #####################
 ###############################

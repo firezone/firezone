@@ -77,20 +77,4 @@ defmodule Domain.Mailer.AuthEmail do
       subject: subject
     )
   end
-
-  def url(path, params \\ %{}) do
-    Domain.Config.fetch_env!(:domain, :web_external_url)
-    |> URI.parse()
-    |> URI.append_path(path)
-    |> maybe_append_query(params)
-    |> URI.to_string()
-  end
-
-  def maybe_append_query(uri, params) do
-    if Enum.empty?(params) do
-      uri
-    else
-      URI.append_query(uri, URI.encode_query(params))
-    end
-  end
 end
