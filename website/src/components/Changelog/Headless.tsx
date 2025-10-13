@@ -13,6 +13,10 @@ export default function Headless({ os }: { os: OS }) {
         <ChangeItem pull="10533">
           Improves reliability by caching DNS responses as per their TTL.
         </ChangeItem>
+        <ChangeItem pull="10553">
+          Adds a CLI switch `--activate-internet-resource`. By default, the
+          Internet Resource is now off.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.3" date={new Date("2025-09-10")}>
         <ChangeItem pull="10126">
