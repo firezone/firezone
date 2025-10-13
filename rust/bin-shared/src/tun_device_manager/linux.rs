@@ -1,7 +1,7 @@
 //! Virtual network interface
 
 use crate::FIREZONE_MARK;
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
 use firezone_telemetry::otel;
 use futures::{SinkExt, TryStreamExt};
@@ -12,7 +12,9 @@ use libc::{
     open,
 };
 use netlink_packet_route::link::LinkAttribute;
-use netlink_packet_route::route::{RouteMessage, RouteProtocol, RouteScope};
+use netlink_packet_route::route::{
+    RouteAddress, RouteAttribute, RouteMessage, RouteProtocol, RouteScope,
+};
 use netlink_packet_route::rule::RuleAction;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
@@ -271,13 +273,29 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
     };
 
+    execute_add_route_message(message, handle).await;
+}
+
+async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+    let message = match route {
+        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
+        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
+    };
+
+    execute_del_route_message(message, handle).await
+}
+
+async fn execute_add_route_message(message: RouteMessage, handle: &Handle) {
+    let route = route_from_message(&message).map(tracing::field::display);
+    let iface_idx = iface_index_from_message(&message).map(tracing::field::display);
+
     let Err(err) = handle.route().add(message).execute().await else {
-        tracing::debug!(%route, iface_idx = %idx, "Created new route");
+        tracing::debug!(route, iface_idx, "Created new route");
 
         return;
     };
 
-    // We expect this to be called often with an already existing route since set_routes always calls for all routes
+    // We expect this to be called often with an already existing route
     if matches!(&err, NetlinkError(err) if err.raw_code() == -EEXIST) {
         return;
     }
@@ -287,19 +305,15 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to add route: {}", err_with_src(&err));
+    tracing::warn!(route, "Failed to add route: {}", err_with_src(&err));
 }
 
-async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
-    let message = match route {
-        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
-        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
-    };
+async fn execute_del_route_message(message: RouteMessage, handle: &Handle) {
+    let route = route_from_message(&message).map(tracing::field::display);
+    let iface_idx = iface_index_from_message(&message).map(tracing::field::display);
 
-    let res = handle.route().del(message).execute().await;
-
-    let Err(err) = res else {
-        tracing::debug!(%route, iface_idx = %idx, "Removed route");
+    let Err(err) = handle.route().del(message).execute().await else {
+        tracing::debug!(route, iface_idx, "Removed route");
 
         return;
     };
@@ -315,9 +329,37 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to remove route: {}", err_with_src(&err));
+    tracing::warn!(route, "Failed to remove route: {}", err_with_src(&err));
 }
 
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "We don't want to match all attributes."
+)]
+fn iface_index_from_message(message: &RouteMessage) -> Option<u32> {
+    message.attributes.iter().find_map(|a| match a {
+        RouteAttribute::Oif(idx) => Some(*idx),
+        _ => None,
+    })
+}
+
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "We don't want to match all attributes."
+)]
+fn route_from_message(message: &RouteMessage) -> Option<IpNetwork> {
+    let netmask = message.header.destination_prefix_length;
+
+    message.attributes.iter().find_map(|a| match a {
+        RouteAttribute::Destination(RouteAddress::Inet(ipv4)) => {
+            Some(IpNetwork::V4(Ipv4Network::new(*ipv4, netmask).ok()?))
+        }
+        RouteAttribute::Destination(RouteAddress::Inet6(ipv6)) => {
+            Some(IpNetwork::V6(Ipv6Network::new(*ipv6, netmask).ok()?))
+        }
+        _ => None,
+    })
+}
 const QUEUE_SIZE: usize = 10_000;
 
 #[derive(Debug)]
