@@ -109,7 +109,7 @@ struct Cli {
         env = "FIREZONE_INTERNET_RESOURCE_ACTIVE",
         default_value_t = false
     )]
-    internet_resource_active: bool,
+    activate_internet_resource: bool,
 
     /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
@@ -351,7 +351,7 @@ fn try_main() -> Result<()> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            cli.internet_resource_active,
+            cli.activate_internet_resource,
             rt.handle().clone(),
         );
 
