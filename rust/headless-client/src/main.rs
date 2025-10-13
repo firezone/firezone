@@ -106,7 +106,7 @@ struct Cli {
     /// To actually use the Internet Resource, the user must also have a policy granting access to the Internet Resource.
     #[arg(
         long,
-        env = "FIREZONE_INTERNET_RESOURCE_ACTIVE",
+        env = "FIREZONE_ACTIVATE_INTERNET_RESOURCE",
         default_value_t = false
     )]
     activate_internet_resource: bool,
