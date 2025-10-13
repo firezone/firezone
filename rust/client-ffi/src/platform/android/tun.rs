@@ -54,20 +54,20 @@ impl Tun {
     ///
     /// - The file descriptor must be open.
     /// - The file descriptor must not get closed by anyone else.
-    pub unsafe fn from_fd(fd: RawFd) -> io::Result<Self> {
+    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
         let name = unsafe { interface_name(fd)? };
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        runtime.spawn(otel::metrics::periodic_system_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        runtime.spawn(otel::metrics::periodic_system_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),

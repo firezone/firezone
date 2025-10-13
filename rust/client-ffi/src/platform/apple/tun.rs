@@ -20,22 +20,38 @@ pub struct Tun {
 }
 
 impl Tun {
-    pub fn new() -> io::Result<Self> {
+    pub fn new(runtime: &tokio::runtime::Handle) -> io::Result<Self> {
         let fd = search_for_tun_fd()?;
         set_non_blocking(fd)?;
+        Self::from_fd_inner(fd, runtime)
+    }
+
+    /// Create a new [`Tun`] from a raw file descriptor.
+    ///
+    /// # Safety
+    ///
+    /// - The file descriptor must be open.
+    /// - The file descriptor must not get closed by anyone else.
+    /// - On iOS/macOS, the NetworkExtension owns the fd, so we don't take ownership.
+    pub unsafe fn from_fd(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
+        set_non_blocking(fd)?;
+        Self::from_fd_inner(fd, runtime)
+    }
+
+    fn from_fd_inner(fd: RawFd, runtime: &tokio::runtime::Handle) -> io::Result<Self> {
         let name = name(fd)?;
 
         let (inbound_tx, inbound_rx) = mpsc::channel(QUEUE_SIZE);
         let (outbound_tx, outbound_rx) = mpsc::channel(QUEUE_SIZE);
 
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        runtime.spawn(otel::metrics::periodic_system_queue_length(
             outbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
                 otel::attr::network_io_direction_transmit(),
             ],
         ));
-        tokio::spawn(otel::metrics::periodic_system_queue_length(
+        runtime.spawn(otel::metrics::periodic_system_queue_length(
             inbound_tx.downgrade(),
             [
                 otel::attr::queue_item_ip_packet(),
