@@ -121,8 +121,12 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
     let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
 
-    let token = get_firezone_token(cli.token.clone()).await
-        .context("Couldn't read FIREZONE_TOKEN: Please provide it through the env variable or systemd credential")?;
+    let token = match cli.token.clone() {
+        Some(token) => token,
+        None => read_systemd_credential("FIREZONE_TOKEN")
+            .await
+            .context("Failed to read `FIREZONE_TOKEN` systemd credential")?,
+    };
 
     if cli.is_telemetry_allowed() {
         telemetry
@@ -257,21 +261,6 @@ async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     let device_id = device_id::get_or_create_at(Path::new(ID_PATH))?;
 
     Ok(device_id.id)
-}
-
-async fn get_firezone_token(env_token: Option<SecretString>) -> Result<SecretString> {
-    if let Some(token) = env_token {
-        return Ok(token);
-    }
-
-    match read_systemd_credential("FIREZONE_TOKEN").await {
-        Ok(token) => return Ok(token),
-        Err(e) => {
-            tracing::debug!("Failed to read `FIREZONE_TOKEN` systemd credential: {e:#}");
-        }
-    }
-
-    anyhow::bail!("FIREZONE_TOKEN not found in environment variable or systemd credential")
 }
 
 async fn read_systemd_credential(name: &str) -> Result<SecretString> {
@@ -451,7 +440,7 @@ mod tests {
             std::env::set_var("CREDENTIALS_DIRECTORY", temp_dir.path());
         }
 
-        let result = get_firezone_token(None).await.unwrap();
+        let result = read_systemd_credential("FIREZONE_TOKEN").await.unwrap();
         assert_eq!(result.expose_secret(), "systemd-token");
 
         // Clean up
