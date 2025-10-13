@@ -36,23 +36,6 @@ defmodule Web.Live.Settings.IdentityProviders.MicrosoftEntra.ShowTest do
                }}}
   end
 
-  test "renders deleted provider without action buttons", %{
-    account: account,
-    provider: provider,
-    identity: identity,
-    conn: conn
-  } do
-    provider = Fixtures.Auth.delete_provider(provider)
-
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/identity_providers/microsoft_entra/#{provider}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
-  end
-
   test "renders breadcrumbs item", %{
     account: account,
     provider: provider,

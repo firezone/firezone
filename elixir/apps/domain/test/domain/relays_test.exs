@@ -363,7 +363,6 @@ defmodule Domain.RelaysTest do
       assert delete_group(group, subject) == {:error, :unauthorized}
     end
 
-    # TODO: HARD-DELETE - This test should be moved to Tokens since it holds the FK
     test "deletes all tokens when group is deleted", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
       Fixtures.Relays.create_token(account: account, group: group)
@@ -380,7 +379,6 @@ defmodule Domain.RelaysTest do
       assert length(tokens) == 0
     end
 
-    # TODO: HARD-DELETE - This test should be moved to Tokens since it holds the FK
     test "deletes all relays when group is deleted", %{account: account, subject: subject} do
       group = Fixtures.Relays.create_group(account: account)
       Fixtures.Relays.create_relay(account: account, group: group)
@@ -395,7 +393,6 @@ defmodule Domain.RelaysTest do
       assert length(relays) == 0
     end
 
-    # TODO: HARD-DELETE - This test should be moved to Tokens since it holds the FK
     test "deletes associated tokens", %{
       account: account,
       subject: subject

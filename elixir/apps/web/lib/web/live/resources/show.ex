@@ -92,19 +92,8 @@ defmodule Web.Resources.Show do
     <.section>
       <:title>
         Resource: <code>{@resource.name}</code>
-
-        <span
-          :if={not is_nil(@resource.deleted_at) and is_nil(@resource.replaced_by_resource_id)}
-          }
-          class="text-red-600"
-        >
-          (deleted)
-        </span>
-        <span :if={not is_nil(@resource.replaced_by_resource_id)} class={["text-red-500"]}>
-          (replaced)
-        </span>
       </:title>
-      <:action :if={@resource.type != :internet && is_nil(@resource.deleted_at)}>
+      <:action :if={@resource.type != :internet}>
         <.edit_button navigate={~p"/#{@account}/resources/#{@resource.id}/edit?#{@params}"}>
           Edit Resource
         </.edit_button>
@@ -117,14 +106,6 @@ defmodule Web.Resources.Show do
             </:label>
             <:value>
               {@resource.id}
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={not is_nil(@resource.deleted_at)}>
-            <:label>
-              Persistent ID
-            </:label>
-            <:value>
-              {@resource.persistent_id}
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -212,36 +193,6 @@ defmodule Web.Resources.Show do
               </div>
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={
-            not is_nil(@resource.deleted_at) and not is_nil(@resource.replaced_by_resource)
-          }>
-            <:label>
-              Replaced by Resource
-            </:label>
-            <:value>
-              <.link
-                navigate={~p"/#{@account}/resources/#{@resource.replaced_by_resource}"}
-                class={["text-accent-600"] ++ link_style()}
-              >
-                {@resource.replaced_by_resource.name}
-              </.link>
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={
-            not is_nil(@resource.deleted_at) and not is_nil(@resource.replaces_resource)
-          }>
-            <:label>
-              Replaced Resource
-            </:label>
-            <:value>
-              <.link
-                navigate={~p"/#{@account}/resources/#{@resource.replaces_resource}"}
-                class={["text-accent-600"] ++ link_style()}
-              >
-                {@resource.replaces_resource.name}
-              </.link>
-            </:value>
-          </.vertical_table_row>
           <.vertical_table_row>
             <:label>
               Created
@@ -288,14 +239,10 @@ defmodule Web.Resources.Show do
             <.group account={@account} group={policy.actor_group} />
           </:col>
           <:col :let={policy} label="status">
-            <%= if is_nil(policy.deleted_at) do %>
-              <%= if is_nil(policy.disabled_at) do %>
-                Active
-              <% else %>
-                Disabled
-              <% end %>
+            <%= if is_nil(policy.disabled_at) do %>
+              Active
             <% else %>
-              Deleted
+              Disabled
             <% end %>
           </:col>
           <:empty>
@@ -372,7 +319,7 @@ defmodule Web.Resources.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@resource.deleted_at) and @resource.type != :internet}>
+    <.danger_zone :if={@resource.type != :internet}>
       <:action>
         <.button_with_confirmation
           id="delete_resource"
@@ -409,9 +356,7 @@ defmodule Web.Resources.Show do
       Resources.fetch_resource_by_id(socket.assigns.resource.id, socket.assigns.subject,
         preload: [
           :gateway_groups,
-          :policies,
-          replaced_by_resource: [],
-          replaces_resource: []
+          :policies
         ]
       )
 
@@ -451,23 +396,11 @@ defmodule Web.Resources.Show do
   end
 
   defp fetch_resource("internet", subject) do
-    Resources.fetch_internet_resource(subject,
-      preload: [
-        :gateway_groups,
-        replaced_by_resource: [],
-        replaces_resource: []
-      ]
-    )
+    Resources.fetch_internet_resource(subject, preload: [:gateway_groups])
   end
 
   defp fetch_resource(id, subject) do
-    Resources.fetch_resource_by_id_or_persistent_id(id, subject,
-      preload: [
-        :gateway_groups,
-        replaced_by_resource: [],
-        replaces_resource: []
-      ]
-    )
+    Resources.fetch_resource_by_id(id, subject, preload: [:gateway_groups])
   end
 
   defp format_ip_stack(:dual), do: "Dual-stack (IPv4 and IPv6)"

@@ -8,7 +8,6 @@ defmodule Web.Resources.Edit do
            Resources.fetch_resource_by_id(id, socket.assigns.subject,
              preload: :gateway_groups,
              filter: [
-               deleted?: false,
                type: ["cidr", "dns", "ip"]
              ]
            ) do

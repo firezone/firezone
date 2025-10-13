@@ -10,23 +10,6 @@ defmodule Domain.Changes.Hooks.ClientsTest do
   end
 
   describe "update/2" do
-    test "soft-delete broadcasts deleted client" do
-      client = Fixtures.Clients.create_client()
-      :ok = PubSub.Account.subscribe(client.account_id)
-
-      old_data = %{"id" => client.id, "deleted_at" => nil, "account_id" => client.account_id}
-
-      data = %{
-        "id" => client.id,
-        "deleted_at" => DateTime.utc_now(),
-        "account_id" => client.account_id
-      }
-
-      assert :ok == on_update(0, old_data, data)
-      assert_receive %Change{op: :delete, old_struct: %Clients.Client{} = deleted_client, lsn: 0}
-      assert deleted_client.id == client.id
-    end
-
     test "update broadcasts updated client" do
       account = Fixtures.Accounts.create_account()
       client = Fixtures.Clients.create_client(account: account)

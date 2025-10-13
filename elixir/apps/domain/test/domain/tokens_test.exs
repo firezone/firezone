@@ -424,7 +424,7 @@ defmodule Domain.TokensTest do
     end
 
     test "does not extend expiration of deleted tokens", %{token: token} do
-      token = Fixtures.Tokens.delete_token(token)
+      {:ok, token} = Fixtures.Tokens.delete_token(token)
       assert update_token(token, %{}) == {:error, :not_found}
     end
   end
@@ -462,7 +462,7 @@ defmodule Domain.TokensTest do
                    ]
                  ]}}
 
-      refute Repo.get(Tokens.Token, token.id).deleted_at
+      assert Repo.get(Tokens.Token, token.id)
     end
 
     test "does not delete tokens that belong to other accounts", %{
@@ -531,22 +531,21 @@ defmodule Domain.TokensTest do
 
       assert {:ok, _token} = delete_token_for(subject)
 
-      refute Repo.get(Tokens.Token, token.id).deleted_at
+      assert Repo.get(Tokens.Token, token.id)
     end
   end
 
-  ## TODO: HARD-DELETE - This test should not be relevant after soft deletion is removed
-  # describe "delete_tokens_for/1" do
-  #  test "deletes browser tokens for given identity", %{account: account} do
-  #    actor = Fixtures.Actors.create_actor(account: account)
-  #    identity = Fixtures.Auth.create_identity(account: account, actor: actor)
-  #    token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
+  describe "delete_tokens_for/1" do
+    test "deletes browser tokens for given identity", %{account: account} do
+      actor = Fixtures.Actors.create_actor(account: account)
+      identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+      token = Fixtures.Tokens.create_token(type: :browser, account: account, identity: identity)
 
-  #    assert {:ok, _num_tokens} = delete_tokens_for(identity)
+      assert {:ok, _num_tokens} = delete_tokens_for(identity)
 
-  #    refute Repo.get(Tokens.Token, token.id)
-  #  end
-  # end
+      refute Repo.get(Tokens.Token, token.id)
+    end
+  end
 
   describe "delete_tokens_for/2" do
     test "deletes browser tokens for given actor", %{account: account, subject: subject} do

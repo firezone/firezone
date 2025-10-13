@@ -54,9 +54,8 @@ defmodule Web.Settings.ApiClients.Show do
     <.section>
       <:title>
         API Client: <span class="font-medium">{@actor.name}</span>
-        <span :if={Actors.actor_deleted?(@actor)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action :if={is_nil(@actor.deleted_at)}>
+      <:action>
         <.edit_button navigate={~p"/#{@account}/settings/api_clients/#{@actor}/edit"}>
           Edit API Client
         </.edit_button>
@@ -81,7 +80,7 @@ defmodule Web.Settings.ApiClients.Show do
           Disable API Client
         </.button_with_confirmation>
       </:action>
-      <:action :if={is_nil(@actor.deleted_at) and Actors.actor_disabled?(@actor)}>
+      <:action :if={Actors.actor_disabled?(@actor)}>
         <.button_with_confirmation
           id="enable"
           style="warning"
@@ -210,7 +209,7 @@ defmodule Web.Settings.ApiClients.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@actor.deleted_at)}>
+    <.danger_zone>
       <:action>
         <.button_with_confirmation
           id="delete_api_client"

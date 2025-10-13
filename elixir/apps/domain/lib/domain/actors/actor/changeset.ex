@@ -85,13 +85,6 @@ defmodule Domain.Actors.Actor.Changeset do
     |> put_change(:disabled_at, nil)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def delete_actor(%Actor{} = actor) do
-    actor
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
-  end
-
   defp validate_granted_permissions(changeset, subject) do
     validate_change(changeset, :type, fn :type, granted_actor_type ->
       if Auth.can_grant_role?(subject, granted_actor_type) do

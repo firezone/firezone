@@ -4,11 +4,7 @@ defmodule Web.Sites.NewToken do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, group} <-
-           Gateways.fetch_group_by_id(id, socket.assigns.subject,
-             filter: [
-               deleted?: false
-             ]
-           ) do
+           Gateways.fetch_group_by_id(id, socket.assigns.subject) do
       {group, token, env} =
         if connected?(socket) do
           {:ok, token, encoded_token} = Gateways.create_token(group, %{}, socket.assigns.subject)

@@ -11,15 +11,10 @@ defmodule Domain.Actors.Group do
 
     field :last_synced_at, :utc_datetime_usec
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` column is removed from DB
-    has_many :policies, Domain.Policies.Policy,
-      foreign_key: :actor_group_id,
-      where: [deleted_at: nil]
+    has_many :policies, Domain.Policies.Policy, foreign_key: :actor_group_id
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
 
-    # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,
-    # ref https://github.com/firezone/firezone/issues/2162
     has_many :actors, through: [:memberships, :actor]
 
     field :created_by, Ecto.Enum, values: ~w[actor identity provider system]a
@@ -27,8 +22,6 @@ defmodule Domain.Actors.Group do
 
     belongs_to :account, Domain.Accounts.Account
 
-    # TODO: HARD-DELETE - Remove field after soft deletion is removed
-    field :deleted_at, :utc_datetime_usec
     timestamps()
   end
 end

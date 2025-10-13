@@ -3,8 +3,7 @@ defmodule Web.Clients.Edit do
   alias Domain.Clients
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject),
-         nil <- client.deleted_at do
+    with {:ok, client} <- Clients.fetch_client_by_id(id, socket.assigns.subject) do
       changeset = Clients.change_client(client)
 
       socket =

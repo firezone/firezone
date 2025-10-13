@@ -376,7 +376,8 @@ defmodule Domain.Fixtures.Auth do
   end
 
   def delete_provider(provider) do
-    update!(provider, deleted_at: DateTime.utc_now())
+    {:ok, deleted_provider} = Repo.delete(provider)
+    deleted_provider
   end
 
   def fail_provider_sync(provider) do
@@ -460,7 +461,7 @@ defmodule Domain.Fixtures.Auth do
   end
 
   def delete_identity(identity) do
-    update!(identity, deleted_at: DateTime.utc_now())
+    Repo.delete(identity)
   end
 
   def build_context(attrs \\ %{}) do

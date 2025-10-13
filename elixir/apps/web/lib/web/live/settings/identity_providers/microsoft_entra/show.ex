@@ -10,14 +10,11 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
            Auth.fetch_identities_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups_count_by_provider_id} <-
            Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject) do
-      safe_to_delete_actors_count = Actors.count_synced_actors_for_provider(provider)
-
       {:ok,
        assign(socket,
          provider: provider,
          identities_count_by_provider_id: identities_count_by_provider_id,
          groups_count_by_provider_id: groups_count_by_provider_id,
-         safe_to_delete_actors_count: safe_to_delete_actors_count,
          page_title: "Identity Provider #{provider.name}"
        )}
     else
@@ -41,16 +38,15 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
       <:title>
         Identity Provider: <code>{@provider.name}</code>
         <span :if={not is_nil(@provider.disabled_at)} class="text-primary-600">(disabled)</span>
-        <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action :if={is_nil(@provider.deleted_at)}>
+      <:action>
         <.edit_button navigate={
           ~p"/#{@account}/settings/identity_providers/microsoft_entra/#{@provider.id}/edit"
         }>
           Edit
         </.edit_button>
       </:action>
-      <:action :if={is_nil(@provider.deleted_at)}>
+      <:action>
         <.button_with_confirmation
           :if={is_nil(@provider.disabled_at)}
           id="disable"
@@ -95,7 +91,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
           </.button_with_confirmation>
         <% end %>
       </:action>
-      <:action :if={is_nil(@provider.deleted_at)}>
+      <:action>
         <.button
           style="primary"
           href={~p"/#{@account.id}/settings/identity_providers/microsoft_entra/#{@provider}/redirect"}
@@ -122,29 +118,6 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
         </.header>
 
         <.flash_group flash={@flash} />
-
-        <.flash :if={@safe_to_delete_actors_count > 0} kind={:warning}>
-          You have {@safe_to_delete_actors_count} Actor(s) that were synced from this provider and do not have any other identities.
-          <.button_with_confirmation
-            id="delete_stale_actors"
-            style="danger"
-            icon="hero-trash-solid"
-            on_confirm="delete_stale_actors"
-            class="mt-4"
-          >
-            <:dialog_title>Confirm deletion of stale Actors</:dialog_title>
-            <:dialog_content>
-              Are you sure you want to delete all Actors that were synced synced from this provider and do not have any other identities?
-            </:dialog_content>
-            <:dialog_confirm_button>
-              Delete Actors
-            </:dialog_confirm_button>
-            <:dialog_cancel_button>
-              Cancel
-            </:dialog_cancel_button>
-            Delete Actors
-          </.button_with_confirmation>
-        </.flash>
 
         <div class="bg-white overflow-hidden">
           <.vertical_table id="provider">
@@ -204,7 +177,7 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@provider.deleted_at)}>
+    <.danger_zone>
       <:action>
         <.button_with_confirmation
           id="delete_identity_provider"
@@ -236,17 +209,6 @@ defmodule Web.Settings.IdentityProviders.MicrosoftEntra.Show do
 
     {:noreply,
      push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/identity_providers")}
-  end
-
-  def handle_event("delete_stale_actors", _params, socket) do
-    :ok =
-      Actors.delete_stale_synced_actors_for_provider(
-        socket.assigns.provider,
-        socket.assigns.subject
-      )
-
-    {:noreply,
-     push_navigate(socket, to: view_provider(socket.assigns.account, socket.assigns.provider))}
   end
 
   def handle_event("enable", _params, socket) do

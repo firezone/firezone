@@ -5,12 +5,6 @@ defmodule Domain.Resources.Resource.Query do
     from(resources in Domain.Resources.Resource, as: :resources)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def not_deleted do
-    all()
-    |> where([resources: resources], is_nil(resources.deleted_at))
-  end
-
   def filter_features(queryable, %Domain.Accounts.Account{} = account) do
     if Domain.Accounts.internet_resource_enabled?(account) do
       queryable
@@ -29,14 +23,6 @@ defmodule Domain.Resources.Resource.Query do
 
   def by_type(queryable, type) do
     where(queryable, [resources: resources], resources.type == ^type)
-  end
-
-  def by_id_or_persistent_id(queryable, id) do
-    where(queryable, [resources: resources], resources.id == ^id)
-    |> or_where(
-      [resources: resources],
-      resources.persistent_id == ^id and is_nil(resources.replaced_by_resource_id)
-    )
   end
 
   def by_account_id(queryable, account_id) do
@@ -85,7 +71,7 @@ defmodule Domain.Resources.Resource.Query do
       |> limit(^limit)
 
     actor_groups_subquery =
-      Domain.Actors.Group.Query.not_deleted()
+      Domain.Actors.Group.Query.all()
       |> where([groups: groups], groups.id in subquery(policies_subquery))
 
     join(
@@ -135,7 +121,7 @@ defmodule Domain.Resources.Resource.Query do
       |> join(
         :inner,
         [connections: connections],
-        gateway_group in ^Domain.Gateways.Group.Query.not_deleted(),
+        gateway_group in ^Domain.Gateways.Group.Query.all(),
         on: gateway_group.id == connections.gateway_group_id,
         as: ^binding
       )
@@ -168,11 +154,6 @@ defmodule Domain.Resources.Resource.Query do
         fun: &filter_by_gateway_group_id/2
       },
       %Domain.Repo.Filter{
-        name: :deleted?,
-        type: :boolean,
-        fun: &filter_deleted/1
-      },
-      %Domain.Repo.Filter{
         name: :type,
         type: {:list, :string},
         fun: &filter_by_type/2
@@ -191,11 +172,6 @@ defmodule Domain.Resources.Resource.Query do
   def filter_by_gateway_group_id(queryable, gateway_group_id) do
     {with_joined_connections(queryable),
      dynamic([connections: connections], connections.gateway_group_id == ^gateway_group_id)}
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def filter_deleted(queryable) do
-    {queryable, dynamic([resources: resources], not is_nil(resources.deleted_at))}
   end
 
   def filter_by_type(queryable, {:not_in, types}) do

@@ -45,7 +45,6 @@ defmodule Domain.Actors.Group.Sync do
     {:ok, groups}
   end
 
-  # TODO: Update after `deleted_at` is removed from DB
   defp plan_groups_update(groups, provider_identifiers) do
     identifiers_set = MapSet.new(provider_identifiers)
 
@@ -53,9 +52,6 @@ defmodule Domain.Actors.Group.Sync do
       Enum.reduce(groups, {provider_identifiers, []}, fn group, {upsert, delete} ->
         cond do
           MapSet.member?(identifiers_set, group.provider_identifier) ->
-            {upsert, delete}
-
-          !is_nil(group.deleted_at) ->
             {upsert, delete}
 
           true ->

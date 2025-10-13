@@ -1,5 +1,5 @@
 defmodule API.Relay.ChannelTest do
-  use API.ChannelCase, async: true
+  use API.ChannelCase, async: false
   alias Domain.{Relays, Repo}
 
   setup do

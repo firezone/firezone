@@ -5,12 +5,6 @@ defmodule Domain.Relays.Relay.Query do
     from(relays in Domain.Relays.Relay, as: :relays)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def not_deleted do
-    all()
-    |> where([relays: relays], is_nil(relays.deleted_at))
-  end
-
   def by_id(queryable, id) do
     where(queryable, [relays: relays], relays.id == ^id)
   end
@@ -53,11 +47,6 @@ defmodule Domain.Relays.Relay.Query do
 
   def prefer_global(queryable) do
     order_by(queryable, [relays: relays], asc_nulls_first: relays.account_id)
-  end
-
-  # TODO: HARD-DELETE - Remove or possibly rename after `deleted_at` is removed from DB
-  def returning_not_deleted(queryable) do
-    select(queryable, [relays: relays], relays)
   end
 
   def with_preloaded_user(queryable) do

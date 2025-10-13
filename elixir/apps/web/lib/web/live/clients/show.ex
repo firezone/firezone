@@ -73,10 +73,9 @@ defmodule Web.Clients.Show do
     <.section>
       <:title>
         Client Details
-        <span :if={not is_nil(@client.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
 
-      <:action :if={is_nil(@client.deleted_at)}>
+      <:action>
         <.edit_button navigate={~p"/#{@account}/clients/#{@client}/edit"}>
           Edit Client
         </.edit_button>
@@ -182,7 +181,7 @@ defmodule Web.Clients.Show do
         Information about the device that the Client is running on.
       </:help>
 
-      <:action :if={is_nil(@client.deleted_at) and not is_nil(@client.verified_at)}>
+      <:action :if={not is_nil(@client.verified_at)}>
         <.button_with_confirmation
           id="remove_client_verification"
           style="danger"
@@ -203,7 +202,7 @@ defmodule Web.Clients.Show do
           Remove verification
         </.button_with_confirmation>
       </:action>
-      <:action :if={is_nil(@client.deleted_at) and is_nil(@client.verified_at)}>
+      <:action :if={is_nil(@client.verified_at)}>
         <.button_with_confirmation
           id="verify_client"
           style="warning"
@@ -331,7 +330,7 @@ defmodule Web.Clients.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@client.deleted_at)}>
+    <.danger_zone>
       <:action>
         <.button_with_confirmation
           id="delete_client"
