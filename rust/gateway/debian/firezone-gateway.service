@@ -8,6 +8,8 @@ Documentation=https://www.firezone.dev/kb
 [Service]
 
 # DO NOT EDIT ANY OF THE BELOW BY HAND. USE "systemctl edit firezone-gateway" INSTEAD TO CUSTOMIZE.
+# Most configuration should go as environment variables into `/etc/firezone-gateway/env`.
+# The access token should be in `/etc/firezone-gateway/token`.
 
 Type=simple
 User=firezone
@@ -15,16 +17,8 @@ Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
 
-# Environment variables
-Environment="FIREZONE_NAME=$FIREZONE_NAME"
-Environment="FIREZONE_ID=$FIREZONE_ID"
-Environment="FIREZONE_TOKEN=$FIREZONE_TOKEN"
-Environment="FIREZONE_API_URL=$FIREZONE_API_URL"
-Environment="RUST_LOG=$RUST_LOG"
-Environment="RUST_LOG_STYLE=never"
-Environment="LOG_FORMAT=$FIREZONE_LOG_FORMAT"
-Environment="GOOGLE_CLOUD_PROJECT_ID=$FIREZONE_GOOGLE_CLOUD_PROJECT_ID"
-Environment="OTLP_GRPC_ENDPOINT=$FIREZONE_OTLP_GRPC_ENDPOINT"
+LoadCredential=FIREZONE_TOKEN:/etc/firezone-gateway/token
+EnvironmentFile=/etc/firezone-gateway/env
 
 ExecStartPre=/usr/bin/firezone-gateway-init
 
