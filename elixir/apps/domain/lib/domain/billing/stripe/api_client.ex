@@ -177,13 +177,13 @@ defmodule Domain.Billing.Stripe.APIClient do
     |> Finch.request(@pool_name)
     |> case do
       {:ok, %Finch.Response{body: response, status: status}} when status in 200..299 ->
-        {:ok, Jason.decode!(response)}
+        {:ok, JSON.decode!(response)}
 
       {:ok, %Finch.Response{status: status}} when status in 500..599 ->
         {:error, :retry_later}
 
       {:ok, %Finch.Response{body: response, status: status}} ->
-        case Jason.decode(response) do
+        case JSON.decode(response) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
 

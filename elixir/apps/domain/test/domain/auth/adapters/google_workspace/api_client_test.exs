@@ -69,7 +69,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_users(api_token) ==
@@ -90,7 +90,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{})
+        JSON.encode!(%{})
       )
 
       assert list_users(api_token) == {:error, :invalid_response}
@@ -103,7 +103,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => "invalid data"})
+        JSON.encode!(%{"users" => "invalid data"})
       )
 
       assert list_users(api_token) == {:error, :invalid_response}
@@ -113,7 +113,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
       GoogleWorkspaceDirectory.mock_users_list_endpoint(bypass, 200, "invalid json")
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} = list_users(api_token)
+      assert {:error, {:invalid_byte, _offset, _byte}} = list_users(api_token)
     end
   end
 
@@ -168,7 +168,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_organization_units(api_token) ==
@@ -189,7 +189,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{})
+        JSON.encode!(%{})
       )
 
       assert {:ok, organization_units} = list_organization_units(api_token)
@@ -203,7 +203,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => "invalid data"})
+        JSON.encode!(%{"organizationUnits" => "invalid data"})
       )
 
       assert list_organization_units(api_token) == {:error, :invalid_response}
@@ -214,7 +214,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       bypass = Bypass.open()
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(bypass, 200, "invalid json")
 
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} =
+      assert {:error, {:invalid_byte, _offset, _byte}} =
                list_organization_units(api_token)
     end
   end
@@ -272,7 +272,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_groups(api_token) ==
@@ -293,7 +293,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{})
+        JSON.encode!(%{})
       )
 
       assert list_groups(api_token) == {:error, :invalid_response}
@@ -306,7 +306,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => "invalid data"})
+        JSON.encode!(%{"groups" => "invalid data"})
       )
 
       assert list_groups(api_token) == {:error, :invalid_response}
@@ -316,7 +316,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(bypass, 200, "invalid json")
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} = list_groups(api_token)
+      assert {:error, {:invalid_byte, _offset, _byte}} = list_groups(api_token)
     end
   end
 
@@ -378,7 +378,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
         bypass,
         group_id,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_group_members(api_token, group_id) ==
@@ -403,7 +403,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
         bypass,
         group_id,
         200,
-        Jason.encode!(%{})
+        JSON.encode!(%{})
       )
 
       assert list_group_members(api_token, group_id) == {:ok, []}
@@ -418,7 +418,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
         bypass,
         group_id,
         200,
-        Jason.encode!(%{"members" => "invalid data"})
+        JSON.encode!(%{"members" => "invalid data"})
       )
 
       assert list_group_members(api_token, group_id) == {:error, :invalid_response}
@@ -436,7 +436,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.APIClientTest do
         "invalid json"
       )
 
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} =
+      assert {:error, {:invalid_byte, _offset, _byte}} =
                list_group_members(api_token, group_id)
     end
   end

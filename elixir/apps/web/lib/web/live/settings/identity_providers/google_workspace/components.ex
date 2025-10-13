@@ -7,7 +7,7 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
     |> Map.put("adapter", :google_workspace)
     |> Map.update("adapter_config", %{}, fn adapter_config ->
       Map.update(adapter_config, "service_account_json_key", nil, fn service_account_json_key ->
-        case Jason.decode(service_account_json_key) do
+        case JSON.decode(service_account_json_key) do
           {:ok, map} -> map
           {:error, _} -> service_account_json_key
         end
@@ -303,12 +303,12 @@ defmodule Web.Settings.IdentityProviders.GoogleWorkspace.Components do
                           changeset
                           |> Ecto.Changeset.apply_changes()
                           |> Map.from_struct()
-                          |> Jason.encode!()
+                          |> JSON.encode!()
 
                         %GoogleWorkspace.Settings.GoogleServiceAccountKey{} = struct ->
                           struct
                           |> Map.from_struct()
-                          |> Jason.encode!()
+                          |> JSON.encode!()
 
                         binary when is_binary(binary) ->
                           binary

@@ -27,7 +27,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
     Bypass.stub(bypass, "POST", token_endpoint_path, fn conn ->
       conn = Plug.Conn.fetch_query_params(conn)
       send(test_pid, {:bypass_request, conn})
-      Plug.Conn.send_resp(conn, 200, Jason.encode!(resp))
+      Plug.Conn.send_resp(conn, 200, JSON.encode!(resp))
     end)
 
     override_token_endpoint("http://localhost:#{bypass.port}/")
@@ -40,7 +40,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
 
     resp =
       resp ||
-        Jason.encode!(%{
+        JSON.encode!(%{
           "kind" => "admin#directory#users",
           "users" => [
             %{
@@ -231,7 +231,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
 
     resp =
       resp ||
-        Jason.encode!(%{
+        JSON.encode!(%{
           "kind" => "admin#directory#org_units",
           "etag" => "\"FwDC5ZsOozt9qI9yuJfiMqwYO1K-EEG4flsXSov57CY/Y3F7O3B5N0h0C_3Pd3OMifRNUVc\"",
           "organizationUnits" => [
@@ -267,7 +267,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
 
     resp =
       resp ||
-        Jason.encode!(%{
+        JSON.encode!(%{
           "kind" => "admin#directory#groups",
           "etag" => "\"FwDC5ZsOozt9qI9yuJfiMqwYO1K-EEG4flsXSov57CY/Y3F7O3B5N0h0C_3Pd3OMifRNUVc\"",
           "groups" => [
@@ -334,7 +334,7 @@ defmodule Domain.Mocks.GoogleWorkspaceDirectory do
 
     resp =
       resp ||
-        Jason.encode!(%{
+        JSON.encode!(%{
           "kind" => "admin#directory#members",
           "etag" => "\"XXX\"",
           "members" => [

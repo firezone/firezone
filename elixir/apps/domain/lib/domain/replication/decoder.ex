@@ -203,8 +203,8 @@ defmodule Domain.Replication.Decoder do
 
   # PostgreSQL double-encodes JSON in arrays, so we need to decode twice
   defp double_decode_json(json_str) do
-    with {:ok, first} <- Jason.decode(json_str),
-         {:ok, second} <- Jason.decode(first) do
+    with {:ok, first} <- JSON.decode(json_str),
+         {:ok, second} <- JSON.decode(first) do
       second
     else
       {:error, reason} ->

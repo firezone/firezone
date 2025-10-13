@@ -76,7 +76,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_users(api_token) ==
@@ -97,7 +97,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{})
+        JSON.encode!(%{})
       )
 
       assert list_users(api_token) == {:error, :invalid_response}
@@ -110,7 +110,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => "invalid data"})
+        JSON.encode!(%{"users" => "invalid data"})
       )
 
       assert list_users(api_token) == {:error, :invalid_response}
@@ -120,7 +120,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       api_token = Ecto.UUID.generate()
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_users_list_endpoint(bypass, 200, "invalid json")
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} = list_users(api_token)
+      assert {:error, {:invalid_byte, _offset, _byte}} = list_users(api_token)
     end
   end
 
@@ -177,7 +177,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_groups(api_token) ==
@@ -198,7 +198,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{})
+        JSON.encode!(%{})
       )
 
       assert list_groups(api_token) == {:error, :invalid_response}
@@ -211,7 +211,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => "invalid data"})
+        JSON.encode!(%{"groups" => "invalid data"})
       )
 
       assert list_groups(api_token) == {:error, :invalid_response}
@@ -222,7 +222,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
       bypass = Bypass.open()
       MicrosoftEntraDirectory.mock_groups_list_endpoint(bypass, 200, "invalid json")
 
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} =
+      assert {:error, {:invalid_byte, _offset, _byte}} =
                list_groups(api_token)
     end
   end
@@ -285,7 +285,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         bypass,
         group_id,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_group_members(api_token, group_id) ==
@@ -309,7 +309,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         bypass,
         group_id,
         200,
-        Jason.encode!(%{})
+        JSON.encode!(%{})
       )
 
       assert list_group_members(api_token, group_id) == {:error, :invalid_response}
@@ -324,7 +324,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         bypass,
         group_id,
         200,
-        Jason.encode!(%{"group_members" => "invalid data"})
+        JSON.encode!(%{"group_members" => "invalid data"})
       )
 
       assert list_group_members(api_token, group_id) == {:error, :invalid_response}
@@ -342,7 +342,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClientTest do
         "invalid json"
       )
 
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} =
+      assert {:error, {:invalid_byte, _offset, _byte}} =
                list_group_members(api_token, group_id)
     end
   end

@@ -283,7 +283,7 @@ defmodule Domain.ConfigTest do
 
       Errors:
 
-       - `**SENSITIVE-VALUE-REDACTED**`: unexpected byte at position 0: 0x66 ("f")\
+       - `**SENSITIVE-VALUE-REDACTED**`: {:unexpected_end, 3}\
       """
 
       assert_raise RuntimeError, message, fn ->

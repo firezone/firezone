@@ -25,7 +25,7 @@ defmodule API.PolicyControllerTest do
         conn
         |> authorize_conn(actor)
         |> put_req_header("content-type", "application/json")
-        |> get("/policies", Jason.encode!(%{}))
+        |> get("/policies", JSON.encode!(%{}))
 
       assert %{
                "data" => data,

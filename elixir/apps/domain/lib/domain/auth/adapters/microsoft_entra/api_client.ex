@@ -135,7 +135,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
     response = Finch.request(request, @pool_name)
 
     with {:ok, %Finch.Response{body: raw_body, status: 200}} <- response,
-         {:ok, json_response} <- Jason.decode(raw_body),
+         {:ok, json_response} <- JSON.decode(raw_body),
          {:ok, list} when is_list(list) <- Map.fetch(json_response, "value") do
       {:ok, list, json_response["@odata.nextLink"]}
     else
@@ -158,7 +158,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.APIClient do
           response: inspect(response)
         )
 
-        case Jason.decode(raw_body) do
+        case JSON.decode(raw_body) do
           {:ok, json_response} ->
             {:error, {status, json_response}}
 

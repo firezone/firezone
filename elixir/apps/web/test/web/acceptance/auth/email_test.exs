@@ -144,7 +144,7 @@ defmodule Web.Acceptance.SignIn.EmailTest do
       |> Finch.request(TestPool)
 
     text_body =
-      Jason.decode!(body)
+      JSON.decode!(body)
       |> Map.fetch!("data")
       |> Enum.find(&(&1["subject"] == "Firezone sign in token" and email in &1["to"]))
       |> Map.fetch!("text_body")

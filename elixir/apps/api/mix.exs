@@ -58,7 +58,6 @@ defmodule API.MixProject do
       {:logger_json, "~> 7.0"},
 
       # Other deps
-      {:jason, "~> 1.2"},
       {:remote_ip, "~> 1.1"},
       {:open_api_spex, "~> 3.22.0"},
       {:ymlr, "~> 5.0"},

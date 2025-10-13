@@ -93,7 +93,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
       OktaDirectory.mock_users_list_endpoint(
         bypass,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_users(provider) ==
@@ -115,7 +115,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
       OktaDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"invalid" => "format"})
+        JSON.encode!(%{"invalid" => "format"})
       )
 
       assert list_users(provider) == {:error, :invalid_response}
@@ -127,7 +127,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
     } do
       OktaDirectory.mock_users_list_endpoint(bypass, 200, "invalid json")
 
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} =
+      assert {:error, {:invalid_byte, _offset, _byte}} =
                list_users(provider)
     end
   end
@@ -185,7 +185,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
       OktaDirectory.mock_groups_list_endpoint(
         bypass,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_groups(provider) ==
@@ -207,7 +207,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
       OktaDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"invalid" => "format"})
+        JSON.encode!(%{"invalid" => "format"})
       )
 
       assert list_groups(provider) == {:error, :invalid_response}
@@ -219,7 +219,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
     } do
       OktaDirectory.mock_groups_list_endpoint(bypass, 200, "invalid json")
 
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} =
+      assert {:error, {:invalid_byte, _offset, _byte}} =
                list_groups(provider)
     end
   end
@@ -281,7 +281,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
         bypass,
         group_id,
         400,
-        Jason.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
+        JSON.encode!(%{"error" => %{"code" => 400, "message" => "Bad Request"}})
       )
 
       assert list_group_members(provider, group_id) ==
@@ -307,7 +307,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
         bypass,
         group_id,
         200,
-        Jason.encode!(%{"invalid" => "data"})
+        JSON.encode!(%{"invalid" => "data"})
       )
 
       assert list_group_members(provider, group_id) == {:error, :invalid_response}
@@ -326,7 +326,7 @@ defmodule Domain.Auth.Adapters.Okta.APIClientTest do
         "invalid json"
       )
 
-      assert {:error, %Jason.DecodeError{data: "invalid json"}} =
+      assert {:error, {:invalid_byte, _offset, _byte}} =
                list_group_members(provider, group_id)
     end
   end

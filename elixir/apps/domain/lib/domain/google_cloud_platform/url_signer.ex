@@ -60,12 +60,12 @@ defmodule Domain.GoogleCloudPlatform.URLSigner do
         :post,
         sign_endpoint_url,
         [{"Authorization", "Bearer #{oauth_access_token}"}],
-        Jason.encode!(%{"payload" => string_to_sign})
+        JSON.encode!(%{"payload" => string_to_sign})
       )
 
     with {:ok, %Finch.Response{status: 200, body: response}} <-
            Finch.request(request, Domain.GoogleCloudPlatform.Finch),
-         {:ok, %{"signedBlob" => signature}} <- Jason.decode(response) do
+         {:ok, %{"signedBlob" => signature}} <- JSON.decode(response) do
       signature =
         signature
         |> Base.decode64!()

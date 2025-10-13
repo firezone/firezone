@@ -6,7 +6,7 @@ defmodule Domain.Mocks.OpenIDConnect do
 
     Bypass.stub(bypass, "GET", "/.well-known/jwks.json", fn conn ->
       attrs = %{"keys" => [jwks()]}
-      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+      Plug.Conn.resp(conn, 200, JSON.encode!(attrs))
     end)
 
     Bypass.stub(bypass, "GET", "/.well-known/openid-configuration", fn conn ->
@@ -91,7 +91,7 @@ defmodule Domain.Mocks.OpenIDConnect do
         "request_parameter_supported" => false
       }
 
-      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+      Plug.Conn.resp(conn, 200, JSON.encode!(attrs))
     end)
 
     bypass
@@ -103,7 +103,7 @@ defmodule Domain.Mocks.OpenIDConnect do
     Bypass.expect(bypass, "POST", "/oauth/token", fn conn ->
       conn = fetch_conn_params(conn)
       send(test_pid, {:request, conn})
-      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+      Plug.Conn.resp(conn, 200, JSON.encode!(attrs))
     end)
 
     bypass
@@ -115,7 +115,7 @@ defmodule Domain.Mocks.OpenIDConnect do
     Bypass.expect(bypass, "POST", "/oauth/token", fn conn ->
       conn = fetch_conn_params(conn)
       send(test_pid, {:request, conn})
-      Plug.Conn.resp(conn, 401, Jason.encode!(attrs))
+      Plug.Conn.resp(conn, 401, JSON.encode!(attrs))
     end)
 
     bypass
@@ -143,7 +143,7 @@ defmodule Domain.Mocks.OpenIDConnect do
 
       conn = fetch_conn_params(conn)
       send(test_pid, {:request, conn})
-      Plug.Conn.resp(conn, 200, Jason.encode!(attrs))
+      Plug.Conn.resp(conn, 200, JSON.encode!(attrs))
     end)
 
     bypass
@@ -171,7 +171,7 @@ defmodule Domain.Mocks.OpenIDConnect do
     {_alg, token} =
       jwk
       |> JOSE.JWK.from()
-      |> JOSE.JWS.sign(Jason.encode!(claims), %{"alg" => "RS256"})
+      |> JOSE.JWS.sign(JSON.encode!(claims), %{"alg" => "RS256"})
       |> JOSE.JWS.compact()
 
     token
@@ -200,7 +200,7 @@ defmodule Domain.Mocks.OpenIDConnect do
   end
 
   defp fetch_conn_params(conn) do
-    opts = Plug.Parsers.init(parsers: [:urlencoded, :json], pass: ["*/*"], json_decoder: Jason)
+    opts = Plug.Parsers.init(parsers: [:urlencoded, :json], pass: ["*/*"], json_decoder: JSON)
 
     conn
     |> Plug.Conn.fetch_query_params()

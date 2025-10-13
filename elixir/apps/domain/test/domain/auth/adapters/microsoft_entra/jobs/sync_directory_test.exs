@@ -81,13 +81,13 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => groups})
+        JSON.encode!(%{"value" => groups})
       )
 
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => users})
+        JSON.encode!(%{"value" => users})
       )
 
       Enum.each(groups, fn group ->
@@ -95,7 +95,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
           bypass,
           group["id"],
           200,
-          Jason.encode!(%{"value" => members})
+          JSON.encode!(%{"value" => members})
         )
       end)
 
@@ -184,13 +184,13 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => []})
+        JSON.encode!(%{"value" => []})
       )
 
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => users})
+        JSON.encode!(%{"value" => users})
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -236,20 +236,20 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => groups})
+        JSON.encode!(%{"value" => groups})
       )
 
       MicrosoftEntraDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_ALL_ID",
         200,
-        Jason.encode!(%{"value" => []})
+        JSON.encode!(%{"value" => []})
       )
 
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => []})
+        JSON.encode!(%{"value" => []})
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -304,13 +304,13 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => []})
+        JSON.encode!(%{"value" => []})
       )
 
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => users})
+        JSON.encode!(%{"value" => users})
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -440,34 +440,34 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
       MicrosoftEntraDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => groups})
+        JSON.encode!(%{"value" => groups})
       )
 
       MicrosoftEntraDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"value" => users})
+        JSON.encode!(%{"value" => users})
       )
 
       MicrosoftEntraDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_ALL_ID",
         200,
-        Jason.encode!(%{"value" => two_members})
+        JSON.encode!(%{"value" => two_members})
       )
 
       MicrosoftEntraDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_ENGINEERING_ID",
         200,
-        Jason.encode!(%{"value" => one_member})
+        JSON.encode!(%{"value" => one_member})
       )
 
       MicrosoftEntraDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_FINANCE_ID",
         200,
-        Jason.encode!(%{"value" => []})
+        JSON.encode!(%{"value" => []})
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -539,7 +539,7 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
             "v1.0/groups"
           ] do
         Bypass.stub(bypass, "GET", path, fn conn ->
-          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+          Plug.Conn.send_resp(conn, 401, JSON.encode!(response))
         end)
       end
 

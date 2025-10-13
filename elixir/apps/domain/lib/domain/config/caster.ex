@@ -24,12 +24,12 @@ defmodule Domain.Config.Caster do
     end
   end
 
-  def cast(json, :embed) when is_binary(json), do: Jason.decode(json)
-  def cast(json, {:embed, _schema}) when is_binary(json), do: Jason.decode(json)
-  def cast(json, :map) when is_binary(json), do: Jason.decode(json)
-  def cast(json, {:map, _term}) when is_binary(json), do: Jason.decode(json)
-  def cast(json, :json_array) when is_binary(json), do: Jason.decode(json)
-  def cast(json, {:json_array, _term}) when is_binary(json), do: Jason.decode(json)
+  def cast(json, :embed) when is_binary(json), do: JSON.decode(json)
+  def cast(json, {:embed, _schema}) when is_binary(json), do: JSON.decode(json)
+  def cast(json, :map) when is_binary(json), do: JSON.decode(json)
+  def cast(json, {:map, _term}) when is_binary(json), do: JSON.decode(json)
+  def cast(json, :json_array) when is_binary(json), do: JSON.decode(json)
+  def cast(json, {:json_array, _term}) when is_binary(json), do: JSON.decode(json)
 
   def cast("true", :boolean), do: {:ok, true}
   def cast("false", :boolean), do: {:ok, false}
