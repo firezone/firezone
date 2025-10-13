@@ -21,8 +21,6 @@ LoadCredential=FIREZONE_TOKEN:/etc/firezone-gateway/token
 EnvironmentFile=/etc/firezone-gateway/env
 
 ExecStartPre=/usr/bin/firezone-gateway-init
-
-# ExecStart script
 ExecStart=/usr/bin/firezone-gateway
 
 # Restart on failure
