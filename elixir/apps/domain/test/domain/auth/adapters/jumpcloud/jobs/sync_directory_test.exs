@@ -581,7 +581,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         Bypass.stub(bypass, "GET", path, fn conn ->
           conn
           |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
-          |> Plug.Conn.send_resp(401, Jason.encode!(response))
+          |> Plug.Conn.send_resp(401, JSON.encode!(response))
         end)
       end
 
@@ -607,7 +607,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         Bypass.stub(bypass, "GET", path, fn conn ->
           conn
           |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
-          |> Plug.Conn.send_resp(500, Jason.encode!(%{}))
+          |> Plug.Conn.send_resp(500, JSON.encode!(%{}))
         end)
       end
 
@@ -627,7 +627,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         Bypass.stub(bypass, "GET", path, fn conn ->
           conn
           |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
-          |> Plug.Conn.send_resp(500, Jason.encode!(%{}))
+          |> Plug.Conn.send_resp(500, JSON.encode!(%{}))
         end)
       end
 
@@ -658,7 +658,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         Bypass.stub(bypass, "GET", path, fn conn ->
           conn
           |> Plug.Conn.prepend_resp_headers([{"content-type", "application/json"}])
-          |> Plug.Conn.send_resp(500, Jason.encode!(%{}))
+          |> Plug.Conn.send_resp(500, JSON.encode!(%{}))
         end)
       end
 

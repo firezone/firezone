@@ -105,12 +105,12 @@ defmodule Domain.Config.FetcherTest do
       assert fetch_source_and_config(Test, :array, %{"ARRAY" => "0,1,2"}) ==
                {:ok, {:env, "ARRAY"}, [0, 1, 2]}
 
-      json = Jason.encode!(%{foo: :bar})
+      json = JSON.encode!(%{foo: :bar})
 
       assert fetch_source_and_config(Test, :json, %{"JSON" => json}) ==
                {:ok, {:env, "JSON"}, foo: "bar"}
 
-      json = Jason.encode!([%{foo: :bar}])
+      json = JSON.encode!([%{foo: :bar}])
 
       assert fetch_source_and_config(Test, :json_array, %{"JSON_ARRAY" => json}) ==
                {:ok, {:env, "JSON_ARRAY"}, [%{"foo" => "bar"}]}
@@ -123,17 +123,15 @@ defmodule Domain.Config.FetcherTest do
     end
 
     test "applies dump function" do
-      json = Jason.encode!(%{foo: :bar})
+      json = JSON.encode!(%{foo: :bar})
 
       assert fetch_source_and_config(Test, :json, %{"JSON" => json}) ==
                {:ok, {:env, "JSON"}, foo: "bar"}
     end
 
     test "does not apply dump function on invalid values" do
-      assert fetch_source_and_config(Test, :json, %{"JSON" => "foo"}) ==
-               {:error,
-                {{"foo", ["unexpected byte at position 0: 0x66 (\"f\")"]},
-                 [module: __MODULE__.Test, key: :json, source: {:env, "JSON"}]}}
+      assert {:error, {{"foo", [unexpected_end: 3]}, _meta}} =
+               fetch_source_and_config(Test, :json, %{"JSON" => "foo"})
     end
 
     test "returns error when type can't be casted" do
@@ -156,12 +154,12 @@ defmodule Domain.Config.FetcherTest do
                    source: {:env, "INTEGER"}
                  ]}}
 
-      json = Jason.encode!(%{foo: :bar})
+      json = JSON.encode!(%{foo: :bar})
 
       assert fetch_source_and_config(Test, :json, %{"JSON" => json}) ==
                {:ok, {:env, "JSON"}, foo: "bar"}
 
-      json = Jason.encode!([%{foo: :bar}])
+      json = JSON.encode!([%{foo: :bar}])
 
       assert fetch_source_and_config(Test, :json_array, %{"JSON_ARRAY" => json}) ==
                {:ok, {:env, "JSON_ARRAY"}, [%{"foo" => "bar"}]}

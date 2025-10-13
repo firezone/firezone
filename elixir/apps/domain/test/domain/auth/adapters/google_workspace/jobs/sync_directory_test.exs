@@ -40,19 +40,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => []})
+        JSON.encode!(%{"groups" => []})
       )
 
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => []})
+        JSON.encode!(%{"organizationUnits" => []})
       )
 
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => []})
+        JSON.encode!(%{"users" => []})
       )
 
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
@@ -72,7 +72,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
         Plug.Conn.send_resp(
           conn,
           401,
-          Jason.encode!(%{
+          JSON.encode!(%{
             "error" => "unauthorized_client",
             "error_description" =>
               "Client is unauthorized to retrieve access tokens using this method, or client not authorized for any of the scopes requested."
@@ -100,19 +100,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => []})
+        JSON.encode!(%{"groups" => []})
       )
 
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => []})
+        JSON.encode!(%{"organizationUnits" => []})
       )
 
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => []})
+        JSON.encode!(%{"users" => []})
       )
 
       provider
@@ -281,19 +281,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => groups})
+        JSON.encode!(%{"groups" => groups})
       )
 
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => organization_units})
+        JSON.encode!(%{"organizationUnits" => organization_units})
       )
 
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => users})
+        JSON.encode!(%{"users" => users})
       )
 
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
@@ -303,7 +303,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
           bypass,
           group["id"],
           200,
-          Jason.encode!(%{"members" => members})
+          JSON.encode!(%{"members" => members})
         )
       end)
 
@@ -398,19 +398,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => []})
+        JSON.encode!(%{"groups" => []})
       )
 
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => []})
+        JSON.encode!(%{"organizationUnits" => []})
       )
 
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => users})
+        JSON.encode!(%{"users" => users})
       )
 
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
@@ -607,19 +607,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => groups})
+        JSON.encode!(%{"groups" => groups})
       )
 
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => organization_units})
+        JSON.encode!(%{"organizationUnits" => organization_units})
       )
 
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => users})
+        JSON.encode!(%{"users" => users})
       )
 
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
@@ -628,14 +628,14 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
         bypass,
         "GROUP_ID1",
         200,
-        Jason.encode!(%{"members" => two_members})
+        JSON.encode!(%{"members" => two_members})
       )
 
       GoogleWorkspaceDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_ID2",
         200,
-        Jason.encode!(%{"members" => one_member})
+        JSON.encode!(%{"members" => one_member})
       )
 
       {:ok, pid} = Task.Supervisor.start_link()
@@ -731,19 +731,19 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => []})
+        JSON.encode!(%{"groups" => []})
       )
 
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => []})
+        JSON.encode!(%{"organizationUnits" => []})
       )
 
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => users})
+        JSON.encode!(%{"users" => users})
       )
 
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
@@ -806,26 +806,26 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
       GoogleWorkspaceDirectory.mock_groups_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"groups" => groups})
+        JSON.encode!(%{"groups" => groups})
       )
 
       GoogleWorkspaceDirectory.mock_organization_units_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"organizationUnits" => []})
+        JSON.encode!(%{"organizationUnits" => []})
       )
 
       GoogleWorkspaceDirectory.mock_users_list_endpoint(
         bypass,
         200,
-        Jason.encode!(%{"users" => []})
+        JSON.encode!(%{"users" => []})
       )
 
       GoogleWorkspaceDirectory.mock_group_members_list_endpoint(
         bypass,
         "GROUP_ID1",
         200,
-        Jason.encode!(%{"members" => []})
+        JSON.encode!(%{"members" => []})
       )
 
       GoogleWorkspaceDirectory.mock_token_endpoint(bypass)
@@ -894,7 +894,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
             "/admin/directory/v1/groups"
           ] do
         Bypass.stub(bypass, "GET", path, fn conn ->
-          Plug.Conn.send_resp(conn, 403, Jason.encode!(response))
+          Plug.Conn.send_resp(conn, 403, JSON.encode!(response))
         end)
       end
 
@@ -986,7 +986,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
             "/admin/directory/v1/groups"
           ] do
         Bypass.stub(bypass, "GET", path, fn conn ->
-          Plug.Conn.send_resp(conn, 401, Jason.encode!(response))
+          Plug.Conn.send_resp(conn, 401, JSON.encode!(response))
         end)
       end
 
@@ -1062,7 +1062,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
             "/admin/directory/v1/groups"
           ] do
         Bypass.stub(bypass, "GET", path, fn conn ->
-          Plug.Conn.send_resp(conn, 403, Jason.encode!(response))
+          Plug.Conn.send_resp(conn, 403, JSON.encode!(response))
         end)
       end
 

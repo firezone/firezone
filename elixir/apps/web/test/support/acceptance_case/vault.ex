@@ -119,7 +119,7 @@ defmodule Web.AcceptanceCase.Vault do
     body =
       cond do
         is_map(params_or_body) ->
-          Jason.encode!(params_or_body)
+          JSON.encode!(params_or_body)
 
         is_binary(params_or_body) ->
           params_or_body
@@ -134,7 +134,7 @@ defmodule Web.AcceptanceCase.Vault do
         :ok
 
       {:ok, status, _headers, body} ->
-        {:ok, {status, Jason.decode!(body)}}
+        {:ok, {status, JSON.decode!(body)}}
 
       {:error, reason} ->
         {:error, reason}

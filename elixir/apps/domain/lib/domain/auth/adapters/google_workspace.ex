@@ -128,7 +128,7 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace do
             "exp" => unix_timestamp + 3600,
             "iat" => unix_timestamp
           }
-          |> Jason.encode!()
+          |> JSON.encode!()
 
         jwt =
           JOSE.JWS.sign(jwk, claim_set, jws)

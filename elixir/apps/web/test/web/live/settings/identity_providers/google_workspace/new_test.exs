@@ -63,7 +63,7 @@ defmodule Web.Live.Settings.IdentityProviders.GoogleWorkspace.NewTest do
         discovery_document_uri:
           "http://localhost:#{bypass.port}/.well-known/openid-configuration",
         service_account_json_key:
-          Jason.encode!(%{
+          JSON.encode!(%{
             "type" => "service_account",
             "project_id" => "firezone-test",
             "private_key_id" => "e1fc5c12b490aaa1602f3de9133551952b749db3",

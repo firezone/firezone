@@ -45,7 +45,7 @@ defmodule Domain.GoogleCloudPlatform do
 
     case Finch.request(request, __MODULE__.Finch) do
       {:ok, %Finch.Response{status: 200, body: response}} ->
-        %{"access_token" => access_token, "expires_in" => expires_in} = Jason.decode!(response)
+        %{"access_token" => access_token, "expires_in" => expires_in} = JSON.decode!(response)
         access_token_expires_at = DateTime.utc_now() |> DateTime.add(expires_in - 1, :second)
         {:ok, access_token, access_token_expires_at}
 
@@ -123,7 +123,7 @@ defmodule Domain.GoogleCloudPlatform do
          request = Finch.build(:get, url, [{"Authorization", "Bearer #{access_token}"}]),
          {:ok, %Finch.Response{status: 200, body: response}} <-
            Finch.request(request, __MODULE__.Finch),
-         {:ok, %{"items" => items}} <- Jason.decode(response) do
+         {:ok, %{"items" => items}} <- JSON.decode(response) do
       instances =
         Enum.flat_map(items, fn
           {_zone, %{"instances" => instances}} ->
@@ -191,7 +191,7 @@ defmodule Domain.GoogleCloudPlatform do
       |> Keyword.fetch!(:cloud_metrics_endpoint_url)
       |> String.replace("${project_id}", project_id)
 
-    body = Jason.encode!(%{"timeSeries" => time_series})
+    body = JSON.encode!(%{"timeSeries" => time_series})
 
     with {:ok, access_token} <- fetch_and_cache_access_token(),
          request =

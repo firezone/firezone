@@ -12,7 +12,7 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
 
     resp =
       resp ||
-        Jason.encode!(%{
+        JSON.encode!(%{
           "@odata.context" =>
             "https://graph.microsoft.com/v1.0/$metadata#users(id,displayName,userPrincipalName,mail,accountEnabled)",
           "value" => [
@@ -64,7 +64,7 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
 
     resp =
       resp ||
-        Jason.encode!(%{
+        JSON.encode!(%{
           "@odata.context" => "https://graph.microsoft.com/v1.0/$metadata#groups(id,displayName)",
           "value" => [
             %{
@@ -123,7 +123,7 @@ defmodule Domain.Mocks.MicrosoftEntraDirectory do
 
     resp =
       resp ||
-        Jason.encode!(%{
+        JSON.encode!(%{
           "@odata.context" =>
             "https://graph.microsoft.com/v1.0/$metadata#users(id,displayName,userPrincipalName,accountEnabled)",
           "value" => memberships

@@ -317,8 +317,7 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: :all
 
-# Use Jason for JSON parsing in Phoenix
-config :phoenix, :json_library, Jason
+config :phoenix, :json_library, JSON
 
 config :swoosh, :api_client, Swoosh.ApiClient.Finch
 

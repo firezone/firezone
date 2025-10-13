@@ -2,9 +2,9 @@ defimpl String.Chars, for: Postgrex.INET do
   def to_string(%Postgrex.INET{} = inet), do: Domain.Types.INET.to_string(inet)
 end
 
-defimpl Jason.Encoder, for: Postgrex.INET do
-  def encode(%Postgrex.INET{} = struct, opts) do
-    Jason.Encode.string("#{struct}", opts)
+defimpl JSON.Encoder, for: Postgrex.INET do
+  def encode(%Postgrex.INET{} = struct, _opts) do
+    "\"#{struct}\""
   end
 end
 
