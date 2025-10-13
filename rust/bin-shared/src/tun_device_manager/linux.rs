@@ -284,7 +284,7 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
     rule
 }
 
-async fn tun_device_index(handle: &Handle) -> Result<u32, anyhow::Error> {
+async fn tun_device_index(handle: &Handle) -> Result<u32> {
     let index = handle
         .link()
         .get()
