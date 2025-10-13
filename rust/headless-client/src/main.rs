@@ -101,6 +101,16 @@ struct Cli {
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
     firezone_id: Option<String>,
 
+    /// Activate the Internet Resource.
+    ///
+    /// To actually use the Internet Resource, the user must also have a policy granting access to the Internet Resource.
+    #[arg(
+        long,
+        env = "FIREZONE_ACTIVATE_INTERNET_RESOURCE",
+        default_value_t = false
+    )]
+    activate_internet_resource: bool,
+
     /// Disable sentry.io crash-reporting agent.
     #[arg(long, env = "FIREZONE_NO_TELEMETRY", default_value_t = false)]
     no_telemetry: bool,
@@ -341,7 +351,7 @@ fn try_main() -> Result<()> {
             Arc::new(tcp_socket_factory),
             Arc::new(UdpSocketFactory::default()),
             portal,
-            false,
+            cli.activate_internet_resource,
             rt.handle().clone(),
         );
 
