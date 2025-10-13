@@ -261,8 +261,8 @@ impl ReferenceState {
                     let tunnel_ip4 = state.client.inner().tunnel_ip4;
 
                     prop_oneof![
-                        icmp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
-                        udp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&ip4_resources)),
+                        icmp_packet(Just(tunnel_ip4), select_host_v4(&ip4_resources)),
+                        udp_packet(Just(tunnel_ip4), select_host_v4(&ip4_resources)),
                     ]
                 },
             )
@@ -273,8 +273,8 @@ impl ReferenceState {
                     let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
                     prop_oneof![
-                        icmp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
-                        udp_packet(packet_source_v6(tunnel_ip6), select_host_v6(&ip6_resources)),
+                        icmp_packet(Just(tunnel_ip6), select_host_v6(&ip6_resources)),
+                        udp_packet(Just(tunnel_ip6), select_host_v6(&ip6_resources)),
                     ]
                 },
             )
@@ -285,8 +285,8 @@ impl ReferenceState {
                     let tunnel_ip4 = state.client.inner().tunnel_ip4;
 
                     prop_oneof![
-                        icmp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains.clone())),
-                        udp_packet(packet_source_v4(tunnel_ip4), select(dns_v4_domains)),
+                        icmp_packet(Just(tunnel_ip4), select(dns_v4_domains.clone())),
+                        udp_packet(Just(tunnel_ip4), select(dns_v4_domains)),
                     ]
                 },
             )
@@ -297,8 +297,8 @@ impl ReferenceState {
                     let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
                     prop_oneof![
-                        icmp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains.clone()),),
-                        udp_packet(packet_source_v6(tunnel_ip6), select(dns_v6_domains),),
+                        icmp_packet(Just(tunnel_ip6), select(dns_v6_domains.clone()),),
+                        udp_packet(Just(tunnel_ip6), select(dns_v6_domains),),
                     ]
                 },
             )
@@ -338,14 +338,8 @@ impl ReferenceState {
                     let tunnel_ip4 = state.client.inner().tunnel_ip4;
 
                     prop_oneof![
-                        icmp_packet(
-                            packet_source_v4(tunnel_ip4),
-                            select(resolved_non_resource_ip4s.clone()),
-                        ),
-                        udp_packet(
-                            packet_source_v4(tunnel_ip4),
-                            select(resolved_non_resource_ip4s),
-                        ),
+                        icmp_packet(Just(tunnel_ip4), select(resolved_non_resource_ip4s.clone()),),
+                        udp_packet(Just(tunnel_ip4), select(resolved_non_resource_ip4s),),
                     ]
                 },
             )
@@ -359,14 +353,8 @@ impl ReferenceState {
                     let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
                     prop_oneof![
-                        icmp_packet(
-                            packet_source_v6(tunnel_ip6),
-                            select(resolved_non_resource_ip6s.clone()),
-                        ),
-                        udp_packet(
-                            packet_source_v6(tunnel_ip6),
-                            select(resolved_non_resource_ip6s),
-                        ),
+                        icmp_packet(Just(tunnel_ip6), select(resolved_non_resource_ip6s.clone()),),
+                        udp_packet(Just(tunnel_ip6), select(resolved_non_resource_ip6s),),
                     ]
                 },
             )
@@ -374,16 +362,16 @@ impl ReferenceState {
                 let tunnel_ip4 = state.client.inner().tunnel_ip4;
 
                 prop_oneof![
-                    icmp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
-                    udp_packet(packet_source_v4(tunnel_ip4), select_host_v4(&gateway_ips)),
+                    icmp_packet(Just(tunnel_ip4), select_host_v4(&gateway_ips)),
+                    udp_packet(Just(tunnel_ip4), select_host_v4(&gateway_ips)),
                 ]
             })
             .with_if_not_empty(1, state.connected_gateway_ipv6_ips(), |gateway_ips| {
-                let tunnel_ip4 = state.client.inner().tunnel_ip6;
+                let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
                 prop_oneof![
-                    icmp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
-                    udp_packet(packet_source_v6(tunnel_ip4), select_host_v6(&gateway_ips)),
+                    icmp_packet(Just(tunnel_ip6), select_host_v6(&gateway_ips)),
+                    udp_packet(Just(tunnel_ip6), select_host_v6(&gateway_ips)),
                 ]
             })
             .boxed()

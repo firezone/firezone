@@ -78,9 +78,6 @@ pub(crate) struct SimClient {
 
 impl SimClient {
     pub(crate) fn new(id: ClientId, sut: ClientState, now: Instant) -> Self {
-        let mut tcp_dns_client = dns_over_tcp::Client::new(now, [0u8; 32]);
-        tcp_dns_client.set_source_interface(Ipv4Addr::LOCALHOST, Ipv6Addr::LOCALHOST);
-
         Self {
             id,
             sut,
@@ -98,7 +95,7 @@ impl SimClient {
             ipv6_routes: Default::default(),
             search_domain: Default::default(),
             resource_status: Default::default(),
-            tcp_dns_client,
+            tcp_dns_client: dns_over_tcp::Client::new(now, [0u8; 32]),
             tcp_client: crate::tests::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
