@@ -1,4 +1,4 @@
-name: Publish
+name: Publish release
 run-name: Triggered by ${{ github.actor }}
 on:
   workflow_dispatch:
