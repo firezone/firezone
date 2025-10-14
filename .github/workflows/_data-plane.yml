@@ -2,6 +2,29 @@ name: Build data plane
 run-name: Triggered from ${{ github.event_name }} by ${{ github.actor }}
 on:
   workflow_dispatch:
+    inputs:
+      image_prefix:
+        description: "The prefix to prepend to the image name to prevent SHA conflicts ('', debug or perf)"
+        required: false
+        type: string
+        default: ""
+      profile:
+        description: "The Rust profile to build data plane components with."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+      stage:
+        description: "The stage of the data plane component images to build."
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+          - dev
   workflow_call:
     inputs:
       image_prefix:
