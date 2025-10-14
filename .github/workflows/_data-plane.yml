@@ -342,9 +342,15 @@ jobs:
           gh release upload ${{ matrix.name.release_name }} \
             "$BINARY_DEST_PATH" \
             "$BINARY_DEST_PATH".sha256sum.txt \
-            ${{ matrix.name.artifact }}_${{ matrix.name.version }}_*.deb \
+            target/debian/${{ matrix.name.artifact }}_${{ matrix.name.version }}_*.deb \
             "$clobber" \
             --repo ${{ github.repository }}
+      - name: Upload `.deb` artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.BINARY_DEST_PATH }}.deb
+          path: target/debian/${{ matrix.name.artifact }}_${{ matrix.name.version }}_*.deb
+          retention-days: 1
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
