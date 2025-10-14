@@ -1,4 +1,4 @@
-name: Publish
+name: Publish release
 run-name: Triggered by ${{ github.actor }}
 on:
   workflow_dispatch:
@@ -79,6 +79,32 @@ jobs:
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
             $SOURCE_TAG
 
+  publish-clients-to-winget:
+    name: Publish ${{ matrix.identifier }} to winget
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - identifier: Firezone.Client.GUI
+            tag_prefix: gui-client
+          - identifier: Firezone.Client.Headless
+            tag_prefix: headless-client
+    steps:
+      - id: get-version
+        run: |
+          version=${{ inputs.release_name || github.event.release.name }}
+          version=${version#${{ matrix.tag_prefix }}-}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f # main
+        if: ${{ startsWith((inputs.release_name || github.event.release.name), matrix.tag_prefix) }}
+        with:
+          identifier: ${{ matrix.identifier }}
+          version: ${{ steps.get-version.outputs.version }}
+          token: ${{ secrets.WINGET_TOKEN }}
+          release-notes-url: https://firezone.dev/changelog
+          release-tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
+
   create-publish-pr:
     runs-on: ubuntu-latest
     strategy:
@@ -126,3 +152,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
+
+  create-sentry-release:
+    name: create_${{ matrix.component }}_sentry_release
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
+        include:
+          - component: gateway
+            projects: gateway
+          - component: gui-client
+            projects: gui-client
+          - component: headless-client
+            projects: headless-client
+          - component: macos-client
+            projects: apple-client
+          - component: android-client
+            projects: android-client
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/create-sentry-release
+        if: ${{ startsWith(github.event.release.name, matrix.component) }}
+        with:
+          component: ${{ matrix.component }}
+          projects: ${{ matrix.projects }}
+          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
