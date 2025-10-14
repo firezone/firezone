@@ -1,10 +1,13 @@
 //! Virtual network interface
 
 use crate::FIREZONE_MARK;
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, Result};
 use firezone_logging::err_with_src;
 use firezone_telemetry::otel;
-use futures::{SinkExt, TryStreamExt};
+use futures::{
+    SinkExt, StreamExt, TryStreamExt,
+    future::{self, Either},
+};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_packet::{IpPacket, IpPacketBuf};
 use libc::{
@@ -12,8 +15,11 @@ use libc::{
     open,
 };
 use netlink_packet_route::link::LinkAttribute;
-use netlink_packet_route::route::{RouteMessage, RouteProtocol, RouteScope};
+use netlink_packet_route::route::{
+    RouteAddress, RouteAttribute, RouteMessage, RouteProtocol, RouteScope,
+};
 use netlink_packet_route::rule::RuleAction;
+use rtnetlink::sys::AsyncSocket;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
 use std::os::fd::{FromRawFd as _, OwnedFd};
@@ -29,7 +35,8 @@ use std::{
     fs, io,
     os::{fd::RawFd, unix::fs::PermissionsExt},
 };
-use tokio::sync::mpsc;
+use std::{net::IpAddr, time::Duration};
+use tokio::{sync::mpsc, time::Instant};
 use tokio_util::sync::PollSender;
 use tun::ioctl;
 
@@ -50,12 +57,14 @@ pub struct TunDeviceManager {
 
 struct Connection {
     handle: Handle,
-    task: tokio::task::JoinHandle<()>,
+    connection_task: tokio::task::JoinHandle<()>,
+    link_scope_route_sync_task: tokio::task::JoinHandle<()>,
 }
 
 impl Drop for TunDeviceManager {
     fn drop(&mut self) {
-        self.connection.task.abort();
+        self.connection.connection_task.abort();
+        self.connection.link_scope_route_sync_task.abort();
     }
 }
 
@@ -66,9 +75,19 @@ impl TunDeviceManager {
     ///
     /// Panics if called without a Tokio runtime.
     pub fn new(mtu: usize) -> Result<Self> {
-        let (cxn, handle, _) = new_connection().context("Failed to create netlink connection")?;
-        let task = tokio::spawn(cxn);
-        let connection = Connection { handle, task };
+        let (mut cxn, handle, messages) =
+            new_connection().context("Failed to create netlink connection")?;
+
+        subscribe_to_route_changes(&mut cxn)?;
+
+        let connection = Connection {
+            link_scope_route_sync_task: tokio::spawn(sync_link_scope_routes_worker(
+                messages,
+                handle.clone(),
+            )),
+            connection_task: tokio::spawn(cxn),
+            handle,
+        };
 
         Ok(Self {
             connection,
@@ -98,19 +117,8 @@ impl TunDeviceManager {
 
     #[tracing::instrument(level = "trace", skip(self))]
     pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
-        let name = Self::IFACE_NAME;
-
         let handle = &self.connection.handle;
-        let index = handle
-            .link()
-            .get()
-            .match_name(name.to_string())
-            .execute()
-            .try_next()
-            .await?
-            .ok_or_else(|| anyhow!("Interface '{name}' does not exist"))?
-            .header
-            .index;
+        let index = tun_device_index(handle).await?;
 
         let ips = handle
             .address()
@@ -188,17 +196,7 @@ impl TunDeviceManager {
         tracing::info!(?new_routes, "Setting new routes");
 
         let handle = &self.connection.handle;
-
-        let index = handle
-            .link()
-            .get()
-            .match_name(Self::IFACE_NAME.to_string())
-            .execute()
-            .try_next()
-            .await?
-            .context("No interface")?
-            .header
-            .index;
+        let index = tun_device_index(handle).await?;
 
         for route in self.routes.difference(&new_routes) {
             remove_route(route, index, handle).await;
@@ -213,17 +211,47 @@ impl TunDeviceManager {
     }
 }
 
+/// Worker function that triggers a link-scope route sync on every notification from netlink.
+///
+/// We add/remove routes one-by-one and a new notification is triggered for each.
+/// To avoid unnecessary syncs, we debounce the sync by delaying its start by 500ms, resetting
+/// the timer on each new notification.
+async fn sync_link_scope_routes_worker(
+    mut messages: futures::channel::mpsc::UnboundedReceiver<(
+        netlink_packet_core::NetlinkMessage<netlink_packet_route::RouteNetlinkMessage>,
+        rtnetlink::sys::SocketAddr,
+    )>,
+    handle: Handle,
+) {
+    let mut debounce_timer = Box::pin(tokio::time::sleep(Duration::MAX));
+
+    loop {
+        match future::select(messages.next(), debounce_timer.as_mut()).await {
+            Either::Left((None, _)) => break,
+            Either::Left((Some((message, _)), _)) => {
+                // Check if this is a route/address/link change message
+                let netlink_packet_core::NetlinkPayload::InnerMessage(_) = message.payload else {
+                    continue;
+                };
+
+                debounce_timer
+                    .as_mut()
+                    .reset(Instant::now() + Duration::from_millis(500));
+            }
+            Either::Right((_, _)) => {
+                if let Err(e) = sync_link_scope_routes(&handle).await {
+                    tracing::debug!("Failed to sync link-scope routes: {e:#}");
+                }
+
+                // Reset to far future so it doesn't trigger again until a new message arrives
+                debounce_timer = Box::pin(tokio::time::sleep(Duration::MAX));
+            }
+        }
+    }
+}
+
 async fn set_txqueue_length(handle: Handle, queue_len: u32) -> Result<()> {
-    let index = handle
-        .link()
-        .get()
-        .match_name(TunDeviceManager::IFACE_NAME.to_string())
-        .execute()
-        .try_next()
-        .await?
-        .context("No interface")?
-        .header
-        .index;
+    let index = tun_device_index(&handle).await?;
 
     handle
         .link()
@@ -260,6 +288,21 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
     rule
 }
 
+async fn tun_device_index(handle: &Handle) -> Result<u32> {
+    let index = handle
+        .link()
+        .get()
+        .match_name(TunDeviceManager::IFACE_NAME.to_string())
+        .execute()
+        .try_next()
+        .await?
+        .context("No interface")?
+        .header
+        .index;
+
+    Ok(index)
+}
+
 fn make_route_v4(idx: u32, route: Ipv4Network) -> RouteMessage {
     RouteMessageBuilder::<Ipv4Addr>::new()
         .output_interface(idx)
@@ -286,13 +329,30 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
     };
 
+    execute_add_route_message(message, handle).await;
+}
+
+async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+    let message = match route {
+        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
+        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
+    };
+
+    execute_del_route_message(message, handle).await
+}
+
+async fn execute_add_route_message(message: RouteMessage, handle: &Handle) {
+    let route = route_from_message(&message).map(tracing::field::display);
+    let iface_idx = iface_index_from_message(&message).map(tracing::field::display);
+    let table_id = table_id_from_message(&message);
+
     let Err(err) = handle.route().add(message).execute().await else {
-        tracing::debug!(%route, iface_idx = %idx, "Created new route");
+        tracing::debug!(route, iface_idx, %table_id, "Created new route");
 
         return;
     };
 
-    // We expect this to be called often with an already existing route since set_routes always calls for all routes
+    // We expect this to be called often with an already existing route
     if matches!(&err, NetlinkError(err) if err.raw_code() == -EEXIST) {
         return;
     }
@@ -302,19 +362,16 @@ async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to add route: {}", err_with_src(&err));
+    tracing::warn!(route, "Failed to add route: {}", err_with_src(&err));
 }
 
-async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
-    let message = match route {
-        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
-        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
-    };
+async fn execute_del_route_message(message: RouteMessage, handle: &Handle) {
+    let route = route_from_message(&message).map(tracing::field::display);
+    let iface_idx = iface_index_from_message(&message).map(tracing::field::display);
+    let table_id = table_id_from_message(&message);
 
-    let res = handle.route().del(message).execute().await;
-
-    let Err(err) = res else {
-        tracing::debug!(%route, iface_idx = %idx, "Removed route");
+    let Err(err) = handle.route().del(message).execute().await else {
+        tracing::debug!(route, iface_idx, %table_id, "Removed route");
 
         return;
     };
@@ -330,7 +387,136 @@ async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
         return;
     }
 
-    tracing::warn!(%route, "Failed to remove route: {}", err_with_src(&err));
+    tracing::warn!(route, "Failed to remove route: {}", err_with_src(&err));
+}
+
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "We don't want to match all attributes."
+)]
+fn table_id_from_message(message: &RouteMessage) -> u32 {
+    message
+        .attributes
+        .iter()
+        .find_map(|a| match a {
+            RouteAttribute::Table(table) => Some(*table),
+            _ => None,
+        })
+        .unwrap_or(message.header.table as u32)
+}
+
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "We don't want to match all attributes."
+)]
+fn iface_index_from_message(message: &RouteMessage) -> Option<u32> {
+    message.attributes.iter().find_map(|a| match a {
+        RouteAttribute::Oif(idx) => Some(*idx),
+        _ => None,
+    })
+}
+
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "We don't want to match all attributes."
+)]
+fn route_from_message(message: &RouteMessage) -> Option<IpNetwork> {
+    let netmask = message.header.destination_prefix_length;
+
+    message.attributes.iter().find_map(|a| match a {
+        RouteAttribute::Destination(RouteAddress::Inet(ipv4)) => {
+            Some(IpNetwork::V4(Ipv4Network::new(*ipv4, netmask).ok()?))
+        }
+        RouteAttribute::Destination(RouteAddress::Inet6(ipv6)) => {
+            Some(IpNetwork::V6(Ipv6Network::new(*ipv6, netmask).ok()?))
+        }
+        _ => None,
+    })
+}
+
+fn subscribe_to_route_changes(
+    cxn: &mut rtnetlink::proto::Connection<netlink_packet_route::RouteNetlinkMessage>,
+) -> Result<(), anyhow::Error> {
+    let groups = (libc::RTMGRP_IPV4_ROUTE
+        | libc::RTMGRP_IPV6_ROUTE
+        | libc::RTMGRP_LINK
+        | libc::RTMGRP_IPV4_IFADDR
+        | libc::RTMGRP_IPV6_IFADDR) as u32;
+
+    cxn.socket_mut()
+        .socket_mut()
+        .bind(&rtnetlink::sys::SocketAddr::new(0, groups))
+        .context("Failed to bind netlink socket for events")?;
+
+    Ok(())
+}
+
+/// Sync link-scope routes from the main table to the Firezone routing table.
+///
+/// This ensures that directly-connected networks (like local LANs) bypass the tunnel.
+async fn sync_link_scope_routes(handle: &Handle) -> Result<()> {
+    tracing::debug!("Syncing link-scope routes to Firezone routing table");
+
+    let link_scope_routes = all_link_scope_routes(handle).await?;
+
+    tracing::trace!(?link_scope_routes, "Retrieved link-scope routes");
+
+    let link_scope_routes_firezone_table = link_scope_routes
+        .iter()
+        .filter(|m| table_id_from_message(m) == FIREZONE_TABLE)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let link_scope_routes_main_table = link_scope_routes
+        .iter()
+        .filter(|m| m.header.table == libc::RT_TABLE_MAIN)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    if HashSet::<IpNetwork>::from_iter(
+        link_scope_routes_firezone_table
+            .iter()
+            .filter_map(route_from_message),
+    ) == HashSet::<IpNetwork>::from_iter(
+        link_scope_routes_main_table
+            .iter()
+            .filter_map(route_from_message),
+    ) {
+        tracing::debug!("Link-scope routes in Firezone table are up-to-date");
+
+        return Ok(());
+    }
+
+    // Now add all current link-scope routes from main table to Firezone table
+    for mut message in link_scope_routes_main_table {
+        // Change the table ID from main table to Firezone table
+        message.header.table = libc::RT_TABLE_UNSPEC;
+        message
+            .attributes
+            .retain(|a| !matches!(a, RouteAttribute::Table(_)));
+        message
+            .attributes
+            .push(RouteAttribute::Table(FIREZONE_TABLE));
+
+        execute_add_route_message(message, handle).await;
+    }
+
+    Ok(())
+}
+
+async fn all_link_scope_routes(handle: &Handle) -> Result<Vec<RouteMessage>> {
+    let link_scope_routes = handle
+        .route()
+        .get(RouteMessageBuilder::<IpAddr>::new().build())
+        .execute()
+        .try_collect::<Vec<_>>()
+        .await
+        .context("Failed to get routes")?
+        .into_iter()
+        .filter(|route| route.header.scope == RouteScope::Link) // Only process link-scope routes
+        .collect::<Vec<_>>();
+
+    Ok(link_scope_routes)
 }
 
 const QUEUE_SIZE: usize = 10_000;

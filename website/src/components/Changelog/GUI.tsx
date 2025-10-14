@@ -24,6 +24,12 @@ export default function GUI({ os }: { os: OS }) {
             version upgrade.
           </ChangeItem>
         )}
+        {os == OS.Linux && (
+          <ChangeItem pull="10554">
+            Fixes an issue where local LAN traffic was dropped when the Internet
+            Resource was active.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.7" date={new Date("2025-09-10")}>
         <ChangeItem pull="10104">
