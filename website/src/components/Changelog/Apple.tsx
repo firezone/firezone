@@ -32,6 +32,10 @@ export default function Apple() {
         <ChangeItem pull="10533">
           Improves reliability by caching DNS responses as per their TTL.
         </ChangeItem>
+        <ChangeItem pull="10567">
+          Fixes an issue where the Resources menu would not populate when
+          launching the app while already connected.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-09-10")}>
         <ChangeItem pull="10313">
