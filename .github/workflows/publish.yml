@@ -152,3 +152,31 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
+
+  create_sentry_release:
+    name: create_${{ matrix.component }}_sentry_release
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # TODO: This hack is needed because the macOS client isn't tagged as `apple-client`.
+        include:
+          - component: gateway
+            projects: gateway
+          - component: gui-client
+            projects: gui-client
+          - component: headless-client
+            projects: headless-client
+          - component: macos-client
+            projects: apple-client
+          - component: android-client
+            projects: android-client
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/create-sentry-release
+        if: ${{ startsWith(github.event.release.name, matrix.component) }}
+        with:
+          component: ${{ matrix.component }}
+          projects: ${{ matrix.projects }}
+          sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
