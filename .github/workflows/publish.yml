@@ -79,6 +79,32 @@ jobs:
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
             $SOURCE_TAG
 
+  publish_clients_to_winget:
+    name: Publish ${{ matrix.identifier }} to winget
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - identifier: Firezone.Client.GUI
+            tag_prefix: gui-client
+          - identifier: Firezone.Client.Headless
+            tag_prefix: headless-client
+    steps:
+      - id: get-version
+        run: |
+          version=${{ inputs.release_name || github.event.release.name }}
+          version=${version#${{ matrix.tag_prefix }}-}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+        shell: bash
+      - uses: vedantmgoyal9/winget-releaser@19e706d4c9121098010096f9c495a70a7518b30f # main
+        if: ${{ startsWith((inputs.release_name || github.event.release.name), matrix.tag_prefix) }}
+        with:
+          identifier: ${{ matrix.identifier }}
+          version: ${{ steps.get-version.outputs.version }}
+          token: ${{ secrets.WINGET_TOKEN }}
+          release-notes-url: https://firezone.dev/changelog
+          release-tag: ${{ inputs.release_name || github.event.release.tag_name || github.ref_name }}
+
   create-publish-pr:
     runs-on: ubuntu-latest
     strategy:
