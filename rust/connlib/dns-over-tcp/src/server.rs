@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, HashMap, VecDeque},
     net::SocketAddr,
     time::{Duration, Instant},
 };
@@ -20,7 +20,7 @@ pub struct Server {
     interface: Interface,
 
     sockets: SocketSet<'static>,
-    listen_endpoints: HashMap<SocketHandle, SocketAddr>,
+    listen_endpoints: BTreeMap<SocketHandle, SocketAddr>,
 
     /// Tracks the [`SocketHandle`] on which we need to send a reply for a given query by the local socket address, remote socket address and query ID.
     pending_sockets_by_local_remote_and_query_id:
@@ -85,7 +85,7 @@ impl Server {
 
         let mut sockets =
             SocketSet::new(Vec::with_capacity(addresses.len() * NUM_CONCURRENT_CLIENTS));
-        let mut listen_endpoints = HashMap::with_capacity(addresses.len());
+        let mut listen_endpoints = BTreeMap::new();
 
         for listen_endpoint in addresses {
             for _ in 0..NUM_CONCURRENT_CLIENTS {
