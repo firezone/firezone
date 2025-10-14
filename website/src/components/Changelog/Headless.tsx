@@ -17,6 +17,12 @@ export default function Headless({ os }: { os: OS }) {
           Adds a CLI switch `--activate-internet-resource`. By default, the
           Internet Resource is now off.
         </ChangeItem>
+        {os == OS.Linux && (
+          <ChangeItem pull="10554">
+            Fixes an issue where local LAN traffic was dropped when the Internet
+            Resource was active.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.3" date={new Date("2025-09-10")}>
         <ChangeItem pull="10126">
