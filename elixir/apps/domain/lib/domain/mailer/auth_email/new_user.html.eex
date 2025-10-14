@@ -41,7 +41,7 @@
           line-height: 32px !important
         }
       }
-      <%= Domain.Mailer.dark_mode_styles() %>
+      <%= Domain.Mailer.Styles.dark_mode_styles() %>
     </style>
   </head>
   <body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">
