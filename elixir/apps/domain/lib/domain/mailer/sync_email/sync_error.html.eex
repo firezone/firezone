@@ -74,7 +74,7 @@
 										<p style="margin: 0; line-height: 24px;">
 											Below is the last sync error message:
 											<div>
-											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #000000; padding: 8px 12px; line-height: 24px; color: #e7e7e7"><code><%= @provider.last_sync_error %></code></pre>
+											<pre style="margin: 0; white-space: pre; border-radius: 4px; background-color: #f3f4f6; padding: 8px 12px; line-height: 24px; color: #1f2937"><code><%= @provider.last_sync_error %></code></pre>
 											</div>
 										</p>
 										<div role="separator" class="separator" style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0">&zwj;</div>
