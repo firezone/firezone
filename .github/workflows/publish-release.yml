@@ -79,7 +79,7 @@ jobs:
             -t ghcr.io/firezone/${{ steps.set-variables.outputs.artifact }}:latest \
             $SOURCE_TAG
 
-  publish_clients_to_winget:
+  publish-clients-to-winget:
     name: Publish ${{ matrix.identifier }} to winget
     runs-on: windows-latest
     strategy:
@@ -153,7 +153,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PR_BOT_GITHUB_TOKEN }}
           RELEASE_PR_BOT_GPG_KEY: "${{ secrets.RELEASE_PR_BOT_GPG_KEY }}"
 
-  create_sentry_release:
+  create-sentry-release:
     name: create_${{ matrix.component }}_sentry_release
     runs-on: ubuntu-24.04
     strategy:
