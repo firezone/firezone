@@ -1,5 +1,5 @@
 "use client";
-import { Tabs } from "flowbite-react";
+import { Tabs, TabItem } from "flowbite-react";
 import type { CustomFlowbiteTheme } from "flowbite-react";
 
 const customTheme: CustomFlowbiteTheme["tabs"] = {
@@ -85,9 +85,9 @@ function TabsItem({
   icon?: FlowbiteIcon;
 }) {
   return (
-    <Tabs.Item title={title} icon={icon} {...props}>
+    <TabItem title={title} icon={icon} {...props}>
       {children}
-    </Tabs.Item>
+    </TabItem>
   );
 }
 
