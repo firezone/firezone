@@ -6,12 +6,8 @@ on:
       image_prefix:
         description: "The prefix to prepend to the image name to prevent SHA conflicts."
         required: false
-        type: choice
+        type: string
         default: ""
-        options:
-          - debug
-          - perf
-          - ""
       profile:
         description: "The Rust profile to build data plane components with."
         required: true
