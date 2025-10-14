@@ -355,7 +355,7 @@ impl ClientOnGateway {
             return Ok(Some(packet));
         }
 
-        if let Err(e) = self.ensure_allowed_resource(packet.source(), packet.source_protocol()) {
+        if let Err(e) = self.classify_resource(packet.source(), packet.source_protocol()) {
             tracing::debug!(
                 "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
             );
@@ -484,7 +484,7 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        self.ensure_allowed_resource(packet.destination(), packet.destination_protocol())?;
+        self.classify_resource(packet.destination(), packet.destination_protocol())?;
 
         Ok(())
     }
@@ -497,25 +497,32 @@ impl ClientOnGateway {
         Ok(())
     }
 
-    fn ensure_allowed_resource(
+    /// Classifies traffic to/from a resource IP.
+    ///
+    /// If traffic with this resource is allowed, the resource ID is returned.
+    fn classify_resource(
         &self,
-        ip: IpAddr,
+        resource_ip: IpAddr,
         protocol: Result<Protocol, UnsupportedProtocol>,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<ResourceId> {
         // Note a Gateway with Internet resource should never get packets for other resources
-        if self.internet_resource_enabled.is_some() && !is_dns_addr(ip) {
-            return Ok(());
+        if let Some(rid) = self.internet_resource_enabled
+            && !is_dns_addr(resource_ip)
+        {
+            return Ok(rid);
         }
 
-        let (_, (filter, _)) = self
+        let (_, (filter, rid)) = self
             .filters
-            .longest_match(ip)
+            .longest_match(resource_ip)
             .context("No filter")
-            .context(NotAllowedResource(ip))?;
+            .context(NotAllowedResource(resource_ip))?;
 
-        filter.apply(protocol).context(NotAllowedResource(ip))?;
+        filter
+            .apply(protocol)
+            .context(NotAllowedResource(resource_ip))?;
 
-        Ok(())
+        Ok(*rid)
     }
 
     pub fn id(&self) -> ClientId {
@@ -762,52 +769,34 @@ mod tests {
         peer.expire_resources(now);
 
         assert!(
-            peer.ensure_allowed_resource(
-                tcp_packet.destination(),
-                tcp_packet.destination_protocol()
-            )
-            .is_ok()
+            peer.classify_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
+                .is_ok()
         );
         assert!(
-            peer.ensure_allowed_resource(
-                udp_packet.destination(),
-                udp_packet.destination_protocol()
-            )
-            .is_ok()
+            peer.classify_resource(udp_packet.destination(), udp_packet.destination_protocol())
+                .is_ok()
         );
 
         peer.expire_resources(then);
 
         assert!(
-            peer.ensure_allowed_resource(
-                tcp_packet.destination(),
-                tcp_packet.destination_protocol()
-            )
-            .is_err()
+            peer.classify_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
+                .is_err()
         );
         assert!(
-            peer.ensure_allowed_resource(
-                udp_packet.destination(),
-                udp_packet.destination_protocol()
-            )
-            .is_ok()
+            peer.classify_resource(udp_packet.destination(), udp_packet.destination_protocol())
+                .is_ok()
         );
 
         peer.expire_resources(after_then);
 
         assert!(
-            peer.ensure_allowed_resource(
-                tcp_packet.destination(),
-                tcp_packet.destination_protocol()
-            )
-            .is_err()
+            peer.classify_resource(tcp_packet.destination(), tcp_packet.destination_protocol())
+                .is_err()
         );
         assert!(
-            peer.ensure_allowed_resource(
-                udp_packet.destination(),
-                udp_packet.destination_protocol()
-            )
-            .is_err()
+            peer.classify_resource(udp_packet.destination(), udp_packet.destination_protocol())
+                .is_err()
         );
     }
 
@@ -1344,7 +1333,7 @@ mod proptests {
             }
             .unwrap();
             assert!(
-                peer.ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+                peer.classify_resource(packet.destination(), packet.destination_protocol())
                     .is_ok()
             );
         }
@@ -1407,7 +1396,7 @@ mod proptests {
             .unwrap();
 
             assert!(
-                peer.ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+                peer.classify_resource(packet.destination(), packet.destination_protocol())
                     .is_ok()
             );
         }
@@ -1460,7 +1449,7 @@ mod proptests {
         );
 
         assert!(
-            peer.ensure_allowed_resource(packet.destination(), packet.destination_protocol())
+            peer.classify_resource(packet.destination(), packet.destination_protocol())
                 .is_err()
         );
     }
@@ -1543,14 +1532,14 @@ mod proptests {
         peer.remove_resource(&resource_id_removed);
 
         assert!(
-            peer.ensure_allowed_resource(
+            peer.classify_resource(
                 packet_allowed.destination(),
                 packet_allowed.destination_protocol()
             )
             .is_ok()
         );
         assert!(
-            peer.ensure_allowed_resource(
+            peer.classify_resource(
                 packet_rejected.destination(),
                 packet_rejected.destination_protocol()
             )
