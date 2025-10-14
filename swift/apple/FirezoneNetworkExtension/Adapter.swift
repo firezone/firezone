@@ -180,7 +180,6 @@ class Adapter: @unchecked Sendable {
     networkMonitor?.cancel()
   }
 
-
   func start() throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
 
@@ -317,19 +316,13 @@ class Adapter: @unchecked Sendable {
       let ipv4, let ipv6, let dns, let searchDomain, let ipv4Routes, let ipv6Routes):
       Log.log("Received TunInterfaceUpdated event")
 
-      // Decode all data into local variables first to ensure all parsing succeeds before applying
-      guard let dnsData = dns.data(using: .utf8),
-        let dnsAddresses = try? JSONDecoder().decode([String].self, from: dnsData),
-        let data4 = ipv4Routes.data(using: .utf8),
-        let data6 = ipv6Routes.data(using: .utf8),
-        let decoded4 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data4),
-        let decoded6 = try? JSONDecoder().decode([NetworkSettings.Cidr].self, from: data6)
-      else {
-        fatalError("Could not decode network configuration from connlib")
+      // Convert UniFFI types to NetworkExtension types
+      let routes4 = ipv4Routes.compactMap { cidr in
+        NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv4Route
       }
-
-      let routes4 = decoded4.compactMap({ $0.asNEIPv4Route })
-      let routes6 = decoded6.compactMap({ $0.asNEIPv6Route })
+      let routes6 = ipv6Routes.compactMap { cidr in
+        NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv6Route
+      }
 
       // All decoding succeeded - now apply settings atomically
       guard let provider = packetTunnelProvider else {
@@ -342,7 +335,7 @@ class Adapter: @unchecked Sendable {
       let networkSettings = NetworkSettings(packetTunnelProvider: provider)
       networkSettings.tunnelAddressIPv4 = ipv4
       networkSettings.tunnelAddressIPv6 = ipv6
-      networkSettings.dnsAddresses = dnsAddresses
+      networkSettings.dnsAddresses = dns
       networkSettings.routes4 = routes4
       networkSettings.routes6 = routes6
       networkSettings.setSearchDomain(domain: searchDomain)

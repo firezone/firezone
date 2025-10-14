@@ -10,7 +10,6 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
-use client_shared::{V4RouteList, V6RouteList};
 use firezone_logging::sentry_layer;
 use firezone_telemetry::{Telemetry, analytics};
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
@@ -43,15 +42,23 @@ pub enum CallbackError {
 #[derive(uniffi::Object, Debug)]
 pub struct DisconnectError(client_shared::DisconnectError);
 
+/// Represents a CIDR network (address + prefix length).
+/// Used for IPv4 and IPv6 route configuration.
+#[derive(uniffi::Record)]
+pub struct Cidr {
+    pub address: String,
+    pub prefix: u8,
+}
+
 #[derive(uniffi::Enum)]
 pub enum Event {
     TunInterfaceUpdated {
         ipv4: String,
         ipv6: String,
-        dns: String,
+        dns: Vec<String>,
         search_domain: Option<String>,
-        ipv4_routes: String,
-        ipv6_routes: String,
+        ipv4_routes: Vec<Cidr>,
+        ipv6_routes: Vec<Cidr>,
     },
     ResourcesUpdated {
         resources: String,
@@ -256,14 +263,29 @@ impl Session {
     pub async fn next_event(&self) -> Result<Option<Event>, ConnlibError> {
         match self.events.lock().await.next().await {
             Some(client_shared::Event::TunInterfaceUpdated(config)) => {
-                let dns = serde_json::to_string(
-                    &config.dns_by_sentinel.left_values().collect::<Vec<_>>(),
-                )
-                .context("Failed to serialize DNS servers")?;
-                let ipv4_routes = serde_json::to_string(&V4RouteList::new(config.ipv4_routes))
-                    .context("Failed to serialize IPv4 routes")?;
-                let ipv6_routes = serde_json::to_string(&V6RouteList::new(config.ipv6_routes))
-                    .context("Failed to serialize IPv6 routes")?;
+                let dns: Vec<String> = config
+                    .dns_by_sentinel
+                    .left_values()
+                    .map(|ip| ip.to_string())
+                    .collect();
+
+                let ipv4_routes: Vec<Cidr> = config
+                    .ipv4_routes
+                    .into_iter()
+                    .map(|network| Cidr {
+                        address: network.network_address().to_string(),
+                        prefix: network.netmask(),
+                    })
+                    .collect();
+
+                let ipv6_routes: Vec<Cidr> = config
+                    .ipv6_routes
+                    .into_iter()
+                    .map(|network| Cidr {
+                        address: network.network_address().to_string(),
+                        prefix: network.netmask(),
+                    })
+                    .collect();
 
                 Ok(Some(Event::TunInterfaceUpdated {
                     ipv4: config.ip.v4.to_string(),
