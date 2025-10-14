@@ -1,65 +1,23 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque, btree_map};
+use std::collections::{BTreeMap, BTreeSet, VecDeque, btree_map};
 use std::iter;
-use std::net::{IpAddr, SocketAddr};
+use std::net::IpAddr;
 use std::time::Instant;
 
-use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
-use crate::messages::gateway::Filters;
-use crate::messages::gateway::ResourceDescription;
+use anyhow::{Context, Result, bail};
 use chrono::{DateTime, Utc};
-use connlib_model::{ClientId, GatewayId, ResourceId};
+use connlib_model::{ClientId, ResourceId};
 use dns_types::DomainName;
-use filter_engine::FilterEngine;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
+use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
+use crate::gateway::filter_engine::FilterEngine;
+use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
+use crate::messages::gateway::Filters;
+use crate::messages::gateway::ResourceDescription;
 use crate::utils::network_contains_network;
-use crate::{GatewayEvent, IpConfig, otel};
-
-use anyhow::{Context, Result, bail};
-use nat_table::{NatTable, TranslateIncomingResult};
-
-mod filter_engine;
-mod nat_table;
-
-/// The state of one gateway on a client.
-pub(crate) struct GatewayOnClient {
-    id: GatewayId,
-    gateway_tun: IpConfig,
-    pub allowed_ips: IpNetworkTable<HashSet<ResourceId>>,
-}
-
-impl GatewayOnClient {
-    pub(crate) fn insert_id(&mut self, ip: &IpNetwork, id: &ResourceId) {
-        if let Some(resources) = self.allowed_ips.exact_match_mut(*ip) {
-            resources.insert(*id);
-        } else {
-            self.allowed_ips.insert(*ip, HashSet::from([*id]));
-        }
-    }
-
-    /// For a given destination IP, return the endpoint to which the DNS query should be sent.
-    pub(crate) fn tun_dns_server_endpoint(&self, dst: IpAddr) -> SocketAddr {
-        let new_dst_ip = match dst {
-            IpAddr::V4(_) => self.gateway_tun.v4.into(),
-            IpAddr::V6(_) => self.gateway_tun.v6.into(),
-        };
-        let new_dst_port = crate::gateway::TUN_DNS_PORT;
-
-        SocketAddr::new(new_dst_ip, new_dst_port)
-    }
-}
-
-impl GatewayOnClient {
-    pub(crate) fn new(id: GatewayId, gateway_tun: IpConfig) -> GatewayOnClient {
-        GatewayOnClient {
-            id,
-            allowed_ips: IpNetworkTable::new(),
-            gateway_tun,
-        }
-    }
-}
+use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, otel};
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -77,6 +35,13 @@ pub struct ClientOnGateway {
     buffered_events: VecDeque<GatewayEvent>,
 
     num_dropped_packets: opentelemetry::metrics::Counter<u64>,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum TranslateOutboundResult {
+    Send(IpPacket),
+    DestinationUnreachable(IpPacket),
+    Filtered(IpPacket),
 }
 
 impl ClientOnGateway {
@@ -558,41 +523,6 @@ impl ClientOnGateway {
     }
 }
 
-#[derive(Debug, PartialEq)]
-pub enum TranslateOutboundResult {
-    Send(IpPacket),
-    DestinationUnreachable(IpPacket),
-    Filtered(IpPacket),
-}
-
-impl GatewayOnClient {
-    pub(crate) fn ensure_allowed_src(&self, packet: &IpPacket) -> anyhow::Result<()> {
-        let src = packet.source();
-
-        if self.gateway_tun.is_ip(src) {
-            return Ok(());
-        }
-
-        if self.allowed_ips.longest_match(src).is_none() {
-            return Err(anyhow::Error::new(NotAllowedResource(src)));
-        }
-
-        Ok(())
-    }
-
-    pub fn id(&self) -> GatewayId {
-        self.id
-    }
-}
-
-#[derive(Debug, thiserror::Error)]
-#[error("Not a client IP: {0}")]
-pub(crate) struct NotClientIp(IpAddr);
-
-#[derive(Debug, thiserror::Error)]
-#[error("Traffic to/from this resource IP is not allowed: {0}")]
-pub(crate) struct NotAllowedResource(IpAddr);
-
 #[derive(Debug)]
 enum ResourceOnGateway {
     Cidr {
@@ -765,23 +695,19 @@ fn insert_filters<'a>(
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     use std::{
-        collections::BTreeSet,
         net::{Ipv4Addr, Ipv6Addr},
-        time::{Duration, Instant},
+        time::Duration,
     };
 
-    use crate::{
-        IpConfig,
-        messages::gateway::{Filter, PortRange, ResourceDescription, ResourceDescriptionCidr},
-        peer::{TranslateOutboundResult, nat_table},
-    };
-    use chrono::Utc;
-    use connlib_model::{ClientId, ResourceId};
-    use ip_network::{IpNetwork, Ipv4Network};
     use ip_packet::make::TcpFlags;
 
-    use super::ClientOnGateway;
+    use crate::{
+        gateway::nat_table,
+        messages::gateway::{Filter, PortRange, ResourceDescriptionCidr},
+    };
 
     #[test]
     fn gateway_filters_expire_individually() {
@@ -911,7 +837,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(request, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Send(_)
+            TranslateOutboundResult::Send(_)
         ));
         assert!(
             peer.translate_inbound(response, Instant::now())
@@ -957,7 +883,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -971,7 +897,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
@@ -1021,7 +947,7 @@ mod tests {
 
         assert!(matches!(
             peer.translate_outbound(pkt, Instant::now()).unwrap(),
-            crate::peer::TranslateOutboundResult::Filtered(_)
+            TranslateOutboundResult::Filtered(_)
         ));
 
         let pkt = ip_packet::make::udp_packet(
