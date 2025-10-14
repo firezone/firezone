@@ -319,7 +319,7 @@ impl ClientOnGateway {
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
         // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_src_and_dst(&packet) {
+        if let Err(e) = self.ensure_allowed_outbound(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             return Ok(TranslateOutboundResult::Filtered(
                 ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
@@ -355,21 +355,24 @@ impl ClientOnGateway {
             return Ok(Some(packet));
         }
 
-        if let Err(e) = self.classify_resource(packet.source(), packet.source_protocol()) {
-            tracing::debug!(
-                "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
-            );
-
-            self.num_dropped_packets.add(
-                1,
-                &[
-                    otel::attr::network_type_for_packet(&packet),
-                    otel::attr::network_io_direction_receive(),
-                    otel::attr::error_type(e.root_cause().to_string()),
-                ],
-            );
-
-            return Ok(None);
+        match self.classify_resource(packet.source(), packet.source_protocol()) {
+            Ok(rid) => {
+                flow_tracker::inbound_tun::record_resource(rid);
+            }
+            Err(e) => {
+                tracing::debug!(
+                    "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
+                );
+                self.num_dropped_packets.add(
+                    1,
+                    &[
+                        otel::attr::network_type_for_packet(&packet),
+                        otel::attr::network_io_direction_receive(),
+                        otel::attr::error_type(e.root_cause().to_string()),
+                    ],
+                );
+                return Ok(None);
+            }
         }
 
         Ok(Some(packet))
@@ -476,7 +479,7 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_src_and_dst(&self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_outbound(&self, packet: &IpPacket) -> anyhow::Result<()> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
@@ -484,7 +487,9 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        self.classify_resource(packet.destination(), packet.destination_protocol())?;
+        let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
+
+        flow_tracker::inbound_wg::record_resource(rid);
 
         Ok(())
     }

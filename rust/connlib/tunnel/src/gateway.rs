@@ -1,10 +1,12 @@
 mod client_on_gateway;
 mod filter_engine;
+mod flow_tracker;
 mod nat_table;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
+use crate::gateway::flow_tracker::FlowTracker;
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::peer_store::PeerStore;
@@ -37,6 +39,8 @@ pub struct GatewayState {
     node: ServerNode<ClientId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
     peers: PeerStore<ClientId, ClientOnGateway>,
+
+    flow_tracker: FlowTracker,
 
     /// When to next check whether a resource-access policy has expired.
     next_expiry_resources_check: Option<Instant>,
@@ -72,6 +76,7 @@ impl GatewayState {
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
+            flow_tracker: FlowTracker::default(),
             tun_ip_config: None,
         }
     }
@@ -98,6 +103,8 @@ impl GatewayState {
         packet: IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::Transmit>> {
+        let _guard = self.flow_tracker.new_inbound_tun(&packet);
+
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -114,12 +121,16 @@ impl GatewayState {
         };
         let cid = peer.id();
 
+        flow_tracker::inbound_tun::record_client(cid);
+
         let Some(packet) = peer
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?
         else {
             return Ok(None);
         };
+
+        flow_tracker::inbound_tun::record_translated_packet(&packet);
 
         let Some(encrypted_packet) = self
             .node
@@ -128,6 +139,12 @@ impl GatewayState {
         else {
             return Ok(None);
         };
+
+        flow_tracker::inbound_tun::record_wireguard_packet(
+            encrypted_packet.src,
+            encrypted_packet.dst,
+            &encrypted_packet.payload,
+        );
 
         Ok(Some(encrypted_packet))
     }
@@ -145,6 +162,8 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
+        let _guard = self.flow_tracker.new_inbound_wireguard(local, from, packet);
+
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)
@@ -152,6 +171,9 @@ impl GatewayState {
         else {
             return Ok(None);
         };
+
+        flow_tracker::inbound_wg::record_client(cid);
+        flow_tracker::inbound_wg::record_decrypted_packet(&packet);
 
         let peer = self
             .peers
@@ -194,9 +216,15 @@ impl GatewayState {
             .translate_outbound(packet, now)
             .context("Failed to translate outbound packet")?
         {
-            TranslateOutboundResult::Send(ip_packet) => Ok(Some(ip_packet)),
+            TranslateOutboundResult::Send(packet) => {
+                flow_tracker::inbound_wg::record_translated_packet(&packet);
+
+                Ok(Some(packet))
+            }
             TranslateOutboundResult::DestinationUnreachable(reply)
             | TranslateOutboundResult::Filtered(reply) => {
+                flow_tracker::inbound_wg::record_icmp_error(&reply);
+
                 let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? else {
                     return Ok(None);
                 };
