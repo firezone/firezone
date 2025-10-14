@@ -1,6 +1,6 @@
 "use client";
 import { Tabs, TabItem } from "flowbite-react";
-import type { CustomFlowbiteTheme } from "flowbite-react";
+import type { CustomFlowbiteTheme } from "flowbite-react/types";
 
 const customTheme: CustomFlowbiteTheme["tabs"] = {
   base: "flex flex-col gap-2",

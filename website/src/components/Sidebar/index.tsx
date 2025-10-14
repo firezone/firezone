@@ -1,7 +1,7 @@
 "use client";
 import { Route } from "next";
 import { usePathname } from "next/navigation";
-import type { CustomFlowbiteTheme } from "flowbite-react";
+import type { CustomFlowbiteTheme } from "flowbite-react/types";
 import {
   Sidebar as FlowbiteSidebar,
   SidebarItem as FlowbiteSidebarItem,
@@ -120,7 +120,7 @@ export function SidebarItem({
 
   if (href) {
     return (
-      <FlowbiteSidebarItem as={Link} href={href} active={p === href}>
+      <FlowbiteSidebarItem as={Link} href={href as any} active={p === href}>
         {children}
       </FlowbiteSidebarItem>
     );

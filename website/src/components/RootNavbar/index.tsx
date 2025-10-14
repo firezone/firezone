@@ -15,7 +15,7 @@ import {
 import { usePathname } from "next/navigation";
 import Button from "@/components/Button";
 import { HiChevronDown } from "react-icons/hi2";
-import type { CustomFlowbiteTheme } from "flowbite-react";
+import type { CustomFlowbiteTheme } from "flowbite-react/types";
 import { HiBars3 } from "react-icons/hi2";
 import { useDrawer } from "@/components/Providers/DrawerProvider";
 import { useScrollPosition } from "@/hooks/useScrollPosition";
