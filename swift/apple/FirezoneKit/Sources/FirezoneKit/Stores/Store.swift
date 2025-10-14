@@ -107,7 +107,11 @@ public final class Store: ObservableObject {
       try await self?.handleVPNStatusChange(newVPNStatus: status)
     }
     try ipcClient().subscribeToVPNStatusUpdates(handler: vpnStatusChangeHandler)
-    self.vpnStatus = try ipcClient().sessionStatus()
+
+    let initialStatus = try ipcClient().sessionStatus()
+
+    // Handle initial status to ensure resources start loading if already connected
+    try await handleVPNStatusChange(newVPNStatus: initialStatus)
   }
 
   private func handleVPNStatusChange(newVPNStatus: NEVPNStatus) async throws {
