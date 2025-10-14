@@ -28,7 +28,7 @@ importers:
         version: 4.1.13
       '@tailwindcss/vite':
         specifier: ^4.1.13
-        version: 4.1.13(vite@6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
+        version: 4.1.13(vite@6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
       '@tauri-apps/api':
         specifier: ^2.8.0
         version: 2.8.0
@@ -36,8 +36,8 @@ importers:
         specifier: ^2.8.4
         version: 2.8.4
       '@types/node':
-        specifier: ^22.15.30
-        version: 22.15.30
+        specifier: ^24.5.0
+        version: 24.5.0
       '@types/react':
         specifier: ^19.1.13
         version: 19.1.13
@@ -46,7 +46,7 @@ importers:
         version: 19.1.9(@types/react@19.1.13)
       '@vitejs/plugin-react':
         specifier: ^5.0.2
-        version: 5.0.2(vite@6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
+        version: 5.0.2(vite@6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
       eslint:
         specifier: ^9.31.0
         version: 9.31.0(jiti@2.6.1)
@@ -85,10 +85,10 @@ importers:
         version: 8.34.1(eslint@9.31.0(jiti@2.6.1))(typescript@5.8.3)
       vite:
         specifier: ^6.3.6
-        version: 6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+        version: 6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
       vite-plugin-typescript:
         specifier: ^1.0.4
-        version: 1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.4)(tslib@2.8.1)(typescript@5.8.3))(vite@6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
+        version: 1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.4)(tslib@2.8.1)(typescript@5.8.3))(vite@6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
 
 packages:
 
@@ -914,8 +914,8 @@ packages:
   '@types/json-schema@7.0.15':
     resolution: {integrity: sha512-5+fP8P8MFNC+AyZCDxrB2pkZFPGzqQWUzpSeuuVLvm8VMcorNYavBqoFcxK8bQz4Qsbn4oUEEem4wDLfcysGHA==}
 
-  '@types/node@22.15.30':
-    resolution: {integrity: sha512-6Q7lr06bEHdlfplU6YRbgG1SFBdlsfNC4/lX+SkhiTs0cpJkOElmWls8PxDFv4yY/xKb8Y6SO0OmSX4wgqTZbA==}
+  '@types/node@24.5.0':
+    resolution: {integrity: sha512-y1dMvuvJspJiPSDZUQ+WMBvF7dpnEqN4x9DDC9ie5Fs/HUZJA3wFp7EhHoVaKX/iI0cRoECV8X2jL8zi0xrHCg==}
 
   '@types/react-dom@19.1.9':
     resolution: {integrity: sha512-qXRuZaOsAdXKFyOhRBg6Lqqc0yay13vN7KrIg4L7N4aaHN68ma9OK3NE1BoDFgFOTfM7zg+3/8+2n8rLUH3OKQ==}
@@ -2163,8 +2163,8 @@ packages:
     resolution: {integrity: sha512-nWJ91DjeOkej/TA8pXQ3myruKpKEYgqvpw9lz4OPHj/NWFNluYrjbz9j01CJ8yKQd2g4jFoOkINCTW2I5LEEyw==}
     engines: {node: '>= 0.4'}
 
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
+  undici-types@7.12.0:
+    resolution: {integrity: sha512-goOacqME2GYyOZZfb5Lgtu+1IDmAlAEu5xnD3+xTzS10hT0vzpf0SPjkXwAw9Jm+4n/mQGDP3LO8CPbYROeBfQ==}
 
   update-browserslist-db@1.1.3:
     resolution: {integrity: sha512-UxhIZQ+QInVdunkDAaiazvvT/+fXL5Osr0JZlJulepYu6Jd7qJtDZjlur0emRlT71EN3ScPoE7gvsuIKKNavKw==}
@@ -2859,12 +2859,12 @@ snapshots:
       '@tailwindcss/oxide-win32-arm64-msvc': 4.1.13
       '@tailwindcss/oxide-win32-x64-msvc': 4.1.13
 
-  '@tailwindcss/vite@4.1.13(vite@6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
+  '@tailwindcss/vite@4.1.13(vite@6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
     dependencies:
       '@tailwindcss/node': 4.1.13
       '@tailwindcss/oxide': 4.1.13
       tailwindcss: 4.1.13
-      vite: 6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+      vite: 6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
 
   '@tauri-apps/api@2.8.0': {}
 
@@ -2940,9 +2940,9 @@ snapshots:
 
   '@types/json-schema@7.0.15': {}
 
-  '@types/node@22.15.30':
+  '@types/node@24.5.0':
     dependencies:
-      undici-types: 6.21.0
+      undici-types: 7.12.0
 
   '@types/react-dom@19.1.9(@types/react@19.1.13)':
     dependencies:
@@ -3067,7 +3067,7 @@ snapshots:
       '@typescript-eslint/types': 8.34.1
       eslint-visitor-keys: 4.2.1
 
-  '@vitejs/plugin-react@5.0.2(vite@6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
+  '@vitejs/plugin-react@5.0.2(vite@6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
     dependencies:
       '@babel/core': 7.28.4
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.4)
@@ -3075,7 +3075,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.34
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+      vite: 6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -4452,7 +4452,7 @@ snapshots:
       has-symbols: 1.1.0
       which-boxed-primitive: 1.1.1
 
-  undici-types@6.21.0: {}
+  undici-types@7.12.0: {}
 
   update-browserslist-db@1.1.3(browserslist@4.26.3):
     dependencies:
@@ -4464,12 +4464,12 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  vite-plugin-typescript@1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.4)(tslib@2.8.1)(typescript@5.8.3))(vite@6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)):
+  vite-plugin-typescript@1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.4)(tslib@2.8.1)(typescript@5.8.3))(vite@6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)):
     dependencies:
       '@rollup/plugin-typescript': 12.1.2(rollup@4.52.4)(tslib@2.8.1)(typescript@5.8.3)
-      vite: 6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+      vite: 6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
 
-  vite@6.3.6(@types/node@22.15.30)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0):
+  vite@6.3.6(@types/node@24.5.0)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0):
     dependencies:
       esbuild: 0.25.10
       fdir: 6.5.0(picomatch@4.0.3)
@@ -4478,7 +4478,7 @@ snapshots:
       rollup: 4.52.4
       tinyglobby: 0.2.15
     optionalDependencies:
-      '@types/node': 22.15.30
+      '@types/node': 24.5.0
       fsevents: 2.3.3
       jiti: 2.6.1
       lightningcss: 1.30.1
