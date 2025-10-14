@@ -8,8 +8,8 @@ Documentation=https://www.firezone.dev/kb
 [Service]
 
 # DO NOT EDIT ANY OF THE BELOW BY HAND. USE "systemctl edit firezone-gateway" INSTEAD TO CUSTOMIZE.
-# Most configuration should go as environment variables into `/etc/firezone-gateway/env`.
-# The access token should be in `/etc/firezone-gateway/token`.
+# Most configuration should go as environment variables into `/etc/firezone/gateway-env`.
+# The access token should be in `/etc/firezone/gateway-token`.
 
 Type=simple
 User=firezone
@@ -17,8 +17,8 @@ Group=firezone
 PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
 
-LoadCredential=FIREZONE_TOKEN:/etc/firezone-gateway/token
-EnvironmentFile=/etc/firezone-gateway/env
+LoadCredential=FIREZONE_TOKEN:/etc/firezone/gateway-token
+EnvironmentFile=/etc/firezone/gateway-env
 
 ExecStartPre=/usr/bin/firezone-gateway-init
 ExecStart=/usr/bin/firezone-gateway
