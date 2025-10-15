@@ -41,7 +41,7 @@ defmodule Mix.Tasks.TestEmails do
   mailbox. Emails are stored in memory and will be lost when the app exits.
   """
 
-  @shortdoc "Generates test emails for development"
+  @shortdoc "Render email templates for development"
 
   use Mix.Task
 
