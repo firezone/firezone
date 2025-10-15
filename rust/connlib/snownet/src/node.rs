@@ -414,7 +414,7 @@ where
             return;
         };
 
-        tracing::info!(?candidate, "Received candidate from remote");
+        tracing::debug!(?candidate, "Received candidate from remote");
 
         agent.add_remote_candidate(candidate.clone());
 
@@ -998,7 +998,7 @@ where
         {
             conn.first_handshake_completed_at = Some(now);
 
-            tracing::info!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
+            tracing::debug!(%cid, duration_since_intent = ?conn.duration_since_intent(now), "Completed wireguard handshake");
 
             self.pending_events
                 .push_back(Event::ConnectionEstablished(cid))
@@ -1311,7 +1311,7 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
         .collect::<Vec<_>>();
 
     for c in optimistic_candidates {
-        tracing::info!(candidate = ?c, "Adding optimistic candidate for remote");
+        tracing::debug!(candidate = ?c, "Adding optimistic candidate for remote");
 
         agent.add_remote_candidate(c);
     }
@@ -1343,7 +1343,7 @@ fn signal_candidate_to_remote<TId>(
     candidate: &Candidate,
     pending_events: &mut VecDeque<Event<TId>>,
 ) {
-    tracing::info!(?candidate, "Signalling candidate to remote");
+    tracing::debug!(?candidate, "Signalling candidate to remote");
 
     pending_events.push_back(Event::NewIceCandidate {
         connection: id,

@@ -940,7 +940,7 @@ impl Allocation {
     }
 
     fn log_update(&self, now: Instant) {
-        tracing::info!(
+        tracing::debug!(
             host_ip4 = ?self.ip4_host_candidate.as_ref().map(|c| c.addr()),
             host_ip6 = ?self.ip6_host_candidate.as_ref().map(|c| c.addr()),
             srflx_ip4 = ?self.ip4_srflx_candidate.as_ref().map(|c| c.addr()),
