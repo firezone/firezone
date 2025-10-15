@@ -467,6 +467,7 @@ pub struct CompletedTcpFlow {
     pub resource: ResourceId,
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
+    pub last_packet: DateTime<Utc>,
 
     pub inner_src_ip: IpAddr,
     pub inner_dst_ip: IpAddr,
@@ -490,6 +491,7 @@ pub struct CompletedUdpFlow {
     pub resource: ResourceId,
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
+    pub last_packet: DateTime<Utc>,
 
     pub inner_src_ip: IpAddr,
     pub inner_dst_ip: IpAddr,
@@ -513,6 +515,7 @@ pub struct CompletedIcmpFlow {
     pub resource: ResourceId,
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
+    pub last_packet: DateTime<Utc>,
 
     pub inner_src_ip: IpAddr,
     pub inner_dst_ip: IpAddr,
@@ -536,6 +539,7 @@ impl CompletedTcpFlow {
             resource: key.resource,
             start: value.start,
             end,
+            last_packet: value.last_packet,
             inner_src_ip: key.src_ip,
             inner_dst_ip: key.dst_ip,
             inner_src_port: key.src_port,
@@ -559,6 +563,7 @@ impl CompletedUdpFlow {
             resource: key.resource,
             start: value.start,
             end,
+            last_packet: value.last_packet,
             inner_src_ip: key.src_ip,
             inner_dst_ip: key.dst_ip,
             inner_src_port: key.src_port,
@@ -582,6 +587,7 @@ impl CompletedIcmpFlow {
             resource: key.resource,
             start: value.start,
             end,
+            last_packet: value.last_packet,
             inner_src_ip: key.src_ip,
             inner_dst_ip: key.dst_ip,
             inner_identifier: key.identifier,

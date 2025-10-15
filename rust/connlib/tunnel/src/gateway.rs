@@ -464,11 +464,14 @@ impl GatewayState {
         while let Some(flow) = self.flow_tracker.poll_completed_flow() {
             match flow {
                 flow_tracker::CompletedFlow::Tcp(flow) => {
-                    tracing::info!(
+                    tracing::trace!(
+                        target: "flow_logs::tcp",
+
                         client = %flow.client,
                         resource = %flow.resource,
                         start = ?flow.start,
                         end = ?flow.end,
+                        last_packet = ?flow.last_packet,
 
                         inner_src_ip = %flow.inner_src_ip,
                         inner_dst_ip = %flow.inner_dst_ip,
@@ -488,11 +491,14 @@ impl GatewayState {
                     );
                 }
                 flow_tracker::CompletedFlow::Udp(flow) => {
-                    tracing::info!(
+                    tracing::trace!(
+                        target: "flow_logs::udp",
+
                         client = %flow.client,
                         resource = %flow.resource,
                         start = ?flow.start,
                         end = ?flow.end,
+                        last_packet = ?flow.last_packet,
 
                         inner_src_ip = %flow.inner_src_ip,
                         inner_dst_ip = %flow.inner_dst_ip,
@@ -512,11 +518,14 @@ impl GatewayState {
                     );
                 }
                 flow_tracker::CompletedFlow::Icmp(flow) => {
-                    tracing::info!(
+                    tracing::trace!(
+                        target: "flow_logs::icmp",
+
                         client = %flow.client,
                         resource = %flow.resource,
                         start = ?flow.start,
                         end = ?flow.end,
+                        last_packet = ?flow.last_packet,
 
                         inner_src_ip = %flow.inner_src_ip,
                         inner_dst_ip = %flow.inner_dst_ip,
