@@ -354,6 +354,20 @@ impl IpPacket {
         ))
     }
 
+    pub fn layer4_payload_len(&self) -> usize {
+        let tcp_payload_len = self.as_tcp().map(|tcp| tcp.payload().len());
+        let udp_payload_len = self.as_udp().map(|udp| udp.payload().len());
+        let icmpv4_payload_len = self.as_icmpv4().map(|icmpv4| icmpv4.payload().len());
+        let icmpv6_payload_len = self.as_icmpv6().map(|icmpv6| icmpv6.payload().len());
+        let fallback = self.payload().len();
+
+        tcp_payload_len
+            .or(udp_payload_len)
+            .or(icmpv4_payload_len)
+            .or(icmpv6_payload_len)
+            .unwrap_or(fallback)
+    }
+
     pub fn set_source_protocol(&mut self, v: u16) {
         if let Some(mut p) = self.as_tcp_mut() {
             p.set_source_port(v);

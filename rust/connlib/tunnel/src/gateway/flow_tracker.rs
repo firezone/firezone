@@ -502,7 +502,7 @@ impl From<&IpPacket> for InnerFlow {
             tcp_syn: packet.as_tcp().map(|tcp| tcp.syn()).unwrap_or(false),
             tcp_fin: packet.as_tcp().map(|tcp| tcp.fin()).unwrap_or(false),
             tcp_rst: packet.as_tcp().map(|tcp| tcp.rst()).unwrap_or(false),
-            payload_len: packet.payload().len(), // TODO: Actually use the L4 payload length here (i.e. don't count the headers.)
+            payload_len: packet.layer4_payload_len(),
         }
     }
 }
