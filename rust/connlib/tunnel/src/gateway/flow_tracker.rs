@@ -257,8 +257,6 @@ impl FlowTracker {
                         value.stats.inc_rx(payload_len as u64);
                         value.last_packet = now_utc;
 
-                        // TODO: Create new flow if context changes.
-
                         if tcp_rst || tcp_fin {
                             let (key, value) = occupied.remove_entry();
                             let flow = CompletedTcpFlow::new(key, value, now_utc);
