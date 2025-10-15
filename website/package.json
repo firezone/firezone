@@ -16,7 +16,7 @@
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
     "@next/mdx": "~15.3.2",
-    "@next/third-parties": "^15.4.4",
+    "@next/third-parties": "^15.5.3",
     "@types/mdx": "^2.0.13",
     "@types/mixpanel-browser": "^2.66.0",
     "@types/node": "24.3.0",
