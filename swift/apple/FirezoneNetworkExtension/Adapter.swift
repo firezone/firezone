@@ -140,7 +140,7 @@ class Adapter: @unchecked Sendable {
   private var internetResourceEnabled: Bool
 
   /// Keep track of resources for UI
-  private var resourceListJSON: String?
+  private var resources: [Resource]?
 
   /// Starting parameters
   private let apiURL: String
@@ -283,17 +283,31 @@ class Adapter: @unchecked Sendable {
   /// Get the current set of resources in the completionHandler, only returning
   /// them if the resource list has changed.
   func getResourcesIfVersionDifferentFrom(
-    hash: Data, completionHandler: @escaping (String?) -> Void
+    hash: Data, completionHandler: @escaping (Data?) -> Void
   ) {
     // This is async to avoid blocking the main UI thread
     workQueue.async { [weak self] in
       guard let self = self else { return }
 
-      if hash == Data(SHA256.hash(data: Data((resourceListJSON ?? "").utf8))) {
+      // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
+      let propertyListData: Data
+      if let uniffiResources = self.resources {
+        let firezoneResources = uniffiResources.map { self.convertResource($0) }
+        guard let encoded = try? PropertyListEncoder().encode(firezoneResources) else {
+          Log.log("Failed to encode resources as PropertyList")
+          completionHandler(nil)
+          return
+        }
+        propertyListData = encoded
+      } else {
+        propertyListData = Data()
+      }
+
+      if hash == Data(SHA256.hash(data: propertyListData)) {
         // nothing changed
         completionHandler(nil)
       } else {
-        completionHandler(resourceListJSON)
+        completionHandler(propertyListData)
       }
     }
   }
@@ -350,13 +364,13 @@ class Adapter: @unchecked Sendable {
 
       networkSettings.apply()
 
-    case .resourcesUpdated(let resources):
-      Log.log("Received ResourcesUpdated event with \(resources.count) bytes")
+    case .resourcesUpdated(let resourceList):
+      Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
       // Store resource list
       workQueue.async { [weak self] in
         guard let self = self else { return }
-        self.resourceListJSON = resources
+        self.resources = resourceList
       }
 
       // Apply network settings to flush DNS cache when resources change
@@ -462,6 +476,61 @@ class Adapter: @unchecked Sendable {
 
   private func sendCommand(_ command: SessionCommand) {
     commandSender?.send(command)
+  }
+
+  // MARK: - Resource conversion (uniffi → FirezoneKit)
+
+  private func convertResource(_ resource: Resource) -> FirezoneKit.Resource {
+    switch resource {
+    case .dns(let dnsResource):
+      return FirezoneKit.Resource(
+        id: dnsResource.id,
+        name: dnsResource.name,
+        address: dnsResource.address,
+        addressDescription: dnsResource.addressDescription,
+        status: convertResourceStatus(dnsResource.status),
+        sites: dnsResource.sites.map { convertSite($0) },
+        type: .dns
+      )
+    case .cidr(let cidrResource):
+      return FirezoneKit.Resource(
+        id: cidrResource.id,
+        name: cidrResource.name,
+        address: cidrResource.address,
+        addressDescription: cidrResource.addressDescription,
+        status: convertResourceStatus(cidrResource.status),
+        sites: cidrResource.sites.map { convertSite($0) },
+        type: .cidr
+      )
+    case .internet(let internetResource):
+      return FirezoneKit.Resource(
+        id: internetResource.id,
+        name: internetResource.name,
+        address: nil,
+        addressDescription: nil,
+        status: convertResourceStatus(internetResource.status),
+        sites: internetResource.sites.map { convertSite($0) },
+        type: .internet
+      )
+    }
+  }
+
+  private func convertSite(_ site: Site) -> FirezoneKit.Site {
+    return FirezoneKit.Site(
+      id: site.id,
+      name: site.name
+    )
+  }
+
+  private func convertResourceStatus(_ status: ResourceStatus) -> FirezoneKit.ResourceStatus {
+    switch status {
+    case .unknown:
+      return .unknown
+    case .online:
+      return .online
+    case .offline:
+      return .offline
+    }
   }
 
 }

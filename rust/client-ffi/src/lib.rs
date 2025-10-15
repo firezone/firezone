@@ -59,6 +59,60 @@ pub struct DeviceInfo {
     pub identifier_for_vendor: Option<String>,
 }
 
+/// Resource status enum
+#[derive(uniffi::Enum)]
+pub enum ResourceStatus {
+    Unknown,
+    Online,
+    Offline,
+}
+
+/// Site information for a resource
+#[derive(uniffi::Record)]
+pub struct Site {
+    pub id: String,
+    pub name: String,
+}
+
+/// DNS resource view
+#[derive(uniffi::Record)]
+pub struct DnsResource {
+    pub id: String,
+    pub address: String,
+    pub name: String,
+    pub address_description: Option<String>,
+    pub sites: Vec<Site>,
+    pub status: ResourceStatus,
+}
+
+/// CIDR resource view
+#[derive(uniffi::Record)]
+pub struct CidrResource {
+    pub id: String,
+    pub address: String,
+    pub name: String,
+    pub address_description: Option<String>,
+    pub sites: Vec<Site>,
+    pub status: ResourceStatus,
+}
+
+/// Internet resource view
+#[derive(uniffi::Record)]
+pub struct InternetResource {
+    pub id: String,
+    pub name: String,
+    pub sites: Vec<Site>,
+    pub status: ResourceStatus,
+}
+
+/// Resource view enum
+#[derive(uniffi::Enum)]
+pub enum Resource {
+    Dns { resource: DnsResource },
+    Cidr { resource: CidrResource },
+    Internet { resource: InternetResource },
+}
+
 #[derive(uniffi::Enum)]
 pub enum Event {
     TunInterfaceUpdated {
@@ -70,7 +124,7 @@ pub enum Event {
         ipv6_routes: Vec<Cidr>,
     },
     ResourcesUpdated {
-        resources: String,
+        resources: Vec<Resource>,
     },
     Disconnected {
         error: Arc<DisconnectError>,
@@ -309,8 +363,7 @@ impl Session {
                 }))
             }
             Some(client_shared::Event::ResourcesUpdated(resources)) => {
-                let resources = serde_json::to_string(&resources)
-                    .context("Failed to serialize resource list")?;
+                let resources: Vec<Resource> = resources.into_iter().map(Into::into).collect();
 
                 Ok(Some(Event::ResourcesUpdated { resources }))
             }
@@ -498,6 +551,78 @@ fn install_rustls_crypto_provider() {
 
     if existing.is_err() {
         tracing::debug!("Skipping install of crypto provider because we already have one.");
+    }
+}
+
+impl From<connlib_model::ResourceView> for Resource {
+    fn from(resource: connlib_model::ResourceView) -> Self {
+        match resource {
+            connlib_model::ResourceView::Dns(dns) => Resource::Dns {
+                resource: dns.into(),
+            },
+            connlib_model::ResourceView::Cidr(cidr) => Resource::Cidr {
+                resource: cidr.into(),
+            },
+            connlib_model::ResourceView::Internet(internet) => Resource::Internet {
+                resource: internet.into(),
+            },
+        }
+    }
+}
+
+impl From<connlib_model::DnsResourceView> for DnsResource {
+    fn from(dns: connlib_model::DnsResourceView) -> Self {
+        DnsResource {
+            id: dns.id.to_string(),
+            address: dns.address,
+            name: dns.name,
+            address_description: dns.address_description,
+            sites: dns.sites.into_iter().map(Into::into).collect(),
+            status: dns.status.into(),
+        }
+    }
+}
+
+impl From<connlib_model::CidrResourceView> for CidrResource {
+    fn from(cidr: connlib_model::CidrResourceView) -> Self {
+        CidrResource {
+            id: cidr.id.to_string(),
+            address: cidr.address.to_string(),
+            name: cidr.name,
+            address_description: cidr.address_description,
+            sites: cidr.sites.into_iter().map(Into::into).collect(),
+            status: cidr.status.into(),
+        }
+    }
+}
+
+impl From<connlib_model::InternetResourceView> for InternetResource {
+    fn from(internet: connlib_model::InternetResourceView) -> Self {
+        InternetResource {
+            id: internet.id.to_string(),
+            name: internet.name,
+            sites: internet.sites.into_iter().map(Into::into).collect(),
+            status: internet.status.into(),
+        }
+    }
+}
+
+impl From<connlib_model::Site> for Site {
+    fn from(site: connlib_model::Site) -> Self {
+        Site {
+            id: site.id.to_string(),
+            name: site.name,
+        }
+    }
+}
+
+impl From<connlib_model::ResourceStatus> for ResourceStatus {
+    fn from(status: connlib_model::ResourceStatus) -> Self {
+        match status {
+            connlib_model::ResourceStatus::Unknown => ResourceStatus::Unknown,
+            connlib_model::ResourceStatus::Online => ResourceStatus::Online,
+            connlib_model::ResourceStatus::Offline => ResourceStatus::Offline,
+        }
     }
 }
 
