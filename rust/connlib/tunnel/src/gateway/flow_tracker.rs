@@ -123,6 +123,18 @@ impl FlowTracker {
 
             self.completed_flows.push_back(flow.into());
         }
+
+        for (key, value) in self
+            .active_tcp_flows
+            .extract_if(|_, value| value.fin_rx && value.fin_tx)
+        {
+            let end = value.last_packet;
+            let flow = CompletedTcpFlow::new(key, value, end);
+
+            tracing::debug!(?flow, "Terminating TCP flow; FIN sent & received");
+
+            self.completed_flows.push_back(flow.into());
+        }
     }
 
     fn insert_inbound_wireguard_flow(&mut self, flow: InboundWireGuard, now: Instant) {
@@ -181,6 +193,8 @@ impl FlowTracker {
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             context,
+                            fin_tx: false,
+                            fin_rx: false,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -198,6 +212,8 @@ impl FlowTracker {
                                 last_packet: now_utc,
                                 stats: FlowStats::default().with_tx(payload_len as u64),
                                 context,
+                                fin_tx: false,
+                                fin_rx: false,
                             },
                         );
                     }
@@ -216,6 +232,8 @@ impl FlowTracker {
                                 last_packet: now_utc,
                                 stats: FlowStats::default().with_tx(payload_len as u64),
                                 context,
+                                fin_tx: false,
+                                fin_rx: false,
                             },
                         );
                     }
@@ -224,12 +242,15 @@ impl FlowTracker {
 
                         value.stats.inc_tx(payload_len as u64);
                         value.last_packet = now_utc;
+                        if tcp_fin {
+                            value.fin_tx = true;
+                        }
 
-                        if tcp_rst || tcp_fin {
+                        if tcp_rst {
                             let (key, value) = occupied.remove_entry();
                             let flow = CompletedTcpFlow::new(key, value, now_utc);
 
-                            tracing::debug!(?flow, "TCP flow completed on RST/FIN");
+                            tracing::debug!(?flow, "TCP flow completed on RST");
 
                             self.completed_flows.push_back(flow.into());
                         }
@@ -387,11 +408,15 @@ impl FlowTracker {
                         value.stats.inc_rx(payload_len as u64);
                         value.last_packet = now_utc;
 
-                        if tcp_rst || tcp_fin {
+                        if tcp_fin {
+                            value.fin_rx = true;
+                        }
+
+                        if tcp_rst {
                             let (key, value) = occupied.remove_entry();
                             let flow = CompletedTcpFlow::new(key, value, now_utc);
 
-                            tracing::debug!(?flow, "TCP flow completed on RST/FIN");
+                            tracing::debug!(?flow, "TCP flow completed on RST");
 
                             self.completed_flows.push_back(flow.into());
                         }
@@ -638,6 +663,9 @@ struct TcpFlowValue {
     last_packet: DateTime<Utc>,
     stats: FlowStats,
     context: FlowContext,
+
+    fin_tx: bool,
+    fin_rx: bool,
 }
 
 #[derive(Debug)]
