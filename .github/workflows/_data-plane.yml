@@ -322,7 +322,7 @@ jobs:
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
         run: |
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build
-          cp target/debian/*.deb ${{ matrix.name.package }} "$BINARY_DEST_PATH".deb
+          cp target/debian/*.deb "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
