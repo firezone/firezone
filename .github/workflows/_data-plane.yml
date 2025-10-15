@@ -320,7 +320,9 @@ jobs:
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Create Firezone Gateway .deb package
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
-        run: cargo deb --package firezone-gateway
+        run: |
+          cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build
+          cp target/debian/*.deb ${{ matrix.name.package }} "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
@@ -342,14 +344,14 @@ jobs:
           gh release upload ${{ matrix.name.release_name }} \
             "$BINARY_DEST_PATH" \
             "$BINARY_DEST_PATH".sha256sum.txt \
-            target/debian/${{ matrix.name.artifact }}_${{ matrix.name.version }}_*.deb \
+            "$BINARY_DEST_PATH".deb \
             "$clobber" \
             --repo ${{ github.repository }}
       - name: Upload `.deb` artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
-          path: target/debian/${{ matrix.name.artifact }}_${{ matrix.name.version }}_*.deb
+          path: ${{ env.BINARY_DEST_PATH }}.deb
           retention-days: 1
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
