@@ -439,6 +439,7 @@ impl GatewayState {
     pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
         self.node.handle_timeout(now);
         self.drain_node_events();
+        self.flow_tracker.handle_timeout(now);
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {

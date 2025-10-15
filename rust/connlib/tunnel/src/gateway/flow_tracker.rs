@@ -1,10 +1,10 @@
 use std::{
     cell::RefCell,
-    collections::{BTreeMap, VecDeque, btree_map},
+    collections::{HashMap, VecDeque, hash_map},
     net::{IpAddr, SocketAddr},
 };
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ResourceId};
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 use std::time::Instant;
@@ -13,11 +13,15 @@ thread_local! {
     static CURRENT_FLOW: RefCell<Option<FlowData>> = const { RefCell::new(None) };
 }
 
+const TCP_FLOW_TIMEOUT: TimeDelta = TimeDelta::hours(2);
+const UDP_FLOW_TIMEOUT: TimeDelta = TimeDelta::seconds(120);
+const ICMP_FLOW_TIMEOUT: TimeDelta = TimeDelta::seconds(120);
+
 #[derive(Debug)]
 pub struct FlowTracker {
-    active_tcp_flows: BTreeMap<TcpFlowKey, TcpFlowValue>,
-    active_udp_flows: BTreeMap<UdpFlowKey, UdpFlowValue>,
-    active_icmp_flows: BTreeMap<IcmpFlowKey, IcmpFlowValue>,
+    active_tcp_flows: HashMap<TcpFlowKey, TcpFlowValue>,
+    active_udp_flows: HashMap<UdpFlowKey, UdpFlowValue>,
+    active_icmp_flows: HashMap<IcmpFlowKey, IcmpFlowValue>,
 
     completed_flows: VecDeque<CompletedFlow>,
 
@@ -87,6 +91,40 @@ impl FlowTracker {
         self.completed_flows.pop_front()
     }
 
+    pub fn handle_timeout(&mut self, now: Instant) {
+        let now_utc = self.now_utc(now);
+
+        for (key, value) in self.active_tcp_flows.extract_if(|_, value| {
+            now_utc.signed_duration_since(value.last_packet) > TCP_FLOW_TIMEOUT
+        }) {
+            let flow = CompletedTcpFlow::new(key, value, now_utc);
+
+            tracing::debug!(?flow, "Terminating TCP flow; timeout");
+
+            self.completed_flows.push_back(flow.into());
+        }
+
+        for (key, value) in self.active_udp_flows.extract_if(|_, value| {
+            now_utc.signed_duration_since(value.last_packet) > UDP_FLOW_TIMEOUT
+        }) {
+            let flow = CompletedUdpFlow::new(key, value, now_utc);
+
+            tracing::debug!(?flow, "Terminating UDP flow; timeout");
+
+            self.completed_flows.push_back(flow.into());
+        }
+
+        for (key, value) in self.active_icmp_flows.extract_if(|_, value| {
+            now_utc.signed_duration_since(value.last_packet) > ICMP_FLOW_TIMEOUT
+        }) {
+            let flow = CompletedIcmpFlow::new(key, value, now_utc);
+
+            tracing::debug!(?flow, "Terminating ICMP flow; timeout");
+
+            self.completed_flows.push_back(flow.into());
+        }
+    }
+
     fn insert_inbound_wireguard_flow(&mut self, flow: InboundWireGuard, now: Instant) {
         let InboundWireGuard {
             outer,
@@ -130,7 +168,7 @@ impl FlowTracker {
                 };
 
                 match self.active_tcp_flows.entry(key) {
-                    btree_map::Entry::Vacant(vacant) => {
+                    hash_map::Entry::Vacant(vacant) => {
                         if tcp_fin || tcp_rst {
                             // Don't create new flows for FIN/RST packets.
                             return;
@@ -145,7 +183,7 @@ impl FlowTracker {
                             context,
                         });
                     }
-                    btree_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
                         let flow = CompletedTcpFlow::new(key, value, now_utc);
 
@@ -163,7 +201,7 @@ impl FlowTracker {
                             },
                         );
                     }
-                    btree_map::Entry::Occupied(occupied) if tcp_syn => {
+                    hash_map::Entry::Occupied(occupied) if tcp_syn => {
                         let (key, value) = occupied.remove_entry();
                         let flow = CompletedTcpFlow::new(key, value, now_utc);
 
@@ -181,7 +219,7 @@ impl FlowTracker {
                             },
                         );
                     }
-                    btree_map::Entry::Occupied(mut occupied) => {
+                    hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
 
                         value.stats.inc_tx(payload_len as u64);
@@ -209,7 +247,7 @@ impl FlowTracker {
                 };
 
                 match self.active_udp_flows.entry(key) {
-                    btree_map::Entry::Vacant(vacant) => {
+                    hash_map::Entry::Vacant(vacant) => {
                         tracing::debug!(key = ?vacant.key(), "Creating new UDP flow");
 
                         vacant.insert(UdpFlowValue {
@@ -219,7 +257,7 @@ impl FlowTracker {
                             context,
                         });
                     }
-                    btree_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
                         let flow = CompletedUdpFlow::new(key, value, now_utc);
 
@@ -237,7 +275,7 @@ impl FlowTracker {
                             },
                         );
                     }
-                    btree_map::Entry::Occupied(mut occupied) => {
+                    hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
 
                         value.stats.inc_tx(payload_len as u64);
@@ -257,7 +295,7 @@ impl FlowTracker {
                 };
 
                 match self.active_icmp_flows.entry(key) {
-                    btree_map::Entry::Vacant(vacant) => {
+                    hash_map::Entry::Vacant(vacant) => {
                         tracing::debug!(key = ?vacant.key(), "Creating new ICMP flow");
 
                         vacant.insert(IcmpFlowValue {
@@ -267,7 +305,7 @@ impl FlowTracker {
                             context,
                         });
                     }
-                    btree_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
                         let flow = CompletedIcmpFlow::new(key, value, now_utc);
 
@@ -285,7 +323,7 @@ impl FlowTracker {
                             },
                         );
                     }
-                    btree_map::Entry::Occupied(mut occupied) => {
+                    hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
 
                         value.stats.inc_tx(payload_len as u64);
@@ -336,7 +374,7 @@ impl FlowTracker {
                 };
 
                 match self.active_tcp_flows.entry(key) {
-                    btree_map::Entry::Vacant(vacant) => {
+                    hash_map::Entry::Vacant(vacant) => {
                         if tcp_fin || tcp_rst {
                             // Don't care about FIN/RST packets where the flow no longer exists.
                             return;
@@ -344,7 +382,7 @@ impl FlowTracker {
 
                         tracing::debug!(key = ?vacant.key(), "No existing TCP flow for packet inbound on TUN device");
                     }
-                    btree_map::Entry::Occupied(mut occupied) => {
+                    hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
                         value.stats.inc_rx(payload_len as u64);
                         value.last_packet = now_utc;
@@ -372,10 +410,10 @@ impl FlowTracker {
                 };
 
                 match self.active_udp_flows.entry(key) {
-                    btree_map::Entry::Vacant(vacant) => {
+                    hash_map::Entry::Vacant(vacant) => {
                         tracing::debug!(key = ?vacant.key(), "No existing UDP flow for packet inbound on TUN device");
                     }
-                    btree_map::Entry::Occupied(mut occupied) => {
+                    hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
                         value.stats.inc_rx(payload_len as u64);
                         value.last_packet = now_utc;
@@ -395,10 +433,10 @@ impl FlowTracker {
                 };
 
                 match self.active_icmp_flows.entry(key) {
-                    btree_map::Entry::Vacant(vacant) => {
+                    hash_map::Entry::Vacant(vacant) => {
                         tracing::debug!(key = ?vacant.key(), "No existing ICMP flow for packet inbound on TUN device");
                     }
-                    btree_map::Entry::Occupied(mut occupied) => {
+                    hash_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
                         value.stats.inc_rx(payload_len as u64);
                         value.last_packet = now_utc;
@@ -559,7 +597,7 @@ impl CompletedIcmpFlow {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 struct TcpFlowKey {
     client: ClientId,
     resource: ResourceId,
@@ -569,7 +607,7 @@ struct TcpFlowKey {
     dst_port: u16,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 struct UdpFlowKey {
     client: ClientId,
     resource: ResourceId,
@@ -579,7 +617,7 @@ struct UdpFlowKey {
     dst_port: u16,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 struct IcmpFlowKey {
     client: ClientId,
     resource: ResourceId,
