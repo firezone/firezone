@@ -353,8 +353,9 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
-          path: ./${{ env.BINARY_DEST_PATH }}.deb
+          path: "**.deb"
           retention-days: 1
+          if-no-files-found: error
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
