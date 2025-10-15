@@ -105,7 +105,7 @@ impl FlowTracker {
             resource: Some(resource),
         } = flow
         else {
-            tracing::debug!(?flow, "Cannot create flow with missing data");
+            tracing::trace!(?flow, "Cannot create flow with missing data");
 
             return;
         };
@@ -124,9 +124,12 @@ impl FlowTracker {
 
                 match self.active_tcp_flows.entry(key) {
                     btree_map::Entry::Vacant(vacant) => {
-                        if !tcp_syn {
-                            tracing::debug!("Creating new TCP flow without SYN flag");
+                        if tcp_fin || tcp_rst {
+                            // Don't create new flows for FIN/RST packets.
+                            return;
                         }
+
+                        tracing::debug!(key = ?vacant.key(), syn = %tcp_syn, "Creating new TCP flow");
 
                         vacant.insert(TcpFlowValue {
                             start: now_utc,
@@ -183,7 +186,7 @@ impl FlowTracker {
             resource: Some(resource),
         } = flow
         else {
-            tracing::debug!(?flow, "Cannot create flow with missing data");
+            tracing::trace!(?flow, "Cannot create flow with missing data");
 
             return;
         };
@@ -202,8 +205,13 @@ impl FlowTracker {
                 };
 
                 match self.active_tcp_flows.entry(key) {
-                    btree_map::Entry::Vacant(_) => {
-                        tracing::debug!("No existing TCP flow for packet inbound on TUN device");
+                    btree_map::Entry::Vacant(vacant) => {
+                        if tcp_fin || tcp_rst {
+                            // Don't care about FIN/RST packets where the flow no longer exists.
+                            return;
+                        }
+
+                        tracing::debug!(key = ?vacant.key(), "No existing TCP flow for packet inbound on TUN device");
                     }
                     btree_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
@@ -384,14 +392,7 @@ pub mod inbound_tun {
         update_current_flow_inbound_tun(|tun| tun.resource.replace(rid));
     }
 
-    pub fn record_translated_packet(packet: &IpPacket) {
-        update_current_flow_inbound_tun(|tun| {
-            // We overwrite the original src IP and dst protocol to hide the DNS resource NAT.
-
-            tun.inner.src_ip = packet.source();
-            tun.inner.dst_proto = packet.destination_protocol();
-        });
-    }
+    pub fn record_translated_packet(packet: &IpPacket) {}
 
     pub fn record_wireguard_packet(local: Option<SocketAddr>, remote: SocketAddr, payload: &[u8]) {
         update_current_flow_inbound_tun(|tun| {
