@@ -44,15 +44,15 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectory do
         message = "#{error_code} => #{error_summary}"
         {:error, message, "Okta API returned #{status}: #{message}"}
 
-      # TODO: Okta API client needs to be updated to pull message from header
-      {:error, {401, ""}} ->
+      {:error, {401, error_map}} ->
+        user_message = inspect(error_map, pretty: true)
         message = "401 - Unauthorized"
-        {:error, message, message}
+        {:error, user_message, message}
 
-      # TODO: Okta API client needs to be updated to pull message from header
-      {:error, {403, ""}} ->
+      {:error, {403, error_map}} ->
+        user_message = inspect(error_map, pretty: true)
         message = "403 - Forbidden"
-        {:error, message, message}
+        {:error, user_message, message}
 
       {:error, :retry_later} ->
         message = "Okta API is temporarily unavailable"
