@@ -186,16 +186,23 @@ class Adapter: @unchecked Sendable {
     // Get device metadata
     let deviceName = DeviceMetadata.getDeviceName()
     let osVersion = DeviceMetadata.getOSVersion()
-    let firezoneDeviceInfo = DeviceMetadata.deviceInfo()
     let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
 
-    // Convert to uniffi DeviceInfo
-    let deviceInfo = DeviceInfo(
-      firebaseInstallationId: nil,
-      deviceUuid: firezoneDeviceInfo.deviceUuid,
-      deviceSerial: firezoneDeviceInfo.deviceSerial,
-      identifierForVendor: firezoneDeviceInfo.identifierForVendor
-    )
+    #if os(iOS)
+      let deviceInfo = DeviceInfo(
+        firebaseInstallationId: nil,
+        deviceUuid: nil,
+        deviceSerial: nil,
+        identifierForVendor: DeviceMetadata.getIdentifierForVendor()
+      )
+    #else
+      let deviceInfo = DeviceInfo(
+        firebaseInstallationId: nil,
+        deviceUuid: getDeviceUuid(),
+        deviceSerial: getDeviceSerial(),
+        identifierForVendor: nil
+      )
+    #endif
 
     // Create the session
     let session: Session

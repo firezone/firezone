@@ -33,42 +33,24 @@ public class DeviceMetadata {
   }
 
   #if os(iOS)
-    public static func deviceInfo() -> DeviceInfo {
-      return DeviceInfo(
-        deviceUuid: nil,
-        deviceSerial: nil,
-        identifierForVendor: UIDevice.current.identifierForVendor!.uuidString
-      )
-    }
-  #else
-    public static func deviceInfo() -> DeviceInfo {
-      return DeviceInfo(
-        deviceUuid: getDeviceUuid(),
-        deviceSerial: getDeviceSerial(),
-        identifierForVendor: nil
-      )
+    public static func getIdentifierForVendor() -> String? {
+      return UIDevice.current.identifierForVendor?.uuidString
     }
   #endif
-}
-
-public struct DeviceInfo {
-  public let deviceUuid: String?
-  public let deviceSerial: String?
-  public let identifierForVendor: String?
 }
 
 #if os(macOS)
   import IOKit
 
-  func getDeviceUuid() -> String? {
+  public func getDeviceUuid() -> String? {
     return getDeviceInfo(key: kIOPlatformUUIDKey as CFString)
   }
 
-  func getDeviceSerial() -> String? {
+  public func getDeviceSerial() -> String? {
     return getDeviceInfo(key: kIOPlatformSerialNumberKey as CFString)
   }
 
-  func getDeviceInfo(key: CFString) -> String? {
+  private func getDeviceInfo(key: CFString) -> String? {
     let matchingDict = IOServiceMatching("IOPlatformExpertDevice")
 
     let platformExpert = IOServiceGetMatchingService(kIOMainPortDefault, matchingDict)

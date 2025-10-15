@@ -265,13 +265,20 @@ class TunnelService : VpnService() {
             tunnelState = State.CONNECTING
             updateStatusNotification(TunnelStatusNotification.Connecting)
 
-            val firebaseInstallationId = runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
-                .getOrElse { exception ->
-                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
-                    null
-                }
+            val firebaseInstallationId =
+                runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
+                    .getOrElse { exception ->
+                        Log.d(TAG, "Failed to obtain firebase installation id: $exception")
+                        null
+                    }
 
-            val deviceInfo = DeviceInfo(firebaseInstallationId = firebaseInstallationId)
+            val deviceInfo =
+                DeviceInfo(
+                    firebaseInstallationId = firebaseInstallationId,
+                    deviceUuid = null,
+                    deviceSerial = null,
+                    identifierForVendor = null,
+                )
 
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
@@ -542,8 +549,8 @@ class TunnelService : VpnService() {
         }
     }
 
-    private fun convertResource(resource: uniffi.connlib.Resource): Resource {
-        return when (resource) {
+    private fun convertResource(resource: uniffi.connlib.Resource): Resource =
+        when (resource) {
             is uniffi.connlib.Resource.Dns -> {
                 Resource(
                     type = dev.firezone.android.tunnel.model.ResourceType.DNS,
@@ -578,22 +585,19 @@ class TunnelService : VpnService() {
                 )
             }
         }
-    }
 
-    private fun convertSite(site: uniffi.connlib.Site): dev.firezone.android.tunnel.model.Site {
-        return dev.firezone.android.tunnel.model.Site(
+    private fun convertSite(site: uniffi.connlib.Site): dev.firezone.android.tunnel.model.Site =
+        dev.firezone.android.tunnel.model.Site(
             id = site.id,
             name = site.name,
         )
-    }
 
-    private fun convertResourceStatus(status: uniffi.connlib.ResourceStatus): dev.firezone.android.tunnel.model.StatusEnum {
-        return when (status) {
+    private fun convertResourceStatus(status: uniffi.connlib.ResourceStatus): dev.firezone.android.tunnel.model.StatusEnum =
+        when (status) {
             uniffi.connlib.ResourceStatus.UNKNOWN -> dev.firezone.android.tunnel.model.StatusEnum.UNKNOWN
             uniffi.connlib.ResourceStatus.ONLINE -> dev.firezone.android.tunnel.model.StatusEnum.ONLINE
             uniffi.connlib.ResourceStatus.OFFLINE -> dev.firezone.android.tunnel.model.StatusEnum.OFFLINE
         }
-    }
 
     companion object {
         enum class State {
