@@ -590,7 +590,7 @@ where
                         }
                         (Payload::Reply(Reply::Ok(OkReply::NoMessage(Empty {}))), Some(req_id)) => {
                             if self.pending_join_requests.remove(&req_id).is_some() {
-                                tracing::info!("Joined {} room on portal", message.topic);
+                                tracing::debug!("Joined {} room on portal", message.topic);
 
                                 // For `phx_join` requests, `reply` is empty so we can safely ignore it.
                                 return Poll::Ready(Ok(Event::JoinedRoom {
