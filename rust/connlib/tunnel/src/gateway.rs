@@ -130,8 +130,6 @@ impl GatewayState {
             return Ok(None);
         };
 
-        flow_tracker::inbound_tun::record_translated_packet(&packet);
-
         let Some(encrypted_packet) = self
             .node
             .encapsulate(cid, packet, now)

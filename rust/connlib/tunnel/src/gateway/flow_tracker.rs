@@ -765,8 +765,6 @@ pub mod inbound_tun {
         update_current_flow_inbound_tun(|tun| tun.resource.replace(rid));
     }
 
-    pub fn record_translated_packet(_: &IpPacket) {}
-
     pub fn record_wireguard_packet(local: Option<SocketAddr>, remote: SocketAddr) {
         update_current_flow_inbound_tun(|tun| tun.outer = Some(OuterFlow { local, remote }));
     }
