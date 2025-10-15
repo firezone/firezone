@@ -17,7 +17,7 @@ assets = [
     ["target/release/firezone-gateway", "usr/bin/", "755"],
     ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
 ]
-depends = ''
+depends = 'iptables'
 
 [dependencies]
 anyhow = { workspace = true }
