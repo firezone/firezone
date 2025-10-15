@@ -53,8 +53,8 @@ const navbarThemeLight: CustomFlowbiteTheme["navbar"] = {
   link: {
     base: "block py-2 pl-3 pr-4 md:p-0 border-t border-neutral-200 md:border-t-0 md:border-transparent",
     active: {
-      on: "bg-neutral-200 rounded text-white md:bg-transparent text-primary-450 font-semibold",
-      off: "text-neutral-700 hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
+      on: "bg-neutral-100 rounded md:bg-transparent font-semibold text-primary-450 md:text-primary-450",
+      off: "text-neutral-700 hover:text-primary-450 md:hover:text-primary-450 hover:bg-neutral-100 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
     },
     disabled: {
       on: "text-neutral-400 hover:cursor-not-allowed",
@@ -100,8 +100,8 @@ const navbarThemeDark: CustomFlowbiteTheme["navbar"] = {
   link: {
     base: "block py-2 pl-3 pr-4 md:p-0 border-t border-neutral-700 md:border-t-0 md:border-transparent",
     active: {
-      on: "rounded text-white md:bg-transparent text-primary-450 font-semibold",
-      off: "text-neutral-200 hover:text-primary-450 hover:bg-primary-900 hover:text-primary-450 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
+      on: "rounded bg-primary-900 md:bg-transparent font-semibold text-primary-450 md:text-primary-450",
+      off: "text-neutral-200 hover:text-primary-450 md:hover:text-primary-450 hover:bg-primary-900 transition transform duration-50 md:hover:bg-transparent md:hover:border-b-2 md:hover:border-primary-450",
     },
     disabled: {
       on: "text-neutral-400 hover:cursor-not-allowed",
