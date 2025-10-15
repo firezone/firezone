@@ -323,6 +323,8 @@ jobs:
         run: |
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
+
+          ls -la
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
@@ -351,7 +353,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ env.BINARY_DEST_PATH }}.deb
-          path: ${{ env.BINARY_DEST_PATH }}.deb
+          path: ./${{ env.BINARY_DEST_PATH }}.deb
           retention-days: 1
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
