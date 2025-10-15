@@ -143,7 +143,6 @@ impl GatewayState {
         flow_tracker::inbound_tun::record_wireguard_packet(
             encrypted_packet.src,
             encrypted_packet.dst,
-            &encrypted_packet.payload,
         );
 
         Ok(Some(encrypted_packet))
@@ -162,9 +161,7 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
-        let _guard = self
-            .flow_tracker
-            .new_inbound_wireguard(local, from, packet, now);
+        let _guard = self.flow_tracker.new_inbound_wireguard(local, from, now);
 
         let Some((cid, packet)) = self
             .node
@@ -487,6 +484,53 @@ impl GatewayState {
                         rx_bytes = %flow.rx_bytes,
                         tx_bytes = %flow.tx_bytes,
                         "TCP flow completed"
+                    );
+                }
+                flow_tracker::CompletedFlow::Udp(flow) => {
+                    tracing::info!(
+                        client = %flow.client,
+                        resource = %flow.resource,
+                        start = ?flow.start,
+                        end = ?flow.end,
+
+                        inner_src_ip = %flow.inner_src_ip,
+                        inner_dst_ip = %flow.inner_dst_ip,
+                        inner_src_port = %flow.inner_src_port,
+                        inner_dst_port = %flow.inner_dst_port,
+
+                        outer_src_ip = %flow.outer_src_ip,
+                        outer_dst_ip = %flow.outer_dst_ip,
+                        outer_src_port = %flow.outer_src_port,
+                        outer_dst_port = %flow.outer_dst_port,
+
+                        rx_packets = %flow.rx_packets,
+                        tx_packets = %flow.tx_packets,
+                        rx_bytes = %flow.rx_bytes,
+                        tx_bytes = %flow.tx_bytes,
+                        "UDP flow completed"
+                    );
+                }
+                flow_tracker::CompletedFlow::Icmp(flow) => {
+                    tracing::info!(
+                        client = %flow.client,
+                        resource = %flow.resource,
+                        start = ?flow.start,
+                        end = ?flow.end,
+
+                        inner_src_ip = %flow.inner_src_ip,
+                        inner_dst_ip = %flow.inner_dst_ip,
+                        inner_identifier = %flow.inner_identifier,
+
+                        outer_src_ip = %flow.outer_src_ip,
+                        outer_dst_ip = %flow.outer_dst_ip,
+                        outer_src_port = %flow.outer_src_port,
+                        outer_dst_port = %flow.outer_dst_port,
+
+                        rx_packets = %flow.rx_packets,
+                        tx_packets = %flow.tx_packets,
+                        rx_bytes = %flow.rx_bytes,
+                        tx_bytes = %flow.tx_bytes,
+                        "ICMP flow completed"
                     );
                 }
             }

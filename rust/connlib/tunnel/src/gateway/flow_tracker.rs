@@ -16,8 +16,10 @@ thread_local! {
 #[derive(Debug)]
 pub struct FlowTracker {
     active_tcp_flows: BTreeMap<TcpFlowKey, TcpFlowValue>,
+    active_udp_flows: BTreeMap<UdpFlowKey, UdpFlowValue>,
+    active_icmp_flows: BTreeMap<IcmpFlowKey, IcmpFlowValue>,
 
-    completed_tcp_flows: VecDeque<CompletedTcpFlow>,
+    completed_flows: VecDeque<CompletedFlow>,
 
     created_at: Instant,
     created_at_utc: DateTime<Utc>,
@@ -27,7 +29,9 @@ impl FlowTracker {
     pub fn new(now: Instant) -> Self {
         Self {
             active_tcp_flows: Default::default(),
-            completed_tcp_flows: Default::default(),
+            active_udp_flows: Default::default(),
+            active_icmp_flows: Default::default(),
+            completed_flows: Default::default(),
             created_at: now,
             created_at_utc: Utc::now(),
         }
@@ -59,15 +63,10 @@ impl FlowTracker {
         &'a mut self,
         local: SocketAddr,
         remote: SocketAddr,
-        payload: &[u8],
         now: Instant,
     ) -> CurrentFlowGuard<'a> {
         let current = CURRENT_FLOW.replace(Some(FlowData::InboundWireGuard(InboundWireGuard {
-            outer: OuterFlow {
-                local,
-                remote,
-                payload_len: payload.len(),
-            },
+            outer: OuterFlow { local, remote },
             inner: None,
             client: None,
             resource: None,
@@ -85,7 +84,7 @@ impl FlowTracker {
     }
 
     pub fn poll_completed_flow(&mut self) -> Option<CompletedFlow> {
-        self.completed_tcp_flows.pop_front().map(CompletedFlow::Tcp)
+        self.completed_flows.pop_front()
     }
 
     fn insert_inbound_wireguard_flow(&mut self, flow: InboundWireGuard, now: Instant) {
@@ -104,7 +103,7 @@ impl FlowTracker {
                 }),
             client: Some(client),
             resource: Some(resource),
-            icmp_error,
+            icmp_error: _,
         } = flow
         else {
             tracing::trace!(?flow, "Cannot create flow with missing data");
@@ -152,7 +151,7 @@ impl FlowTracker {
 
                         tracing::debug!(?flow, "Splitting existing TCP flow; context changed");
 
-                        self.completed_tcp_flows.push_back(flow);
+                        self.completed_flows.push_back(flow.into());
 
                         self.active_tcp_flows.insert(
                             key,
@@ -170,7 +169,7 @@ impl FlowTracker {
 
                         tracing::debug!(?flow, "Splitting existing TCP flow; new TCP SYN");
 
-                        self.completed_tcp_flows.push_back(flow);
+                        self.completed_flows.push_back(flow.into());
 
                         self.active_tcp_flows.insert(
                             key,
@@ -194,13 +193,106 @@ impl FlowTracker {
 
                             tracing::debug!(?flow, "TCP flow completed on RST/FIN");
 
-                            self.completed_tcp_flows.push_back(flow);
+                            self.completed_flows.push_back(flow.into());
                         }
                     }
                 };
             }
-            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {}
-            (Protocol::Icmp(src_id), Protocol::Icmp(dst_id)) => todo!(),
+            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
+                let key = UdpFlowKey {
+                    client,
+                    resource,
+                    src_ip,
+                    dst_ip,
+                    src_port,
+                    dst_port,
+                };
+
+                match self.active_udp_flows.entry(key) {
+                    btree_map::Entry::Vacant(vacant) => {
+                        tracing::debug!(key = ?vacant.key(), "Creating new UDP flow");
+
+                        vacant.insert(UdpFlowValue {
+                            start: now_utc,
+                            last_packet: now_utc,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            context,
+                        });
+                    }
+                    btree_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                        let (key, value) = occupied.remove_entry();
+                        let flow = CompletedUdpFlow::new(key, value, now_utc);
+
+                        tracing::debug!(?flow, "Splitting existing UDP flow; context changed");
+
+                        self.completed_flows.push_back(flow.into());
+
+                        self.active_udp_flows.insert(
+                            key,
+                            UdpFlowValue {
+                                start: now_utc,
+                                last_packet: now_utc,
+                                stats: FlowStats::default().with_tx(payload_len as u64),
+                                context,
+                            },
+                        );
+                    }
+                    btree_map::Entry::Occupied(mut occupied) => {
+                        let value = occupied.get_mut();
+
+                        value.stats.inc_tx(payload_len as u64);
+                        value.last_packet = now_utc;
+                    }
+                };
+            }
+            (Protocol::Icmp(src_id), Protocol::Icmp(dst_id)) => {
+                debug_assert_eq!(src_id, dst_id);
+
+                let key = IcmpFlowKey {
+                    client,
+                    resource,
+                    src_ip,
+                    dst_ip,
+                    identifier: src_id,
+                };
+
+                match self.active_icmp_flows.entry(key) {
+                    btree_map::Entry::Vacant(vacant) => {
+                        tracing::debug!(key = ?vacant.key(), "Creating new ICMP flow");
+
+                        vacant.insert(IcmpFlowValue {
+                            start: now_utc,
+                            last_packet: now_utc,
+                            stats: FlowStats::default().with_tx(payload_len as u64),
+                            context,
+                        });
+                    }
+                    btree_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                        let (key, value) = occupied.remove_entry();
+                        let flow = CompletedIcmpFlow::new(key, value, now_utc);
+
+                        tracing::debug!(?flow, "Splitting existing ICMP flow; context changed");
+
+                        self.completed_flows.push_back(flow.into());
+
+                        self.active_icmp_flows.insert(
+                            key,
+                            IcmpFlowValue {
+                                start: now_utc,
+                                last_packet: now_utc,
+                                stats: FlowStats::default().with_tx(payload_len as u64),
+                                context,
+                            },
+                        );
+                    }
+                    btree_map::Entry::Occupied(mut occupied) => {
+                        let value = occupied.get_mut();
+
+                        value.stats.inc_tx(payload_len as u64);
+                        value.last_packet = now_utc;
+                    }
+                };
+            }
             _ => {
                 tracing::error!("src and dst protocol must be the same");
             }
@@ -215,12 +307,12 @@ impl FlowTracker {
                     dst_ip,
                     src_proto: Ok(src_proto),
                     dst_proto: Ok(dst_proto),
-                    tcp_syn,
+                    tcp_syn: _,
                     tcp_fin,
                     tcp_rst,
                     payload_len,
                 },
-            outer: Some(outer),
+            outer: Some(_),
             client: Some(client),
             resource: Some(resource),
         } = flow
@@ -263,13 +355,56 @@ impl FlowTracker {
 
                             tracing::debug!(?flow, "TCP flow completed on RST/FIN");
 
-                            self.completed_tcp_flows.push_back(flow);
+                            self.completed_flows.push_back(flow.into());
                         }
                     }
                 };
             }
-            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => todo!(),
-            (Protocol::Icmp(src_id), Protocol::Icmp(dst_id)) => todo!(),
+            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
+                // For packets inbound from the TUN device, we need to flip src & dst.
+                let key = UdpFlowKey {
+                    client,
+                    resource,
+                    src_ip: dst_ip,
+                    dst_ip: src_ip,
+                    src_port: dst_port,
+                    dst_port: src_port,
+                };
+
+                match self.active_udp_flows.entry(key) {
+                    btree_map::Entry::Vacant(vacant) => {
+                        tracing::debug!(key = ?vacant.key(), "No existing UDP flow for packet inbound on TUN device");
+                    }
+                    btree_map::Entry::Occupied(mut occupied) => {
+                        let value = occupied.get_mut();
+                        value.stats.inc_rx(payload_len as u64);
+                        value.last_packet = now_utc;
+                    }
+                };
+            }
+            (Protocol::Icmp(src_id), Protocol::Icmp(dst_id)) => {
+                debug_assert_eq!(src_id, dst_id);
+
+                // For packets inbound from the TUN device, we need to flip src & dst.
+                let key = IcmpFlowKey {
+                    client,
+                    resource,
+                    src_ip: dst_ip,
+                    dst_ip: src_ip,
+                    identifier: src_id,
+                };
+
+                match self.active_icmp_flows.entry(key) {
+                    btree_map::Entry::Vacant(vacant) => {
+                        tracing::debug!(key = ?vacant.key(), "No existing ICMP flow for packet inbound on TUN device");
+                    }
+                    btree_map::Entry::Occupied(mut occupied) => {
+                        let value = occupied.get_mut();
+                        value.stats.inc_rx(payload_len as u64);
+                        value.last_packet = now_utc;
+                    }
+                };
+            }
             _ => {
                 tracing::error!("src and dst protocol must be the same");
             }
@@ -281,9 +416,11 @@ impl FlowTracker {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, derive_more::From)]
 pub enum CompletedFlow {
     Tcp(CompletedTcpFlow),
+    Udp(CompletedUdpFlow),
+    Icmp(CompletedIcmpFlow),
 }
 
 #[derive(Debug)]
@@ -309,9 +446,54 @@ pub struct CompletedTcpFlow {
     pub tx_bytes: u64,
 }
 
+#[derive(Debug)]
+pub struct CompletedUdpFlow {
+    pub client: ClientId,
+    pub resource: ResourceId,
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+
+    pub inner_src_ip: IpAddr,
+    pub inner_dst_ip: IpAddr,
+    pub inner_src_port: u16,
+    pub inner_dst_port: u16,
+
+    pub outer_src_ip: IpAddr,
+    pub outer_dst_ip: IpAddr,
+    pub outer_src_port: u16,
+    pub outer_dst_port: u16,
+
+    pub rx_packets: u64,
+    pub tx_packets: u64,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+}
+
+#[derive(Debug)]
+pub struct CompletedIcmpFlow {
+    pub client: ClientId,
+    pub resource: ResourceId,
+    pub start: DateTime<Utc>,
+    pub end: DateTime<Utc>,
+
+    pub inner_src_ip: IpAddr,
+    pub inner_dst_ip: IpAddr,
+    pub inner_identifier: u16,
+
+    pub outer_src_ip: IpAddr,
+    pub outer_dst_ip: IpAddr,
+    pub outer_src_port: u16,
+    pub outer_dst_port: u16,
+
+    pub rx_packets: u64,
+    pub tx_packets: u64,
+    pub rx_bytes: u64,
+    pub tx_bytes: u64,
+}
+
 impl CompletedTcpFlow {
     fn new(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
-        CompletedTcpFlow {
+        Self {
             client: key.client,
             resource: key.resource,
             start: value.start,
@@ -320,6 +502,51 @@ impl CompletedTcpFlow {
             inner_dst_ip: key.dst_ip,
             inner_src_port: key.src_port,
             inner_dst_port: key.dst_port,
+            outer_src_ip: value.context.src_ip,
+            outer_dst_ip: value.context.dst_ip,
+            outer_src_port: value.context.src_port,
+            outer_dst_port: value.context.dst_port,
+            rx_packets: value.stats.rx_packets,
+            tx_packets: value.stats.tx_packets,
+            rx_bytes: value.stats.rx_bytes,
+            tx_bytes: value.stats.tx_bytes,
+        }
+    }
+}
+
+impl CompletedUdpFlow {
+    fn new(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
+        Self {
+            client: key.client,
+            resource: key.resource,
+            start: value.start,
+            end,
+            inner_src_ip: key.src_ip,
+            inner_dst_ip: key.dst_ip,
+            inner_src_port: key.src_port,
+            inner_dst_port: key.dst_port,
+            outer_src_ip: value.context.src_ip,
+            outer_dst_ip: value.context.dst_ip,
+            outer_src_port: value.context.src_port,
+            outer_dst_port: value.context.dst_port,
+            rx_packets: value.stats.rx_packets,
+            tx_packets: value.stats.tx_packets,
+            rx_bytes: value.stats.rx_bytes,
+            tx_bytes: value.stats.tx_bytes,
+        }
+    }
+}
+
+impl CompletedIcmpFlow {
+    fn new(key: IcmpFlowKey, value: IcmpFlowValue, end: DateTime<Utc>) -> Self {
+        Self {
+            client: key.client,
+            resource: key.resource,
+            start: value.start,
+            end,
+            inner_src_ip: key.src_ip,
+            inner_dst_ip: key.dst_ip,
+            inner_identifier: key.identifier,
             outer_src_ip: value.context.src_ip,
             outer_dst_ip: value.context.dst_ip,
             outer_src_port: value.context.src_port,
@@ -342,8 +569,43 @@ struct TcpFlowKey {
     dst_port: u16,
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+struct UdpFlowKey {
+    client: ClientId,
+    resource: ResourceId,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    src_port: u16,
+    dst_port: u16,
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
+struct IcmpFlowKey {
+    client: ClientId,
+    resource: ResourceId,
+    src_ip: IpAddr,
+    dst_ip: IpAddr,
+    identifier: u16,
+}
+
 #[derive(Debug)]
 struct TcpFlowValue {
+    start: DateTime<Utc>,
+    last_packet: DateTime<Utc>,
+    stats: FlowStats,
+    context: FlowContext,
+}
+
+#[derive(Debug)]
+struct UdpFlowValue {
+    start: DateTime<Utc>,
+    last_packet: DateTime<Utc>,
+    stats: FlowStats,
+    context: FlowContext,
+}
+
+#[derive(Debug)]
+struct IcmpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
@@ -368,12 +630,6 @@ impl FlowStats {
     fn inc_tx(&mut self, payload_len: u64) {
         self.tx_packets += 1;
         self.tx_bytes += payload_len;
-    }
-
-    fn with_rx(mut self, payload_len: u64) -> Self {
-        self.inc_rx(payload_len);
-
-        self
     }
 
     fn inc_rx(&mut self, payload_len: u64) {
@@ -437,16 +693,10 @@ pub mod inbound_tun {
         update_current_flow_inbound_tun(|tun| tun.resource.replace(rid));
     }
 
-    pub fn record_translated_packet(packet: &IpPacket) {}
+    pub fn record_translated_packet(_: &IpPacket) {}
 
-    pub fn record_wireguard_packet(local: Option<SocketAddr>, remote: SocketAddr, payload: &[u8]) {
-        update_current_flow_inbound_tun(|tun| {
-            tun.outer = Some(OuterFlow {
-                local,
-                remote,
-                payload_len: payload.len(),
-            })
-        });
+    pub fn record_wireguard_packet(local: Option<SocketAddr>, remote: SocketAddr) {
+        update_current_flow_inbound_tun(|tun| tun.outer = Some(OuterFlow { local, remote }));
     }
 }
 
@@ -521,7 +771,6 @@ struct InboundTun {
 struct OuterFlow<L> {
     local: L,
     remote: SocketAddr,
-    payload_len: usize,
 }
 
 #[derive(Debug)]
