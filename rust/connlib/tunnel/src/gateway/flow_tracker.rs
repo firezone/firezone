@@ -135,6 +135,7 @@ impl FlowTracker {
 
                         vacant.insert(TcpFlowValue {
                             start: now_utc,
+                            last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             context: FlowContext {
                                 src_ip: outer.remote.ip(),
@@ -147,6 +148,7 @@ impl FlowTracker {
                     btree_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
                         value.stats.inc_tx(payload_len as u64);
+                        value.last_packet = now_utc;
 
                         // TODO: Create new flow if context changes.
                         // TODO: Create new flow if SYN set (handle src port reuse case)
@@ -218,6 +220,7 @@ impl FlowTracker {
                     btree_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
                         value.stats.inc_rx(payload_len as u64);
+                        value.last_packet = now_utc;
 
                         // TODO: Create new flow if context changes.
 
@@ -309,6 +312,7 @@ struct TcpFlowKey {
 #[derive(Debug)]
 struct TcpFlowValue {
     start: DateTime<Utc>,
+    last_packet: DateTime<Utc>,
     stats: FlowStats,
     context: FlowContext,
 }
