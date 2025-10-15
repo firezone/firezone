@@ -1,4 +1,4 @@
-defmodule Mix.Tasks.TestEmails do
+defmodule Mix.Tasks.Email.Render do
   @moduledoc """
   Render email templates for development and testing purposes.
 
@@ -7,7 +7,7 @@ defmodule Mix.Tasks.TestEmails do
   ## Usage
 
       # Make sure no iex session is running, then:
-      $ mix test_emails
+      $ mix email.render
 
       # Then visit: http://localhost:13000/dev/mailbox
 
@@ -20,14 +20,14 @@ defmodule Mix.Tasks.TestEmails do
   ## Examples
 
       # Send all test emails
-      $ mix test_emails
+      $ mix email.render
 
       # Send specific emails
-      $ mix test_emails sign_up
-      $ mix test_emails sign_in
-      $ mix test_emails new_user
-      $ mix test_emails outdated_gateway
-      $ mix test_emails sync_error
+      $ mix email.render sign_up
+      $ mix email.render sign_in
+      $ mix email.render new_user
+      $ mix email.render outdated_gateway
+      $ mix email.render sync_error
 
   ## Testing Dark Mode
 
@@ -82,12 +82,12 @@ defmodule Mix.Tasks.TestEmails do
         Unknown argument: #{Enum.join(args, " ")}
 
         Valid options:
-          mix test_emails              # Send all test emails
-          mix test_emails sign_up
-          mix test_emails sign_in
-          mix test_emails new_user
-          mix test_emails outdated_gateway
-          mix test_emails sync_error
+          mix email.render                 # Send all test emails
+          mix email.render sign_up
+          mix email.render sign_in
+          mix email.render new_user
+          mix email.render outdated_gateway
+          mix email.render sync_error
         """)
 
         exit({:shutdown, 1})
