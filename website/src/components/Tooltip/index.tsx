@@ -1,6 +1,6 @@
 "use client";
 
-import type { CustomFlowbiteTheme } from "flowbite-react";
+import type { CustomFlowbiteTheme } from "flowbite-react/types";
 import { Tooltip as FlowbiteTooltip } from "flowbite-react";
 
 export default function Tooltip({

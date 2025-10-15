@@ -1,8 +1,14 @@
 "use client";
 import { Route } from "next";
 import { usePathname } from "next/navigation";
-import type { CustomFlowbiteTheme } from "flowbite-react";
-import { Sidebar as FlowbiteSidebar } from "flowbite-react";
+import type { CustomFlowbiteTheme } from "flowbite-react/types";
+import {
+  Sidebar as FlowbiteSidebar,
+  SidebarItem as FlowbiteSidebarItem,
+  SidebarItems as FlowbiteSidebarItems,
+  SidebarItemGroup as FlowbiteSidebarItemGroup,
+  SidebarCollapse as FlowbiteSidebarCollapse,
+} from "flowbite-react";
 import Link from "next/link";
 import { useDrawer } from "@/components/Providers/DrawerProvider";
 
@@ -20,7 +26,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
       off: "w-64",
     },
     inner:
-      "h-full overflow-y-auto overflow-x-hidden rounded px-3 py-4 dark:bg-neutral-800",
+      "h-full overflow-y-auto overflow-x-hidden bg-white rounded px-3 py-4 dark:bg-neutral-800",
   },
   collapse: {
     button:
@@ -29,7 +35,7 @@ const FlowbiteSidebarTheme: CustomFlowbiteTheme["sidebar"] = {
       base: "h-6 w-6 text-neutral-500 transition duration-75 group-hover:text-neutral-900 dark:text-neutral-400 dark:group-hover:text-white",
       open: {
         off: "",
-        on: "text-neutral-900",
+        on: "text-neutral-900 dark:text-white",
       },
     },
     label: {
@@ -114,17 +120,17 @@ export function SidebarItem({
 
   if (href) {
     return (
-      <FlowbiteSidebar.Item as={Link} href={href} active={p === href}>
+      <FlowbiteSidebarItem as={Link} href={href as any} active={p === href}>
         {children}
-      </FlowbiteSidebar.Item>
+      </FlowbiteSidebarItem>
     );
   } else {
-    return <FlowbiteSidebar.Item>{children}</FlowbiteSidebar.Item>;
+    return <FlowbiteSidebarItem>{children}</FlowbiteSidebarItem>;
   }
 }
 
 export function SidebarItems({ children }: { children: React.ReactNode }) {
-  return <FlowbiteSidebar.Items>{children}</FlowbiteSidebar.Items>;
+  return <FlowbiteSidebarItems>{children}</FlowbiteSidebarItems>;
 }
 
 export function SidebarItemGroup({
@@ -135,14 +141,14 @@ export function SidebarItemGroup({
   children: React.ReactNode;
 }) {
   return (
-    <FlowbiteSidebar.ItemGroup>
+    <FlowbiteSidebarItemGroup>
       {label && (
-        <FlowbiteSidebar.Item theme={ItemGroupLabelTheme?.item}>
+        <FlowbiteSidebarItem theme={ItemGroupLabelTheme?.item}>
           {label}
-        </FlowbiteSidebar.Item>
+        </FlowbiteSidebarItem>
       )}
       {children}
-    </FlowbiteSidebar.ItemGroup>
+    </FlowbiteSidebarItemGroup>
   );
 }
 
@@ -158,9 +164,9 @@ export function SidebarCollapse({
   const p = usePathname();
 
   return (
-    <FlowbiteSidebar.Collapse open={p.startsWith(prefix)} label={label}>
+    <FlowbiteSidebarCollapse open={p.startsWith(prefix)} label={label}>
       {children}
-    </FlowbiteSidebar.Collapse>
+    </FlowbiteSidebarCollapse>
   );
 }
 
