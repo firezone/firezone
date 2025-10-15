@@ -469,8 +469,8 @@ impl GatewayState {
                     tracing::info!(
                         client = %flow.client,
                         resource = %flow.resource,
-                        start = %flow.start,
-                        end = %flow.end,
+                        start = ?flow.start,
+                        end = ?flow.end,
 
                         inner_src_ip = %flow.inner_src_ip,
                         inner_dst_ip = %flow.inner_dst_ip,
