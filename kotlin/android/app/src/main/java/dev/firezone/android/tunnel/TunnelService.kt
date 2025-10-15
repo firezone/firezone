@@ -512,21 +512,20 @@ class TunnelService : VpnService() {
                             }
 
                             is Event.TunInterfaceUpdated -> {
-                                tunnelDnsAddresses =
-                                    moshi.adapter<MutableList<String>>().fromJson(event.dns)!!
+                                tunnelDnsAddresses = event.dns.toMutableList()
                                 tunnelSearchDomain = event.searchDomain
                                 tunnelIpv4Address = event.ipv4
                                 tunnelIpv6Address = event.ipv6
                                 tunnelRoutes.clear()
                                 tunnelRoutes.addAll(
-                                    moshi
-                                        .adapter<MutableList<Cidr>>()
-                                        .fromJson(event.ipv4Routes)!!,
+                                    event.ipv4Routes.map { cidr ->
+                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
+                                    },
                                 )
                                 tunnelRoutes.addAll(
-                                    moshi
-                                        .adapter<MutableList<Cidr>>()
-                                        .fromJson(event.ipv6Routes)!!,
+                                    event.ipv6Routes.map { cidr ->
+                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
+                                    },
                                 )
                                 buildVpnService()
                             }
