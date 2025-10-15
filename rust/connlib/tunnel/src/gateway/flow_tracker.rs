@@ -141,7 +141,7 @@ impl FlowTracker {
                 }),
             client: Some(client),
             resource: Some(resource),
-            icmp_error: _,
+            icmp_error: _, // TODO: What to do with ICMP errors?
         } = flow
         else {
             tracing::trace!(?flow, "Cannot create flow with missing data");
