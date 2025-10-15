@@ -186,9 +186,16 @@ class Adapter: @unchecked Sendable {
     // Get device metadata
     let deviceName = DeviceMetadata.getDeviceName()
     let osVersion = DeviceMetadata.getOSVersion()
-    let deviceInfo = try JSONEncoder().encode(DeviceMetadata.deviceInfo())
-    let deviceInfoStr = String(data: deviceInfo, encoding: .utf8) ?? "{}"
+    let firezoneDeviceInfo = DeviceMetadata.deviceInfo()
     let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
+
+    // Convert to uniffi DeviceInfo
+    let deviceInfo = DeviceInfo(
+      firebaseInstallationId: nil,
+      deviceUuid: firezoneDeviceInfo.deviceUuid,
+      deviceSerial: firezoneDeviceInfo.deviceSerial,
+      identifierForVendor: firezoneDeviceInfo.identifierForVendor
+    )
 
     // Create the session
     let session: Session
@@ -202,7 +209,7 @@ class Adapter: @unchecked Sendable {
         osVersion: osVersion,
         logDir: logDir,
         logFilter: logFilter,
-        deviceInfo: deviceInfoStr,
+        deviceInfo: deviceInfo,
         isInternetResourceActive: internetResourceEnabled
       )
     } catch {
@@ -448,17 +455,9 @@ class Adapter: @unchecked Sendable {
       Log.warning("IP address \(stringAddress) did not parse as either IPv4 or IPv6")
     }
 
-    // Step 3: Encode
-    guard let encoded = try? JSONEncoder().encode(parsedResolvers),
-      let jsonResolvers = String(data: encoded, encoding: .utf8)
-    else {
-      Log.warning("jsonResolvers conversion failed: \(parsedResolvers)")
-      return
-    }
-
-    // Step 4: Send to connlib
-    Log.log("Sending resolvers to connlib: \(jsonResolvers)")
-    sendCommand(.setDns(jsonResolvers))
+    // Step 3: Send to connlib
+    Log.log("Sending resolvers to connlib: \(parsedResolvers)")
+    sendCommand(.setDns(parsedResolvers))
   }
 
   private func sendCommand(_ command: SessionCommand) {

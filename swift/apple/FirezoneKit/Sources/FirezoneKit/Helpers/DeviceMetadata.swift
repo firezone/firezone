@@ -34,28 +34,31 @@ public class DeviceMetadata {
 
   #if os(iOS)
     public static func deviceInfo() -> DeviceInfo {
-      return DeviceInfo(identifierForVendor: UIDevice.current.identifierForVendor!.uuidString)
+      return DeviceInfo(
+        deviceUuid: nil,
+        deviceSerial: nil,
+        identifierForVendor: UIDevice.current.identifierForVendor!.uuidString
+      )
     }
   #else
     public static func deviceInfo() -> DeviceInfo {
-      return DeviceInfo(deviceUuid: getDeviceUuid()!, deviceSerial: getDeviceSerial()!)
+      return DeviceInfo(
+        deviceUuid: getDeviceUuid(),
+        deviceSerial: getDeviceSerial(),
+        identifierForVendor: nil
+      )
     }
   #endif
 }
 
-#if os(iOS)
-  public struct DeviceInfo: Encodable {
-    let identifierForVendor: String
-  }
-#endif
+public struct DeviceInfo {
+  public let deviceUuid: String?
+  public let deviceSerial: String?
+  public let identifierForVendor: String?
+}
 
 #if os(macOS)
   import IOKit
-
-  public struct DeviceInfo: Encodable {
-    let deviceUuid: String
-    let deviceSerial: String
-  }
 
   func getDeviceUuid() -> String? {
     return getDeviceInfo(key: kIOPlatformUUIDKey as CFString)

@@ -50,6 +50,15 @@ pub struct Cidr {
     pub prefix: u8,
 }
 
+/// Device information for telemetry and identification.
+#[derive(uniffi::Record)]
+pub struct DeviceInfo {
+    pub firebase_installation_id: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_serial: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+}
+
 #[derive(uniffi::Enum)]
 pub enum Event {
     TunInterfaceUpdated {
@@ -101,7 +110,7 @@ impl Session {
         os_version: String,
         log_dir: String,
         log_filter: String,
-        device_info: String,
+        device_info: DeviceInfo,
         is_internet_resource_active: bool,
         protect_socket: Arc<dyn ProtectSocket>,
     ) -> Result<Self, ConnlibError> {
@@ -142,7 +151,7 @@ impl Session {
         os_version: Option<String>,
         log_dir: String,
         log_filter: String,
-        device_info: String,
+        device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
         // iOS doesn't need socket protection like Android
@@ -225,9 +234,12 @@ impl Session {
         self.inner.set_internet_resource_state(active);
     }
 
-    pub fn set_dns(&self, dns_servers: String) -> Result<(), ConnlibError> {
-        let dns_servers =
-            serde_json::from_str(&dns_servers).context("Failed to deserialize DNS servers")?;
+    pub fn set_dns(&self, dns_servers: Vec<String>) -> Result<(), ConnlibError> {
+        let dns_servers: Vec<std::net::IpAddr> = dns_servers
+            .into_iter()
+            .map(|s| s.parse())
+            .collect::<Result<_, _>>()
+            .context("Failed to parse DNS servers")?;
 
         self.inner.set_dns(dns_servers);
 
@@ -339,13 +351,18 @@ fn connect(
     os_version: Option<String>,
     log_dir: String,
     log_filter: String,
-    device_info: String,
+    device_info: DeviceInfo,
     is_internet_resource_active: bool,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) -> Result<Session, ConnlibError> {
-    let device_info =
-        serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
+    // Convert FFI DeviceInfo to internal phoenix_channel::DeviceInfo
+    let device_info = phoenix_channel::DeviceInfo {
+        device_uuid: device_info.device_uuid,
+        device_serial: device_info.device_serial,
+        identifier_for_vendor: device_info.identifier_for_vendor,
+        firebase_installation_id: device_info.firebase_installation_id,
+    };
     let secret = SecretString::from(token);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()

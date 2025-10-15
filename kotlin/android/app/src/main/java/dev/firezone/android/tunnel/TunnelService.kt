@@ -20,9 +20,6 @@ import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
-import com.google.gson.FieldNamingPolicy
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
@@ -41,6 +38,7 @@ import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
@@ -48,10 +46,6 @@ import uniffi.connlib.SessionInterface
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
-
-data class DeviceInfo(
-    var firebaseInstallationId: String? = null,
-)
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
@@ -254,7 +248,7 @@ class TunnelService : VpnService() {
     }
 
     fun setDns(dnsList: List<String>) {
-        sendTunnelCommand(TunnelCommand.SetDns(Gson().toJson(dnsList)))
+        sendTunnelCommand(TunnelCommand.SetDns(dnsList))
     }
 
     fun reset() {
@@ -270,18 +264,13 @@ class TunnelService : VpnService() {
             tunnelState = State.CONNECTING
             updateStatusNotification(TunnelStatusNotification.Connecting)
 
-            val deviceInfo = DeviceInfo()
-            runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
-                .onSuccess { firebaseInstallationId ->
-                    deviceInfo.firebaseInstallationId = firebaseInstallationId
-                }.onFailure { exception ->
+            val firebaseInstallationId = runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
+                .getOrElse { exception ->
                     Log.d(TAG, "Failed to obtain firebase installation id: $exception")
+                    null
                 }
 
-            val gson: Gson =
-                GsonBuilder()
-                    .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
-                    .create()
+            val deviceInfo = DeviceInfo(firebaseInstallationId = firebaseInstallationId)
 
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
@@ -298,7 +287,7 @@ class TunnelService : VpnService() {
                         logFilter = config.logFilter,
                         isInternetResourceActive = resourceState.isEnabled(),
                         protectSocket = protectSocket,
-                        deviceInfo = gson.toJson(deviceInfo),
+                        deviceInfo = deviceInfo,
                     ).use { session ->
                         startNetworkMonitoring()
                         startDisconnectMonitoring()
@@ -447,7 +436,7 @@ class TunnelService : VpnService() {
         ) : TunnelCommand()
 
         data class SetDns(
-            val dnsServers: String,
+            val dnsServers: List<String>,
         ) : TunnelCommand()
 
         data class SetLogDirectives(

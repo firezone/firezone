@@ -5,7 +5,7 @@ import Foundation
 enum SessionCommand {
   case disconnect
   case setInternetResourceState(Bool)
-  case setDns(String)
+  case setDns([String])
   case reset(String)
 }
 
