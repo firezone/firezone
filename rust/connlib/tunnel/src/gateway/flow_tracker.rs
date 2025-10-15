@@ -112,6 +112,12 @@ impl FlowTracker {
             return;
         };
         let now_utc = self.now_utc(now);
+        let context = FlowContext {
+            src_ip: outer.remote.ip(),
+            dst_ip: outer.local.ip(),
+            src_port: outer.remote.port(),
+            dst_port: outer.local.port(),
+        };
 
         match (src_proto, dst_proto) {
             (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
@@ -137,21 +143,50 @@ impl FlowTracker {
                             start: now_utc,
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
-                            context: FlowContext {
-                                src_ip: outer.remote.ip(),
-                                dst_ip: outer.local.ip(),
-                                src_port: outer.remote.port(),
-                                dst_port: outer.local.port(),
-                            },
+                            context,
                         });
+                    }
+                    btree_map::Entry::Occupied(occupied) if occupied.get().context != context => {
+                        let (key, value) = occupied.remove_entry();
+                        let flow = CompletedTcpFlow::new(key, value, now_utc);
+
+                        tracing::debug!(?flow, "Splitting existing TCP flow; context changed");
+
+                        self.completed_tcp_flows.push_back(flow);
+
+                        self.active_tcp_flows.insert(
+                            key,
+                            TcpFlowValue {
+                                start: now_utc,
+                                last_packet: now_utc,
+                                stats: FlowStats::default().with_tx(payload_len as u64),
+                                context,
+                            },
+                        );
+                    }
+                    btree_map::Entry::Occupied(occupied) if tcp_syn => {
+                        let (key, value) = occupied.remove_entry();
+                        let flow = CompletedTcpFlow::new(key, value, now_utc);
+
+                        tracing::debug!(?flow, "Splitting existing TCP flow; new TCP SYN");
+
+                        self.completed_tcp_flows.push_back(flow);
+
+                        self.active_tcp_flows.insert(
+                            key,
+                            TcpFlowValue {
+                                start: now_utc,
+                                last_packet: now_utc,
+                                stats: FlowStats::default().with_tx(payload_len as u64),
+                                context,
+                            },
+                        );
                     }
                     btree_map::Entry::Occupied(mut occupied) => {
                         let value = occupied.get_mut();
+
                         value.stats.inc_tx(payload_len as u64);
                         value.last_packet = now_utc;
-
-                        // TODO: Create new flow if context changes.
-                        // TODO: Create new flow if SYN set (handle src port reuse case)
 
                         if tcp_rst || tcp_fin {
                             let (key, value) = occupied.remove_entry();
@@ -164,7 +199,7 @@ impl FlowTracker {
                     }
                 };
             }
-            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => todo!(),
+            (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {}
             (Protocol::Icmp(src_id), Protocol::Icmp(dst_id)) => todo!(),
             _ => {
                 tracing::error!("src and dst protocol must be the same");
@@ -299,7 +334,7 @@ impl CompletedTcpFlow {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy)]
 struct TcpFlowKey {
     client: ClientId,
     resource: ResourceId,
@@ -349,7 +384,7 @@ impl FlowStats {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 struct FlowContext {
     src_ip: IpAddr,
     dst_ip: IpAddr,
