@@ -1,6 +1,6 @@
 defmodule Mix.Tasks.TestEmails do
   @moduledoc """
-  Generates test emails for development and testing purposes.
+  Render email templates for development and testing purposes.
 
   All emails will appear in the Swoosh mailbox at http://localhost:13000/dev/mailbox
 
