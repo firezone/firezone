@@ -15,13 +15,11 @@ thread_local! {
 
 const TCP_FLOW_TIMEOUT: TimeDelta = TimeDelta::hours(2);
 const UDP_FLOW_TIMEOUT: TimeDelta = TimeDelta::seconds(120);
-const ICMP_FLOW_TIMEOUT: TimeDelta = TimeDelta::seconds(120);
 
 #[derive(Debug)]
 pub struct FlowTracker {
     active_tcp_flows: HashMap<TcpFlowKey, TcpFlowValue>,
     active_udp_flows: HashMap<UdpFlowKey, UdpFlowValue>,
-    active_icmp_flows: HashMap<IcmpFlowKey, IcmpFlowValue>,
 
     completed_flows: VecDeque<CompletedFlow>,
 
@@ -34,7 +32,6 @@ impl FlowTracker {
         Self {
             active_tcp_flows: Default::default(),
             active_udp_flows: Default::default(),
-            active_icmp_flows: Default::default(),
             completed_flows: Default::default(),
             created_at: now,
             created_at_utc: Utc::now(),
@@ -110,16 +107,6 @@ impl FlowTracker {
             let flow = CompletedUdpFlow::new(key, value, now_utc);
 
             tracing::debug!(?flow, "Terminating UDP flow; timeout");
-
-            self.completed_flows.push_back(flow.into());
-        }
-
-        for (key, value) in self.active_icmp_flows.extract_if(|_, value| {
-            now_utc.signed_duration_since(value.last_packet) > ICMP_FLOW_TIMEOUT
-        }) {
-            let flow = CompletedIcmpFlow::new(key, value, now_utc);
-
-            tracing::debug!(?flow, "Terminating ICMP flow; timeout");
 
             self.completed_flows.push_back(flow.into());
         }
@@ -304,54 +291,7 @@ impl FlowTracker {
                     }
                 };
             }
-            (Protocol::Icmp(src_id), Protocol::Icmp(dst_id)) => {
-                debug_assert_eq!(src_id, dst_id);
-
-                let key = IcmpFlowKey {
-                    client,
-                    resource,
-                    src_ip,
-                    dst_ip,
-                    identifier: src_id,
-                };
-
-                match self.active_icmp_flows.entry(key) {
-                    hash_map::Entry::Vacant(vacant) => {
-                        tracing::debug!(key = ?vacant.key(), "Creating new ICMP flow");
-
-                        vacant.insert(IcmpFlowValue {
-                            start: now_utc,
-                            last_packet: now_utc,
-                            stats: FlowStats::default().with_tx(payload_len as u64),
-                            context,
-                        });
-                    }
-                    hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
-                        let (key, value) = occupied.remove_entry();
-                        let flow = CompletedIcmpFlow::new(key, value, now_utc);
-
-                        tracing::debug!(?flow, "Splitting existing ICMP flow; context changed");
-
-                        self.completed_flows.push_back(flow.into());
-
-                        self.active_icmp_flows.insert(
-                            key,
-                            IcmpFlowValue {
-                                start: now_utc,
-                                last_packet: now_utc,
-                                stats: FlowStats::default().with_tx(payload_len as u64),
-                                context,
-                            },
-                        );
-                    }
-                    hash_map::Entry::Occupied(mut occupied) => {
-                        let value = occupied.get_mut();
-
-                        value.stats.inc_tx(payload_len as u64);
-                        value.last_packet = now_utc;
-                    }
-                };
-            }
+            (Protocol::Icmp(_), Protocol::Icmp(_)) => {}
             _ => {
                 tracing::error!("src and dst protocol must be the same");
             }
@@ -445,29 +385,7 @@ impl FlowTracker {
                     }
                 };
             }
-            (Protocol::Icmp(src_id), Protocol::Icmp(dst_id)) => {
-                debug_assert_eq!(src_id, dst_id);
-
-                // For packets inbound from the TUN device, we need to flip src & dst.
-                let key = IcmpFlowKey {
-                    client,
-                    resource,
-                    src_ip: dst_ip,
-                    dst_ip: src_ip,
-                    identifier: src_id,
-                };
-
-                match self.active_icmp_flows.entry(key) {
-                    hash_map::Entry::Vacant(vacant) => {
-                        tracing::debug!(key = ?vacant.key(), "No existing ICMP flow for packet inbound on TUN device");
-                    }
-                    hash_map::Entry::Occupied(mut occupied) => {
-                        let value = occupied.get_mut();
-                        value.stats.inc_rx(payload_len as u64);
-                        value.last_packet = now_utc;
-                    }
-                };
-            }
+            (Protocol::Icmp(_), Protocol::Icmp(_)) => {}
             _ => {
                 tracing::error!("src and dst protocol must be the same");
             }
@@ -483,7 +401,6 @@ impl FlowTracker {
 pub enum CompletedFlow {
     Tcp(CompletedTcpFlow),
     Udp(CompletedUdpFlow),
-    Icmp(CompletedIcmpFlow),
 }
 
 #[derive(Debug)]
@@ -522,29 +439,6 @@ pub struct CompletedUdpFlow {
     pub inner_dst_ip: IpAddr,
     pub inner_src_port: u16,
     pub inner_dst_port: u16,
-
-    pub outer_src_ip: IpAddr,
-    pub outer_dst_ip: IpAddr,
-    pub outer_src_port: u16,
-    pub outer_dst_port: u16,
-
-    pub rx_packets: u64,
-    pub tx_packets: u64,
-    pub rx_bytes: u64,
-    pub tx_bytes: u64,
-}
-
-#[derive(Debug)]
-pub struct CompletedIcmpFlow {
-    pub client: ClientId,
-    pub resource: ResourceId,
-    pub start: DateTime<Utc>,
-    pub end: DateTime<Utc>,
-    pub last_packet: DateTime<Utc>,
-
-    pub inner_src_ip: IpAddr,
-    pub inner_dst_ip: IpAddr,
-    pub inner_identifier: u16,
 
     pub outer_src_ip: IpAddr,
     pub outer_dst_ip: IpAddr,
@@ -605,29 +499,6 @@ impl CompletedUdpFlow {
     }
 }
 
-impl CompletedIcmpFlow {
-    fn new(key: IcmpFlowKey, value: IcmpFlowValue, end: DateTime<Utc>) -> Self {
-        Self {
-            client: key.client,
-            resource: key.resource,
-            start: value.start,
-            end,
-            last_packet: value.last_packet,
-            inner_src_ip: key.src_ip,
-            inner_dst_ip: key.dst_ip,
-            inner_identifier: key.identifier,
-            outer_src_ip: value.context.src_ip,
-            outer_dst_ip: value.context.dst_ip,
-            outer_src_port: value.context.src_port,
-            outer_dst_port: value.context.dst_port,
-            rx_packets: value.stats.rx_packets,
-            tx_packets: value.stats.tx_packets,
-            rx_bytes: value.stats.rx_bytes,
-            tx_bytes: value.stats.tx_bytes,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 struct TcpFlowKey {
     client: ClientId,
@@ -648,15 +519,6 @@ struct UdpFlowKey {
     dst_port: u16,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
-struct IcmpFlowKey {
-    client: ClientId,
-    resource: ResourceId,
-    src_ip: IpAddr,
-    dst_ip: IpAddr,
-    identifier: u16,
-}
-
 #[derive(Debug)]
 struct TcpFlowValue {
     start: DateTime<Utc>,
@@ -670,14 +532,6 @@ struct TcpFlowValue {
 
 #[derive(Debug)]
 struct UdpFlowValue {
-    start: DateTime<Utc>,
-    last_packet: DateTime<Utc>,
-    stats: FlowStats,
-    context: FlowContext,
-}
-
-#[derive(Debug)]
-struct IcmpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,

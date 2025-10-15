@@ -515,32 +515,6 @@ impl GatewayState {
                         "UDP flow completed"
                     );
                 }
-                flow_tracker::CompletedFlow::Icmp(flow) => {
-                    tracing::trace!(
-                        target: "flow_logs::icmp",
-
-                        client = %flow.client,
-                        resource = %flow.resource,
-                        start = ?flow.start,
-                        end = ?flow.end,
-                        last_packet = ?flow.last_packet,
-
-                        inner_src_ip = %flow.inner_src_ip,
-                        inner_dst_ip = %flow.inner_dst_ip,
-                        inner_identifier = %flow.inner_identifier,
-
-                        outer_src_ip = %flow.outer_src_ip,
-                        outer_dst_ip = %flow.outer_dst_ip,
-                        outer_src_port = %flow.outer_src_port,
-                        outer_dst_port = %flow.outer_dst_port,
-
-                        rx_packets = %flow.rx_packets,
-                        tx_packets = %flow.tx_packets,
-                        rx_bytes = %flow.rx_bytes,
-                        tx_bytes = %flow.tx_bytes,
-                        "ICMP flow completed"
-                    );
-                }
             }
         }
     }
