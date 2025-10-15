@@ -6,7 +6,7 @@ use std::{
 
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, ResourceId};
-use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
+use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 use std::time::Instant;
 
 thread_local! {
@@ -71,6 +71,7 @@ impl FlowTracker {
             inner: None,
             client: None,
             resource: None,
+            icmp_error: None,
         })));
         debug_assert!(
             current.is_none(),
@@ -103,6 +104,7 @@ impl FlowTracker {
                 }),
             client: Some(client),
             resource: Some(resource),
+            icmp_error,
         } = flow
         else {
             tracing::trace!(?flow, "Cannot create flow with missing data");
@@ -378,7 +380,13 @@ pub mod inbound_wg {
         });
     }
 
-    pub fn record_icmp_error(packet: &IpPacket) {}
+    pub fn record_icmp_error(packet: &IpPacket) {
+        let Ok(Some((_, icmp_error))) = packet.icmp_error() else {
+            return;
+        };
+
+        update_current_flow_inbound_wireguard(|wg| wg.icmp_error.replace(icmp_error));
+    }
 }
 
 pub mod inbound_tun {
@@ -405,7 +413,7 @@ pub mod inbound_tun {
     }
 }
 
-fn update_current_flow_inbound_wireguard<R>(f: impl Fn(&mut InboundWireGuard) -> R) {
+fn update_current_flow_inbound_wireguard<R>(f: impl FnOnce(&mut InboundWireGuard) -> R) {
     CURRENT_FLOW.with_borrow_mut(|c| {
         let Some(FlowData::InboundWireGuard(wg)) = c else {
             return;
@@ -415,7 +423,7 @@ fn update_current_flow_inbound_wireguard<R>(f: impl Fn(&mut InboundWireGuard) ->
     });
 }
 
-fn update_current_flow_inbound_tun<R>(f: impl Fn(&mut InboundTun) -> R) {
+fn update_current_flow_inbound_tun<R>(f: impl FnOnce(&mut InboundTun) -> R) {
     CURRENT_FLOW.with_borrow_mut(|c| {
         let Some(FlowData::InboundTun(tun)) = c else {
             return;
@@ -461,6 +469,7 @@ struct InboundWireGuard {
     inner: Option<InnerFlow>,
     client: Option<ClientId>,
     resource: Option<ResourceId>,
+    icmp_error: Option<IcmpError>,
 }
 
 #[derive(Debug)]
