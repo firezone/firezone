@@ -46,7 +46,6 @@ func runSessionEventLoop(
 
     // Wait for first task to complete, then cancel all
     _ = await group.next()
-    Log.log("One task completed, cancelling event loop")
     group.cancelAll()
   }
 }
