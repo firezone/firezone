@@ -33,8 +33,6 @@ func runSessionEventLoop(
 
         eventSender.send(event)
       }
-
-      Log.log("Event polling finished")
     }
 
     // Command handling task - receives commands from commandReceiver
