@@ -574,6 +574,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FirezoneNetworkExtension/Info.iOS.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSSystemExtensionUsageDescription = "Firezone tunnel service";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -617,6 +618,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FirezoneNetworkExtension/Info.iOS.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSSystemExtensionUsageDescription = "Firezone tunnel service";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -658,6 +660,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FirezoneNetworkExtension/Info.macOS.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -699,6 +702,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = FirezoneNetworkExtension/Info.macOS.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = FirezoneNetworkExtension;
+				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = "";
 				LD_RUNPATH_SEARCH_PATHS = (
