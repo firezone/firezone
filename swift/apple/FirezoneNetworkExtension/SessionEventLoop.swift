@@ -27,7 +27,7 @@ func runSessionEventLoop(
         // Poll for next event from Rust
         guard let event = await session.nextEvent() else {
           // No event returned - session has ended
-          Log.log("Event stream ended, exiting event loop")
+          Log.log("Event stream ended")
           break
         }
 
@@ -41,7 +41,7 @@ func runSessionEventLoop(
         handleCommand(command, session: session)
       }
 
-      Log.log("Command handling finished")
+      Log.log("Command stream ended")
     }
 
     // Wait for first task to complete, then cancel all
