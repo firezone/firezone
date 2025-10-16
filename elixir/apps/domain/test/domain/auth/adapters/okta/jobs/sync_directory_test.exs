@@ -941,7 +941,7 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
       cancel_bypass_expectations_check(bypass)
     end
 
-    test "sends email on failed directory sync", %{
+    test "sends email on failed directory sync when errors are in body", %{
       account: account,
       provider: provider,
       bypass: bypass
@@ -963,6 +963,55 @@ defmodule Domain.Auth.Adapters.Okta.Jobs.SyncDirectoryTest do
           ] do
         Bypass.stub(bypass, "GET", path, fn conn ->
           Plug.Conn.send_resp(conn, 401, JSON.encode!(response))
+        end)
+      end
+
+      {:ok, pid} = Task.Supervisor.start_link()
+
+      provider
+      |> Ecto.Changeset.change(last_syncs_failed: 9)
+      |> Repo.update!()
+
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      assert_email_sent(fn email ->
+        assert email.subject == "Firezone Identity Provider Sync Error"
+        assert email.text_body =~ "failed to sync 10 time(s)"
+      end)
+
+      {:ok, pid} = Task.Supervisor.start_link()
+      assert execute(%{task_supervisor: pid}) == :ok
+
+      refute_email_sent()
+
+      cancel_bypass_expectations_check(bypass)
+    end
+
+    test "sends email on failed directory sync when errors are in header", %{
+      account: account,
+      provider: provider,
+      bypass: bypass
+    } do
+      actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
+      _identity = Fixtures.Auth.create_identity(account: account, actor: actor)
+
+      # Okta returns 401 with error info in www-authenticate header
+      www_authenticate_header =
+        "Bearer authorization_uri=\"http://example.okta.com/oauth2/v1/authorize\", " <>
+          "realm=\"http://example.okta.com\", " <>
+          "scope=\"okta.groups.read\", " <>
+          "error=\"invalid_token\", " <>
+          "error_description=\"The token has expired.\", " <>
+          "resource=\"/api/v1/groups\""
+
+      for path <- [
+            "api/v1/users",
+            "api/v1/groups"
+          ] do
+        Bypass.stub(bypass, "GET", path, fn conn ->
+          conn
+          |> Plug.Conn.put_resp_header("www-authenticate", www_authenticate_header)
+          |> Plug.Conn.send_resp(401, "")
         end)
       end
 
