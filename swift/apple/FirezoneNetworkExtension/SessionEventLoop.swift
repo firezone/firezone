@@ -21,12 +21,9 @@ func runSessionEventLoop(
 
   // Multiplex between commands and events
   await withTaskGroup(of: Void.self) { group in
-    // Event polling task - polls Rust for events and sends to eventSender
     group.addTask {
       while !Task.isCancelled {
-        // Poll for next event from Rust
         guard let event = await session.nextEvent() else {
-          // No event returned - session has ended
           Log.log("Event stream ended")
           break
         }
@@ -35,7 +32,6 @@ func runSessionEventLoop(
       }
     }
 
-    // Command handling task - receives commands from commandReceiver
     group.addTask {
       for await command in commandReceiver.stream {
         handleCommand(command, session: session)
