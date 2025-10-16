@@ -51,28 +51,23 @@ private func forwardEvents(from session: Session, to eventSender: Sender<Event>)
 private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to session: Session) async {
   for await command in commandReceiver.stream {
     do {
-      try handleCommand(command, session: session)
+      switch command {
+      case .disconnect:
+        try session.disconnect()
+
+      case .setInternetResourceState(let active):
+        session.setInternetResourceState(active: active)
+
+      case .setDns(let servers):
+        try session.setDns(dnsServers: servers)
+
+      case .reset(let reason):
+        session.reset(reason: reason)
+      }
     } catch {
       Log.error("Failed to forward command to session: \(error)")
     }
   }
 
   Log.log("Command stream ended")
-}
-
-/// Handles a command by calling the appropriate session method.
-private func handleCommand(_ command: SessionCommand, session: Session) throws {
-  switch command {
-  case .disconnect:
-    try session.disconnect()
-
-  case .setInternetResourceState(let active):
-    session.setInternetResourceState(active: active)
-
-  case .setDns(let servers):
-    try session.setDns(dnsServers: servers)
-
-  case .reset(let reason):
-    session.reset(reason: reason)
-  }
 }
