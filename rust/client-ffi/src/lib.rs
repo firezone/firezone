@@ -326,9 +326,9 @@ impl Session {
         Ok(())
     }
 
-    pub async fn next_event(&self) -> Result<Option<Event>, ConnlibError> {
-        match self.events.lock().await.next().await {
-            Some(client_shared::Event::TunInterfaceUpdated(config)) => {
+    pub async fn next_event(&self) -> Option<Event> {
+        match self.events.lock().await.next().await? {
+            client_shared::Event::TunInterfaceUpdated(config) => {
                 let dns: Vec<String> = config
                     .dns_by_sentinel
                     .left_values()
@@ -353,24 +353,23 @@ impl Session {
                     })
                     .collect();
 
-                Ok(Some(Event::TunInterfaceUpdated {
+                Some(Event::TunInterfaceUpdated {
                     ipv4: config.ip.v4.to_string(),
                     ipv6: config.ip.v6.to_string(),
                     dns,
                     search_domain: config.search_domain.map(|d| d.to_string()),
                     ipv4_routes,
                     ipv6_routes,
-                }))
+                })
             }
-            Some(client_shared::Event::ResourcesUpdated(resources)) => {
+            client_shared::Event::ResourcesUpdated(resources) => {
                 let resources: Vec<Resource> = resources.into_iter().map(Into::into).collect();
 
-                Ok(Some(Event::ResourcesUpdated { resources }))
+                Some(Event::ResourcesUpdated { resources })
             }
-            Some(client_shared::Event::Disconnected(error)) => Ok(Some(Event::Disconnected {
+            client_shared::Event::Disconnected(error) => Some(Event::Disconnected {
                 error: Arc::new(DisconnectError(error)),
-            })),
-            None => Ok(None),
+            }),
         }
     }
 }

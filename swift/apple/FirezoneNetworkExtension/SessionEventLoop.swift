@@ -24,20 +24,14 @@ func runSessionEventLoop(
     // Event polling task - polls Rust for events and sends to eventSender
     group.addTask {
       while !Task.isCancelled {
-        do {
-          // Poll for next event from Rust
-          guard let event = try await session.nextEvent() else {
-            // No event returned - session has ended
-            Log.log("SessionEventLoop: Event stream ended, exiting event loop")
-            break
-          }
-
-          eventSender.send(event)
-        } catch {
-          Log.error(error)
-          Log.log("SessionEventLoop: Error polling event, continuing")
-          continue
+        // Poll for next event from Rust
+        guard let event = await session.nextEvent() else {
+          // No event returned - session has ended
+          Log.log("SessionEventLoop: Event stream ended, exiting event loop")
+          break
         }
+
+        eventSender.send(event)
       }
 
       Log.log("SessionEventLoop: Event polling finished")
