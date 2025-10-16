@@ -120,12 +120,9 @@ export function SidebarItem({
 
   if (href) {
     const hrefString = href instanceof URL ? href.toString() : href;
+    const hrefPath = href instanceof URL ? href.pathname : href;
     return (
-      <FlowbiteSidebarItem
-        as={Link}
-        href={hrefString}
-        active={p === hrefString}
-      >
+      <FlowbiteSidebarItem as={Link} href={hrefString} active={p === hrefPath}>
         {children}
       </FlowbiteSidebarItem>
     );
