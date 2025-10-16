@@ -70,7 +70,7 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
         session.reset(reason: reason)
       }
     } catch {
-      Log.error("Failed to forward command to session: \(error)")
+      Log.warning("Failed to forward command to session: \(error)")
     }
   }
 
