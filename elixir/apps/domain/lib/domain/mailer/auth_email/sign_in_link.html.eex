@@ -49,12 +49,13 @@
           line-height: 32px !important
         }
       }
+      <%= File.read!(Application.app_dir(:domain, "priv/static/emails/dark_mode.css")) %>
     </style>
   </head>
   <body style="margin: 0; width: 100%; background-color: #f6f6f6; padding: 0; -webkit-font-smoothing: antialiased; word-break: break-word">
     <div role="article" aria-roledescription="email" aria-label="Firezone Sign In Token" lang="en">
       <div
-        class="sm-px-4"
+        class="sm-px-4 email-container"
         style="background-color: #f6f6f6; font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif"
       >
         <table align="center" cellpadding="0" cellspacing="0" role="none">
@@ -67,10 +68,18 @@
                 <a href="https://firezone.dev?utm_source=email">
                   <div>
                     <img
+                      class="logo-light"
                       src="https://www.firezone.dev/images/logo-lockup.png"
                       width="250"
                       alt="Firezone logo"
                       style="max-width: 100%; vertical-align: middle; line-height: 1"
+                    />
+                    <img
+                      class="logo-dark"
+                      src="https://www.firezone.dev/images/logo-text-dark.svg"
+                      width="250"
+                      alt="Firezone logo"
+                      style="display: none; max-width: 100%; vertical-align: middle; line-height: 1"
                     />
                   </div>
                 </a>
@@ -78,7 +87,7 @@
               <table style="width: 100%;" cellpadding="0" cellspacing="0" role="none">
                 <tr>
                   <td
-                    class="sm-px-6"
+                    class="sm-px-6 content-box"
                     style="border-radius: 4px; background-color: #ffffff; padding: 48px; font-size: 16px; color: #4f4f4f; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05)"
                   >
                     <h1
@@ -120,6 +129,7 @@
                     </p>
                     <div
                       role="separator"
+                      class="separator"
                       style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 16px 0"
                     >
                       &zwj;
@@ -183,6 +193,7 @@
                     <p></p>
                     <div
                       role="separator"
+                      class="separator"
                       style="background-color: #d1d1d1; height: 1px; line-height: 1px; margin: 32px 0;"
                     >
                       &zwj;
@@ -200,7 +211,7 @@
                   <td style="line-height: 48px">&zwj;</td>
                 </tr>
                 <tr>
-                  <td style="padding-left: 24px; padding-right: 24px; text-align: center; font-size: 12px; color: #575757">
+                  <td class="footer-text" style="padding-left: 24px; padding-right: 24px; text-align: center; font-size: 12px; color: #575757">
                     <p style="margin: 0; font-style: italic;">
                       Blazing-fast alternative to legacy VPNs
                     </p>
@@ -208,7 +219,7 @@
                       <a
                         href="https://www.firezone.dev/kb?utm_source=email"
                         class="hover-important-text-decoration-underline"
-                        style="color: #37007f; text-decoration: none"
+                        style="color: #5e00d6; text-decoration: none"
                       >
                         Docs
                       </a>
@@ -216,15 +227,15 @@
                       <a
                         href="https://github.com/firezone?utm_source=email"
                         class="hover-important-text-decoration-underline"
-                        style="color: #37007f; text-decoration: none;"
+                        style="color: #5e00d6; text-decoration: none;"
                       >
-                        Github
+                        GitHub
                       </a>
                       &bull;
                       <a
                         href="https://x.com/firezonehq?utm_source=email"
                         class="hover-important-text-decoration-underline"
-                        style="color: #37007f; text-decoration: none;"
+                        style="color: #5e00d6; text-decoration: none;"
                       >
                         X
                       </a>
