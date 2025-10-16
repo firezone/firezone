@@ -5,7 +5,7 @@
   "scripts": {
     "setup": "pnpm install && bash ./timestamps.sh",
     "dev": "next dev",
-    "prebuild": "bash ./timestamps.sh",
+    "prebuild": "pnpm lint && bash ./timestamps.sh",
     "build": "next build",
     "postbuild": "next-sitemap",
     "start": "next start",
