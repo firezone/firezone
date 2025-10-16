@@ -34,7 +34,11 @@ func runSessionEventLoop(
 
     group.addTask {
       for await command in commandReceiver.stream {
-        handleCommand(command, session: session)
+        do {
+          try handleCommand(command, session: session)
+        } catch {
+            Log.error("Failed to forward command to session: \(error)")
+        }
       }
 
       Log.log("Command stream ended")
@@ -47,24 +51,16 @@ func runSessionEventLoop(
 }
 
 /// Handles a command by calling the appropriate session method.
-private func handleCommand(_ command: SessionCommand, session: Session) {
+private func handleCommand(_ command: SessionCommand, session: Session) throws {
   switch command {
   case .disconnect:
-    do {
-      try session.disconnect()
-    } catch {
-      Log.error(error)
-    }
+    try session.disconnect()
 
   case .setInternetResourceState(let active):
     session.setInternetResourceState(active: active)
 
   case .setDns(let servers):
-    do {
-      try session.setDns(dnsServers: servers)
-    } catch {
-      Log.error(error)
-    }
+    try session.setDns(dnsServers: servers)
 
   case .reset(let reason):
     session.reset(reason: reason)
