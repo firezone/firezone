@@ -151,8 +151,8 @@ function android() {
 # 4. Run `scripts/bump-versions.sh gui` to update the versions in the codebase.
 # 5. Commit the changes and open a PR.
 function gui() {
-    current_gui_client_version="1.5.7"
-    next_gui_client_version="1.5.8"
+    current_gui_client_version="1.5.8"
+    next_gui_client_version="1.5.9"
 
     update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_client_version}"'/g;}' {} \;
