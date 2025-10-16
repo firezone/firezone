@@ -211,7 +211,7 @@ jobs:
           --source . \
           --pattern "*.deb" \
           --destination-path pool \
-          --overwrite true \
+          --overwrite \
           --no-progress \
           --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
 
