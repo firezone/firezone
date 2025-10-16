@@ -102,6 +102,12 @@ function Previous({
   );
 }
 
+type EntryProps = {
+  version: string;
+  date: Date;
+  children: React.ReactNode;
+};
+
 export default function Entries({
   downloadLinks,
   title,
@@ -112,7 +118,9 @@ export default function Entries({
   children: React.ReactNode;
 }) {
   const childrenArray = React.Children.toArray(children)
-    .filter((child) => React.isValidElement(child))
+    .filter((child): child is React.ReactElement<EntryProps> =>
+      React.isValidElement(child)
+    )
     .filter((child) => child.type != Unreleased);
 
   const firstEntry = childrenArray[0];
