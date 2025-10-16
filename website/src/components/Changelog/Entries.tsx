@@ -13,13 +13,12 @@ function Latest({
   version,
   date,
   children,
-}: {
+}: React.PropsWithChildren<{
   downloadLinks: DownloadLink[];
   title: string;
   version: string;
   date: Date;
-  children: React.ReactNode;
-}) {
+}>) {
   const options: Intl.DateTimeFormatOptions = {
     timeZone: "UTC",
     year: "numeric",
@@ -64,10 +63,9 @@ function Latest({
 function Previous({
   title,
   children,
-}: {
+}: React.PropsWithChildren<{
   title: string;
-  children: React.ReactNode;
-}) {
+}>) {
   return (
     <>
       <h3 className="text-lg md:text-xl xl:text-2xl font-semibold tracking-tight mb-4 md:mb-6 xl:mb-8 text-neutral-800">
@@ -102,17 +100,23 @@ function Previous({
   );
 }
 
+type EntryProps = React.PropsWithChildren<{
+  version: string;
+  date: Date;
+}>;
+
 export default function Entries({
   downloadLinks,
   title,
   children,
-}: {
+}: React.PropsWithChildren<{
   downloadLinks: DownloadLink[];
   title: string;
-  children: React.ReactNode;
-}) {
+}>) {
   const childrenArray = React.Children.toArray(children)
-    .filter((child) => React.isValidElement(child))
+    .filter((child): child is React.ReactElement<EntryProps> =>
+      React.isValidElement(child)
+    )
     .filter((child) => child.type != Unreleased);
 
   const firstEntry = childrenArray[0];
