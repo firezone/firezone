@@ -18,7 +18,6 @@
     "@next/mdx": "~15.3.2",
     "@next/third-parties": "^15.5.3",
     "@types/mdx": "^2.0.13",
-    "@types/mixpanel-browser": "^2.66.0",
     "@types/node": "24.3.0",
     "@types/react": "18.3.11",
     "@types/react-dom": "18.3.1",
@@ -50,7 +49,13 @@
     "remark-parse": "^11.0.0",
     "tailwindcss": "3.4.18"
   },
+  "pnpm": {
+    "overrides": {
+      "@typescript-eslint/typescript-estree": "^8.46.1"
+    }
+  },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
     "eslint": "^9.29.0",
     "eslint-config-next": "15.3.3",
     "flowbite-typography": "^1.0.5",
