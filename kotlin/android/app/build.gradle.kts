@@ -180,7 +180,7 @@ dependencies {
     // Hilt
     implementation("com.google.dagger:hilt-android:2.57.1")
     implementation("androidx.browser:browser:1.9.0")
-    implementation("com.google.firebase:firebase-installations-ktx:18.0.0")
+    implementation("com.google.firebase:firebase-installations")
     implementation("com.google.android.gms:play-services-tasks:18.4.0")
     kapt("androidx.hilt:hilt-compiler:1.3.0")
     kapt("com.google.dagger:hilt-android-compiler:2.57.1")
@@ -219,13 +219,14 @@ dependencies {
     androidTestImplementation("androidx.fragment:fragment-testing:1.8.9")
 
     // Import the BoM for the Firebase platform
-    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation(platform("com.google.firebase:firebase-bom:34.4.0"))
 
     // Add the dependencies for the Crashlytics and Analytics libraries
     // When using the BoM, you don't specify versions in Firebase library dependencies
-    implementation("com.google.firebase:firebase-crashlytics-ktx")
+    // Note: KTX libraries were removed from Firebase BoM as of v34.0.0 (July 2025)
+    implementation("com.google.firebase:firebase-crashlytics")
     implementation("com.google.firebase:firebase-crashlytics-ndk")
-    implementation("com.google.firebase:firebase-analytics-ktx")
+    implementation("com.google.firebase:firebase-analytics")
 
     // UniFFI
     implementation("net.java.dev.jna:jna:5.18.1@aar")
