@@ -61,7 +61,7 @@ defmodule Web.Live.Relays.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relays/#{relay}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Relay Instance Groups"
     assert breadcrumbs =~ relay.group.name

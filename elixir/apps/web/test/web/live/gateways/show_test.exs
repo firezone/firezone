@@ -61,7 +61,7 @@ defmodule Web.Live.Gateways.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/gateways/#{gateway}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
     assert breadcrumbs =~ gateway.group.name

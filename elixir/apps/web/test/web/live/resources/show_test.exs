@@ -93,7 +93,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Resources"
     assert breadcrumbs =~ resource.name
@@ -183,7 +183,7 @@ defmodule Web.Live.Resources.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/#{resource}")
 
-    assert Floki.find(html, "a[href='https://example.com']")
+    assert html |> Floki.parse_fragment!() |> Floki.find("a[href='https://example.com']")
   end
 
   test "renders traffic filters on show page even when traffic filters disabled", %{

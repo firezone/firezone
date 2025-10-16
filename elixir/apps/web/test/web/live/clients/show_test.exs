@@ -60,7 +60,7 @@ defmodule Web.Live.Clients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/clients/#{client}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Clients"
     assert breadcrumbs =~ client.name

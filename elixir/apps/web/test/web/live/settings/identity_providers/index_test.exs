@@ -44,7 +44,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Identity Providers"
   end
@@ -59,7 +59,11 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/settings/identity_providers/new']")
+    assert button =
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("a[href='/#{account.slug}/settings/identity_providers/new']")
+
     assert Floki.text(button) =~ "Add Identity Provider"
   end
 
@@ -70,7 +74,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
       |> live(~p"/#{account}/settings/identity_providers")
 
     assert Floki.text(html) =~ "Default Authentication Provider"
-    assert form = Floki.find(html, "form#default-provider-form")
+    assert form = html |> Floki.parse_fragment!() |> Floki.find("form#default-provider-form")
 
     assert Floki.text(form) =~
              "When selected, users signing in from the Firezone client will be taken directly to this provider for authentication."
@@ -99,6 +103,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
 
     # Assert the default provider is set
     assert html
+           |> Floki.parse_fragment!()
            |> Floki.find("option[selected]")
            |> Floki.attribute("value") == [to_string(provider.id)]
   end
@@ -130,6 +135,7 @@ defmodule Web.Live.Settings.IdentityProviders.IndexTest do
 
     # Assert the default provider is set
     assert html
+           |> Floki.parse_fragment!()
            |> Floki.find("option[selected]")
            |> Floki.attribute("value") == ["none"]
 

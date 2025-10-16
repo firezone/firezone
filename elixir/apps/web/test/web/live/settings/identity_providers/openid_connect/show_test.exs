@@ -63,7 +63,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/identity_providers/openid_connect/#{provider}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Identity Providers Settings"
     assert breadcrumbs =~ provider.name
@@ -133,6 +133,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
     assert lv
            |> element("button[type=submit]", "Disable")
            |> render_click()
+           |> Floki.parse_fragment!()
            |> Floki.find("#provider")
            |> vertical_table_to_map()
            |> Map.fetch!("status") == "Disabled"
@@ -140,6 +141,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
     assert lv
            |> element("button[type=submit]", "Enable")
            |> render_click()
+           |> Floki.parse_fragment!()
            |> Floki.find("#provider")
            |> vertical_table_to_map()
            |> Map.fetch!("status") == "Active"
@@ -179,6 +181,7 @@ defmodule Web.Live.Settings.IdentityProviders.OpenIDConnect.ShowTest do
     assert lv
            |> element("a", "Reconnect")
            |> render()
+           |> Floki.parse_fragment!()
            |> Floki.attribute("href")
            |> hd() ==
              ~p"/#{account.id}/settings/identity_providers/openid_connect/#{provider}/redirect"

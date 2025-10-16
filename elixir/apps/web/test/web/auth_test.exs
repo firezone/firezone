@@ -281,6 +281,7 @@ defmodule Web.AuthTest do
       assert response =~ "Sign in successful"
 
       assert response
+             |> Floki.parse_fragment!()
              |> Floki.attribute("meta", "content")
              |> Enum.any?(fn value ->
                &(&1 == "0; url=/#{account.slug}/sign_in/client_redirect")
@@ -311,6 +312,7 @@ defmodule Web.AuthTest do
       assert response =~ "Sign in successful"
 
       assert response
+             |> Floki.parse_fragment!()
              |> Floki.attribute("meta", "content")
              |> Enum.any?(fn value ->
                &(&1 == "0; url=/#{account.slug}/sign_in/client_redirect")
@@ -794,6 +796,7 @@ defmodule Web.AuthTest do
       assert response =~ "Sign in successful"
 
       assert response
+             |> Floki.parse_fragment!()
              |> Floki.attribute("meta", "content")
              |> Enum.any?(fn value ->
                &(&1 == "0; url=/#{account.slug}/sign_in/client_redirect")

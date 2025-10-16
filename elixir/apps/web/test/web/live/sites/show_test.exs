@@ -63,7 +63,7 @@ defmodule Web.Live.Sites.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites/#{group}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
     assert breadcrumbs =~ group.name

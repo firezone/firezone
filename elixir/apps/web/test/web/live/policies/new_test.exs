@@ -40,7 +40,7 @@ defmodule Web.Live.Policies.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/policies/new")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Policies"
     assert breadcrumbs =~ "Add"
@@ -94,11 +94,15 @@ defmodule Web.Live.Policies.NewTest do
 
     html = render(form)
 
-    disabled_input = Floki.find(html, "input[name='policy[actor_group_id]_name']")
+    disabled_input =
+      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[actor_group_id]_name']")
+
     assert Floki.attribute(disabled_input, "disabled") == [""]
     assert Floki.attribute(disabled_input, "value") == [actor_group.name]
 
-    value_input = Floki.find(html, "input[name='policy[actor_group_id]']")
+    value_input =
+      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[actor_group_id]']")
+
     assert Floki.attribute(value_input, "value") == [actor_group.id]
   end
 
@@ -150,11 +154,15 @@ defmodule Web.Live.Policies.NewTest do
 
     html = render(form)
 
-    disabled_input = Floki.find(html, "input[name='policy[resource_id]_name']")
+    disabled_input =
+      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[resource_id]_name']")
+
     assert Floki.attribute(disabled_input, "disabled") == [""]
     assert Floki.attribute(disabled_input, "value") == [resource.name]
 
-    value_input = Floki.find(html, "input[name='policy[resource_id]']")
+    value_input =
+      html |> Floki.parse_fragment!() |> Floki.find("input[name='policy[resource_id]']")
+
     assert Floki.attribute(value_input, "value") == [resource.id]
   end
 
