@@ -56,7 +56,7 @@ defmodule Web.Live.Actors.EditTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}/edit")
 
-      assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+      assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
       breadcrumbs = String.trim(Floki.text(item))
       assert breadcrumbs =~ "Actors"
       assert breadcrumbs =~ actor.name
@@ -251,7 +251,7 @@ defmodule Web.Live.Actors.EditTest do
         |> authorize_conn(identity)
         |> live(~p"/#{account}/actors/#{actor}/edit")
 
-      assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+      assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
       breadcrumbs = String.trim(Floki.text(item))
       assert breadcrumbs =~ "Actors"
       assert breadcrumbs =~ actor.name

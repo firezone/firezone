@@ -37,7 +37,7 @@ defmodule Web.Live.RelayGroups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relay_groups")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Relay Instance Groups"
   end
@@ -52,7 +52,11 @@ defmodule Web.Live.RelayGroups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/relay_groups")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/relay_groups/new']")
+    assert button =
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("a[href='/#{account.slug}/relay_groups/new']")
+
     assert Floki.text(button) =~ "Add Instance Group"
   end
 

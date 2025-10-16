@@ -53,7 +53,7 @@ defmodule Web.Live.Settings.ApiClients.BetaTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients/beta")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "API Clients"
     assert breadcrumbs =~ "Beta"
@@ -84,6 +84,7 @@ defmodule Web.Live.Settings.ApiClients.BetaTest do
     assert lv
            |> element("#beta-request")
            |> render_click()
+           |> Floki.parse_fragment!()
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "request to join"
 

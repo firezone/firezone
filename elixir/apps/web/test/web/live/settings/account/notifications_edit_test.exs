@@ -48,7 +48,7 @@ defmodule Web.Live.Settings.Account.NotificationsEditTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/account/notifications/edit")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Account Settings"
     assert breadcrumbs =~ "Edit Notifications"

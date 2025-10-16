@@ -55,7 +55,7 @@ defmodule Web.Live.Settings.ApiClients.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "API Clients"
   end
@@ -70,7 +70,11 @@ defmodule Web.Live.Settings.ApiClients.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/settings/api_clients/new']")
+    assert button =
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("a[href='/#{account.slug}/settings/api_clients/new']")
+
     assert Floki.text(button) =~ "Add API Client"
   end
 

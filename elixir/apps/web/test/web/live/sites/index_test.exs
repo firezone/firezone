@@ -33,7 +33,7 @@ defmodule Web.Live.Sites.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Sites"
   end
@@ -48,7 +48,9 @@ defmodule Web.Live.Sites.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/sites")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/sites/new']")
+    assert button =
+             html |> Floki.parse_fragment!() |> Floki.find("a[href='/#{account.slug}/sites/new']")
+
     assert Floki.text(button) =~ "Add Site"
   end
 

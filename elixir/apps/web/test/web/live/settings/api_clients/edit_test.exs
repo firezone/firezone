@@ -57,7 +57,7 @@ defmodule Web.Live.Settings.ApiClients.EditTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}/edit")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "API Clients"
     assert breadcrumbs =~ api_client.name
