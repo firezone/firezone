@@ -371,9 +371,9 @@ export default function Page() {
                 >
                   GitHub repository
                 </Link>
-                , and you&apos;re free to self-host Firezone for your organization
-                without restriction. However, we don&apos;t offer documentation or
-                support for self-hosting Firezone at this time.
+                , and you&apos;re free to self-host Firezone for your
+                organization without restriction. However, we don&apos;t offer
+                documentation or support for self-hosting Firezone at this time.
               </AccordionContent>
             </AccordionPanel>
             <AccordionPanel>
@@ -381,8 +381,8 @@ export default function Page() {
                 Do I need to rip and replace my current VPN to use Firezone?
               </AccordionTitle>
               <AccordionContent>
-                No. As long they&apos;re set up to access different resources, you
-                can run Firezone alongside your existing remote access
+                No. As long they&apos;re set up to access different resources,
+                you can run Firezone alongside your existing remote access
                 solutions, and switch over whenever you’re ready. There’s no
                 need for any downtime or unnecessary disruptions.
               </AccordionContent>
@@ -420,8 +420,9 @@ export default function Page() {
                 </p>
                 <p className="mt-2">
                   For the <strong>Enterprise</strong> plan, contact your account
-                  manager to request a seat increase. You&apos;ll then be billed for
-                  the prorated amount for the remainder of the billing cycle.
+                  manager to request a seat increase. You&apos;ll then be billed
+                  for the prorated amount for the remainder of the billing
+                  cycle.
                 </p>
               </AccordionContent>
             </AccordionPanel>

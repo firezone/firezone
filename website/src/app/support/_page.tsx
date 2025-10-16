@@ -18,7 +18,6 @@ import { FaDiscourse } from "react-icons/fa";
 import { FaSlack } from "react-icons/fa";
 
 export default function _Page() {
-
   return (
     <div className="flex flex-col">
       {/* Knowledge base */}
@@ -111,8 +110,9 @@ export default function _Page() {
         </h2>
         <hr />
         <p className="text-md md:text-lg mt-8">
-          Didn&apos;t find what you were looking for? We build Firezone in the open
-          -- there&apos;s a good chance someone&apos;s already opened an issue.
+          Didn&apos;t find what you were looking for? We build Firezone in the
+          open -- there&apos;s a good chance someone&apos;s already opened an
+          issue.
         </p>
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <Link
@@ -136,8 +136,8 @@ export default function _Page() {
               Product roadmap
             </h3>
             <p className="mt-8">
-              View our public roadmap for a glimpse into what we&apos;ve recently
-              shipped and what&apos;s coming soon.
+              View our public roadmap for a glimpse into what we&apos;ve
+              recently shipped and what&apos;s coming soon.
             </p>
           </Link>
           <Link

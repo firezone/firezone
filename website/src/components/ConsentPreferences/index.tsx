@@ -12,7 +12,9 @@ export default function ConsentPreferences({
       href="#"
       className={className}
       onClick={() => {
-        (window as { displayPreferenceModal?: () => void }).displayPreferenceModal?.();
+        (
+          window as { displayPreferenceModal?: () => void }
+        ).displayPreferenceModal?.();
         return false;
       }}
     >

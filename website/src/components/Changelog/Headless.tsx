@@ -15,8 +15,8 @@ export default function Headless({ os }: { os: OS }) {
           Improves reliability by caching DNS responses as per their TTL.
         </ChangeItem>
         <ChangeItem pull="10553">
-          Adds a CLI switch <code>--activate-internet-resource</code>. By default, the
-          Internet Resource is now off.
+          Adds a CLI switch <code>--activate-internet-resource</code>. By
+          default, the Internet Resource is now off.
         </ChangeItem>
         {os == OS.Linux && (
           <ChangeItem pull="10554">
@@ -33,8 +33,8 @@ export default function Headless({ os }: { os: OS }) {
         <ChangeItem pull="10104">
           Fixes an issue where DNS resources would resolve to a different IP
           after signing out and back into Firezone. This would break
-          connectivity for long-running services that don&apos;t re-resolve DNS, like
-          SSH sessions or mongoose.
+          connectivity for long-running services that don&apos;t re-resolve DNS,
+          like SSH sessions or mongoose.
         </ChangeItem>
       </Entry>
       <Entry version="1.5.2" date={new Date("2025-07-28")}>
@@ -324,7 +324,8 @@ export default function Headless({ os }: { os: OS }) {
             </ChangeItem>
             <ChangeItem pull="6361">
               Connections to Gateways are now sticky for the duration of the
-              Client&apos;s session to fix issues with long-lived TCP connections.
+              Client&apos;s session to fix issues with long-lived TCP
+              connections.
             </ChangeItem>
           </Entry>
           <Entry version="1.1.7" date={new Date("2024-08-13")}>
@@ -374,9 +375,9 @@ export default function Headless({ os }: { os: OS }) {
           </Entry>
           <Entry version="1.1.2" date={new Date("2024-07-03")}>
             <li className="pl-2">
-              Prevents Firezone&apos;s stub resolver from intercepting DNS record
-              types besides A, AAAA, and PTR. These are now forwarded to your
-              upstream DNS resolver.
+              Prevents Firezone&apos;s stub resolver from intercepting DNS
+              record types besides A, AAAA, and PTR. These are now forwarded to
+              your upstream DNS resolver.
             </li>
           </Entry>
           <Entry version="1.1.1" date={new Date("2024-06-29")}>

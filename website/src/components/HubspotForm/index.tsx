@@ -11,10 +11,10 @@ export default function HubspotForm({
   title?: string;
 }) {
   useHubspotForm({
-      portalId: portalId,
-      formId: formId,
-      target: "#hubspot-form",
-    });
+    portalId: portalId,
+    formId: formId,
+    target: "#hubspot-form",
+  });
 
   return (
     <div className="bg-white shadow-md border border-neutral-200  rounded p-4">

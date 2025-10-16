@@ -320,9 +320,9 @@ export default function Page() {
 
         <div className="mx-auto px-4 max-w-screen-md">
           <p className="text-lg text-center -mt-3 text-neutral-800 text-pretty">
-            How can you trust a zero-trust solution if you can&apos;t see its source?
-            We build Firezone in the open so anyone can make sure it does
-            exactly what we claim it does, and nothing more.
+            How can you trust a zero-trust solution if you can&apos;t see its
+            source? We build Firezone in the open so anyone can make sure it
+            does exactly what we claim it does, and nothing more.
           </p>
         </div>
 

@@ -29,8 +29,9 @@ export default function Gateway() {
           possible IPv6 addresses.
         </ChangeItem>
         <ChangeItem pull="10349">
-          Attempts to increase the system-wide parameters <code>core.rmem_max</code> to 128
-          MB and <code>core.wmem_max</code> to 16 MB for improved performance. See the{" "}
+          Attempts to increase the system-wide parameters{" "}
+          <code>core.rmem_max</code> to 128 MB and <code>core.wmem_max</code> to
+          16 MB for improved performance. See the{" "}
           <Link
             className="text-accent-500 underline hover:no-underline"
             href="https://www.firezone.dev/kb/deploy/gateways#performance-tuning"
@@ -85,7 +86,8 @@ export default function Gateway() {
         </ChangeItem>
         <ChangeItem pull="9812">
           Adds support for translating Time-Exceeded ICMP errors in the DNS
-          resource NAT, allowing <code>tracepath</code> to work through a Firezone tunnel.
+          resource NAT, allowing <code>tracepath</code> to work through a
+          Firezone tunnel.
         </ChangeItem>
         <ChangeItem pull="9891">
           Fixes an issue where connections would sometimes take up to 90s to
@@ -191,8 +193,8 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.4.5" date={new Date("2025-03-10")}>
         <ChangeItem pull="8124">
-          Fixes a bug in the routing of DNS resources that would lead to &quot;Source
-          not allowed&quot; errors in the Client logs.
+          Fixes a bug in the routing of DNS resources that would lead to
+          &quot;Source not allowed&quot; errors in the Client logs.
         </ChangeItem>
         <ChangeItem pull="8225">
           Caches successful DNS queries for DNS resource domains for 30 seconds.
@@ -210,8 +212,8 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.4.3" date={new Date("2025-01-28")}>
         <ChangeItem pull="7567">
-          Fixes an issue where ICMPv6&apos;s &apos;PacketTooBig&apos; errors were not correctly
-          translated by the NAT64 module.
+          Fixes an issue where ICMPv6&apos;s &apos;PacketTooBig&apos; errors
+          were not correctly translated by the NAT64 module.
         </ChangeItem>
         <ChangeItem pull="7565">
           Fails early in case the binary is not started as <code>root</code> or
@@ -277,8 +279,9 @@ export default function Gateway() {
       </Entry>
       <Entry version="1.3.2" date={new Date("2024-10-02")}>
         <ChangeItem pull="6733">
-          Reduces log level of the &quot;Couldn&apos;t find connection by IP&quot; message so
-          that it doesn&apos;t log each time a client disconnects.
+          Reduces log level of the &quot;Couldn&apos;t find connection by
+          IP&quot; message so that it doesn&apos;t log each time a client
+          disconnects.
         </ChangeItem>
         <ChangeItem pull="6845">
           Fixes connectivity issues on idle connections by entering an

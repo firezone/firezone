@@ -1,4 +1,3 @@
-
 export default function Mission() {
   return (
     <section className="pt-12 bg-neutral-950">
