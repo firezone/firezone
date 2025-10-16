@@ -180,3 +180,42 @@ jobs:
           component: ${{ matrix.component }}
           projects: ${{ matrix.projects }}
           sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+  upload-deb-packages:
+    runs-on: ubuntu-24.04
+    if: >-
+      ${{
+        startsWith(inputs.release_name || github.event.release.name, 'gateway') ||
+        startsWith(inputs.release_name || github.event.release.name, 'gui-client')
+      }}
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Download .deb packages from release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -xe
+
+          # Download all .deb assets directly to pool
+          gh release download "${{ inputs.release_name || github.event.release.name }}" --pattern "*.deb"
+
+          # List downloaded files for verification
+          ls -lh ./*.deb
+
+      - name: Upload to Azure Blob Storage
+        run: az storage blob upload-batch \
+          --destination apt \
+          --source . \
+          --pattern "*.deb" \
+          --destination-path pool \
+          --overwrite true \
+          --no-progress \
+          --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+
+  regenerate-apt-index:
+    needs: upload-deb-packages
+    uses: ./.github/workflows/_apt.yml
+    secrets: inherit
