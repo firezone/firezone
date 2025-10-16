@@ -27,7 +27,7 @@ public enum ResourceList {
   }
 }
 
-public struct Resource: Decodable, Identifiable, Equatable {
+public struct Resource: Codable, Identifiable, Equatable {
   public let id: String
   public var name: String
   public var address: String?
@@ -59,7 +59,7 @@ public struct Resource: Decodable, Identifiable, Equatable {
   }
 }
 
-public enum ResourceStatus: String, Decodable {
+public enum ResourceStatus: String, Codable {
   case offline = "Offline"
   case online = "Online"
   case unknown = "Unknown"
@@ -91,7 +91,7 @@ public enum ResourceStatus: String, Decodable {
   }
 }
 
-public enum ResourceType: String, Decodable {
+public enum ResourceType: String, Codable {
   case dns
   case cidr
   case ip

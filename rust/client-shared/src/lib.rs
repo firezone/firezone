@@ -1,5 +1,4 @@
 //! Main connlib library for clients.
-pub use crate::serde_routelist::{V4RouteList, V6RouteList};
 pub use connlib_model::StaticSecret;
 pub use eventloop::DisconnectError;
 pub use firezone_tunnel::TunConfig;
@@ -23,7 +22,6 @@ use tokio_stream::wrappers::WatchStream;
 use tun::Tun;
 
 mod eventloop;
-mod serde_routelist;
 
 const PHOENIX_TOPIC: &str = "client";
 

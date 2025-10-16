@@ -127,19 +127,25 @@ enum IPv4SubnetMaskLookup {
   ]
 }
 
-// Route convenience helpers. Data is from connlib and guaranteed to be valid.
-// Otherwise, we should crash and learn about it.
+// Route convenience helpers.
 extension NetworkSettings {
-  struct Cidr: Codable {
+  struct Cidr {
     let address: String
     let prefix: Int
 
-    var asNEIPv4Route: NEIPv4Route {
-      return NEIPv4Route(
-        destinationAddress: address, subnetMask: IPv4SubnetMaskLookup.table[prefix]!)
+    var asNEIPv4Route: NEIPv4Route? {
+      guard let subnetMask = IPv4SubnetMaskLookup.table[prefix] else {
+        Log.warning("Invalid IPv4 prefix: \(prefix) for address: \(address)")
+        return nil
+      }
+      return NEIPv4Route(destinationAddress: address, subnetMask: subnetMask)
     }
 
-    var asNEIPv6Route: NEIPv6Route {
+    var asNEIPv6Route: NEIPv6Route? {
+      guard prefix >= 0 && prefix <= 128 else {
+        Log.warning("Invalid IPv6 prefix: \(prefix) for address: \(address)")
+        return nil
+      }
       return NEIPv6Route(destinationAddress: address, networkPrefixLength: NSNumber(value: prefix))
     }
   }

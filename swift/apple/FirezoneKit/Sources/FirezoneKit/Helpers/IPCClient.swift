@@ -109,11 +109,8 @@ class IPCClient {
           // Save hash to compare against
           self.resourceListHash = Data(SHA256.hash(data: data))
 
-          let jsonDecoder = JSONDecoder()
-          jsonDecoder.keyDecodingStrategy = .convertFromSnakeCase
-
           do {
-            let decoded = try jsonDecoder.decode([Resource].self, from: data)
+            let decoded = try self.decoder.decode([Resource].self, from: data)
             self.resourcesListCache = ResourceList.loaded(decoded)
 
             continuation.resume(returning: self.resourcesListCache)

@@ -19,7 +19,7 @@ spotless {
     format("misc") {
         target("*.gradle", "*.md", ".gitignore")
         trimTrailingWhitespace()
-        indentWithSpaces()
+        leadingTabsToSpaces()
         endWithNewline()
     }
     kotlin {

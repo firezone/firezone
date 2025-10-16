@@ -10,7 +10,6 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use backoff::ExponentialBackoffBuilder;
-use client_shared::{V4RouteList, V6RouteList};
 use firezone_logging::sentry_layer;
 use firezone_telemetry::{Telemetry, analytics};
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
@@ -43,18 +42,89 @@ pub enum CallbackError {
 #[derive(uniffi::Object, Debug)]
 pub struct DisconnectError(client_shared::DisconnectError);
 
+/// Represents a CIDR network (address + prefix length).
+/// Used for IPv4 and IPv6 route configuration.
+#[derive(uniffi::Record)]
+pub struct Cidr {
+    pub address: String,
+    pub prefix: u8,
+}
+
+/// Device information for telemetry and identification.
+#[derive(uniffi::Record)]
+pub struct DeviceInfo {
+    pub firebase_installation_id: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_serial: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+}
+
+/// Resource status enum
+#[derive(uniffi::Enum)]
+pub enum ResourceStatus {
+    Unknown,
+    Online,
+    Offline,
+}
+
+/// Site information for a resource
+#[derive(uniffi::Record)]
+pub struct Site {
+    pub id: String,
+    pub name: String,
+}
+
+/// DNS resource view
+#[derive(uniffi::Record)]
+pub struct DnsResource {
+    pub id: String,
+    pub address: String,
+    pub name: String,
+    pub address_description: Option<String>,
+    pub sites: Vec<Site>,
+    pub status: ResourceStatus,
+}
+
+/// CIDR resource view
+#[derive(uniffi::Record)]
+pub struct CidrResource {
+    pub id: String,
+    pub address: String,
+    pub name: String,
+    pub address_description: Option<String>,
+    pub sites: Vec<Site>,
+    pub status: ResourceStatus,
+}
+
+/// Internet resource view
+#[derive(uniffi::Record)]
+pub struct InternetResource {
+    pub id: String,
+    pub name: String,
+    pub sites: Vec<Site>,
+    pub status: ResourceStatus,
+}
+
+/// Resource view enum
+#[derive(uniffi::Enum)]
+pub enum Resource {
+    Dns { resource: DnsResource },
+    Cidr { resource: CidrResource },
+    Internet { resource: InternetResource },
+}
+
 #[derive(uniffi::Enum)]
 pub enum Event {
     TunInterfaceUpdated {
         ipv4: String,
         ipv6: String,
-        dns: String,
+        dns: Vec<String>,
         search_domain: Option<String>,
-        ipv4_routes: String,
-        ipv6_routes: String,
+        ipv4_routes: Vec<Cidr>,
+        ipv6_routes: Vec<Cidr>,
     },
     ResourcesUpdated {
-        resources: String,
+        resources: Vec<Resource>,
     },
     Disconnected {
         error: Arc<DisconnectError>,
@@ -94,7 +164,7 @@ impl Session {
         os_version: String,
         log_dir: String,
         log_filter: String,
-        device_info: String,
+        device_info: DeviceInfo,
         is_internet_resource_active: bool,
         protect_socket: Arc<dyn ProtectSocket>,
     ) -> Result<Self, ConnlibError> {
@@ -135,7 +205,7 @@ impl Session {
         os_version: Option<String>,
         log_dir: String,
         log_filter: String,
-        device_info: String,
+        device_info: DeviceInfo,
         is_internet_resource_active: bool,
     ) -> Result<Self, ConnlibError> {
         // iOS doesn't need socket protection like Android
@@ -218,9 +288,12 @@ impl Session {
         self.inner.set_internet_resource_state(active);
     }
 
-    pub fn set_dns(&self, dns_servers: String) -> Result<(), ConnlibError> {
-        let dns_servers =
-            serde_json::from_str(&dns_servers).context("Failed to deserialize DNS servers")?;
+    pub fn set_dns(&self, dns_servers: Vec<String>) -> Result<(), ConnlibError> {
+        let dns_servers: Vec<std::net::IpAddr> = dns_servers
+            .into_iter()
+            .map(|s| s.parse())
+            .collect::<Result<_, _>>()
+            .context("Failed to parse DNS servers")?;
 
         self.inner.set_dns(dns_servers);
 
@@ -253,37 +326,50 @@ impl Session {
         Ok(())
     }
 
-    pub async fn next_event(&self) -> Result<Option<Event>, ConnlibError> {
-        match self.events.lock().await.next().await {
-            Some(client_shared::Event::TunInterfaceUpdated(config)) => {
-                let dns = serde_json::to_string(
-                    &config.dns_by_sentinel.left_values().collect::<Vec<_>>(),
-                )
-                .context("Failed to serialize DNS servers")?;
-                let ipv4_routes = serde_json::to_string(&V4RouteList::new(config.ipv4_routes))
-                    .context("Failed to serialize IPv4 routes")?;
-                let ipv6_routes = serde_json::to_string(&V6RouteList::new(config.ipv6_routes))
-                    .context("Failed to serialize IPv6 routes")?;
+    pub async fn next_event(&self) -> Option<Event> {
+        match self.events.lock().await.next().await? {
+            client_shared::Event::TunInterfaceUpdated(config) => {
+                let dns: Vec<String> = config
+                    .dns_by_sentinel
+                    .left_values()
+                    .map(|ip| ip.to_string())
+                    .collect();
 
-                Ok(Some(Event::TunInterfaceUpdated {
+                let ipv4_routes: Vec<Cidr> = config
+                    .ipv4_routes
+                    .into_iter()
+                    .map(|network| Cidr {
+                        address: network.network_address().to_string(),
+                        prefix: network.netmask(),
+                    })
+                    .collect();
+
+                let ipv6_routes: Vec<Cidr> = config
+                    .ipv6_routes
+                    .into_iter()
+                    .map(|network| Cidr {
+                        address: network.network_address().to_string(),
+                        prefix: network.netmask(),
+                    })
+                    .collect();
+
+                Some(Event::TunInterfaceUpdated {
                     ipv4: config.ip.v4.to_string(),
                     ipv6: config.ip.v6.to_string(),
                     dns,
                     search_domain: config.search_domain.map(|d| d.to_string()),
                     ipv4_routes,
                     ipv6_routes,
-                }))
+                })
             }
-            Some(client_shared::Event::ResourcesUpdated(resources)) => {
-                let resources = serde_json::to_string(&resources)
-                    .context("Failed to serialize resource list")?;
+            client_shared::Event::ResourcesUpdated(resources) => {
+                let resources: Vec<Resource> = resources.into_iter().map(Into::into).collect();
 
-                Ok(Some(Event::ResourcesUpdated { resources }))
+                Some(Event::ResourcesUpdated { resources })
             }
-            Some(client_shared::Event::Disconnected(error)) => Ok(Some(Event::Disconnected {
+            client_shared::Event::Disconnected(error) => Some(Event::Disconnected {
                 error: Arc::new(DisconnectError(error)),
-            })),
-            None => Ok(None),
+            }),
         }
     }
 }
@@ -317,13 +403,18 @@ fn connect(
     os_version: Option<String>,
     log_dir: String,
     log_filter: String,
-    device_info: String,
+    device_info: DeviceInfo,
     is_internet_resource_active: bool,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) -> Result<Session, ConnlibError> {
-    let device_info =
-        serde_json::from_str(&device_info).context("Failed to deserialize `DeviceInfo`")?;
+    // Convert FFI DeviceInfo to internal phoenix_channel::DeviceInfo
+    let device_info = phoenix_channel::DeviceInfo {
+        device_uuid: device_info.device_uuid,
+        device_serial: device_info.device_serial,
+        identifier_for_vendor: device_info.identifier_for_vendor,
+        firebase_installation_id: device_info.firebase_installation_id,
+    };
     let secret = SecretString::from(token);
 
     let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -459,6 +550,78 @@ fn install_rustls_crypto_provider() {
 
     if existing.is_err() {
         tracing::debug!("Skipping install of crypto provider because we already have one.");
+    }
+}
+
+impl From<connlib_model::ResourceView> for Resource {
+    fn from(resource: connlib_model::ResourceView) -> Self {
+        match resource {
+            connlib_model::ResourceView::Dns(dns) => Resource::Dns {
+                resource: dns.into(),
+            },
+            connlib_model::ResourceView::Cidr(cidr) => Resource::Cidr {
+                resource: cidr.into(),
+            },
+            connlib_model::ResourceView::Internet(internet) => Resource::Internet {
+                resource: internet.into(),
+            },
+        }
+    }
+}
+
+impl From<connlib_model::DnsResourceView> for DnsResource {
+    fn from(dns: connlib_model::DnsResourceView) -> Self {
+        DnsResource {
+            id: dns.id.to_string(),
+            address: dns.address,
+            name: dns.name,
+            address_description: dns.address_description,
+            sites: dns.sites.into_iter().map(Into::into).collect(),
+            status: dns.status.into(),
+        }
+    }
+}
+
+impl From<connlib_model::CidrResourceView> for CidrResource {
+    fn from(cidr: connlib_model::CidrResourceView) -> Self {
+        CidrResource {
+            id: cidr.id.to_string(),
+            address: cidr.address.to_string(),
+            name: cidr.name,
+            address_description: cidr.address_description,
+            sites: cidr.sites.into_iter().map(Into::into).collect(),
+            status: cidr.status.into(),
+        }
+    }
+}
+
+impl From<connlib_model::InternetResourceView> for InternetResource {
+    fn from(internet: connlib_model::InternetResourceView) -> Self {
+        InternetResource {
+            id: internet.id.to_string(),
+            name: internet.name,
+            sites: internet.sites.into_iter().map(Into::into).collect(),
+            status: internet.status.into(),
+        }
+    }
+}
+
+impl From<connlib_model::Site> for Site {
+    fn from(site: connlib_model::Site) -> Self {
+        Site {
+            id: site.id.to_string(),
+            name: site.name,
+        }
+    }
+}
+
+impl From<connlib_model::ResourceStatus> for ResourceStatus {
+    fn from(status: connlib_model::ResourceStatus) -> Self {
+        match status {
+            connlib_model::ResourceStatus::Unknown => ResourceStatus::Unknown,
+            connlib_model::ResourceStatus::Online => ResourceStatus::Online,
+            connlib_model::ResourceStatus::Offline => ResourceStatus::Offline,
+        }
     }
 }
 
