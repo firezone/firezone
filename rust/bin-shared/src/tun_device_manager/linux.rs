@@ -14,7 +14,7 @@ use libc::{
     EEXIST, ENOENT, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, O_RDWR, S_IFCHR, fcntl, makedev, mknod,
     open,
 };
-use netlink_packet_route::link::LinkAttribute;
+use netlink_packet_route::link::{LinkAttribute, State};
 use netlink_packet_route::route::{
     RouteAddress, RouteAttribute, RouteMessage, RouteProtocol, RouteScope,
 };
@@ -22,10 +22,13 @@ use netlink_packet_route::rule::RuleAction;
 use rtnetlink::sys::AsyncSocket;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
-use std::os::fd::{FromRawFd as _, OwnedFd};
 use std::path::Path;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::{
+    collections::HashMap,
+    os::fd::{FromRawFd as _, OwnedFd},
+};
 use std::{
     collections::HashSet,
     net::{Ipv4Addr, Ipv6Addr},
@@ -458,8 +461,7 @@ async fn sync_link_scope_routes(handle: &Handle) -> Result<()> {
     tracing::debug!("Syncing link-scope routes to Firezone routing table");
 
     let link_scope_routes = all_link_scope_routes(handle).await?;
-
-    tracing::trace!(?link_scope_routes, "Retrieved link-scope routes");
+    let link_states = link_states(handle, &link_scope_routes).await;
 
     let link_scope_routes_firezone_table = link_scope_routes
         .iter()
@@ -470,6 +472,27 @@ async fn sync_link_scope_routes(handle: &Handle) -> Result<()> {
     let link_scope_routes_main_table = link_scope_routes
         .iter()
         .filter(|m| m.header.table == libc::RT_TABLE_MAIN)
+        .filter(|m| {
+            let Some(idx) = iface_index_from_message(m) else {
+                return false;
+            };
+
+            let Some(link_state) = link_states.get(&idx).copied() else {
+                return false;
+            };
+
+            let Some(route) = route_from_message(m) else {
+                return false;
+            };
+
+            let is_up = link_state == State::Up;
+
+            if !is_up {
+                tracing::debug!(%route, "Skipping route because corresponding interface is not up");
+            }
+
+            is_up
+        })
         .cloned()
         .collect::<Vec<_>>();
 
@@ -517,6 +540,53 @@ async fn all_link_scope_routes(handle: &Handle) -> Result<Vec<RouteMessage>> {
         .collect::<Vec<_>>();
 
     Ok(link_scope_routes)
+}
+
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "We only want the `OperState` attribute."
+)]
+async fn link_states(handle: &Handle, link_scope_routes: &[RouteMessage]) -> HashMap<u32, State> {
+    let mut link_state = HashMap::with_capacity(link_scope_routes.len());
+
+    for idx in link_scope_routes
+        .iter()
+        .filter_map(iface_index_from_message)
+    {
+        let link_message = match handle
+            .link()
+            .get()
+            .match_index(idx)
+            .execute()
+            .try_next()
+            .await
+        {
+            Ok(Some(msg)) => msg,
+            Ok(None) => {
+                tracing::debug!(%idx, "Failed to get link state");
+                link_state.insert(idx, State::Unknown);
+                continue;
+            }
+            Err(e) => {
+                tracing::debug!(%idx, "Failed to get link state: {e}");
+                link_state.insert(idx, State::Unknown);
+                continue;
+            }
+        };
+
+        let state = link_message
+            .attributes
+            .iter()
+            .find_map(|a| match a {
+                LinkAttribute::OperState(state) => Some(*state),
+                _ => None,
+            })
+            .unwrap_or(State::Unknown);
+
+        link_state.insert(idx, state);
+    }
+
+    link_state
 }
 
 const QUEUE_SIZE: usize = 10_000;
