@@ -22,7 +22,7 @@ const manrope = Manrope({
   display: "swap",
 });
 
-const gtmId = process.env.NEXT_PUBLIC_GOOGLE_TAG_MANAGER_ID;
+const gtmId = "GTM-NBZ4CD98";
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",

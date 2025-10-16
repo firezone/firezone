@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { HubSpotSubmittedFormData } from "./types";
 
 export default function LinkedInInsights() {
-  const linkedInPartnerId = process.env.NEXT_PUBLIC_LINKEDIN_PARTNER_ID;
+  const linkedInPartnerId = "6200852";
 
   useEffect(() => {
     const winAny = window as {
@@ -21,7 +21,10 @@ export default function LinkedInInsights() {
       if (winAny.lintrk) return;
 
       winAny.lintrk = function (a: string, b: Record<string, unknown>) {
-        (winAny.lintrk.q = winAny.lintrk.q || []).push([a, b]);
+        const lintrk = winAny.lintrk;
+        if (lintrk) {
+          (lintrk.q = lintrk.q || []).push([a, b]);
+        }
       };
 
       const s = document.getElementsByTagName("script")[0];
