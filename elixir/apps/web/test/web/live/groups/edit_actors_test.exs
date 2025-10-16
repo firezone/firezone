@@ -81,7 +81,7 @@ defmodule Web.Live.Groups.EditActorsTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups/#{group}/edit_actors")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Groups"
     assert breadcrumbs =~ group.name
@@ -165,6 +165,7 @@ defmodule Web.Live.Groups.EditActorsTest do
         lv
         |> element("tr button", "Add")
         |> render_click()
+        |> Floki.parse_fragment!()
         |> Floki.find("#actors")
         |> table_to_map()
 
@@ -175,6 +176,7 @@ defmodule Web.Live.Groups.EditActorsTest do
         lv
         |> element("tr button", "Remove")
         |> render_click()
+        |> Floki.parse_fragment!()
         |> Floki.find("#actors")
         |> table_to_map()
 

@@ -49,7 +49,7 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/service_accounts/#{actor}/new_identity")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Actors"
     assert breadcrumbs =~ actor.name
@@ -154,7 +154,9 @@ defmodule Web.Live.Actors.ServiceAccounts.NewIdentityTest do
     }
 
     assert {:ok, subject} =
-             Floki.find(html, "code")
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("code")
              |> element_to_text()
              |> Domain.Auth.authenticate(context)
 

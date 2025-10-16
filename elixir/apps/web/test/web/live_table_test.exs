@@ -34,22 +34,27 @@ defmodule Web.LiveTableTest do
       html = render_component(&live_table/1, assigns)
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("table")
              |> Floki.attribute("id") == ["table-id"]
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("table thead")
              |> Floki.attribute("id") == ["table-id-header"]
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("th")
              |> Floki.text() =~ "name"
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("table tbody")
              |> Floki.attribute("id") == ["table-id-rows"]
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("td")
              |> Floki.text() =~ "foo"
     end
@@ -69,16 +74,17 @@ defmodule Web.LiveTableTest do
 
       form =
         render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
         |> Floki.find("form")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
 
-      input = Floki.find(form, "input[type=hidden]")
+      input = form |> Floki.find("input[type=hidden]")
       assert Floki.attribute(input, "name") == ["table_id"]
       assert Floki.attribute(input, "value") == ["table-id"]
 
-      input = Floki.find(form, "input[type=text]")
+      input = form |> Floki.find("input[type=text]")
       assert Floki.attribute(input, "id") == ["table-id_search"]
       assert Floki.attribute(input, "name") == ["table-id[search]"]
       assert Floki.attribute(input, "placeholder") == ["Search by Query"]
@@ -100,16 +106,17 @@ defmodule Web.LiveTableTest do
 
       form =
         render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
         |> Floki.find("form")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
 
-      input = Floki.find(form, "input[type=hidden]")
+      input = form |> Floki.find("input[type=hidden]")
       assert Floki.attribute(input, "name") == ["table_id"]
       assert Floki.attribute(input, "value") == ["table-id"]
 
-      input = Floki.find(form, "input[type=text]")
+      input = form |> Floki.find("input[type=text]")
       assert Floki.attribute(input, "id") == ["table-id_email"]
       assert Floki.attribute(input, "name") == ["table-id[email]"]
       assert Floki.attribute(input, "placeholder") == ["Search by Email"]
@@ -136,16 +143,17 @@ defmodule Web.LiveTableTest do
 
       form =
         render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
         |> Floki.find("form")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
 
-      input = Floki.find(form, "input[type=hidden]")
+      input = form |> Floki.find("input[type=hidden]")
       assert Floki.attribute(input, "name") == ["table_id"]
       assert Floki.attribute(input, "value") == ["table-id"]
 
-      select = Floki.find(form, "select")
+      select = form |> Floki.find("select")
       assert Floki.attribute(select, "id") == ["table-id_id"]
       assert Floki.attribute(select, "name") == ["table-id[id]"]
 
@@ -177,16 +185,17 @@ defmodule Web.LiveTableTest do
 
       form =
         render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
         |> Floki.find("form")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
 
-      input = Floki.find(form, "input[type=hidden]")
+      input = form |> Floki.find("input[type=hidden]")
       assert Floki.attribute(input, "name") == ["table_id"]
       assert Floki.attribute(input, "value") == ["table-id"]
 
-      radio = Floki.find(form, "input[type=radio]")
+      radio = form |> Floki.find("input[type=radio]")
 
       assert Floki.attribute(radio, "id") == [
                "table-id-btn-__all__",
@@ -226,16 +235,17 @@ defmodule Web.LiveTableTest do
 
       form =
         render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
         |> Floki.find("form")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
 
-      input = Floki.find(form, "input[type=hidden]")
+      input = form |> Floki.find("input[type=hidden]")
       assert Floki.attribute(input, "name") == ["table_id"]
       assert Floki.attribute(input, "value") == ["table-id"]
 
-      radio = Floki.find(form, "input[type=checkbox]")
+      radio = form |> Floki.find("input[type=checkbox]")
 
       assert Floki.attribute(radio, "id") == [
                "table-id-btn-__all__",
@@ -279,16 +289,17 @@ defmodule Web.LiveTableTest do
 
       form =
         render_component(&live_table/1, assigns)
+        |> Floki.parse_fragment!()
         |> Floki.find("form")
 
       assert Floki.attribute(form, "id") == ["table-id-filters"]
       assert Floki.attribute(form, "phx-change") == ["filter"]
 
-      input = Floki.find(form, "input[type=hidden]")
+      input = form |> Floki.find("input[type=hidden]")
       assert Floki.attribute(input, "name") == ["table_id"]
       assert Floki.attribute(input, "value") == ["table-id"]
 
-      select = Floki.find(form, "select")
+      select = form |> Floki.find("select")
       assert Floki.attribute(select, "id") == ["table-id_select"]
       assert Floki.attribute(select, "name") == ["table-id[select]"]
 
@@ -309,7 +320,7 @@ defmodule Web.LiveTableTest do
     test "renders ordering buttons", %{assigns: assigns} do
       # default order when it's unset
       html = render_component(&live_table/1, assigns)
-      order_button = Floki.find(html, "th button")
+      order_button = html |> Floki.parse_fragment!() |> Floki.find("th button")
       assert Floki.attribute(order_button, "phx-click") == ["order_by"]
       assert Floki.attribute(order_button, "phx-value-table_id") == ["table-id"]
       assert Floki.attribute(order_button, "phx-value-order_by") == ["assoc:asc:name"]
@@ -317,12 +328,13 @@ defmodule Web.LiveTableTest do
       # current order if it's set
       assigns = %{assigns | ordered_by: {:assoc, :desc, :name}}
       html = render_component(&live_table/1, assigns)
-      order_button = Floki.find(html, "th button")
+      order_button = html |> Floki.parse_fragment!() |> Floki.find("th button")
       assert Floki.attribute(order_button, "phx-value-order_by") == ["assoc:desc:name"]
     end
 
     test "renders page size and total count", %{assigns: assigns} do
       assert render_component(&live_table/1, assigns)
+             |> Floki.parse_fragment!()
              |> Floki.find("nav > span")
              |> Floki.text()
              |> String.replace(~r/[\s]+/, " ") =~ "Showing 1 of 1"
@@ -332,6 +344,7 @@ defmodule Web.LiveTableTest do
                | metadata: %{assigns.metadata | count: 10, limit: 100},
                  rows: Enum.map(1..10, fn _i -> ["foo"] end)
              })
+             |> Floki.parse_fragment!()
              |> Floki.find("nav > span")
              |> Floki.text()
              |> String.replace(~r/[\s]+/, " ") =~ "Showing 10 of 10"
@@ -341,6 +354,7 @@ defmodule Web.LiveTableTest do
                | metadata: %{assigns.metadata | count: 100, limit: 10},
                  rows: Enum.map(1..100, fn _i -> ["foo"] end)
              })
+             |> Floki.parse_fragment!()
              |> Floki.find("nav > span")
              |> Floki.text()
              |> String.replace(~r/[\s]+/, " ") =~ "Showing 100 of 100"
@@ -350,6 +364,7 @@ defmodule Web.LiveTableTest do
       html = render_component(&live_table/1, assigns)
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("nav button")
              |> Floki.attribute("disabled") == ["disabled", "disabled"]
 
@@ -357,10 +372,11 @@ defmodule Web.LiveTableTest do
       html = render_component(&live_table/1, assigns)
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("nav button")
              |> Floki.attribute("disabled") == ["disabled"]
 
-      enabled_button = Floki.find(html, "nav button:not([disabled])")
+      enabled_button = html |> Floki.parse_fragment!() |> Floki.find("nav button:not([disabled])")
       assert Floki.attribute(enabled_button, "phx-click") == ["paginate"]
       assert Floki.attribute(enabled_button, "phx-value-cursor") == ["next_cursor"]
       assert Floki.attribute(enabled_button, "phx-value-table_id") == ["table-id"]
@@ -369,10 +385,11 @@ defmodule Web.LiveTableTest do
       html = render_component(&live_table/1, assigns)
 
       assert html
+             |> Floki.parse_fragment!()
              |> Floki.find("nav button")
              |> Floki.attribute("disabled") == []
 
-      enabled_button = Floki.find(html, "nav button:not([disabled])")
+      enabled_button = html |> Floki.parse_fragment!() |> Floki.find("nav button:not([disabled])")
       assert "prev_cursor" in Floki.attribute(enabled_button, "phx-value-cursor")
     end
   end

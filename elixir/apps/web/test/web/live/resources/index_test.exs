@@ -34,7 +34,7 @@ defmodule Web.Live.Resources.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Resources"
   end
@@ -49,7 +49,11 @@ defmodule Web.Live.Resources.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/resources/new']")
+    assert button =
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("a[href='/#{account.slug}/resources/new']")
+
     assert Floki.text(button) =~ "Add Resource"
   end
 
@@ -65,7 +69,11 @@ defmodule Web.Live.Resources.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/resources/new']")
+    assert button =
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("a[href='/#{account.slug}/resources/new']")
+
     refute Floki.text(button) =~ "Add Multi-Site Resource"
   end
 

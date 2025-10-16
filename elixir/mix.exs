@@ -51,7 +51,7 @@ defmodule Firezone.MixProject do
       {:phoenix, "~> 1.8.1"},
       {:phoenix_live_view, "~> 1.1.8"},
       {:lazy_html, ">= 0.1.0", only: :test},
-      {:floki, "~> 0.37.0"}
+      {:floki, "~> 0.38.0"}
     ]
   end
 

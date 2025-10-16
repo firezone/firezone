@@ -42,7 +42,7 @@ defmodule Web.Live.Resources.NewTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/resources/new")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Resources"
     assert breadcrumbs =~ "Add Resource"

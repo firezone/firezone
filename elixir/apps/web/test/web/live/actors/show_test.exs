@@ -43,7 +43,7 @@ defmodule Web.Live.Actors.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors/#{actor}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Actors"
     assert breadcrumbs =~ actor.name
@@ -375,6 +375,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("#identity-#{email_identity.id} button", "Send Welcome Email")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Welcome email sent to #{email_identity.provider_identifier}"
 
@@ -414,6 +415,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("#identity-#{oidc_identity.id} button", "Send Welcome Email")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Welcome email sent to #{oidc_email}"
 
@@ -447,6 +449,7 @@ defmodule Web.Live.Actors.ShowTest do
         assert lv
                |> element("#identity-#{email_identity.id} button", "Send Welcome Email")
                |> render_click()
+               |> Floki.parse_fragment!()
                |> Floki.find(".flash-info")
                |> element_to_text() =~
                  "Welcome email sent to #{email_identity.provider_identifier}"
@@ -455,6 +458,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("#identity-#{email_identity.id} button", "Send Welcome Email")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-error")
              |> element_to_text() =~
                "You sent too many welcome emails to this address. Please try again later."
@@ -571,6 +575,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("#identity-#{other_identity.id} button[type=submit]", "Delete")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Identity was deleted."
     end
@@ -800,6 +805,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("button[type=submit]", "Delete User")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't delete the last admin of an account."
 
@@ -823,6 +829,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("button[type=submit]", "Disable User")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
@@ -843,6 +850,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("button[type=submit]", "Disable User")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-error")
              |> element_to_text() =~ "You can't disable the last admin of an account."
 
@@ -867,6 +875,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("button[type=submit]", "Enable User")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 
@@ -1005,6 +1014,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("button[type=submit]", "Disable Service Account")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was disabled."
 
@@ -1029,6 +1039,7 @@ defmodule Web.Live.Actors.ShowTest do
       assert lv
              |> element("button[type=submit]", "Enable Service Account")
              |> render_click()
+             |> Floki.parse_fragment!()
              |> Floki.find(".flash-info")
              |> element_to_text() =~ "Actor was enabled."
 

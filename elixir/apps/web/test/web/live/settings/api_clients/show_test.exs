@@ -58,7 +58,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "API Clients"
     assert breadcrumbs =~ api_client.name
@@ -160,6 +160,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
     assert lv
            |> element("button[type=submit]", "Disable")
            |> render_click()
+           |> Floki.parse_fragment!()
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "API Client was disabled."
 
@@ -184,6 +185,7 @@ defmodule Web.Live.Settings.ApiClients.ShowTest do
     assert lv
            |> element("button[type=submit]", "Enable")
            |> render_click()
+           |> Floki.parse_fragment!()
            |> Floki.find(".flash-info")
            |> element_to_text() =~ "API Client was enabled."
 

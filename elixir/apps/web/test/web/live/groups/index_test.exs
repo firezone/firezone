@@ -33,7 +33,7 @@ defmodule Web.Live.Groups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Groups"
   end
@@ -48,7 +48,11 @@ defmodule Web.Live.Groups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/groups/new']")
+    assert button =
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("a[href='/#{account.slug}/groups/new']")
+
     assert Floki.text(button) =~ "Add Group"
   end
 
@@ -62,7 +66,7 @@ defmodule Web.Live.Groups.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/groups")
 
-    assert form = Floki.find(html, "form#groups-filters")
+    assert form = html |> Floki.parse_fragment!() |> Floki.find("form#groups-filters")
     assert ["return event.key != 'Enter';"] = Floki.attribute(form, "onkeydown")
   end
 

@@ -70,7 +70,7 @@ defmodule Web.MixProject do
       {:logger_json, "~> 7.0"},
 
       # Test deps
-      {:floki, "~> 0.37.0", only: :test},
+      {:floki, "~> 0.38.0", only: :test},
       {:bypass, "~> 2.1", only: :test},
       {:wallaby, "~> 0.30.0", only: :test},
       {:credo, "~> 1.5", only: [:dev, :test], runtime: false},

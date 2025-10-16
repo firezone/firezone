@@ -162,8 +162,13 @@ defmodule Web.ConnCase do
 
   ### Helpers to test LiveView forms
 
+  # Helper to parse HTML if it's a string, or return as-is if already parsed
+  defp parse_if_needed(html) when is_binary(html), do: Floki.parse_fragment!(html)
+  defp parse_if_needed(parsed), do: parsed
+
   def find_inputs(html, selector) do
     html
+    |> parse_if_needed()
     |> Floki.find("#{selector} input,select,textarea")
     |> Enum.flat_map(&Floki.attribute(&1, "name"))
     |> Enum.uniq()
@@ -177,6 +182,7 @@ defmodule Web.ConnCase do
   def form_validation_errors(html_or_form_element) do
     html_or_form_element
     |> ensure_rendered()
+    |> parse_if_needed()
     |> Floki.find("[data-validation-error-for]")
     |> Enum.map(fn html_element ->
       [field] = Floki.attribute(html_element, "data-validation-error-for")
@@ -225,23 +231,28 @@ defmodule Web.ConnCase do
 
   def vertical_table_to_map(table_html) do
     table_html
+    |> parse_if_needed()
     |> Floki.find("tbody tr")
     |> Enum.map(fn row ->
-      key = Floki.find(row, "th") |> reject_tooltips() |> element_to_text() |> String.downcase()
-      value = Floki.find(row, "td") |> element_to_text()
+      key = row |> Floki.find("th") |> reject_tooltips() |> element_to_text() |> String.downcase()
+      value = row |> Floki.find("td") |> element_to_text()
       {key, value}
     end)
     |> Enum.into(%{})
   end
 
   def table_columns(table_html) do
-    Floki.find(table_html, "thead tr th")
+    table_html
+    |> parse_if_needed()
+    |> Floki.find("thead tr th")
     |> elements_to_text()
     |> Enum.map(&String.downcase/1)
   end
 
   def table_rows(table_html) do
-    Floki.find(table_html, "tbody tr")
+    table_html
+    |> parse_if_needed()
+    |> Floki.find("tbody tr")
     |> Enum.map(fn row ->
       row
       |> Floki.find("td")
@@ -287,6 +298,7 @@ defmodule Web.ConnCase do
 
   def active_buttons(html) do
     html
+    |> parse_if_needed()
     |> Floki.find("main button")
     |> Enum.filter(fn button ->
       Floki.attribute(button, "disabled") != "disabled"

@@ -38,7 +38,7 @@ defmodule Web.Live.Actors.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "Actors"
   end
@@ -53,7 +53,11 @@ defmodule Web.Live.Actors.IndexTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/actors")
 
-    assert button = Floki.find(html, "a[href='/#{account.slug}/actors/new']")
+    assert button =
+             html
+             |> Floki.parse_fragment!()
+             |> Floki.find("a[href='/#{account.slug}/actors/new']")
+
     assert Floki.text(button) =~ "Add Actor"
   end
 
@@ -176,6 +180,7 @@ defmodule Web.Live.Actors.IndexTest do
       lv
       |> element("#actors")
       |> render()
+      |> Floki.parse_fragment!()
       |> Floki.find("a[href*=\"api_clients/#{api_client.id}\"]")
 
     assert length(items) == 1

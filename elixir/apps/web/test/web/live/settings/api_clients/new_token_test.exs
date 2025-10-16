@@ -42,7 +42,7 @@ defmodule Web.Live.Settings.ApiClient.NewTokenTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/api_clients/#{api_client}/new_token")
 
-    assert item = Floki.find(html, "[aria-label='Breadcrumb']")
+    assert item = html |> Floki.parse_fragment!() |> Floki.find("[aria-label='Breadcrumb']")
     breadcrumbs = String.trim(Floki.text(item))
     assert breadcrumbs =~ "API Clients"
     assert breadcrumbs =~ api_client.name
@@ -141,7 +141,9 @@ defmodule Web.Live.Settings.ApiClient.NewTokenTest do
     assert html =~ "Store this in a safe place."
     assert html =~ "It won&#39;t be shown again."
 
-    assert Floki.find(html, "code")
+    assert html
+           |> Floki.parse_fragment!()
+           |> Floki.find("code")
            |> element_to_text()
            |> String.trim()
            |> String.first() == "."
