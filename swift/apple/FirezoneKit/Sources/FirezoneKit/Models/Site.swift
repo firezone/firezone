@@ -7,7 +7,7 @@
 
 import Foundation
 
-public struct Site: Decodable, Identifiable, Equatable {
+public struct Site: Codable, Identifiable, Equatable {
   public let id: String
   public var name: String
 

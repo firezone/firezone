@@ -183,8 +183,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         // Use hash comparison to only return resources if they've changed
-        adapter.getResourcesIfVersionDifferentFrom(hash: hash) { resourceListJSON in
-          completionHandler?(resourceListJSON?.data(using: .utf8))
+        adapter.getResourcesIfVersionDifferentFrom(hash: hash) { resourceData in
+          completionHandler?(resourceData)
         }
       case .clearLogs:
         clearLogs(completionHandler)

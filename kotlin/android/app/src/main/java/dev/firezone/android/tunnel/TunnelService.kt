@@ -20,9 +20,6 @@ import android.util.Log
 import androidx.lifecycle.MutableLiveData
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.installations.FirebaseInstallations
-import com.google.gson.FieldNamingPolicy
-import com.google.gson.Gson
-import com.google.gson.GsonBuilder
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.adapter
 import dagger.hilt.android.AndroidEntryPoint
@@ -31,6 +28,7 @@ import dev.firezone.android.core.data.ResourceState
 import dev.firezone.android.core.data.isEnabled
 import dev.firezone.android.tunnel.model.Cidr
 import dev.firezone.android.tunnel.model.Resource
+import dev.firezone.android.tunnel.model.Site
 import dev.firezone.android.tunnel.model.isInternetResource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +39,7 @@ import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
@@ -48,10 +47,6 @@ import uniffi.connlib.SessionInterface
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
-
-data class DeviceInfo(
-    var firebaseInstallationId: String? = null,
-)
 
 @AndroidEntryPoint
 @OptIn(ExperimentalStdlibApi::class)
@@ -254,7 +249,7 @@ class TunnelService : VpnService() {
     }
 
     fun setDns(dnsList: List<String>) {
-        sendTunnelCommand(TunnelCommand.SetDns(Gson().toJson(dnsList)))
+        sendTunnelCommand(TunnelCommand.SetDns(dnsList))
     }
 
     fun reset() {
@@ -270,18 +265,20 @@ class TunnelService : VpnService() {
             tunnelState = State.CONNECTING
             updateStatusNotification(TunnelStatusNotification.Connecting)
 
-            val deviceInfo = DeviceInfo()
-            runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
-                .onSuccess { firebaseInstallationId ->
-                    deviceInfo.firebaseInstallationId = firebaseInstallationId
-                }.onFailure { exception ->
-                    Log.d(TAG, "Failed to obtain firebase installation id: $exception")
-                }
+            val firebaseInstallationId =
+                runCatching { Tasks.await(FirebaseInstallations.getInstance().id) }
+                    .getOrElse { exception ->
+                        Log.d(TAG, "Failed to obtain firebase installation id: $exception")
+                        null
+                    }
 
-            val gson: Gson =
-                GsonBuilder()
-                    .setFieldNamingPolicy(FieldNamingPolicy.LOWER_CASE_WITH_UNDERSCORES)
-                    .create()
+            val deviceInfo =
+                DeviceInfo(
+                    firebaseInstallationId = firebaseInstallationId,
+                    deviceUuid = null,
+                    deviceSerial = null,
+                    identifierForVendor = null,
+                )
 
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
@@ -298,7 +295,7 @@ class TunnelService : VpnService() {
                         logFilter = config.logFilter,
                         isInternetResourceActive = resourceState.isEnabled(),
                         protectSocket = protectSocket,
-                        deviceInfo = gson.toJson(deviceInfo),
+                        deviceInfo = deviceInfo,
                     ).use { session ->
                         startNetworkMonitoring()
                         startDisconnectMonitoring()
@@ -447,7 +444,7 @@ class TunnelService : VpnService() {
         ) : TunnelCommand()
 
         data class SetDns(
-            val dnsServers: String,
+            val dnsServers: List<String>,
         ) : TunnelCommand()
 
         data class SetLogDirectives(
@@ -506,27 +503,25 @@ class TunnelService : VpnService() {
                     eventChannel.onReceive { event ->
                         when (event) {
                             is Event.ResourcesUpdated -> {
-                                tunnelResources =
-                                    moshi.adapter<List<Resource>>().fromJson(event.resources)!!
+                                tunnelResources = event.resources.map { convertResource(it) }
                                 resourcesUpdated()
                             }
 
                             is Event.TunInterfaceUpdated -> {
-                                tunnelDnsAddresses =
-                                    moshi.adapter<MutableList<String>>().fromJson(event.dns)!!
+                                tunnelDnsAddresses = event.dns.toMutableList()
                                 tunnelSearchDomain = event.searchDomain
                                 tunnelIpv4Address = event.ipv4
                                 tunnelIpv6Address = event.ipv6
                                 tunnelRoutes.clear()
                                 tunnelRoutes.addAll(
-                                    moshi
-                                        .adapter<MutableList<Cidr>>()
-                                        .fromJson(event.ipv4Routes)!!,
+                                    event.ipv4Routes.map { cidr ->
+                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
+                                    },
                                 )
                                 tunnelRoutes.addAll(
-                                    moshi
-                                        .adapter<MutableList<Cidr>>()
-                                        .fromJson(event.ipv6Routes)!!,
+                                    event.ipv6Routes.map { cidr ->
+                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
+                                    },
                                 )
                                 buildVpnService()
                             }
@@ -553,6 +548,56 @@ class TunnelService : VpnService() {
             }
         }
     }
+
+    private fun convertResource(resource: uniffi.connlib.Resource): Resource =
+        when (resource) {
+            is uniffi.connlib.Resource.Dns -> {
+                Resource(
+                    type = dev.firezone.android.tunnel.model.ResourceType.DNS,
+                    id = resource.resource.id,
+                    address = resource.resource.address,
+                    addressDescription = resource.resource.addressDescription,
+                    sites = resource.resource.sites.map { convertSite(it) },
+                    name = resource.resource.name,
+                    status = convertResourceStatus(resource.resource.status),
+                )
+            }
+            is uniffi.connlib.Resource.Cidr -> {
+                Resource(
+                    type = dev.firezone.android.tunnel.model.ResourceType.CIDR,
+                    id = resource.resource.id,
+                    address = resource.resource.address,
+                    addressDescription = resource.resource.addressDescription,
+                    sites = resource.resource.sites.map { convertSite(it) },
+                    name = resource.resource.name,
+                    status = convertResourceStatus(resource.resource.status),
+                )
+            }
+            is uniffi.connlib.Resource.Internet -> {
+                Resource(
+                    type = dev.firezone.android.tunnel.model.ResourceType.Internet,
+                    id = resource.resource.id,
+                    address = null,
+                    addressDescription = null,
+                    sites = resource.resource.sites.map { convertSite(it) },
+                    name = resource.resource.name,
+                    status = convertResourceStatus(resource.resource.status),
+                )
+            }
+        }
+
+    private fun convertSite(site: uniffi.connlib.Site): dev.firezone.android.tunnel.model.Site =
+        dev.firezone.android.tunnel.model.Site(
+            id = site.id,
+            name = site.name,
+        )
+
+    private fun convertResourceStatus(status: uniffi.connlib.ResourceStatus): dev.firezone.android.tunnel.model.StatusEnum =
+        when (status) {
+            uniffi.connlib.ResourceStatus.UNKNOWN -> dev.firezone.android.tunnel.model.StatusEnum.UNKNOWN
+            uniffi.connlib.ResourceStatus.ONLINE -> dev.firezone.android.tunnel.model.StatusEnum.ONLINE
+            uniffi.connlib.ResourceStatus.OFFLINE -> dev.firezone.android.tunnel.model.StatusEnum.OFFLINE
+        }
 
     companion object {
         enum class State {
