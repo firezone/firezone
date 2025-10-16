@@ -39,12 +39,6 @@ func runSessionEventLoop(
     group.addTask {
       for await command in commandReceiver.stream {
         handleCommand(command, session: session)
-
-        // Exit loop if disconnect command
-        if case .disconnect = command {
-          Log.log("Disconnect command received, exiting command loop")
-          break
-        }
       }
 
       Log.log("Command handling finished")
