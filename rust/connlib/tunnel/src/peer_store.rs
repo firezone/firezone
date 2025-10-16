@@ -3,10 +3,12 @@ use std::collections::{HashMap, hash_map::Entry};
 use std::hash::Hash;
 use std::net::IpAddr;
 
-use crate::peer::{ClientOnGateway, GatewayOnClient};
 use connlib_model::{ClientId, GatewayId, ResourceId};
 use ip_network::IpNetwork;
 use ip_network_table::IpNetworkTable;
+
+use crate::client::GatewayOnClient;
+use crate::gateway::ClientOnGateway;
 
 pub(crate) struct PeerStore<TId, P> {
     id_by_ip: IpNetworkTable<TId>,

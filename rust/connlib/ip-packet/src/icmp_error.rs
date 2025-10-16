@@ -88,6 +88,15 @@ impl FailedPacket {
         }
     }
 
+    /// The destination protocol of the packet.
+    pub fn dst_proto(&self) -> Protocol {
+        match self.l4_proto {
+            Layer4Protocol::Udp { dst, .. } => Protocol::Udp(dst),
+            Layer4Protocol::Tcp { dst, .. } => Protocol::Tcp(dst),
+            Layer4Protocol::Icmp { id, .. } => Protocol::Icmp(id),
+        }
+    }
+
     pub fn layer4_protocol(&self) -> Layer4Protocol {
         self.l4_proto
     }

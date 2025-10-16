@@ -17,7 +17,7 @@ bufferpool = { workspace = true }
 bytes = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
-derive_more = { workspace = true, features = ["debug"] }
+derive_more = { workspace = true, features = ["debug", "from"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
