@@ -10,8 +10,7 @@ export default function HubspotForm({
   formId: string;
   title?: string;
 }) {
-  const { isScriptLoaded, isScriptError, scriptError, isFormCreated } =
-    useHubspotForm({
+  useHubspotForm({
       portalId: portalId,
       formId: formId,
       target: "#hubspot-form",

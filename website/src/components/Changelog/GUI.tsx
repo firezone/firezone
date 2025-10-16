@@ -36,7 +36,7 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="10104">
           Fixes an issue where DNS resources would resolve to a different IP
           after signing out and back into Firezone. This would break
-          connectivity for long-running services that don't re-resolve DNS, like
+          connectivity for long-running services that don&apos;t re-resolve DNS, like
           SSH sessions or mongoose.
         </ChangeItem>
       </Entry>
@@ -99,8 +99,8 @@ export default function GUI({ os }: { os: OS }) {
           the Client to hang upon sign-in.
         </ChangeItem>
         <ChangeItem pull="9477">
-          Fixes an issue where disabling "connect on start" would incorrectly
-          show the Client as "Signed in" on the next launch.
+          Fixes an issue where disabling &quot;connect on start&quot; would incorrectly
+          show the Client as &quot;Signed in&quot; on the next launch.
         </ChangeItem>
       </Entry>
       <Entry version="1.5.1" date={new Date("2025-06-05")}>
@@ -137,7 +137,7 @@ export default function GUI({ os }: { os: OS }) {
           refused our request to increase the UDP socket buffer sizes.
         </ChangeItem>
         <ChangeItem pull="9381">
-          Introduces "General" settings, allowing the user to manage autostart
+          Introduces &quot;General&quot; settings, allowing the user to manage autostart
           behaviour as well as the to-be-used account slug.
         </ChangeItem>
       </Entry>
@@ -148,7 +148,7 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         <ChangeItem pull="9136">
           Launching Firezone while it is already running while now re-activate
-          the "Welcome" screen, allowing the user to sign in and out.
+          the &quot;Welcome&quot; screen, allowing the user to sign in and out.
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="9154">
@@ -425,7 +425,7 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="6874">Fixes the GUI shutting down slowly.</ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6931">
-            Mitigates an issue where <code>ipconfig</code> and WSL weren't aware
+            Mitigates an issue where <code>ipconfig</code> and WSL weren&apos;t aware
             of Firezone DNS resolvers. Users may need to restart WSL after
             signing in to Firezone.
           </ChangeItem>
@@ -433,7 +433,7 @@ export default function GUI({ os }: { os: OS }) {
       </Entry>
       <Entry version="1.3.7" date={new Date("2024-10-02")}>
         <ChangeItem pull="6831">
-          Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
+          Ensures Firefox doesn&apos;t attempt to use DNS over HTTPS when Firezone is
           active.
         </ChangeItem>
         <ChangeItem pull="6845">
@@ -449,7 +449,7 @@ export default function GUI({ os }: { os: OS }) {
           </ChangeItem>
         )}
         <ChangeItem pull="6857">
-          Tries to send motherboard's hardware ID for device verification.
+          Tries to send motherboard&apos;s hardware ID for device verification.
         </ChangeItem>
       </Entry>
       <Entry version="1.3.6" date={new Date("2024-09-25")}>
@@ -466,12 +466,12 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         {os === OS.Linux && (
           <ChangeItem pull="6780">
-            Fixes a bug where the Linux Clients didn't work on ZFS filesystems.
+            Fixes a bug where the Linux Clients didn&apos;t work on ZFS filesystems.
           </ChangeItem>
         )}
         <ChangeItem pull="6795">
           Fixes a bug where auto-sign-in with an expired token would cause a
-          "Couldn't send Disconnect" error message.
+          &quot;Couldn&apos;t send Disconnect&quot; error message.
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6810">
@@ -527,15 +527,15 @@ export default function GUI({ os }: { os: OS }) {
         <ChangeItem pull="6449">Checks for updates once a day</ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6472">
-            Fixes an issue where Split DNS didn't work for domain-joined Windows
+            Fixes an issue where Split DNS didn&apos;t work for domain-joined Windows
             machines
           </ChangeItem>
         )}
       </Entry>
       <Entry version="1.2.1" date={new Date("2024-08-27")}>
         <ChangeItem pull="6414">
-          Waits for Internet to connect to Firezone if there's no Internet at
-          startup and you're already signed in.
+          Waits for Internet to connect to Firezone if there&apos;s no Internet at
+          startup and you&apos;re already signed in.
         </ChangeItem>
         <ChangeItem pull="6455">
           Fixes a false positive warning log at startup about DNS interception
@@ -552,7 +552,7 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="6280">
-            Fixes a bug where the "Clear Logs" button did not clear the IPC
+            Fixes a bug where the &quot;Clear Logs&quot; button did not clear the IPC
             service logs.
           </ChangeItem>
         )}
@@ -567,7 +567,7 @@ export default function GUI({ os }: { os: OS }) {
         </ChangeItem>
         <ChangeItem pull="6361">
           Connections to Gateways are now sticky for the duration of the
-          Client's session to fix issues with long-lived TCP connections.
+          Client&apos;s session to fix issues with long-lived TCP connections.
         </ChangeItem>
       </Entry>
       <Entry version="1.1.12" date={new Date("2024-08-13")}>
@@ -620,7 +620,7 @@ export default function GUI({ os }: { os: OS }) {
         )}
         {os === OS.Windows && (
           <ChangeItem pull="6051">
-            Fixes "Element not found" error when setting routes.
+            Fixes &quot;Element not found&quot; error when setting routes.
           </ChangeItem>
         )}
         <ChangeItem pull="6017">
@@ -645,8 +645,8 @@ export default function GUI({ os }: { os: OS }) {
       </Entry>
       <Entry version="1.1.6" date={new Date("2024-07-12")}>
         <ChangeItem pull="5795">
-          Unexpected IPC service stops are now reported as "IPC connection
-          closed".
+          Unexpected IPC service stops are now reported as &quot;IPC connection
+          closed&quot;.
         </ChangeItem>
         {os === OS.Windows && (
           <ChangeItem pull="5827">
@@ -673,7 +673,7 @@ export default function GUI({ os }: { os: OS }) {
       </Entry>
       <Entry version="1.1.3" date={new Date("2024-07-03")}>
         <li className="pl-2">
-          Prevents Firezone's stub resolver from intercepting DNS record types
+          Prevents Firezone&apos;s stub resolver from intercepting DNS record types
           besides A, AAAA, and PTR. These are now forwarded to your upstream DNS
           resolver.
         </li>

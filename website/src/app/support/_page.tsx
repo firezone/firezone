@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import KbSearch from "@/components/KbSearch";
 import {
   HiOutlineBookOpen,
@@ -12,7 +11,6 @@ import {
   HiOutlineQuestionMarkCircle,
   HiOutlineMagnifyingGlass,
   HiOutlineMap,
-  HiOutlineChatBubbleOvalLeft,
   HiOutlineEnvelope,
 } from "react-icons/hi2";
 import { AiOutlineDiscord } from "react-icons/ai";
@@ -20,11 +18,6 @@ import { FaDiscourse } from "react-icons/fa";
 import { FaSlack } from "react-icons/fa";
 
 export default function _Page() {
-  const openChat = (e: React.MouseEvent) => {
-    const winAny = window as any;
-    e.preventDefault();
-    winAny.HubSpotConversations.widget.open();
-  };
 
   return (
     <div className="flex flex-col">
@@ -118,8 +111,8 @@ export default function _Page() {
         </h2>
         <hr />
         <p className="text-md md:text-lg mt-8">
-          Didn't find what you were looking for? We build Firezone in the open
-          -- there's a good chance someone's already opened an issue.
+          Didn&apos;t find what you were looking for? We build Firezone in the open
+          -- there&apos;s a good chance someone&apos;s already opened an issue.
         </p>
         <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
           <Link
@@ -143,8 +136,8 @@ export default function _Page() {
               Product roadmap
             </h3>
             <p className="mt-8">
-              View our public roadmap for a glimpse into what we've recently
-              shipped and what's coming soon.
+              View our public roadmap for a glimpse into what we&apos;ve recently
+              shipped and what&apos;s coming soon.
             </p>
           </Link>
           <Link

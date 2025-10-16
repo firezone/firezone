@@ -7,14 +7,20 @@ export default function LinkedInInsights() {
   const linkedInPartnerId = process.env.NEXT_PUBLIC_LINKEDIN_PARTNER_ID;
 
   useEffect(() => {
-    const winAny = window as any;
+    const winAny = window as {
+      _linkedin_data_partner_ids?: string[];
+      lintrk?: {
+        (action: string, data: Record<string, unknown>): void;
+        q?: [string, Record<string, unknown>][];
+      };
+    };
     winAny._linkedin_data_partner_ids = winAny._linkedin_data_partner_ids || [];
     winAny._linkedin_data_partner_ids.push(linkedInPartnerId);
 
     const initializeLintrk = () => {
       if (winAny.lintrk) return;
 
-      winAny.lintrk = function (a: any, b: any) {
+      winAny.lintrk = function (a: string, b: Record<string, unknown>) {
         (winAny.lintrk.q = winAny.lintrk.q || []).push([a, b]);
       };
 
@@ -41,7 +47,8 @@ export default function LinkedInInsights() {
           return;
         }
 
-        (window as any).lintrk("track", { conversion_id: 16519956 });
+        const win = window as typeof winAny;
+        win.lintrk?.("track", { conversion_id: 16519956 });
       }
     };
 

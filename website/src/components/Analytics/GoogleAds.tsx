@@ -17,9 +17,6 @@ export default function GoogleAds() {
           return;
         }
 
-        const callback = function () {
-          return;
-        };
 
         const value =
           Number(formData.submissionValues["0-2/numberofemployees"]) * 5;

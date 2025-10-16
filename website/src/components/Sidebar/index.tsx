@@ -120,7 +120,7 @@ export function SidebarItem({
 
   if (href) {
     return (
-      <FlowbiteSidebarItem as={Link} href={href as any} active={p === href}>
+      <FlowbiteSidebarItem as={Link} href={href} active={p === href}>
         {children}
       </FlowbiteSidebarItem>
     );

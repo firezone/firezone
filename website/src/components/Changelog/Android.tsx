@@ -37,7 +37,7 @@ export default function Android() {
         <ChangeItem pull="10104">
           Fixes an issue where DNS resources would resolve to a different IP
           after signing out and back into Firezone. This would break
-          connectivity for long-running services that don't re-resolve DNS, like
+          connectivity for long-running services that don&apos;t re-resolve DNS, like
           SSH sessions or mongoose.
         </ChangeItem>
       </Entry>
@@ -65,7 +65,7 @@ export default function Android() {
       </Entry>
       <Entry version="1.5.2" date={new Date("2025-06-30")}>
         <ChangeItem pull="9621">
-          Fixes an issue where the VPN permission screen wouldn't dismiss after
+          Fixes an issue where the VPN permission screen wouldn&apos;t dismiss after
           granting the VPN permission.
         </ChangeItem>
         <ChangeItem pull="9564">
@@ -87,7 +87,7 @@ export default function Android() {
         </ChangeItem>
         <ChangeItem pull="9227">
           Adds full support for managed configurations to configure the client
-          using your organization's MDM solution. See the{" "}
+          using your organization&apos;s MDM solution. See the{" "}
           <Link
             href={"/kb/deploy/clients#provision-with-mdm" as Route}
             className="text-accent-500 underline hover:no-underline"
@@ -146,7 +146,7 @@ export default function Android() {
       </Entry>
       <Entry version="1.4.5" date={new Date("2025-03-15")}>
         <ChangeItem pull="8445">
-          Fixes a bug where search domains changes weren't applied if already
+          Fixes a bug where search domains changes weren&apos;t applied if already
           signed in.
         </ChangeItem>
       </Entry>
@@ -233,7 +233,7 @@ export default function Android() {
       </Entry>
       <Entry version="1.3.5" date={new Date("2024-10-03")}>
         <ChangeItem pull="6831">
-          Ensures Firefox doesn't attempt to use DNS over HTTPS when Firezone is
+          Ensures Firefox doesn&apos;t attempt to use DNS over HTTPS when Firezone is
           active.
         </ChangeItem>
         <ChangeItem pull="6845">
@@ -295,7 +295,7 @@ export default function Android() {
           Advanced screen.
         </ChangeItem>
         <ChangeItem pull="6495">
-          Fixes a bug where the Firezone tunnel wasn't shut down properly if you
+          Fixes a bug where the Firezone tunnel wasn&apos;t shut down properly if you
           disconnect the VPN in system settings.
         </ChangeItem>
         <ChangeItem pull="6434">Adds the Internet Resource feature.</ChangeItem>
@@ -306,7 +306,7 @@ export default function Android() {
         </ChangeItem>
         <ChangeItem pull="6361">
           Connections to Gateways are now sticky for the duration of the
-          Client's session. This fixes potential issues maintaining long-lived
+          Client&apos;s session. This fixes potential issues maintaining long-lived
           TCP connections to Gateways in a high-availability setup.
         </ChangeItem>
       </Entry>
@@ -354,7 +354,7 @@ export default function Android() {
       </Entry>
       <Entry version="1.1.2" date={new Date("2024-07-03")}>
         <li className="pl-2">
-          Prevents Firezone's stub resolver from intercepting DNS record types
+          Prevents Firezone&apos;s stub resolver from intercepting DNS record types
           besides A, AAAA, and PTR. These are now forwarded to your upstream DNS
           resolver.
         </li>

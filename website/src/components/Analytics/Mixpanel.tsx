@@ -5,7 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import mixpanel from "mixpanel-browser";
 import { HubSpotSubmittedFormData } from "./types";
 
-function _Mixpanel() {
+function MixpanelComponent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const mpToken = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || "dummy";
@@ -60,7 +60,7 @@ function _Mixpanel() {
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [pathname, searchParams, mixpanel]);
+  }, [pathname, searchParams, mpToken]);
 
   return null;
 }
@@ -68,7 +68,7 @@ function _Mixpanel() {
 export default function Mixpanel() {
   return (
     <Suspense fallback={null}>
-      <_Mixpanel />
+      <MixpanelComponent />
     </Suspense>
   );
 }

@@ -21,7 +21,7 @@ export default function Posts() {
       src: "/images/blog/migrate-your-internet-resource/migrate-internet-resource.svg",
       description: (
         <p className="mb-2">
-          We're making some changes to the way Internet Resources work to
+          We&apos;re making some changes to the way Internet Resources work to
           improve security and performance. Migrate your Internet Resources by
           <strong>March 15, 2024</strong> to avoid any interruptions.
         </p>
@@ -77,7 +77,7 @@ export default function Posts() {
       type: "Learn",
       description: (
         <p className="mb-2">
-          Firezone's data plane extensively uses the sans-IO design pattern.
+          Firezone&apos;s data plane extensively uses the sans-IO design pattern.
           This post explains why we chose it and how you too can make use of it.
         </p>
       ),
@@ -151,7 +151,7 @@ export default function Posts() {
       type: "Announcement",
       description: (
         <p className="mb-2">
-          We're making some changes to the way DNS Resources are routed in
+          We&apos;re making some changes to the way DNS Resources are routed in
           Firezone. These changes will be coming in Client and Gateway versions
           1.1 and later. Continue reading to understand how these changes will
           affect your network and what you need to do to take advantage of them.
@@ -182,9 +182,9 @@ export default function Posts() {
       src: "/images/blog/how-dns-works-in-firezone/how-dns-works-in-firezone.png",
       description: (
         <p className="mb-2">
-          Firezone's approach to DNS works a bit differently than one might
-          expect. One question we often get from new users is, "why do my DNS
-          Resources resolve to a different IP address with Firezone enabled?".
+          Firezone&apos;s approach to DNS works a bit differently than one might
+          expect. One question we often get from new users is, &quot;why do my DNS
+          Resources resolve to a different IP address with Firezone enabled?&quot;.
           Great question -- read on to find out.
         </p>
       ),
@@ -297,10 +297,10 @@ export default function Posts() {
         <>
           <p className="mb-2">Happy new year from the Firezone team!</p>
           <p>
-            After a long year of building, we're incredibly excited to announce
+            After a long year of building, we&apos;re incredibly excited to announce
             1.0 beta testing for Apple and Android platforms. Firezone 1.0 is an
             entirely new product with a brand new architecture that includes
-            many of the features you've been asking for. To summarize just a
+            many of the features you&apos;ve been asking for. To summarize just a
             few:
           </p>
         </>
@@ -370,9 +370,9 @@ export default function Posts() {
       type: "Announcement",
       description: (
         <p>
-          Today, I'm excited to announce we've closed the first public issue on
+          Today, I&apos;m excited to announce we&apos;ve closed the first public issue on
           our GitHub repository, more than a year after it was originally
-          opened: Containerization support! We're also releasing preliminary
+          opened: Containerization support! We&apos;re also releasing preliminary
           support for SAML 2.0 identity providers like Okta and OneLogin.
         </p>
       ),
@@ -386,9 +386,9 @@ export default function Posts() {
       type: "Announcement",
       description: (
         <p>
-          As the first post on our new blog, we thought it'd be fitting to kick
-          things off with a release announcement. So without further ado, we're
-          excited to announce: Firezone 0.5.0 is here! It's packed with new
+          As the first post on our new blog, we thought it&apos;d be fitting to kick
+          things off with a release announcement. So without further ado, we&apos;re
+          excited to announce: Firezone 0.5.0 is here! It&apos;s packed with new
           features, bug fixes, and other improvements — more on that below.
         </p>
       ),

@@ -1,7 +1,3 @@
-export default function Unreleased({
-  children,
-}: {
-  children?: React.ReactNode;
-}) {
+export default function Unreleased() {
   return null;
 }
