@@ -1,19 +1,13 @@
 import Link from "next/link";
 import { Route } from "next";
-import Image from "next/image";
-import { UrlObject } from "url";
 
 export default function Banner({
   active,
   href = "/",
-  bgColor,
-  textColor,
   children,
 }: {
   active: boolean;
   href?: URL | Route<string>;
-  bgColor?: string;
-  textColor?: string;
   children: React.ReactNode;
 }) {
   if (!active) return null;

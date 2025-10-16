@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { get } from "@vercel/edge-config";
 
-export async function GET(_req: NextRequest) {
+export async function GET() {
   const versions = {
     portal: await get("deployed_sha"),
     // mark:current-apple-version

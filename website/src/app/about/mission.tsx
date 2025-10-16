@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 export default function Mission() {
   return (
     <section className="pt-12 bg-neutral-950">
@@ -8,7 +6,7 @@ export default function Mission() {
           Our mission
         </h2>
         <p className="mb-8 text-4xl tracking-tight text-neutral-100 sm:px-16 xl:px-32">
-          To <span className="text-primary-500">secure</span> the world's
+          To <span className="text-primary-500">secure</span> the world&apos;s
           information and <span className="text-primary-500">restore</span>{" "}
           global trust in internet-connected systems.
         </p>

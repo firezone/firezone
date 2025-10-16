@@ -1,4 +1,3 @@
-import Entry from "./Entry";
 import Link from "next/link";
 
 export default function ChangeItem({

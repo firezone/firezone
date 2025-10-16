@@ -1,7 +1,5 @@
-import Link from "next/link";
 import Image from "next/image";
 import { Metadata } from "next";
-import { HiCheckCircle } from "react-icons/hi2";
 import ActionLink from "@/components/ActionLink";
 
 export const metadata: Metadata = {

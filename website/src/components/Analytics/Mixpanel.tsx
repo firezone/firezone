@@ -5,10 +5,10 @@ import { usePathname, useSearchParams } from "next/navigation";
 import mixpanel from "mixpanel-browser";
 import { HubSpotSubmittedFormData } from "./types";
 
-function _Mixpanel() {
+function MixpanelComponent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const mpToken = process.env.NEXT_PUBLIC_MIXPANEL_TOKEN || "dummy";
+  const mpToken = "b0ab1d66424a27555ed45a27a4fd0cd2";
   const host = "https://t.firez.one";
 
   useEffect(() => {
@@ -60,7 +60,7 @@ function _Mixpanel() {
     return () => {
       window.removeEventListener("message", handleMessage);
     };
-  }, [pathname, searchParams, mixpanel]);
+  }, [pathname, searchParams, mpToken]);
 
   return null;
 }
@@ -68,7 +68,7 @@ function _Mixpanel() {
 export default function Mixpanel() {
   return (
     <Suspense fallback={null}>
-      <_Mixpanel />
+      <MixpanelComponent />
     </Suspense>
   );
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { HiArrowLongRight, HiCheck, HiXMark } from "react-icons/hi2";
+import { HiArrowLongRight } from "react-icons/hi2";
 import { Route } from "next";
 
 function CardHeading({ children }: { children: React.ReactNode }) {
@@ -53,8 +53,8 @@ export default function UseCaseCards() {
               <CardHeading>Scale access to cloud resources.</CardHeading>
               <p>
                 Eliminate throughput bottlenecks that plague other VPNs.
-                Firezone's load-balancing architecture scales horizontally to
-                handle an unlimited number of connections to even the most
+                Firezone&apo;s load-balancing architecture scales horizontally
+                to handle an unlimited number of connections to even the most
                 bandwidth-intensive services.
               </p>
               <Button
@@ -146,7 +146,7 @@ export default function UseCaseCards() {
             <div className="w-full mt-2 md:mt-4 lg:mt-6 text-center md:text-left">
               <CardHeading>Block malicious DNS</CardHeading>
               <p>
-                Use Firezone to improve your team's Internet security by
+                Use Firezone to improve your team&apos;s Internet security by
                 blocking DNS queries to known malicious domains.
               </p>
               <Button text="Secure your DNS" href="/kb/use-cases/secure-dns" />

@@ -27,10 +27,13 @@ const AsciinemaPlayer: React.FC<AsciinemaPlayerProps> = ({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const AsciinemaPlayerLibrary = require("asciinema-player");
-    const currentRef = ref.current;
-    AsciinemaPlayerLibrary.create(src, currentRef, asciinemaOptions);
-  }, [src]);
+    import("asciinema-player").then((AsciinemaPlayerLibrary) => {
+      const currentRef = ref.current;
+      if (currentRef) {
+        AsciinemaPlayerLibrary.create(src, currentRef, asciinemaOptions);
+      }
+    });
+  }, [src, asciinemaOptions]);
 
   return <div ref={ref} />;
 };

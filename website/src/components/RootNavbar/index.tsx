@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import ActionLink from "@/components/ActionLink";
 import {
   Navbar,
   NavbarBrand,
@@ -14,7 +13,6 @@ import {
 } from "flowbite-react";
 import { usePathname } from "next/navigation";
 import Button from "@/components/Button";
-import { HiChevronDown } from "react-icons/hi2";
 import type { CustomFlowbiteTheme } from "flowbite-react/types";
 import { HiBars3 } from "react-icons/hi2";
 import { useDrawer } from "@/components/Providers/DrawerProvider";
