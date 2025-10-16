@@ -305,7 +305,7 @@ jobs:
 
           az storage blob upload \
             --container-name artifacts \
-            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
+            --name "bin/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
             --file "${{ matrix.name.package }}" \
             --overwrite true \
             --no-progress \
@@ -313,7 +313,7 @@ jobs:
 
           az storage blob upload \
             --container-name artifacts \
-            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
+            --name "bin/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
             --file "${{ matrix.name.package }}.sha256sum.txt" \
             --overwrite true \
             --no-progress \
