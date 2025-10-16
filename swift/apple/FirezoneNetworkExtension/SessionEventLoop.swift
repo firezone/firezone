@@ -27,14 +27,14 @@ func runSessionEventLoop(
         // Poll for next event from Rust
         guard let event = await session.nextEvent() else {
           // No event returned - session has ended
-          Log.log("SessionEventLoop: Event stream ended, exiting event loop")
+          Log.log("Event stream ended, exiting event loop")
           break
         }
 
         eventSender.send(event)
       }
 
-      Log.log("SessionEventLoop: Event polling finished")
+      Log.log("Event polling finished")
     }
 
     // Command handling task - receives commands from commandReceiver
@@ -44,17 +44,17 @@ func runSessionEventLoop(
 
         // Exit loop if disconnect command
         if case .disconnect = command {
-          Log.log("SessionEventLoop: Disconnect command received, exiting command loop")
+          Log.log("Disconnect command received, exiting command loop")
           break
         }
       }
 
-      Log.log("SessionEventLoop: Command handling finished")
+      Log.log("Command handling finished")
     }
 
     // Wait for first task to complete, then cancel all
     _ = await group.next()
-    Log.log("SessionEventLoop: One task completed, cancelling event loop")
+    Log.log("One task completed, cancelling event loop")
     group.cancelAll()
   }
 }
