@@ -1,5 +1,3 @@
-import Link from "next/link";
-import Image from "next/image";
 import Hero from "./hero";
 import Story from "./story";
 import Mission from "./mission";

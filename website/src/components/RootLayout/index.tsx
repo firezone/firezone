@@ -7,8 +7,6 @@ import RootNavbar from "@/components/RootNavbar";
 import Banner from "@/components/Banner";
 import Script from "next/script";
 import Footer from "@/components/Footer";
-import { HiArrowLongRight } from "react-icons/hi2";
-import { usePathname, useSearchParams } from "next/navigation";
 import Analytics from "@/components/Analytics";
 import { Source_Sans_3, Manrope } from "next/font/google";
 import { GoogleTagManager } from "@next/third-parties/google";
@@ -24,7 +22,7 @@ const manrope = Manrope({
   display: "swap",
 });
 
-const gtmId = process.env.NEXT_PUBLIC_GOOGLE_TAG_MANAGER_ID;
+const gtmId = "GTM-NBZ4CD98";
 
 export const metadata: Metadata = {
   title: "WireGuard® for Enterprise • Firezone",

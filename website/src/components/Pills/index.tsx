@@ -2,12 +2,10 @@ import { Dispatch, SetStateAction } from "react";
 
 export default function Pills({
   options,
-  multiselect,
   filters,
   setFilters,
 }: {
   options: Array<string>;
-  multiselect: boolean;
   filters: string;
   setFilters: Dispatch<SetStateAction<string>>;
 }) {

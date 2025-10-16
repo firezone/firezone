@@ -78,7 +78,7 @@ export function AppleIcon({
   href: URL | Route<string>;
   className?: string;
 }) {
-  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
     <Link href={href} className={className}>
       <svg
@@ -105,7 +105,7 @@ export function WindowsIcon({
   href: URL | Route<string>;
   className?: string;
 }) {
-  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
     <Link href={href} className={className}>
       <svg xmlns="http://www.w3.org/2000/svg" className={c} viewBox="0 0 88 88">
@@ -127,7 +127,7 @@ export function LinuxIcon({
   href: URL | Route<string>;
   className?: string;
 }) {
-  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
     <Link href={href} className={className}>
       <svg
@@ -200,7 +200,7 @@ export function AndroidIcon({
   href: URL | Route<string>;
   className?: string;
 }) {
-  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
     <Link href={href} className={className}>
       <svg
@@ -242,7 +242,7 @@ export function ChromeIcon({
   href: URL | Route<string>;
   className?: string;
 }) {
-  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
     <Link href={href} className={className}>
       <svg
@@ -273,7 +273,7 @@ export function DockerIcon({
   href: URL | Route<string>;
   className?: string;
 }) {
-  let c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
+  const c = "mx-auto w-" + size + " h-" + size + " box-border fill-current";
   return (
     <Link href={href} className={className}>
       <svg

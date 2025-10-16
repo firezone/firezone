@@ -1,5 +1,4 @@
 import { Metadata } from "next";
-import NewsletterSignup from "@/components/NewsletterSignup";
 import Posts from "./posts";
 
 export const metadata: Metadata = {

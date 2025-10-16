@@ -1,5 +1,4 @@
-import React, { ReactElement, ReactNode } from "react";
-import Entry from "./Entry";
+import React from "react";
 import Link from "next/link";
 import Unreleased from "./Unreleased";
 

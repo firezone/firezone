@@ -1,8 +1,5 @@
 "use client";
 
-import { ReactNode, useState } from "react";
-import { HiCloud, HiMiniPuzzlePiece, HiLockClosed } from "react-icons/hi2";
-import { SlideIn } from "@/components/Animations";
 import ActionLink from "../ActionLink";
 import { Route } from "next";
 

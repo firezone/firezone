@@ -20,7 +20,7 @@ export default function KbSearch({
     buttonRef.current.getElementsByClassName(
       "DocSearch-Button-Placeholder"
     )[0].textContent = buttonText;
-  }, []);
+  }, [buttonText]);
 
   return (
     <div ref={buttonRef}>

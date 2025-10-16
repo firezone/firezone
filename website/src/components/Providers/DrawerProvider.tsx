@@ -5,6 +5,7 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from "react";
 
@@ -23,16 +24,16 @@ export const DrawerProvider: React.FC<DrawerProviderProps> = ({ children }) => {
   const [isShown, setIsShown] = useState<boolean>(false);
   const [manualToggle, setManualToggle] = useState<boolean>(false);
 
-  const handleResize = () => {
+  const handleResize = useCallback(() => {
     const isMedium = window.innerWidth >= 768;
     setIsShown(isMedium || manualToggle);
-  };
+  }, [manualToggle]);
 
   useEffect(() => {
     handleResize();
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [manualToggle]);
+  }, [handleResize]);
 
   const toggle = () => {
     setIsShown((prevState) => !prevState);

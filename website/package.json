@@ -5,7 +5,7 @@
   "scripts": {
     "setup": "pnpm install && bash ./timestamps.sh",
     "dev": "next dev",
-    "prebuild": "bash ./timestamps.sh",
+    "prebuild": "pnpm lint && bash ./timestamps.sh",
     "build": "next build",
     "postbuild": "next-sitemap",
     "start": "next start",
@@ -18,7 +18,6 @@
     "@next/mdx": "~15.3.2",
     "@next/third-parties": "^15.5.3",
     "@types/mdx": "^2.0.13",
-    "@types/mixpanel-browser": "^2.66.0",
     "@types/node": "24.3.0",
     "@types/react": "18.3.11",
     "@types/react-dom": "18.3.1",
@@ -50,7 +49,16 @@
     "remark-parse": "^11.0.0",
     "tailwindcss": "3.4.18"
   },
+  "pnpm": {
+    "overrides": {
+      "@typescript-eslint/typescript-estree": "^8.46.1"
+    }
+  },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
+    "@types/md5": "^2.3.6",
+    "eslint": "^9.29.0",
+    "eslint-config-next": "15.3.3",
     "flowbite-typography": "^1.0.5",
     "hastscript": "^9.0.1",
     "typescript": "5.9.2"
