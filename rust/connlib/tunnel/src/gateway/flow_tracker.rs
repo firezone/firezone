@@ -237,7 +237,7 @@ impl FlowTracker {
                             let (key, value) = occupied.remove_entry();
                             let flow = CompletedTcpFlow::new(key, value, now_utc);
 
-                            tracing::debug!(?flow, "TCP flow completed on RST");
+                            tracing::debug!(?flow, "TCP flow completed on outbound RST");
 
                             self.completed_flows.push_back(flow.into());
                         }
@@ -356,7 +356,7 @@ impl FlowTracker {
                             let (key, value) = occupied.remove_entry();
                             let flow = CompletedTcpFlow::new(key, value, now_utc);
 
-                            tracing::debug!(?flow, "TCP flow completed on RST");
+                            tracing::debug!(?flow, "TCP flow completed on inbound RST");
 
                             self.completed_flows.push_back(flow.into());
                         }
