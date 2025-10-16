@@ -1,8 +1,14 @@
+mod client_on_gateway;
+mod filter_engine;
+mod nat_table;
+
+pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
+
+use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
-use crate::peer::TranslateOutboundResult;
+use crate::peer_store::PeerStore;
 use crate::{GatewayEvent, IpConfig, p2p_control};
-use crate::{peer::ClientOnGateway, peer_store::PeerStore};
 use anyhow::{Context, Result};
 use boringtun::x25519::PublicKey;
 use chrono::{DateTime, Utc};
