@@ -40,7 +40,7 @@ func runSessionEventLoop(
     // Command handling task - receives commands from commandReceiver
     group.addTask {
       for await command in commandReceiver.stream {
-        await handleCommand(command, session: session)
+        handleCommand(command, session: session)
 
         // Exit loop if disconnect command
         if case .disconnect = command {
@@ -60,7 +60,7 @@ func runSessionEventLoop(
 }
 
 /// Handles a command by calling the appropriate session method.
-private func handleCommand(_ command: SessionCommand, session: Session) async {
+private func handleCommand(_ command: SessionCommand, session: Session) {
   switch command {
   case .disconnect:
     do {
