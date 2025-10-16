@@ -1,13 +1,16 @@
 mod dns_cache;
 mod dns_resource_nat;
+mod gateway_on_client;
 mod resource;
+
+pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+#[cfg(all(feature = "proptest", test))]
+pub(crate) use resource::DnsResource;
+pub(crate) use resource::{CidrResource, InternetResource, Resource};
 
 use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
 use firezone_telemetry::{analytics, feature_flags};
-#[cfg(all(feature = "proptest", test))]
-pub(crate) use resource::DnsResource;
-pub(crate) use resource::{CidrResource, InternetResource, Resource};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 
 use crate::client::dns_cache::DnsCache;
@@ -31,7 +34,6 @@ use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
 use itertools::Itertools;
 
 use crate::ClientEvent;
-use crate::peer::GatewayOnClient;
 use lru::LruCache;
 use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};

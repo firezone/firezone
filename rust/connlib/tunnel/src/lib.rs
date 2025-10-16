@@ -34,7 +34,6 @@ mod io;
 pub mod messages;
 mod otel;
 mod p2p_control;
-mod peer;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]
 mod proptest;
@@ -635,6 +634,14 @@ impl Drop for TunnelError {
         }
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+#[error("Not a client IP: {0}")]
+pub(crate) struct NotClientIp(IpAddr);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Traffic to/from this resource IP is not allowed: {0}")]
+pub(crate) struct NotAllowedResource(IpAddr);
 
 /// Adapter-struct to [`fmt::Display`] a [`BTreeSet`].
 #[expect(dead_code, reason = "It is used in the `Debug` impl of `TunConfig`")]
