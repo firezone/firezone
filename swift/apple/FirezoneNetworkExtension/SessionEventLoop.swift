@@ -22,32 +22,42 @@ func runSessionEventLoop(
   // Multiplex between commands and events
   await withTaskGroup(of: Void.self) { group in
     group.addTask {
-      while !Task.isCancelled {
-        guard let event = await session.nextEvent() else {
-          Log.log("Event stream ended")
-          break
-        }
-
-        eventSender.send(event)
-      }
+      await forwardEvents(from: session, to: eventSender)
     }
 
     group.addTask {
-      for await command in commandReceiver.stream {
-        do {
-          try handleCommand(command, session: session)
-        } catch {
-            Log.error("Failed to forward command to session: \(error)")
-        }
-      }
-
-      Log.log("Command stream ended")
+      await forwardCommands(from: commandReceiver, to: session)
     }
 
     // Wait for first task to complete, then cancel all
     _ = await group.next()
     group.cancelAll()
   }
+}
+
+/// Forwards events from the session to the event sender.
+private func forwardEvents(from session: Session, to eventSender: Sender<Event>) async {
+  while !Task.isCancelled {
+    guard let event = await session.nextEvent() else {
+      Log.log("Event stream ended")
+      break
+    }
+
+    eventSender.send(event)
+  }
+}
+
+/// Forwards commands from the command receiver to the session.
+private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to session: Session) async {
+  for await command in commandReceiver.stream {
+    do {
+      try handleCommand(command, session: session)
+    } catch {
+      Log.error("Failed to forward command to session: \(error)")
+    }
+  }
+
+  Log.log("Command stream ended")
 }
 
 /// Handles a command by calling the appropriate session method.
