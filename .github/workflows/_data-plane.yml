@@ -304,16 +304,16 @@ jobs:
             gs://firezone-staging-artifacts/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt
 
           az storage blob upload \
-            --container-name artifacts \
-            --name "bin/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
+            --container-name binaries \
+            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}" \
             --file "${{ matrix.name.package }}" \
             --overwrite true \
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
 
           az storage blob upload \
-            --container-name artifacts \
-            --name "bin/${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
+            --container-name binaries \
+            --name "${{ matrix.name.image_name }}/${{ inputs.sha }}/${{ matrix.arch.shortname }}.sha256sum.txt" \
             --file "${{ matrix.name.package }}.sha256sum.txt" \
             --overwrite true \
             --no-progress \
