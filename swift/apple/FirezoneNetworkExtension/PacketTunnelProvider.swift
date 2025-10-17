@@ -13,7 +13,7 @@ enum PacketTunnelProviderError: Error {
   case tunnelConfigurationIsInvalid
   case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
-  case dryRun
+  case dryStartStopCycle
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
@@ -59,7 +59,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // Dummy start to get the extension running on macOS after upgrade
     if options?["dryRun"] as? Bool == true {
       Log.info("Dry run startup requested - extension awakened but not starting tunnel")
-      return completionHandler(PacketTunnelProviderError.dryRun)
+      return completionHandler(PacketTunnelProviderError.dryStartStopCycle)
     }
 
     // Log version on actual tunnel start

@@ -99,21 +99,16 @@ struct FirezoneApp: App {
         return .terminateNow
       }
 
-      Log.log("applicationShouldTerminate - starting cleanup")
       Task {
-        do {
-          try await store.stop()
-          Log.log("Cleanup completed - terminating now")
-        } catch {
-          Log.error(error)
-        }
+        do { try await store.stop() } catch { Log.error(error) }
         NSApp.reply(toApplicationShouldTerminate: true)
       }
+
       return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-      Log.log("applicationWillTerminate - app is about to quit")
+      Log.log("\(#function) - app is about to quit")
     }
 
     private func enforceSingleInstance() {

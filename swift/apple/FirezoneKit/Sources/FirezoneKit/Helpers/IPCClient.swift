@@ -75,8 +75,8 @@ class IPCClient {
   #if os(macOS)
     // On macOS, IPC calls to the system extension won't work after it's been upgraded, until the startTunnel call.
     // Since we rely on IPC for the GUI to function, we need to send a dummy `startTunnel` that doesn't actually
-    // start the tunnel, but causes the system to start the extension.
-    func dryRunAndStop() throws {
+    // start the tunnel, but causes the system to wake the extension.
+    func dryStartStopCycle() throws {
       let options: [String: NSObject] = ["dryRun": true as NSObject]
       try session().startTunnel(options: options)
     }

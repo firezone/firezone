@@ -102,9 +102,9 @@ public class SessionNotification: NSObject {
       let alert = NSAlert()
       alert.messageText = "Your Firezone session has ended"
       alert.informativeText = """
-          Please sign in again to reconnect.
+        Please sign in again to reconnect.
 
-          \(message ?? "")
+        \(message ?? "")
         """
       alert.addButton(withTitle: "Sign In")
       alert.addButton(withTitle: "Cancel")

@@ -42,11 +42,15 @@ public final class Store: ObservableObject {
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
 
+  // Track which session expired alerts have been shown to prevent duplicates
+  private var shownAlertIds: Set<String>
+
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
 
     // Load GUI-only cached state
     self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
+    self.shownAlertIds = Set(UserDefaults.standard.stringArray(forKey: "shownAlertIds") ?? [])
 
     self.sessionNotification.signInHandler = {
       Task {
@@ -127,18 +131,23 @@ public final class Store: ObservableObject {
       // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
       // from the tunnel process, because the UI process is not guaranteed to be alive.
 
-      // Only available on macOS 13+
+      // fetchLastDisconnectError is only available on macOS 13+
       if #available(macOS 13, *), vpnStatus == .disconnected {
         do {
           try manager().session()?.fetchLastDisconnectError { error in
-            guard let nsError = error as NSError?,
-              nsError.domain == "FirezoneKit.ConnlibError",
-              nsError.code == 0
-            else { return }
-
-            Task {
-              await self.sessionNotification.showSignedOutAlertmacOS(
-                nsError.userInfo["reason"] as? String)
+            if let nsError = error as NSError?,
+              nsError.domain == ConnlibError.errorDomain,
+              nsError.code == 0,  // sessionExpired error code
+              let reason = nsError.userInfo["reason"] as? String,
+              let id = nsError.userInfo["id"] as? String
+            {
+              // Only show the alert if we haven't shown this specific error before
+              Task { @MainActor in
+                if !self.shownAlertIds.contains(id) {
+                  await self.sessionNotification.showSignedOutAlertmacOS(reason)
+                  self.markAlertAsShown(id)
+                }
+              }
             }
           }
         } catch {
@@ -218,12 +227,12 @@ public final class Store: ObservableObject {
 
   public func stop() async throws {
     #if os(macOS)
-      // If tunnel is running, use normal stop. Otherwise use dryRunAndStop
-      // to properly clean up utuns even if tunnel was never started
+      // On macOS, the system removes the utun interface on stop ONLY if the VPN is in a connected state.
+      // So we need to do a dry run start-then-stop if we're not connected, to ensure the interface is removed.
       if vpnStatus == .connected || vpnStatus == .connecting || vpnStatus == .reasserting {
         try ipcClient().stop()
       } else {
-        try ipcClient().dryRunAndStop()
+        try ipcClient().dryStartStopCycle()
       }
     #else
       try ipcClient().stop()
@@ -244,6 +253,10 @@ public final class Store: ObservableObject {
     try await manager().enable()
     try await ipcClient().setConfiguration(configuration)
 
+    // Clear shown alerts when starting a new session so user can see new errors
+    shownAlertIds.removeAll()
+    UserDefaults.standard.removeObject(forKey: "shownAlertIds")
+
     // Bring the tunnel up and send it a token to start
     try ipcClient().start(token: authResponse.token)
   }
@@ -257,6 +270,11 @@ public final class Store: ObservableObject {
   }
 
   // MARK: Private functions
+
+  private func markAlertAsShown(_ id: String) {
+    shownAlertIds.insert(id)
+    UserDefaults.standard.set(Array(shownAlertIds), forKey: "shownAlertIds")
+  }
 
   // Network Extensions don't have a 2-way binding up to the GUI process,
   // so we need to periodically ask the tunnel process for them.
