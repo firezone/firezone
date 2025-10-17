@@ -4,8 +4,14 @@ PLATFORM?=macOS
 ARCH=$(shell uname -m)
 CONFIGURATION?=Debug
 
-# Path to rust target directory (relative to this Makefile)
-RUST_TARGET_DIR=$(abspath ../../rust/target)
+# Paths
+RUST_DIR=$(abspath ../../rust)
+RUST_TARGET_DIR=$(RUST_DIR)/target
+CLIENT_FFI_DIR=$(RUST_DIR)/client-ffi
+GENERATED_DIR=$(abspath FirezoneNetworkExtension/Connlib/Generated)
+
+# Find all Rust source files in client-ffi
+CLIENT_FFI_SOURCES=$(shell find $(CLIENT_FFI_DIR)/src -name "*.rs" 2>/dev/null)
 
 # Set consistent environment to prevent Rust rebuilds
 # This must match the Xcode project setting
@@ -23,16 +29,38 @@ GIT_SHA=$(shell git rev-parse HEAD 2>/dev/null || echo "unknown")
 
 # Default target: build and install
 .PHONY: all
-all: build install
+all: uniffi-bindings build install
+
+# Generate UniFFI bindings from Rust source
+# This works on any platform (not just macOS)
+$(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h: $(CLIENT_FFI_SOURCES) $(CLIENT_FFI_DIR)/Cargo.toml
+	@echo "Generating UniFFI bindings..."
+	@mkdir -p $(GENERATED_DIR)
+	@cd $(RUST_DIR) && \
+		(test -f $(RUST_TARGET_DIR)/debug/libconnlib.a || cargo build -p client-ffi) && \
+		cargo run -p uniffi-bindgen -- generate \
+			--library $(RUST_TARGET_DIR)/debug/libconnlib.a \
+			--language swift \
+			--out-dir $(GENERATED_DIR)
+	@rm -f $(GENERATED_DIR)/*.modulemap
+	@if [ -f "$(GENERATED_DIR)/connlib.swift" ]; then \
+		sed -i.bak '/#if canImport(connlibFFI)/,/#endif/s/^/\/\/ /' $(GENERATED_DIR)/connlib.swift; \
+		rm -f $(GENERATED_DIR)/connlib.swift.bak; \
+	fi
+	@echo "✅ UniFFI bindings generated"
+
+.PHONY: uniffi-bindings
+uniffi-bindings: $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h
 
 # Info for sourcekit-lsp (LSP server for other IDEs)
+.PHONY: lsp
 lsp:
 	@xcode-build-server config \
         -project Firezone.xcodeproj \
         -scheme Firezone
 
 .PHONY: build
-build:
+build: $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h
 	@echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
 	@echo "Git SHA: ${GIT_SHA}"
 	@xcodebuild build \
@@ -70,7 +98,7 @@ clean:
 		-sdk macosx
 	@echo "Cleaning Rust build artifacts"
 	@cd ../../rust/client-ffi && cargo clean
-	@echo "Removing Generated bindings"
+	@echo "Removing generated bindings"
 	@rm -rf FirezoneNetworkExtension/Connlib/Generated
 
 .PHONY: format
