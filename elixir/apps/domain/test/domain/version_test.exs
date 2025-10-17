@@ -1,7 +1,7 @@
 defmodule Domain.VersionTest do
   use ExUnit.Case, async: true
 
-  describe "fetch_version" do
+  describe "fetch_version/1" do
     test "can decode linux headless-client version" do
       assert Domain.Version.fetch_version("Fedora/42.0.0 headless-client/1.4.5 (arm64; 24.1.0)") ==
                {:ok, "1.4.5"}
@@ -37,6 +37,116 @@ defmodule Domain.VersionTest do
     test "can decode gateway version" do
       assert Domain.Version.fetch_version("Fedora/42.0.0 gateway/1.4.5 (arm64; 24.1.0)") ==
                {:ok, "1.4.5"}
+    end
+  end
+
+  describe "resource_cannot_change_sites_on_client?/1" do
+    test "apple client below version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.7",
+        last_seen_user_agent: "Mac OS X"
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "apple client at version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.8",
+        last_seen_user_agent: "Mac OS X"
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "apple client above version can change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.9",
+        last_seen_user_agent: "Mac OS X"
+      }
+
+      refute Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "android client below version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.3",
+        last_seen_user_agent: "Android"
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "android client at version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.4",
+        last_seen_user_agent: "Android"
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "android client above version can change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.5",
+        last_seen_user_agent: "Android"
+      }
+
+      refute Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "headless client below version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.3",
+        actor: %Domain.Actors.Actor{type: :service_account}
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "headless client at version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.4",
+        actor: %Domain.Actors.Actor{type: :service_account}
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "headless client above version can change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.5",
+        actor: %Domain.Actors.Actor{type: :service_account}
+      }
+
+      refute Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "gui client below version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.7",
+        last_seen_user_agent: "Windows"
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "gui client at version cannot change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.8",
+        last_seen_user_agent: "Windows"
+      }
+
+      assert Domain.Version.resource_cannot_change_sites_on_client?(client)
+    end
+
+    test "gui client above version can change sites" do
+      client = %Domain.Clients.Client{
+        last_seen_version: "1.5.9",
+        last_seen_user_agent: "Windows"
+      }
+
+      refute Domain.Version.resource_cannot_change_sites_on_client?(client)
     end
   end
 end
