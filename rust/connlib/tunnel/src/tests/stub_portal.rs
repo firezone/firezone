@@ -10,9 +10,10 @@ use crate::{
     client::DnsResource,
     messages::{DnsServer, gateway},
 };
-use connlib_model::GatewayId;
+use connlib_model::{GatewayId, Site};
 use connlib_model::{ResourceId, SiteId};
 use dns_types::DomainName;
+use ip_network::IpNetwork;
 use itertools::Itertools;
 use proptest::{
     collection,
@@ -225,6 +226,37 @@ impl StubPortal {
             .flatten()
             .find(|(_, ipv4_addr, ipv6_addr)| *ipv4_addr == ip || *ipv6_addr == ip)
             .map(|(gid, _, _)| *gid)
+    }
+
+    pub(crate) fn change_address_of_cidr_resource(
+        &mut self,
+        rid: ResourceId,
+        new_address: IpNetwork,
+    ) {
+        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
+            resource.address = new_address;
+            return;
+        }
+
+        tracing::error!(%rid, "Unknown resource");
+    }
+
+    pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
+        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
+            self.sites_by_resource.insert(rid, site.id);
+            resource.sites = vec![site];
+            return;
+        }
+
+        if let Some(resource) = self.dns_resources.get_mut(&rid) {
+            self.sites_by_resource.insert(rid, site.id);
+            resource.sites = vec![site];
+            return;
+        }
+
+        if self.internet_resource.id == rid {
+            tracing::error!("Internet Resource cannot change site");
+        }
     }
 
     pub(crate) fn gateways(

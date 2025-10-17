@@ -1,9 +1,11 @@
 mod dns_cache;
 mod dns_resource_nat;
 mod gateway_on_client;
+mod pending_tun_update;
 mod resource;
 
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
+use crate::client::pending_tun_update::PendingTunUpdate;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
 pub(crate) use resource::{CidrResource, InternetResource, Resource};
@@ -144,6 +146,7 @@ pub struct ClientState {
     /// We use this as a hint to the portal to re-connect us to the same gateway for a resource.
     recently_connected_gateways: LruCache<GatewayId, ()>,
 
+    pending_tun_update: Option<PendingTunUpdate>,
     buffered_events: VecDeque<ClientEvent>,
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
@@ -224,6 +227,7 @@ impl ClientState {
             tcp_dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
+            pending_tun_update: Default::default(),
         }
     }
 
@@ -1557,13 +1561,16 @@ impl ClientState {
         self.stub_resolver
             .set_search_domain(new_tun_config.search_domain.clone());
 
-        // Ensure we don't emit multiple interface updates in a row.
-        self.buffered_events
-            .retain(|e| !matches!(e, ClientEvent::TunInterfaceUpdated(_)));
-
-        self.tun_config = Some(new_tun_config.clone());
-        self.buffered_events
-            .push_back(ClientEvent::TunInterfaceUpdated(new_tun_config));
+        match self.pending_tun_update.as_mut() {
+            Some(pending) => pending.update_want(new_tun_config.clone()),
+            None => {
+                self.pending_tun_update = Some(PendingTunUpdate::new(
+                    self.tun_config.clone(),
+                    new_tun_config.clone(),
+                ))
+            }
+        }
+        self.tun_config = Some(new_tun_config);
 
         self.initialise_tcp_dns_client(); // We must reset the TCP DNS client because changed CIDR resources (and thus changed routes) might affect which site we connect to.
         self.initialise_tcp_dns_server();
@@ -1639,6 +1646,12 @@ impl ClientState {
     }
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
+        if let Some(pending_tun_update) = self.pending_tun_update.take()
+            && let Some(event) = pending_tun_update.into_event()
+        {
+            return Some(event);
+        }
+
         self.buffered_events
             .pop_front()
             .or_else(|| match self.stub_resolver.poll_event()? {
@@ -1732,9 +1745,12 @@ impl ClientState {
 
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             let resource_addressability_changed = resource.has_different_address(&new_resource)
-                || resource.has_different_ip_stack(&new_resource);
+                || resource.has_different_ip_stack(&new_resource)
+                || resource.has_different_site(&new_resource);
 
             if resource_addressability_changed {
+                tracing::debug!(rid = %new_resource.id(), "Resource is known but its addressability changed");
+
                 self.remove_resource(resource.id(), now);
             }
         }

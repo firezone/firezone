@@ -8,7 +8,7 @@ use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
-use crate::client::Resource;
+use crate::client;
 use crate::dns::is_subdomain;
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
@@ -130,7 +130,7 @@ impl TunnelTest {
                 state.client.exec_mut(|c| {
                     // Flush DNS.
                     match &resource {
-                        Resource::Dns(r) => {
+                        client::Resource::Dns(r) => {
                             c.dns_records.retain(|domain, _| {
                                 if is_subdomain(domain, &r.address) {
                                     return false;
@@ -139,12 +139,42 @@ impl TunnelTest {
                                 true
                             });
                         }
-                        Resource::Cidr(_) => {}
-                        Resource::Internet(_) => {}
+                        client::Resource::Cidr(_) => {}
+                        client::Resource::Internet(_) => {}
                     }
 
                     c.sut.add_resource(resource, now);
                 });
+            }
+            Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            } => {
+                let new_resource = client::Resource::Cidr(client::CidrResource {
+                    address: new_address,
+                    ..resource.clone()
+                });
+
+                if let Some(gateway) = ref_state
+                    .portal
+                    .gateway_for_resource(new_resource.id())
+                    .and_then(|gid| state.gateways.get_mut(gid))
+                {
+                    gateway.exec_mut(|g| {
+                        g.sut
+                            .remove_access(&state.client.inner().id, &new_resource.id(), now)
+                    })
+                }
+                state
+                    .client
+                    .exec_mut(|c| c.sut.add_resource(new_resource, now));
+            }
+            Transition::MoveResourceToNewSite { resource, new_site } => {
+                let new_resource = resource.with_new_site(new_site);
+
+                state
+                    .client
+                    .exec_mut(|c| c.sut.add_resource(new_resource, now));
             }
             Transition::RemoveResource(rid) => {
                 state.client.exec_mut(|c| c.sut.remove_resource(rid, now));

@@ -6,7 +6,7 @@ use super::{
 };
 use crate::client;
 use crate::{dns::is_subdomain, proptest::relay_id};
-use connlib_model::{GatewayId, RelayId, StaticSecret};
+use connlib_model::{GatewayId, RelayId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
@@ -230,6 +230,29 @@ impl ReferenceState {
                 state.all_resources_not_known_to_client(),
                 |resource_ids| sample::select(resource_ids).prop_map(Transition::AddResource),
             )
+            .with_if_not_empty(1, state.cidr_resources_on_client(), |resources| {
+                (sample::select(resources), cidr_resource_address()).prop_map(
+                    |(resource, new_address)| Transition::ChangeCidrResourceAddress {
+                        resource,
+                        new_address,
+                    },
+                )
+            })
+            .with_if_not_empty(
+                1,
+                (
+                    state.cidr_and_dns_resources_on_client(),
+                    state.regular_sites(),
+                ),
+                |(resources, sites)| {
+                    (sample::select(resources), sample::select(sites)).prop_map(
+                        |(resource, new_site)| Transition::MoveResourceToNewSite {
+                            resource,
+                            new_site,
+                        },
+                    )
+                },
+            )
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resource_ids| {
                 sample::select(resource_ids).prop_map(Transition::RemoveResource)
             })
@@ -406,6 +429,36 @@ impl ReferenceState {
                     client.remove_resource(id);
                 });
             }
+            Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            } => {
+                state
+                    .portal
+                    .change_address_of_cidr_resource(resource.id, *new_address);
+
+                let new_resource = client::CidrResource {
+                    address: *new_address,
+                    ..resource.clone()
+                };
+
+                state.client.exec_mut(|c| c.add_cidr_resource(new_resource));
+            }
+            Transition::MoveResourceToNewSite { resource, new_site } => {
+                state
+                    .portal
+                    .move_resource_to_new_site(resource.id(), new_site.clone());
+
+                state
+                    .client
+                    .exec_mut(|c| match resource.clone().with_new_site(new_site.clone()) {
+                        client::Resource::Dns(r) => c.add_dns_resource(r),
+                        client::Resource::Cidr(r) => c.add_cidr_resource(r),
+                        client::Resource::Internet(_) => {
+                            tracing::error!("Internet Resource cannot move site");
+                        }
+                    })
+            }
             Transition::SetInternetResourceState(active) => state.client.exec_mut(|client| {
                 client.set_internet_resource_state(*active);
             }),
@@ -525,6 +578,14 @@ impl ReferenceState {
                 }
 
                 true
+            }
+            Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            } => resource.address != *new_address && state.client.inner().has_resource(resource.id),
+            Transition::MoveResourceToNewSite { resource, new_site } => {
+                resource.sites() != BTreeSet::from([new_site])
+                    && state.client.inner().has_resource(resource.id())
             }
             Transition::SetInternetResourceState(_) => true,
             Transition::SendIcmpPacket {
@@ -788,6 +849,40 @@ impl ReferenceState {
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 
         all_resources
+    }
+
+    fn cidr_and_dns_resources_on_client(&self) -> Vec<client::Resource> {
+        let mut all_resources = self.portal.all_resources();
+        all_resources.retain(|r| {
+            matches!(r, client::Resource::Cidr(_) | client::Resource::Dns(_))
+                && self.client.inner().has_resource(r.id())
+        });
+
+        all_resources
+    }
+
+    fn cidr_resources_on_client(&self) -> Vec<client::CidrResource> {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .flat_map(|r| match r {
+                client::Resource::Cidr(r) => Some(r),
+                client::Resource::Dns(_) | client::Resource::Internet(_) => None,
+            })
+            .filter(|r| self.client.inner().has_resource(r.id))
+            .collect()
+    }
+
+    fn regular_sites(&self) -> Vec<Site> {
+        let all_sites = self
+            .portal
+            .all_resources()
+            .into_iter()
+            .filter(|r| !matches!(r, client::Resource::Internet(_)))
+            .flat_map(|r| r.sites().into_iter().cloned().collect::<Vec<_>>())
+            .collect::<BTreeSet<_>>();
+
+        Vec::from_iter(all_sites)
     }
 
     fn connected_gateway_ipv4_ips(&self) -> Vec<Ipv4Network> {
