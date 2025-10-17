@@ -230,6 +230,14 @@ impl ReferenceState {
                 state.all_resources_not_known_to_client(),
                 |resource_ids| sample::select(resource_ids).prop_map(Transition::AddResource),
             )
+            .with_if_not_empty(1, state.cidr_resources_on_client(), |resources| {
+                (sample::select(resources), cidr_resource_address()).prop_map(
+                    |(resource, new_address)| Transition::ChangeCidrResourceAddress {
+                        resource,
+                        new_address,
+                    },
+                )
+            })
             .with_if_not_empty(1, state.client.inner().all_resource_ids(), |resource_ids| {
                 sample::select(resource_ids).prop_map(Transition::RemoveResource)
             })
@@ -406,6 +414,21 @@ impl ReferenceState {
                     client.remove_resource(id);
                 });
             }
+            Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            } => {
+                state
+                    .portal
+                    .change_address_of_cidr_resource(resource.id, *new_address);
+
+                let new_resource = client::CidrResource {
+                    address: *new_address,
+                    ..resource.clone()
+                };
+
+                state.client.exec_mut(|c| c.add_cidr_resource(new_resource));
+            }
             Transition::SetInternetResourceState(active) => state.client.exec_mut(|client| {
                 client.set_internet_resource_state(*active);
             }),
@@ -526,6 +549,10 @@ impl ReferenceState {
 
                 true
             }
+            Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            } => resource.address != *new_address && state.client.inner().has_resource(resource.id),
             Transition::SetInternetResourceState(_) => true,
             Transition::SendIcmpPacket {
                 src,
@@ -788,6 +815,18 @@ impl ReferenceState {
         all_resources.retain(|r| !self.client.inner().has_resource(r.id()));
 
         all_resources
+    }
+
+    fn cidr_resources_on_client(&self) -> Vec<client::CidrResource> {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .flat_map(|r| match r {
+                client::Resource::Cidr(r) => Some(r),
+                client::Resource::Dns(_) | client::Resource::Internet(_) => None,
+            })
+            .filter(|r| self.client.inner().has_resource(r.id))
+            .collect()
     }
 
     fn connected_gateway_ipv4_ips(&self) -> Vec<Ipv4Network> {

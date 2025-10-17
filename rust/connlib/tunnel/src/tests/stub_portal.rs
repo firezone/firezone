@@ -13,6 +13,7 @@ use crate::{
 use connlib_model::GatewayId;
 use connlib_model::{ResourceId, SiteId};
 use dns_types::DomainName;
+use ip_network::IpNetwork;
 use itertools::Itertools;
 use proptest::{
     collection,
@@ -225,6 +226,19 @@ impl StubPortal {
             .flatten()
             .find(|(_, ipv4_addr, ipv6_addr)| *ipv4_addr == ip || *ipv6_addr == ip)
             .map(|(gid, _, _)| *gid)
+    }
+
+    pub(crate) fn change_address_of_cidr_resource(
+        &mut self,
+        rid: ResourceId,
+        new_address: IpNetwork,
+    ) {
+        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
+            resource.address = new_address;
+            return;
+        }
+
+        tracing::error!(%rid, "Unknown resource");
     }
 
     pub(crate) fn gateways(

@@ -648,15 +648,27 @@ impl RefClient {
     }
 
     pub(crate) fn add_cidr_resource(&mut self, r: CidrResource) {
-        self.resources.push(Resource::Cidr(r.clone()));
+        let address = r.address;
+        let r = Resource::Cidr(r);
+
+        if let Some(existing) = self
+            .resources
+            .iter()
+            .find(|existing| existing.id() == r.id())
+            && existing.has_different_address(&r)
+        {
+            self.remove_resource(&existing.id());
+        }
+
+        self.resources.push(r.clone());
         self.cidr_resources = self.recalculate_cidr_routes();
 
-        match r.address {
+        match address {
             IpNetwork::V4(v4) => {
-                self.ipv4_routes.insert(r.id, v4);
+                self.ipv4_routes.insert(r.id(), v4);
             }
             IpNetwork::V6(v6) => {
-                self.ipv6_routes.insert(r.id, v6);
+                self.ipv6_routes.insert(r.id(), v6);
             }
         }
     }

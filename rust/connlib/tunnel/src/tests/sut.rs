@@ -146,6 +146,29 @@ impl TunnelTest {
                     c.sut.add_resource(resource, now);
                 });
             }
+            Transition::ChangeCidrResourceAddress {
+                resource,
+                new_address,
+            } => {
+                let new_resource = client::Resource::Cidr(client::CidrResource {
+                    address: new_address,
+                    ..resource.clone()
+                });
+
+                if let Some(gateway) = ref_state
+                    .portal
+                    .gateway_for_resource(new_resource.id())
+                    .and_then(|gid| state.gateways.get_mut(gid))
+                {
+                    gateway.exec_mut(|g| {
+                        g.sut
+                            .remove_access(&state.client.inner().id, &new_resource.id(), now)
+                    })
+                }
+                state
+                    .client
+                    .exec_mut(|c| c.sut.add_resource(new_resource, now));
+            }
             Transition::RemoveResource(rid) => {
                 state.client.exec_mut(|c| c.sut.remove_resource(rid, now));
 
