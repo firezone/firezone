@@ -8,7 +8,7 @@ use super::sim_net::{Host, HostId, RoutingTable};
 use super::sim_relay::SimRelay;
 use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
-use crate::client::Resource;
+use crate::client;
 use crate::dns::is_subdomain;
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
@@ -130,7 +130,7 @@ impl TunnelTest {
                 state.client.exec_mut(|c| {
                     // Flush DNS.
                     match &resource {
-                        Resource::Dns(r) => {
+                        client::Resource::Dns(r) => {
                             c.dns_records.retain(|domain, _| {
                                 if is_subdomain(domain, &r.address) {
                                     return false;
@@ -139,8 +139,8 @@ impl TunnelTest {
                                 true
                             });
                         }
-                        Resource::Cidr(_) => {}
-                        Resource::Internet(_) => {}
+                        client::Resource::Cidr(_) => {}
+                        client::Resource::Internet(_) => {}
                     }
 
                     c.sut.add_resource(resource, now);
