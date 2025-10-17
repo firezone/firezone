@@ -1,0 +1,223 @@
+# September 2025: Enhanced Connectivity and Platform Improvements
+
+September brought significant improvements to Firezone's networking stack, administrative tooling, and cross-platform reliability.
+This month's work focused on optimizing relay performance through eBPF, improving DNS resolution behavior, and enhancing the admin portal's visibility into client and Gateway states.
+
+## Admin Portal Enhancements
+
+### Outdated Client Detection
+
+Admins can now easily identify clients that need upgrades through a new sortable version column in the clients table.[^10456]
+When Gateways are updated, the system automatically calculates which clients will lose connectivity due to version incompatibility and surfaces this information in the outdated Gateway notification emails.
+This addresses a common pain point where clients would silently fail to connect after Gateway upgrades without clear indication of why.
+
+### Account Management API
+
+A new `/account` API endpoint exposes billing details, seat usage, and other account-level metrics.[^10302]
+This enables programmatic access to usage data for billing automation and capacity planning.
+
+### Batch Operations for Directory Sync
+
+The portal now supports batch upsert operations for `auth_identities`, `actors`, `actor_groups`, and `actor_group_memberships`.[^10369]
+Combined with new `delete_unsynced` functions, this lays the groundwork for more efficient directory sync implementations that can handle large organizations with thousands of users.
+
+## Networking and Connectivity
+
+### ICMP Error Recovery
+
+Clients now automatically re-authorize access when receiving ICMP "prohibited" errors from Gateways.[^10462]
+This resolves a synchronization issue where Clients and Gateways could disagree on authorization state, leading to black-holed traffic.
+The feature is behind a flag for gradual rollout and includes comprehensive integration testing using dynamically evaluated code on API nodes.
+
+### Relay-to-Relay Candidate Pairs in eBPF
+
+The eBPF relay module can now handle relay-to-relay candidate pairs, which occur when both Client and Gateway allocate from the same relay.[^10286]
+Previously, these packets would need to traverse userspace or fail entirely.
+The implementation required restructuring the eBPF code into modular components (`from_ipv4_channel`, `from_ipv6_udp`, etc.) to handle all cross-stack translation cases including IPv4↔IPv6 transformations.
+A new integration test with double symmetric NAT validates this behavior.
+
+### Hickory DNS Resolver on Gateway
+
+Gateways now use the `hickory-resolver` library for A/AAAA record resolution instead of `libc`'s `resolve` syscall.[^10373]
+This allows proper TTL-based caching rather than the previous hardcoded 30-second cache.
+The feature is behind a flag (enabled in staging/production) and will eventually unify DNS resolution across Clients, Gateways, and SRV/TXT record lookups once support for legacy 1.3.x clients is dropped.
+
+### Graceful Connection Shutdown
+
+Both Clients and Gateways now gracefully close connections using a new "goodbye" p2p control protocol message.[^10076] [^10400]
+This eliminates the ~15 second ICE timeout when Gateways restart for maintenance or when clients sign out, enabling immediate failover to alternative Gateways.
+The implementation works across all Client platforms through the shared `Session` abstraction, with platform-specific runtime handling ensuring the shutdown task completes before process termination.
+
+### Persistent DNS Resource Mapping
+
+DNS resource proxy IP assignments now persist across Client sessions.[^10104]
+Previously, restarting the Client would reassign `100.96.0.1` to whatever resource was queried first, breaking applications that cached the old mapping.
+The `DnsRecordsChanged` event now exports this state from `ClientState` to the event-loop for reuse in subsequent sessions.
+Property-based tests validate this by generating `RestartClient` transitions and verifying previously resolved IPs still route correctly.
+
+## Performance and Reliability
+
+### Event Loop Fairness
+
+The `Tunnel` event-loop now batch-processes input from all sources rather than prioritizing higher-priority sources to completion.[^10347]
+This prevents starvation of lower-priority inputs (like DNS servers or timeout checks) when UDP sockets or TUN devices are extremely busy.
+The refactor introduces a `TunnelError` collection type to avoid dropping packets when errors occur mid-batch.
+
+### Socket Buffer Tuning
+
+Linux clients and Gateways now attempt to set `rmem_max` and `wmem_max` to 4MB at startup.[^10349]
+The default ~200KB buffers were causing significant packet drops during high throughput, directly correlating with receive buffer errors in `nstat`.
+This behavior can be disabled via `FIREZONE_NO_INC_BUF=true` and is verified in CI through `nstat` checks after performance tests.
+
+### Optimistic Candidate Limiting
+
+The number of optimistic ICE candidates is now limited to prevent CPU spikes when clients advertise many IPv6 addresses.[^10367]
+Optimistic candidates (combining host candidate ports with server-reflexive IPs) are now disabled entirely for IPv6 and limited to 2 for IPv4, as the feature primarily benefits IPv4 symmetric NAT scenarios.
+
+### GSO Error Handling
+
+Clients now retry packet transmission once when encountering `EIO` (-5) on Linux/Android.[^10279]
+The `quinn-udp` library probes for GSO support by attempting GSO sends, and while it handles `EINVAL` retries internally, `EIO` requires external re-chunking.
+This eliminates packet drops that were causing CI flakiness, particularly when checksum offloading is disabled.
+
+## Platform-Specific Fixes
+
+### Android Authentication Flow
+
+The Android client now launches authentication in a CustomTab instead of the default browser.[^10371]
+This fixes a Firefox bug where only the first tab could intercept the custom URI scheme, making subsequent sign-ins fail until the first tab was manually closed.
+CustomTabs ensure only one sandboxed instance exists and work across all major Android browsers.
+
+### macOS Development Experience
+
+Multiple quality-of-life improvements for macOS developers, including convenience functions and explicit Sentry dependencies.[^10363]
+The workspace now builds on macOS with appropriate stubs for `gui-smoke-test` and conditional compilation for the `ebpf-turn-router` binary.
+
+### Apple Client Singleton Enforcement
+
+The macOS client now detects multiple running instances and alerts users to quit the previous instance before starting a new one.[^10313]
+This prevents issues with concurrent instances interfering with tunnel state.
+
+## Infrastructure and Tooling
+
+### Rust 1.90 Upgrade
+
+Updated to Rust 1.90, a quiet release requiring no code changes for new clippy lints.[^10380]
+
+### Ubuntu 24.04 CI Runners
+
+All CI runners now use Ubuntu 24.04 to match production relay VMs.[^10288]
+This ensures builds and tests run on the same kernel version as production.
+
+### Network Topology for Testing
+
+The docker-compose test environment now uses realistic network topology with separate subnets for Clients, Gateways, relays, and backend.[^10301]
+Each component has a dedicated router container performing NAT and firewall rules, enabling proper testing of relayed connections with port randomization.
+
+### Packet Reordering Prevention
+
+Router containers in CI now enable RPS (Receive Packet Steering) set to CPU 1.[^10328]
+This ensures deterministic packet ordering under high load, eliminating "packet counter too old" warnings in tests.
+
+## Database and Performance
+
+### Cascade Delete Indexing
+
+Added missing indexes on foreign key columns to ensure efficient cascade deletes now that hard-delete is fully rolled out.[^10396] [^10403]
+This prevents table scans when cleaning up dependent records during deletion operations.
+
+### Query Optimization
+
+Refactored hot cache functions to use Elixir list comprehensions instead of multiple `Enum.filter`/`Enum.map` calls.[^10376]
+List comprehensions are more concise and typically ~2x faster.
+
+## Observability
+
+### Sentry Improvements
+
+- Public keys now render as u256 integers instead of hex values for better issue grouping[^10386]
+- Span names removed from log field names to enable attribute-based filtering[^10278]
+- Queue depths now recorded once per second via Gauge metrics instead of per-tick for better performance[^10242]
+
+### Firezone-Specific Telemetry Hosts
+
+Telemetry now uses Firezone-specific ingest hosts instead of generic endpoints.[^10271]
+This enables traffic steering control and allows excluding telemetry from Internet Resource routing.
+
+## Bug Fixes
+
+- Fixed DNS resource NAT reset when Client reassigns proxy IPs after sign out[^10310]
+- Re-populated eBPF channel map entries when TURN channels are refreshed[^10291]
+- Gateway re-joins Phoenix channel topic on send errors to prevent message loss[^10397]
+- XDP_PASS for DNS replies (UDP source port 53) instead of dropping them[^10330]
+- Fixed poll-after-completion panics by fusing event-loop future in Client session[^10399]
+- Relay now filters traces by log filter to respect OTEL configuration[^10317]
+- Internet site no longer counts against Starter plan resource limits[^10336]
+
+[^10456]: [feat(portal): show outdated clients](https://github.com/firezone/firezone/pull/10456)
+
+[^10302]: [feat(api): GET /account API](https://github.com/firezone/firezone/pull/10302)
+
+[^10369]: [feat(portal): batch_upsert and delete_unsynced functions](https://github.com/firezone/firezone/pull/10369)
+
+[^10462]: [feat(connlib): create flow on ICMP error "prohibited"](https://github.com/firezone/firezone/pull/10462)
+
+[^10286]: [fix(relay): handle relay-relay candidate pairs in eBPF](https://github.com/firezone/firezone/pull/10286)
+
+[^10373]: [feat(gateway): use hickory resolver to resolve A/AAAA queries](https://github.com/firezone/firezone/pull/10373)
+
+[^10076]: [feat(connlib): gracefully shutdown connections](https://github.com/firezone/firezone/pull/10076)
+
+[^10400]: [feat(clients): gracefully close connections on shutdown](https://github.com/firezone/firezone/pull/10400)
+
+[^10104]: [feat(connlib): persistent DNS resource records across sessions](https://github.com/firezone/firezone/pull/10104)
+
+[^10347]: [refactor(connlib): improve fairness of event-loop](https://github.com/firezone/firezone/pull/10347)
+
+[^10349]: [feat(linux): try to set `rmem_max` and `wmem_max` on startup](https://github.com/firezone/firezone/pull/10349)
+
+[^10367]: [fix(connlib): limit the number of optimistic candidates](https://github.com/firezone/firezone/pull/10367)
+
+[^10279]: [fix(connlib): retry packets on IO error 5](https://github.com/firezone/firezone/pull/10279)
+
+[^10371]: [fix(android): launch auth in CustomTab](https://github.com/firezone/firezone/pull/10371)
+
+[^10363]: [chore: improve macos dev experience](https://github.com/firezone/firezone/pull/10363)
+
+[^10313]: [fix(apple): Enforce single Firezone instance](https://github.com/firezone/firezone/pull/10313)
+
+[^10380]: [build(deps): bump Rust version to 1.90](https://github.com/firezone/firezone/pull/10380)
+
+[^10288]: [ci: bump Ubuntu runners to 24.04](https://github.com/firezone/firezone/pull/10288)
+
+[^10301]: [ci: create a more realistic network setup](https://github.com/firezone/firezone/pull/10301)
+
+[^10328]: [ci: prevent packet reordering by router containers](https://github.com/firezone/firezone/pull/10328)
+
+[^10396]: [chore(portal): add non-composite indexes](https://github.com/firezone/firezone/pull/10396)
+
+[^10403]: [chore(portal): add remaining simple indexes](https://github.com/firezone/firezone/pull/10403)
+
+[^10376]: [refactor(portal): use list comprehensions in cache](https://github.com/firezone/firezone/pull/10376)
+
+[^10386]: [chore: render contextual information more Sentry-friendly](https://github.com/firezone/firezone/pull/10386)
+
+[^10278]: [chore(telemetry): remove span name from attributes in Sentry](https://github.com/firezone/firezone/pull/10278)
+
+[^10242]: [refactor(connlib): periodically record queue depths](https://github.com/firezone/firezone/pull/10242)
+
+[^10271]: [chore(telemetry): use Firezone-specific ingest hosts](https://github.com/firezone/firezone/pull/10271)
+
+[^10310]: [fix(gateway): reset DNS resource NAT if proxy IPs change](https://github.com/firezone/firezone/pull/10310)
+
+[^10291]: [fix(relay): re-add eBPF channel map entry on refresh](https://github.com/firezone/firezone/pull/10291)
+
+[^10397]: [fix(gateway): re-join topic in phoenix-channel on error](https://github.com/firezone/firezone/pull/10397)
+
+[^10330]: [fix(relay): XDP_PASS DNS replies](https://github.com/firezone/firezone/pull/10330)
+
+[^10399]: [fix(connlib): fuse event-loop future inside client session](https://github.com/firezone/firezone/pull/10399)
+
+[^10317]: [fix(relay): filter traces by log filter](https://github.com/firezone/firezone/pull/10317)
+
+[^10336]: [fix(portal): don't count internet site in limits](https://github.com/firezone/firezone/pull/10336)
