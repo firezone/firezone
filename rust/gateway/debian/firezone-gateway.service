@@ -1,8 +1,6 @@
 [Unit]
 Description=Firezone Gateway
 After=network.target
-After=iptables.service
-Requires=iptables.service
 Documentation=https://www.firezone.dev/kb
 
 [Service]
