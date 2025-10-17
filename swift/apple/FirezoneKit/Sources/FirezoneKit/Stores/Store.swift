@@ -126,11 +126,20 @@ public final class Store: ObservableObject {
     #if os(macOS)
       // On macOS we must show notifications from the UI process. On iOS, we've already initiated the notification
       // from the tunnel process, because the UI process is not guaranteed to be alive.
-      if vpnStatus == .disconnected {
+
+      // Only available on macOS 13+
+      if #available(macOS 13, *), vpnStatus == .disconnected {
         do {
-          let reason = try await ipcClient().consumeStopReason()
-          if reason == .authenticationCanceled {
-            await self.sessionNotification.showSignedOutAlertmacOS()
+          try manager().session()?.fetchLastDisconnectError { error in
+            guard let nsError = error as NSError?,
+              nsError.domain == "FirezoneKit.ConnlibError",
+              nsError.code == 0
+            else { return }
+
+            Task {
+              await self.sessionNotification.showSignedOutAlertmacOS(
+                nsError.userInfo["reason"] as? String)
+            }
           }
         } catch {
           Log.error(error)
@@ -207,8 +216,18 @@ public final class Store: ObservableObject {
     self.decision = try await sessionNotification.askUserForNotificationPermissions()
   }
 
-  func stop() throws {
-    try ipcClient().stop()
+  public func stop() async throws {
+    #if os(macOS)
+      // If tunnel is running, use normal stop. Otherwise use dryRunAndStop
+      // to properly clean up utuns even if tunnel was never started
+      if vpnStatus == .connected || vpnStatus == .connecting || vpnStatus == .reasserting {
+        try ipcClient().stop()
+      } else {
+        try ipcClient().dryRunAndStop()
+      }
+    #else
+      try ipcClient().stop()
+    #endif
   }
 
   func signIn(authResponse: AuthResponse) async throws {

@@ -76,6 +76,9 @@ struct FirezoneApp: App {
     func applicationWillFinishLaunching(_ notification: Notification) {
       // Enforce single instance BEFORE the app fully launches
       enforceSingleInstance()
+
+      // Prevent sudden termination for menu bar apps to allow cleanup
+      ProcessInfo.processInfo.disableSuddenTermination()
     }
 
     func applicationDidFinishLaunching(_: Notification) {
@@ -89,6 +92,28 @@ struct FirezoneApp: App {
 
       // Show alert for macOS 15.0.x which has issues with Network Extensions.
       maybeShowOutdatedAlert()
+    }
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+      guard let store else {
+        return .terminateNow
+      }
+
+      Log.log("applicationShouldTerminate - starting cleanup")
+      Task {
+        do {
+          try await store.stop()
+          Log.log("Cleanup completed - terminating now")
+        } catch {
+          Log.error(error)
+        }
+        NSApp.reply(toApplicationShouldTerminate: true)
+      }
+      return .terminateLater
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+      Log.log("applicationWillTerminate - app is about to quit")
     }
 
     private func enforceSingleInstance() {

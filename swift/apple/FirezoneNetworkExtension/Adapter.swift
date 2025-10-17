@@ -29,7 +29,7 @@ enum AdapterError: Error {
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
     case .setDnsError(let error):
-      return "failed to set new DNS serversn: \(error)"
+      return "failed to set new DNS servers: \(error)"
     }
   }
 }
@@ -297,24 +297,19 @@ class Adapter: @unchecked Sendable {
       guard let self = self else { return }
 
       // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
-      let propertyListData: Data
-      if let uniffiResources = self.resources {
-        let firezoneResources = uniffiResources.map { self.convertResource($0) }
-        guard let encoded = try? PropertyListEncoder().encode(firezoneResources) else {
-          Log.log("Failed to encode resources as PropertyList")
-          completionHandler(nil)
-          return
-        }
-        propertyListData = encoded
-      } else {
-        propertyListData = Data()
-      }
+      guard let uniffiResources = self.resources
+      else { return completionHandler(nil) }
 
-      if hash == Data(SHA256.hash(data: propertyListData)) {
+      let firezoneResources = uniffiResources.map { self.convertResource($0) }
+
+      guard let encoded = try? PropertyListEncoder().encode(firezoneResources)
+      else { return completionHandler(nil) }
+
+      if hash == Data(SHA256.hash(data: encoded)) {
         // nothing changed
         completionHandler(nil)
       } else {
-        completionHandler(propertyListData)
+        completionHandler(encoded)
       }
     }
   }
@@ -396,28 +391,22 @@ class Adapter: @unchecked Sendable {
         return
       }
 
-      // If auth expired/is invalid, delete stored token and save the reason why so the GUI can act upon it.
       if error.isAuthenticationError() {
-        // Delete stored token and save the reason for the GUI
-        do {
-          try Token.delete()
-          let reason: NEProviderStopReason = .authenticationCanceled
-          try String(reason.rawValue).write(
-            to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
-        } catch {
-          Log.error(error)
-        }
-
         #if os(iOS)
           // iOS notifications should be shown from the tunnel process
           SessionNotification.showSignedOutNotificationiOS()
         #endif
-      } else {
-        Log.warning("Disconnected with error: \(errorMessage)")
-      }
 
-      // Handle disconnection
-      provider.cancelTunnelWithError(nil)
+        let error = NSError(
+          domain: "FirezoneKit.ConnlibError",
+          code: 0,
+          userInfo: ["reason": errorMessage]
+        )
+
+        provider.cancelTunnelWithError(error)
+      } else {
+        provider.cancelTunnelWithError(nil)
+      }
     }
   }
 
