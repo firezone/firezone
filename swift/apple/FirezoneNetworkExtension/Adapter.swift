@@ -29,7 +29,7 @@ enum AdapterError: Error {
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
     case .setDnsError(let error):
-      return "failed to set new DNS serversn: \(error)"
+      return "failed to set new DNS servers: \(error)"
     }
   }
 }
@@ -396,28 +396,18 @@ class Adapter: @unchecked Sendable {
         return
       }
 
-      // If auth expired/is invalid, delete stored token and save the reason why so the GUI can act upon it.
       if error.isAuthenticationError() {
-        // Delete stored token and save the reason for the GUI
-        do {
-          try Token.delete()
-          let reason: NEProviderStopReason = .authenticationCanceled
-          try String(reason.rawValue).write(
-            to: SharedAccess.providerStopReasonURL, atomically: true, encoding: .utf8)
-        } catch {
-          Log.error(error)
-        }
-
         #if os(iOS)
           // iOS notifications should be shown from the tunnel process
           SessionNotification.showSignedOutNotificationiOS()
         #endif
-      } else {
-        Log.warning("Disconnected with error: \(errorMessage)")
-      }
 
-      // Handle disconnection
-      provider.cancelTunnelWithError(nil)
+        let error = FirezoneKit.ConnlibError.sessionExpired(errorMessage)
+
+        provider.cancelTunnelWithError(error)
+      } else {
+        provider.cancelTunnelWithError(nil)
+      }
     }
   }
 

@@ -13,6 +13,7 @@ enum PacketTunnelProviderError: Error {
   case tunnelConfigurationIsInvalid
   case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
+  case dryStartStopCycle
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
@@ -55,13 +56,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     options: [String: NSObject]?,
     completionHandler: @escaping (Error?) -> Void
   ) {
-    super.startTunnel(options: options, completionHandler: completionHandler)
-
     // Dummy start to get the extension running on macOS after upgrade
     if options?["dryRun"] as? Bool == true {
       Log.info("Dry run startup requested - extension awakened but not starting tunnel")
-      completionHandler(nil)
-      return
+      return completionHandler(PacketTunnelProviderError.dryStartStopCycle)
     }
 
     // Log version on actual tunnel start
@@ -149,8 +147,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     // handles both connlib-initiated and user-initiated stops
     adapter?.stop()
-
-    super.stopTunnel(with: reason, completionHandler: completionHandler)
+    completionHandler()
   }
 
   // It would be helpful to be able to encapsulate Errors here. To do that
@@ -192,9 +189,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         getLogFolderSize(completionHandler)
       case .exportLogs:
         exportLogs(completionHandler!)
-
-      case .consumeStopReason:
-        consumeStopReason(completionHandler!)
       }
     } catch {
       Log.error(error)
@@ -301,20 +295,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       self.logExportState = .inProgress(tunnelLogArchive)
       sendChunk(tunnelLogArchive)
     }
-  }
-
-  func consumeStopReason(_ completionHandler: (Data?) -> Void) {
-    guard let data = try? Data(contentsOf: SharedAccess.providerStopReasonURL)
-    else {
-      completionHandler(nil)
-
-      return
-    }
-
-    try? FileManager.default
-      .removeItem(at: SharedAccess.providerStopReasonURL)
-
-    completionHandler(data)
   }
 
   // Firezone ID migration. Can be removed once most clients migrate past 1.4.15.

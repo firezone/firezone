@@ -25,6 +25,10 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="10603">
+          Fixes an issue on macOS where DNS resources might fail to be routed
+          properly after many (150+) Firezone session restarts.
+        </ChangeItem>
         <ChangeItem pull="10509">
           Fixes an issue where the Internet Resource could be briefly active on
           startup, despite it being disabled.
