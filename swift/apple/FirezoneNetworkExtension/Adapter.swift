@@ -297,24 +297,19 @@ class Adapter: @unchecked Sendable {
       guard let self = self else { return }
 
       // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
-      let propertyListData: Data
-      if let uniffiResources = self.resources {
-        let firezoneResources = uniffiResources.map { self.convertResource($0) }
-        guard let encoded = try? PropertyListEncoder().encode(firezoneResources) else {
-          Log.log("Failed to encode resources as PropertyList")
-          completionHandler(nil)
-          return
-        }
-        propertyListData = encoded
-      } else {
-        propertyListData = Data()
-      }
+      guard let uniffiResources = self.resources
+      else { return completionHandler(nil) }
 
-      if hash == Data(SHA256.hash(data: propertyListData)) {
+      let firezoneResources = uniffiResources.map { self.convertResource($0) }
+
+      guard let encoded = try? PropertyListEncoder().encode(firezoneResources)
+      else { return completionHandler(nil) }
+
+      if hash == Data(SHA256.hash(data: encoded)) {
         // nothing changed
         completionHandler(nil)
       } else {
-        completionHandler(propertyListData)
+        completionHandler(encoded)
       }
     }
   }
