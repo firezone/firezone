@@ -7,7 +7,6 @@ trap 'echo "ERROR: Build script failed at line $LINENO" >&2' ERR
 # Get script directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 RUST_DIR="$SCRIPT_DIR/../../rust"
-GENERATED_DIR="$SCRIPT_DIR/FirezoneNetworkExtension/Connlib/Generated"
 
 # Sanitize the environment to prevent Xcode's shenanigans from leaking
 # into our highly evolved Rust-based build system.
@@ -136,9 +135,9 @@ for target in "${TARGETS[@]}"; do
     fi
 done
 
-# Step 1: Build Rust library
+# Build Rust library
 echo ""
-echo "Step 1/3: Building Rust library..."
+echo "Building Rust library..."
 
 # Build target list for cargo command
 target_list=""
@@ -158,47 +157,14 @@ for target in "${TARGETS[@]}"; do
     fi
 done
 
-# Step 2: Generate UniFFI bindings
+# Generate UniFFI bindings
 echo ""
-echo "Step 2/3: Generating UniFFI bindings..."
-mkdir -p "$GENERATED_DIR"
-
-# Use the first target's library for generating bindings (they're the same for all architectures)
-FIRST_TARGET="${TARGETS[0]}"
-LIBRARY_PATH="$CARGO_TARGET_DIR/$FIRST_TARGET/$BUILD_DIR"
-
-cargo run -p uniffi-bindgen -- generate \
-    --library "$LIBRARY_PATH/libconnlib.a" \
-    --language swift \
-    --out-dir "$GENERATED_DIR"
-
-# Remove module maps (we use bridging header instead)
-rm -f "$GENERATED_DIR"/*.modulemap
-
-# Fix imports in generated Swift file to use bridging header
-if [ -f "$GENERATED_DIR/connlib.swift" ]; then
-    # Comment out the #if canImport(connlibFFI) block
-    sed -i.bak '/#if canImport(connlibFFI)/,/#endif/s/^/\/\/ /' "$GENERATED_DIR/connlib.swift"
-    rm -f "$GENERATED_DIR/connlib.swift.bak"
-fi
-
-# Step 3: Verify generated files
-echo ""
-echo "Step 3/3: Verifying generated files..."
-if [ ! -f "$GENERATED_DIR/connlib.swift" ]; then
-    echo "ERROR: Generated Swift file not found" >&2
-    exit 1
-fi
-
-if [ ! -f "$GENERATED_DIR/connlibFFI.h" ]; then
-    echo "ERROR: Generated header file not found" >&2
-    exit 1
-fi
+echo "Generating UniFFI bindings..."
+cd "$SCRIPT_DIR"
+make uniffi-bindings
 
 echo ""
-echo "✅ Build completed successfully!"
-echo "   Swift bindings: $GENERATED_DIR/connlib.swift"
-echo "   C header: $GENERATED_DIR/connlibFFI.h"
+echo "✅ Rust library build completed successfully!"
 echo "   Built libraries:"
 for target in "${TARGETS[@]}"; do
     echo "     - $CARGO_TARGET_DIR/$target/$BUILD_DIR/libconnlib.a"
