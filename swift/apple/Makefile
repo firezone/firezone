@@ -37,7 +37,7 @@ $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h: $(CLIENT_FFI_SOURC
 	@echo "Generating UniFFI bindings..."
 	@mkdir -p $(GENERATED_DIR)
 	@cd $(RUST_DIR) && \
-		(test -f $(RUST_TARGET_DIR)/debug/libconnlib.a || cargo build -p client-ffi) && \
+		cargo build -p client-ffi && \
 		cargo run -p uniffi-bindgen -- generate \
 			--library $(RUST_TARGET_DIR)/debug/libconnlib.a \
 			--language swift \
