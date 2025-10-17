@@ -461,7 +461,7 @@ defmodule Domain.Fixtures.Auth do
   end
 
   def delete_identity(identity) do
-    Repo.delete(identity)
+    Repo.delete!(identity)
   end
 
   def build_context(attrs \\ %{}) do
