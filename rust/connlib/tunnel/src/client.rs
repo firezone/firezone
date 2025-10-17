@@ -1745,9 +1745,12 @@ impl ClientState {
 
         if let Some(resource) = self.resources_by_id.get(&new_resource.id()) {
             let resource_addressability_changed = resource.has_different_address(&new_resource)
-                || resource.has_different_ip_stack(&new_resource);
+                || resource.has_different_ip_stack(&new_resource)
+                || resource.has_different_site(&new_resource);
 
             if resource_addressability_changed {
+                tracing::debug!(rid = %new_resource.id(), "Resource is known but its addressability changed");
+
                 self.remove_resource(resource.id(), now);
             }
         }
