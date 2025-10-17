@@ -303,7 +303,10 @@ class Adapter: @unchecked Sendable {
       let firezoneResources = uniffiResources.map { self.convertResource($0) }
 
       guard let encoded = try? PropertyListEncoder().encode(firezoneResources)
-      else { return completionHandler(nil) }
+      else {
+        Log.log("Failed to encode resources as PropertyList")
+        return completionHandler(nil)
+      }
 
       if hash == Data(SHA256.hash(data: encoded)) {
         // nothing changed
