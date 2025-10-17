@@ -169,6 +169,13 @@ impl TunnelTest {
                     .client
                     .exec_mut(|c| c.sut.add_resource(new_resource, now));
             }
+            Transition::MoveResourceToNewSite { resource, new_site } => {
+                let new_resource = resource.with_new_site(new_site);
+
+                state
+                    .client
+                    .exec_mut(|c| c.sut.add_resource(new_resource, now));
+            }
             Transition::RemoveResource(rid) => {
                 state.client.exec_mut(|c| c.sut.remove_resource(rid, now));
 

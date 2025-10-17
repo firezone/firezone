@@ -655,7 +655,7 @@ impl RefClient {
             .resources
             .iter()
             .find(|existing| existing.id() == r.id())
-            && existing.has_different_address(&r)
+            && (existing.has_different_address(&r) || existing.has_different_site(&r))
         {
             self.remove_resource(&existing.id());
         }
@@ -674,7 +674,20 @@ impl RefClient {
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
-        self.resources.push(Resource::Dns(r));
+        let r = Resource::Dns(r);
+
+        if let Some(existing) = self
+            .resources
+            .iter()
+            .find(|existing| existing.id() == r.id())
+            && (existing.has_different_address(&r)
+                || existing.has_different_ip_stack(&r)
+                || existing.has_different_site(&r))
+        {
+            self.remove_resource(&existing.id());
+        }
+
+        self.resources.push(r);
     }
 
     /// Re-adds all resources in the order they have been initially added.
@@ -856,7 +869,7 @@ impl RefClient {
         let previous = self.site_status.insert(site.id, ResourceStatus::Online);
 
         if previous.is_none_or(|s| s != ResourceStatus::Online) {
-            tracing::debug!(%rid, "Resource is now online");
+            tracing::debug!(%rid, sid = %site.id, "Resource is now online");
         }
     }
 

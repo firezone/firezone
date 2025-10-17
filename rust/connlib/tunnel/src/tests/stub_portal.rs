@@ -10,7 +10,7 @@ use crate::{
     client::DnsResource,
     messages::{DnsServer, gateway},
 };
-use connlib_model::GatewayId;
+use connlib_model::{GatewayId, Site};
 use connlib_model::{ResourceId, SiteId};
 use dns_types::DomainName;
 use ip_network::IpNetwork;
@@ -239,6 +239,24 @@ impl StubPortal {
         }
 
         tracing::error!(%rid, "Unknown resource");
+    }
+
+    pub(crate) fn move_resource_to_new_site(&mut self, rid: ResourceId, site: Site) {
+        if let Some(resource) = self.cidr_resources.get_mut(&rid) {
+            self.sites_by_resource.insert(rid, site.id);
+            resource.sites = vec![site];
+            return;
+        }
+
+        if let Some(resource) = self.dns_resources.get_mut(&rid) {
+            self.sites_by_resource.insert(rid, site.id);
+            resource.sites = vec![site];
+            return;
+        }
+
+        if self.internet_resource.id == rid {
+            tracing::error!("Internet Resource cannot change site");
+        }
     }
 
     pub(crate) fn gateways(

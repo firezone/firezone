@@ -2,7 +2,7 @@ use crate::{
     client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
     proptest::{host_v4, host_v6},
 };
-use connlib_model::{RelayId, ResourceId};
+use connlib_model::{RelayId, ResourceId, Site};
 use dns_types::{DomainName, RecordType};
 use ip_network::IpNetwork;
 
@@ -31,6 +31,8 @@ pub(crate) enum Transition {
         resource: CidrResource,
         new_address: IpNetwork,
     },
+    /// Move a CIDR/DNS resource to a new site.
+    MoveResourceToNewSite { resource: Resource, new_site: Site },
 
     /// Toggle the Internet Resource on / off
     SetInternetResourceState(bool),
