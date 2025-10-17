@@ -1,9 +1,10 @@
 use crate::{
-    client::{IPV4_RESOURCES, IPV6_RESOURCES, Resource},
+    client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
     proptest::{host_v4, host_v6},
 };
-use connlib_model::{RelayId, ResourceId};
+use connlib_model::{RelayId, ResourceId, Site};
 use dns_types::{DomainName, RecordType};
+use ip_network::IpNetwork;
 
 use super::{
     reference::PrivateKey,
@@ -25,6 +26,13 @@ pub(crate) enum Transition {
     AddResource(Resource),
     /// Remove a resource on the client.
     RemoveResource(ResourceId),
+    /// Change the address of a CIDR resource.
+    ChangeCidrResourceAddress {
+        resource: CidrResource,
+        new_address: IpNetwork,
+    },
+    /// Move a CIDR/DNS resource to a new site.
+    MoveResourceToNewSite { resource: Resource, new_site: Site },
 
     /// Toggle the Internet Resource on / off
     SetInternetResourceState(bool),

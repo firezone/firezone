@@ -9,7 +9,7 @@ use crate::messages::DnsServer;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
 use dns_types::{DomainName, OwnedRecordData};
-use ip_network::{Ipv4Network, Ipv6Network};
+use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
 use proptest::{collection, prelude::*};
@@ -267,8 +267,12 @@ fn cidr_resource_outside_reserved_ranges(
     sites: impl Strategy<Value = Site>,
 ) -> impl Strategy<Value = CidrResource> {
     cidr_resource(
-        non_reserved_ip().prop_flat_map(move |ip| ip_network(ip, 8)), sites.prop_map(|s| vec![s]))
+        cidr_resource_address(), sites.prop_map(|s| vec![s]))
         .prop_filter("resource must not be in the documentation range because we use those for host addresses and DNS IPs", |r| !r.address.is_documentation())
+}
+
+pub(crate) fn cidr_resource_address() -> impl Strategy<Value = IpNetwork> {
+    non_reserved_ip().prop_flat_map(move |ip| ip_network(ip, 8))
 }
 
 fn internet_resource(site: impl Strategy<Value = Site>) -> impl Strategy<Value = InternetResource> {

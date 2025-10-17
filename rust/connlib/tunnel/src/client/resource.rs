@@ -176,6 +176,10 @@ impl Resource {
         }
     }
 
+    pub fn has_different_site(&self, other: &Resource) -> bool {
+        self.sites() != other.sites()
+    }
+
     pub fn addresses(&self) -> Vec<IpNetwork> {
         match self {
             Resource::Dns(_) => vec![],
@@ -192,6 +196,24 @@ impl Resource {
             Resource::Dns(r) => ResourceView::Dns(r.with_status(status)),
             Resource::Cidr(r) => ResourceView::Cidr(r.with_status(status)),
             Resource::Internet(r) => ResourceView::Internet(r.with_status(status)),
+        }
+    }
+
+    #[cfg(all(test, feature = "proptest"))]
+    pub fn with_new_site(self, site: Site) -> Self {
+        match self {
+            Resource::Dns(r) => Self::Dns(DnsResource {
+                sites: vec![site],
+                ..r
+            }),
+            Resource::Cidr(r) => Self::Cidr(CidrResource {
+                sites: vec![site],
+                ..r
+            }),
+            Resource::Internet(r) => Self::Internet(InternetResource {
+                sites: vec![site],
+                ..r
+            }),
         }
     }
 }
