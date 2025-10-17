@@ -50,12 +50,10 @@ defmodule Domain.Actors.Group.Sync do
 
     {upsert, delete} =
       Enum.reduce(groups, {provider_identifiers, []}, fn group, {upsert, delete} ->
-        cond do
-          MapSet.member?(identifiers_set, group.provider_identifier) ->
-            {upsert, delete}
-
-          true ->
-            {upsert -- [group.provider_identifier], [group.provider_identifier] ++ delete}
+        if MapSet.member?(identifiers_set, group.provider_identifier) do
+          {upsert, delete}
+        else
+          {upsert -- [group.provider_identifier], [group.provider_identifier] ++ delete}
         end
       end)
 
