@@ -82,12 +82,14 @@ fn handle_dns_query(
     query: &dns_types::Query,
     global_dns_records: &DnsRecords,
 ) -> dns_types::Response {
+    const TTL: u32 = 1; // We deliberately chose a short TTL so we don't have to model the DNS cache in these tests.
+
     let domain = query.domain().to_vec();
 
     let records = global_dns_records
         .domain_records_iter(&domain)
         .filter(|r| r.rtype() == query.qtype())
-        .map(|rdata| (domain.clone(), 60 * 60 * 24, rdata));
+        .map(|rdata| (domain.clone(), TTL, rdata));
 
     dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
         .with_records(records)
