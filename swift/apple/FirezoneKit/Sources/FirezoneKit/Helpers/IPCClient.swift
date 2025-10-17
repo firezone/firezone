@@ -75,8 +75,8 @@ class IPCClient {
   #if os(macOS)
     // On macOS, IPC calls to the system extension won't work after it's been upgraded, until the startTunnel call.
     // Since we rely on IPC for the GUI to function, we need to send a dummy `startTunnel` that doesn't actually
-    // start the tunnel, but causes the system to start the extension.
-    func startSystemExtension() throws {
+    // start the tunnel, but causes the system to wake the extension.
+    func dryStartStopCycle() throws {
       let options: [String: NSObject] = ["dryRun": true as NSObject]
       try session().startTunnel(options: options)
     }
@@ -196,30 +196,6 @@ class IPCClient {
 
     // Start exporting
     loop()
-  }
-
-  func consumeStopReason() async throws -> NEProviderStopReason? {
-    return try await withCheckedThrowingContinuation { continuation in
-      do {
-        try session().sendProviderMessage(
-          encoder.encode(ProviderMessage.consumeStopReason)
-        ) { data in
-
-          guard let data = data,
-            let reason = String(data: data, encoding: .utf8),
-            let rawValue = Int(reason)
-          else {
-            continuation.resume(returning: nil)
-
-            return
-          }
-
-          continuation.resume(returning: NEProviderStopReason(rawValue: rawValue))
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
   }
 
   // Subscribe to system notifications about our VPN status changing

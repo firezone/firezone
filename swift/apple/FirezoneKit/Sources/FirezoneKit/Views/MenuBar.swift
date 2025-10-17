@@ -802,10 +802,7 @@ import SwiftUI
     }
 
     @objc func quitButtonTapped() {
-      Task {
-        do { try store.stop() } catch { Log.error(error) }
-        NSApp.terminate(self)
-      }
+      NSApp.terminate(self)
     }
 
     @objc func resourceValueTapped(_ sender: AnyObject?) {
