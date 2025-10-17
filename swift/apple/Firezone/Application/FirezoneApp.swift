@@ -101,7 +101,7 @@ struct FirezoneApp: App {
 
       Task {
         do { try await store.stop() } catch { Log.error(error) }
-        NSApp.reply(toApplicationShouldTerminate: true)
+        await MainActor.run { NSApp.reply(toApplicationShouldTerminate: true) }
       }
 
       return .terminateLater
