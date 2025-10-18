@@ -5,6 +5,9 @@ defmodule Domain.Actors.Group do
     field :name, :string
     field :type, Ecto.Enum, values: ~w[managed static]a
 
+    field :issuer, :string
+    field :idp_id, :string
+
     # Those fields will be set for groups we synced from IdP's
     belongs_to :provider, Domain.Auth.Provider
     field :provider_identifier, :string
@@ -17,11 +20,9 @@ defmodule Domain.Actors.Group do
 
     has_many :actors, through: [:memberships, :actor]
 
-    field :created_by, Ecto.Enum, values: ~w[actor identity provider system]a
-    field :created_by_subject, :map
-
     belongs_to :account, Domain.Accounts.Account
 
+    subject_trail(~w[actor identity provider system]a)
     timestamps()
   end
 end

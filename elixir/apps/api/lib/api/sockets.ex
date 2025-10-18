@@ -55,78 +55,17 @@ defmodule API.Sockets do
     end)
   end
 
-  def real_ip(x_headers, peer_data) do
+  def auth_context(%{user_agent: user_agent, x_headers: x_headers, peer_data: peer_data}, type) do
+    remote_ip = real_ip(x_headers, peer_data)
+    Domain.Auth.get_auth_context(remote_ip, user_agent, x_headers, type)
+  end
+
+  defp real_ip(x_headers, peer_data) do
     real_ip =
       if is_list(x_headers) and length(x_headers) > 0 do
         RemoteIp.from(x_headers, API.Endpoint.real_ip_opts())
       end
 
     real_ip || peer_data.address
-  end
-
-  def load_balancer_ip_location(x_headers) do
-    location_region =
-      case API.Sockets.get_header(x_headers, "x-geo-location-region") do
-        {"x-geo-location-region", ""} -> nil
-        {"x-geo-location-region", location_region} -> location_region
-        _other -> nil
-      end
-
-    location_city =
-      case API.Sockets.get_header(x_headers, "x-geo-location-city") do
-        {"x-geo-location-city", ""} -> nil
-        {"x-geo-location-city", location_city} -> location_city
-        _other -> nil
-      end
-
-    {location_lat, location_lon} =
-      case API.Sockets.get_header(x_headers, "x-geo-location-coordinates") do
-        {"x-geo-location-coordinates", ","} ->
-          {nil, nil}
-
-        {"x-geo-location-coordinates", ""} ->
-          {nil, nil}
-
-        {"x-geo-location-coordinates", coordinates} ->
-          [lat, lon] = String.split(coordinates, ",", parts: 2)
-          lat = String.to_float(lat)
-          lon = String.to_float(lon)
-          {lat, lon}
-
-        _other ->
-          {nil, nil}
-      end
-
-    {location_lat, location_lon} =
-      Domain.Geo.maybe_put_default_coordinates(location_region, {location_lat, location_lon})
-
-    {location_region, location_city, {location_lat, location_lon}}
-  end
-
-  def get_header(x_headers, key) do
-    List.keyfind(x_headers, key, 0)
-  end
-
-  def auth_context(connect_info, type) do
-    %{
-      user_agent: user_agent,
-      x_headers: x_headers,
-      peer_data: peer_data
-    } = connect_info
-
-    real_ip = API.Sockets.real_ip(x_headers, peer_data)
-
-    {location_region, location_city, {location_lat, location_lon}} =
-      API.Sockets.load_balancer_ip_location(x_headers)
-
-    %Domain.Auth.Context{
-      type: type,
-      user_agent: user_agent,
-      remote_ip: real_ip,
-      remote_ip_location_region: location_region,
-      remote_ip_location_city: location_city,
-      remote_ip_location_lat: location_lat,
-      remote_ip_location_lon: location_lon
-    }
   end
 end
