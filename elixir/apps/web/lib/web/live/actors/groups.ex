@@ -4,12 +4,7 @@ defmodule Web.Actors.EditGroups do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, actor} <-
-           Actors.fetch_actor_by_id(id, socket.assigns.subject,
-             preload: [:memberships],
-             filter: [
-               deleted?: false
-             ]
-           ) do
+           Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: [:memberships]) do
       current_group_ids = Enum.map(actor.memberships, & &1.group_id)
 
       socket =

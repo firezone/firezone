@@ -8,7 +8,6 @@ defmodule Web.Groups.EditActors do
            Actors.fetch_group_by_id(id, socket.assigns.subject,
              preload: [:memberships],
              filter: [
-               deleted?: false,
                editable?: true
              ]
            ) do

@@ -36,11 +36,4 @@ defmodule Domain.Relays.Group.Changeset do
     |> unique_constraint(:name, name: :relay_groups_name_index)
     |> unique_constraint(:name, name: :relay_groups_account_id_name_index)
   end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
-  def delete(%Relays.Group{} = group) do
-    group
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
-  end
 end

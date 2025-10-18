@@ -29,10 +29,7 @@ defmodule Web.Actors.Components do
     <span :if={Actors.actor_disabled?(@actor)} class="text-red-800">
       Disabled
     </span>
-    <span :if={Actors.actor_deleted?(@actor)} class="text-red-800">
-      Deleted
-    </span>
-    <span :if={not Actors.actor_disabled?(@actor) and not Actors.actor_deleted?(@actor)}>
+    <span :if={not Actors.actor_disabled?(@actor)}>
       Active
     </span>
     """

@@ -50,8 +50,6 @@ defmodule Domain.Tokens.Token do
 
     field :expires_at, :utc_datetime_usec
 
-    # TODO: HARD-DELETE - Remove field after soft deletion is removed
-    field :deleted_at, :utc_datetime_usec
     timestamps()
   end
 end

@@ -4,10 +4,9 @@ defmodule Domain.Auth.Provider.Changeset do
   alias Domain.Auth.{Subject, Provider, Adapters}
 
   @create_fields ~w[id name adapter provisioner adapter_config adapter_state disabled_at assigned_default_at]a
-  # TODO: HARD-DELETE - Update after `deleted_at` is removed from DB
   @update_fields ~w[name adapter_config
                     last_syncs_failed last_sync_error sync_disabled_at sync_error_emailed_at
-                    adapter_state provisioner disabled_at deleted_at]a
+                    adapter_state provisioner disabled_at]a
   @required_fields ~w[name adapter adapter_config provisioner]a
 
   def create(account, attrs, %Subject{} = subject) do
@@ -130,12 +129,5 @@ defmodule Domain.Auth.Provider.Changeset do
     provider
     |> change()
     |> put_change(:disabled_at, nil)
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def soft_delete_provider(%Provider{} = provider) do
-    provider
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 end

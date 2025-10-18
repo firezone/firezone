@@ -7,20 +7,13 @@ defmodule Domain.Actors.Actor do
 
     field :name, :string
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from DB
-    has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
+    has_many :identities, Domain.Auth.Identity
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from DB
-    has_many :clients, Domain.Clients.Client,
-      where: [deleted_at: nil],
-      preload_order: [desc: :last_seen_at]
+    has_many :clients, Domain.Clients.Client, preload_order: [desc: :last_seen_at]
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from DB
-    has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
+    has_many :tokens, Domain.Tokens.Token
 
     has_many :memberships, Domain.Actors.Membership, on_replace: :delete
-    # TODO: where doesn't work on join tables so soft-deleted records will be preloaded,
-    # ref https://github.com/firezone/firezone/issues/2162
     has_many :groups, through: [:memberships, :group]
 
     belongs_to :account, Domain.Accounts.Account
@@ -29,8 +22,6 @@ defmodule Domain.Actors.Actor do
     field :last_synced_at, :utc_datetime_usec
     field :disabled_at, :utc_datetime_usec
 
-    # TODO: HARD-DELETE - Remove field after soft deletion is removed
-    field :deleted_at, :utc_datetime_usec
     timestamps()
   end
 end

@@ -6,26 +6,11 @@ defmodule Domain.Auth.Identity.Query do
     from(identities in Domain.Auth.Identity, as: :identities)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def not_deleted do
-    all()
-    |> where([identities: identities], is_nil(identities.deleted_at))
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def deleted do
-    all()
-    |> where([identities: identities], not is_nil(identities.deleted_at))
-  end
-
-  # TODO: Update after `deleted_at` is removed from DB
-  def not_disabled(queryable \\ not_deleted()) do
+  def not_disabled(queryable \\ all()) do
     queryable
     |> with_assoc(:inner, :actor)
-    |> where([actor: actor], is_nil(actor.deleted_at))
     |> where([actor: actor], is_nil(actor.disabled_at))
     |> with_assoc(:inner, :provider)
-    |> where([provider: provider], is_nil(provider.deleted_at))
     |> where([provider: provider], is_nil(provider.disabled_at))
   end
 
@@ -152,18 +137,6 @@ defmodule Domain.Auth.Identity.Query do
     })
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def delete(queryable) do
-    queryable
-    |> Ecto.Query.select([identities: identities], identities)
-    |> Ecto.Query.update([identities: identities],
-      set: [
-        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", identities.deleted_at),
-        provider_state: ^%{}
-      ]
-    )
-  end
-
   def with_preloaded_assoc(queryable, type \\ :left, assoc) do
     queryable
     |> with_assoc(type, assoc)
@@ -211,7 +184,6 @@ defmodule Domain.Auth.Identity.Query do
       WHERE ai.account_id = $#{account_id}
         AND ai.provider_id = $#{provider_id}
         AND ai.provider_identifier IN (SELECT provider_identifier FROM input_data)
-        AND ai.deleted_at IS NULL
     ),
     actors_to_create AS (
       SELECT
@@ -271,7 +243,6 @@ defmodule Domain.Auth.Identity.Query do
     FROM all_actor_mappings aam
     LEFT JOIN existing_identities ei ON ei.provider_identifier = aam.provider_identifier
     ON CONFLICT (account_id, provider_id, provider_identifier)
-    WHERE deleted_at IS NULL
     DO UPDATE SET
       email = EXCLUDED.email,
       provider_state = COALESCE(auth_identities.provider_state, '{}'::jsonb) ||

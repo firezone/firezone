@@ -50,7 +50,6 @@ defmodule Domain.Auth.Identity.Sync do
     {:ok, identities}
   end
 
-  # TODO: Update after `deleted_at` is removed from DB
   defp plan_identities_update(identities, provider_identifiers) do
     {insert, update, delete} =
       Enum.reduce(
@@ -59,15 +58,10 @@ defmodule Domain.Auth.Identity.Sync do
         fn identity, {insert, update, delete} ->
           insert = insert -- [identity.provider_identifier]
 
-          cond do
-            identity.provider_identifier in provider_identifiers ->
-              {insert, [identity.provider_identifier] ++ update, delete}
-
-            not is_nil(identity.deleted_at) ->
-              {insert, update, delete}
-
-            true ->
-              {insert, update, [identity.provider_identifier] ++ delete}
+          if identity.provider_identifier in provider_identifiers do
+            {insert, [identity.provider_identifier] ++ update, delete}
+          else
+            {insert, update, [identity.provider_identifier] ++ delete}
           end
         end
       )
@@ -146,7 +140,6 @@ defmodule Domain.Auth.Identity.Sync do
     end)
   end
 
-  # TODO: Update after `deleted_at` is removed from DB
   defp update_identities_and_actors(
          identities,
          attrs_by_provider_identifier,
@@ -159,19 +152,7 @@ defmodule Domain.Auth.Identity.Sync do
       end)
       |> Repo.preload(:actor)
       |> Enum.reduce(%{}, fn identity, acc ->
-        acc_identity = Map.get(acc, identity.provider_identifier)
-
-        # make sure that deleted identities have the least priority in case of conflicts
-        cond do
-          is_nil(acc_identity) ->
-            Map.put(acc, identity.provider_identifier, identity)
-
-          is_nil(acc_identity.deleted_at) ->
-            acc
-
-          true ->
-            Map.put(acc, identity.provider_identifier, identity)
-        end
+        Map.put(acc, identity.provider_identifier, identity)
       end)
 
     provider_identifiers_to_update

@@ -12,9 +12,8 @@ defmodule Domain.Clients.Client.Changeset do
   # WireGuard base64-encoded string length
   @key_length 44
 
-  # TODO: Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target,
-    do: {:unsafe_fragment, ~s/(account_id, actor_id, external_id) WHERE deleted_at IS NULL/}
+    do: {:unsafe_fragment, ~s/(account_id, actor_id, external_id)/}
 
   def upsert_on_conflict do
     Clients.Client.Query.all()

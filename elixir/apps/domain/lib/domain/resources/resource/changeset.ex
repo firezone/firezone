@@ -31,7 +31,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> cast(attrs, @fields)
     |> changeset()
     |> validate_required(@required_fields)
-    |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
     |> validate_address(account)
     |> cast_assoc(:connections,
@@ -47,7 +46,6 @@ defmodule Domain.Resources.Resource.Changeset do
     |> changeset()
     |> validate_required(@required_fields)
     |> validate_address(account)
-    |> put_change(:persistent_id, Ecto.UUID.generate())
     |> put_change(:account_id, account.id)
     |> put_subject_trail(:created_by, :system)
     |> cast_assoc(:connections,
@@ -65,13 +63,6 @@ defmodule Domain.Resources.Resource.Changeset do
       with: &Connection.Changeset.changeset(resource.account_id, &1, &2, subject),
       required: true
     )
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def delete(%Resource{} = resource) do
-    resource
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   defp validate_address(changeset, account) do

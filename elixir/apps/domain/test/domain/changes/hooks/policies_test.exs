@@ -14,8 +14,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "actor_group_id" => policy.actor_group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil,
-        "deleted_at" => nil
+        "disabled_at" => nil
       }
 
       assert :ok == on_insert(0, data)
@@ -40,8 +39,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "actor_group_id" => policy.actor_group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil,
-        "deleted_at" => nil
+        "disabled_at" => nil
       }
 
       data = Map.put(old_data, "disabled_at", "2023-10-01T00:00:00Z")
@@ -74,8 +72,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "actor_group_id" => policy.actor_group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => "2023-09-01T00:00:00Z",
-        "deleted_at" => nil
+        "disabled_at" => "2023-09-01T00:00:00Z"
       }
 
       data = Map.put(old_data, "disabled_at", nil)
@@ -89,62 +86,6 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       assert policy.resource_id == data["resource_id"]
     end
 
-    test "soft-delete broadcasts deleted policy" do
-      account = Fixtures.Accounts.create_account()
-      policy = Fixtures.Policies.create_policy(account: account)
-      :ok = PubSub.Account.subscribe(account.id)
-
-      old_data = %{
-        "id" => policy.id,
-        "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
-        "resource_id" => policy.resource_id,
-        "disabled_at" => nil,
-        "deleted_at" => nil
-      }
-
-      data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
-
-      assert :ok == on_update(0, old_data, data)
-      assert_receive %Change{op: :delete, old_struct: %Policies.Policy{} = policy, lsn: 0}
-
-      assert policy.id == old_data["id"]
-      assert policy.account_id == old_data["account_id"]
-      assert policy.actor_group_id == old_data["actor_group_id"]
-      assert policy.resource_id == old_data["resource_id"]
-    end
-
-    test "soft-delete deletes flows" do
-      account = Fixtures.Accounts.create_account()
-      resource = Fixtures.Resources.create_resource(account: account)
-
-      policy =
-        Fixtures.Policies.create_policy(
-          account: account,
-          resource: resource
-        )
-
-      old_data = %{
-        "id" => policy.id,
-        "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
-        "resource_id" => resource.id,
-        "deleted_at" => nil
-      }
-
-      data = Map.put(old_data, "deleted_at", "2023-10-01T00:00:00Z")
-
-      assert flow =
-               Fixtures.Flows.create_flow(
-                 policy: policy,
-                 resource: resource,
-                 account: account
-               )
-
-      assert :ok = on_update(0, old_data, data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
-    end
-
     test "non-breaking update broadcasts updated policy" do
       account = Fixtures.Accounts.create_account()
       policy = Fixtures.Policies.create_policy(account: account)
@@ -156,8 +97,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "account_id" => account.id,
         "actor_group_id" => policy.actor_group_id,
         "resource_id" => policy.resource_id,
-        "disabled_at" => nil,
-        "deleted_at" => nil
+        "disabled_at" => nil
       }
 
       data = Map.put(old_data, "description", "Updated description")
@@ -186,8 +126,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "id" => policy.id,
         "account_id" => account.id,
         "actor_group_id" => policy.actor_group_id,
-        "resource_id" => policy.resource_id,
-        "deleted_at" => nil
+        "resource_id" => policy.resource_id
       }
 
       data = Map.put(old_data, "resource_id", "00000000-0000-0000-0000-000000000001")
@@ -210,8 +149,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "id" => policy.id,
         "account_id" => account.id,
         "actor_group_id" => policy.actor_group_id,
-        "resource_id" => policy.resource_id,
-        "deleted_at" => nil
+        "resource_id" => policy.resource_id
       }
 
       data = Map.put(old_data, "actor_group_id", "00000000-0000-0000-0000-000000000001")
@@ -233,8 +171,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "resource_id" => policy.resource_id,
         "conditions" => [
           %{"property" => "remote_ip", "operator" => "is_in", "values" => ["10.0.0.1"]}
-        ],
-        "deleted_at" => nil
+        ]
       }
 
       data =
@@ -284,8 +221,7 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
         "id" => policy.id,
         "account_id" => account.id,
         "actor_group_id" => policy.actor_group_id,
-        "resource_id" => policy.resource_id,
-        "deleted_at" => nil
+        "resource_id" => policy.resource_id
       }
 
       assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)

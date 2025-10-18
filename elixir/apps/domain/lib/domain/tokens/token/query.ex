@@ -5,12 +5,6 @@ defmodule Domain.Tokens.Token.Query do
     from(tokens in Domain.Tokens.Token, as: :tokens)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def not_deleted do
-    all()
-    |> where([tokens: tokens], is_nil(tokens.deleted_at))
-  end
-
   def not_expired(queryable) do
     where(
       queryable,
@@ -77,17 +71,6 @@ defmodule Domain.Tokens.Token.Query do
 
   def by_gateway_group_id(queryable, gateway_group_id) do
     where(queryable, [tokens: tokens], tokens.gateway_group_id == ^gateway_group_id)
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def delete(queryable) do
-    queryable
-    |> Ecto.Query.select([tokens: tokens], tokens)
-    |> Ecto.Query.update([tokens: tokens],
-      set: [
-        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", tokens.deleted_at)
-      ]
-    )
   end
 
   def with_joined_account(queryable) do

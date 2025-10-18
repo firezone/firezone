@@ -83,9 +83,8 @@ defmodule Web.Groups.Show do
     <.section>
       <:title>
         Group: <code>{@group.name}</code>
-        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action :if={is_nil(@group.deleted_at)}>
+      <:action>
         <.edit_button
           :if={Actors.group_editable?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit"}
@@ -116,7 +115,7 @@ defmodule Web.Groups.Show do
 
     <.section>
       <:title>Actors</:title>
-      <:action :if={is_nil(@group.deleted_at)}>
+      <:action>
         <.edit_button
           :if={not Actors.group_synced?(@group) and not Actors.group_managed?(@group)}
           navigate={~p"/#{@account}/groups/#{@group}/edit_actors"}
@@ -194,14 +193,10 @@ defmodule Web.Groups.Show do
             </.link>
           </:col>
           <:col :let={policy} label="status">
-            <%= if is_nil(policy.deleted_at) do %>
-              <%= if is_nil(policy.disabled_at) do %>
-                Active
-              <% else %>
-                Disabled
-              <% end %>
+            <%= if is_nil(policy.disabled_at) do %>
+              Active
             <% else %>
-              Deleted
+              Disabled
             <% end %>
           </:col>
           <:empty>
@@ -222,7 +217,7 @@ defmodule Web.Groups.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@group.deleted_at) and Actors.group_editable?(@group)}>
+    <.danger_zone :if={Actors.group_editable?(@group)}>
       <:action>
         <.button_with_confirmation
           id="delete_group"

@@ -102,8 +102,9 @@ defmodule API.Gateway.ChannelTest do
         capture_log(fn ->
           send(socket.channel_pid, %Changes.Change{lsn: 50})
 
-          # Wait for the channel to process and emit the log
-          Process.sleep(1)
+          # Force the channel to process the message before continuing
+          # :sys.get_state/1 is synchronous and will wait for all pending messages to be handled
+          :sys.get_state(socket.channel_pid)
         end)
 
       assert message =~ "[warning] Out of order or duplicate change received; ignoring"

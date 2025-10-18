@@ -273,14 +273,13 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
              }
     end
 
-    test "adds delete operation to flush buffer for non-soft-deleted records", %{account: account} do
+    test "adds delete operation to flush buffer for deleted records", %{account: account} do
       table = "resources"
 
       old_data = %{
         "id" => Ecto.UUID.generate(),
         "account_id" => account.id,
-        "name" => "deleted resource",
-        "deleted_at" => nil
+        "name" => "deleted resource"
       }
 
       lsn = 12347

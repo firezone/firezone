@@ -39,7 +39,7 @@ defmodule Domain.Relays do
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Group.Query.not_deleted()
+      Group.Query.all()
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
     end
@@ -93,30 +93,6 @@ defmodule Domain.Relays do
     end
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def soft_delete_group(%Group{} = group, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Group.Query.not_deleted()
-      |> Group.Query.by_id(group.id)
-      |> Authorizer.for_subject(subject)
-      |> Group.Query.by_account_id(subject.account.id)
-      |> Repo.fetch_and_update(Group.Query,
-        with: fn group ->
-          {:ok, _tokens} = Tokens.soft_delete_tokens_for(group, subject)
-
-          {_count, _} =
-            Relay.Query.not_deleted()
-            |> Relay.Query.by_group_id(group.id)
-            |> Repo.update_all(set: [deleted_at: DateTime.utc_now()])
-
-          Group.Changeset.delete(group)
-        end,
-        # TODO: Remove self-hosted relays
-        after_commit: &disconnect_relays_in_group/1
-      )
-    end
-  end
-
   def create_token(%Group{account_id: nil} = group, attrs) do
     attrs =
       Map.merge(attrs, %{
@@ -153,7 +129,7 @@ defmodule Domain.Relays do
 
   def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
-         queryable = Group.Query.not_deleted() |> Group.Query.by_id(token.relay_group_id),
+         queryable = Group.Query.all() |> Group.Query.by_id(token.relay_group_id),
          {:ok, group} <- Repo.fetch(queryable, Group.Query, []) do
       {:ok, group, token}
     else
@@ -176,14 +152,14 @@ defmodule Domain.Relays do
   end
 
   def fetch_relay_by_id!(id, opts \\ []) do
-    Relay.Query.not_deleted()
+    Relay.Query.all()
     |> Relay.Query.by_id(id)
     |> Repo.fetch!(Relay.Query, opts)
   end
 
   def list_relays(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Relay.Query.not_deleted()
+      Relay.Query.all()
       |> Authorizer.for_subject(subject)
       |> Repo.list(Relay.Query, opts)
     end
@@ -257,7 +233,7 @@ defmodule Domain.Relays do
     connected_relay_ids = Map.keys(connected_relays) -- except_ids
 
     relays =
-      Relay.Query.not_deleted()
+      Relay.Query.all()
       |> Relay.Query.by_ids(connected_relay_ids)
       |> Relay.Query.global_or_by_account_id(account_id)
       # |> Relay.Query.by_last_seen_at_greater_than(5, "second", :ago)
@@ -312,20 +288,6 @@ defmodule Domain.Relays do
   def delete_relay(%Relay{} = relay, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(relay, subject) do
       Repo.delete(relay)
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def soft_delete_relay(%Relay{} = relay, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_relays_permission()) do
-      Relay.Query.not_deleted()
-      |> Relay.Query.by_id(relay.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Relay.Query,
-        with: &Relay.Changeset.delete/1,
-        # TODO: Remove self-hosted relays
-        after_commit: &disconnect_relay/1
-      )
     end
   end
 

@@ -1306,7 +1306,7 @@ defmodule Domain.ClientsTest do
       Fixtures.Clients.create_client(actor: actor)
 
       query =
-        Clients.Client.Query.not_deleted()
+        Clients.Client.Query.all()
         |> Clients.Client.Query.by_actor_id(actor.id)
 
       assert Repo.aggregate(query, :count) == 3

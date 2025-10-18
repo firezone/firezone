@@ -5,13 +5,7 @@ defmodule Domain.Actors.Actor.Query do
     from(actors in Domain.Actors.Actor, as: :actors)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def not_deleted do
-    all()
-    |> where([actors: actors], is_nil(actors.deleted_at))
-  end
-
-  def not_disabled(queryable \\ not_deleted()) do
+  def not_disabled(queryable \\ all()) do
     where(queryable, [actors: actors], is_nil(actors.disabled_at))
   end
 
@@ -47,34 +41,6 @@ defmodule Domain.Actors.Actor.Query do
     where(queryable, [actors: actors], actors.last_synced_at != ^synced_at)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
-  def by_deleted_identity_provider_id(queryable, provider_id) do
-    queryable
-    |> join(:inner, [actors: actors], identities in ^Domain.Auth.Identity.Query.deleted(),
-      on: identities.actor_id == actors.id,
-      as: :deleted_identities
-    )
-    |> where(
-      [deleted_identities: deleted_identities],
-      deleted_identities.provider_id == ^provider_id
-    )
-  end
-
-  # TODO: HARD-DELETE - Update after `deleted_at` column is removed in DB
-  def by_stale_for_provider(queryable, provider_id) do
-    subquery =
-      Domain.Auth.Identity.Query.all()
-      |> where(
-        [identities: identities],
-        identities.actor_id == parent_as(:actors).id and
-          (identities.provider_id != ^provider_id or
-             is_nil(identities.deleted_at))
-      )
-
-    queryable
-    |> where([actors: actors], not exists(subquery))
-  end
-
   def by_type(queryable, {:in, types}) do
     where(queryable, [actors: actors], actors.type in ^types)
   end
@@ -98,7 +64,7 @@ defmodule Domain.Actors.Actor.Query do
 
   def with_joined_clients(queryable, limit) do
     subquery =
-      Domain.Clients.Client.Query.not_deleted()
+      Domain.Clients.Client.Query.all()
       |> where([clients: clients], clients.actor_id == parent_as(:actors).id)
       |> order_by([clients: clients], desc: clients.last_seen_at)
       |> limit(^limit)
@@ -138,13 +104,6 @@ defmodule Domain.Actors.Actor.Query do
     subquery =
       Domain.Actors.Membership.Query.all()
       |> where([memberships: memberships], memberships.actor_id == parent_as(:actors).id)
-      # we need second join to exclude soft deleted actors before applying a limit
-      |> join(
-        :inner,
-        [memberships: memberships],
-        groups in ^Domain.Actors.Group.Query.not_deleted(),
-        on: groups.id == memberships.group_id
-      )
       |> select([memberships: memberships], memberships.group_id)
       |> limit(^limit)
 
@@ -168,7 +127,7 @@ defmodule Domain.Actors.Actor.Query do
       queryable,
       :left,
       [memberships: memberships],
-      groups in ^Domain.Actors.Group.Query.not_deleted(),
+      groups in ^Domain.Actors.Group.Query.all(),
       on: groups.id == memberships.group_id,
       as: :groups
     )
@@ -179,7 +138,7 @@ defmodule Domain.Actors.Actor.Query do
       queryable,
       :left,
       [actors: actors],
-      clients in ^Domain.Clients.Client.Query.not_deleted(),
+      clients in ^Domain.Clients.Client.Query.all(),
       on: clients.actor_id == actors.id,
       as: :clients
     )
@@ -191,7 +150,7 @@ defmodule Domain.Actors.Actor.Query do
         queryable,
         :left,
         [actors: actors],
-        identities in ^Domain.Auth.Identity.Query.not_deleted(),
+        identities in ^Domain.Auth.Identity.Query.all(),
         on: identities.actor_id == actors.id,
         as: ^binding
       )
@@ -277,11 +236,6 @@ defmodule Domain.Actors.Actor.Query do
         name: :group_id,
         type: {:string, :uuid},
         fun: &filter_by_group_id/2
-      },
-      %Domain.Repo.Filter{
-        name: :deleted?,
-        type: :boolean,
-        fun: &filter_deleted/1
       }
     ]
 
@@ -346,10 +300,5 @@ defmodule Domain.Actors.Actor.Query do
       )
 
     {queryable, dynamic(exists(subquery))}
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed in DB
-  def filter_deleted(queryable) do
-    {queryable, dynamic([actors: actors], not is_nil(actors.deleted_at))}
   end
 end

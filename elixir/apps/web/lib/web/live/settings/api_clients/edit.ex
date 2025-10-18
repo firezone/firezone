@@ -5,8 +5,7 @@ defmodule Web.Settings.ApiClients.Edit do
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
-      with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []),
-           nil <- actor.deleted_at do
+      with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do
         changeset = Actors.change_actor(actor)
 
         socket =

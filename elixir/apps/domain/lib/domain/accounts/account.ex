@@ -25,41 +25,31 @@ defmodule Domain.Accounts.Account do
 
     # We mention all schemas here to leverage Ecto compile-time reference checks,
     # because later we will have to shard data by account_id.
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :actors, Domain.Actors.Actor, where: [deleted_at: nil]
-    has_many :actor_group_memberships, Domain.Actors.Membership, where: [deleted_at: nil]
-    has_many :actor_groups, Domain.Actors.Group, where: [deleted_at: nil]
+    has_many :actors, Domain.Actors.Actor
+    has_many :actor_group_memberships, Domain.Actors.Membership
+    has_many :actor_groups, Domain.Actors.Group
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :auth_providers, Domain.Auth.Provider, where: [deleted_at: nil]
-    has_many :auth_identities, Domain.Auth.Identity, where: [deleted_at: nil]
+    has_many :auth_providers, Domain.Auth.Provider
+    has_many :auth_identities, Domain.Auth.Identity
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :network_addresses, Domain.Network.Address, where: [deleted_at: nil]
+    has_many :network_addresses, Domain.Network.Address
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :policies, Domain.Policies.Policy, where: [deleted_at: nil]
+    has_many :policies, Domain.Policies.Policy
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :flows, Domain.Flows.Flow, where: [deleted_at: nil]
+    has_many :flows, Domain.Flows.Flow
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :resources, Domain.Resources.Resource, where: [deleted_at: nil]
-    has_many :resource_connections, Domain.Resources.Connection, where: [deleted_at: nil]
+    has_many :resources, Domain.Resources.Resource
+    has_many :resource_connections, Domain.Resources.Connection
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :clients, Domain.Clients.Client, where: [deleted_at: nil]
+    has_many :clients, Domain.Clients.Client
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :gateways, Domain.Gateways.Gateway, where: [deleted_at: nil]
-    has_many :gateway_groups, Domain.Gateways.Group, where: [deleted_at: nil]
+    has_many :gateways, Domain.Gateways.Gateway
+    has_many :gateway_groups, Domain.Gateways.Group
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :relays, Domain.Relays.Relay, where: [deleted_at: nil]
-    has_many :relay_groups, Domain.Relays.Group, where: [deleted_at: nil]
+    has_many :relays, Domain.Relays.Relay
+    has_many :relay_groups, Domain.Relays.Group
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from the DB
-    has_many :tokens, Domain.Tokens.Token, where: [deleted_at: nil]
+    has_many :tokens, Domain.Tokens.Token
 
     field :warning, :string
     field :warning_delivery_attempts, :integer, default: 0
@@ -68,8 +58,6 @@ defmodule Domain.Accounts.Account do
     field :disabled_reason, :string
     field :disabled_at, :utc_datetime_usec
 
-    # TODO: HARD-DELETE - Remove field after soft deletion is removed
-    field :deleted_at, :utc_datetime_usec
     timestamps()
   end
 end

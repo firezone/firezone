@@ -1,5 +1,5 @@
 defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
-  use API.ChannelCase, async: true
+  use Domain.DataCase, async: true
   import Domain.Changes.Hooks.ActorGroupMemberships
   alias Domain.{Actors, Changes.Change, Flows, PubSub}
 

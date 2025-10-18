@@ -84,19 +84,6 @@ defmodule Domain.ActorsTest do
       assert fetch_group_by_id(group.id, subject) == {:error, :not_found}
     end
 
-    # TODO: HARD-DELETE - This test is no longer relevant
-    # test "returns deleted groups", %{
-    #  account: account,
-    #  subject: subject
-    # } do
-    #  group =
-    #    Fixtures.Actors.create_group(account: account)
-    #    |> Fixtures.Actors.delete_group()
-
-    #  assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
-    #  assert fetched_group.id == group.id
-    # end
-
     test "returns group by id", %{account: account, subject: subject} do
       group = Fixtures.Actors.create_group(account: account)
       assert {:ok, fetched_group} = fetch_group_by_id(group.id, subject)
@@ -156,17 +143,6 @@ defmodule Domain.ActorsTest do
       assert {:ok, [], _metadata} = list_groups(subject)
     end
 
-    # TODO: HARD-DELETE - Is this test needed any more?
-    test "does not list deleted groups", %{
-      account: account,
-      subject: subject
-    } do
-      Fixtures.Actors.create_group(account: account)
-      |> Fixtures.Actors.delete_group()
-
-      assert {:ok, [], _metadata} = list_groups(subject)
-    end
-
     test "returns all groups", %{
       account: account,
       subject: subject
@@ -215,17 +191,6 @@ defmodule Domain.ActorsTest do
       subject: subject
     } do
       Fixtures.Actors.create_group()
-      assert {:ok, [], _metadata} = list_editable_groups(subject)
-    end
-
-    # TODO: HARD-DELETE - Is this test needed any more?
-    test "does not list deleted groups", %{
-      account: account,
-      subject: subject
-    } do
-      Fixtures.Actors.create_group(account: account)
-      |> Fixtures.Actors.delete_group()
-
       assert {:ok, [], _metadata} = list_editable_groups(subject)
     end
 
@@ -287,16 +252,6 @@ defmodule Domain.ActorsTest do
       actor2 = Fixtures.Actors.create_actor(account: account)
       group = Fixtures.Actors.create_group(account: account)
       Fixtures.Actors.create_membership(account: account, actor: actor2, group: group)
-
-      assert {:ok, [], _metadata} = list_groups_for(actor, subject)
-    end
-
-    # TODO: HARD-DELETE - Is this test needed any more?
-    test "does not list deleted groups", %{account: account, actor: actor, subject: subject} do
-      group = Fixtures.Actors.create_group(account: account)
-      Fixtures.Actors.create_membership(account: account, actor: actor, group: group)
-
-      Fixtures.Actors.delete_group(group)
 
       assert {:ok, [], _metadata} = list_groups_for(actor, subject)
     end
@@ -894,7 +849,7 @@ defmodule Domain.ActorsTest do
                sync_provider_groups(provider, attrs_list)
 
       assert Repo.aggregate(Actors.Group, :count) == 5
-      assert Repo.aggregate(Actors.Group.Query.not_deleted(), :count) == 5
+      assert Repo.aggregate(Actors.Group.Query.all(), :count) == 5
     end
 
     test "ignores groups that are not synced from the provider", %{
@@ -927,53 +882,6 @@ defmodule Domain.ActorsTest do
                   group_ids_by_provider_identifier: %{}
                 }}
     end
-
-    # TODO: HARD-DELETE - This test is no longer relevant
-
-    # test "ignores synced groups that are soft deleted", %{
-    #  account: account,
-    #  provider: provider
-    # } do
-    #  deleted_group =
-    #    Fixtures.Actors.create_group(
-    #      account: account,
-    #      provider: provider,
-    #      provider_identifier: "G:GROUP_ID1",
-    #      name: "ALREADY_DELETED"
-    #    )
-
-    #  Domain.Actors.Group.Query.not_deleted()
-    #  |> Domain.Actors.Group.Query.by_account_id(account.id)
-    #  |> Domain.Actors.Group.Query.by_provider_id(provider.id)
-    #  |> Domain.Actors.Group.Query.by_provider_identifier(
-    #    {:in, [deleted_group.provider_identifier]}
-    #  )
-    #  |> Domain.Actors.delete_groups()
-
-    #  group2 =
-    #    Fixtures.Actors.create_group(
-    #      account: account,
-    #      provider: provider,
-    #      provider_identifier: "G:GROUP_ID2",
-    #      name: "TO_BE_UPDATED"
-    #    )
-
-    #  attrs_list = [
-    #    %{"name" => "Group:Infrastructure", "provider_identifier" => "G:GROUP_ID2"},
-    #    %{"name" => "Group:Security", "provider_identifier" => "G:GROUP_ID3"},
-    #    %{"name" => "Group:Finance", "provider_identifier" => "G:GROUP_ID4"}
-    #  ]
-
-    #  provider_identifiers = Enum.map(attrs_list, & &1["provider_identifier"])
-
-    #  assert {:ok, sync_data} = sync_provider_groups(provider, attrs_list)
-
-    #  assert Enum.sort(Enum.map(sync_data.groups, & &1.name)) ==
-    #           Enum.sort([deleted_group.name, group2.name])
-
-    #  assert sync_data.deleted == []
-    #  assert sync_data.plan == {provider_identifiers, []}
-    # end
   end
 
   describe "sync_provider_memberships/2" do
@@ -1780,7 +1688,9 @@ defmodule Domain.ActorsTest do
       assert membership.actor_id == actor.id
     end
 
-    # TODO: HARD-DELETE - Is this test needed any more?
+    # This test isn't strictly necessary when using ON DELETE CASCADE, however
+    # leaving this test allows us to know if there is ever a change in the
+    # foreign key effects
     test "removes memberships when managed group is deleted", %{
       account: account,
       actor: actor,
@@ -1999,7 +1909,8 @@ defmodule Domain.ActorsTest do
       assert Repo.aggregate(Actors.Membership, :count) == 0
     end
 
-    # TODO: HARD-DELETE - Should this test be put in policies?
+    # Leaving this test here for now.  May want to consider moving this test
+    # to the policy tests rather than the actor group tests.
     test "cascade deletes policies that use this group", %{
       account: account,
       subject: subject
@@ -2053,22 +1964,6 @@ defmodule Domain.ActorsTest do
         subject: subject
       }
     end
-
-    # TODO: HARD-DELETE - Is this test needed any more?
-    test "delete groups when provider is deleted", %{
-      account: account,
-      provider: provider,
-      subject: subject
-    } do
-      group1 = Fixtures.Actors.create_group(account: account, provider: provider)
-      group2 = Fixtures.Actors.create_group(account: account, provider: provider)
-
-      assert {:ok, _provider} = Auth.delete_provider(provider, subject)
-
-      refute Repo.get(Domain.Auth.Provider, provider.id)
-      refute Repo.get(Actors.Group, group1.id)
-      refute Repo.get(Actors.Group, group2.id)
-    end
   end
 
   describe "group_synced?/1" do
@@ -2115,23 +2010,6 @@ defmodule Domain.ActorsTest do
     test "returns false for manually created groups" do
       group = Fixtures.Actors.create_group()
       assert group_editable?(group) == true
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after soft delete functionality is gone
-  describe "group_soft_deleted?/1" do
-    test "returns true for soft deleted groups" do
-      account = Fixtures.Accounts.create_account()
-
-      group =
-        Fixtures.Actors.create_group(account: account) |> Fixtures.Actors.soft_delete_group()
-
-      assert group_soft_deleted?(group) == true
-    end
-
-    test "returns false for manually created groups" do
-      group = Fixtures.Actors.create_group()
-      assert group_soft_deleted?(group) == false
     end
   end
 
@@ -2234,77 +2112,6 @@ defmodule Domain.ActorsTest do
       |> Fixtures.Actors.delete()
 
       assert count_service_accounts_for_account(account) == 0
-    end
-  end
-
-  describe "count_synced_actors_for_provider/1" do
-    test "returns 0 when there are no actors" do
-      account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_userpass_provider(account: account)
-      assert count_synced_actors_for_provider(provider) == 0
-    end
-
-    test "returns 0 when there are no synced actors" do
-      account = Fixtures.Accounts.create_account()
-      provider = Fixtures.Auth.create_userpass_provider(account: account)
-      Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-      assert count_synced_actors_for_provider(provider) == 0
-    end
-
-    test "returns count of synced actors owned only by the given provider" do
-      account = Fixtures.Accounts.create_account()
-
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor1 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor1, provider: provider)
-      |> Fixtures.Auth.delete_identity()
-
-      actor2 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor2, provider: provider)
-      |> Fixtures.Auth.delete_identity()
-
-      actor3 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor3)
-      |> Fixtures.Auth.delete_identity()
-
-      actor4 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor4, provider: provider)
-      |> Fixtures.Auth.delete_identity()
-
-      Fixtures.Auth.create_identity(account: account, actor: actor4)
-      |> Fixtures.Auth.delete_identity()
-
-      actor5 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor5, provider: provider)
-
-      assert count_synced_actors_for_provider(provider) == 2
     end
   end
 
@@ -2538,7 +2345,6 @@ defmodule Domain.ActorsTest do
       assert actor.name == attrs.name
       assert actor.type == attrs.type
       assert is_nil(actor.disabled_at)
-      assert is_nil(actor.deleted_at)
     end
 
     test "trims whitespace when creating an actor", %{
@@ -2551,7 +2357,6 @@ defmodule Domain.ActorsTest do
 
       assert actor.name == actor_name
       assert is_nil(actor.disabled_at)
-      assert is_nil(actor.deleted_at)
     end
   end
 
@@ -2579,7 +2384,6 @@ defmodule Domain.ActorsTest do
       assert actor.name == attrs.name
       assert actor.type == attrs.type
       assert is_nil(actor.disabled_at)
-      assert is_nil(actor.deleted_at)
     end
 
     test "trims whitespace when creating an actor", %{
@@ -2593,7 +2397,6 @@ defmodule Domain.ActorsTest do
 
       assert actor.name == actor_name
       assert is_nil(actor.disabled_at)
-      assert is_nil(actor.deleted_at)
     end
 
     test "returns error when seats limit is exceeded (admins)", %{
@@ -3075,7 +2878,6 @@ defmodule Domain.ActorsTest do
       assert membership.actor_id == new_actor.id
     end
 
-    # TODO: HARD-DELETE - Move this test to Tokens since it has the FK constraint
     test "deletes token", %{
       account: account,
       actor: actor,
@@ -3087,7 +2889,6 @@ defmodule Domain.ActorsTest do
       refute Repo.get(Domain.Tokens.Token, subject.token_id)
     end
 
-    # TODO: HARD-DELETE - Move this test to AuthIdentities since it has the FK constraint
     test "deletes actor identities", %{
       account: account,
       subject: subject
@@ -3099,7 +2900,6 @@ defmodule Domain.ActorsTest do
       refute Repo.get(Domain.Auth.Identity, identity.id)
     end
 
-    # TODO: HARD-DELETE - Move this test to Clients since it has the FK constraint
     test "deletes actor clients", %{
       account: account,
       subject: subject
@@ -3109,7 +2909,7 @@ defmodule Domain.ActorsTest do
 
       assert {:ok, _actor} = delete_actor(actor_to_delete, subject)
 
-      assert Repo.aggregate(Domain.Clients.Client.Query.not_deleted(), :count) == 0
+      assert Repo.aggregate(Domain.Clients.Client.Query.all(), :count) == 0
     end
 
     test "deletes actor memberships", %{
@@ -3168,68 +2968,6 @@ defmodule Domain.ActorsTest do
       refute Repo.get(Domain.Actors.Actor, service_account_actor.id)
     end
 
-    # TODO: HARD-DELETE - Need to figure out if we care about this case
-    # test "returns error when trying to delete the last admin actor using a race condition" do
-    #  for _ <- 0..50 do
-    #    test_pid = self()
-
-    #    Task.async(fn ->
-    #      allow_child_sandbox_access(test_pid)
-
-    #      Domain.Config.put_env_override(:outbound_email_adapter_configured?, true)
-
-    #      account = Fixtures.Accounts.create_account()
-    #      provider = Fixtures.Auth.create_email_provider(account: account)
-
-    #      actor_one =
-    #        Fixtures.Actors.create_actor(
-    #          type: :account_admin_user,
-    #          account: account,
-    #          provider: provider
-    #        )
-
-    #      actor_two =
-    #        Fixtures.Actors.create_actor(
-    #          type: :account_admin_user,
-    #          account: account,
-    #          provider: provider
-    #        )
-
-    #      identity_one =
-    #        Fixtures.Auth.create_identity(
-    #          account: account,
-    #          actor: actor_one,
-    #          provider: provider
-    #        )
-
-    #      identity_two =
-    #        Fixtures.Auth.create_identity(
-    #          account: account,
-    #          actor: actor_two,
-    #          provider: provider
-    #        )
-
-    #      subject_one = Fixtures.Auth.create_subject(identity: identity_one)
-    #      subject_two = Fixtures.Auth.create_subject(identity: identity_two)
-
-    #      for {actor, subject} <- [{actor_two, subject_one}, {actor_one, subject_two}] do
-    #        Task.async(fn ->
-    #          allow_child_sandbox_access(test_pid)
-    #          delete_actor(actor, subject)
-    #        end)
-    #      end
-    #      |> Task.await_many()
-
-    #      queryable =
-    #        Actors.Actor.Query.not_deleted()
-    #        |> Actors.Actor.Query.by_account_id(account.id)
-
-    #      assert Repo.aggregate(queryable, :count) == 1
-    #    end)
-    #  end
-    #  |> Task.await_many()
-    # end
-
     test "does not allow to delete an actor twice", %{
       account: account,
       subject: subject
@@ -3271,78 +3009,6 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "delete_stale_synced_actors_for_provider/2" do
-    test "deletes actors synced with only the given provider" do
-      account = Fixtures.Accounts.create_account()
-      subject = Fixtures.Auth.create_subject(account: account)
-
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      actor1 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor1, provider: provider)
-      |> Fixtures.Auth.delete_identity()
-
-      actor2 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor2, provider: provider)
-      |> Fixtures.Auth.delete_identity()
-
-      actor3 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor3)
-      |> Fixtures.Auth.delete_identity()
-
-      actor4 =
-        Fixtures.Actors.create_actor(
-          type: :account_admin_user,
-          account: account
-        )
-
-      Fixtures.Auth.create_identity(account: account, actor: actor4, provider: provider)
-      |> Fixtures.Auth.delete_identity()
-
-      Fixtures.Auth.create_identity(account: account, actor: actor4)
-      |> Fixtures.Auth.delete_identity()
-
-      assert delete_stale_synced_actors_for_provider(provider, subject) == :ok
-      not_deleted_actors = Repo.all(Actors.Actor.Query.not_deleted())
-      not_deleted_actor_ids = not_deleted_actors |> Enum.map(& &1.id) |> Enum.sort()
-
-      assert not_deleted_actor_ids == Enum.sort([actor4.id, actor3.id, subject.actor.id])
-    end
-
-    test "returns error when subject cannot delete actors" do
-      account = Fixtures.Accounts.create_account()
-
-      {provider, _bypass} =
-        Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
-
-      subject =
-        Fixtures.Auth.create_subject(account: account)
-        |> Fixtures.Auth.remove_permissions()
-
-      assert delete_stale_synced_actors_for_provider(provider, subject) ==
-               {:error,
-                {:unauthorized,
-                 reason: :missing_permissions,
-                 missing_permissions: [Actors.Authorizer.manage_actors_permission()]}}
-    end
-  end
-
   describe "actor_synced?/1" do
     test "returns true when actor is synced" do
       actor = Fixtures.Actors.create_actor()
@@ -3356,23 +3022,6 @@ defmodule Domain.ActorsTest do
       actor = Fixtures.Actors.update(actor, last_synced_at: nil)
 
       assert actor_synced?(actor) == false
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after soft deletion functionality is removed
-  describe "actor_deleted?/1" do
-    test "returns true when actor is soft deleted" do
-      actor =
-        Fixtures.Actors.create_actor()
-        |> Fixtures.Actors.soft_delete()
-
-      assert actor_deleted?(actor) == true
-    end
-
-    test "returns false when actor is not deleted" do
-      actor = Fixtures.Actors.create_actor()
-
-      assert actor_deleted?(actor) == false
     end
   end
 
@@ -3662,12 +3311,4 @@ defmodule Domain.ActorsTest do
                {:ok, %{deleted_memberships: 0}}
     end
   end
-
-  # TODO: HARD-DELETE - This may not be needed anymore
-  # defp allow_child_sandbox_access(parent_pid) do
-  #  Ecto.Adapters.SQL.Sandbox.allow(Repo, parent_pid, self())
-  #  # Allow is async call we need to break current process execution
-  #  # to allow sandbox to be enabled
-  #  :timer.sleep(10)
-  # end
 end

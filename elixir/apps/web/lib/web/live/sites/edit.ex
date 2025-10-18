@@ -3,8 +3,7 @@ defmodule Web.Sites.Edit do
   alias Domain.Gateways
 
   def mount(%{"id" => id}, _session, socket) do
-    with {:ok, group} <-
-           Gateways.fetch_group_by_id(id, socket.assigns.subject, filter: [deleted?: false]) do
+    with {:ok, group} <- Gateways.fetch_group_by_id(id, socket.assigns.subject) do
       changeset = Gateways.change_group(group)
 
       socket =

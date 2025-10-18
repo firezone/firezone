@@ -1,6 +1,5 @@
 defmodule Domain.Fixtures.Tokens do
   use Domain.Fixture
-  alias Domain.Tokens
 
   def remote_ip, do: Enum.random([unique_ipv4(), unique_ipv6()])
   def user_agent, do: "iOS/12.5 (iPhone; #{unique_integer()}) connlib/0.7.412"
@@ -198,9 +197,7 @@ defmodule Domain.Fixtures.Tokens do
   end
 
   def delete_token(token) do
-    token
-    |> Tokens.Token.Changeset.delete()
-    |> Domain.Repo.update!()
+    Domain.Repo.delete(token)
   end
 
   def expire_token(token) do

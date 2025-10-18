@@ -21,16 +21,12 @@ defmodule Domain.Relays.Relay.Changeset do
                               last_seen_at
                               updated_at]a
 
-  # TODO: HARD-DELETE - Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target(%{account_id: nil}) do
-    {:unsafe_fragment,
-     ~s/(COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NULL/}
+    {:unsafe_fragment, ~s/(COALESCE(ipv4, ipv6), port) WHERE account_id IS NULL/}
   end
 
-  # TODO: HARD-DELETE - Update or remove after `deleted_at` is removed from DB
   def upsert_conflict_target(%{account_id: _account_id}) do
-    {:unsafe_fragment,
-     ~s/(account_id, COALESCE(ipv4, ipv6), port) WHERE deleted_at IS NULL AND account_id IS NOT NULL/}
+    {:unsafe_fragment, ~s/(account_id, COALESCE(ipv4, ipv6), port) WHERE account_id IS NOT NULL/}
   end
 
   def upsert_on_conflict, do: {:replace, @conflict_replace_fields}
@@ -57,13 +53,6 @@ defmodule Domain.Relays.Relay.Changeset do
     |> put_relay_version()
     |> put_change(:account_id, group.account_id)
     |> put_change(:group_id, group.id)
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def delete(%Relays.Relay{} = relay) do
-    relay
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   def put_relay_version(changeset) do

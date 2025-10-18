@@ -37,27 +37,6 @@ defmodule Web.Live.Settings.IdentityProviders.JumpCloud.ShowTest do
                }}}
   end
 
-  test "renders deleted provider without action buttons", %{
-    account: account,
-    provider: provider,
-    identity: identity,
-    conn: conn
-  } do
-    provider = Fixtures.Auth.delete_provider(provider)
-
-    bypass = Bypass.open()
-    WorkOSDirectory.override_base_url("http://localhost:#{bypass.port}")
-    WorkOSDirectory.mock_list_directories_endpoint(bypass)
-
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/identity_providers/jumpcloud/#{provider}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
-  end
-
   test "renders breadcrumbs item", %{
     account: account,
     provider: provider,

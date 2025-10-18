@@ -29,7 +29,7 @@ defmodule Domain.Repo.FilterTest do
           type: :boolean,
           name: :bool,
           fun: fn queryable ->
-            {queryable, dynamic([accounts: accounts], is_nil(accounts.deleted_at))}
+            {queryable, dynamic([accounts: accounts], is_nil(accounts.disabled_at))}
           end
         }
       }
@@ -41,7 +41,7 @@ defmodule Domain.Repo.FilterTest do
              |> inspect() == """
              #Ecto.Query<from a0 in Domain.Accounts.Account,\
               as: :accounts,\
-              where: is_nil(a0.deleted_at)>\
+              where: is_nil(a0.disabled_at)>\
              """
 
       assert {queryable, dynamic} = build_dynamic(queryable, [bool: false], filters, nil)
@@ -51,7 +51,7 @@ defmodule Domain.Repo.FilterTest do
              |> inspect() == """
              #Ecto.Query<from a0 in Domain.Accounts.Account,\
               as: :accounts,\
-              where: not is_nil(a0.deleted_at)>\
+              where: not is_nil(a0.disabled_at)>\
              """
     end
 

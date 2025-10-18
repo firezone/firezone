@@ -21,14 +21,14 @@ defmodule Domain.Gateways do
   end
 
   def count_groups_for_account(%Accounts.Account{} = account) do
-    Group.Query.not_deleted()
+    Group.Query.all()
     |> Group.Query.by_account_id(account.id)
     |> Group.Query.by_managed_by(:account)
     |> Repo.aggregate(:count)
   end
 
   def fetch_gateway_by_id(id) do
-    Gateway.Query.not_deleted()
+    Gateway.Query.all()
     |> Gateway.Query.by_id(id)
     |> Repo.fetch(Gateway.Query, [])
   end
@@ -54,7 +54,7 @@ defmodule Domain.Gateways do
   end
 
   def fetch_internet_group(%Accounts.Account{} = account) do
-    Group.Query.not_deleted()
+    Group.Query.all()
     |> Group.Query.by_managed_by(:system)
     |> Group.Query.by_account_id(account.id)
     |> Group.Query.by_name("Internet")
@@ -63,21 +63,21 @@ defmodule Domain.Gateways do
 
   def list_groups(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Group.Query.not_deleted()
+      Group.Query.all()
       |> Authorizer.for_subject(subject)
       |> Repo.list(Group.Query, opts)
     end
   end
 
   def all_groups!(%Auth.Subject{} = subject) do
-    Group.Query.not_deleted()
+    Group.Query.all()
     |> Group.Query.by_managed_by(:account)
     |> Authorizer.for_subject(subject)
     |> Repo.all()
   end
 
   def all_groups_for_account!(%Accounts.Account{} = account) do
-    Group.Query.not_deleted()
+    Group.Query.all()
     |> Group.Query.by_managed_by(:account)
     |> Group.Query.by_account_id(account.id)
     |> Repo.all()
@@ -124,7 +124,7 @@ defmodule Domain.Gateways do
 
   def update_group(%Group{managed_by: :account} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Group.Query.not_deleted()
+      Group.Query.all()
       |> Group.Query.by_id(group.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(
@@ -167,7 +167,7 @@ defmodule Domain.Gateways do
 
   def authenticate(encoded_token, %Auth.Context{} = context) when is_binary(encoded_token) do
     with {:ok, token} <- Tokens.use_token(encoded_token, context),
-         queryable = Group.Query.not_deleted() |> Group.Query.by_id(token.gateway_group_id),
+         queryable = Group.Query.all() |> Group.Query.by_id(token.gateway_group_id),
          {:ok, group} <- Repo.fetch(queryable, Group.Query, []) do
       {:ok, group, token}
     else
@@ -197,14 +197,14 @@ defmodule Domain.Gateways do
   end
 
   def fetch_gateway_by_id!(id, opts \\ []) do
-    Gateway.Query.not_deleted()
+    Gateway.Query.all()
     |> Gateway.Query.by_id(id)
     |> Repo.fetch!(Gateway.Query, opts)
   end
 
   def list_gateways(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.not_deleted()
+      Gateway.Query.all()
       |> Authorizer.for_subject(subject)
       |> Repo.list(Gateway.Query, opts)
     end
@@ -213,7 +213,7 @@ defmodule Domain.Gateways do
   def all_gateways_for_account!(%Account{} = account, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-    Gateway.Query.not_deleted()
+    Gateway.Query.all()
     |> Gateway.Query.by_account_id(account.id)
     |> Repo.all()
     |> Repo.preload(preload)
@@ -265,7 +265,7 @@ defmodule Domain.Gateways do
         |> Map.keys()
 
       gateways =
-        Gateway.Query.not_deleted()
+        Gateway.Query.all()
         |> Gateway.Query.by_ids(connected_gateway_ids)
         |> Gateway.Query.by_account_id(subject.account.id)
         |> Gateway.Query.by_resource_id(resource_id)
@@ -314,24 +314,11 @@ defmodule Domain.Gateways do
 
   def update_gateway(%Gateway{} = gateway, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.not_deleted()
+      Gateway.Query.all()
       |> Gateway.Query.by_id(gateway.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Gateway.Query,
         with: &Gateway.Changeset.update(&1, attrs),
-        preload: [:online?]
-      )
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove this once deleted_at field is gone
-  def soft_delete_gateway(%Gateway{} = gateway, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_gateways_permission()) do
-      Gateway.Query.not_deleted()
-      |> Gateway.Query.by_id(gateway.id)
-      |> Authorizer.for_subject(subject)
-      |> Repo.fetch_and_update(Gateway.Query,
-        with: &Gateway.Changeset.soft_delete/1,
         preload: [:online?]
       )
     end

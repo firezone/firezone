@@ -69,7 +69,7 @@ defmodule Web.Sites.Gateways.Index do
         Gateways deployed to the Internet Site will be used for full-route tunneling
         of traffic that doesn't match a more specific Resource.
       </:help>
-      <:help :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
+      <:help :if={@group.managed_by == :account}>
         Deploy gateways to terminate connections to your site's resources. All
         gateways deployed within a site must be able to reach all
         its resources.
@@ -108,7 +108,7 @@ defmodule Web.Sites.Gateways.Index do
                     Deploy a Gateway to the Internet Site.
                   </.link>
                 </span>
-                <span :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
+                <span :if={@group.managed_by == :account}>
                   <.link class={[link_style()]} navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
                     Deploy a Gateway to connect Resources.
                   </.link>

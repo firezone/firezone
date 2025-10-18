@@ -8,7 +8,6 @@ defmodule Web.Actors.Users.NewIdentity do
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
              preload: [:memberships, :identities],
              filter: [
-               deleted?: false,
                types: ["account_user", "account_admin_user"]
              ]
            ) do

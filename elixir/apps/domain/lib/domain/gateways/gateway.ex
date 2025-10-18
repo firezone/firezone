@@ -20,7 +20,6 @@ defmodule Domain.Gateways.Gateway do
           online?: boolean(),
           account_id: Ecto.UUID.t(),
           group_id: Ecto.UUID.t(),
-          deleted_at: DateTime.t(),
           inserted_at: DateTime.t(),
           updated_at: DateTime.t()
         }
@@ -50,8 +49,6 @@ defmodule Domain.Gateways.Gateway do
     belongs_to :account, Domain.Accounts.Account
     belongs_to :group, Domain.Gateways.Group
 
-    # TODO: HARD-DELETE - Remove field after soft deletion is removed
-    field :deleted_at, :utc_datetime_usec
     timestamps()
   end
 end

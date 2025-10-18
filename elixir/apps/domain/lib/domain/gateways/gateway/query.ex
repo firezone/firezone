@@ -5,12 +5,6 @@ defmodule Domain.Gateways.Gateway.Query do
     from(gateways in Domain.Gateways.Gateway, as: :gateways)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def not_deleted do
-    all()
-    |> where([gateways: gateways], is_nil(gateways.deleted_at))
-  end
-
   def by_id(queryable, id) do
     where(queryable, [gateways: gateways], gateways.id == ^id)
   end
@@ -35,10 +29,6 @@ defmodule Domain.Gateways.Gateway.Query do
     queryable
     |> with_joined_connections()
     |> where([connections: connections], connections.resource_id == ^resource_id)
-  end
-
-  def returning_not_deleted(queryable) do
-    select(queryable, [gateways: gateways], gateways)
   end
 
   def with_joined_connections(queryable) do
@@ -92,11 +82,6 @@ defmodule Domain.Gateways.Gateway.Query do
         name: :ids,
         type: {:list, {:string, :uuid}},
         fun: &filter_by_ids/2
-      },
-      %Domain.Repo.Filter{
-        name: :deleted?,
-        type: :boolean,
-        fun: &filter_deleted/1
       }
     ]
 
@@ -106,10 +91,5 @@ defmodule Domain.Gateways.Gateway.Query do
 
   def filter_by_ids(queryable, ids) do
     {queryable, dynamic([gateways: gateways], gateways.id in ^ids)}
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def filter_deleted(queryable) do
-    {queryable, dynamic([gateways: gateways], not is_nil(gateways.deleted_at))}
   end
 end

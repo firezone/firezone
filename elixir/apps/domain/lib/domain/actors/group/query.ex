@@ -6,12 +6,6 @@ defmodule Domain.Actors.Group.Query do
     from(groups in Domain.Actors.Group, as: :groups)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def not_deleted do
-    all()
-    |> where([groups: groups], is_nil(groups.deleted_at))
-  end
-
   def not_editable(queryable) do
     where(queryable, [groups: groups], not is_nil(groups.provider_id) or groups.type != :static)
   end
@@ -69,17 +63,6 @@ defmodule Domain.Actors.Group.Query do
     where(queryable, [groups: groups], groups.last_synced_at != ^synced_at)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def delete(queryable) do
-    queryable
-    |> Ecto.Query.select([groups: groups], groups)
-    |> Ecto.Query.update([groups: groups],
-      set: [
-        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", groups.deleted_at)
-      ]
-    )
-  end
-
   def group_by_provider_id(queryable) do
     queryable
     |> group_by([groups: groups], groups.provider_id)
@@ -112,13 +95,6 @@ defmodule Domain.Actors.Group.Query do
     subquery =
       Domain.Actors.Membership.Query.all()
       |> where([memberships: memberships], memberships.group_id == parent_as(:groups).id)
-      # we need second join to exclude soft deleted actors before applying a limit
-      |> join(
-        :inner,
-        [memberships: memberships],
-        actors in ^Domain.Actors.Actor.Query.not_deleted(),
-        on: actors.id == memberships.actor_id
-      )
       |> select([memberships: memberships], memberships.actor_id)
       |> limit(^limit)
 
@@ -142,7 +118,7 @@ defmodule Domain.Actors.Group.Query do
       queryable,
       :left,
       [memberships: memberships],
-      actors in ^Domain.Actors.Actor.Query.not_deleted(),
+      actors in ^Domain.Actors.Actor.Query.all(),
       on: actors.id == memberships.actor_id,
       as: :actors
     )
@@ -180,43 +156,21 @@ defmodule Domain.Actors.Group.Query do
     {:ok, %{upserted_groups: count}}
   end
 
-  # TODO: Update after `deleted_at` is removed from DB
   # TODO: IDP Sync
   # See: https://github.com/firezone/firezone/issues/8750
-  # We use CTE here which should be very performant even for very large inserts and deletions
+  # We use CTE here which should be very performant even for very large inserts
   def update_everyone_group_memberships(account_id) do
-    # Delete memberships for actors and groups that are soft-deleted
-    delete_memberships =
-      from(
-        agm in Domain.Actors.Membership,
-        where:
-          agm.account_id == ^account_id and
-            (exists(
-               from(a in Domain.Actors.Actor,
-                 where: a.id == parent_as(:agm).actor_id and not is_nil(a.deleted_at)
-               )
-             ) or
-               exists(
-                 from(g in Domain.Actors.Group,
-                   where: g.id == parent_as(:agm).group_id and not is_nil(g.deleted_at)
-                 )
-               ))
-      )
-      |> from(as: :agm)
-
-    # Insert memberships for the cross join of non-deleted user actors and managed groups
+    # Insert memberships for the cross join of user actors and managed groups
     insert_with_cte_fn = fn repo, _changes ->
       current_memberships_cte =
         from(
           a in Domain.Actors.Actor,
           cross_join: g in Domain.Actors.Group,
           where:
-            is_nil(a.deleted_at) and
-              a.account_id == ^account_id and
+            a.account_id == ^account_id and
               a.type in [:account_user, :account_admin_user] and
               g.type == :managed and
-              g.account_id == ^account_id and
-              is_nil(g.deleted_at),
+              g.account_id == ^account_id,
           select: %{
             actor_id: a.id,
             group_id: g.id
@@ -244,7 +198,6 @@ defmodule Domain.Actors.Group.Query do
     end
 
     Ecto.Multi.new()
-    |> Ecto.Multi.delete_all(:delete_memberships, delete_memberships)
     |> Ecto.Multi.run(:insert_memberships, insert_with_cte_fn)
   end
 
@@ -274,11 +227,6 @@ defmodule Domain.Actors.Group.Query do
         fun: &filter_by_provider_id/2
       },
       %Domain.Repo.Filter{
-        name: :deleted?,
-        type: :boolean,
-        fun: &filter_deleted/1
-      },
-      %Domain.Repo.Filter{
         name: :editable?,
         type: :boolean,
         fun: &filter_editable/1
@@ -293,19 +241,11 @@ defmodule Domain.Actors.Group.Query do
     {queryable, dynamic([groups: groups], groups.provider_id == ^provider_id)}
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def filter_deleted(queryable) do
-    {queryable, dynamic([groups: groups], not is_nil(groups.deleted_at))}
-  end
-
-  # TODO: Update after `deleted_at` is removed from DB
   def filter_editable(queryable) do
     {queryable,
      dynamic(
        [groups: groups],
-       is_nil(groups.provider_id) and
-         is_nil(groups.deleted_at) and
-         groups.type == :static
+       is_nil(groups.provider_id) and groups.type == :static
      )}
   end
 end

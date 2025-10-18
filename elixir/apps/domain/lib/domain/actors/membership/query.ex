@@ -84,14 +84,14 @@ defmodule Domain.Actors.Membership.Query do
   end
 
   def with_joined_actors(queryable \\ all()) do
-    join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.not_deleted(),
+    join(queryable, :inner, [memberships: memberships], actors in ^Actor.Query.all(),
       on: actors.id == memberships.actor_id,
       as: :actors
     )
   end
 
   def with_joined_groups(queryable \\ all()) do
-    join(queryable, :inner, [memberships: memberships], groups in ^Group.Query.not_deleted(),
+    join(queryable, :inner, [memberships: memberships], groups in ^Group.Query.all(),
       on: groups.id == memberships.group_id,
       as: :groups
     )
@@ -139,13 +139,11 @@ defmodule Domain.Actors.Membership.Query do
         ai.provider_identifier = mi.user_provider_identifier
         AND ai.account_id = $#{account_id}
         AND ai.provider_id = $#{provider_id}
-        AND ai.deleted_at IS NULL
       )
       JOIN actor_groups ag ON (
         ag.provider_identifier = mi.group_provider_identifier
         AND ag.account_id = $#{account_id}
         AND ag.provider_id = $#{provider_id}
-        AND ag.deleted_at IS NULL
       )
     )
     INSERT INTO actor_group_memberships (id, actor_id, group_id, account_id, last_synced_at)

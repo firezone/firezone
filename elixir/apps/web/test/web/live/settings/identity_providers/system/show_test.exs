@@ -33,23 +33,6 @@ defmodule Web.Live.Settings.IdentityProviders.System.ShowTest do
                }}}
   end
 
-  test "renders deleted provider without action buttons", %{
-    account: account,
-    identity: identity,
-    conn: conn
-  } do
-    provider = Fixtures.Auth.create_userpass_provider(account: account)
-    provider = Fixtures.Auth.delete_provider(provider)
-
-    {:ok, _lv, html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/identity_providers/system/#{provider}")
-
-    assert html =~ "(deleted)"
-    assert active_buttons(html) == []
-  end
-
   test "renders breadcrumbs item", %{
     account: account,
     provider: provider,

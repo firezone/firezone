@@ -5,12 +5,10 @@ defmodule Web.Policies.Show do
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
-           Policies.fetch_policy_by_id_or_persistent_id(id, socket.assigns.subject,
+           Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [
                actor_group: [:provider],
-               resource: [],
-               replaced_by_policy: [:actor_group, :resource],
-               replaces_policy: [:actor_group, :resource]
+               resource: []
              ]
            ) do
       providers = Auth.all_active_providers_for_account!(socket.assigns.account)
@@ -73,23 +71,13 @@ defmodule Web.Policies.Show do
       <:title>
         <.policy_name policy={@policy} />
         <span :if={not is_nil(@policy.disabled_at)} class="text-primary-600">(disabled)</span>
-        <span
-          :if={not is_nil(@policy.deleted_at) and is_nil(@policy.replaced_by_policy_id)}
-          }
-          class="text-red-600"
-        >
-          (deleted)
-        </span>
-        <span :if={not is_nil(@policy.replaced_by_policy_id)} class={["text-red-500"]}>
-          (replaced)
-        </span>
       </:title>
-      <:action :if={is_nil(@policy.deleted_at)}>
+      <:action>
         <.edit_button navigate={~p"/#{@account}/policies/#{@policy}/edit"}>
           Edit Policy
         </.edit_button>
       </:action>
-      <:action :if={is_nil(@policy.deleted_at)}>
+      <:action>
         <.button_with_confirmation
           :if={is_nil(@policy.disabled_at)}
           id="disable"
@@ -144,53 +132,12 @@ defmodule Web.Policies.Show do
               {@policy.id}
             </:value>
           </.vertical_table_row>
-          <.vertical_table_row :if={not is_nil(@policy.deleted_at)}>
-            <:label>
-              Persistent ID
-            </:label>
-            <:value>
-              {@policy.persistent_id}
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={
-            not is_nil(@policy.deleted_at) and not is_nil(@policy.replaced_by_policy)
-          }>
-            <:label>
-              Replaced by Policy
-            </:label>
-            <:value>
-              <.link
-                navigate={~p"/#{@account}/policies/#{@policy.replaced_by_policy}"}
-                class={["text-accent-600"] ++ link_style()}
-              >
-                <.policy_name policy={@policy.replaced_by_policy} />
-              </.link>
-            </:value>
-          </.vertical_table_row>
-          <.vertical_table_row :if={
-            not is_nil(@policy.deleted_at) and not is_nil(@policy.replaces_policy)
-          }>
-            <:label>
-              Replaced Policy
-            </:label>
-            <:value>
-              <.link
-                navigate={~p"/#{@account}/policies/#{@policy.replaces_policy}"}
-                class={["text-accent-600"] ++ link_style()}
-              >
-                <.policy_name policy={@policy.replaces_policy} />
-              </.link>
-            </:value>
-          </.vertical_table_row>
           <.vertical_table_row>
             <:label>
               Group
             </:label>
             <:value>
               <.group account={@account} group={@policy.actor_group} />
-              <span :if={not is_nil(@policy.actor_group.deleted_at)} class="text-red-600">
-                (deleted)
-              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row>
@@ -201,9 +148,6 @@ defmodule Web.Policies.Show do
               <.link navigate={~p"/#{@account}/resources/#{@policy.resource_id}"} class={link_style()}>
                 {@policy.resource.name}
               </.link>
-              <span :if={not is_nil(@policy.resource.deleted_at)} class="text-red-600">
-                (deleted)
-              </span>
             </:value>
           </.vertical_table_row>
           <.vertical_table_row :if={@policy.conditions != []}>
@@ -276,7 +220,7 @@ defmodule Web.Policies.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@policy.deleted_at)}>
+    <.danger_zone>
       <:action>
         <.button_with_confirmation
           id="delete_policy"
@@ -309,14 +253,12 @@ defmodule Web.Policies.Show do
       )
       when policy_id == id do
     {:ok, policy} =
-      Policies.fetch_policy_by_id_or_persistent_id(
+      Policies.fetch_policy_by_id(
         socket.assigns.policy.id,
         socket.assigns.subject,
         preload: [
           actor_group: [:provider],
-          resource: [],
-          replaced_by_policy: [:actor_group, :resource],
-          replaces_policy: [:actor_group, :resource]
+          resource: []
         ]
       )
 
@@ -336,9 +278,7 @@ defmodule Web.Policies.Show do
     policy = %{
       policy
       | actor_group: socket.assigns.policy.actor_group,
-        resource: socket.assigns.policy.resource,
-        replaced_by_policy: socket.assigns.policy.replaced_by_policy,
-        replaces_policy: socket.assigns.policy.replaces_policy
+        resource: socket.assigns.policy.resource
     }
 
     {:noreply, assign(socket, policy: policy)}
@@ -350,9 +290,7 @@ defmodule Web.Policies.Show do
     policy = %{
       policy
       | actor_group: socket.assigns.policy.actor_group,
-        resource: socket.assigns.policy.resource,
-        replaced_by_policy: socket.assigns.policy.replaced_by_policy,
-        replaces_policy: socket.assigns.policy.replaces_policy
+        resource: socket.assigns.policy.resource
     }
 
     {:noreply, assign(socket, policy: policy)}

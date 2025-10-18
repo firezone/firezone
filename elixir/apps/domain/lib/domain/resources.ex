@@ -24,6 +24,16 @@ defmodule Domain.Resources do
     end
   end
 
+  def fetch_resource_by_id!(id) do
+    if Repo.valid_uuid?(id) do
+      Resource.Query.all()
+      |> Resource.Query.by_id(id)
+      |> Repo.one!()
+    else
+      {:error, :not_found}
+    end
+  end
+
   def fetch_internet_resource(%Accounts.Account{} = account) do
     Resource.Query.all()
     |> Resource.Query.by_account_id(account.id)
@@ -41,71 +51,11 @@ defmodule Domain.Resources do
     end
   end
 
-  def fetch_resource_by_id_or_persistent_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_resources_permission(),
-         Authorizer.view_available_resources_permission()
-       ]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Resource.Query.all()
-      |> Resource.Query.by_id_or_persistent_id(id)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch(Resource.Query, opts)
-    else
-      false -> {:error, :not_found}
-      other -> other
-    end
-  end
-
-  def fetch_active_resource_by_id_or_persistent_id(id, %Auth.Subject{} = subject, opts \\ []) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_resources_permission(),
-         Authorizer.view_available_resources_permission()
-       ]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
-         true <- Repo.valid_uuid?(id) do
-      Resource.Query.not_deleted()
-      |> Resource.Query.by_id_or_persistent_id(id)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.fetch(Resource.Query, opts)
-    else
-      false -> {:error, :not_found}
-      other -> other
-    end
-  end
-
-  def fetch_resource_by_id!(id) do
-    if Repo.valid_uuid?(id) do
-      Resource.Query.not_deleted()
-      |> Resource.Query.by_id(id)
-      |> Repo.one!()
-    else
-      {:error, :not_found}
-    end
-  end
-
   def fetch_all_resources_by_ids(ids) do
-    Resource.Query.not_deleted()
+    Resource.Query.all()
     |> Resource.Query.by_id({:in, ids})
     |> Repo.all()
     |> Repo.preload(:gateway_groups)
-  end
-
-  def fetch_resource_by_id_or_persistent_id!(id) do
-    if Repo.valid_uuid?(id) do
-      Resource.Query.not_deleted()
-      |> Resource.Query.by_id_or_persistent_id(id)
-      |> Repo.one!()
-    else
-      {:error, :not_found}
-    end
   end
 
   def all_authorized_resources(%Auth.Subject{} = subject, opts \\ []) do
@@ -114,7 +64,7 @@ defmodule Domain.Resources do
       {preload, opts} = Keyword.pop(opts, :preload, [])
 
       resources =
-        Resource.Query.not_deleted()
+        Resource.Query.all()
         |> Resource.Query.by_account_id(subject.account.id)
         |> Resource.Query.by_authorized_actor_id(subject.actor.id)
         |> Resource.Query.with_at_least_one_gateway_group()
@@ -126,30 +76,30 @@ defmodule Domain.Resources do
   end
 
   def all_resources!(%Auth.Subject{} = subject) do
-    Resource.Query.not_deleted()
+    Resource.Query.all()
     |> Resource.Query.by_account_id(subject.account.id)
     |> Resource.Query.filter_features(subject.account)
     |> Authorizer.for_subject(Resource, subject)
     |> Repo.all()
   end
 
-  def list_resources(%Auth.Subject{} = subject, opts \\ []) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.not_deleted()
-      |> Resource.Query.filter_features(subject.account)
-      |> Authorizer.for_subject(Resource, subject)
-      |> Repo.list(Resource.Query, opts)
-    end
-  end
-
   def all_resources!(%Auth.Subject{} = subject, opts \\ []) do
     {preload, _opts} = Keyword.pop(opts, :preload, [])
 
-    Resource.Query.not_deleted()
+    Resource.Query.all()
     |> Resource.Query.filter_features(subject.account)
     |> Authorizer.for_subject(Resource, subject)
     |> Repo.all()
     |> Repo.preload(preload)
+  end
+
+  def list_resources(%Auth.Subject{} = subject, opts \\ []) do
+    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
+      Resource.Query.all()
+      |> Resource.Query.filter_features(subject.account)
+      |> Authorizer.for_subject(Resource, subject)
+      |> Repo.list(Resource.Query, opts)
+    end
   end
 
   def count_resources_for_gateway(%Gateways.Gateway{} = gateway, %Auth.Subject{} = subject) do
@@ -162,7 +112,7 @@ defmodule Domain.Resources do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       count =
-        Resource.Query.not_deleted()
+        Resource.Query.all()
         |> Authorizer.for_subject(Resource, subject)
         |> Resource.Query.by_gateway_group_id(gateway.group_id)
         |> Repo.aggregate(:count)
@@ -181,7 +131,7 @@ defmodule Domain.Resources do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
       resources =
-        Resource.Query.not_deleted()
+        Resource.Query.all()
         |> Resource.Query.by_account_id(subject.account.id)
         |> Resource.Query.by_gateway_group_id(gateway.group_id)
         |> Repo.all()
@@ -195,7 +145,7 @@ defmodule Domain.Resources do
       ids = resources |> Enum.map(& &1.id) |> Enum.uniq()
 
       {:ok, peek} =
-        Resource.Query.not_deleted()
+        Resource.Query.all()
         |> Resource.Query.by_id({:in, ids})
         |> Authorizer.for_subject(Resource, subject)
         |> Resource.Query.preload_few_actor_groups_for_each_resource(limit)
@@ -249,7 +199,7 @@ defmodule Domain.Resources do
 
   def update_resource(%Resource{} = resource, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      Resource.Query.not_deleted()
+      Resource.Query.all()
       |> Resource.Query.by_id(resource.id)
       |> Authorizer.for_subject(Resource, subject)
       |> Repo.fetch_and_update(Resource.Query,
@@ -269,30 +219,6 @@ defmodule Domain.Resources do
   def delete_resource(%Resource{} = resource, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(resource, subject) do
       Repo.delete(resource)
-    end
-  end
-
-  # TODO: HARD-DELETE (shouldn't be needed)
-  def delete_connections_for(%Gateways.Group{} = gateway_group, %Auth.Subject{} = subject) do
-    Connection.Query.by_gateway_group_id(gateway_group.id)
-    |> delete_connections(subject)
-  end
-
-  # TODO: HARD-DELETE (shouldn't be needed)
-  def delete_connections_for(%Resource{} = resource, %Auth.Subject{} = subject) do
-    Connection.Query.by_resource_id(resource.id)
-    |> delete_connections(subject)
-  end
-
-  # TODO: HARD-DELETE (shouldn't be needed)
-  defp delete_connections(queryable, subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_resources_permission()) do
-      {count, nil} =
-        queryable
-        |> Authorizer.for_subject(Connection, subject)
-        |> Repo.delete_all()
-
-      {:ok, count}
     end
   end
 

@@ -21,9 +21,7 @@ defmodule Web.Settings.IdentityProviders.System.Show do
         Identity Providers Settings
       </.breadcrumb>
 
-      <.breadcrumb path={
-        ~p"/#{@account}/settings/identity_providers/google_workspace//DF43E951-7DFB-4921-8F7F-BF0F8D31FA89"
-      }>
+      <.breadcrumb path={~p"/#{@account}/settings/identity_providers/system/#{@provider}"}>
         {@provider.name}
       </.breadcrumb>
     </.breadcrumbs>
@@ -32,9 +30,8 @@ defmodule Web.Settings.IdentityProviders.System.Show do
       <:title>
         Identity Provider: <code>{@provider.name}</code>
         <span :if={not is_nil(@provider.disabled_at)} class="text-primary-600">(disabled)</span>
-        <span :if={not is_nil(@provider.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
-      <:action :if={is_nil(@provider.deleted_at)}>
+      <:action>
         <.button_with_confirmation
           :if={is_nil(@provider.disabled_at)}
           id="disable"

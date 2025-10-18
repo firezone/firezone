@@ -5,12 +5,6 @@ defmodule Domain.Clients.Client.Query do
     from(clients in Domain.Clients.Client, as: :clients)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def not_deleted do
-    all()
-    |> where([clients: clients], is_nil(clients.deleted_at))
-  end
-
   def by_id(queryable, id) do
     where(queryable, [clients: clients], clients.id == ^id)
   end
@@ -45,7 +39,7 @@ defmodule Domain.Clients.Client.Query do
     |> distinct(true)
   end
 
-  def count_clients_by_actor_id(queryable \\ not_deleted()) do
+  def count_clients_by_actor_id(queryable \\ all()) do
     queryable
     |> group_by([clients: clients], clients.actor_id)
     |> select([clients: clients], %{
@@ -67,28 +61,13 @@ defmodule Domain.Clients.Client.Query do
     )
   end
 
-  def returning_not_deleted(queryable) do
-    select(queryable, [clients: clients], clients)
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
-  def soft_delete(queryable) do
-    queryable
-    |> Ecto.Query.select([clients: clients], clients)
-    |> Ecto.Query.update([clients: clients],
-      set: [
-        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", clients.deleted_at)
-      ]
-    )
-  end
-
   def with_joined_actor(queryable) do
     with_named_binding(queryable, :actor, fn queryable, binding ->
       join(
         queryable,
         :inner,
         [clients: clients],
-        actor in ^Domain.Actors.Actor.Query.not_deleted(),
+        actor in ^Domain.Actors.Actor.Query.all(),
         on: clients.actor_id == actor.id,
         as: ^binding
       )

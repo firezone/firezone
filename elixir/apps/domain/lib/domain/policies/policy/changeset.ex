@@ -15,7 +15,6 @@ defmodule Domain.Policies.Policy.Changeset do
     |> changeset()
     |> put_change(:account_id, subject.account.id)
     |> put_subject_trail(:created_by, subject)
-    |> put_change(:persistent_id, Ecto.UUID.generate())
   end
 
   def update(%Policy{} = policy, attrs) do
