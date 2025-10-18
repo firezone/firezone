@@ -1,17 +1,6 @@
 defmodule Web.Settings.IdentityProviders.Components do
   use Web, :component_library
 
-  def status(%{provider: %{deleted_at: deleted_at}} = assigns) when not is_nil(deleted_at) do
-    ~H"""
-    <div class="flex items-center">
-      <.ping_icon color="info" />
-      <span class="ml-3">
-        Deleted
-      </span>
-    </div>
-    """
-  end
-
   def status(
         %{
           provider: %{

@@ -7,7 +7,6 @@ defmodule Web.Actors.ServiceAccounts.NewIdentity do
            Actors.fetch_actor_by_id(id, socket.assigns.subject,
              preload: [:memberships],
              filter: [
-               deleted?: false,
                types: ["service_account"]
              ]
            ) do

@@ -409,7 +409,7 @@ defmodule Domain.GatewaysTest do
 
       assert {:ok, _group} = delete_group(group, subject)
 
-      assert Resources.Resource.Query.not_deleted()
+      assert Resources.Resource.Query.all()
              |> Resources.Resource.Query.by_gateway_group_id(group.id)
              |> Repo.aggregate(:count) == 0
     end

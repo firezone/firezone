@@ -25,8 +25,7 @@ defmodule Domain.Changes.Hooks.GatewayGroupsTest do
       old_data = %{
         "id" => "00000000-0000-0000-0000-000000000001",
         "account_id" => account_id,
-        "name" => "Old Gateway Group",
-        "deleted_at" => nil
+        "name" => "Old Gateway Group"
       }
 
       data = Map.put(old_data, "name", "Updated Gateway Group")

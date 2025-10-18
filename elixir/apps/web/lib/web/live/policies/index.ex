@@ -92,14 +92,10 @@ defmodule Web.Policies.Index do
             </.link>
           </:col>
           <:col :let={policy} label="status">
-            <%= if is_nil(policy.deleted_at) do %>
-              <%= if is_nil(policy.disabled_at) do %>
-                Active
-              <% else %>
-                <span class="text-red-800">Disabled</span>
-              <% end %>
+            <%= if is_nil(policy.disabled_at) do %>
+              Active
             <% else %>
-              Deleted
+              <span class="text-red-800">Disabled</span>
             <% end %>
           </:col>
           <:empty>

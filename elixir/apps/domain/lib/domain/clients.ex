@@ -18,13 +18,13 @@ defmodule Domain.Clients do
   end
 
   def count_by_account_id(account_id) do
-    Client.Query.not_deleted()
+    Client.Query.all()
     |> Client.Query.by_account_id(account_id)
     |> Repo.aggregate(:count)
   end
 
   def count_1m_active_users_for_account(%Accounts.Account{} = account) do
-    Client.Query.not_deleted()
+    Client.Query.all()
     |> Client.Query.by_account_id(account.id)
     |> Client.Query.by_last_seen_within(1, "month")
     |> Client.Query.select_distinct_actor_id()
@@ -34,13 +34,13 @@ defmodule Domain.Clients do
   end
 
   def count_by_actor_id(actor_id) do
-    Client.Query.not_deleted()
+    Client.Query.all()
     |> Client.Query.by_actor_id(actor_id)
     |> Repo.aggregate(:count)
   end
 
   def count_incompatible_for(account, gateway_version) do
-    Client.Query.not_deleted()
+    Client.Query.all()
     |> Client.Query.by_account_id(account.id)
     |> Client.Query.by_last_seen_within(1, "week")
     |> Client.Query.by_incompatible_for(gateway_version)
@@ -49,7 +49,7 @@ defmodule Domain.Clients do
   end
 
   def fetch_client_by_id(id, preload: :identity) do
-    Client.Query.not_deleted()
+    Client.Query.all()
     |> Client.Query.by_id(id)
     |> Repo.fetch(Client.Query, preload: :identity)
   end
@@ -75,7 +75,7 @@ defmodule Domain.Clients do
   end
 
   def fetch_client_by_id!(id, opts \\ []) do
-    Client.Query.not_deleted()
+    Client.Query.all()
     |> Client.Query.by_id(id)
     |> Repo.fetch!(Client.Query, opts)
   end
@@ -89,7 +89,7 @@ defmodule Domain.Clients do
        ]}
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Client.Query.not_deleted()
+      Client.Query.all()
       |> Authorizer.for_subject(subject)
       |> Repo.list(Client.Query, opts)
     end
@@ -109,7 +109,7 @@ defmodule Domain.Clients do
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permissions),
          true <- Repo.valid_uuid?(actor_id) do
-      Client.Query.not_deleted()
+      Client.Query.all()
       |> Client.Query.by_actor_id(actor_id)
       |> Authorizer.for_subject(subject)
       |> Repo.list(Client.Query, opts)
@@ -196,7 +196,7 @@ defmodule Domain.Clients do
 
   def update_client(%Client{} = client, attrs, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(client, subject) do
-      Client.Query.not_deleted()
+      Client.Query.all()
       |> Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Client.Query,
@@ -209,7 +209,7 @@ defmodule Domain.Clients do
   def verify_client(%Client{} = client, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(client, subject),
          :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
-      Client.Query.not_deleted()
+      Client.Query.all()
       |> Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Client.Query,
@@ -222,7 +222,7 @@ defmodule Domain.Clients do
   def remove_client_verification(%Client{} = client, %Auth.Subject{} = subject) do
     with :ok <- Authorizer.ensure_has_access_to(client, subject),
          :ok <- Auth.ensure_has_permissions(subject, Authorizer.verify_clients_permission()) do
-      Client.Query.not_deleted()
+      Client.Query.all()
       |> Client.Query.by_id(client.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Client.Query,
@@ -240,7 +240,7 @@ defmodule Domain.Clients do
 
   def delete_clients_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
     queryable =
-      Client.Query.not_deleted()
+      Client.Query.all()
       |> Client.Query.by_actor_id(actor.id)
       |> Client.Query.by_account_id(actor.account_id)
 
@@ -252,7 +252,6 @@ defmodule Domain.Clients do
     end
   end
 
-  # TODO: HARD-DELETE
   # We don't necessarily want to delete associated tokens when deleting a client because
   # that token could be a multi-owner token in the case of a headless client.
   # Instead we need to introduce the concept of ephemeral clients/gateways and permanent ones.

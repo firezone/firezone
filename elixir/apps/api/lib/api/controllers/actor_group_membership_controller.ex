@@ -65,7 +65,7 @@ defmodule API.ActorGroupMembershipController do
       ) do
     subject = conn.assigns.subject
     preload = [:memberships]
-    filter = [deleted?: false, editable?: true]
+    filter = [editable?: true]
 
     with {:ok, group} <-
            Actors.fetch_group_by_id(actor_group_id, subject, preload: preload, filter: filter),
@@ -105,7 +105,7 @@ defmodule API.ActorGroupMembershipController do
     remove = Map.get(params, "remove", [])
     subject = conn.assigns.subject
     preload = [:memberships]
-    filter = [deleted?: false, editable?: true]
+    filter = [editable?: true]
 
     with {:ok, group} <-
            Actors.fetch_group_by_id(actor_group_id, subject, preload: preload, filter: filter),

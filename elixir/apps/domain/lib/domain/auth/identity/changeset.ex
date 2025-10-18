@@ -60,7 +60,6 @@ defmodule Domain.Auth.Identity.Changeset do
         Actors.Actor.Changeset.sync(actor, attrs)
       end
     )
-    |> put_change(:deleted_at, nil)
     |> changeset()
   end
 
@@ -80,15 +79,6 @@ defmodule Domain.Auth.Identity.Changeset do
     |> change()
     |> put_change(:provider_state, state)
     |> put_change(:provider_virtual_state, virtual_state)
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from DB
-  def delete_identity(%Identity{} = identity) do
-    identity
-    |> change()
-    |> put_change(:provider_state, %{})
-    |> put_change(:provider_virtual_state, %{})
-    |> put_default_value(:deleted_at, DateTime.utc_now())
   end
 
   defp maybe_put_email_from_identifier(changeset) do

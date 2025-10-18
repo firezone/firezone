@@ -39,11 +39,4 @@ defmodule Domain.Gateways.Group.Changeset do
     |> validate_length(:name, min: 1, max: 64)
     |> unique_constraint(:name, name: :gateway_groups_account_id_name_managed_by_index)
   end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
-  def delete(%Gateways.Group{} = group) do
-    group
-    |> change()
-    |> put_default_value(:deleted_at, DateTime.utc_now())
-  end
 end

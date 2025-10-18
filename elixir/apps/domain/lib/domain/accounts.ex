@@ -11,7 +11,7 @@ defmodule Domain.Accounts do
 
   def all_accounts_by_ids!(ids) do
     if Enum.all?(ids, &Repo.valid_uuid?/1) do
-      Account.Query.not_deleted()
+      Account.Query.all()
       |> Account.Query.by_id({:in, ids})
       |> Repo.all()
     else
@@ -43,7 +43,7 @@ defmodule Domain.Accounts do
   def fetch_account_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()),
          true <- Repo.valid_uuid?(id) do
-      Account.Query.not_deleted()
+      Account.Query.all()
       |> Account.Query.by_id(id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch(Account.Query, opts)
@@ -58,13 +58,13 @@ defmodule Domain.Accounts do
   def fetch_account_by_id_or_slug("", _opts), do: {:error, :not_found}
 
   def fetch_account_by_id_or_slug(id_or_slug, opts) do
-    Account.Query.not_deleted()
+    Account.Query.all()
     |> Account.Query.by_id_or_slug(id_or_slug)
     |> Repo.fetch(Account.Query, opts)
   end
 
   def fetch_account_by_id!(id) do
-    Account.Query.not_deleted()
+    Account.Query.all()
     |> Account.Query.by_id(id)
     |> Repo.one!()
   end
@@ -80,7 +80,7 @@ defmodule Domain.Accounts do
 
   def update_account(%Account{} = account, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_account_permission()) do
-      Account.Query.not_deleted()
+      Account.Query.all()
       |> Account.Query.by_id(account.id)
       |> Authorizer.for_subject(subject)
       |> Repo.fetch_and_update(Account.Query,
@@ -118,8 +118,7 @@ defmodule Domain.Accounts do
     Map.fetch!(account.features || %Features{}, feature) || false
   end
 
-  # TODO: HARD-DELETE - Update after `deleted_at` is removed from DB
-  def account_active?(%{deleted_at: nil, disabled_at: nil}), do: true
+  def account_active?(%{disabled_at: nil}), do: true
   def account_active?(_account), do: false
 
   def ensure_has_access_to(%Auth.Subject{} = subject, %Account{} = account) do
@@ -134,7 +133,7 @@ defmodule Domain.Accounts do
     slug_candidate = Domain.NameGenerator.generate_slug()
 
     queryable =
-      Account.Query.not_deleted()
+      Account.Query.all()
       |> Account.Query.by_slug(slug_candidate)
 
     if Repo.exists?(queryable) do

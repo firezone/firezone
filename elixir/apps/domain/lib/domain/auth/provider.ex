@@ -14,9 +14,8 @@ defmodule Domain.Auth.Provider do
 
     belongs_to :account, Domain.Accounts.Account
 
-    # TODO: HARD-DELETE - Remove `where` after `deleted_at` is removed from DB
-    has_many :actor_groups, Domain.Actors.Group, where: [deleted_at: nil]
-    has_many :identities, Domain.Auth.Identity, where: [deleted_at: nil]
+    has_many :actor_groups, Domain.Actors.Group
+    has_many :identities, Domain.Auth.Identity
 
     field :created_by, Ecto.Enum, values: ~w[system identity actor]a
     field :created_by_subject, :map
@@ -29,8 +28,6 @@ defmodule Domain.Auth.Provider do
 
     field :disabled_at, :utc_datetime_usec
 
-    # TODO: HARD-DELETE - Remove field after soft deletion is removed
-    field :deleted_at, :utc_datetime_usec
     field :assigned_default_at, :utc_datetime_usec
     timestamps()
   end
