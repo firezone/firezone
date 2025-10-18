@@ -20,7 +20,8 @@ export default function Android() {
   return (
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.5" date={new Date("2025-10-18")}>
         <ChangeItem pull="10509">
           Fixes an issue where the Internet Resource could be briefly active on
           startup, despite it being disabled.
@@ -28,7 +29,7 @@ export default function Android() {
         <ChangeItem pull="10533">
           Improves reliability by caching DNS responses as per their TTL.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.4" date={new Date("2025-09-18")}>
         <ChangeItem pull="10371">
           Fixes a bug that could prevent sign-ins from completing successfully
