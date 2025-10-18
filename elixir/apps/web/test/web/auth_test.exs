@@ -416,6 +416,64 @@ defmodule Web.AuthTest do
 
       assert redirected_to == ~p"/#{account}/sites"
     end
+
+    test "renews session on sign in", %{
+      conn: conn,
+      context: context,
+      account: account,
+      provider: provider,
+      admin_identity: identity,
+      admin_encoded_fragment: encoded_fragment
+    } do
+      other_account_id = Ecto.UUID.generate()
+
+      # Simulate an attacker setting a session ID with malicious data before authentication
+      conn =
+        conn
+        |> put_session(:attacker_data, "malicious_value")
+        |> put_session(:sessions, [
+          {:browser, account.id, "attacker_old_token"},
+          {:browser, other_account_id, "other_account_session"}
+        ])
+        |> put_session(:preferred_locale, "en_US")
+
+      # Get the session data before sign in
+      old_attacker_data = get_session(conn, :attacker_data)
+      assert old_attacker_data == "malicious_value"
+
+      old_sessions = get_session(conn, :sessions)
+      assert length(old_sessions) == 2
+
+      # Sign in the user
+      conn = signed_in(conn, provider, identity, context, encoded_fragment, %{})
+
+      # Verify the session was renewed - attacker data should be gone
+      refute get_session(conn, :attacker_data)
+
+      # Verify that legitimate session data is preserved correctly
+      assert get_session(conn, :preferred_locale) == "en_US"
+
+      # Verify the authentication token was set in the new session
+      sessions = get_session(conn, :sessions)
+
+      # Should have the other account's session preserved + the new session
+      assert length(sessions) == 2
+
+      # The old session for THIS account should be removed (prevents fixation)
+      refute Enum.any?(sessions, fn {_, sess_account_id, fragment} ->
+               sess_account_id == account.id and fragment == "attacker_old_token"
+             end)
+
+      # Other account sessions should be preserved
+      assert Enum.any?(sessions, fn {_, sess_account_id, fragment} ->
+               sess_account_id == other_account_id and fragment == "other_account_session"
+             end)
+
+      # New session should be added
+      assert Enum.any?(sessions, fn {_, sess_account_id, fragment} ->
+               sess_account_id == account.id and fragment == encoded_fragment
+             end)
+    end
   end
 
   describe "sign_out/1" do

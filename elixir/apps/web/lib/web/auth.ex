@@ -102,7 +102,11 @@ defmodule Web.Auth do
         redirect_params
       ) do
     redirect_params = take_sign_in_params(redirect_params)
-    conn = prepend_recent_account_ids(conn, provider.account_id)
+
+    conn =
+      conn
+      |> renew_session()
+      |> prepend_recent_account_ids(provider.account_id)
 
     if is_nil(redirect_params["as"]) and identity.actor.type == :account_user do
       conn
