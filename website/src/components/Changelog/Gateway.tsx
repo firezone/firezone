@@ -22,7 +22,11 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10620">
+          Adds a `--log-format` CLI option to output logs as JSON.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.4.17" date={new Date("2025-10-16")}>
         <ChangeItem pull="10367">
           Fixes a rare CPU-spike issue in case a Client connected with many
