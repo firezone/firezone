@@ -274,6 +274,8 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 #[uniffi::export]
 impl Session {
     pub fn disconnect(&self) {
+        self.inner.stop();
+
         let Some(runtime) = self.runtime.as_ref() else {
             tracing::error!(
                 "No tokio runtime set! This should be impossible because we only clear it on `Drop`"
@@ -284,7 +286,6 @@ impl Session {
         runtime.block_on(async {
             self.telemetry.lock().await.stop().await;
         });
-        self.inner.stop();
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
