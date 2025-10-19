@@ -289,7 +289,7 @@ impl Session {
     }
 
     pub fn set_dns(&self, dns_servers: Vec<String>) -> Result<(), ConnlibError> {
-        let dns_servers: Vec<std::net::IpAddr> = dns_servers
+        let dns_servers = dns_servers
             .into_iter()
             .map(|s| s.parse())
             .collect::<Result<_, _>>()
