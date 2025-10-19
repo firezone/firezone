@@ -288,16 +288,18 @@ impl Session {
         self.inner.set_internet_resource_state(active);
     }
 
-    pub fn set_dns(&self, dns_servers: Vec<String>) -> Result<(), ConnlibError> {
+    pub fn set_dns(&self, dns_servers: Vec<String>) {
         let dns_servers = dns_servers
             .into_iter()
-            .map(|s| s.parse())
-            .collect::<Result<_, _>>()
-            .context("Failed to parse DNS servers")?;
+            .filter_map(|server| {
+                server
+                    .parse()
+                    .inspect_err(|e| tracing::error!(%server, "Failed to parse DNS server as IP address: {e}"))
+                    .ok()
+            })
+            .collect();
 
         self.inner.set_dns(dns_servers);
-
-        Ok(())
     }
 
     pub fn reset(&self, reason: String) {

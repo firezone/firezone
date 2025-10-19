@@ -64,7 +64,7 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
         session.setInternetResourceState(active: active)
 
       case .setDns(let servers):
-        try session.setDns(dnsServers: servers)
+        session.setDns(dnsServers: servers)
 
       case .reset(let reason):
         session.reset(reason: reason)
