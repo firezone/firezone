@@ -58,7 +58,7 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
     do {
       switch command {
       case .disconnect:
-        try session.disconnect()
+        session.disconnect()
 
       case .setInternetResourceState(let active):
         session.setInternetResourceState(active: active)
