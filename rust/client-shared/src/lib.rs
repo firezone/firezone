@@ -49,9 +49,6 @@ pub enum Event {
 }
 
 impl Session {
-    /// Creates a new [`Session`].
-    ///
-    /// This connects to the portal using the given [`LoginUrl`](phoenix_channel::LoginUrl) and creates a wireguard tunnel using the provided private key.
     pub fn connect(
         tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
         udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -95,19 +92,6 @@ impl Session {
     /// - Close and re-open a connection to the portal.
     /// - Delete all allocations.
     /// - Rebind local UDP sockets.
-    ///
-    /// # Implementation note
-    ///
-    /// The reason we rebind the UDP sockets are:
-    ///
-    /// 1. On MacOS, a socket bound to the unspecified IP cannot send to interfaces attached after the socket has been created.
-    /// 2. Switching between networks changes the 3-tuple of the client.
-    ///    The TURN protocol identifies a client's allocation based on the 3-tuple.
-    ///    Consequently, an allocation is invalid after switching networks and we clear the state.
-    ///    Changing the IP would be enough for that.
-    ///    However, if the user would now change _back_ to the previous network,
-    ///    the TURN server would recognise the old allocation but the client already lost all its state associated with it.
-    ///    To avoid race-conditions like this, we rebind the sockets to a new port.
     pub fn reset(&self, reason: String) {
         let _ = self.channel.send(Command::Reset(reason));
     }
