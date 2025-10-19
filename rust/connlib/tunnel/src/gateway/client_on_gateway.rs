@@ -13,6 +13,7 @@ use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::gateway::filter_engine::FilterEngine;
+use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::Filters;
 use crate::messages::gateway::ResourceDescription;
