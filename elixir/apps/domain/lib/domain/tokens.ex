@@ -21,7 +21,7 @@ defmodule Domain.Tokens do
   end
 
   def fetch_token_by_id(id) do
-    Token.Query.not_deleted()
+    Token.Query.all()
     |> Token.Query.not_expired()
     |> Token.Query.by_id(id)
     |> Repo.fetch(Token.Query, [])
@@ -48,7 +48,7 @@ defmodule Domain.Tokens do
   end
 
   def all_active_browser_session_tokens! do
-    Token.Query.not_deleted()
+    Token.Query.all()
     |> Token.Query.expires_in(15, :minute)
     |> Token.Query.by_type(:browser)
     |> Repo.all()
@@ -56,7 +56,7 @@ defmodule Domain.Tokens do
 
   def list_subject_tokens(%Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_tokens_permission()) do
-      Token.Query.not_deleted()
+      Token.Query.all()
       |> Token.Query.by_actor_id(subject.actor.id)
       |> list_tokens(subject, opts)
     end
@@ -64,7 +64,7 @@ defmodule Domain.Tokens do
 
   def list_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.not_deleted()
+      Token.Query.all()
       |> Token.Query.by_actor_id(actor.id)
       |> list_tokens(subject, opts)
     end
@@ -93,7 +93,7 @@ defmodule Domain.Tokens do
   (hardcoded token duration for Okta and Google Workspace).
   """
   def update_token(%Token{} = token, attrs) do
-    Token.Query.not_deleted()
+    Token.Query.all()
     |> Token.Query.not_expired()
     |> Token.Query.by_id(token.id)
     |> Repo.fetch_and_update(Token.Query, with: &Token.Changeset.update(&1, attrs))
@@ -136,7 +136,7 @@ defmodule Domain.Tokens do
   end
 
   defp fetch_token_for_use(id, account_id, context_type) do
-    Token.Query.not_deleted()
+    Token.Query.all()
     |> Token.Query.not_expired()
     |> Token.Query.by_id(id)
     |> Token.Query.by_account_id(account_id)
@@ -270,7 +270,7 @@ defmodule Domain.Tokens do
 
   def delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
     {num_deleted, _} =
-      Token.Query.not_deleted()
+      Token.Query.all()
       |> Token.Query.by_type(:email)
       |> Token.Query.by_account_id(identity.account_id)
       |> Token.Query.by_identity_id(identity.id)
@@ -286,118 +286,6 @@ defmodule Domain.Tokens do
       |> Repo.delete_all()
 
     {:ok, num_deleted}
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_token(%Token{} = token, %Auth.Subject{} = subject) do
-    required_permissions =
-      {:one_of,
-       [
-         Authorizer.manage_tokens_permission(),
-         Authorizer.manage_own_tokens_permission()
-       ]}
-
-    with :ok <- Auth.ensure_has_permissions(subject, required_permissions) do
-      Token.Query.not_deleted()
-      |> Token.Query.by_id(token.id)
-      |> Authorizer.for_subject(subject)
-      |> soft_delete_tokens()
-      |> case do
-        {:ok, [token]} -> {:ok, token}
-        {:ok, []} -> {:error, :not_found}
-      end
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_token_for(%Auth.Subject{} = subject) do
-    Token.Query.not_deleted()
-    |> Token.Query.by_id(subject.token_id)
-    |> Authorizer.for_subject(subject)
-    |> soft_delete_tokens()
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_tokens_for(%Auth.Identity{} = identity) do
-    Token.Query.not_deleted()
-    |> Token.Query.by_identity_id(identity.id)
-    |> soft_delete_tokens()
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_tokens_for(%Actors.Actor{} = actor, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.not_deleted()
-      |> Token.Query.by_actor_id(actor.id)
-      |> Authorizer.for_subject(subject)
-      |> soft_delete_tokens()
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_tokens_for(%Auth.Identity{} = identity, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.not_deleted()
-      |> Token.Query.by_identity_id(identity.id)
-      |> Authorizer.for_subject(subject)
-      |> soft_delete_tokens()
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_tokens_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.not_deleted()
-      |> Token.Query.by_provider_id(provider.id)
-      |> Authorizer.for_subject(subject)
-      |> soft_delete_tokens()
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.not_deleted()
-      |> Token.Query.by_relay_group_id(group.id)
-      |> Authorizer.for_subject(subject)
-      |> soft_delete_tokens()
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_tokens_for(%Gateways.Group{} = group, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      Token.Query.not_deleted()
-      |> Token.Query.by_gateway_group_id(group.id)
-      |> Authorizer.for_subject(subject)
-      |> soft_delete_tokens()
-    end
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_all_tokens_by_type_and_assoc(:email, %Auth.Identity{} = identity) do
-    Token.Query.not_deleted()
-    |> Token.Query.by_type(:email)
-    |> Token.Query.by_account_id(identity.account_id)
-    |> Token.Query.by_identity_id(identity.id)
-    |> soft_delete_tokens()
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  def soft_delete_expired_tokens do
-    Token.Query.not_deleted()
-    |> Token.Query.expired()
-    |> soft_delete_tokens()
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` is remove from DB
-  defp soft_delete_tokens(queryable) do
-    {_count, tokens} =
-      queryable
-      |> Token.Query.delete()
-      |> Repo.update_all([])
-
-    {:ok, tokens}
   end
 
   defp fetch_config! do

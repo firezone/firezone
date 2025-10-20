@@ -114,17 +114,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         logFilter: logFilter,
         accountSlug: accountSlug,
         internetResourceEnabled: internetResourceEnabled,
-        packetTunnelProvider: self
+        packetTunnelProvider: self,
+        startCompletionHandler: completionHandler
       )
 
       // Start the adapter
       try adapter.start()
 
       self.adapter = adapter
-
-      // Tell the system the tunnel is up, moving the tunnel manager status to
-      // `connected`.
-      completionHandler(nil)
 
     } catch {
 

@@ -374,4 +374,26 @@ mod tests {
 
         assert_eq!(dns.ip_stack, IpStack::Dual)
     }
+
+    #[test]
+    fn name_changes_of_site_doesnt_matter() {
+        let resource1 = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
+            "address": "example.com",
+            "id": "03000143-e25e-45c7-aafb-144990e57dce",
+            "name": "example.com",
+            "gateway_groups": [{"name": "foo", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "type": "dns"
+        })))
+        .unwrap();
+        let resource2 = Resource::from_description(ResourceDescription::Dns(serde_json::json!({
+            "address": "example.com",
+            "id": "03000143-e25e-45c7-aafb-144990e57dce",
+            "name": "example.com",
+            "gateway_groups": [{"name": "bar", "id": "bf56f32d-7b2c-4f5d-a784-788977d014a4"}],
+            "type": "dns"
+        })))
+        .unwrap();
+
+        assert!(!resource1.has_different_site(&resource2))
+    }
 }

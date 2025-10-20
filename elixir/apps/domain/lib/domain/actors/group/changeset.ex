@@ -11,8 +11,7 @@ defmodule Domain.Actors.Group.Changeset do
        "WHERE provider_id IS NOT NULL AND provider_identifier IS NOT NULL"}
   end
 
-  # TODO: Update after `deleted_at` is removed from the DB
-  def upsert_on_conflict, do: {:replace, ~w[name updated_at deleted_at]a}
+  def upsert_on_conflict, do: {:replace, ~w[name updated_at]a}
 
   def create(%Accounts.Account{} = account, attrs, %Auth.Subject{} = subject) do
     %Actors.Group{memberships: []}
@@ -36,7 +35,6 @@ defmodule Domain.Actors.Group.Changeset do
     |> put_subject_trail(:created_by, :system)
   end
 
-  # TODO: Update after `deleted_at` is removed from the DB
   def create(%Auth.Provider{} = provider, attrs) do
     %Actors.Group{memberships: []}
     |> cast(attrs, ~w[name provider_identifier last_synced_at]a)
@@ -45,8 +43,6 @@ defmodule Domain.Actors.Group.Changeset do
     |> changeset()
     |> put_change(:provider_id, provider.id)
     |> put_change(:account_id, provider.account_id)
-    # resurrect synced groups
-    |> put_change(:deleted_at, nil)
     |> put_subject_trail(:created_by, :provider)
   end
 

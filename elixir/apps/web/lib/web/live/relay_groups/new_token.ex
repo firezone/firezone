@@ -4,12 +4,7 @@ defmodule Web.RelayGroups.NewToken do
 
   def mount(%{"id" => id}, _session, socket) do
     with true <- Accounts.self_hosted_relays_enabled?(socket.assigns.account),
-         {:ok, group} <-
-           Relays.fetch_group_by_id(id, socket.assigns.subject,
-             filter: [
-               deleted?: false
-             ]
-           ) do
+         {:ok, group} <- Relays.fetch_group_by_id(id, socket.assigns.subject) do
       {group, token, env} =
         if connected?(socket) do
           {:ok, token, encoded_token} = Relays.create_token(group, %{}, socket.assigns.subject)

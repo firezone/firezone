@@ -109,7 +109,7 @@ defmodule Domain.Ops do
   To delete an account you need to disable it first by cancelling its subscription in Stripe.
   """
   def delete_disabled_account(id) do
-    Domain.Accounts.Account.Query.not_deleted()
+    Domain.Accounts.Account.Query.all()
     |> Domain.Accounts.Account.Query.disabled()
     |> Domain.Accounts.Account.Query.by_id(id)
     |> Domain.Repo.one!()

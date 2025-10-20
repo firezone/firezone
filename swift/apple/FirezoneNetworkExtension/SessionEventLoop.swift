@@ -21,65 +21,54 @@ func runSessionEventLoop(
 
   // Multiplex between commands and events
   await withTaskGroup(of: Void.self) { group in
-    // Event polling task - polls Rust for events and sends to eventSender
     group.addTask {
-      while !Task.isCancelled {
-        // Poll for next event from Rust
-        guard let event = await session.nextEvent() else {
-          // No event returned - session has ended
-          Log.log("SessionEventLoop: Event stream ended, exiting event loop")
-          break
-        }
-
-        eventSender.send(event)
-      }
-
-      Log.log("SessionEventLoop: Event polling finished")
+      await forwardEvents(from: session, to: eventSender)
     }
 
-    // Command handling task - receives commands from commandReceiver
     group.addTask {
-      for await command in commandReceiver.stream {
-        await handleCommand(command, session: session)
-
-        // Exit loop if disconnect command
-        if case .disconnect = command {
-          Log.log("SessionEventLoop: Disconnect command received, exiting command loop")
-          break
-        }
-      }
-
-      Log.log("SessionEventLoop: Command handling finished")
+      await forwardCommands(from: commandReceiver, to: session)
     }
 
     // Wait for first task to complete, then cancel all
     _ = await group.next()
-    Log.log("SessionEventLoop: One task completed, cancelling event loop")
     group.cancelAll()
   }
 }
 
-/// Handles a command by calling the appropriate session method.
-private func handleCommand(_ command: SessionCommand, session: Session) async {
-  switch command {
-  case .disconnect:
-    do {
-      try session.disconnect()
-    } catch {
-      Log.error(error)
+/// Forwards events from the session to the event sender.
+private func forwardEvents(from session: Session, to eventSender: Sender<Event>) async {
+  while !Task.isCancelled {
+    guard let event = await session.nextEvent() else {
+      Log.log("Event stream ended")
+      break
     }
 
-  case .setInternetResourceState(let active):
-    session.setInternetResourceState(active: active)
-
-  case .setDns(let servers):
-    do {
-      try session.setDns(dnsServers: servers)
-    } catch {
-      Log.error(error)
-    }
-
-  case .reset(let reason):
-    session.reset(reason: reason)
+    eventSender.send(event)
   }
+}
+
+/// Forwards commands from the command receiver to the session.
+private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to session: Session) async {
+  for await command in commandReceiver.stream {
+    if Task.isCancelled {
+      Log.log("Command forwarding cancelled")
+      break
+    }
+
+    switch command {
+    case .disconnect:
+      session.disconnect()
+
+    case .setInternetResourceState(let active):
+      session.setInternetResourceState(active: active)
+
+    case .setDns(let servers):
+      session.setDns(dnsServers: servers)
+
+    case .reset(let reason):
+      session.reset(reason: reason)
+    }
+  }
+
+  Log.log("Command stream ended")
 }

@@ -159,15 +159,14 @@ defmodule Web.Actors.Show do
       <:title>
         {actor_type(@actor.type)}: <span class="font-medium">{@actor.name}</span>
         <span :if={@actor.id == @subject.actor.id} class="text-sm text-neutral-400">(you)</span>
-        <span :if={Actors.actor_deleted?(@actor)} class="text-red-600">(deleted)</span>
         <span :if={Actors.actor_disabled?(@actor)} class="text-red-600">(disabled)</span>
       </:title>
-      <:action :if={is_nil(@actor.deleted_at)}>
+      <:action>
         <.edit_button navigate={~p"/#{@account}/actors/#{@actor}/edit"}>
           Edit {actor_type(@actor.type)}
         </.edit_button>
       </:action>
-      <:action :if={is_nil(@actor.deleted_at) and not Actors.actor_disabled?(@actor)}>
+      <:action :if={not Actors.actor_disabled?(@actor)}>
         <.button_with_confirmation
           id="disable_actor"
           style="warning"
@@ -188,7 +187,7 @@ defmodule Web.Actors.Show do
           Disable {actor_type(@actor.type)}
         </.button_with_confirmation>
       </:action>
-      <:action :if={is_nil(@actor.deleted_at) and Actors.actor_disabled?(@actor)}>
+      <:action :if={Actors.actor_disabled?(@actor)}>
         <.button_with_confirmation
           id="enable_actor"
           style="warning"
@@ -244,7 +243,7 @@ defmodule Web.Actors.Show do
         Each authentication identity is associated with an identity provider and is used to identify the actor upon successful authentication.
       </:help>
 
-      <:action :if={is_nil(@actor.deleted_at) and Enum.any?(@available_providers)}>
+      <:action :if={Enum.any?(@available_providers)}>
         <.add_button
           :if={@actor.type != :service_account}
           navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
@@ -316,7 +315,7 @@ defmodule Web.Actors.Show do
             <div class="flex justify-center text-center text-neutral-500 p-4">
               <div class="w-auto pb-4">
                 No authentication identities to display.
-                <span :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}>
+                <span :if={@actor.type == :service_account}>
                   <.link
                     class={[link_style()]}
                     navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
@@ -325,7 +324,7 @@ defmodule Web.Actors.Show do
                   </.link>
                   to authenticate this service account.
                 </span>
-                <span :if={is_nil(@actor.deleted_at) and @actor.type != :service_account}>
+                <span :if={@actor.type != :service_account}>
                   <.link
                     class={[link_style()]}
                     navigate={~p"/#{@account}/actors/users/#{@actor}/new_identity"}
@@ -347,7 +346,7 @@ defmodule Web.Actors.Show do
         Authentication tokens are used to authenticate the actor. Revoke tokens to sign the actor out of all associated client sessions.
       </:help>
 
-      <:action :if={is_nil(@actor.deleted_at) and @actor.type == :service_account}>
+      <:action :if={@actor.type == :service_account}>
         <.add_button
           :if={@actor.type == :service_account}
           navigate={~p"/#{@account}/actors/service_accounts/#{@actor}/new_identity"}
@@ -356,7 +355,7 @@ defmodule Web.Actors.Show do
         </.add_button>
       </:action>
 
-      <:action :if={is_nil(@actor.deleted_at)}>
+      <:action>
         <.button_with_confirmation
           id="revoke_all_tokens"
           style="danger"
@@ -581,7 +580,7 @@ defmodule Web.Actors.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@actor.deleted_at)}>
+    <.danger_zone>
       <:action :if={not Actors.actor_synced?(@actor) or @identities == []}>
         <.button_with_confirmation
           id="delete_actor"

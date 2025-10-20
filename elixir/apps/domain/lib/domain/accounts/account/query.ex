@@ -5,16 +5,11 @@ defmodule Domain.Accounts.Account.Query do
     from(accounts in Domain.Accounts.Account, as: :accounts)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def not_deleted(queryable \\ all()) do
-    where(queryable, [accounts: accounts], is_nil(accounts.deleted_at))
-  end
-
   def disabled(queryable \\ all()) do
     where(queryable, [accounts: accounts], not is_nil(accounts.disabled_at))
   end
 
-  def not_disabled(queryable \\ not_deleted()) do
+  def not_disabled(queryable \\ all()) do
     where(queryable, [accounts: accounts], is_nil(accounts.disabled_at))
   end
 
@@ -100,7 +95,7 @@ defmodule Domain.Accounts.Account.Query do
   @impl Domain.Repo.Query
   def preloads,
     do: [
-      clients: {Domain.Clients.Client.Query.not_deleted(), Domain.Clients.Client.Query.preloads()}
+      clients: {Domain.Clients.Client.Query.all(), Domain.Clients.Client.Query.preloads()}
     ]
 
   @impl Domain.Repo.Query

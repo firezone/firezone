@@ -914,6 +914,8 @@ impl TunnelTest {
         query: &dns_types::Query,
         global_dns_records: &DnsRecords,
     ) -> dns_types::Response {
+        const TTL: u32 = 1; // We deliberately chose a short TTL so we don't have to model the DNS cache in these tests.
+
         let qtype = query.qtype();
         let domain = query.domain();
 
@@ -922,7 +924,7 @@ impl TunnelTest {
                 global_dns_records
                     .domain_records_iter(&domain)
                     .filter(|record| qtype == record.rtype())
-                    .map(|rdata| (domain.clone(), 60 * 60 * 24, rdata)),
+                    .map(|rdata| (domain.clone(), TTL, rdata)),
             )
             .build();
 

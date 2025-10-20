@@ -41,7 +41,7 @@ defmodule Domain.Fixtures.Accounts do
   end
 
   def delete_account(%Accounts.Account{} = account) do
-    update_account(account, deleted_at: DateTime.utc_now())
+    Repo.delete(account)
   end
 
   def disable_account(%Accounts.Account{} = account) do

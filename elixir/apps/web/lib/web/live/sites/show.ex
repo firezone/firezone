@@ -25,11 +25,7 @@ defmodule Web.Sites.Show do
   defp mount_page(socket, %{managed_by: :system, name: "Internet"} = group) do
     with {:ok, resource} <-
            Resources.fetch_internet_resource(socket.assigns.subject,
-             preload: [
-               :gateway_groups,
-               replaced_by_resource: [],
-               replaces_resource: []
-             ]
+             preload: [:gateway_groups]
            ) do
       socket =
         socket
@@ -177,10 +173,9 @@ defmodule Web.Sites.Show do
     <.section>
       <:title>
         Site: <code>{@group.name}</code>
-        <span :if={not is_nil(@group.deleted_at)} class="text-red-600">(deleted)</span>
       </:title>
 
-      <:action :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
+      <:action :if={@group.managed_by == :account}>
         <.edit_button navigate={~p"/#{@account}/sites/#{@group}/edit"}>
           Edit Site
         </.edit_button>
@@ -216,12 +211,12 @@ defmodule Web.Sites.Show do
       <:action>
         <.docs_action path="/deploy/gateways" />
       </:action>
-      <:action :if={is_nil(@group.deleted_at)}>
+      <:action>
         <.add_button navigate={~p"/#{@account}/sites/#{@group}/new_token"}>
           Deploy Gateway
         </.add_button>
       </:action>
-      <:action :if={is_nil(@group.deleted_at)}>
+      <:action>
         <.button_with_confirmation
           id="revoke_all_tokens"
           style="danger"
@@ -245,7 +240,7 @@ defmodule Web.Sites.Show do
       <:help :if={@group.managed_by == :system and @group.name == "Internet"}>
         Gateways deployed to the Internet Site are used to tunnel all traffic that doesn't match any specific Resource.
       </:help>
-      <:help :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
+      <:help :if={@group.managed_by == :account}>
         Deploy gateways to terminate connections to your site's resources. All
         gateways deployed within a site must be able to reach all
         its resources.
@@ -298,7 +293,7 @@ defmodule Web.Sites.Show do
                       Deploy a Gateway to the Internet Site.
                     </.link>
                   </span>
-                  <span :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
+                  <span :if={@group.managed_by == :account}>
                     <.link
                       class={[link_style()]}
                       navigate={~p"/#{@account}/sites/#{@group}/new_token"}
@@ -318,7 +313,7 @@ defmodule Web.Sites.Show do
       <:title>
         Resources
       </:title>
-      <:action :if={is_nil(@group.deleted_at)}>
+      <:action>
         <.add_button navigate={~p"/#{@account}/resources/new?site_id=#{@group}"}>
           Add Resource
         </.add_button>
@@ -420,14 +415,10 @@ defmodule Web.Sites.Show do
             <.group account={@account} group={policy.actor_group} />
           </:col>
           <:col :let={policy} label="status">
-            <%= if is_nil(policy.deleted_at) do %>
-              <%= if is_nil(policy.disabled_at) do %>
-                Active
-              <% else %>
-                Disabled
-              <% end %>
+            <%= if is_nil(policy.disabled_at) do %>
+              Active
             <% else %>
-              Deleted
+              Disabled
             <% end %>
           </:col>
           <:empty>
@@ -451,7 +442,7 @@ defmodule Web.Sites.Show do
       </:content>
     </.section>
 
-    <.danger_zone :if={is_nil(@group.deleted_at) and @group.managed_by == :account}>
+    <.danger_zone :if={@group.managed_by == :account}>
       <:action>
         <.button_with_confirmation
           id="delete_site"

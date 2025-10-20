@@ -90,8 +90,8 @@ function update_version_variables() {
 # 6. Run `scripts/bump-versions.sh apple` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function apple() {
-    current_apple_client_version="1.5.8"
-    next_apple_client_version="1.5.9"
+    current_apple_client_version="1.5.9"
+    next_apple_client_version="1.5.10"
 
     update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_client_version}"'/g;}' {} \;
@@ -126,8 +126,8 @@ function apple() {
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_client_version="1.5.4"
-    next_android_client_version="1.5.5"
+    current_android_client_version="1.5.5"
+    next_android_client_version="1.5.6"
 
     update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_client_version"
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_client_version}"'/g;}' {} \;

@@ -76,11 +76,6 @@ defmodule Domain.Fixtures.Actors do
     group
   end
 
-  # TODO: HARD-DELETE - Remove after soft deletion functionality is removed
-  def soft_delete_group(group) do
-    update!(group, %{deleted_at: DateTime.utc_now()})
-  end
-
   def actor_attrs(attrs \\ %{}) do
     first_name = Enum.random(~w[Wade Dave Seth Riley Gilbert Jorge Dan Brian Roberto Ramon Juan])
     last_name = Enum.random(~w[Robyn Traci Desiree Jon Bob Karl Joe Alberta Lynda Cara Brandi B])
@@ -165,9 +160,5 @@ defmodule Domain.Fixtures.Actors do
 
     {:ok, deleted_actor} = Domain.Actors.delete_actor(actor, subject)
     deleted_actor
-  end
-
-  def soft_delete(actor) do
-    update!(actor, %{deleted_at: DateTime.utc_now()})
   end
 end

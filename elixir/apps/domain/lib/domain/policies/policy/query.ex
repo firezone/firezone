@@ -5,30 +5,16 @@ defmodule Domain.Policies.Policy.Query do
     from(policies in Domain.Policies.Policy, as: :policies)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def not_deleted do
-    all()
-    |> where([policies: policies], is_nil(policies.deleted_at))
-  end
-
-  def not_disabled(queryable \\ not_deleted()) do
+  def not_disabled(queryable \\ all()) do
     where(queryable, [policies: policies], is_nil(policies.disabled_at))
   end
 
-  def disabled(queryable \\ not_deleted()) do
+  def disabled(queryable \\ all()) do
     where(queryable, [policies: policies], not is_nil(policies.disabled_at))
   end
 
   def by_id(queryable, id) do
     where(queryable, [policies: policies], policies.id == ^id)
-  end
-
-  def by_id_or_persistent_id(queryable, id) do
-    where(queryable, [policies: policies], policies.id == ^id)
-    |> or_where(
-      [policies: policies],
-      policies.persistent_id == ^id and is_nil(policies.replaced_by_policy_id)
-    )
   end
 
   def by_account_id(queryable, account_id) do
@@ -83,17 +69,6 @@ defmodule Domain.Policies.Policy.Query do
       resource_id: policies.resource_id,
       count: count(policies.id)
     })
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def delete(queryable) do
-    queryable
-    |> Ecto.Query.select([policies: policies], policies)
-    |> Ecto.Query.update([policies: policies],
-      set: [
-        deleted_at: fragment("COALESCE(?, timezone('UTC', NOW()))", policies.deleted_at)
-      ]
-    )
   end
 
   def with_joined_actor_group(queryable) do
@@ -192,11 +167,6 @@ defmodule Domain.Policies.Policy.Query do
           {"Disabled", "disabled"}
         ],
         fun: &filter_by_status/2
-      },
-      %Domain.Repo.Filter{
-        name: :deleted?,
-        type: :boolean,
-        fun: &filter_deleted/1
       }
     ]
 
@@ -251,10 +221,5 @@ defmodule Domain.Policies.Policy.Query do
 
   def filter_by_status(queryable, "disabled") do
     {queryable, dynamic([policies: policies], not is_nil(policies.disabled_at))}
-  end
-
-  # TODO: HARD-DELETE - Remove after `deleted_at` column is removed from DB
-  def filter_deleted(queryable) do
-    {queryable, dynamic([policies: policies], not is_nil(policies.deleted_at))}
   end
 end

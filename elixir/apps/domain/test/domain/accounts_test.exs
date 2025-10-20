@@ -35,7 +35,7 @@ defmodule Domain.AccountsTest do
     end
 
     test "does not return deleted accounts" do
-      account = Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
+      {:ok, account} = Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
       accounts = all_accounts_by_ids!([account.id])
       assert length(accounts) == 0
     end
@@ -781,11 +781,6 @@ defmodule Domain.AccountsTest do
     test "returns true when account is active" do
       account = Fixtures.Accounts.create_account()
       assert account_active?(account) == true
-    end
-
-    test "returns false when account is deleted" do
-      account = Fixtures.Accounts.create_account() |> Fixtures.Accounts.delete_account()
-      assert account_active?(account) == false
     end
 
     test "returns false when account is disabled" do

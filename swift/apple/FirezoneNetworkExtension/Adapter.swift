@@ -19,8 +19,6 @@ enum AdapterError: Error {
   /// connlib failed to start
   case connlibConnectError(String)
 
-  case setDnsError(String)
-
   var localizedDescription: String {
     switch self {
     case .invalidSession(let session):
@@ -28,8 +26,6 @@ enum AdapterError: Error {
       return message
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
-    case .setDnsError(let error):
-      return "failed to set new DNS servers: \(error)"
     }
   }
 }
@@ -52,6 +48,9 @@ class Adapter: @unchecked Sendable {
 
   /// Packet tunnel provider.
   private weak var packetTunnelProvider: PacketTunnelProvider?
+
+  /// Start completion handler, used to signal to the system the interface is ready to use.
+  private var startCompletionHandler: (Error?) -> Void
 
   /// Network routes monitor.
   private var networkMonitor: NWPathMonitor?
@@ -155,7 +154,8 @@ class Adapter: @unchecked Sendable {
     logFilter: String,
     accountSlug: String,
     internetResourceEnabled: Bool,
-    packetTunnelProvider: PacketTunnelProvider
+    packetTunnelProvider: PacketTunnelProvider,
+    startCompletionHandler: @escaping (Error?) -> Void
   ) {
     self.apiURL = apiURL
     self.token = token
@@ -164,6 +164,7 @@ class Adapter: @unchecked Sendable {
     self.accountSlug = accountSlug
     self.internetResourceEnabled = internetResourceEnabled
     self.packetTunnelProvider = packetTunnelProvider
+    self.startCompletionHandler = startCompletionHandler
   }
 
   // Could happen abruptly if the process is killed.
@@ -342,6 +343,8 @@ class Adapter: @unchecked Sendable {
       let ipv4, let ipv6, let dns, let searchDomain, let ipv4Routes, let ipv6Routes):
       Log.log("Received TunInterfaceUpdated event")
 
+      let firstStart = self.networkSettings == nil
+
       // Convert UniFFI types to NetworkExtension types
       let routes4 = ipv4Routes.compactMap { cidr in
         NetworkSettings.Cidr(address: cidr.address, prefix: Int(cidr.prefix)).asNEIPv4Route
@@ -367,7 +370,11 @@ class Adapter: @unchecked Sendable {
       networkSettings.setSearchDomain(domain: searchDomain)
       self.networkSettings = networkSettings
 
-      networkSettings.apply()
+      networkSettings.apply {
+        if firstStart {
+          self.startCompletionHandler(nil)
+        }
+      }
 
     case .resourcesUpdated(let resourceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")

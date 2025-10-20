@@ -5,13 +5,7 @@ defmodule Domain.Auth.Provider.Query do
     from(provider in Domain.Auth.Provider, as: :providers)
   end
 
-  # TODO: HARD-DELETE - Remove after `deleted_at` is removed from the DB
-  def not_deleted do
-    all()
-    |> where([providers: providers], is_nil(providers.deleted_at))
-  end
-
-  def not_disabled(queryable \\ not_deleted()) do
+  def not_disabled(queryable \\ all()) do
     where(queryable, [providers: providers], is_nil(providers.disabled_at))
   end
 
