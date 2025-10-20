@@ -19,8 +19,6 @@ enum AdapterError: Error {
   /// connlib failed to start
   case connlibConnectError(String)
 
-  case setDnsError(String)
-
   var localizedDescription: String {
     switch self {
     case .invalidSession(let session):
@@ -28,8 +26,6 @@ enum AdapterError: Error {
       return message
     case .connlibConnectError(let error):
       return "connlib failed to start: \(error)"
-    case .setDnsError(let error):
-      return "failed to set new DNS servers: \(error)"
     }
   }
 }

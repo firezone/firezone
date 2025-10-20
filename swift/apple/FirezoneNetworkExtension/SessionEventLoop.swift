@@ -55,22 +55,18 @@ private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to 
       break
     }
 
-    do {
-      switch command {
-      case .disconnect:
-        try session.disconnect()
+    switch command {
+    case .disconnect:
+      session.disconnect()
 
-      case .setInternetResourceState(let active):
-        session.setInternetResourceState(active: active)
+    case .setInternetResourceState(let active):
+      session.setInternetResourceState(active: active)
 
-      case .setDns(let servers):
-        try session.setDns(dnsServers: servers)
+    case .setDns(let servers):
+      session.setDns(dnsServers: servers)
 
-      case .reset(let reason):
-        session.reset(reason: reason)
-      }
-    } catch {
-      Log.warning("Failed to forward command to session: \(error)")
+    case .reset(let reason):
+      session.reset(reason: reason)
     }
   }
 
