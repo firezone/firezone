@@ -15,7 +15,7 @@
     "@docsearch/react": "^3.9.0",
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
-    "@next/mdx": "~15.3.2",
+    "@next/mdx": "~15.5.3",
     "@next/third-parties": "^15.5.3",
     "@types/mdx": "^2.0.13",
     "@types/node": "24.3.0",
