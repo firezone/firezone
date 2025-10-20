@@ -23,7 +23,7 @@ use std::{
 
 pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
-        domain_name(2..4).prop_map(|d| d.parse().unwrap()),
+        domain_name(2..4),
         collection::btree_set(dns_record(), 1..6),
         0..5,
     )
@@ -62,15 +62,9 @@ fn txt_record() -> impl Strategy<Value = Vec<u8>> {
 }
 
 fn srv_record() -> impl Strategy<Value = OwnedRecordData> {
-    (
-        any::<u16>(),
-        any::<u16>(),
-        any::<u16>(),
-        domain_name(2..4).prop_map(|d| d.parse().unwrap()),
+    (any::<u16>(), any::<u16>(), any::<u16>(), domain_name(2..4)).prop_map(
+        |(priority, weight, port, target)| dns_types::records::srv(priority, weight, port, target),
     )
-        .prop_map(|(priority, weight, port, target)| {
-            dns_types::records::srv(priority, weight, port, target)
-        })
 }
 
 pub(crate) fn latency(max: u64) -> impl Strategy<Value = Duration> {
