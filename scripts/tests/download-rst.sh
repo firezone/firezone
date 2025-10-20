@@ -8,6 +8,7 @@ DOWNLOAD_PID=$!
 
 wait $DOWNLOAD_PID || true # The download fails but we want to continue.
 
+sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
 assert_equals "${#flows[@]}" 1

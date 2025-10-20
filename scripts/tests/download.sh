@@ -19,6 +19,7 @@ if [[ "$computed_checksum" != "$known_checksum" ]]; then
     exit 1
 fi
 
+sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
 assert_equals "${#flows[@]}" 1

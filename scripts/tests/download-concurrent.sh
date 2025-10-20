@@ -26,8 +26,7 @@ wait $PID3 || {
     exit 1
 }
 
-sleep 1
-
+sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
 assert_equals "${#flows[@]}" 3
