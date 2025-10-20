@@ -48,7 +48,7 @@ The tunnel now batch-processes input from all sources rather than prioritizing h
 This prevents timeout checks and DNS resolution from being delayed when UDP sockets or the TUN device are extremely busy.
 
 Linux systems got a significant performance boost through better socket buffer management.[^10349]
-Clients and Gateways now attempt to set receive and send buffer maximums to 4MB at startup.
+Clients and Gateways now attempt to set UDP receive and send buffer maximums to 128 MB and 16 MB respectively at startup.
 The default 200KB buffers were causing packet drops during high throughput scenarios, directly correlating with buffer errors visible in `nstat`.
 
 We also limited the number of optimistic ICE candidates to prevent CPU spikes.[^10367]
