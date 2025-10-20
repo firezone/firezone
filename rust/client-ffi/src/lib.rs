@@ -273,31 +273,37 @@ fn set_tun_from_search(session: &Session) -> Result<(), ConnlibError> {
 
 #[uniffi::export]
 impl Session {
-    pub fn disconnect(&self) -> Result<(), ConnlibError> {
-        let runtime = self.runtime.as_ref().context("No runtime")?;
+    pub fn disconnect(&self) {
+        self.inner.stop();
+
+        let Some(runtime) = self.runtime.as_ref() else {
+            tracing::error!(
+                "No tokio runtime set! This should be impossible because we only clear it on `Drop`"
+            );
+            return;
+        };
 
         runtime.block_on(async {
             self.telemetry.lock().await.stop().await;
         });
-        self.inner.stop();
-
-        Ok(())
     }
 
     pub fn set_internet_resource_state(&self, active: bool) {
         self.inner.set_internet_resource_state(active);
     }
 
-    pub fn set_dns(&self, dns_servers: Vec<String>) -> Result<(), ConnlibError> {
-        let dns_servers: Vec<std::net::IpAddr> = dns_servers
+    pub fn set_dns(&self, dns_servers: Vec<String>) {
+        let dns_servers = dns_servers
             .into_iter()
-            .map(|s| s.parse())
-            .collect::<Result<_, _>>()
-            .context("Failed to parse DNS servers")?;
+            .filter_map(|server| {
+                server
+                    .parse()
+                    .inspect_err(|e| tracing::error!(%server, "Failed to parse DNS server as IP address: {e}"))
+                    .ok()
+            })
+            .collect();
 
         self.inner.set_dns(dns_servers);
-
-        Ok(())
     }
 
     pub fn reset(&self, reason: String) {
