@@ -12,9 +12,9 @@ export default function Posts() {
   const [filters, setFilters] = useState("All Posts");
   const posts = [
     {
-      title: "Septermber 2025 Devlog",
+      title: "September 2025 Devlog",
       date: "September 30, 2025",
-      href: "/blog/devlog/2025/09",
+      href: "/blog/devlog/2025-09",
       authorName: "Jamil Bou Kheir",
       authorAvatarSrc: gravatar("jamil@firezone.dev"),
       type: "Engineering",
@@ -423,12 +423,8 @@ export default function Posts() {
     <>
       <div className="border-b-[1px] py-6 px-4 sm:px-6 md:py-4 md:px-8 lg:px-10 mx-auto max-w-screen-lg w-full">
         <Pills
-<<<<<<< Updated upstream
-          options={["All Posts", "Announcement", "Learn", "Insights"]}
-=======
           options={["All Posts", "Announcement", "Engineering", "Learn", "Insights"]}
           multiselect={true}
->>>>>>> Stashed changes
           filters={filters}
           setFilters={setFilters}
         />
