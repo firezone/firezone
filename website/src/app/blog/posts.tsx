@@ -20,10 +20,10 @@ export default function Posts() {
       type: "Engineering",
       description: (
         <p className="mb-2">
-          September brought significant improvements to Firezone's networking
+          September brought significant improvements to Firezone&apos;s networking
           stack, administrative tooling, and cross-platform reliability. This
-          month's work focused on optimizing relay performance through eBPF,
-          improving DNS resolution behavior, and enhancing the admin portal's
+          month&apos;s work focused on optimizing relay performance through eBPF,
+          improving DNS resolution behavior, and enhancing the admin portal&apos;s
           visibility into client and Gateway states. )
         </p>
       ),
