@@ -174,7 +174,7 @@ impl FlowTracker {
                             return;
                         }
 
-                        tracing::debug!(key = ?vacant.key(), syn = %tcp_syn, "Creating new TCP flow");
+                        tracing::debug!(key = ?vacant.key(), ?context, syn = %tcp_syn, "Creating new TCP flow");
 
                         vacant.insert(TcpFlowValue {
                             start: now_utc,
@@ -187,9 +187,15 @@ impl FlowTracker {
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
-                        let flow = CompletedTcpFlow::new(key, value, now_utc);
+                        let context_diff = FlowContextDiff::new(value.context, context);
 
-                        tracing::debug!(?flow, "Splitting existing TCP flow; context changed");
+                        tracing::debug!(
+                            ?key,
+                            ?context_diff,
+                            "Splitting existing TCP flow; context changed"
+                        );
+
+                        let flow = CompletedTcpFlow::new(key, value, now_utc);
 
                         self.completed_flows.push_back(flow.into());
 
@@ -207,9 +213,10 @@ impl FlowTracker {
                     }
                     hash_map::Entry::Occupied(occupied) if tcp_syn => {
                         let (key, value) = occupied.remove_entry();
-                        let flow = CompletedTcpFlow::new(key, value, now_utc);
 
-                        tracing::debug!(?flow, "Splitting existing TCP flow; new TCP SYN");
+                        tracing::debug!(?key, "Splitting existing TCP flow; new TCP SYN");
+
+                        let flow = CompletedTcpFlow::new(key, value, now_utc);
 
                         self.completed_flows.push_back(flow.into());
 
@@ -268,9 +275,15 @@ impl FlowTracker {
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
+                        let context_diff = FlowContextDiff::new(value.context, context);
+
                         let flow = CompletedUdpFlow::new(key, value, now_utc);
 
-                        tracing::debug!(?flow, "Splitting existing UDP flow; context changed");
+                        tracing::debug!(
+                            ?key,
+                            ?context_diff,
+                            "Splitting existing UDP flow; context changed"
+                        );
 
                         self.completed_flows.push_back(flow.into());
 
@@ -565,12 +578,65 @@ impl FlowStats {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 struct FlowContext {
     src_ip: IpAddr,
     dst_ip: IpAddr,
     src_port: u16,
     dst_port: u16,
+}
+
+#[derive(PartialEq, Eq)]
+struct FlowContextDiff {
+    src_ip: Option<(IpAddr, IpAddr)>,
+    dst_ip: Option<(IpAddr, IpAddr)>,
+    src_port: Option<(u16, u16)>,
+    dst_port: Option<(u16, u16)>,
+}
+
+impl FlowContextDiff {
+    fn new(old: FlowContext, new: FlowContext) -> Self {
+        let src_ip_diff = (old.src_ip != new.src_ip).then_some((old.src_ip, new.src_ip));
+        let dst_ip_diff = (old.dst_ip != new.dst_ip).then_some((old.dst_ip, new.dst_ip));
+        let src_port_diff = (old.src_port != new.src_port).then_some((old.src_port, new.src_port));
+        let dst_port_diff = (old.dst_port != new.dst_port).then_some((old.dst_port, new.dst_port));
+
+        Self {
+            src_ip: src_ip_diff,
+            dst_ip: dst_ip_diff,
+            src_port: src_port_diff,
+            dst_port: dst_port_diff,
+        }
+    }
+}
+
+impl std::fmt::Debug for FlowContextDiff {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("FlowContextDiff");
+
+        if let Some((old, new)) = self.src_ip {
+            debug_struct
+                .field("old_src_ip", &old)
+                .field("new_src_ip", &new);
+        }
+        if let Some((old, new)) = self.dst_ip {
+            debug_struct
+                .field("old_dst_ip", &old)
+                .field("new_dst_ip", &new);
+        }
+        if let Some((old, new)) = self.src_port {
+            debug_struct
+                .field("old_src_port", &old)
+                .field("new_src_port", &new);
+        }
+        if let Some((old, new)) = self.dst_port {
+            debug_struct
+                .field("old_dst_port", &old)
+                .field("new_dst_port", &new);
+        }
+
+        debug_struct.finish()
+    }
 }
 
 pub mod inbound_wg {
@@ -724,5 +790,35 @@ impl From<&IpPacket> for InnerFlow {
             tcp_rst: packet.as_tcp().map(|tcp| tcp.rst()).unwrap_or(false),
             payload_len: packet.layer4_payload_len(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::Ipv4Addr;
+
+    use super::*;
+
+    #[test]
+    fn flow_context_diff_rendering() {
+        let old = FlowContext {
+            src_ip: IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)),
+            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
+            src_port: 8080,
+            dst_port: 443,
+        };
+        let new = FlowContext {
+            src_ip: IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1)),
+            dst_ip: IpAddr::V4(Ipv4Addr::new(192, 168, 0, 1)),
+            src_port: 50000,
+            dst_port: 443,
+        };
+
+        let diff = FlowContextDiff::new(old, new);
+
+        assert_eq!(
+            "FlowContextDiff { old_src_ip: 10.0.0.1, new_src_ip: 1.1.1.1, old_src_port: 8080, new_src_port: 50000 }",
+            format!("{diff:?}")
+        );
     }
 }
