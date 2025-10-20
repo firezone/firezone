@@ -58,7 +58,7 @@ Optimistic candidates are now disabled entirely for IPv6 and limited to 2 for IP
 ## Relay Infrastructure Advances
 
 Our relay infrastructure received important eBPF improvements.
-The relay can now handle relay-to-relay candidate pairs, which occur when both Client and Gateway allocate from the same relay.[^10286]
+The relay can now handle relay-to-relay candidate pairs in the eBPF kernel, which occur when both Client and Gateway allocate from the same relay.[^10286]
 Previously these packets would need to traverse userspace or fail entirely.
 
 We restructured the eBPF code into modular components that handle all cross-stack translation cases, including IPv4↔IPv6 transformations.
