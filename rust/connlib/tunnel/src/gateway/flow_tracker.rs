@@ -13,8 +13,7 @@ thread_local! {
     static CURRENT_FLOW: RefCell<Option<FlowData>> = const { RefCell::new(None) };
 }
 
-const TCP_FLOW_TIMEOUT: TimeDelta = TimeDelta::hours(2);
-const UDP_FLOW_TIMEOUT: TimeDelta = TimeDelta::seconds(120);
+const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
 
 #[derive(Debug)]
 pub struct FlowTracker {
@@ -91,9 +90,10 @@ impl FlowTracker {
     pub fn handle_timeout(&mut self, now: Instant) {
         let now_utc = self.now_utc(now);
 
-        for (key, value) in self.active_tcp_flows.extract_if(|_, value| {
-            now_utc.signed_duration_since(value.last_packet) > TCP_FLOW_TIMEOUT
-        }) {
+        for (key, value) in self
+            .active_tcp_flows
+            .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) > FLOW_TIMEOUT)
+        {
             let flow = CompletedTcpFlow::new(key, value, now_utc);
 
             tracing::debug!(?flow, "Terminating TCP flow; timeout");
@@ -101,9 +101,10 @@ impl FlowTracker {
             self.completed_flows.push_back(flow.into());
         }
 
-        for (key, value) in self.active_udp_flows.extract_if(|_, value| {
-            now_utc.signed_duration_since(value.last_packet) > UDP_FLOW_TIMEOUT
-        }) {
+        for (key, value) in self
+            .active_udp_flows
+            .extract_if(|_, value| now_utc.signed_duration_since(value.last_packet) > FLOW_TIMEOUT)
+        {
             let flow = CompletedUdpFlow::new(key, value, now_utc);
 
             tracing::debug!(?flow, "Terminating UDP flow; timeout");
