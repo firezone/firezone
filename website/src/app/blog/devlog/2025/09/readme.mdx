@@ -1,5 +1,3 @@
-# This Month in Firezone: September 2025
-
 September brought major improvements to Firezone's reliability, performance, and administrative capabilities.
 Our focus this month was on making connections more resilient, helping admins manage client versions more effectively, and optimizing our networking stack for real-world conditions.
 
@@ -90,6 +88,7 @@ These indexes ensure efficient cascade deletes now that hard-delete has been ful
 ## Notable Bug Fixes
 
 Several important bugs were squashed:
+
 - Gateway re-joins Phoenix channel topic on send errors to prevent message loss[^10397]
 - Fixed poll-after-completion panics in Client session event-loop[^10399]
 - Fixed DNS resource NAT reset when Client reassigns proxy IPs after sign out[^10310]
@@ -102,29 +101,55 @@ That's September in a nutshell.
 As always, we'd love to hear your thoughts and feedback on these improvements.
 
 [^10456]: [feat(portal): show outdated clients](https://github.com/firezone/firezone/pull/10456)
+
 [^10281]: [feat(portal): enable outdated gateway email](https://github.com/firezone/firezone/pull/10281)
+
 [^10369]: [feat(portal): batch_upsert and delete_unsynced functions](https://github.com/firezone/firezone/pull/10369)
+
 [^10302]: [feat(api): GET /account API](https://github.com/firezone/firezone/pull/10302)
+
 [^10076]: [feat(connlib): gracefully shutdown connections](https://github.com/firezone/firezone/pull/10076)
+
 [^10400]: [feat(clients): gracefully close connections on shutdown](https://github.com/firezone/firezone/pull/10400)
+
 [^10462]: [feat(connlib): create flow on ICMP error "prohibited"](https://github.com/firezone/firezone/pull/10462)
+
 [^10104]: [feat(connlib): persistent DNS resource records across sessions](https://github.com/firezone/firezone/pull/10104)
+
 [^10373]: [feat(gateway): use hickory resolver to resolve A/AAAA queries](https://github.com/firezone/firezone/pull/10373)
+
 [^10347]: [refactor(connlib): improve fairness of event-loop](https://github.com/firezone/firezone/pull/10347)
+
 [^10349]: [feat(linux): try to set `rmem_max` and `wmem_max` on startup](https://github.com/firezone/firezone/pull/10349)
+
 [^10367]: [fix(connlib): limit the number of optimistic candidates](https://github.com/firezone/firezone/pull/10367)
+
 [^10286]: [fix(relay): handle relay-relay candidate pairs in eBPF](https://github.com/firezone/firezone/pull/10286)
+
 [^10330]: [fix(relay): XDP_PASS DNS replies](https://github.com/firezone/firezone/pull/10330)
+
 [^10291]: [fix(relay): re-add eBPF channel map entry on refresh](https://github.com/firezone/firezone/pull/10291)
+
 [^10371]: [fix(android): launch auth in CustomTab](https://github.com/firezone/firezone/pull/10371)
+
 [^10363]: [chore: improve macos dev experience](https://github.com/firezone/firezone/pull/10363)
+
 [^10313]: [fix(apple): Enforce single Firezone instance](https://github.com/firezone/firezone/pull/10313)
+
 [^10288]: [ci: bump Ubuntu runners to 24.04](https://github.com/firezone/firezone/pull/10288)
+
 [^10301]: [ci: create a more realistic network setup](https://github.com/firezone/firezone/pull/10301)
+
 [^10396]: [chore(portal): add non-composite indexes](https://github.com/firezone/firezone/pull/10396)
+
 [^10403]: [chore(portal): add remaining simple indexes](https://github.com/firezone/firezone/pull/10403)
+
 [^10397]: [fix(gateway): re-join topic in phoenix-channel on error](https://github.com/firezone/firezone/pull/10397)
+
 [^10399]: [fix(connlib): fuse event-loop future inside client session](https://github.com/firezone/firezone/pull/10399)
+
 [^10310]: [fix(gateway): reset DNS resource NAT if proxy IPs change](https://github.com/firezone/firezone/pull/10310)
+
 [^10317]: [fix(relay): filter traces by log filter](https://github.com/firezone/firezone/pull/10317)
+
 [^10336]: [fix(portal): don't count internet site in limits](https://github.com/firezone/firezone/pull/10336)
