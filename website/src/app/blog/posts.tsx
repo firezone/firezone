@@ -20,11 +20,12 @@ export default function Posts() {
       type: "Engineering",
       description: (
         <p className="mb-2">
-          September brought significant improvements to Firezone&apos;s networking
-          stack, administrative tooling, and cross-platform reliability. This
-          month&apos;s work focused on optimizing relay performance through eBPF,
-          improving DNS resolution behavior, and enhancing the admin portal&apos;s
-          visibility into client and Gateway states. )
+          September brought significant improvements to Firezone&apos;s
+          networking stack, administrative tooling, and cross-platform
+          reliability. This month&apos;s work focused on optimizing relay
+          performance through eBPF, improving DNS resolution behavior, and
+          enhancing the admin portal&apos;s visibility into client and Gateway
+          states. )
         </p>
       ),
     },
@@ -423,8 +424,13 @@ export default function Posts() {
     <>
       <div className="border-b-[1px] py-6 px-4 sm:px-6 md:py-4 md:px-8 lg:px-10 mx-auto max-w-screen-lg w-full">
         <Pills
-          options={["All Posts", "Announcement", "Engineering", "Learn", "Insights"]}
-          multiselect={true}
+          options={[
+            "All Posts",
+            "Announcement",
+            "Engineering",
+            "Learn",
+            "Insights",
+          ]}
           filters={filters}
           setFilters={setFilters}
         />
