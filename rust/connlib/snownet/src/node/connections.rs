@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
+    collections::{BTreeMap, VecDeque},
     fmt,
     hash::Hash,
     iter,
@@ -23,9 +23,9 @@ pub struct Connections<TId, RId> {
 
     established_by_wireguard_session_index: BTreeMap<usize, TId>,
 
-    disconnected_ids: HashMap<TId, Instant>,
-    disconnected_public_keys: HashMap<[u8; 32], Instant>,
-    disconnected_session_indices: HashMap<usize, Instant>,
+    disconnected_ids: BTreeMap<TId, Instant>,
+    disconnected_public_keys: BTreeMap<[u8; 32], Instant>,
+    disconnected_session_indices: BTreeMap<usize, Instant>,
 }
 
 impl<TId, RId> Default for Connections<TId, RId> {
@@ -359,9 +359,9 @@ pub struct UnknownConnection {
 }
 
 impl UnknownConnection {
-    fn by_id<TId>(id: TId, disconnected_ids: &HashMap<TId, Instant>, now: Instant) -> Self
+    fn by_id<TId>(id: TId, disconnected_ids: &BTreeMap<TId, Instant>, now: Instant) -> Self
     where
-        TId: fmt::Display + Eq + Hash,
+        TId: fmt::Display + Eq + Hash + Ord,
     {
         Self {
             id: id.to_string(),
@@ -372,7 +372,7 @@ impl UnknownConnection {
         }
     }
 
-    fn by_index(id: usize, disconnected_indices: &HashMap<usize, Instant>, now: Instant) -> Self {
+    fn by_index(id: usize, disconnected_indices: &BTreeMap<usize, Instant>, now: Instant) -> Self {
         Self {
             id: id.to_string(),
             kind: "index",
@@ -384,7 +384,7 @@ impl UnknownConnection {
 
     fn by_public_key(
         key: [u8; 32],
-        disconnected_public_keys: &HashMap<[u8; 32], Instant>,
+        disconnected_public_keys: &BTreeMap<[u8; 32], Instant>,
         now: Instant,
     ) -> Self {
         Self {
