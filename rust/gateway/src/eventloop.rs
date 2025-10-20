@@ -16,7 +16,7 @@ use firezone_tunnel::{
     DnsResourceNatEntry, GatewayEvent, GatewayTunnel, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig,
     ResolveDnsRequest, TunnelError,
 };
-use futures::FutureExt as _;
+use futures::{FutureExt as _, TryFutureExt};
 use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,7 +27,7 @@ use std::pin::pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
-use std::{io, mem};
+use std::{io, iter, mem};
 use tokio::sync::mpsc;
 
 use crate::RELEASE;
@@ -661,12 +661,31 @@ impl Eventloop {
             let resolver = self.resolver.clone();
 
             async move {
-                let ips = resolver
-                    .lookup_ip(domain.to_string())
-                    .await
-                    .with_context(|| format!("Failed to lookup domain '{domain}'"))?
-                    .iter()
-                    .collect::<Vec<_>>();
+                let ipv4_lookup = resolver
+                    .ipv4_lookup(domain.to_string())
+                    .map_ok(|ipv4| ipv4.into_iter().map(|r| IpAddr::V4(r.0)));
+                let ipv6_lookup = resolver
+                    .ipv6_lookup(domain.to_string())
+                    .map_ok(|ipv6| ipv6.into_iter().map(|r| IpAddr::V6(r.0)));
+
+                let ips = match futures::future::join(ipv4_lookup, ipv6_lookup).await {
+                    (Ok(ipv4), Ok(ipv6)) => iter::empty().chain(ipv4).chain(ipv6).collect(),
+                    (Ok(ipv4), Err(e)) => {
+                        tracing::debug!(%domain, "AAAA lookup failed: {e}");
+
+                        ipv4.collect()
+                    }
+                    (Err(e), Ok(ipv6)) => {
+                        tracing::debug!(%domain, "A lookup failed: {e}");
+
+                        ipv6.collect()
+                    }
+                    (Err(e1), Err(e2)) => {
+                        tracing::debug!(%domain, "A and AAAA lookup failed: [{e1}; {e2}]");
+
+                        vec![]
+                    }
+                };
 
                 Ok(ips)
             }
