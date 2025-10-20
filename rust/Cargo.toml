@@ -137,7 +137,7 @@ os_info = { version = "3", default-features = false }
 output_vt100 = "0.1"
 parking_lot = "0.12.5"
 phoenix-channel = { path = "libs/connlib/phoenix-channel" }
-png = "0.17.16"
+png = "0.18.0"
 proc-macro2 = "1.0"
 proptest = "1.9.0"
 proptest-state-machine = "0.6.0"
