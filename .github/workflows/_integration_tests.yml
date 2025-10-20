@@ -113,6 +113,8 @@ jobs:
           - name: dns-systemd-resolved
             script: systemd/dns-systemd-resolved
           - script: tcp-dns
+          - script: download-concurrent
+          - script: download-rst
             # Setting both client and gateway to random masquerade will force relay-relay candidate pair
           - name: download-double-symmetric-nat
             script: download

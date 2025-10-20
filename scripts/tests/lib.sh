@@ -60,6 +60,26 @@ function assert_equals() {
     fi
 }
 
+function assert_not_equals() {
+    local actual="$1"
+    local expected="$2"
+
+    if [[ "$expected" == "$actual" ]]; then
+        echo "Expected values to differ but both are $actual"
+        exit 1
+    fi
+}
+
+function assert_greater_than() {
+    local actual="$1"
+    local expected="$2"
+
+    if [ "$actual" -lt "$expected" ]; then
+        echo "Expected $actual to be greater than $expected"
+        exit 1
+    fi
+}
+
 function process_state() {
     local container="$1"
 
@@ -95,4 +115,24 @@ function expect_error() {
     else
         return 0
     fi
+}
+
+# Extract flow logs from gateway for a given protocol
+# Returns flow log lines (use with readarray)
+# Usage: readarray -t flows < <(get_flow_logs "tcp")
+function get_flow_logs() {
+    local protocol="$1"
+
+    docker compose logs gateway --since 30s 2>/dev/null |
+        grep "flow_logs::${protocol}.*flow completed" || true
+}
+
+# Extract a field value from a flow log line
+# Usage: get_flow_field <flow_log_line> <field_name>
+# Example: get_flow_field "$flow" "inner_dst_ip"
+function get_flow_field() {
+    local flow_log="$1"
+    local field_name="$2"
+
+    echo "$flow_log" | grep -oP "${field_name}=\K[^ ]+" || echo ""
 }
