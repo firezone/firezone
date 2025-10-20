@@ -103,6 +103,8 @@ jobs:
         test:
           - script: create-flow-from-icmp-error
             min_client_version: 1.5.4
+          - script: download-rst
+            min_gateway_version: 1.4.18
           - script: curl-api-down
           - script: curl-api-restart
           - script: curl-ecn
@@ -114,31 +116,41 @@ jobs:
             script: systemd/dns-systemd-resolved
           - script: tcp-dns
           - script: download-concurrent
-          - script: download-rst
-            # Setting both client and gateway to random masquerade will force relay-relay candidate pair
+            min_gateway_version: 1.4.18
           - name: download-double-symmetric-nat
             script: download
+            # Setting both client and gateway to random masquerade will force relay-relay candidate pair
             client_masquerade: random
             gateway_masquerade: random
             rust_log: debug
             single_relay: true # Force single relay
+            min_gateway_version: 1.4.18
           - script: download-packet-loss
             rust_log: debug
           - script: download-roaming-network
-            # Too noisy can cause flaky tests due to the amount of data
-            rust_log: debug
+            min_gateway_version: 1.4.18
+            rust_log: debug # Too noisy can cause flaky tests due to the amount of data
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
       - name: Check minimum client version
-        id: version_check
+        id: client_version_check
         if: ${{ matrix.test.min_client_version }}
         continue-on-error: true
         run: |
           ACTUAL_VERSION=$(docker run ${{ inputs.client_image }}:${{ inputs.client_tag }} firezone-headless-client --version | awk '{print $2}')
           MIN_VERSION="${{ matrix.test.min_client_version }}"
+
+          [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
+      - name: Check minimum gateway version
+        id: gateway_version_check
+        if: ${{ matrix.test.min_gateway_version }}
+        continue-on-error: true
+        run: |
+          ACTUAL_VERSION=$(docker run ${{ inputs.gateway_image }}:${{ inputs.gateway_tag }} firezone-gateway --version | awk '{print $2}')
+          MIN_VERSION="${{ matrix.test.min_gateway_version }}"
 
           [ "$(printf '%s\n' "$MIN_VERSION" "$ACTUAL_VERSION" | sort --version-sort | head -n1)" == "$MIN_VERSION" ]
       # We need at least Docker v28.1 which is not yet available on GitHub actions runners
@@ -191,7 +203,7 @@ jobs:
           sudo ethtool -K docker0 tx off
 
       - run: ./scripts/tests/${{ matrix.test.script }}.sh
-        if: ${{ steps.version_check.outcome != 'failure' }} # Run the script if version check succeeds or is skipped
+        if: ${{ steps.client_version_check.outcome != 'failure' && steps.gateway_version_check.outcome != 'failure' }} # Run the script if version checks succeed or are skipped
 
       - name: Ensure Client emitted no warnings
         if: "!cancelled()"
