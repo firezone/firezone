@@ -71,6 +71,7 @@ We also fixed several edge cases in the eBPF layer, including properly handling 
 The Android client now launches authentication in a CustomTab instead of the default browser.[^10371]
 This fixes a Firefox bug where only the first browser tab could intercept the custom URI scheme, making subsequent sign-ins fail until users manually closed the old tab.
 CustomTabs ensure only one sandboxed authentication instance exists at a time.
+It also results in a nice UX improvement where the "You have been signed-in" tabs are no longer lingering around.
 
 macOS developers got quality-of-life improvements making the workspace build correctly on macOS with appropriate stubs and conditional compilation.[^10363]
 
