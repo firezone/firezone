@@ -517,7 +517,7 @@ where
 
         let socket = match &mut conn.state {
             ConnectionState::Connecting { ip_buffer, .. } => {
-                ip_buffer.push(packet);
+                ip_buffer.enqueue(packet);
                 let num_buffered = ip_buffer.len();
 
                 tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
@@ -2241,13 +2241,13 @@ where
                     ConnectionState::Connecting { wg_buffer, .. } => {
                         tracing::debug!(%cid, "No socket has been nominated yet, buffering WG packet");
 
-                        wg_buffer.push(bytes.to_owned());
+                        wg_buffer.enqueue(bytes.to_owned());
 
                         while let TunnResult::WriteToNetwork(packet) =
                             self.tunnel
                                 .decapsulate_at(None, &[], self.buffer.as_mut(), now)
                         {
-                            wg_buffer.push(packet.to_owned());
+                            wg_buffer.enqueue(packet.to_owned());
                         }
                     }
                     ConnectionState::Connected { peer_socket, .. }
