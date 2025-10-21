@@ -107,7 +107,8 @@ public final class Store: ObservableObject {
   #endif
 
   private func setupTunnelObservers() async throws {
-    let vpnStatusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
+    let vpnStatusChangeHandler: @Sendable (NEVPNStatus) async throws -> Void = {
+      [weak self] status in
       try await self?.handleVPNStatusChange(newVPNStatus: status)
     }
     try ipcClient().subscribeToVPNStatusUpdates(handler: vpnStatusChangeHandler)

@@ -154,7 +154,9 @@ import System
 #endif
 
 extension LogExporter {
-  private static let fileManager = FileManager.default
+  /// Thread-safe: FileManager.default is documented as thread-safe by Apple.
+  /// Reference: https://developer.apple.com/documentation/foundation/filemanager
+  private nonisolated(unsafe) static let fileManager = FileManager.default
 
   static func now() -> String {
     let dateFormatter = ISO8601DateFormatter()

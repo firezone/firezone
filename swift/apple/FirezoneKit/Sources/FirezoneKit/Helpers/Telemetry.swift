@@ -11,8 +11,16 @@ public enum Telemetry {
   // the existing one. So we need to collect these fields from various codepaths
   // during initialization / sign in so we can build a new User object any time
   // one of these is updated.
-  private static var _firezoneId: String?
-  private static var _accountSlug: String?
+
+  /// Thread-safety: Low risk in practice - only set during initialisation/sign-in.
+  /// Accessed from multiple contexts (MainActor app, background Network Extension, logging).
+  /// TODO: Add proper synchronisation (actor or DispatchQueue) for strict concurrency.
+  private nonisolated(unsafe) static var _firezoneId: String?
+
+  /// Thread-safety: Low risk in practice - only set during initialisation/sign-in.
+  /// Accessed from multiple contexts (MainActor app, background Network Extension, logging).
+  /// TODO: Add proper synchronisation (actor or DispatchQueue) for strict concurrency.
+  private nonisolated(unsafe) static var _accountSlug: String?
   public static var firezoneId: String? {
     get {
       return self._firezoneId

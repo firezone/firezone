@@ -54,7 +54,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   override func startTunnel(
     options: [String: NSObject]?,
-    completionHandler: @escaping (Error?) -> Void
+    completionHandler: @escaping @Sendable (Error?) -> Void
   ) {
     // Dummy start to get the extension running on macOS after upgrade
     if options?["dryRun"] as? Bool == true {
@@ -152,7 +152,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   // When called by the system, we call Adapter.stop() from here.
   // When initiated by connlib, we've already called stop() there.
   override func stopTunnel(
-    with reason: NEProviderStopReason, completionHandler: @escaping () -> Void
+    with reason: NEProviderStopReason, completionHandler: @escaping @Sendable () -> Void
   ) {
     Log.log("stopTunnel: Reason: \(reason)")
 
@@ -164,8 +164,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
   // It would be helpful to be able to encapsulate Errors here. To do that
   // we need to update ProviderMessage to encode/decode Result to and from Data.
   // TODO: Move to a more abstract IPC protocol
-  @MainActor
-  override func handleAppMessage(_ message: Data, completionHandler: ((Data?) -> Void)? = nil) {
+  override func handleAppMessage(
+    _ message: Data, completionHandler: (@Sendable (Data?) -> Void)? = nil
+  ) {
     do {
       let providerMessage = try PropertyListDecoder().decode(ProviderMessage.self, from: message)
 
@@ -221,7 +222,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     return Token(passedToken) ?? keychainToken
   }
 
-  func clearLogs(_ completionHandler: ((Data?) -> Void)? = nil) {
+  func clearLogs(_ completionHandler: (@Sendable (Data?) -> Void)? = nil) {
     do {
       try Log.clear(in: SharedAccess.logFolderURL)
     } catch {
@@ -231,7 +232,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler?(nil)
   }
 
-  func getLogFolderSize(_ completionHandler: ((Data?) -> Void)? = nil) {
+  func getLogFolderSize(_ completionHandler: (@Sendable (Data?) -> Void)? = nil) {
     guard let logFolderURL = SharedAccess.logFolderURL
     else {
       completionHandler?(nil)
@@ -239,17 +240,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       return
     }
 
-    getLogFolderSizeTask = Task {
+    let task = Task {
       let size = await Log.size(of: logFolderURL)
       let data = withUnsafeBytes(of: size) { Data($0) }
 
-      // Ensure completionHandler is called on the same actor as handleAppMessage and isn't cancelled by deinit
-      if getLogFolderSizeTask?.isCancelled ?? true { return }
-      await MainActor.run { completionHandler?(data) }
+      // Call completion handler with data if not cancelled
+      guard !Task.isCancelled else { return }
+      completionHandler?(data)
     }
+    getLogFolderSizeTask = task
   }
 
-  func exportLogs(_ completionHandler: @escaping (Data?) -> Void) {
+  func exportLogs(_ completionHandler: @escaping @Sendable (Data?) -> Void) {
     func sendChunk(_ tunnelLogArchive: TunnelLogArchive) {
       do {
         let (chunk, done) = try tunnelLogArchive.readChunk()
@@ -306,6 +308,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       self.logExportState = .inProgress(tunnelLogArchive)
       sendChunk(tunnelLogArchive)
     }
+  }
+
+  func consumeStopReason(_ completionHandler: @Sendable (Data?) -> Void) {
+    guard let data = try? Data(contentsOf: SharedAccess.providerStopReasonURL)
+    else {
+      completionHandler(nil)
+
+      return
+    }
+
+    try? FileManager.default
+      .removeItem(at: SharedAccess.providerStopReasonURL)
+
+    completionHandler(data)
   }
 
   // Firezone ID migration. Can be removed once most clients migrate past 1.4.15.

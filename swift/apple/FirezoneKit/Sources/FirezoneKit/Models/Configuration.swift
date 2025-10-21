@@ -108,7 +108,11 @@ public class Configuration: ObservableObject {
     static let supportURL = "supportURL"
   }
 
-  private var defaults: UserDefaults
+  // nonisolated(unsafe) is required because:
+  // 1. UserDefaults is thread-safe
+  // 2. Used only for NotificationCenter observer registration (in init/deinit)
+  // 3. deinit is nonisolated and needs access to remove the observer
+  private nonisolated(unsafe) var defaults: UserDefaults
 
   init(userDefaults: UserDefaults = UserDefaults.standard) {
     defaults = userDefaults
@@ -176,7 +180,7 @@ public class Configuration: ObservableObject {
 }
 
 // Configuration does not conform to Decodable, so introduce a simpler type here to encode for IPC
-public struct TunnelConfiguration: Codable {
+public struct TunnelConfiguration: Codable, Sendable {
   public let apiURL: String
   public let accountSlug: String
   public let logFilter: String

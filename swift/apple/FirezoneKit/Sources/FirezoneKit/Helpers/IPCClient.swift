@@ -11,7 +11,7 @@ import NetworkExtension
 // TODO: Use a more abstract IPC protocol to make this less terse
 // TODO: Consider making this an actor to guarantee strict ordering
 
-class IPCClient {
+class IPCClient: @unchecked Sendable {
   enum Error: Swift.Error {
     case decodeIPCDataFailed
     case noIPCData
@@ -98,9 +98,8 @@ class IPCClient {
     }
   #endif
 
-  @MainActor
   func setConfiguration(_ configuration: Configuration) async throws {
-    let tunnelConfiguration = configuration.toTunnelConfiguration()
+    let tunnelConfiguration = await configuration.toTunnelConfiguration()
     let message = ProviderMessage.setConfiguration(tunnelConfiguration)
 
     if sessionStatus() != .connected {
