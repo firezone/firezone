@@ -12,31 +12,33 @@ public enum Telemetry {
   // during initialization / sign in so we can build a new User object any time
   // one of these is updated.
 
-  /// Thread-safety: Low risk in practice - only set during initialisation/sign-in.
-  /// Accessed from multiple contexts (MainActor app, background Network Extension, logging).
-  /// TODO: Add proper synchronisation (actor or DispatchQueue) for strict concurrency.
-  private nonisolated(unsafe) static var _firezoneId: String?
+  /// Thread-safe: All access synchronised through telemetryQueue.
+  /// DispatchQueue ensures atomic read-modify-write operations.
+  /// The nonisolated(unsafe) annotation is safe because all access is serialised via queue.sync.
+  private static let telemetryQueue = DispatchQueue(label: "dev.firezone.telemetry")
 
-  /// Thread-safety: Low risk in practice - only set during initialisation/sign-in.
-  /// Accessed from multiple contexts (MainActor app, background Network Extension, logging).
-  /// TODO: Add proper synchronisation (actor or DispatchQueue) for strict concurrency.
+  private nonisolated(unsafe) static var _firezoneId: String?
   private nonisolated(unsafe) static var _accountSlug: String?
   public static var firezoneId: String? {
     get {
-      return self._firezoneId
+      telemetryQueue.sync { _firezoneId }
     }
     set {
-      self._firezoneId = newValue
-      updateUser(id: self._firezoneId, slug: self._accountSlug)
+      telemetryQueue.sync {
+        _firezoneId = newValue
+        updateUser(id: _firezoneId, slug: _accountSlug)
+      }
     }
   }
   public static var accountSlug: String? {
     get {
-      return self._accountSlug
+      telemetryQueue.sync { _accountSlug }
     }
     set {
-      self._accountSlug = newValue
-      updateUser(id: self._firezoneId, slug: self._accountSlug)
+      telemetryQueue.sync {
+        _accountSlug = newValue
+        updateUser(id: _firezoneId, slug: _accountSlug)
+      }
     }
   }
 
