@@ -2814,6 +2814,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b604752cefc5aa3ab98992a107a8bd99465d2825c1584e0b60cb6957b21e19d7"
 dependencies = [
  "futures-util",
+ "tokio",
 ]
 
 [[package]]
