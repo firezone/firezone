@@ -152,7 +152,7 @@ impl TunnelTest {
             } => {
                 let new_resource = client::Resource::Cidr(client::CidrResource {
                     address: new_address,
-                    ..resource.clone()
+                    ..resource
                 });
 
                 if let Some(gateway) = ref_state
