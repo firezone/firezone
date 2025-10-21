@@ -46,7 +46,6 @@ defmodule Web do
       use Gettext, backend: Web.Gettext
 
       import Plug.Conn
-      import Web.ControllerDocumentation
 
       unquote(verified_routes())
     end
