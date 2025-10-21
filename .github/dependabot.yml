@@ -74,6 +74,10 @@ updates:
         patterns:
           - rand
           - rand_*
+      sentry:
+        patterns:
+          - sentry
+          - sentry-*
   - package-ecosystem: gradle
     directory: kotlin/android/
     schedule:
