@@ -2,6 +2,7 @@ use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque, hash_map},
     net::{IpAddr, SocketAddr},
+    sync::LazyLock,
 };
 
 use chrono::{DateTime, TimeDelta, Utc};
@@ -12,6 +13,11 @@ use std::time::Instant;
 thread_local! {
     static CURRENT_FLOW: RefCell<Option<FlowData>> = const { RefCell::new(None) };
 }
+
+// Workaround because `tracing::enabled!` is broken.
+static IS_ENABLED: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("RUST_LOG").is_ok_and(|directives| directives.contains("flow_logs=trace"))
+});
 
 const FLOW_TIMEOUT: TimeDelta = TimeDelta::minutes(2);
 
@@ -42,6 +48,13 @@ impl FlowTracker {
         packet: &IpPacket,
         now: Instant,
     ) -> CurrentFlowGuard<'a> {
+        if !*IS_ENABLED {
+            return CurrentFlowGuard {
+                inner: self,
+                created_at: now,
+            };
+        }
+
         let current = CURRENT_FLOW.replace(Some(FlowData::InboundTun(InboundTun {
             inner: InnerFlow::from(packet),
             outer: None,
@@ -65,6 +78,13 @@ impl FlowTracker {
         remote: SocketAddr,
         now: Instant,
     ) -> CurrentFlowGuard<'a> {
+        if !*IS_ENABLED {
+            return CurrentFlowGuard {
+                inner: self,
+                created_at: now,
+            };
+        }
+
         let current = CURRENT_FLOW.replace(Some(FlowData::InboundWireGuard(InboundWireGuard {
             outer: OuterFlow { local, remote },
             inner: None,
@@ -719,11 +739,6 @@ pub struct CurrentFlowGuard<'a> {
 impl<'a> Drop for CurrentFlowGuard<'a> {
     fn drop(&mut self) {
         let Some(current_flow) = CURRENT_FLOW.replace(None) else {
-            debug_assert!(
-                false,
-                "Should always have a current flow if an `InboundFlowGuard` is alive"
-            );
-
             return;
         };
 
