@@ -361,7 +361,7 @@ pub struct UnknownConnection {
 impl UnknownConnection {
     fn by_id<TId>(id: TId, disconnected_ids: &BTreeMap<TId, Instant>, now: Instant) -> Self
     where
-        TId: fmt::Display + Eq + Hash + Ord,
+        TId: fmt::Display + Eq + Ord,
     {
         Self {
             id: id.to_string(),
