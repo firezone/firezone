@@ -9,8 +9,8 @@
 import Foundation
 
 class StatusSymbol {
-  static var enabled: String = "<->"
-  static var disabled: String = "—"
+  static let enabled: String = "<->"
+  static let disabled: String = "—"
 }
 
 public enum ResourceList {

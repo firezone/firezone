@@ -8,25 +8,29 @@ import Foundation
 import OSLog
 
 public final class Log {
-  private static var logger =
+  private static let logger: Logger = {
     switch Bundle.main.bundleIdentifier {
     case "dev.firezone.firezone":
-      Logger(subsystem: "dev.firezone.firezone", category: "app")
+      return Logger(subsystem: "dev.firezone.firezone", category: "app")
     case "dev.firezone.firezone.network-extension":
-      Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
+      return Logger(subsystem: "dev.firezone.firezone", category: "tunnel")
     default:
       fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
     }
+  }()
 
-  private static var logWriter =
+  private static let logWriter: LogWriter? = {
+    let folderURL: URL?
     switch Bundle.main.bundleIdentifier {
     case "dev.firezone.firezone":
-      LogWriter(folderURL: SharedAccess.appLogFolderURL, logger: logger)
+      folderURL = SharedAccess.appLogFolderURL
     case "dev.firezone.firezone.network-extension":
-      LogWriter(folderURL: SharedAccess.tunnelLogFolderURL, logger: logger)
+      folderURL = SharedAccess.tunnelLogFolderURL
     default:
       fatalError("Unknown bundle id: \(Bundle.main.bundleIdentifier!)")
     }
+    return LogWriter(folderURL: folderURL, logger: logger)
+  }()
 
   public static func log(_ message: String) {
     debug(message)
@@ -67,11 +71,6 @@ public final class Log {
     let fileManager = FileManager.default
     var totalSize: Int64 = 0
 
-    func sizeOfFile(at url: URL, with resourceValues: URLResourceValues) -> Int64 {
-      guard resourceValues.isRegularFile == true else { return 0 }
-      return Int64(resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
-    }
-
     // Tally size of each log file in parallel
     await withTaskGroup(of: Int64.self) { taskGroup in
       fileManager.forEachFileUnder(
@@ -82,8 +81,12 @@ public final class Log {
           .isRegularFileKey,
         ]
       ) { url, resourceValues in
-        taskGroup.addTask {
-          return sizeOfFile(at: url, with: resourceValues)
+        // Extract non-Sendable values before passing to @Sendable closure
+        guard resourceValues.isRegularFile == true else { return }
+        let size = Int64(resourceValues.totalFileAllocatedSize ?? resourceValues.totalFileSize ?? 0)
+
+        taskGroup.addTask { @Sendable in
+          return size
         }
       }
 
@@ -118,7 +121,9 @@ public final class Log {
   }
 }
 
-private final class LogWriter {
+/// Thread-safe: All mutable state access is serialised through workQueue.
+/// Log writes are queued asynchronously to avoid blocking the caller.
+private final class LogWriter: @unchecked Sendable {
   enum Severity: String, Codable {
     case trace = "TRACE"
     case debug = "DEBUG"

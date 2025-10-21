@@ -22,7 +22,7 @@ public enum NotificationIndentifier: String {
   case dismissNotificationAction
 }
 
-public class SessionNotification: NSObject {
+public class SessionNotification: NSObject, @unchecked Sendable {
   public var signInHandler = {}
   private let notificationCenter = UNUserNotificationCenter.current()
 

@@ -48,7 +48,9 @@ private func forwardEvents(from session: Session, to eventSender: Sender<Event>)
 }
 
 /// Forwards commands from the command receiver to the session.
-private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to session: Session) async {
+private func forwardCommands(from commandReceiver: Receiver<SessionCommand>, to session: Session)
+  async
+{
   for await command in commandReceiver.stream {
     if Task.isCancelled {
       Log.log("Command forwarding cancelled")
