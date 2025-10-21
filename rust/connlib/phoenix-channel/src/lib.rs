@@ -4,7 +4,7 @@ mod get_user_agent;
 mod login_url;
 
 use anyhow::{Context as _, Result};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{BTreeMap, VecDeque};
 use std::net::{IpAddr, SocketAddr, ToSocketAddrs as _};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -48,7 +48,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
 
     _phantom: PhantomData<TInboundMsg>,
 
-    pending_join_requests: HashMap<OutboundRequestId, Instant>,
+    pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
 
     // Stored here to allow re-connecting.
     url_prototype: Secret<LoginUrl<TFinish>>,

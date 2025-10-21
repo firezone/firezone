@@ -483,7 +483,7 @@ pub struct RefClient {
 
     /// The expected TCP connections.
     #[debug(skip)]
-    pub(crate) expected_tcp_connections: HashMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
+    pub(crate) expected_tcp_connections: BTreeMap<(IpAddr, Destination, SPort, DPort), ResourceId>,
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
@@ -703,10 +703,6 @@ impl RefClient {
         }
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "We don't care about the ordering of the expected TCP connections."
-    )]
     pub(crate) fn expected_resource_status(
         &self,
         has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
@@ -1223,10 +1219,6 @@ impl RefClient {
             .contains_key(&(src, dst, sport, dport))
     }
 
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Iteration order does not matter here."
-    )]
     pub(crate) fn tcp_connection_tuple_to_resource(
         &self,
         resource: ResourceId,
