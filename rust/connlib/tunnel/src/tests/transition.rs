@@ -154,8 +154,8 @@ impl Ord for Destination {
             (Destination::IpAddr(left), Destination::IpAddr(right)) => left.cmp(right),
 
             // These are according to variant order.
-            (Destination::DomainName { .. }, Destination::IpAddr(_)) => std::cmp::Ordering::Greater,
-            (Destination::IpAddr(_), Destination::DomainName { .. }) => std::cmp::Ordering::Less,
+            (Destination::DomainName { .. }, Destination::IpAddr(_)) => std::cmp::Ordering::Less,
+            (Destination::IpAddr(_), Destination::DomainName { .. }) => std::cmp::Ordering::Greater,
         }
     }
 }
