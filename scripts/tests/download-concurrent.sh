@@ -29,9 +29,9 @@ wait $PID3 || {
 sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
-assert_equals "${#flows[@]}" 3
+assert_eq "${#flows[@]}" 3
 
 for flow in "${flows[@]}"; do
-    assert_equals "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
-    assert_greater_than "$(get_flow_field "$flow" "rx_bytes")" 5000000
+    assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+    assert_gteq "$(get_flow_field "$flow" "rx_bytes")" 5000000
 done

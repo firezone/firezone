@@ -50,7 +50,7 @@ Domain.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, clien
 "
 }
 
-function assert_equals() {
+function assert_eq() {
     local actual="$1"
     local expected="$2"
 
@@ -60,7 +60,7 @@ function assert_equals() {
     fi
 }
 
-function assert_not_equals() {
+function assert_ne() {
     local actual="$1"
     local expected="$2"
 
@@ -70,12 +70,12 @@ function assert_not_equals() {
     fi
 }
 
-function assert_greater_than() {
+function assert_gteq() {
     local actual="$1"
     local expected="$2"
 
     if [ "$actual" -lt "$expected" ]; then
-        echo "Expected $actual to be greater than $expected"
+        echo "Expected $actual to be greater than or equal to $expected"
         exit 1
     fi
 }
@@ -90,7 +90,7 @@ function assert_process_state {
     local container="$1"
     local expected_state="$2"
 
-    assert_equals "$(process_state "$container")" "$expected_state"
+    assert_eq "$(process_state "$container")" "$expected_state"
 }
 
 function create_token_file {

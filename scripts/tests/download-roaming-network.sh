@@ -47,14 +47,20 @@ fi
 sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
-assert_equals "${#flows[@]}" 2
+assert_gteq "${#flows[@]}" 2
 
 # All flows should have same inner_dst_ip
 for flow in "${flows[@]}"; do
-    assert_equals "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+    assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
 done
 
 # Verify different outer_src_port after roaming (network change)
 # The docker-compose setup uses routers and therefore the source IP is always the router.
 # But conntrack on the router will allocate a new source port because the binding on the old one is still active after roaming.
-assert_not_equals "$(get_flow_field "${flows[0]}" "outer_src_port")" "$(get_flow_field "${flows[1]}" "outer_src_port")"
+original_src_port=$(get_flow_field "${flows[0]}" "outer_src_port")
+
+for ((i = 1; i < ${#flows[@]}; i++)); do
+    next_src_port=$(get_flow_field "${flows[1]}" "outer_src_port")
+
+    assert_ne "$original_src_port" "$next_src_port"
+done

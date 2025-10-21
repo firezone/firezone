@@ -22,8 +22,8 @@ fi
 sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
-assert_equals "${#flows[@]}" 1
+assert_eq "${#flows[@]}" 1
 
 flow="${flows[0]}"
-assert_equals "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
-assert_greater_than "$(get_flow_field "$flow" "rx_bytes")" 10000000
+assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+assert_gteq "$(get_flow_field "$flow" "rx_bytes")" 10000000
