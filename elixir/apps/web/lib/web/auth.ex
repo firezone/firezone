@@ -49,7 +49,9 @@ defmodule Web.Auth do
 
     sessions = Enum.take(sessions ++ [session], -1 * @remember_last_sessions)
 
-    Plug.Conn.put_session(conn, :sessions, sessions)
+    conn
+    |> renew_session()
+    |> Plug.Conn.put_session(:sessions, sessions)
   end
 
   defp delete_account_session(conn, context_type, account_id) do
