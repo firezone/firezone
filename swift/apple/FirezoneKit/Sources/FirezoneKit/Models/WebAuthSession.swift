@@ -13,7 +13,6 @@ import Foundation
 @MainActor
 struct WebAuthSession {
   private static let scheme = "firezone-fd0020211111"
-  static let anchor = PresentationAnchor()
 
   static func signIn(store: Store, configuration: Configuration? = nil) async throws {
     let configuration = configuration ?? Configuration.shared
@@ -27,8 +26,33 @@ struct WebAuthSession {
       throw AuthClientError.invalidAuthURL
     }
 
-    let authResponse: AuthResponse? = try await withCheckedThrowingContinuation { continuation in
-      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: scheme) {
+    // Create anchor on MainActor, then pass to concurrent function
+    let anchor = PresentationAnchor()
+
+    // Call @concurrent function to avoid MainActor inference on callback closure
+    let authResponse = try await performAuthentication(
+      url: url,
+      callbackScheme: scheme,
+      authClient: authClient,
+      anchor: anchor
+    )
+
+    if let authResponse {
+      try await store.signIn(authResponse: authResponse)
+    }
+  }
+
+  // @concurrent runs on global executor, preventing closure from inheriting MainActor isolation
+  @concurrent private static func performAuthentication(
+    url: URL,
+    callbackScheme: String,
+    authClient: AuthClient,
+    anchor: PresentationAnchor
+  ) async throws -> AuthResponse? {
+    // Anchor passed as parameter, keeping strong reference
+
+    return try await withCheckedThrowingContinuation { continuation in
+      let session = ASWebAuthenticationSession(url: url, callbackURLScheme: callbackScheme) {
         returnedURL, error in
         do {
           if let error = error as? ASWebAuthenticationSessionError,
@@ -55,18 +79,20 @@ struct WebAuthSession {
       // load cookies
       session.prefersEphemeralWebBrowserSession = false
 
-      // Start auth
-      session.start()
-    }
-
-    if let authResponse {
-      try await store.signIn(authResponse: authResponse)
+      // Start auth - must be called on MainActor
+      // Use Task to asynchronously hop to MainActor from concurrent context
+      // (cannot use await MainActor.run - withCheckedThrowingContinuation requires sync closure)
+      Task { @MainActor in
+        session.start()
+      }
     }
   }
 }
 
 // Required shim to use as "presentationAnchor" for the Webview. Why Apple?
-final class PresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding {
+final class PresentationAnchor: NSObject, ASWebAuthenticationPresentationContextProviding,
+  Sendable
+{
   @MainActor
   func presentationAnchor(for _: ASWebAuthenticationSession) -> ASPresentationAnchor {
     ASPresentationAnchor()
