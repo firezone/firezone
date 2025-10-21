@@ -46,9 +46,9 @@ pub fn try_handle_turn(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `EthHdr`.
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
 
-    let num_bytes = match eth.ether_type {
-        EtherType::Ipv4 => try_handle_turn_ipv4(ctx)?,
-        EtherType::Ipv6 => try_handle_turn_ipv6(ctx)?,
+    let num_bytes = match eth.ether_type() {
+        Ok(EtherType::Ipv4) => try_handle_turn_ipv4(ctx)?,
+        Ok(EtherType::Ipv6) => try_handle_turn_ipv6(ctx)?,
         _ => return Err(Error::NotIp),
     };
     stats::emit_data_relayed(ctx, num_bytes);
@@ -75,17 +75,17 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
 
     // We do not want to handle DNS packets
-    if udp.source() == DNS_PORT {
+    if udp.src_port() == DNS_PORT {
         return Err(Error::DnsPacket);
     }
 
-    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
+    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
         try_handle_from_ipv4_udp(ctx)?;
 
         return Ok(udp_payload_len);
     }
 
-    if udp.dest() == 3478 {
+    if udp.dst_port() == 3478 {
         try_handle_from_ipv4_channel_data(ctx)?;
 
         return Ok(udp_payload_len - CdHdr::LEN as u16);
@@ -108,17 +108,17 @@ fn try_handle_turn_ipv6(ctx: &XdpContext) -> Result<u16, Error> {
     let udp_payload_len = udp.len() - UdpHdr::LEN as u16;
 
     // We do not want to handle DNS packets
-    if udp.source() == DNS_PORT {
+    if udp.src_port() == DNS_PORT {
         return Err(Error::DnsPacket);
     }
 
-    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dest()) {
+    if (LOWER_PORT..=UPPER_PORT).contains(&udp.dst_port()) {
         try_handle_from_ipv6_udp(ctx)?;
 
         return Ok(udp_payload_len);
     }
 
-    if udp.dest() == 3478 {
+    if udp.dst_port() == 3478 {
         try_handle_from_ipv6_channel_data(ctx)?;
 
         return Ok(udp_payload_len - CdHdr::LEN as u16);
@@ -135,7 +135,7 @@ fn try_handle_from_ipv4_udp(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
 
-    let pp = PortAndPeerV4::new(ipv4.src_addr(), udp.dest(), udp.source());
+    let pp = PortAndPeerV4::new(ipv4.src_addr(), udp.dst_port(), udp.src_port());
 
     trace!(
         ctx,
@@ -191,7 +191,7 @@ fn try_handle_from_ipv4_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
-    let cc = ClientAndChannelV4::new(ipv4.src_addr(), udp.source(), channel_number);
+    let cc = ClientAndChannelV4::new(ipv4.src_addr(), udp.src_port(), channel_number);
 
     trace!(
         ctx,
@@ -251,7 +251,7 @@ fn try_handle_from_ipv6_udp(ctx: &XdpContext) -> Result<(), Error> {
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
 
-    let pp = PortAndPeerV6::new(ipv6.src_addr(), udp.dest(), udp.source());
+    let pp = PortAndPeerV6::new(ipv6.src_addr(), udp.dst_port(), udp.src_port());
 
     trace!(
         ctx,
@@ -307,7 +307,7 @@ fn try_handle_from_ipv6_channel_data(ctx: &XdpContext) -> Result<(), Error> {
         return Err(Error::BadChannelDataLength);
     }
 
-    let cc = ClientAndChannelV6::new(ipv6.src_addr(), udp.source(), cd.number());
+    let cc = ClientAndChannelV6::new(ipv6.src_addr(), udp.src_port(), cd.number());
 
     trace!(
         ctx,
