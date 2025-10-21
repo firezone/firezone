@@ -16,6 +16,11 @@ defmodule Domain.Changes.Hooks.Policies do
   # Disable - process as delete
   def on_update(lsn, %{"disabled_at" => nil}, %{"disabled_at" => disabled_at} = data)
       when not is_nil(disabled_at) do
+    # TODO: Potentially revisit whether this should be handled here
+    #       or handled closer to where the PubSub message is received.
+    policy = struct_from_params(Policies.Policy, data)
+    Flows.delete_flows_for(policy)
+
     on_delete(lsn, data)
   end
 
@@ -23,12 +28,6 @@ defmodule Domain.Changes.Hooks.Policies do
   def on_update(lsn, %{"disabled_at" => disabled_at}, %{"disabled_at" => nil} = data)
       when not is_nil(disabled_at) do
     on_insert(lsn, data)
-  end
-
-  # Soft-delete - process as delete
-  def on_update(lsn, %{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
-      when not is_nil(deleted_at) do
-    on_delete(lsn, old_data)
   end
 
   # Regular update
@@ -54,10 +53,6 @@ defmodule Domain.Changes.Hooks.Policies do
   def on_delete(lsn, old_data) do
     policy = struct_from_params(Policies.Policy, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: policy}
-
-    # TODO: Hard delete
-    # This can be removed upon implementation of hard delete
-    Flows.delete_flows_for(policy)
 
     PubSub.Account.broadcast(policy.account_id, change)
   end

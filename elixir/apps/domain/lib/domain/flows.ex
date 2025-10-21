@@ -1,6 +1,6 @@
 defmodule Domain.Flows do
   alias Domain.Repo
-  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies, Tokens}
+  alias Domain.{Auth, Actors, Clients, Gateways, Resources, Policies}
   alias Domain.Flows.{Authorizer, Flow}
   require Ecto.Query
   require Logger
@@ -75,10 +75,6 @@ defmodule Domain.Flows do
   # since we won't need to be so careful about reject_access messages to the gateway.
   def reauthorize_flow(%Flow{} = flow) do
     with {:ok, client} <- Clients.fetch_client_by_id(flow.client_id, preload: :identity),
-         # TODO: Hard delete
-         # We need to ensure token and gateway haven't been deleted after the initial flow was created
-         # This can be removed after hard-delete since we'll get a DB error if these associations no longer exist
-         {:ok, _token} <- Tokens.fetch_token_by_id(flow.token_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(flow.gateway_id),
          # We only want to reauthorize the resource for this gateway if the resource is still connected to its
          # gateway_group.
