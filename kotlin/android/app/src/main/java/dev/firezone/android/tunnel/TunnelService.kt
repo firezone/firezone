@@ -39,6 +39,7 @@ import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
@@ -283,38 +284,44 @@ class TunnelService : VpnService() {
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
             serviceScope.launch {
-                Session
-                    .newAndroid(
-                        apiUrl = config.apiUrl,
-                        token = token,
-                        accountSlug = config.accountSlug,
-                        deviceId = deviceId(),
-                        deviceName = getDeviceName(),
-                        osVersion = Build.VERSION.RELEASE,
-                        logDir = getLogDir(),
-                        logFilter = config.logFilter,
-                        isInternetResourceActive = resourceState.isEnabled(),
-                        protectSocket = protectSocket,
-                        deviceInfo = deviceInfo,
-                    ).use { session ->
-                        startNetworkMonitoring()
-                        startDisconnectMonitoring()
+                try {
+                    Session
+                        .newAndroid(
+                            apiUrl = config.apiUrl,
+                            token = token,
+                            accountSlug = config.accountSlug,
+                            deviceId = deviceId(),
+                            deviceName = getDeviceName(),
+                            osVersion = Build.VERSION.RELEASE,
+                            logDir = getLogDir(),
+                            logFilter = config.logFilter,
+                            isInternetResourceActive = resourceState.isEnabled(),
+                            protectSocket = protectSocket,
+                            deviceInfo = deviceInfo,
+                        ).use { session ->
+                            startNetworkMonitoring()
+                            startDisconnectMonitoring()
 
-                        eventLoop(session, commandChannel!!)
+                            eventLoop(session, commandChannel!!)
 
-                        Log.i(TAG, "Event-loop finished")
+                            Log.i(TAG, "Event-loop finished")
 
-                        commandChannel = null
-                        tunnelState = State.DOWN
-
-                        if (startedByUser) {
-                            updateStatusNotification(TunnelStatusNotification.SignedOut)
+                            if (startedByUser) {
+                                updateStatusNotification(TunnelStatusNotification.SignedOut)
+                            }
                         }
+                } catch (e: ConnlibException) {
+                    Log.e(TAG, "Failed to start session", e)
 
-                        stopNetworkMonitoring()
-                        stopDisconnectMonitoring()
-                        stopSelf()
-                    }
+                    e.close()
+                } finally {
+                    commandChannel = null
+                    tunnelState = State.DOWN
+
+                    stopNetworkMonitoring()
+                    stopDisconnectMonitoring()
+                    stopSelf()
+                }
             }
         }
     }
