@@ -27,7 +27,7 @@
     "autoprefixer": "10.4.21",
     "fast-xml-parser": "^5.2.5",
     "flowbite-react": "^0.12.9",
-    "framer-motion": "^12.23.12",
+    "framer-motion": "^12.23.18",
     "highlight.js": "^11.11.1",
     "md5": "^2.3.0",
     "mixpanel-browser": "^2.70.0",
@@ -58,7 +58,7 @@
     "@eslint/eslintrc": "^3.3.1",
     "@types/md5": "^2.3.6",
     "eslint": "^9.29.0",
-    "eslint-config-next": "15.3.3",
+    "eslint-config-next": "15.5.3",
     "flowbite-typography": "^1.0.5",
     "hastscript": "^9.0.1",
     "typescript": "5.9.2"
