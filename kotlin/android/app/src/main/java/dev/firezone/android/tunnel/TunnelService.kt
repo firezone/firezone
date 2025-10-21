@@ -311,7 +311,7 @@ class TunnelService : VpnService() {
                             }
                         }
                 } catch (e: ConnlibException) {
-                    Log.e(TAG, "Failed to start session", e);
+                    Log.e(TAG, "Failed to start session", e)
 
                     e.close()
                 } finally {
