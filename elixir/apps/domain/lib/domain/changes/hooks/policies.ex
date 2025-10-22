@@ -14,14 +14,14 @@ defmodule Domain.Changes.Hooks.Policies do
   @impl true
 
   # Disable - process as delete
-  def on_update(lsn, %{"disabled_at" => nil}, %{"disabled_at" => disabled_at} = data)
+  def on_update(lsn, %{"disabled_at" => nil} = old_data, %{"disabled_at" => disabled_at})
       when not is_nil(disabled_at) do
     # TODO: Potentially revisit whether this should be handled here
     #       or handled closer to where the PubSub message is received.
-    policy = struct_from_params(Policies.Policy, data)
+    policy = struct_from_params(Policies.Policy, old_data)
     Flows.delete_flows_for(policy)
 
-    on_delete(lsn, data)
+    on_delete(lsn, old_data)
   end
 
   # Enable - process as insert
