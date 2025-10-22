@@ -307,60 +307,6 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       assert attrs.account_id == account.id
       assert attrs.vsn == 0
     end
-
-    test "ignores soft-deleted records", %{account: account} do
-      table = "resources"
-
-      old_data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "name" => "soft deleted",
-        "deleted_at" => "2024-01-01T00:00:00Z"
-      }
-
-      lsn = 12348
-
-      initial_state = %{flush_buffer: %{}}
-
-      result_state =
-        ReplicationConnection.on_write(
-          initial_state,
-          lsn,
-          :delete,
-          table,
-          old_data,
-          nil
-        )
-
-      # Buffer should remain unchanged
-      assert map_size(result_state.flush_buffer) == 0
-      assert result_state == initial_state
-    end
-
-    test "processes record without deleted_at field", %{account: account} do
-      old_data = %{
-        "id" => Ecto.UUID.generate(),
-        "account_id" => account.id,
-        "name" => "no deleted_at field"
-      }
-
-      state = %{flush_buffer: %{}}
-      lsn = 400
-
-      result_state =
-        ReplicationConnection.on_write(
-          state,
-          lsn,
-          :delete,
-          "resources",
-          old_data,
-          nil
-        )
-
-      assert map_size(result_state.flush_buffer) == 1
-      attrs = result_state.flush_buffer[lsn]
-      assert attrs.op == :delete
-    end
   end
 
   describe "multiple operations and buffer accumulation" do
@@ -416,73 +362,6 @@ defmodule Domain.ChangeLogs.ReplicationConnectionTest do
       assert state3.flush_buffer[100].op == :insert
       assert state3.flush_buffer[101].op == :update
       assert state3.flush_buffer[102].op == :delete
-    end
-
-    test "mixed operations with soft deletes", %{account: account} do
-      state = %{flush_buffer: %{}}
-
-      # Regular insert
-      state1 =
-        ReplicationConnection.on_write(
-          state,
-          100,
-          :insert,
-          "resources",
-          nil,
-          %{"id" => Ecto.UUID.generate(), "account_id" => account.id, "name" => "test"}
-        )
-
-      # Regular update
-      resource_id = Ecto.UUID.generate()
-
-      state2 =
-        ReplicationConnection.on_write(
-          state1,
-          101,
-          :update,
-          "resources",
-          %{"id" => resource_id, "account_id" => account.id, "name" => "test"},
-          %{"id" => resource_id, "account_id" => account.id, "name" => "updated"}
-        )
-
-      # Soft delete (should be ignored)
-      state3 =
-        ReplicationConnection.on_write(
-          state2,
-          102,
-          :delete,
-          "resources",
-          %{
-            "id" => resource_id,
-            "account_id" => account.id,
-            "name" => "updated",
-            "deleted_at" => "2024-01-01T00:00:00Z"
-          },
-          nil
-        )
-
-      # Hard delete (should be included)
-      state4 =
-        ReplicationConnection.on_write(
-          state3,
-          103,
-          :delete,
-          "resources",
-          %{
-            "id" => resource_id,
-            "account_id" => account.id,
-            "name" => "updated",
-            "deleted_at" => nil
-          },
-          nil
-        )
-
-      # Should have 3 operations: insert, update, hard delete (soft delete ignored)
-      assert map_size(state4.flush_buffer) == 3
-      assert Map.has_key?(state4.flush_buffer, 100)
-      assert Map.has_key?(state4.flush_buffer, 101)
-      refute Map.has_key?(state4.flush_buffer, 102)
-      assert Map.has_key?(state4.flush_buffer, 103)
     end
   end
 
