@@ -54,7 +54,7 @@ pub struct Server<R> {
     public_address: IpStack,
 
     /// All client allocations, indexed by client's socket address.
-    allocations: HashMap<ClientSocket, Allocation>,
+    allocations: BTreeMap<ClientSocket, Allocation>,
     clients_by_allocation: HashMap<AllocationPort, ClientSocket>,
     /// Redundant mapping so we can look route data with a single lookup.
     channel_and_client_by_port_and_peer:

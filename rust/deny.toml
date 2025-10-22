@@ -93,6 +93,13 @@ ignore = [
 
     "RUSTSEC-2025-0057", # `fxhash` is unmaintained, used by transitive dependencies. See #10297.
 
+    # `rust-unic` crates are unmaintained but still pulled in via tauri.
+    "RUSTSEC-2025-0075",
+    "RUSTSEC-2025-0080",
+    "RUSTSEC-2025-0081",
+    "RUSTSEC-2025-0098",
+    "RUSTSEC-2025-0100",
+
     #"RUSTSEC-0000-0000",
     #{ id = "RUSTSEC-0000-0000", reason = "you can specify a reason the advisory is ignored" },
     #"a-crate-that-is-yanked@0.1.1", # you can also ignore yanked crate versions if you wish
