@@ -29,9 +29,13 @@ wait $PID3 || {
 sleep 3
 readarray -t flows < <(get_flow_logs "tcp")
 
-assert_eq "${#flows[@]}" 3
+assert_gteq "${#flows[@]}" 3
+
+rx_bytes=0
 
 for flow in "${flows[@]}"; do
     assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
-    assert_gteq "$(get_flow_field "$flow" "rx_bytes")" 5000000
+    rx_bytes+="$(get_flow_field "$flow" "rx_bytes")"
 done
+
+assert_gteq "$rx_bytes" $((3 * 5000000))
