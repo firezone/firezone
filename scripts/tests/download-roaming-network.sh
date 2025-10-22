@@ -60,7 +60,7 @@ done
 original_src_port=$(get_flow_field "${flows[0]}" "outer_src_port")
 
 for ((i = 1; i < ${#flows[@]}; i++)); do
-    next_src_port=$(get_flow_field "${flows[1]}" "outer_src_port")
+    next_src_port=$(get_flow_field "${flows[i]}" "outer_src_port")
 
     assert_ne "$original_src_port" "$next_src_port"
 done
