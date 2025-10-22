@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-set -euox pipefail
+set -euo pipefail
 
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
