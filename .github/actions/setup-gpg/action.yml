@@ -16,6 +16,8 @@ runs:
   steps:
     - name: Set GnuPG options
       run: |
+        mkdir -p ~/.gnupg
+
         echo "use-agent" >> ~/.gnupg/gpg.conf
         echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
       shell: bash
