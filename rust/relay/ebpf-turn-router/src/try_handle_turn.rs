@@ -65,7 +65,7 @@ fn try_handle_turn_ipv4(ctx: &XdpContext) -> Result<u16, Error> {
         return Err(Error::NotUdp);
     }
 
-    if ipv4.ihl() != 5 {
+    if ipv4.ihl() != 20 {
         // IPv4 with options is not supported
         return Err(Error::Ipv4PacketWithOptions);
     }
