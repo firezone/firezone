@@ -184,11 +184,13 @@ impl PendingFlow {
 
     fn push(&mut self, trigger: ConnectionTrigger) {
         match trigger {
-            ConnectionTrigger::PacketForResource(packet) => {
-                self.resource_packets.push(packet);
+            ConnectionTrigger::PacketForResource(packet) => self.resource_packets.push(packet),
+            ConnectionTrigger::UdpDnsQueryForSite(packet) => {
+                self.udp_dns_queries.enqueue(packet);
             }
-            ConnectionTrigger::UdpDnsQueryForSite(packet) => self.udp_dns_queries.push(packet),
-            ConnectionTrigger::TcpDnsQueryForSite(query) => self.tcp_dns_queries.push(query),
+            ConnectionTrigger::TcpDnsQueryForSite(query) => {
+                self.tcp_dns_queries.enqueue(query);
+            }
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
         }
     }
