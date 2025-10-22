@@ -20,4 +20,5 @@ jobs:
         with:
           azcliversion: 2.68.0
           inlineScript: $GITHUB_WORKSPACE/scripts/sync-apt.sh
+        env:
           AZURERM_ARTIFACTS_CONNECTION_STRING: ${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}
