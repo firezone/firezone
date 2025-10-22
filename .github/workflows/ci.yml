@@ -147,7 +147,7 @@ jobs:
             echo "Jobs not yet completed:"
             echo "$jobs_json" | jq -r '.[] | select(.status != "completed") | "- " + .name + " (Status: " + .status + ")" '
 
-            sleep 10
+            sleep 60
           done
 
   kotlin:
