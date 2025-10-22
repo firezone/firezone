@@ -233,6 +233,50 @@ impl Session {
     }
 }
 
+#[uniffi::export]
+impl Session {
+    #[uniffi::constructor]
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "This is the API we want to expose over FFI."
+    )]
+    /// Dummy constructor that isn't feature-gated by an OS.
+    ///
+    /// This only exists to make working on the FFI module from Linux/Windows more convenient without many "unused code" warnings.
+    pub fn new_dummy(
+        api_url: String,
+        token: String,
+        device_id: String,
+        account_slug: String,
+        device_name: Option<String>,
+        os_version: Option<String>,
+        log_dir: String,
+        log_filter: String,
+        device_info: DeviceInfo,
+        is_internet_resource_active: bool,
+    ) -> Result<Self, ConnlibError> {
+        let tcp_socket_factory = Arc::new(socket_factory::tcp);
+        let udp_socket_factory = Arc::new(socket_factory::udp);
+
+        let session = connect(
+            api_url,
+            token,
+            device_id,
+            account_slug,
+            device_name,
+            os_version,
+            log_dir,
+            log_filter,
+            device_info,
+            is_internet_resource_active,
+            tcp_socket_factory,
+            udp_socket_factory,
+        )?;
+
+        Ok(session)
+    }
+}
+
 /// Set up TUN device with retry logic.
 ///
 /// Retries a few times with a small delay, as the NetworkExtension
