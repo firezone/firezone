@@ -284,7 +284,7 @@ val generateUniffiBindings =
                 commandLine(
                     "sh",
                     "-c",
-                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin ${input.asFile} --out-dir ${outDir.asFile} --no-format",
+                    "cd ${rustDir.asFile} && cargo run --bin uniffi-bindgen generate --library --language kotlin ${input.asFile} --out-dir ${outDir.asFile}",
                 )
             }
         }
