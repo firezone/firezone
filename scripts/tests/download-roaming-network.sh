@@ -49,18 +49,15 @@ readarray -t flows < <(get_flow_logs "tcp")
 
 assert_gteq "${#flows[@]}" 2
 
-# All flows should have same inner_dst_ip
+declare -A unique_src_tuples
+
 for flow in "${flows[@]}"; do
+    # All flows should have same inner_dst_ip
     assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+
+    # Collect all unique source tuples
+    src_tuple="$(get_flow_field "${flow}" "outer_src_ip") $(get_flow_field "${flow}" "outer_src_port")"
+    unique_src_tuples["$src_tuple"]=1
 done
 
-# Verify different outer_src_port after roaming (network change)
-# The docker-compose setup uses routers and therefore the source IP is always the router.
-# But conntrack on the router will allocate a new source port because the binding on the old one is still active after roaming.
-original_src_port=$(get_flow_field "${flows[0]}" "outer_src_port")
-
-for ((i = 1; i < ${#flows[@]}; i++)); do
-    next_src_port=$(get_flow_field "${flows[i]}" "outer_src_port")
-
-    assert_ne "$original_src_port" "$next_src_port"
-done
+assert_gteq "${#unique_src_tuples[@]}" 3 # We should have at least 3; > 2 is important because ICE might hop between IPv4 and IPv6 during connection setup.

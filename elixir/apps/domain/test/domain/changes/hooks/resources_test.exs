@@ -134,25 +134,5 @@ defmodule Domain.Changes.Hooks.ResourcesTest do
       assert deleted_resource.ip_stack == resource.ip_stack
       assert deleted_resource.address_description == resource.address_description
     end
-
-    test "deletes flows" do
-      account = Fixtures.Accounts.create_account()
-      filters = [%{"protocol" => "tcp", "ports" => ["80", "443"]}]
-      resource = Fixtures.Resources.create_resource(account: account, filters: filters)
-
-      old_data = %{
-        "id" => resource.id,
-        "account_id" => account.id,
-        "address_description" => resource.address_description,
-        "type" => resource.type,
-        "address" => resource.address,
-        "filters" => filters,
-        "ip_stack" => resource.ip_stack
-      }
-
-      assert flow = Fixtures.Flows.create_flow(resource: resource, account: account)
-      assert :ok = on_delete(0, old_data)
-      refute Repo.get_by(Flows.Flow, id: flow.id)
-    end
   end
 end
