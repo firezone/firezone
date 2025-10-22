@@ -114,7 +114,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
       // Configure telemetry
       Telemetry.setEnvironmentOrClose(apiURL)
-      Telemetry.accountSlug = accountSlug
+      Task { await Telemetry.setAccountSlug(accountSlug) }
 
       let enabled = legacyConfiguration?["internetResourceEnabled"]
       let internetResourceEnabled =
