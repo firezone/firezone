@@ -233,13 +233,11 @@ private final class LogWriter: @unchecked Sendable {
       severity: severity,
       message: message)
 
-    guard var jsonData = try? jsonEncoder.encode(logEntry)
+    guard let jsonData = try? jsonEncoder.encode(logEntry) + Data("\n".utf8)
     else {
       logger.error("Could not encode log message to JSON!")
       return
     }
-
-    jsonData.append(Data("\n".utf8))
 
     workQueue.async { [weak self] in
       guard let self = self else { return }
