@@ -7,6 +7,7 @@ use std::{
 
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ResourceId};
+use dns_types::DomainName;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 use std::time::Instant;
 
@@ -91,6 +92,7 @@ impl FlowTracker {
             client: None,
             resource: None,
             icmp_error: None,
+            domain: None,
         })));
         debug_assert!(
             current.is_none(),
@@ -161,6 +163,7 @@ impl FlowTracker {
                 }),
             client: Some(client),
             resource: Some(resource),
+            domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
         } = flow
         else {
@@ -203,6 +206,7 @@ impl FlowTracker {
                             context,
                             fin_tx: false,
                             fin_rx: false,
+                            domain,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -228,6 +232,7 @@ impl FlowTracker {
                                 context,
                                 fin_tx: false,
                                 fin_rx: false,
+                                domain,
                             },
                         );
                     }
@@ -249,6 +254,7 @@ impl FlowTracker {
                                 context,
                                 fin_tx: false,
                                 fin_rx: false,
+                                domain,
                             },
                         );
                     }
@@ -291,6 +297,7 @@ impl FlowTracker {
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             context,
+                            domain,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -314,6 +321,7 @@ impl FlowTracker {
                                 last_packet: now_utc,
                                 stats: FlowStats::default().with_tx(payload_len as u64),
                                 context,
+                                domain,
                             },
                         );
                     }
@@ -449,6 +457,7 @@ pub struct CompletedTcpFlow {
     pub inner_dst_ip: IpAddr,
     pub inner_src_port: u16,
     pub inner_dst_port: u16,
+    pub inner_domain: Option<DomainName>,
 
     pub outer_src_ip: IpAddr,
     pub outer_dst_ip: IpAddr,
@@ -473,6 +482,7 @@ pub struct CompletedUdpFlow {
     pub inner_dst_ip: IpAddr,
     pub inner_src_port: u16,
     pub inner_dst_port: u16,
+    pub inner_domain: Option<DomainName>,
 
     pub outer_src_ip: IpAddr,
     pub outer_dst_ip: IpAddr,
@@ -497,6 +507,7 @@ impl CompletedTcpFlow {
             inner_dst_ip: key.dst_ip,
             inner_src_port: key.src_port,
             inner_dst_port: key.dst_port,
+            inner_domain: value.domain,
             outer_src_ip: value.context.src_ip,
             outer_dst_ip: value.context.dst_ip,
             outer_src_port: value.context.src_port,
@@ -521,6 +532,7 @@ impl CompletedUdpFlow {
             inner_dst_ip: key.dst_ip,
             inner_src_port: key.src_port,
             inner_dst_port: key.dst_port,
+            inner_domain: value.domain,
             outer_src_ip: value.context.src_ip,
             outer_dst_ip: value.context.dst_ip,
             outer_src_port: value.context.src_port,
@@ -560,6 +572,8 @@ struct TcpFlowValue {
     stats: FlowStats,
     context: FlowContext,
 
+    domain: Option<DomainName>,
+
     fin_tx: bool,
     fin_rx: bool,
 }
@@ -570,6 +584,8 @@ struct UdpFlowValue {
     last_packet: DateTime<Utc>,
     stats: FlowStats,
     context: FlowContext,
+
+    domain: Option<DomainName>,
 }
 
 #[derive(Debug, Default)]
@@ -660,6 +676,8 @@ impl std::fmt::Debug for FlowContextDiff {
 }
 
 pub mod inbound_wg {
+    use dns_types::DomainName;
+
     use super::*;
 
     pub fn record_client(cid: ClientId) {
@@ -668,6 +686,10 @@ pub mod inbound_wg {
 
     pub fn record_resource(rid: ResourceId) {
         update_current_flow_inbound_wireguard(|wg| wg.resource.replace(rid));
+    }
+
+    pub fn record_domain(name: DomainName) {
+        update_current_flow_inbound_wireguard(|wg| wg.domain.replace(name));
     }
 
     pub fn record_decrypted_packet(packet: &IpPacket) {
@@ -762,6 +784,8 @@ struct InboundWireGuard {
     inner: Option<InnerFlow>,
     client: Option<ClientId>,
     resource: Option<ResourceId>,
+    /// The domain name in case this packet is for a DNS resource.
+    domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
 }
 
