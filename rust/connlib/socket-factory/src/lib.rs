@@ -208,7 +208,7 @@ impl UdpSocket {
         let send_buffer_size = socket.send_buffer_size()?;
         let recv_buffer_size = socket.recv_buffer_size()?;
 
-        tracing::info!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
+        tracing::debug!(%requested_send_buffer_size, %send_buffer_size, %requested_recv_buffer_size, %recv_buffer_size, port = %self.port, "Set UDP socket buffer sizes");
 
         Ok(())
     }
