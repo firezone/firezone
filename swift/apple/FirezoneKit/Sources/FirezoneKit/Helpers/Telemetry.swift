@@ -6,40 +6,50 @@
 
 import Sentry
 
+/// Actor that manages telemetry state with thread-safe access.
+actor TelemetryState {
+  private var firezoneId: String?
+  private var accountSlug: String?
+
+  func setFirezoneId(_ id: String?) {
+    firezoneId = id
+    updateUser()
+  }
+
+  func setAccountSlug(_ slug: String?) {
+    accountSlug = slug
+    updateUser()
+  }
+
+  private func updateUser() {
+    guard let firezoneId, let accountSlug else {
+      return
+    }
+
+    SentrySDK.configureScope { configuration in
+      // Matches the format we use in rust/telemetry/lib.rs
+      let user = User(userId: firezoneId)
+      user.data = ["account_slug": accountSlug]
+
+      configuration.setUser(user)
+    }
+  }
+}
+
 public enum Telemetry {
   // We can only create a new User object after Sentry is started; not retrieve
   // the existing one. So we need to collect these fields from various codepaths
   // during initialization / sign in so we can build a new User object any time
   // one of these is updated.
 
-  /// Thread-safe: All access synchronised through telemetryQueue.
-  /// DispatchQueue ensures atomic read-modify-write operations.
-  /// The nonisolated(unsafe) annotation is safe because all access is serialised via queue.sync.
-  private static let telemetryQueue = DispatchQueue(label: "dev.firezone.telemetry")
+  private static let state = TelemetryState()
 
-  private nonisolated(unsafe) static var _firezoneId: String?
-  private nonisolated(unsafe) static var _accountSlug: String?
-  public static var firezoneId: String? {
-    get {
-      telemetryQueue.sync { _firezoneId }
-    }
-    set {
-      telemetryQueue.sync {
-        _firezoneId = newValue
-        updateUser(id: _firezoneId, slug: _accountSlug)
-      }
-    }
+  public static func setFirezoneId(_ id: String?) async {
+    await state.setFirezoneId(id)
   }
-  public static var accountSlug: String? {
-    get {
-      telemetryQueue.sync { _accountSlug }
-    }
-    set {
-      telemetryQueue.sync {
-        _accountSlug = newValue
-        updateUser(id: _firezoneId, slug: _accountSlug)
-      }
-    }
+
+  public static func setAccountSlug(_ slug: String?) async {
+    await state.setAccountSlug(slug)
   }
 
   public static func start() {
@@ -76,22 +86,6 @@ public enum Telemetry {
 
   public static func capture(_ err: Error) {
     SentrySDK.capture(error: err)
-  }
-
-  private static func updateUser(id: String?, slug: String?) {
-    guard let id,
-      let slug
-    else {
-      return
-    }
-
-    SentrySDK.configureScope { configuration in
-      // Matches the format we use in rust/telemetry/lib.rs
-      let user = User(userId: id)
-      user.data = ["account_slug": slug]
-
-      configuration.setUser(user)
-    }
   }
 
   private static func distributionType() -> String {
