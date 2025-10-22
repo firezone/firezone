@@ -43,3 +43,21 @@ if [[ "$computed_checksum" != "$known_checksum" ]]; then
     echo "Checksum of downloaded file does not match"
     exit 1
 fi
+
+sleep 3
+readarray -t flows < <(get_flow_logs "tcp")
+
+assert_gteq "${#flows[@]}" 2
+
+declare -A unique_src_tuples
+
+for flow in "${flows[@]}"; do
+    # All flows should have same inner_dst_ip
+    assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+
+    # Collect all unique source tuples
+    src_tuple="$(get_flow_field "${flow}" "outer_src_ip") $(get_flow_field "${flow}" "outer_src_port")"
+    unique_src_tuples["$src_tuple"]=1
+done
+
+assert_gteq "${#unique_src_tuples[@]}" 3 # We should have at least 3; > 2 is important because ICE might hop between IPv4 and IPv6 during connection setup.

@@ -104,7 +104,6 @@ defmodule Domain.Fixtures.Gateways do
         |> create_group()
       end)
 
-    # TODO: BRIAN - This can likely be removed
     {_token, attrs} =
       pop_assoc_fixture(attrs, :token, fn assoc_attrs ->
         assoc_attrs
