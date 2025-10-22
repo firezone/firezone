@@ -35,7 +35,10 @@ pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
-pub fn setup_global_subscriber<L>(additional_layer: L) -> Result<FilterReloadHandle>
+pub fn setup_global_subscriber<L>(
+    additional_layer: L,
+    stdout_json: bool,
+) -> Result<FilterReloadHandle>
 where
     L: Layer<Registry> + Send + Sync,
 {
@@ -53,12 +56,19 @@ where
     let subscriber = Registry::default()
         .with(additional_layer.with_filter(filter1))
         .with(sentry_layer())
-        .with(
-            fmt::layer()
+        .with(match stdout_json {
+            true => fmt::layer()
+                .json()
+                .flatten_event(true)
+                .with_ansi(stdout_supports_ansi())
+                .with_filter(filter2)
+                .boxed(),
+            false => fmt::layer()
                 .with_ansi(stdout_supports_ansi())
                 .event_format(Format::new())
-                .with_filter(filter2),
-        );
+                .with_filter(filter2)
+                .boxed(),
+        });
     init(subscriber)?;
 
     Ok(reload_handle1.merge(reload_handle2))

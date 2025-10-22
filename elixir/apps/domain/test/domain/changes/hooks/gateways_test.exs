@@ -38,16 +38,5 @@ defmodule Domain.Changes.Hooks.GatewaysTest do
 
       assert deleted_gateway.id == gateway.id
     end
-
-    test "deletes flows" do
-      account = Fixtures.Accounts.create_account()
-      gateway = Fixtures.Gateways.create_gateway(account: account)
-
-      old_data = %{"id" => gateway.id, "account_id" => account.id}
-
-      assert flow = Fixtures.Flows.create_flow(gateway: gateway, account: account)
-      assert :ok = on_delete(0, old_data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
-    end
   end
 end

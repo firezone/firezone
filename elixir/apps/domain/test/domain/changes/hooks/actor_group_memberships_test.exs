@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.ActorGroupMemberships
-  alias Domain.{Actors, Changes.Change, Flows, PubSub}
+  alias Domain.{Actors, Changes.Change, PubSub}
 
   describe "insert/1" do
     test "broadcasts membership" do
@@ -66,23 +66,6 @@ defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
       assert membership.account_id == "00000000-0000-0000-0000-000000000001"
       assert membership.actor_id == "00000000-0000-0000-0000-000000000002"
       assert membership.group_id == "00000000-0000-0000-0000-000000000003"
-    end
-
-    test "deletes flows for membership", %{account: account, membership: membership} do
-      flow = Fixtures.Flows.create_flow(account: account, actor_group_membership: membership)
-      unrelated_flow = Fixtures.Flows.create_flow(account: account)
-
-      old_data = %{
-        "id" => membership.id,
-        "account_id" => membership.account_id,
-        "actor_id" => membership.actor_id,
-        "group_id" => membership.group_id
-      }
-
-      assert ^flow = Repo.get_by(Flows.Flow, actor_group_membership_id: membership.id)
-      assert :ok == on_delete(0, old_data)
-      assert nil == Repo.get_by(Flows.Flow, actor_group_membership_id: membership.id)
-      assert ^unrelated_flow = Repo.get_by(Flows.Flow, id: unrelated_flow.id)
     end
   end
 end

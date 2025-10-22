@@ -42,10 +42,6 @@ impl DnsRecords {
         self.inner.keys().cloned()
     }
 
-    pub(crate) fn contains_domain(&self, name: &DomainName) -> bool {
-        self.inner.contains_key(name)
-    }
-
     pub(crate) fn merge(&mut self, other: Self) {
         self.inner.extend(other.inner);
     }

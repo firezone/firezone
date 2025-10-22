@@ -50,12 +50,32 @@ Domain.PubSub.Account.broadcast(account_id, {{:reject_access, gateway_id}, clien
 "
 }
 
-function assert_equals() {
+function assert_eq() {
     local actual="$1"
     local expected="$2"
 
     if [[ "$expected" != "$actual" ]]; then
         echo "Expected $expected but got $actual"
+        exit 1
+    fi
+}
+
+function assert_ne() {
+    local actual="$1"
+    local expected="$2"
+
+    if [[ "$expected" == "$actual" ]]; then
+        echo "Expected values to differ but both are $actual"
+        exit 1
+    fi
+}
+
+function assert_gteq() {
+    local actual="$1"
+    local expected="$2"
+
+    if [ "$actual" -lt "$expected" ]; then
+        echo "Expected $actual to be greater than or equal to $expected"
         exit 1
     fi
 }
@@ -70,7 +90,7 @@ function assert_process_state {
     local container="$1"
     local expected_state="$2"
 
-    assert_equals "$(process_state "$container")" "$expected_state"
+    assert_eq "$(process_state "$container")" "$expected_state"
 }
 
 function create_token_file {
@@ -95,4 +115,24 @@ function expect_error() {
     else
         return 0
     fi
+}
+
+# Extract flow logs from gateway for a given protocol
+# Returns flow log lines (use with readarray)
+# Usage: readarray -t flows < <(get_flow_logs "tcp")
+function get_flow_logs() {
+    local protocol="$1"
+
+    docker compose logs gateway --since 30s 2>/dev/null |
+        grep "flow_logs::${protocol}.*flow completed" || true
+}
+
+# Extract a field value from a flow log line
+# Usage: get_flow_field <flow_log_line> <field_name>
+# Example: get_flow_field "$flow" "inner_dst_ip"
+function get_flow_field() {
+    local flow_log="$1"
+    local field_name="$2"
+
+    echo "$flow_log" | grep -oP "${field_name}=\K[^ ]+" || echo ""
 }
