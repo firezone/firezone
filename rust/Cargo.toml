@@ -75,7 +75,7 @@ dns-over-tcp = { path = "connlib/dns-over-tcp" }
 dns-types = { path = "connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
-etherparse = { version = "0.17", default-features = false }
+etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "connlib/etherparse-ext" }
 firezone-bin-shared = { path = "bin-shared" }
 firezone-headless-client = { path = "headless-client" }
