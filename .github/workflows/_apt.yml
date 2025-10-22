@@ -15,10 +15,16 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
-      - name: Sync APT metadata
-        uses: azure/cli@v2
-        with:
-          azcliversion: 2.68.0
-          inlineScript: $GITHUB_WORKSPACE/scripts/sync-apt.sh
+
+      - name: Install Azure CLI
+        run: |
+          sudo apt-get install -y ca-certificates curl apt-transport-https lsb-release gnupg
+          curl -sL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+          AZ_REPO=$(lsb_release -cs)
+          echo "deb [arch=amd64] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+          sudo apt-get update
+          sudo apt-get install -y azure-cli
+
+      - run: scripts/sync-apt.sh
         env:
           AZURERM_ARTIFACTS_CONNECTION_STRING: ${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}
