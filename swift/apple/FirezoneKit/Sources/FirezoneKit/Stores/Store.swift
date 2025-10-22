@@ -42,6 +42,9 @@ public final class Store: ObservableObject {
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
 
+  // Cached IPCClient instance - one per Store instance
+  private var cachedIPCClient: IPCClient?
+
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
 
@@ -201,16 +204,27 @@ public final class Store: ObservableObject {
     // Create a new VPN configuration in system settings.
     self.vpnConfigurationManager = try await VPNConfigurationManager()
 
+    // Invalidate cached IPCClient since we have a new configuration
+    cachedIPCClient = nil
+
     try await setupTunnelObservers()
   }
 
   func ipcClient() throws -> IPCClient {
+    // Return cached instance if it exists
+    if let cachedIPCClient = cachedIPCClient {
+      return cachedIPCClient
+    }
+
+    // Create new instance and cache it
     guard let session = try manager().session()
     else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    return IPCClient(session: session)
+    let client = IPCClient(session: session)
+    cachedIPCClient = client
+    return client
   }
 
   func manager() throws -> VPNConfigurationManager {
