@@ -99,7 +99,10 @@ impl Eventloop {
             tunnel: Some(tunnel),
             tun_device_manager,
             resolver,
-            resolve_tasks: futures_bounded::FuturesTupleSet::new(DNS_RESOLUTION_TIMEOUT, 1000),
+            resolve_tasks: futures_bounded::FuturesTupleSet::new(
+                || futures_bounded::Delay::tokio(DNS_RESOLUTION_TIMEOUT),
+                1000,
+            ),
             logged_permission_denied: false,
             dns_cache: moka::future::Cache::builder()
                 .name("DNS queries")

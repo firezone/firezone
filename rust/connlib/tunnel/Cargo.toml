@@ -25,7 +25,7 @@ firezone-logging = { workspace = true }
 firezone-telemetry = { workspace = true }
 flume = { workspace = true, features = ["async"] }
 futures = { workspace = true }
-futures-bounded = { workspace = true }
+futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
 glob = { workspace = true }
 hex = { workspace = true }
