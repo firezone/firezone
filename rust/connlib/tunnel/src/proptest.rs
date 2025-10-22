@@ -1,4 +1,5 @@
 use connlib_model::{ClientId, GatewayId, IpStack, RelayId, ResourceId, Site, SiteId};
+use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use proptest::{
     arbitrary::{any, any_with},
@@ -38,7 +39,7 @@ pub fn dns_resource(sites: impl Strategy<Value = Vec<Site>>) -> impl Strategy<Va
         .prop_map(
             move |(id, name, address, address_description, ip_stack, sites)| DnsResource {
                 id,
-                address,
+                address: address.to_string(),
                 name,
                 sites,
                 address_description,
@@ -132,8 +133,10 @@ pub fn domain_label() -> impl Strategy<Value = String> {
     any_with::<String>("[a-z]{3,6}".into())
 }
 
-pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = String> {
-    collection::vec(domain_label(), depth).prop_map(|labels| labels.join("."))
+pub fn domain_name(depth: Range<usize>) -> impl Strategy<Value = DomainName> {
+    collection::vec(domain_label(), depth)
+        .prop_map(|labels| labels.join("."))
+        .prop_map(|d| d.parse().unwrap())
 }
 
 /// A strategy of IP networks, configurable by the size of the host mask.

@@ -85,7 +85,7 @@ firezone-telemetry = { path = "telemetry" }
 firezone-tunnel = { path = "connlib/tunnel" }
 flume = { version = "0.11.1", features = ["async"] }
 futures = { version = "0.3.31" }
-futures-bounded = "0.2.1"
+futures-bounded = "0.3.0"
 gat-lending-iterator = "0.1.6"
 glob = "0.3.3"
 hex = "0.4.3"
@@ -128,7 +128,7 @@ phoenix-channel = { path = "connlib/phoenix-channel" }
 png = "0.17.16"
 proc-macro2 = "1.0"
 proptest = "1.7.0"
-proptest-state-machine = "0.3.1"
+proptest-state-machine = "0.4.0"
 quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
 quote = "1.0"
 rand = "0.8.5"
@@ -208,7 +208,7 @@ windows-implement = "0.60.0"
 windows-service = "0.8.0"
 winreg = "0.52.0"
 zbus = "5.11.0"
-zip = { version = "2", default-features = false }
+zip = { version = "5", default-features = false }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
