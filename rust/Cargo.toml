@@ -90,7 +90,7 @@ gat-lending-iterator = "0.1.6"
 glob = "0.3.3"
 hex = "0.4.3"
 hex-display = "0.3.0"
-hex-literal = "0.4.1"
+hex-literal = "1.0.0"
 hickory-resolver = "0.25.2"
 humantime = "2.3"
 ip-packet = { path = "connlib/ip-packet" }
