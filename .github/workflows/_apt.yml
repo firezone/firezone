@@ -18,6 +18,13 @@ jobs:
 
       - uses: ./.github/actions/setup-azure-cli
 
+      - uses: ./.github/actions/setup-gpg
+        id: setup-gpg
+        with:
+          key: ${{ secrets.APT_REPOSITORY_GPG_KEY }}
+          email: packages@firezone.dev
+
       - run: scripts/sync-apt.sh
         env:
           AZURERM_ARTIFACTS_CONNECTION_STRING: ${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}
+          GPG_KEY_ID: ${{ steps.setup-gpg.outputs.key_id }}

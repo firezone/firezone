@@ -11,6 +11,11 @@ if [ -z "${AZURERM_ARTIFACTS_CONNECTION_STRING:-}" ]; then
     exit 1
 fi
 
+if [ -z "${GPG_KEY_ID:-}" ]; then
+    echo "Error: GPG_KEY_ID not set"
+    exit 1
+fi
+
 cleanup() {
     rm -rf "${WORK_DIR}"
 }
@@ -64,6 +69,9 @@ Date: $(date -R -u)
 EOF
 
     apt-ftparchive release . >>Release
+
+    gpg --default-key "${GPG_KEY_ID}" -abs -o Release.gpg Release
+    gpg --default-key "${GPG_KEY_ID}" --clearsign -o InRelease Release
 done
 
 echo "Uploading metadata..."
@@ -74,5 +82,3 @@ az storage blob upload-batch \
     --connection-string "${AZURERM_ARTIFACTS_CONNECTION_STRING}" \
     --overwrite \
     --output table
-
-echo "Done"
