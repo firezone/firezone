@@ -595,7 +595,7 @@
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TVOS_DEPLOYMENT_TARGET = "";
 				WATCHOS_DEPLOYMENT_TARGET = "";
@@ -637,7 +637,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TVOS_DEPLOYMENT_TARGET = "";
 				VALIDATE_PRODUCT = YES;
@@ -681,7 +681,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated";
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 6.2;
 			};
 			name = Debug;
 		};
@@ -723,7 +723,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_INCLUDE_PATHS = "$(PROJECT_DIR)/FirezoneNetworkExtension/Connlib/Generated";
 				SWIFT_OBJC_BRIDGING_HEADER = "FirezoneNetworkExtension/FirezoneNetworkExtension-Bridging-Header.h";
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 6.2;
 			};
 			name = Release;
 		};
@@ -903,7 +903,7 @@
 				SWIFT_INSTALL_OBJC_HEADER = NO;
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TVOS_DEPLOYMENT_TARGET = "";
 				WATCHOS_DEPLOYMENT_TARGET = "";
@@ -952,7 +952,7 @@
 				SWIFT_INSTALL_MODULE = NO;
 				SWIFT_INSTALL_OBJC_HEADER = NO;
 				SWIFT_OBJC_INTERFACE_HEADER_NAME = "";
-				SWIFT_VERSION = 6.0;
+				SWIFT_VERSION = 6.2;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TVOS_DEPLOYMENT_TARGET = "";
 				WATCHOS_DEPLOYMENT_TARGET = "";
