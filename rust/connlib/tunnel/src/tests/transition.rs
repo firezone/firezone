@@ -144,6 +144,28 @@ pub(crate) enum Destination {
     IpAddr(IpAddr),
 }
 
+impl Ord for Destination {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (
+                Destination::DomainName { name: left, .. },
+                Destination::DomainName { name: right, .. },
+            ) => left.cmp(right),
+            (Destination::IpAddr(left), Destination::IpAddr(right)) => left.cmp(right),
+
+            // These are according to variant order.
+            (Destination::DomainName { .. }, Destination::IpAddr(_)) => std::cmp::Ordering::Less,
+            (Destination::IpAddr(_), Destination::DomainName { .. }) => std::cmp::Ordering::Greater,
+        }
+    }
+}
+
+impl PartialOrd for Destination {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl Eq for Destination {}
 
 impl std::hash::Hash for Destination {
