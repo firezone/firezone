@@ -34,6 +34,37 @@ for DISTRIBUTION in "stable" "preview"; do
         --connection-string "${AZURERM_ARTIFACTS_CONNECTION_STRING}" \
         2>&1 | grep -v "WARNING" || true
 
+    echo "Normalizing package names..."
+
+    if [ -d "${POOL_DIR}" ]; then
+        for deb in "${POOL_DIR}"/*.deb; do
+            if [ -f "$deb" ]; then
+                # Extract metadata from the .deb file
+                PACKAGE=$(dpkg-deb -f "$deb" Package 2>/dev/null)
+                VERSION=$(dpkg-deb -f "$deb" Version 2>/dev/null)
+                ARCH=$(dpkg-deb -f "$deb" Architecture 2>/dev/null)
+
+                # Skip if any field is missing
+                if [ -z "$PACKAGE" ] || [ -z "$VERSION" ] || [ -z "$ARCH" ]; then
+                    echo "Warning: Could not extract metadata from $(basename "$deb"), skipping"
+                    continue
+                fi
+
+                # Construct the proper filename
+                NORMALIZED_NAME="${PACKAGE}_${VERSION}_${ARCH}.deb"
+                NORMALIZED_PATH="${POOL_DIR}/${NORMALIZED_NAME}"
+
+                # Rename if needed
+                if [ "$(basename "$deb")" == "$NORMALIZED_NAME" ]; then
+                    continue
+                fi
+
+                echo "Renaming $(basename "$deb") → $NORMALIZED_NAME"
+                mv "$deb" "$NORMALIZED_PATH"
+            fi
+        done
+    fi
+
     echo "Detecting architectures..."
     ARCHITECTURES=$(for deb in "${POOL_DIR}"/*.deb; do dpkg-deb -f "$deb" Architecture 2>/dev/null; done | sort -u | tr '\n' ' ') || true
 
