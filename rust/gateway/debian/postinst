@@ -1,0 +1,7 @@
+# Post-installation script run by apt
+
+# Create the necessary users
+systemd-sysusers
+
+# Create the necessary directories
+systemd-tmpfiles --create
