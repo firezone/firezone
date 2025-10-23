@@ -201,7 +201,7 @@ tun = { path = "connlib/tun" }
 uniffi = "0.29.4"
 url = "2.5.2"
 uuid = "1.18.1"
-which = "4.4.2"
+which = "8.0.0"
 windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
