@@ -24,7 +24,8 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.5.9" date={new Date("2025-10-20")}>
         <ChangeItem pull="10603">
           Fixes an issue on macOS where DNS resources might fail to be routed
           properly after many (150+) Firezone session restarts.
@@ -40,7 +41,7 @@ export default function Apple() {
           Fixes an issue where the Resources menu would not populate when
           launching the app while already connected.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.8" date={new Date("2025-09-10")}>
         <ChangeItem pull="10313">
           Fixes an issue where multiple concurrent Firezone macOS clients could

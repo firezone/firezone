@@ -42,3 +42,7 @@ next-env.d.ts
 
 # generated timestamps
 timestamps.json
+
+# AI
+.rules
+scrape_commits.py

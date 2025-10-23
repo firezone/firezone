@@ -5,13 +5,6 @@ defmodule Domain.ChangeLogs.ReplicationConnection do
   # Bump this to signify a change in the audit log schema. Use with care.
   @vsn 0
 
-  # Avoid overwhelming the change log with soft-deleted records getting hard-deleted en masse.
-  # Can be removed after https://github.com/firezone/firezone/issues/8187 is shipped.
-  def on_write(state, _lsn, :delete, _table, %{"deleted_at" => deleted_at}, _data)
-      when not is_nil(deleted_at) do
-    state
-  end
-
   # Ignore token writes for relay_groups since these are not expected to have an account_id
   def on_write(state, _lsn, _op, "tokens", %{"type" => "relay_group"}, _data), do: state
   def on_write(state, _lsn, _op, "tokens", _old_data, %{"type" => "relay_group"}), do: state

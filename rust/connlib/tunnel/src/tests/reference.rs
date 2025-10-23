@@ -5,6 +5,7 @@ use super::{
     strategies::*, stub_portal::StubPortal, transition::*,
 };
 use crate::client;
+use crate::proptest::domain_label;
 use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{GatewayId, RelayId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
@@ -352,6 +353,33 @@ impl ReferenceState {
                 },
             )
             .with_if_not_empty(
+                2,
+                (
+                    state.wildcard_dns_resources_on_client(),
+                    state.reachable_dns_servers(),
+                ),
+                |(wildcard_dns_resources, dns_servers)| {
+                    dns_queries(
+                        (
+                            sample::select(wildcard_dns_resources).prop_flat_map(|r| {
+                                let base = r.address.trim_start_matches("*.").to_owned();
+
+                                domain_label().prop_map(move |label| {
+                                    format!("{label}.{base}").parse().unwrap()
+                                })
+                            }),
+                            prop_oneof![
+                                Just(vec![RecordType::A]),
+                                Just(vec![RecordType::AAAA]),
+                                Just(vec![RecordType::A, RecordType::AAAA])
+                            ],
+                        ),
+                        sample::select(dns_servers),
+                    )
+                    .prop_map(Transition::SendDnsQueries)
+                },
+            )
+            .with_if_not_empty(
                 1,
                 state
                     .client
@@ -683,12 +711,6 @@ impl ReferenceState {
                     .sending_socket_for(query.dns_server.ip())
                     .is_some();
 
-                let is_ptr_query = matches!(query.r_type, RecordType::PTR);
-                let is_known_domain = state.global_dns_records.contains_domain(&query.domain);
-
-                // In case we sampled a PTR query, the domain doesn't have to exist.
-                let ptr_or_known_domain = is_ptr_query || is_known_domain;
-
                 let has_dns_server = state
                     .client
                     .inner()
@@ -707,7 +729,6 @@ impl ReferenceState {
                     };
 
                 has_socket_for_server
-                    && ptr_or_known_domain
                     && has_dns_server
                     && gateway_is_present_in_case_dns_server_is_cidr_resource
             }),
@@ -870,6 +891,19 @@ impl ReferenceState {
                 client::Resource::Dns(_) | client::Resource::Internet(_) => None,
             })
             .filter(|r| self.client.inner().has_resource(r.id))
+            .collect()
+    }
+
+    fn wildcard_dns_resources_on_client(&self) -> Vec<client::DnsResource> {
+        self.portal
+            .all_resources()
+            .into_iter()
+            .flat_map(|r| match r {
+                client::Resource::Dns(r) => Some(r),
+                client::Resource::Cidr(_) | client::Resource::Internet(_) => None,
+            })
+            .filter(|r| self.client.inner().has_resource(r.id))
+            .filter(|r| r.address.starts_with("*."))
             .collect()
     }
 

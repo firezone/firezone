@@ -784,7 +784,6 @@ defmodule API.Client.Channel do
          %{assigns: %{client: %{id: client_id}}} = socket
        )
        when id == client_id do
-    # TODO: Hard delete
     # Deleting a client won't necessary delete its tokens in the case of a headless client.
     # So we explicitly handle the deleted client here by forcing it to reconnect.
     {:stop, :shutdown, socket}

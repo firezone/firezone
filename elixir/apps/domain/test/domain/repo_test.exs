@@ -269,27 +269,26 @@ defmodule Domain.RepoTest do
       end
     end
 
-    # TODO: BRIAN - Check if this test can be updated to use something other than deleted_at
-    # test "allows to set custom order", %{
-    #  account: account,
-    #  query_module: query_module,
-    #  queryable: queryable
-    # } do
-    #  dt1 = ~U[2000-01-01 00:00:00.000000Z]
-    #  dt2 = ~U[2000-01-02 00:00:00.000000Z]
+    test "allows to set custom order", %{
+      account: account,
+      query_module: query_module,
+      queryable: queryable
+    } do
+      t1 = ~U[2000-01-01 00:00:00.000000Z]
+      t2 = ~U[2000-01-02 00:00:00.000000Z]
 
-    #  Fixtures.Actors.create_actor(account: account)
-    #  |> Fixtures.Actors.update(deleted_at: dt1)
+      Fixtures.Actors.create_actor(account: account)
+      |> Fixtures.Actors.update(disabled_at: t1)
 
-    #  Fixtures.Actors.create_actor(account: account)
-    #  |> Fixtures.Actors.update(deleted_at: dt2)
+      Fixtures.Actors.create_actor(account: account)
+      |> Fixtures.Actors.update(disabled_at: t2)
 
-    #  assert {:ok, [%{deleted_at: ^dt1}, %{deleted_at: ^dt2}], _metadata} =
-    #           list(queryable, query_module, order_by: [{:actors, :asc, :deleted_at}])
+      assert {:ok, [%{disabled_at: ^t1}, %{disabled_at: ^t2}], _metadata} =
+               list(queryable, query_module, order_by: [{:actors, :asc, :disabled_at}])
 
-    #  assert {:ok, [%{deleted_at: ^dt2}, %{deleted_at: ^dt1}], _metadata} =
-    #           list(queryable, query_module, order_by: [{:actors, :desc, :deleted_at}])
-    # end
+      assert {:ok, [%{disabled_at: ^t2}, %{disabled_at: ^t1}], _metadata} =
+               list(queryable, query_module, order_by: [{:actors, :desc, :disabled_at}])
+    end
 
     test "allows to filter results" do
       query_module = Domain.Accounts.Account.Query

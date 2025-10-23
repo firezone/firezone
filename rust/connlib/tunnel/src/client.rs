@@ -184,11 +184,13 @@ impl PendingFlow {
 
     fn push(&mut self, trigger: ConnectionTrigger) {
         match trigger {
-            ConnectionTrigger::PacketForResource(packet) => {
-                self.resource_packets.push(packet);
+            ConnectionTrigger::PacketForResource(packet) => self.resource_packets.push(packet),
+            ConnectionTrigger::UdpDnsQueryForSite(packet) => {
+                self.udp_dns_queries.enqueue(packet);
             }
-            ConnectionTrigger::UdpDnsQueryForSite(packet) => self.udp_dns_queries.push(packet),
-            ConnectionTrigger::TcpDnsQueryForSite(query) => self.tcp_dns_queries.push(query),
+            ConnectionTrigger::TcpDnsQueryForSite(query) => {
+                self.tcp_dns_queries.enqueue(query);
+            }
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
         }
     }
@@ -1556,8 +1558,6 @@ impl ClientState {
             return;
         }
 
-        tracing::info!(config = ?new_tun_config, "Updating TUN device");
-
         self.stub_resolver
             .set_search_domain(new_tun_config.search_domain.clone());
 
@@ -1647,9 +1647,11 @@ impl ClientState {
 
     pub(crate) fn poll_event(&mut self) -> Option<ClientEvent> {
         if let Some(pending_tun_update) = self.pending_tun_update.take()
-            && let Some(event) = pending_tun_update.into_event()
+            && let Some(new_config) = pending_tun_update.into_new_config()
         {
-            return Some(event);
+            tracing::info!(config = ?new_config, "Updating TUN device");
+
+            return Some(ClientEvent::TunInterfaceUpdated(new_config));
         }
 
         self.buffered_events

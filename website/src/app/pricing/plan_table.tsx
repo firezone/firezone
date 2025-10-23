@@ -95,8 +95,8 @@ export default function PlanTable() {
               Connected Clients
             </Tooltip>
           </td>
-          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
-          <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
+          <td className="font-semibold gmx-1 py-4 text-center">3 per user</td>
+          <td className="font-semibold gmx-1 py-4 text-center">5 per user</td>
           <td className="font-semibold gmx-1 py-4 text-center">Unlimited</td>
         </tr>
         <tr>
@@ -567,7 +567,7 @@ export default function PlanTable() {
           </td>
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
           <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
-          <td className="font-semibold gmx-1 py-4 text-center">99.5%</td>
+          <td className="font-semibold gmx-1 py-4 text-center">99.9%</td>
         </tr>
         <tr>
           <td

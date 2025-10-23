@@ -838,7 +838,7 @@ impl Allocation {
         if !self.has_allocation() {
             tracing::debug!("No allocation yet, buffering channel binding");
 
-            self.buffered_channel_bindings.push(peer);
+            self.buffered_channel_bindings.enqueue(peer);
             return;
         }
 
