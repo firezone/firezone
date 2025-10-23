@@ -439,6 +439,8 @@ impl ClientOnGateway {
             ));
         }
 
+        flow_tracker::inbound_wg::record_domain(state.domain.clone());
+
         let (source_protocol, real_ip) =
             self.nat_table
                 .translate_outgoing(&packet, resolved_ip, now)?;

@@ -35,6 +35,7 @@ rx_bytes=0
 
 for flow in "${flows[@]}"; do
     assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+    assert_eq "$(get_flow_field "$flow" "inner_domain")" "download.httpbin"
     rx_bytes+="$(get_flow_field "$flow" "rx_bytes")"
 done
 

@@ -475,6 +475,7 @@ impl GatewayState {
                         inner_dst_ip = %flow.inner_dst_ip,
                         inner_src_port = %flow.inner_src_port,
                         inner_dst_port = %flow.inner_dst_port,
+                        inner_domain = flow.inner_domain.map(tracing::field::display),
 
                         outer_src_ip = %flow.outer_src_ip,
                         outer_dst_ip = %flow.outer_dst_ip,
@@ -502,6 +503,7 @@ impl GatewayState {
                         inner_dst_ip = %flow.inner_dst_ip,
                         inner_src_port = %flow.inner_src_port,
                         inner_dst_port = %flow.inner_dst_port,
+                        inner_domain = flow.inner_domain.map(tracing::field::display),
 
                         outer_src_ip = %flow.outer_src_ip,
                         outer_dst_ip = %flow.outer_dst_ip,

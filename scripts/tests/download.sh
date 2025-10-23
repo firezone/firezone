@@ -26,4 +26,5 @@ assert_eq "${#flows[@]}" 1
 
 flow="${flows[0]}"
 assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
+assert_eq "$(get_flow_field "$flow" "inner_domain")" "download.httpbin"
 assert_gteq "$(get_flow_field "$flow" "rx_bytes")" 10000000
