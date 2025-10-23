@@ -18,6 +18,7 @@ futures = { workspace = true, features = ["std", "async-await"] }
 gat-lending-iterator = { workspace = true }
 hex = { workspace = true }
 hex-literal = { workspace = true }
+hmac = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
@@ -26,7 +27,7 @@ sha2 = { workspace = true }
 smbios-lib = { workspace = true }
 socket-factory = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process", "signal"] }
+tokio = { workspace = true, features = ["io-util", "net", "rt", "sync", "process", "signal", "fs"] }
 tracing = { workspace = true }
 tun = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }

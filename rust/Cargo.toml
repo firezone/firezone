@@ -92,6 +92,7 @@ hex = "0.4.3"
 hex-display = "0.3.0"
 hex-literal = "1.0.0"
 hickory-resolver = "0.25.2"
+hmac = "0.12.1"
 humantime = "2.3"
 ip-packet = { path = "connlib/ip-packet" }
 ip_network = { version = "0.4", default-features = false }

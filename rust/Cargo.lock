@@ -2356,6 +2356,7 @@ dependencies = [
  "gat-lending-iterator",
  "hex",
  "hex-literal",
+ "hmac",
  "ip-packet",
  "ip_network",
  "ipconfig",

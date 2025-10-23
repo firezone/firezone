@@ -83,6 +83,16 @@ pub fn get_or_create_at(path: &Path) -> Result<DeviceId> {
         return Ok(DeviceId { id: j.id });
     }
 
+    #[cfg(target_os = "linux")]
+    match derive_from_machine_id() {
+        Ok(id) => {
+            tracing::debug!(id = %id.id, "Derived device ID from /etc/machine-id");
+
+            return Ok(id);
+        }
+        Err(e) => tracing::debug!("Failed to derive ID from /etc/machine-id: {e:#}"),
+    }
+
     // Couldn't read, it's missing or invalid, generate a new one and save it.
     let id = hex::encode(sha2::Sha256::digest(uuid::Uuid::new_v4().to_string()));
     let j = DeviceIdJson { id: id.clone() };
@@ -132,6 +142,24 @@ fn set_id_permissions(_: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn derive_from_machine_id() -> Result<DeviceId> {
+    use hmac::Mac as _;
+
+    let machine_id = std::fs::read_to_string("/etc/machine-id")?;
+    let bytes = hex::decode(machine_id.trim()).context("Failed to decode machine ID from hex")?;
+
+    let output = hmac::Hmac::<sha2::Sha256>::new_from_slice(&bytes)
+        .context("Failed to create HMAC instance from machine ID")?
+        .chain_update(b"FIREZONE_ID_TAG")
+        .finalize()
+        .into_bytes();
+
+    let id = hex::encode(output);
+
+    Ok(DeviceId { id })
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 struct DeviceIdJson {
     id: String,
@@ -145,7 +173,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn creates_id_if_not_exist() {
+    #[cfg(not(target_os = "linux"))]
+    fn creates_id_if_not_exist_on_non_linux() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("id.json");
 
@@ -153,6 +182,17 @@ mod tests {
         let read_device_id = get_at(&path).unwrap();
 
         assert_eq!(created_device_id, read_device_id);
+    }
+
+    #[test]
+    fn does_not_create_id_on_linux_system() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("id.json");
+
+        let derived_device_id = get_or_create_at(&path).unwrap();
+
+        assert!(!std::fs::exists(path).unwrap());
+        assert!(!derived_device_id.id.is_empty());
     }
 
     #[test]
