@@ -28,7 +28,7 @@ importers:
         version: 4.1.13
       '@tailwindcss/vite':
         specifier: ^4.1.13
-        version: 4.1.13(vite@6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
+        version: 4.1.13(vite@7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
       '@tauri-apps/api':
         specifier: ^2.8.0
         version: 2.8.0
@@ -46,7 +46,7 @@ importers:
         version: 19.1.9(@types/react@19.1.13)
       '@vitejs/plugin-react':
         specifier: ^5.0.2
-        version: 5.0.2(vite@6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
+        version: 5.0.2(vite@7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
       eslint:
         specifier: ^9.36.0
         version: 9.36.0(jiti@2.6.1)
@@ -84,11 +84,11 @@ importers:
         specifier: ^8.34.1
         version: 8.34.1(eslint@9.36.0(jiti@2.6.1))(typescript@5.8.3)
       vite:
-        specifier: ^6.4.1
-        version: 6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+        specifier: ^7.1.7
+        version: 7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
       vite-plugin-typescript:
         specifier: ^1.0.4
-        version: 1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.5)(tslib@2.8.1)(typescript@5.8.3))(vite@6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
+        version: 1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.5)(tslib@2.8.1)(typescript@5.8.3))(vite@7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))
 
 packages:
 
@@ -2173,19 +2173,19 @@ packages:
       '@rollup/plugin-typescript': '*'
       vite: '*'
 
-  vite@6.4.1:
-    resolution: {integrity: sha512-+Oxm7q9hDoLMyJOYfUYBuHQo+dkAloi33apOPP56pzj+vsdJDzr+j1NISE5pyaAuKL4A3UD34qd0lx5+kfKp2g==}
-    engines: {node: ^18.0.0 || ^20.0.0 || >=22.0.0}
+  vite@7.1.7:
+    resolution: {integrity: sha512-VbA8ScMvAISJNJVbRDTJdCwqQoAareR/wutevKanhR2/1EkoXVZVkkORaYm/tNVCjP/UDTKtcw3bAkwOUdedmA==}
+    engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
-      '@types/node': ^18.0.0 || ^20.0.0 || >=22.0.0
+      '@types/node': ^20.19.0 || >=22.12.0
       jiti: '>=1.21.0'
-      less: '*'
+      less: ^4.0.0
       lightningcss: ^1.21.0
-      sass: '*'
-      sass-embedded: '*'
-      stylus: '*'
-      sugarss: '*'
+      sass: ^1.70.0
+      sass-embedded: ^1.70.0
+      stylus: '>=0.54.8'
+      sugarss: ^5.0.0
       terser: ^5.16.0
       tsx: ^4.8.1
       yaml: ^2.4.2
@@ -2849,12 +2849,12 @@ snapshots:
       '@tailwindcss/oxide-win32-arm64-msvc': 4.1.13
       '@tailwindcss/oxide-win32-x64-msvc': 4.1.13
 
-  '@tailwindcss/vite@4.1.13(vite@6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
+  '@tailwindcss/vite@4.1.13(vite@7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
     dependencies:
       '@tailwindcss/node': 4.1.13
       '@tailwindcss/oxide': 4.1.13
       tailwindcss: 4.1.13
-      vite: 6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+      vite: 7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
 
   '@tauri-apps/api@2.8.0': {}
 
@@ -3057,7 +3057,7 @@ snapshots:
       '@typescript-eslint/types': 8.34.1
       eslint-visitor-keys: 4.2.1
 
-  '@vitejs/plugin-react@5.0.2(vite@6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
+  '@vitejs/plugin-react@5.0.2(vite@7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0))':
     dependencies:
       '@babel/core': 7.28.4
       '@babel/plugin-transform-react-jsx-self': 7.27.1(@babel/core@7.28.4)
@@ -3065,7 +3065,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.34
       '@types/babel__core': 7.20.5
       react-refresh: 0.17.0
-      vite: 6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+      vite: 7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
     transitivePeerDependencies:
       - supports-color
 
@@ -4456,12 +4456,12 @@ snapshots:
     dependencies:
       punycode: 2.3.1
 
-  vite-plugin-typescript@1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.5)(tslib@2.8.1)(typescript@5.8.3))(vite@6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)):
+  vite-plugin-typescript@1.0.4(@rollup/plugin-typescript@12.1.2(rollup@4.52.5)(tslib@2.8.1)(typescript@5.8.3))(vite@7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)):
     dependencies:
       '@rollup/plugin-typescript': 12.1.2(rollup@4.52.5)(tslib@2.8.1)(typescript@5.8.3)
-      vite: 6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
+      vite: 7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0)
 
-  vite@6.4.1(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0):
+  vite@7.1.7(@types/node@24.5.2)(jiti@2.6.1)(lightningcss@1.30.1)(yaml@2.6.0):
     dependencies:
       esbuild: 0.25.11
       fdir: 6.5.0(picomatch@4.0.3)
