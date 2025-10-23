@@ -45,6 +45,7 @@ import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
+import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
@@ -508,42 +509,50 @@ class TunnelService : VpnService() {
                         }
                     }
                     eventChannel.onReceive { event ->
-                        when (event) {
-                            is Event.ResourcesUpdated -> {
-                                tunnelResources = event.resources.map { convertResource(it) }
-                                resourcesUpdated()
-                            }
+                        event.use { event ->
+                            when (event) {
+                                is Event.ResourcesUpdated -> {
+                                    tunnelResources = event.resources.map { convertResource(it) }
+                                    resourcesUpdated()
+                                }
 
-                            is Event.TunInterfaceUpdated -> {
-                                tunnelDnsAddresses = event.dns.toMutableList()
-                                tunnelSearchDomain = event.searchDomain
-                                tunnelIpv4Address = event.ipv4
-                                tunnelIpv6Address = event.ipv6
-                                tunnelRoutes.clear()
-                                tunnelRoutes.addAll(
-                                    event.ipv4Routes.map { cidr ->
-                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
-                                    },
-                                )
-                                tunnelRoutes.addAll(
-                                    event.ipv6Routes.map { cidr ->
-                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
-                                    },
-                                )
-                                buildVpnService()
-                            }
+                                is Event.TunInterfaceUpdated -> {
+                                    tunnelDnsAddresses = event.dns.toMutableList()
+                                    tunnelSearchDomain = event.searchDomain
+                                    tunnelIpv4Address = event.ipv4
+                                    tunnelIpv6Address = event.ipv6
+                                    tunnelRoutes.clear()
+                                    tunnelRoutes.addAll(
+                                        event.ipv4Routes.map { cidr ->
+                                            Cidr(
+                                                address = cidr.address,
+                                                prefix = cidr.prefix.toInt(),
+                                            )
+                                        },
+                                    )
+                                    tunnelRoutes.addAll(
+                                        event.ipv6Routes.map { cidr ->
+                                            Cidr(
+                                                address = cidr.address,
+                                                prefix = cidr.prefix.toInt(),
+                                            )
+                                        },
+                                    )
+                                    buildVpnService()
+                                }
 
-                            is Event.Disconnected -> {
-                                // Clear any user tokens and actorNames
-                                repo.clearToken()
-                                repo.clearActorName()
+                                is Event.Disconnected -> {
+                                    // Clear any user tokens and actorNames
+                                    repo.clearToken()
+                                    repo.clearActorName()
 
-                                running = false
-                            }
+                                    running = false
+                                }
 
-                            null -> {
-                                Log.i(TAG, "Event channel closed")
-                                running = false
+                                null -> {
+                                    Log.i(TAG, "Event channel closed")
+                                    running = false
+                                }
                             }
                         }
                     }
