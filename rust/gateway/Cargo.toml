@@ -7,8 +7,8 @@ license = { workspace = true }
 description = "Gateway for the Firezone zero-trust access product."
 
 [package.metadata.deb]
-maintainer = "Firezone Inc. <support@firezone.dev>"
-copyright = "2025, Firezone Inc."
+maintainer = "Firezone, Inc. <support@firezone.dev>"
+copyright = "2025 Firezone, Inc."
 maintainer-scripts = "debian/"
 systemd-units = { enable = false }
 extended-description = "" # Empty string to avoid embedding the README
