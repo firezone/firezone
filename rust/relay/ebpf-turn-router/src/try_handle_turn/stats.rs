@@ -7,7 +7,7 @@ static STATS: PerfEventArray<StatsEvent> = PerfEventArray::new(0);
 pub fn emit_data_relayed(ctx: &XdpContext, bytes: impl Into<u64>) {
     STATS.output(
         ctx,
-        &StatsEvent {
+        StatsEvent {
             relayed_data: bytes.into(),
         },
         0,

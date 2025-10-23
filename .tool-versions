@@ -13,3 +13,7 @@ shellcheck 0.9.0
 
 # GUI client
 pnpm 10.18.3
+
+# Android app
+java openjdk-17
+ktlint 1.7.1

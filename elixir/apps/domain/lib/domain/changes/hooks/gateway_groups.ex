@@ -6,14 +6,7 @@ defmodule Domain.Changes.Hooks.GatewayGroups do
   @impl true
   def on_insert(_lsn, _data), do: :ok
 
-  # Soft-delete
   @impl true
-  def on_update(lsn, %{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
-      when not is_nil(deleted_at) do
-    on_delete(lsn, old_data)
-  end
-
-  # Regular update
   def on_update(lsn, old_data, data) do
     old_gateway_group = struct_from_params(Gateways.Group, old_data)
     gateway_group = struct_from_params(Gateways.Group, data)

@@ -50,7 +50,7 @@ impl UniquePacketBuffer {
             );
         }
 
-        self.buffer.push(new);
+        self.buffer.enqueue(new);
     }
 
     pub fn len(&self) -> usize {

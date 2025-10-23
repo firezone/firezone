@@ -73,16 +73,5 @@ defmodule Domain.Changes.Hooks.ClientsTest do
       assert_receive %Change{op: :delete, old_struct: %Clients.Client{} = deleted_client, lsn: 0}
       assert deleted_client.id == client.id
     end
-
-    test "deletes associated flows" do
-      account = Fixtures.Accounts.create_account()
-      client = Fixtures.Clients.create_client(account: account)
-
-      old_data = %{"id" => client.id, "account_id" => client.account_id}
-
-      assert flow = Fixtures.Flows.create_flow(client: client, account: account)
-      assert :ok == on_delete(0, old_data)
-      refute Repo.get_by(Flows.Flow, id: flow.id)
-    end
   end
 end

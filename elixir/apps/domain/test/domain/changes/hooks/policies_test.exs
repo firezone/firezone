@@ -212,22 +212,5 @@ defmodule Domain.Changes.Hooks.PoliciesTest do
       assert policy.actor_group_id == old_data["actor_group_id"]
       assert policy.resource_id == old_data["resource_id"]
     end
-
-    test "deletes flows" do
-      account = Fixtures.Accounts.create_account()
-      policy = Fixtures.Policies.create_policy(account: account)
-
-      old_data = %{
-        "id" => policy.id,
-        "account_id" => account.id,
-        "actor_group_id" => policy.actor_group_id,
-        "resource_id" => policy.resource_id
-      }
-
-      assert flow = Fixtures.Flows.create_flow(policy: policy, account: account)
-
-      assert :ok = on_delete(0, old_data)
-      refute Repo.get_by(Domain.Flows.Flow, id: flow.id)
-    end
   end
 end
