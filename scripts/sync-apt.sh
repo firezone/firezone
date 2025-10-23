@@ -89,7 +89,7 @@ for DISTRIBUTION in "stable" "preview"; do
     fi
 
     if [ -z "$(ls -A "${POOL_DIR}")" ]; then
-        echo "No packages for distribtion ${DISTRIBUTION}"
+        echo "No packages for distribution ${DISTRIBUTION}"
 
         continue
     fi
