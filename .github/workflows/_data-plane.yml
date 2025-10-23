@@ -496,3 +496,9 @@ jobs:
           # shellcheck disable=SC2086 # $tags and $sources must be split by whitespace
           docker buildx imagetools create $tags $sources
           docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"
+
+  regenerate-apt-index:
+    needs: data-plane-linux
+    if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+    uses: ./.github/workflows/_apt.yml
+    secrets: inherit
