@@ -205,3 +205,22 @@ jobs:
           TAG_NAME: gui-client-${{ env.FIREZONE_GUI_VERSION }}
         shell: bash
         run: ${{ env.UPLOAD_SCRIPT }}
+
+      - name: Upload to preview repository
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' && runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          az storage blob upload-batch \
+            --destination apt \
+            --source . \
+            --pattern "*.deb" \
+            --destination-path import-preview \
+            --overwrite \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+
+  regenerate-apt-index:
+    needs: build-gui
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+    uses: ./.github/workflows/_apt.yml
+    secrets: inherit
