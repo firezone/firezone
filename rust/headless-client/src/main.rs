@@ -416,7 +416,7 @@ fn try_main() -> Result<()> {
                     // <https://github.com/firezone/firezone/pull/6026#discussion_r1692297438>
                     if let Some(instant) = last_connlib_start_instant.take() {
                         // `OnUpdateResources` appears to be the latest callback that happens during startup
-                        tracing::info!(elapsed = ?instant.elapsed(), "Tunnel ready");
+                        tracing::debug!(elapsed = ?instant.elapsed(), "Tunnel ready");
                         platform::notify_service_controller()?;
                     }
                     if cli.exit {

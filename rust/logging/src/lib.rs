@@ -6,6 +6,7 @@ mod format;
 mod unwrap_or;
 mod ansi;
 mod capturing_writer;
+mod display_btree_set;
 mod err_with_sources;
 mod event_message_contains_filter;
 
@@ -29,6 +30,7 @@ use tracing_subscriber::{
 
 pub use ansi::stdout_supports_ansi;
 pub use capturing_writer::CapturingWriter;
+pub use display_btree_set::DisplayBTreeSet;
 pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
 

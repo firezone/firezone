@@ -48,7 +48,7 @@ impl Server {
 
         self.waker.wake();
 
-        tracing::info!(%socket, "Listening for TCP DNS queries");
+        tracing::debug!(%socket, "Listening for TCP DNS queries");
 
         Ok(())
     }
@@ -62,7 +62,7 @@ impl Server {
 
         self.waker.wake();
 
-        tracing::info!(%socket, "Listening for TCP DNS queries");
+        tracing::debug!(%socket, "Listening for TCP DNS queries");
 
         Ok(())
     }

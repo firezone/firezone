@@ -17,7 +17,7 @@ impl Device {
     }
 
     pub(crate) fn set_tun(&mut self, tun: Box<dyn Tun>) {
-        tracing::info!(name = %tun.name(), "Initializing TUN device");
+        tracing::debug!(name = %tun.name(), "Initializing TUN device");
 
         self.tun = Some(tun);
 
