@@ -344,7 +344,7 @@ jobs:
           gh release upload ${{ matrix.name.release_name }} \
             "$BINARY_DEST_PATH" \
             "$BINARY_DEST_PATH".sha256sum.txt \
-            "$BINARY_DEST_PATH".deb \
+            # "$BINARY_DEST_PATH".deb \ # Enable this once we have all the necessary documentation in place.
             "$clobber" \
             --repo ${{ github.repository }}
 
