@@ -10,6 +10,7 @@ use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
+use firezone_logging::DisplayBTreeSet;
 use futures::{FutureExt, future::BoxFuture};
 use gat_lending_iterator::LendingIterator;
 use io::{Buffers, Io};
@@ -17,7 +18,7 @@ use ip_network::{Ipv4Network, Ipv6Network};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
-    fmt, future, mem,
+    future, mem,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
     sync::Arc,
     task::{Context, Poll, ready},
@@ -552,9 +553,9 @@ pub struct TunConfig {
     pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
     pub search_domain: Option<DomainName>,
 
-    #[debug("{}", DisplaySet(ipv4_routes))]
+    #[debug("{}", DisplayBTreeSet(ipv4_routes))]
     pub ipv4_routes: BTreeSet<Ipv4Network>,
-    #[debug("{}", DisplaySet(ipv6_routes))]
+    #[debug("{}", DisplayBTreeSet(ipv6_routes))]
     pub ipv6_routes: BTreeSet<Ipv6Network>,
 }
 
@@ -642,25 +643,6 @@ pub(crate) struct NotClientIp(IpAddr);
 #[derive(Debug, thiserror::Error)]
 #[error("Traffic to/from this resource IP is not allowed: {0}")]
 pub(crate) struct NotAllowedResource(IpAddr);
-
-/// Adapter-struct to [`fmt::Display`] a [`BTreeSet`].
-#[expect(dead_code, reason = "It is used in the `Debug` impl of `TunConfig`")]
-struct DisplaySet<'a, T>(&'a BTreeSet<T>);
-
-impl<T> fmt::Display for DisplaySet<'_, T>
-where
-    T: fmt::Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut list = f.debug_list();
-
-        for entry in self.0 {
-            list.entry(&format_args!("{entry}"));
-        }
-
-        list.finish()
-    }
-}
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
