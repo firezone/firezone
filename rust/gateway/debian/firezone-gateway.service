@@ -16,6 +16,7 @@ PermissionsStartOnly=true
 SyslogIdentifier=firezone-gateway
 
 LoadCredential=FIREZONE_TOKEN:/etc/firezone/gateway-token
+EnvironmentFile=/etc/firezone/gateway-preset-env
 EnvironmentFile=/etc/firezone/gateway-env
 
 ExecStartPre=/usr/bin/firezone-gateway-init

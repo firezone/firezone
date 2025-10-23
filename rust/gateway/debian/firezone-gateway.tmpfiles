@@ -2,4 +2,5 @@
 
 d /etc/firezone 0755 firezone firezone
 f /etc/firezone/gateway-env 0644 firezone firezone -
+f /etc/firezone/gateway-preset-env 0644 firezone firezone - \# This file is managed by maintainer scripts. Do not touch! Use `/etc/firezone/gateway-env` for our custom configuration.
 f /etc/firezone/gateway-token 0400 root root -

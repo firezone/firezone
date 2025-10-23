@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
 
 # Script inspired by deb helper script from `cargo-deb`
-if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ] ; then
-	# In case this system is running systemd, we need to ensure that all
-	# necessary users are created before starting.
-	if [ -d /run/systemd/system ] ; then
-		systemd-sysusers firezone-gateway.conf >/dev/null || true
-	fi
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
+    # In case this system is running systemd, we need to ensure that all
+    # necessary users are created before starting.
+    if [ -d /run/systemd/system ]; then
+        systemd-sysusers firezone-gateway.conf >/dev/null || true
+    fi
 fi
 
 #DEBHELPER#
+
+# Generate a deterministic ID based of `/etc/machine-id`
+FIREZONE_ID=$(systemd-id128 --app-specific=753b38f9f96947ef8083802d5909a372 machine-id)
+
+# Write it to the `preset-env` file. This should be deterministic so we can just always write it.
+# This file should already exist after the DEBHELPER has run.
+echo "FIREZONE_ID=${FIREZONE_ID}" >/etc/firezone/gateway-preset-env
