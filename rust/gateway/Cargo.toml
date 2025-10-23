@@ -17,8 +17,8 @@ section = "Network"
 assets = [
     ["target/release/firezone-gateway", "usr/bin/", "755"],
     ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
-    ["debian/sysusers.conf", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
-    ["debian/tmpfiles.conf", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
+    ["debian/firezone-gateway.sysusers", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
+    ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
 ]
 depends = 'iptables'
 
