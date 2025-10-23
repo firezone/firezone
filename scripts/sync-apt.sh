@@ -73,11 +73,13 @@ for DISTRIBUTION in "stable" "preview"; do
     echo "Generating metadata..."
     mkdir -p "${DISTS_DIR}/${DISTRIBUTION}/${COMPONENT}"
 
+    cd "$WORK_DIR"
+
     for ARCH in $ARCHITECTURES; do
         BINARY_DIR="${DISTS_DIR}/${DISTRIBUTION}/${COMPONENT}/binary-${ARCH}"
         mkdir -p "${BINARY_DIR}"
 
-        apt-ftparchive packages --arch "${ARCH}" "${POOL_DIR}/" >"${BINARY_DIR}/Packages"
+        apt-ftparchive packages --arch "${ARCH}" "pool-${DISTRIBUTION}" >"${BINARY_DIR}/Packages"
         gzip -k -f "${BINARY_DIR}/Packages"
 
         cat >"${BINARY_DIR}/Release" <<EOF
