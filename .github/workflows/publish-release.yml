@@ -198,7 +198,7 @@ jobs:
         run: |
           set -xe
 
-          # Download all .deb assets directly to pool
+          # Download all .deb assets
           gh release download "${{ inputs.release_name || github.event.release.name }}" --pattern "*.deb"
 
           # List downloaded files for verification
@@ -209,7 +209,7 @@ jobs:
           --destination apt \
           --source . \
           --pattern "*.deb" \
-          --destination-path pool \
+          --destination-path import-stable \
           --overwrite \
           --no-progress \
           --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
