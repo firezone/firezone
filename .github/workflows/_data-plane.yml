@@ -499,6 +499,6 @@ jobs:
 
   regenerate-apt-index:
     needs: data-plane-linux
-    if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
     uses: ./.github/workflows/_apt.yml
     secrets: inherit
