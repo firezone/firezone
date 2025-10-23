@@ -347,6 +347,15 @@ jobs:
             "$BINARY_DEST_PATH".deb \
             "$clobber" \
             --repo ${{ github.repository }}
+
+          az storage blob upload-batch \
+            --destination apt \
+            --source . \
+            --pattern "*.deb" \
+            --destination-path import-preview \
+            --overwrite \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
       - name: Upload `.deb` artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
