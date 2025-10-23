@@ -46,7 +46,7 @@ impl Server {
 
         self.waker.wake();
 
-        tracing::info!(%socket, "Listening for UDP DNS queries");
+        tracing::debug!(%socket, "Listening for UDP DNS queries");
 
         Ok(())
     }
@@ -63,7 +63,7 @@ impl Server {
 
         self.waker.wake();
 
-        tracing::info!(%socket, "Listening for UDP DNS queries");
+        tracing::debug!(%socket, "Listening for UDP DNS queries");
 
         Ok(())
     }

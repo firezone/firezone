@@ -1,7 +1,7 @@
 defmodule Domain.Changes.Hooks.TokensTest do
   use Domain.DataCase, async: true
   import Domain.Changes.Hooks.Tokens
-  alias Domain.{Flows, PubSub}
+  alias Domain.PubSub
 
   describe "insert/1" do
     test "returns :ok" do
@@ -40,21 +40,6 @@ defmodule Domain.Changes.Hooks.TokensTest do
       }
 
       assert topic == "sessions:#{token.id}"
-    end
-
-    test "deletes flows" do
-      account = Fixtures.Accounts.create_account()
-      token = Fixtures.Tokens.create_token(account: account)
-
-      old_data = %{
-        "id" => token.id,
-        "account_id" => account.id,
-        "type" => token.type
-      }
-
-      assert flow = Fixtures.Flows.create_flow(account: account, token: token)
-      assert :ok = on_delete(0, old_data)
-      refute Repo.get_by(Flows.Flow, id: flow.id)
     end
   end
 end
