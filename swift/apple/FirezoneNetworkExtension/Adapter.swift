@@ -106,7 +106,7 @@ class Adapter: @unchecked Sendable {
   /// - https://github.com/firezone/firezone/issues/3343
   /// - https://github.com/firezone/firezone/issues/3235
   /// - https://github.com/firezone/firezone/issues/3175
-  private lazy var pathUpdateHandler: (Network.NWPath) -> Void = { [weak self] path in
+  private lazy var pathUpdateHandler: @Sendable (Network.NWPath) -> Void = { [weak self] path in
     guard let self else { return }
 
     if path.status == .unsatisfied {
@@ -291,22 +291,28 @@ class Adapter: @unchecked Sendable {
   /// Get the current set of resources in the completionHandler, only returning
   /// them if the resource list has changed.
   func getResourcesIfVersionDifferentFrom(
-    hash: Data, completionHandler: @escaping (Data?) -> Void
+    hash: Data, completionHandler: @escaping @Sendable (Data?) -> Void
   ) {
-    // This is async to avoid blocking the main UI thread
-    workQueue.async { [weak self] in
-      guard let self = self else { return }
+    Task { [weak self] in
+      guard let self = self else {
+        completionHandler(nil)
+        return
+      }
 
       // Convert uniffi resources to FirezoneKit resources and encode with PropertyList
       guard let uniffiResources = self.resources
-      else { return completionHandler(nil) }
+      else {
+        completionHandler(nil)
+        return
+      }
 
       let firezoneResources = uniffiResources.map { self.convertResource($0) }
 
       guard let encoded = try? PropertyListEncoder().encode(firezoneResources)
       else {
         Log.log("Failed to encode resources as PropertyList")
-        return completionHandler(nil)
+        completionHandler(nil)
+        return
       }
 
       if hash == Data(SHA256.hash(data: encoded)) {
