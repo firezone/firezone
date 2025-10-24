@@ -16,4 +16,4 @@ FIREZONE_ID=$(systemd-id128 --app-specific=753b38f9f96947ef8083802d5909a372 mach
 
 # Write it to the `preset-env` file. This should be deterministic so we can just always write it.
 # This file should already exist after the DEBHELPER has run.
-echo "FIREZONE_ID=${FIREZONE_ID}" >>/etc/firezone/gateway-preset-env
+printf "\nFIREZONE_ID=%s" "${FIREZONE_ID}" >>/etc/firezone/gateway-preset-env
