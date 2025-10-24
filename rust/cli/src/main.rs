@@ -6,10 +6,11 @@ use clap::{Parser, Subcommand};
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    use Component::*;
+    use GatewayCommand::*;
+
     match cli.component {
-        Component::Gateway {
-            command: GatewayCommand::Authenticate,
-        } => {
+        Gateway(Authenticate) => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
             anyhow::ensure!(is_root(), "Must be executed as root");
 
@@ -30,10 +31,25 @@ fn main() -> Result<()> {
             }
 
             install_firezone_gateway_token(token)?;
+
             println!("Successfully installed token");
+            println!("Tip: You can now start the Gateway with `firezone gateway enable`");
+        }
+        Gateway(Enable) => {
+            anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
+            anyhow::ensure!(is_root(), "Must be executed as root");
 
             enable_gateway_service().context("Failed to enable `firezone-gateway.service`")?;
+
             println!("Successfully enabled `firezone-gateway.service`");
+        }
+        Gateway(Disable) => {
+            anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
+            anyhow::ensure!(is_root(), "Must be executed as root");
+
+            disable_gateway_service().context("Failed to disable `firezone-gateway.service`")?;
+
+            println!("Successfully disabled `firezone-gateway.service`");
         }
     }
 
@@ -49,15 +65,18 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Component {
-    Gateway {
-        #[command(subcommand)]
-        command: GatewayCommand,
-    },
+    #[command(subcommand)]
+    Gateway(GatewayCommand),
 }
 
 #[derive(Debug, Subcommand)]
 enum GatewayCommand {
+    /// Securely store the Gateway's token on disk.
     Authenticate,
+    /// Enable the Gateway's systemd service.
+    Enable,
+    /// Disable the Gateway's systemd service.
+    Disable,
 }
 
 #[cfg(target_os = "linux")]
@@ -104,5 +123,28 @@ fn enable_gateway_service() -> Result<()> {
 
 #[cfg(not(target_os = "linux"))]
 fn enable_gateway_service() -> Result<()> {
+    anyhow::bail!("Not implemented")
+}
+
+#[cfg(target_os = "linux")]
+fn disable_gateway_service() -> Result<()> {
+    use std::process::Command;
+
+    let output = Command::new("systemctl")
+        .arg("disable")
+        .arg("firezone-gateway.service")
+        .output()?;
+
+    anyhow::ensure!(
+        output.status.success(),
+        "`systemctl disable` exited with {}",
+        output.status
+    );
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn disable_gateway_service() -> Result<()> {
     anyhow::bail!("Not implemented")
 }
