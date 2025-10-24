@@ -3,6 +3,7 @@ defmodule API.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Policies
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -15,14 +16,14 @@ defmodule API.PolicyController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.ListResponse}
+      ok: {"Policy Response", "application/json", API.Schemas.Policy.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List Policies
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, policies, metadata} <- Policies.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, policies, metadata} <- Policies.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     end
   end
@@ -38,7 +39,9 @@ defmodule API.PolicyController do
       ]
     ],
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Show a specific Policy
@@ -54,7 +57,8 @@ defmodule API.PolicyController do
     request_body:
       {"Policy Attributes", "application/json", API.Schemas.Policy.Request, required: true},
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      created: {"Policy Response", "application/json", API.Schemas.Policy.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Create a new Policy
@@ -84,7 +88,9 @@ defmodule API.PolicyController do
     request_body:
       {"Policy Attributes", "application/json", API.Schemas.Policy.Request, required: true},
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Update a Policy
@@ -117,7 +123,9 @@ defmodule API.PolicyController do
       ]
     ],
     responses: [
-      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response}
+      ok: {"Policy Response", "application/json", API.Schemas.Policy.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete a Policy
