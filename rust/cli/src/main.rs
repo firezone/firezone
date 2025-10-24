@@ -76,5 +76,5 @@ fn install_firezone_gateway_token(token: String) -> Result<()> {
 
 #[cfg(not(target_os = "linux"))]
 fn install_firezone_gateway_token(token: String) -> Result<()> {
-    bail!("Not implemented")
+    anyhow::bail!("Not implemented")
 }
