@@ -276,7 +276,7 @@ async fn read_systemd_credential(name: &str) -> Result<SecretString> {
     let path = PathBuf::from(creds_dir).join(name);
     let content = tokio::fs::read_to_string(&path).await?;
 
-    Ok(SecretString::new(content))
+    Ok(SecretString::new(content.trim().to_owned()))
 }
 
 #[derive(Parser, Debug)]
@@ -457,7 +457,7 @@ mod tests {
         let cred_path = temp_dir.path().join("FIREZONE_TOKEN");
 
         // Write token to credential file
-        std::fs::write(cred_path, "systemd-token").unwrap();
+        std::fs::write(cred_path, "systemd-token\n").unwrap();
 
         // Set CREDENTIALS_DIRECTORY environment variable
         unsafe {
