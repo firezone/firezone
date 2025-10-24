@@ -8,7 +8,7 @@ fn main() -> Result<()> {
 
     match cli.component {
         Component::Gateway {
-            command: GatewayCommand::Authenticate { enable },
+            command: GatewayCommand::Authenticate { no_enable },
         } => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
             anyhow::ensure!(is_root(), "Must be executed as root");
@@ -33,7 +33,7 @@ fn main() -> Result<()> {
 
             println!("Successfully installed token");
 
-            if enable {
+            if !no_enable {
                 enable_gateway_service().context("Failed to enable `firezone-gateway.service`")?;
                 println!("Successfully enabled `firezone-gateway.service`");
             }
@@ -61,9 +61,9 @@ enum Component {
 #[derive(Debug, Subcommand)]
 enum GatewayCommand {
     Authenticate {
-        /// Automatically start the `firezone-gateway.service` after the token has been installed.
-        #[arg(long, default_value_t = true)]
-        enable: bool,
+        /// Do not automatically start the `firezone-gateway.service` after the token has been installed.
+        #[arg(long, default_value_t = false)]
+        no_enable: bool,
     },
 }
 
