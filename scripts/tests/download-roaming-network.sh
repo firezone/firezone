@@ -51,7 +51,6 @@ assert_gteq "${#flows[@]}" 2
 
 declare -A unique_src_tuples
 declare -i num_ipv4_tuples
-declare -i num_ipv6_tuples
 
 for flow in "${flows[@]}"; do
     # All flows should have same inner_dst_ip
@@ -67,7 +66,6 @@ for flow in "${flows[@]}"; do
         ;;
     "172:31::100")
         unique_src_tuples["$src_tuple"]=1
-        num_ipv6_tuples+=1
         ;;
     *)
         echo "Unexpected 'outer_src_ip': ${outer_dst_ip}"
