@@ -50,14 +50,33 @@ readarray -t flows < <(get_flow_logs "tcp")
 assert_gteq "${#flows[@]}" 2
 
 declare -A unique_src_tuples
+declare -i num_ipv4_tuples
 
 for flow in "${flows[@]}"; do
     # All flows should have same inner_dst_ip
     assert_eq "$(get_flow_field "$flow" "inner_dst_ip")" "172.21.0.101"
 
-    # Collect all unique source tuples
+    outer_dst_ip=$(get_flow_field "$flow" "outer_dst_ip")
     src_tuple="$(get_flow_field "${flow}" "outer_src_ip") $(get_flow_field "${flow}" "outer_src_port")"
-    unique_src_tuples["$src_tuple"]=1
+
+    case $outer_dst_ip in
+    "172.31.0.100")
+        unique_src_tuples["$src_tuple"]=1
+        num_ipv4_tuples+=1
+        ;;
+    "172:31::100")
+        unique_src_tuples["$src_tuple"]=1
+        ;;
+    *)
+        echo "Unexpected 'outer_src_ip': ${outer_dst_ip}"
+        exit 1
+        ;;
+    esac
 done
 
-assert_gteq "${#unique_src_tuples[@]}" 3 # We should have at least 3; > 2 is important because ICE might hop between IPv4 and IPv6 during connection setup.
+# If we only ever connected via IPv6, two unique source tuples are enough, otherwise we want three.
+if [[ $num_ipv4_tuples == 0 ]]; then
+    assert_gteq "${#unique_src_tuples[@]}" 2
+else
+    assert_gteq "${#unique_src_tuples[@]}" 3
+fi
