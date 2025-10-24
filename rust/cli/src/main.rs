@@ -3,6 +3,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
+const ETC_FIREZONE_GATEWAY_TOKEN: &str = "/etc/firezone/gateway-token";
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -10,9 +12,18 @@ fn main() -> Result<()> {
     use GatewayCommand::*;
 
     match cli.component {
-        Gateway(Authenticate) => {
+        Gateway(Authenticate { replace }) => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
             anyhow::ensure!(is_root(), "Must be executed as root");
+
+            if let Ok(existing) = std::fs::read_to_string(ETC_FIREZONE_GATEWAY_TOKEN)
+                && !existing.trim().is_empty()
+                && !replace
+            {
+                anyhow::bail!(
+                    "Found existing token at {ETC_FIREZONE_GATEWAY_TOKEN}, use --replace to overwrite"
+                );
+            }
 
             let mut token = String::with_capacity(512); // Our tokens are ~270 characters, grab the next power of 2.
 
@@ -72,7 +83,11 @@ enum Component {
 #[derive(Debug, Subcommand)]
 enum GatewayCommand {
     /// Securely store the Gateway's token on disk.
-    Authenticate,
+    Authenticate {
+        /// If an existing token is found, replace it.
+        #[arg(long, default_value_t = false)]
+        replace: bool,
+    },
     /// Enable the Gateway's systemd service.
     Enable,
     /// Disable the Gateway's systemd service.
@@ -91,8 +106,8 @@ fn is_root() -> bool {
 
 #[cfg(target_os = "linux")]
 fn install_firezone_gateway_token(token: String) -> Result<()> {
-    std::fs::write("/etc/firezone/gateway-token", token)
-        .context("Failed to write token to `/etc/firezone/gateway-token`")?;
+    std::fs::write(ETC_FIREZONE_GATEWAY_TOKEN, token)
+        .with_context(|| format!("Failed to write token to `{ETC_FIREZONE_GATEWAY_TOKEN}`"))?;
 
     Ok(())
 }
