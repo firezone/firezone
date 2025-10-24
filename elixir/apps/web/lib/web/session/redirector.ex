@@ -93,27 +93,17 @@ defmodule Web.Session.Redirector do
         account_or_slug
       ) do
     post_sign_out_url = url(~p"/#{account_or_slug}")
+    {:ok, _num_deleted} = Tokens.delete_token_for(subject)
 
-    {conn, redirect_url} =
+    conn =
       if Domain.Migrator.migrated?(account) do
-        # New system: fetch token, get end_session_uri, delete token, delete session
-        logout_uri =
-          case Tokens.fetch_token_by_id(subject.token_id) do
-            {:ok, token} -> token.end_session_uri || post_sign_out_url
-            _ -> post_sign_out_url
-          end
-
-        {:ok, _num_deleted} = Tokens.delete_token_for(subject)
-        conn = delete_session(conn, account.id)
-        {conn, logout_uri}
+        delete_session(conn, account.id)
       else
-        # Old system: call Domain.Auth.sign_out to build logout URL
-        {:ok, _identity, redirect_url} = Domain.Auth.sign_out(subject, post_sign_out_url)
-        conn = Web.Auth.renew_session(conn)
-        {conn, redirect_url}
+        {:ok, _identity, _redirect_url} = Domain.Auth.sign_out(subject, post_sign_out_url)
+        Web.Auth.renew_session(conn)
       end
 
-    Phoenix.Controller.redirect(conn, external: redirect_url)
+    Phoenix.Controller.redirect(conn, external: post_sign_out_url)
   end
 
   def signed_out(%Plug.Conn{} = conn, account_id_or_slug) do

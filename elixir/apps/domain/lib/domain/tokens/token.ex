@@ -51,9 +51,6 @@ defmodule Domain.Tokens.Token do
 
     field :expires_at, :utc_datetime_usec
 
-    # OIDC end session URI for logout (browser and client tokens only)
-    field :end_session_uri, :string
-
     subject_trail(~w[actor identity system]a)
     timestamps()
   end

@@ -125,23 +125,6 @@ defmodule Web.OIDC do
   end
 
   @doc """
-  Gets end session URI for logout.
-  Returns URI string or nil if not available.
-  """
-  def end_session_uri(provider, id_token, redirect_uri) do
-    case config_for_provider(provider, redirect_uri) do
-      {:ok, config} ->
-        case OpenIDConnect.end_session_uri(config, id_token) do
-          {:ok, uri} -> uri
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  @doc """
   Exchanges authorization code for tokens using a pre-built config.
   Useful for legacy code paths where config is built manually.
   Returns {:ok, tokens} or {:error, reason}.

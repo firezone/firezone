@@ -629,8 +629,9 @@ defmodule Domain.Auth do
   end
 
   @doc """
-  Revokes the Firezone token used by the given subject and,
-  if IdP was used for Sign In, revokes the IdP token too by redirecting user to IdP logout endpoint.
+  Revokes the Firezone token used by the given subject.
+  TODO: IDP REFACTOR
+  Can be removed after all accounts are migrated.
   """
   def sign_out(%Subject{} = subject, redirect_url) do
     {:ok, _num_deleted} = Tokens.delete_token_for(subject)

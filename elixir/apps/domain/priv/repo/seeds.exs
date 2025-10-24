@@ -15,6 +15,19 @@ defmodule Domain.Repo.Seeds do
     Tokens
   }
 
+  # Populate these in your .env
+  defp google_idp_id do
+    System.get_env("GOOGLE_IDP_ID")
+  end
+
+  defp entra_idp_id do
+    System.get_env("ENTRA_IDP_ID")
+  end
+
+  defp entra_tenant_id do
+    System.get_env("ENTRA_TENANT_ID")
+  end
+
   def seed do
     # Seeds can be run both with MIX_ENV=prod and MIX_ENV=test, for test env we don't have
     # an adapter configured and creation of email provider will fail, so we will override it here.
@@ -120,7 +133,7 @@ defmodule Domain.Repo.Seeds do
     # This conditional can be removed once all accounts are migrated
     new_auth? = System.get_env("NEW_AUTH") == "true"
 
-    {email_provider, oidc_provider, userpass_provider} =
+    {email_provider, oidc_provider, userpass_provider, _google_provider, _entra_provider} =
       if new_auth? do
         # New auth system - create proper auth providers
         system_subject = %Auth.Subject{
@@ -134,7 +147,9 @@ defmodule Domain.Repo.Seeds do
             MapSet.new([
               %Domain.Auth.Permission{resource: Domain.EmailOTP.AuthProvider, action: :manage},
               %Domain.Auth.Permission{resource: Domain.Userpass.AuthProvider, action: :manage},
-              %Domain.Auth.Permission{resource: Domain.OIDC.AuthProvider, action: :manage}
+              %Domain.Auth.Permission{resource: Domain.OIDC.AuthProvider, action: :manage},
+              %Domain.Auth.Permission{resource: Domain.Google.AuthProvider, action: :manage},
+              %Domain.Auth.Permission{resource: Domain.Entra.AuthProvider, action: :manage}
             ])
         }
 
@@ -156,7 +171,27 @@ defmodule Domain.Repo.Seeds do
             system_subject
           )
 
-        {email_otp, oidc, userpass}
+        {:ok, google} =
+          Domain.Google.create_auth_provider(
+            %{
+              name: "Google",
+              issuer: "https://accounts.google.com",
+              hosted_domain: "firezone.dev"
+            },
+            system_subject
+          )
+
+        {:ok, entra} =
+          Domain.Entra.create_auth_provider(
+            %{
+              name: "Entra",
+              issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
+              tenant_id: entra_tenant_id()
+            },
+            system_subject
+          )
+
+        {email_otp, oidc, userpass, google, entra}
       else
         # Legacy auth system
         {:ok, email} =
@@ -187,7 +222,7 @@ defmodule Domain.Repo.Seeds do
             adapter_config: %{}
           })
 
-        {email, oidc, userpass}
+        {email, oidc, userpass, nil, nil}
       end
 
     {:ok, _other_email_provider} =
@@ -277,8 +312,7 @@ defmodule Domain.Repo.Seeds do
           Domain.Identities.create_identity(unprivileged_actor, %{
             issuer: "firezone",
             idp_id: unprivileged_actor_email,
-            name: "Firezone Unprivileged",
-            email: unprivileged_actor_email
+            name: "Firezone Unprivileged"
           })
 
         # Set password_hash for Userpass authentication
@@ -319,8 +353,7 @@ defmodule Domain.Repo.Seeds do
           Domain.Identities.create_identity(admin_actor, %{
             issuer: "firezone",
             idp_id: admin_actor_email,
-            name: "Firezone Admin",
-            email: admin_actor_email
+            name: "Firezone Admin"
           })
 
         # Set password_hash for Userpass authentication
@@ -334,8 +367,21 @@ defmodule Domain.Repo.Seeds do
           Domain.Identities.create_identity(admin_actor, %{
             issuer: "https://common.auth0.com",
             idp_id: admin_actor_email,
-            name: "Firezone Admin",
-            email: admin_actor_email
+            name: "Firezone Admin"
+          })
+
+        {:ok, _google_identity} =
+          Domain.Identities.create_identity(admin_actor, %{
+            issuer: "https://accounts.google.com",
+            idp_id: google_idp_id(),
+            name: "Firezone Admin"
+          })
+
+        {:ok, _entra_identity} =
+          Domain.Identities.create_identity(admin_actor, %{
+            issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
+            idp_id: entra_idp_id(),
+            name: "Firezone Admin"
           })
 
         {local_identity, local_identity, oidc_identity}
@@ -383,8 +429,7 @@ defmodule Domain.Repo.Seeds do
           Domain.Identities.create_identity(actor, %{
             issuer: "https://common.auth0.com",
             idp_id: email,
-            name: actor.name,
-            email: email
+            name: actor.name
           })
         else
           Auth.create_identity(actor, oidc_provider, %{
@@ -520,96 +565,6 @@ defmodule Domain.Repo.Seeds do
 
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
-
-    # {:ok, _google_directory} =
-    #   Google.create_directory(
-    #     %{name: "Google", issuer: "https://accounts.google.com", hosted_domain: "firezone.dev"},
-    #     admin_subject
-    #   )
-    #
-    # {:ok, _google_identity} =
-    #   Domain.Identities.create_identity(
-    #     admin_actor,
-    #     %{
-    #       "name" => "Firezone Admin",
-    #       "idp_id" => "CHANGE_ME",
-    #       "issuer" => "https://accounts.google.com"
-    #     }
-    #   )
-    #
-    # {:ok, _google_auth_provider} =
-    #   Google.create_auth_provider(
-    #     %{
-    #       name: "Google",
-    #       issuer: "https://accounts.google.com",
-    #       hosted_domain: "firezone.dev"
-    #     },
-    #     admin_subject
-    #   )
-    #
-    # {:ok, _entra_directory} =
-    #   Entra.create_directory(
-    #     %{
-    #       name: "Entra",
-    #       issuer: "https://login.microsoftonline.com/CHANGE_ME/v2.0",
-    #       tenant_id: "CHANGE_ME"
-    #     },
-    #     admin_subject
-    #   )
-    #
-    # {:ok, _entra_identity} =
-    #   Domain.Identities.create_identity(
-    #     admin_actor,
-    #     %{
-    #       "name" => "Firezone Admin",
-    #       "idp_id" => "CHANGE_ME",
-    #       "issuer" => "https://login.microsoftonline.com/CHANGE_ME/v2.0"
-    #     }
-    #   )
-    #
-    # {:ok, _entra_auth_provider} =
-    #   Entra.create_auth_provider(
-    #     %{
-    #       name: "Entra",
-    #       issuer: "https://login.microsoftonline.com/CHANGE_ME/v2.0",
-    #       tenant_id: "CHANGE_ME"
-    #     },
-    #     admin_subject
-    #   )
-    #
-    # {:ok, _okta_directory} =
-    #   Domain.Okta.create_directory(
-    #     %{
-    #       name: "Okta",
-    #       org_domain: "CHANGE_ME",
-    #       issuer: "https://CHANGE_ME.okta.com/oauth2/default",
-    #       client_id: "SERVICE_APP_CLIENT_ID",
-    #       client_secret: "SERVICE_APP_CLIENT_SECRET"
-    #     },
-    #     admin_subject
-    #   )
-    #
-    # {:ok, _okta_identity} =
-    #   Domain.Identities.create_identity(
-    #     admin_actor,
-    #     %{
-    #       "name" => "Firezone Admin",
-    #       "idp_id" => "CHANGE_ME",
-    #       "issuer" => "https://CHANGE_ME.okta.com/oauth2/default"
-    #     }
-    #   )
-    #
-    # {:ok, _okta_auth_provider} =
-    #   Domain.Okta.create_auth_provider(
-    #     %{
-    #       name: "Okta",
-    #       issuer: "https://CHANGE_ME.okta.com/oauth2/default",
-    #       org_domain: "CHANGE_ME",
-    #       client_id: "CHANGE_ME",
-    #       client_secret: "CHANGE_ME"
-    #     },
-    #     admin_subject
-    #   )
 
     {:ok, service_account_actor_encoded_token} =
       Auth.create_service_account_token(

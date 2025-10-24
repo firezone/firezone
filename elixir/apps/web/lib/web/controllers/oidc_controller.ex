@@ -74,7 +74,7 @@ defmodule Web.OIDCController do
          {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"], callback_url()),
          {:ok, identity} <- fetch_identity(account, provider, claims),
          :ok <- check_admin(identity, context_type),
-         {:ok, token} <- create_token(conn, identity, provider, tokens, cookie["params"]) do
+         {:ok, token} <- create_token(conn, identity, provider, cookie["params"]) do
       signed_in(
         conn,
         context_type,
@@ -200,15 +200,12 @@ defmodule Web.OIDCController do
 
   defp validate_context(_provider, _context_type), do: {:error, :invalid_context}
 
-  defp create_token(conn, identity, provider, tokens, params) do
+  defp create_token(conn, identity, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
     context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
-
-    # Get the end_session_uri for OIDC logout
-    end_session_uri = Web.OIDC.end_session_uri(provider, tokens["id_token"], callback_url())
 
     attrs = %{
       type: context.type,
@@ -220,8 +217,7 @@ defmodule Web.OIDCController do
       identity_id: identity.id,
       expires_at: DateTime.add(DateTime.utc_now(), @session_token_hours, :hour),
       created_by_user_agent: context.user_agent,
-      created_by_remote_ip: context.remote_ip,
-      end_session_uri: end_session_uri
+      created_by_remote_ip: context.remote_ip
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
