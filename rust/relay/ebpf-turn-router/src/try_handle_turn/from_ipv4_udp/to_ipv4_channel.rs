@@ -31,7 +31,8 @@ pub fn to_ipv4_channel(
         old_ipv4_check,
         old_ipv4_tos,
         old_ipv4_id,
-        old_ipv4_frag_off,
+        old_ipv4_frag_flags,
+        old_ipv4_frag_offset,
         old_ipv4_ttl,
         old_ipv4_proto,
     ) = {
@@ -40,11 +41,12 @@ pub fn to_ipv4_channel(
         (
             old_ipv4.src_addr(),
             old_ipv4.dst_addr(),
-            old_ipv4.total_len(),
+            old_ipv4.tot_len(),
             old_ipv4.checksum(),
             old_ipv4.tos,
             old_ipv4.id(),
-            old_ipv4.frag_off,
+            old_ipv4.frag_flags(),
+            old_ipv4.frag_offset(),
             old_ipv4.ttl,
             old_ipv4.proto,
         )
@@ -56,9 +58,9 @@ pub fn to_ipv4_channel(
             unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
         (
             old_udp.len(),
-            old_udp.source(),
-            old_udp.dest(),
-            old_udp.check(),
+            old_udp.src_port(),
+            old_udp.dst_port(),
+            old_udp.checksum(),
         )
     };
 
@@ -82,12 +84,11 @@ pub fn to_ipv4_channel(
 
     // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
     let ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, EthHdr::LEN)? };
-    ipv4.set_version(4); // IPv4
-    ipv4.set_ihl(5); // No options, 5 * 4 = 20 bytes
+    ipv4.set_vihl(4, 20);
     ipv4.tos = old_ipv4_tos; // Preserve TOS/DSCP
-    ipv4.set_total_len(new_ipv4_len);
+    ipv4.set_tot_len(new_ipv4_len);
     ipv4.set_id(old_ipv4_id); // Preserve fragment ID
-    ipv4.frag_off = old_ipv4_frag_off; // Preserve fragment flags
+    ipv4.set_frags(old_ipv4_frag_flags, old_ipv4_frag_offset); // Preserve fragment flags
     ipv4.ttl = old_ipv4_ttl; // Preserve TTL exactly
     ipv4.proto = old_ipv4_proto; // Protocol is UDP
     ipv4.set_src_addr(new_ipv4_src); // Swap source and destination
@@ -113,17 +114,17 @@ pub fn to_ipv4_channel(
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv4Hdr::LEN)? };
-    udp.set_source(new_udp_src);
-    udp.set_dest(new_udp_dst);
+    udp.set_src_port(new_udp_src);
+    udp.set_dst_port(new_udp_dst);
     udp.set_len(new_udp_len);
 
     // Incrementally update UDP checksum
 
     if old_udp_check == 0 {
         // No checksum is valid for UDP IPv4 - we didn't write it, but maybe a middlebox did
-        udp.set_check(0);
+        udp.set_checksum(0);
     } else {
-        udp.set_check(
+        udp.set_checksum(
             ChecksumUpdate::new(old_udp_check)
                 .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
                 .add_u32(u32::from_be_bytes(new_ipv4_dst.octets()))

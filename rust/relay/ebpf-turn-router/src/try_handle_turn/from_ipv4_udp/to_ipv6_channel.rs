@@ -29,14 +29,23 @@ pub fn to_ipv6_channel(
         (old_eth.src_addr, old_eth.dst_addr)
     };
 
-    let (old_ipv4_src, old_ipv4_dst, old_ipv4_len, old_ipv4_tos, old_ipv4_ttl, old_ipv4_proto) = {
+    let (
+        old_ipv4_src,
+        old_ipv4_dst,
+        old_ipv4_len,
+        old_ipv4_dscp,
+        old_ipv4_ecn,
+        old_ipv4_ttl,
+        old_ipv4_proto,
+    ) = {
         // SAFETY: The offset must point to the start of a valid `Ipv4Hdr`.
         let old_ipv4 = unsafe { ref_mut_at::<Ipv4Hdr>(ctx, old_data_offset + EthHdr::LEN)? };
         (
             old_ipv4.src_addr(),
             old_ipv4.dst_addr(),
-            old_ipv4.total_len(),
-            old_ipv4.tos,
+            old_ipv4.tot_len(),
+            old_ipv4.dscp(),
+            old_ipv4.ecn(),
             old_ipv4.ttl,
             old_ipv4.proto,
         )
@@ -48,9 +57,9 @@ pub fn to_ipv6_channel(
             unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv4Hdr::LEN)? };
         (
             old_udp.len(),
-            old_udp.source(),
-            old_udp.dest(),
-            old_udp.check(),
+            old_udp.src_port(),
+            old_udp.dst_port(),
+            old_udp.checksum(),
         )
     };
 
@@ -68,7 +77,7 @@ pub fn to_ipv6_channel(
     let eth = unsafe { ref_mut_at::<EthHdr>(ctx, 0)? };
     eth.dst_addr = old_eth_src; // Swap source and destination
     eth.src_addr = old_eth_dst;
-    eth.ether_type = EtherType::Ipv6; // Change to IPv6
+    eth.ether_type = EtherType::Ipv6.into(); // Change to IPv6
 
     //
     // 2. IPv4 -> IPv6 header
@@ -80,9 +89,7 @@ pub fn to_ipv6_channel(
 
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
-    ipv6.set_version(6);
-    ipv6.set_priority(old_ipv4_tos);
-    ipv6.flow_label = [0, 0, 0]; // Default flow label
+    ipv6.set_vcf(6, old_ipv4_dscp, old_ipv4_ecn, 0);
     ipv6.set_payload_len(new_ipv6_len);
     ipv6.next_hdr = old_ipv4_proto;
     ipv6.hop_limit = old_ipv4_ttl;
@@ -102,13 +109,13 @@ pub fn to_ipv6_channel(
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    udp.set_source(new_udp_src);
-    udp.set_dest(new_udp_dst);
+    udp.set_src_port(new_udp_src);
+    udp.set_dst_port(new_udp_dst);
     udp.set_len(new_udp_len);
 
     // Incrementally update UDP checksum
 
-    udp.set_check(
+    udp.set_checksum(
         ChecksumUpdate::new(old_udp_check)
             .remove_u32(u32::from_be_bytes(old_ipv4_src.octets()))
             .add_u128(u128::from_be_bytes(new_ipv6_src.octets()))
