@@ -10,8 +10,8 @@ fn main() -> Result<()> {
         Component::Gateway {
             command: GatewayCommand::Authenticate { enable },
         } => {
-            anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now.");
-            anyhow::ensure!(is_root(), "Must be executed as root.");
+            anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
+            anyhow::ensure!(is_root(), "Must be executed as root");
 
             let mut token = String::with_capacity(512); // Our tokens are ~270 characters, grab the next power of 2.
 
@@ -31,10 +31,11 @@ fn main() -> Result<()> {
 
             install_firezone_gateway_token(token)?;
 
-            println!("Successfully installed token.");
+            println!("Successfully installed token");
 
             if enable {
                 enable_gateway_service().context("Failed to enable `firezone-gateway.service`")?;
+                println!("Successfully enabled `firezone-gateway.service`");
             }
         }
     }
