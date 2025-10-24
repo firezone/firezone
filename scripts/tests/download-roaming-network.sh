@@ -77,7 +77,7 @@ for flow in "${flows[@]}"; do
 done
 
 # If we only ever connected via IPv6, two unique source tuples are enough, otherwise we want three.
-if [ $num_ipv4_tuples = 0 ]; then
+if [[ $num_ipv4_tuples == 0 ]]; then
     assert_gteq "${#unique_src_tuples[@]}" 2
 else
     assert_gteq "${#unique_src_tuples[@]}" 3
