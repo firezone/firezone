@@ -1,21 +1,11 @@
 #![expect(clippy::print_stdout, reason = "We are a CLI.")]
-#![expect(clippy::print_stderr, reason = "We are a CLI.")]
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match try_main(cli) {
-        Ok(()) => {}
-        Err(e) => {
-            eprintln!("{e:?}")
-        }
-    }
-}
-
-fn try_main(cli: Cli) -> Result<()> {
     match cli.component {
         Component::Gateway {
             command: GatewayCommand::Authenticate,
