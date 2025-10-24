@@ -46,7 +46,7 @@ where
         tracing::debug!("Failed to init terminal colors: {error}");
     }
 
-    let directives = std::env::var("RUST_LOG").unwrap_or_default();
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 
     let (filter1, reload_handle1) =
         try_filter(&directives).context("Failed to parse directives")?;
