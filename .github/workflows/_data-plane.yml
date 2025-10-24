@@ -321,6 +321,7 @@ jobs:
       - name: Create Firezone Gateway .deb package
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
         run: |
+          cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
           cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
           cp target/debian/*.deb "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets
