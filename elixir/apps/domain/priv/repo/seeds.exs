@@ -116,39 +116,70 @@ defmodule Domain.Repo.Seeds do
         name: "Everyone"
       })
 
-    {:ok, email_provider} =
-      Auth.create_provider(account, %{
-        name: "Email",
-        adapter: :email,
-        adapter_config: %{}
-      })
+    # TODO: IDP REFACTOR
+    # This conditional can be removed once all accounts are migrated
+    new_auth? = System.get_env("NEW_AUTH") == "true"
 
-    {:ok, oidc_provider} =
-      Auth.create_provider(account, %{
-        name: "OIDC",
-        adapter: :openid_connect,
-        adapter_config: %{
-          "client_id" => "CLIENT_ID",
-          "client_secret" => "CLIENT_SECRET",
-          "response_type" => "code",
-          "scope" => "openid email name groups",
-          "discovery_document_uri" => "https://common.auth0.com/.well-known/openid-configuration"
+    {email_provider, oidc_provider, userpass_provider} =
+      if new_auth? do
+        # New auth system - create proper auth providers
+        system_subject = %Auth.Subject{
+          account: account,
+          actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate()},
+          identity: nil,
+          token_id: nil,
+          expires_at: nil,
+          context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
+          permissions: MapSet.new([
+            %Domain.Auth.Permission{resource: Domain.EmailOTP.AuthProvider, action: :manage},
+            %Domain.Auth.Permission{resource: Domain.Userpass.AuthProvider, action: :manage},
+            %Domain.Auth.Permission{resource: Domain.OIDC.AuthProvider, action: :manage}
+          ])
         }
-      })
 
-    {:ok, _mock_provider} =
-      Auth.create_provider(account, %{
-        name: "Mock",
-        adapter: :mock,
-        adapter_config: %{}
-      })
+        {:ok, email_otp} = Domain.EmailOTP.create_auth_provider(%{name: "Email"}, system_subject)
+        {:ok, userpass} = Domain.Userpass.create_auth_provider(%{name: "Password"}, system_subject)
+        {:ok, oidc} = Domain.OIDC.create_auth_provider(
+          %{
+            name: "OIDC",
+            issuer: "https://common.auth0.com",
+            client_id: "CLIENT_ID",
+            client_secret: "CLIENT_SECRET",
+            discovery_document_uri: "https://common.auth0.com/.well-known/openid-configuration",
+            scope: "openid email profile groups"
+          },
+          system_subject
+        )
 
-    {:ok, userpass_provider} =
-      Auth.create_provider(account, %{
-        name: "UserPass",
-        adapter: :userpass,
-        adapter_config: %{}
-      })
+        {email_otp, oidc, userpass}
+      else
+        # Legacy auth system
+        {:ok, email} = Auth.create_provider(account, %{
+          name: "Email",
+          adapter: :email,
+          adapter_config: %{}
+        })
+
+        {:ok, oidc} = Auth.create_provider(account, %{
+          name: "OIDC",
+          adapter: :openid_connect,
+          adapter_config: %{
+            "client_id" => "CLIENT_ID",
+            "client_secret" => "CLIENT_SECRET",
+            "response_type" => "code",
+            "scope" => "openid email name groups",
+            "discovery_document_uri" => "https://common.auth0.com/.well-known/openid-configuration"
+          }
+        })
+
+        {:ok, userpass} = Auth.create_provider(account, %{
+          name: "UserPass",
+          adapter: :userpass,
+          adapter_config: %{}
+        })
+
+        {email, oidc, userpass}
+      end
 
     {:ok, _other_email_provider} =
       Auth.create_provider(other_account, %{
@@ -196,20 +227,43 @@ defmodule Domain.Repo.Seeds do
         "name" => "Backup Manager"
       })
 
-    {:ok, unprivileged_actor_email_identity} =
-      Auth.create_identity(unprivileged_actor, email_provider, %{
-        provider_identifier: unprivileged_actor_email,
-        provider_identifier_confirmation: unprivileged_actor_email
-      })
+    {unprivileged_actor_email_identity, unprivileged_actor_userpass_identity} =
+      if new_auth? do
+        # New auth system uses Identities module
+        {:ok, email_identity} = Identities.create_identity(unprivileged_actor, %{
+          auth_provider_id: email_provider.id,
+          issuer: "firezone",
+          idp_id: unprivileged_actor_email,
+          name: "Firezone Unprivileged",
+          email: unprivileged_actor_email
+        })
 
-    {:ok, unprivileged_actor_userpass_identity} =
-      Auth.create_identity(unprivileged_actor, userpass_provider, %{
-        provider_identifier: unprivileged_actor_email,
-        provider_virtual_state: %{
-          "password" => "Firezone1234",
-          "password_confirmation" => "Firezone1234"
-        }
-      })
+        {:ok, userpass_identity} = Identities.create_identity(unprivileged_actor, %{
+          auth_provider_id: userpass_provider.id,
+          issuer: "firezone",
+          idp_id: unprivileged_actor_email,
+          name: "Firezone Unprivileged",
+          email: unprivileged_actor_email
+        })
+
+        {email_identity, userpass_identity}
+      else
+        # Legacy auth system uses Auth module
+        {:ok, email_identity} = Auth.create_identity(unprivileged_actor, email_provider, %{
+          provider_identifier: unprivileged_actor_email,
+          provider_identifier_confirmation: unprivileged_actor_email
+        })
+
+        {:ok, userpass_identity} = Auth.create_identity(unprivileged_actor, userpass_provider, %{
+          provider_identifier: unprivileged_actor_email,
+          provider_virtual_state: %{
+            "password" => "Firezone1234",
+            "password_confirmation" => "Firezone1234"
+          }
+        })
+
+        {email_identity, userpass_identity}
+      end
 
     _unprivileged_actor_userpass_identity =
       maybe_repo_update.(unprivileged_actor_userpass_identity,

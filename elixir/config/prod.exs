@@ -8,6 +8,11 @@ config :domain, Domain.Repo,
   pool_size: 10,
   show_sensitive_data_on_connection_error: false
 
+config :domain, Domain.Entra.AuthProvider,
+  # This is used for public OAuth apps
+  discovery_document_uri:
+    "https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
+
 ###############################
 ##### Web #####################
 ###############################

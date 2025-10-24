@@ -35,9 +35,8 @@ defmodule Web.OIDCController do
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, provider} <- fetch_auth_provider(account, params),
-         {:ok, config} <- fetch_config(provider) do
-      provider_redirect(conn, account, config, params)
+         {:ok, provider} <- fetch_auth_provider(account, params) do
+      provider_redirect(conn, account, provider, params)
     else
       error -> handle_error(conn, error, params)
     end
@@ -70,18 +69,19 @@ defmodule Web.OIDCController do
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(cookie["account_id"]),
          {:ok, provider} <- fetch_auth_provider(account, cookie),
          :ok <- validate_context(provider, context_type),
-         {:ok, config} <- fetch_config(provider),
-         {:ok, tokens} <- fetch_tokens(config, code, cookie["verifier"]),
-         {:ok, claims} <- OpenIDConnect.verify(config, tokens["id_token"]),
+         {:ok, tokens} <- Web.OIDC.exchange_code(provider, code, cookie["verifier"], callback_url()),
+         {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"], callback_url()),
          {:ok, identity} <- fetch_identity(account, provider, claims),
          :ok <- check_admin(identity, context_type),
-         {:ok, token} <- create_token(conn, identity, cookie["params"]) do
+         {:ok, token} <- create_token(conn, identity, provider, tokens, cookie["params"]) do
       signed_in(
         conn,
         context_type,
         account,
         identity,
         token,
+        provider,
+        tokens,
         cookie["params"]
       )
     else
@@ -97,8 +97,8 @@ defmodule Web.OIDCController do
     |> redirect(to: ~p"/auth/oidc/verify")
   end
 
-  defp provider_redirect(conn, account, config, params) do
-    with {:ok, uri, {state, verifier}} <- build_redirect_uri(config) do
+  defp provider_redirect(conn, account, provider, params) do
+    with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider, callback_url()) do
       cookie =
         %{
           "auth_provider_type" => params["auth_provider_type"],
@@ -115,27 +115,6 @@ defmodule Web.OIDCController do
     end
   end
 
-  defp build_redirect_uri(config) do
-    state = Domain.Crypto.random_token(32)
-    verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
-    oidc_params = %{state: state, code_challenge_method: :S256, code_challenge: challenge}
-
-    with {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
-      {:ok, uri, {state, verifier}}
-    end
-  end
-
-  defp fetch_tokens(config, code, verifier) do
-    params = %{
-      grant_type: "authorization_code",
-      code: code,
-      code_verifier: verifier,
-      redirect_uri: callback_url()
-    }
-
-    OpenIDConnect.fetch_tokens(config, params)
-  end
 
   defp fetch_auth_provider(account, %{"auth_provider_type" => "google"} = params) do
     Google.fetch_auth_provider_by_id(account, params["auth_provider_id"])
@@ -158,62 +137,6 @@ defmodule Web.OIDCController do
     {:error, :invalid_provider}
   end
 
-  defp fetch_config(%Google.AuthProvider{}) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.Google.AuthProvider) do
-      config = Enum.into(config, %{redirect_uri: callback_url()})
-
-      {:ok, config}
-    end
-  end
-
-  defp fetch_config(%Okta.AuthProvider{} = provider) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.Okta.AuthProvider) do
-      discovery_document_uri = "https://#{provider.org_domain}/.well-known/openid-configuration"
-
-      config =
-        Enum.into(config, %{
-          redirect_uri: callback_url(),
-          client_id: provider.client_id,
-          client_secret: provider.client_secret,
-          discovery_document_uri: discovery_document_uri
-        })
-
-      {:ok, config}
-    end
-  end
-
-  defp fetch_config(%Entra.AuthProvider{} = provider) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.Entra.AuthProvider) do
-      discovery_document_uri =
-        "https://login.microsoftonline.com/#{provider.tenant_id}/v2.0/.well-known/openid-configuration"
-
-      config =
-        Enum.into(config, %{
-          redirect_uri: callback_url(),
-          discovery_document_uri: discovery_document_uri
-        })
-
-      {:ok, config}
-    end
-  end
-
-  defp fetch_config(%OIDC.AuthProvider{} = provider) do
-    with {:ok, config} <- Application.fetch_env(:domain, Domain.OIDC.AuthProvider) do
-      config =
-        Enum.into(config, %{
-          redirect_uri: callback_url(),
-          client_id: provider.client_id,
-          client_secret: provider.client_secret,
-          discovery_document_uri: provider.discovery_document_uri
-        })
-
-      {:ok, config}
-    end
-  end
-
-  defp fetch_config(_provider) do
-    {:error, :invalid_provider}
-  end
 
   # Entra
   defp fetch_identity(account, %Entra.AuthProvider{issuer: issuer}, %{
@@ -278,12 +201,15 @@ defmodule Web.OIDCController do
 
   defp validate_context(_provider, _context_type), do: {:error, :invalid_context}
 
-  defp create_token(conn, identity, params) do
+  defp create_token(conn, identity, provider, tokens, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
     context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
+
+    # Get the end_session_uri for OIDC logout
+    end_session_uri = Web.OIDC.end_session_uri(provider, tokens["id_token"], callback_url())
 
     attrs = %{
       type: context.type,
@@ -291,11 +217,12 @@ defmodule Web.OIDCController do
       secret_fragment: Domain.Crypto.random_token(32, encoder: :hex32),
       account_id: identity.account_id,
       actor_id: identity.actor_id,
-      auth_provider_id: params["auth_provider_id"],
+      auth_provider_id: provider.id,
       identity_id: identity.id,
       expires_at: DateTime.add(DateTime.utc_now(), @session_token_hours, :hour),
       created_by_user_agent: context.user_agent,
-      created_by_remote_ip: context.remote_ip
+      created_by_remote_ip: context.remote_ip,
+      end_session_uri: end_session_uri
     }
 
     with {:ok, token} <- Tokens.create_token(attrs) do
@@ -305,7 +232,7 @@ defmodule Web.OIDCController do
 
   # Context: :browser
   # Store session cookie and redirect to portal or redirect_to parameter
-  defp signed_in(conn, :browser, account, _identity, token, params) do
+  defp signed_in(conn, :browser, account, _identity, token, _provider, _tokens, params) do
     conn
     |> Web.Session.Cookie.put_account_cookie(account.id, token)
     |> Redirector.portal_signed_in(account, params)
@@ -313,7 +240,7 @@ defmodule Web.OIDCController do
 
   # Context: :client
   # Store a cookie and redirect to client handler which redirects to the final URL based on platform
-  defp signed_in(conn, :client, _account, identity, token, params) do
+  defp signed_in(conn, :client, _account, identity, token, _provider, _tokens, params) do
     Redirector.client_signed_in(
       conn,
       identity.actor.name,

@@ -4,7 +4,7 @@ defmodule Domain.AuthProviders.AuthProvider do
   @primary_key false
   schema "auth_providers" do
     belongs_to :account, Domain.Accounts.Account, primary_key: true
-    field :id, :binary_id, primary_key: true, read_after_writes: true
+    field :id, :binary_id, primary_key: true
 
     has_one :email_otp_auth_provider, Domain.EmailOTP.AuthProvider,
       references: :id,

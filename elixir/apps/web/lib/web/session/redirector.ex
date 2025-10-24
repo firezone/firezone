@@ -96,13 +96,14 @@ defmodule Web.Session.Redirector do
 
     {conn, redirect_url} =
       if Domain.Migrator.migrated?(account) do
-        # New system: delete token, fetch logout_uri from account cookie, then delete it
+        # New system: fetch token, get end_session_uri, delete token, delete session
+        logout_uri =
+          case Tokens.fetch_token_by_id(subject.token_id) do
+            {:ok, token} -> token.end_session_uri || post_sign_out_url
+            _ -> post_sign_out_url
+          end
+
         {:ok, _num_deleted} = Tokens.delete_token_for(subject)
-
-        # TODO: IDP REFACTOR
-        # Fetch end_session_uri
-        logout_uri = post_sign_out_url
-
         conn = delete_session(conn, account.id)
         {conn, logout_uri}
       else

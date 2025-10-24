@@ -9,12 +9,6 @@ defmodule Web.Settings.IdentityProviders.Index do
            Auth.fetch_identities_count_grouped_by_provider_id(socket.assigns.subject),
          {:ok, groups_count_by_provider_id} <-
            Actors.fetch_groups_count_grouped_by_provider_id(socket.assigns.subject) do
-      migration_id = Ecto.UUID.generate()
-
-      if connected?(socket) do
-        Domain.Migrator.start_migration_monitoring(migration_id)
-      end
-
       legacy_providers = get_legacy_oidc_and_okta_providers(socket.assigns.subject)
 
       # Generate a unique verification token for each provider
@@ -41,7 +35,6 @@ defmodule Web.Settings.IdentityProviders.Index do
       socket =
         socket
         |> assign(
-          migration_id: migration_id,
           migrated?: Domain.Migrator.migrated?(socket.assigns.subject.account),
           default_provider_changed: false,
           page_title: "Identity Providers",
@@ -386,11 +379,6 @@ defmodule Web.Settings.IdentityProviders.Index do
   def handle_event(event, params, socket) when event in ["paginate", "order_by", "filter"],
     do: handle_live_table_event(event, params, socket)
 
-  def handle_info({:verify, id}, socket) when id == socket.assigns.migration_id do
-    dbg("Received migration verify message")
-    {:noreply, socket}
-  end
-
   def handle_info({:oidc_verify, pid, code, state_token}, socket) do
     # state_token is the verification token we sent as the OIDC state parameter
     # Find the provider for this state token using secure compare
@@ -407,16 +395,9 @@ defmodule Web.Settings.IdentityProviders.Index do
       callback_url = url(~p"/auth/oidc/callback")
 
       # Exchange authorization code for tokens using PKCE
-      params = %{
-        grant_type: "authorization_code",
-        code: code,
-        code_verifier: code_verifier,
-        redirect_uri: callback_url
-      }
-
-      case OpenIDConnect.fetch_tokens(config, params) do
+      case Web.OIDC.exchange_code_with_config(config, code, code_verifier, callback_url) do
         {:ok, tokens} ->
-          case OpenIDConnect.verify(config, tokens["id_token"]) do
+          case Web.OIDC.verify_token_with_config(config, tokens["id_token"]) do
             {:ok, claims} ->
               issuer = Map.get(claims, "iss")
               Logger.info("Provider #{provider.id} verified with issuer: #{issuer}")

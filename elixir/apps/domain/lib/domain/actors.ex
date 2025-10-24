@@ -384,6 +384,24 @@ defmodule Domain.Actors do
     end
   end
 
+  @doc """
+  Creates an actor with an associated identity in a single transaction.
+  Used for the new auth system where identity creation is combined with actor creation.
+
+  The `identity_attrs` should include the auth_provider_id and identity-specific fields like
+  name, password, etc.
+  """
+  def create_actor_with_identity(%Accounts.Account{} = account, attrs) do
+    {identity_attrs, actor_attrs} = Map.pop(attrs, :identity_attrs)
+
+    Repo.transact(fn ->
+      with {:ok, actor} <- create_actor(account, actor_attrs),
+           {:ok, identity} <- Domain.Identities.create_identity(actor, identity_attrs) do
+        {:ok, %{actor: actor, identity: identity}}
+      end
+    end)
+  end
+
   defp ensure_billing_limits_not_exceeded(account, %{valid?: true} = changeset) do
     case Ecto.Changeset.fetch_field!(changeset, :type) do
       :service_account ->

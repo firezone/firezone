@@ -15,12 +15,18 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
         attrs,
         %Auth.Subject{} = subject
       ) do
+    id = Ecto.UUID.generate()
+
     auth_provider
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
     |> put_subject_trail(:created_by, subject)
     |> put_change(:account_id, subject.account.id)
-    |> put_assoc(:auth_provider, %AuthProviders.AuthProvider{account_id: subject.account.id})
+    |> put_change(:id, id)
+    |> put_assoc(:auth_provider, %AuthProviders.AuthProvider{
+      id: id,
+      account_id: subject.account.id
+    })
     |> changeset()
   end
 
