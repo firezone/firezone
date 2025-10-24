@@ -8,7 +8,7 @@ fn main() -> Result<()> {
 
     match cli.component {
         Component::Gateway {
-            command: GatewayCommand::Authenticate,
+            command: GatewayCommand::Authenticate { enable },
         } => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now.");
             anyhow::ensure!(is_root(), "Must be executed as root.");
@@ -30,6 +30,12 @@ fn main() -> Result<()> {
             }
 
             install_firezone_gateway_token(token)?;
+
+            println!("Successfully installed token.");
+
+            if enable {
+                enable_gateway_service().context("Failed to enable `firezone-gateway.service`")?;
+            }
         }
     }
 
@@ -53,7 +59,11 @@ enum Component {
 
 #[derive(Debug, Subcommand)]
 enum GatewayCommand {
-    Authenticate,
+    Authenticate {
+        /// Automatically start the `firezone-gateway.service` after the token has been installed.
+        #[arg(long, default_value_t = true)]
+        enable: bool,
+    },
 }
 
 #[cfg(target_os = "linux")]
@@ -76,5 +86,29 @@ fn install_firezone_gateway_token(token: String) -> Result<()> {
 
 #[cfg(not(target_os = "linux"))]
 fn install_firezone_gateway_token(token: String) -> Result<()> {
+    anyhow::bail!("Not implemented")
+}
+
+#[cfg(target_os = "linux")]
+fn enable_gateway_service() -> Result<()> {
+    use std::process::Command;
+
+    let output = Command::new("systemctl")
+        .arg("enable")
+        .arg("--now")
+        .arg("firezone-gateway.service")
+        .output()?;
+
+    anyhow::ensure!(
+        output.status.success(),
+        "`systemctl enable` exited with {}",
+        output.status
+    );
+
+    Ok(())
+}
+
+#[cfg(not(target_os = "linux"))]
+fn enable_gateway_service() -> Result<()> {
     anyhow::bail!("Not implemented")
 }
