@@ -417,13 +417,27 @@ defmodule Domain.Auth do
     Identity.Sync.sync_provider_identities(provider, attrs_list)
   end
 
+  # TODO: IDP REFACTOR
+  # This function becomes obsolete after migrating all accounts
   def get_identity_email(%Identity{} = identity) do
-    provider_email(identity) || identity.provider_identifier
+    identity = Repo.preload(identity, [:account, :actor])
+
+    if Domain.Migrator.migrated?(identity.account) do
+      identity.actor.email
+    else
+      provider_email(identity) || identity.provider_identifier
+    end
   end
 
   def identity_has_email?(%Identity{} = identity) do
-    not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
-      identity.provider_identifier =~ "@"
+    identity = Repo.preload(identity, [:account])
+
+    if Domain.Migrator.migrated?(identity.account) do
+      true
+    else
+      not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
+        identity.provider_identifier =~ "@"
+    end
   end
 
   defp provider_email(%Identity{} = identity) do

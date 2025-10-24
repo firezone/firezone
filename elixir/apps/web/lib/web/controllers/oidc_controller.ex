@@ -69,7 +69,8 @@ defmodule Web.OIDCController do
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(cookie["account_id"]),
          {:ok, provider} <- fetch_auth_provider(account, cookie),
          :ok <- validate_context(provider, context_type),
-         {:ok, tokens} <- Web.OIDC.exchange_code(provider, code, cookie["verifier"], callback_url()),
+         {:ok, tokens} <-
+           Web.OIDC.exchange_code(provider, code, cookie["verifier"], callback_url()),
          {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"], callback_url()),
          {:ok, identity} <- fetch_identity(account, provider, claims),
          :ok <- check_admin(identity, context_type),
@@ -115,7 +116,6 @@ defmodule Web.OIDCController do
     end
   end
 
-
   defp fetch_auth_provider(account, %{"auth_provider_type" => "google"} = params) do
     Google.fetch_auth_provider_by_id(account, params["auth_provider_id"])
   end
@@ -136,7 +136,6 @@ defmodule Web.OIDCController do
   defp fetch_auth_provider(_account, _params) do
     {:error, :invalid_provider}
   end
-
 
   # Entra
   defp fetch_identity(account, %Entra.AuthProvider{issuer: issuer}, %{
