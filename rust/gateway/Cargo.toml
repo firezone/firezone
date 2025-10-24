@@ -4,7 +4,24 @@ name = "firezone-gateway"
 version = "1.4.18"
 edition = { workspace = true }
 license = { workspace = true }
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+description = "Gateway for the Firezone zero-trust access product."
+
+[package.metadata.deb]
+maintainer = "Firezone, Inc. <support@firezone.dev>"
+copyright = "2025 Firezone, Inc."
+maintainer-scripts = "debian/"
+systemd-units = { enable = false }
+extended-description = "" # Empty string to avoid embedding the README
+revision = ""
+section = "Network"
+assets = [
+    ["target/release/firezone-gateway", "usr/bin/", "755"],
+    ["target/release/firezone-cli", "usr/bin/firezone", "755"],
+    ["debian/firezone-gateway-init.sh", "usr/bin/firezone-gateway-init", "755"],
+    ["debian/firezone-gateway.sysusers", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
+    ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
+]
+depends = 'iptables'
 
 [dependencies]
 anyhow = { workspace = true }

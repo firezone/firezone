@@ -1,0 +1,6 @@
+#Type Path Mode User Group Age Argument
+
+d /etc/firezone 0755 firezone firezone
+f /etc/firezone/gateway-env 0644 firezone firezone -
+f /etc/firezone/gateway-token 0400 root root -
+f /etc/firezone/gateway-preset-env 0644 firezone firezone -

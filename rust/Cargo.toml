@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "bin-shared",
+    "cli",
     "client-ffi",
     "client-shared",
     "connlib/bufferpool",

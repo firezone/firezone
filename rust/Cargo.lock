@@ -2390,6 +2390,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "firezone-cli"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "nix 0.30.1",
+]
+
+[[package]]
 name = "firezone-gateway"
 version = "1.4.18"
 dependencies = [

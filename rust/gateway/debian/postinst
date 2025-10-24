@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+# Script inspired by deb helper script from `cargo-deb`
+if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
+    # In case this system is running systemd, we need to ensure that all
+    # necessary users are created before starting.
+    if [ -d /run/systemd/system ]; then
+        systemd-sysusers firezone-gateway.conf >/dev/null || true
+    fi
+fi
+
+#DEBHELPER#
+
+# Generate a deterministic ID based of `/etc/machine-id`
+FIREZONE_ID=$(systemd-id128 --app-specific=753b38f9f96947ef8083802d5909a372 machine-id)
+
+# We fully overwrite the `gateway-present-env` file on every run.
+# Maintainer scripts need to be deterministic and that seems to be the easiest way.
+printf "# This file is managed by maintainer scripts. Do not touch!\n# Use \`etc/firezone/gateway-env\` for custom configuration.\n" >/etc/firezone/gateway-preset-env
+printf "FIREZONE_ID=%s\n" "${FIREZONE_ID}" >>/etc/firezone/gateway-preset-env
