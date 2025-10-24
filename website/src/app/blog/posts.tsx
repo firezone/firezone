@@ -118,9 +118,6 @@ export default function Posts() {
               <strong>New feature:</strong> Conditional access policies
             </li>
             <li>
-              <strong>New feature:</strong> Directory sync support for JumpCloud
-            </li>
-            <li>
               <strong>Blog post:</strong>{" "}
               <Link
                 href="/blog/using-tauri"

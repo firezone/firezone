@@ -14,8 +14,7 @@ This connector is enabled by default for all plans and is designed to get you up
 and running with Firezone quickly. For production deployments, we recommend
 setting up [Universal OIDC](/kb/authenticate/oidc),
 [Google Workspace](/kb/authenticate/google),
-[Microsoft Entra ID](/kb/authenticate/entra), [Okta](/kb/authenticate/okta), or
-[JumpCloud](/kb/authenticate/jumpcloud) authentication.
+[Microsoft Entra ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta).
 
 Firezone's OTP-based email authentication connector sends a one-time password to
 the user's email each time authentication is requested. This password is
@@ -24,9 +23,8 @@ short-lived and can only be used to authenticate once.
 <Alert color="warning">
   User / group sync is **not supported** with the Email (OTP) connector. See the
   [Google Workspace](/kb/authenticate/google), [Microsoft Entra
-  ID](/kb/authenticate/entra), [Okta](/kb/authenticate/okta), or
-  [JumpCloud](/kb/authenticate/jumpcloud) connectors for automatic directory
-  sync.
+  ID](/kb/authenticate/entra), or [Okta](/kb/authenticate/okta) connectors for
+  automatic directory sync.
 </Alert>
 
 ## Disabling email authentication
