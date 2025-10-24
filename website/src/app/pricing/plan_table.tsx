@@ -369,18 +369,6 @@ export default function PlanTable() {
             <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
           </td>
         </tr>
-        <tr className="border-b border-1 border-neutral-200">
-          <td className="gmx-1 py-4">
-            <Tooltip content="Automatically sync users and groups from JumpCloud to Firezone">
-              JumpCloud directory sync
-            </Tooltip>
-          </td>
-          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
-          <td className="font-semibold gmx-1 py-4 text-center">&#8212;</td>
-          <td className="gmx-1 py-4">
-            <FaCheck className="mx-auto flex-shrink-0 w-5 h-5 text-neutral-900" />
-          </td>
-        </tr>
         <tr>
           <td
             colSpan={4}
