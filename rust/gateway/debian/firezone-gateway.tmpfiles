@@ -3,6 +3,4 @@
 d /etc/firezone 0755 firezone firezone
 f /etc/firezone/gateway-env 0644 firezone firezone -
 f /etc/firezone/gateway-token 0400 root root -
-
-# The base64 content here (denoted by `f~`) is only a comment that tells users to not touch this file.
-f~ /etc/firezone/gateway-preset-env 0644 firezone firezone - IyBUaGlzIGZpbGUgaXMgbWFuYWdlZCBieSBtYWludGFpbmVyIHNjcmlwdHMuIERvIG5vdCB0b3VjaCEKIyBVc2UgYC9ldGMvZmlyZXpvbmUvZ2F0ZXdheS1lbnZgIGZvciBjdXN0b20gY29uZmlndXJhdGlvbi4KCg==
+f /etc/firezone/gateway-preset-env 0644 firezone firezone -
