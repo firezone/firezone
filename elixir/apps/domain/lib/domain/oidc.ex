@@ -15,6 +15,17 @@ defmodule Domain.OIDC do
     end
   end
 
+  def fetch_auth_provider_by_id(id, %Auth.Subject{} = subject) do
+    required_permission = OIDC.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      OIDC.AuthProvider.Query.not_disabled()
+      |> OIDC.AuthProvider.Query.by_account_id(subject.account.id)
+      |> OIDC.AuthProvider.Query.by_id(id)
+      |> Repo.fetch(OIDC.AuthProvider.Query)
+    end
+  end
+
   def fetch_auth_provider_by_id(
         %Accounts.Account{} = account,
         id

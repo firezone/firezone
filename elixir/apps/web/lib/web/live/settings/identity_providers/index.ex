@@ -20,6 +20,10 @@ defmodule Web.Settings.IdentityProviders.Index do
     impl.mount(params, session, socket)
   end
 
+  def handle_params(params, url, socket) do
+    socket.assigns.impl.handle_params(params, url, socket)
+  end
+
   def handle_event(event, params, socket) do
     socket.assigns.impl.handle_event(event, params, socket)
   end

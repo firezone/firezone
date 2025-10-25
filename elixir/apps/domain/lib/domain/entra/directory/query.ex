@@ -9,6 +9,10 @@ defmodule Domain.Entra.Directory.Query do
     where(queryable, [directories: directories], is_nil(directories.disabled_at))
   end
 
+  def by_id(queryable, id) do
+    where(queryable, [directories: directories], directories.id == ^id)
+  end
+
   def by_account_id(queryable, account_id) do
     where(queryable, [directories: directories], directories.account_id == ^account_id)
   end

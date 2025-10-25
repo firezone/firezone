@@ -627,6 +627,13 @@ defmodule Web.FormComponents do
     otherwise a <button> tag will be used
     """
 
+  attr :patch, :string,
+    required: false,
+    doc: """
+    The path to patch to using live navigation, when set a <.link> tag with patch will be used,
+    otherwise a <button> tag will be used
+    """
+
   attr :class, :string, default: "", doc: "Custom classes to be added to the button"
   attr :style, :string, default: nil, doc: "The style of the button"
   attr :type, :string, default: nil, doc: "The button type"
@@ -637,7 +644,7 @@ defmodule Web.FormComponents do
     required: false,
     doc: "The icon to be displayed on the button"
 
-  attr :rest, :global, include: ~w(disabled form name value navigate href)
+  attr :rest, :global, include: ~w(disabled form name value navigate href patch)
   slot :inner_block, required: true, doc: "The label for the button"
 
   def button(%{href: _} = assigns) do
@@ -652,6 +659,15 @@ defmodule Web.FormComponents do
   def button(%{navigate: _} = assigns) do
     ~H"""
     <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} navigate={@navigate} {@rest}>
+      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
+      {render_slot(@inner_block)}
+    </.link>
+    """
+  end
+
+  def button(%{patch: _} = assigns) do
+    ~H"""
+    <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} patch={@patch} {@rest}>
       <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
       {render_slot(@inner_block)}
     </.link>
@@ -728,14 +744,27 @@ defmodule Web.FormComponents do
     <.add_button navigate={~p"/actors/new"}>
       Add user
     </.add_button>
+
+    <.add_button patch={~p"/actors/new"}>
+      Add user
+    </.add_button>
   """
-  attr :navigate, :any, required: true, doc: "Path to navigate to"
+  attr :navigate, :any, required: false, doc: "Path to navigate to"
+  attr :patch, :any, required: false, doc: "Path to patch to"
   attr :class, :string, default: ""
   slot :inner_block, required: true
 
-  def add_button(assigns) do
+  def add_button(%{navigate: navigate} = assigns) when not is_nil(navigate) do
     ~H"""
     <.button style="primary" class={@class} navigate={@navigate} icon="hero-plus">
+      {render_slot(@inner_block)}
+    </.button>
+    """
+  end
+
+  def add_button(%{patch: patch} = assigns) when not is_nil(patch) do
+    ~H"""
+    <.button style="primary" class={@class} patch={@patch} icon="hero-plus">
       {render_slot(@inner_block)}
     </.button>
     """

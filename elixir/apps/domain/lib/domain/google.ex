@@ -24,6 +24,17 @@ defmodule Domain.Google do
     end
   end
 
+  def fetch_auth_provider_by_id(id, %Auth.Subject{} = subject) do
+    required_permission = Google.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Google.AuthProvider.Query.not_disabled()
+      |> Google.AuthProvider.Query.by_account_id(subject.account.id)
+      |> Google.AuthProvider.Query.by_id(id)
+      |> Repo.fetch(Google.AuthProvider.Query)
+    end
+  end
+
   def fetch_auth_provider_by_id(
         %Accounts.Account{} = account,
         id
@@ -32,6 +43,17 @@ defmodule Domain.Google do
     |> Google.AuthProvider.Query.by_account_id(account.id)
     |> Google.AuthProvider.Query.by_id(id)
     |> Repo.fetch(Google.AuthProvider.Query)
+  end
+
+  def fetch_directory_by_id(id, %Auth.Subject{} = subject) do
+    required_permission = Google.Authorizer.manage_directories_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Google.Directory.Query.all()
+      |> Google.Directory.Query.by_account_id(subject.account.id)
+      |> Google.Directory.Query.by_id(id)
+      |> Repo.fetch(Google.Directory.Query)
+    end
   end
 
   def update_auth_provider(

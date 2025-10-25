@@ -13,6 +13,7 @@ defmodule Domain.Auth.Roles do
       Domain.Entra.Authorizer,
       Domain.Gateways.Authorizer,
       Domain.Google.Authorizer,
+      Domain.OIDC.Authorizer,
       Domain.Okta.Authorizer,
       Domain.Policies.Authorizer,
       Domain.Relays.Authorizer,
