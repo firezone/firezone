@@ -148,4 +148,14 @@ defmodule Web.OIDC do
   def verify_token_with_config(config, id_token) do
     OpenIDConnect.verify(config, id_token)
   end
+
+  @doc """
+  Fetches userinfo from the provider's userinfo endpoint.
+  Returns {:ok, userinfo} or {:error, reason}.
+  """
+  def fetch_userinfo(provider, access_token, redirect_uri) do
+    with {:ok, config} <- config_for_provider(provider, redirect_uri) do
+      OpenIDConnect.fetch_userinfo(config, access_token)
+    end
+  end
 end

@@ -281,6 +281,61 @@ defmodule Domain.Auth.Identity.Query do
     params ++ [Ecto.UUID.dump!(account_id), Ecto.UUID.dump!(provider_id), now]
   end
 
+  def upsert_by_idp_fields(account_id, email, email_verified, issuer, idp_id, profile_attrs) do
+    profile_fields =
+      ~w[name given_name family_name middle_name nickname preferred_username profile picture]
+
+    profile_values = Enum.map(profile_fields, &Map.get(profile_attrs, &1))
+    update_set = Enum.map_join(profile_fields, ", ", &"#{&1} = EXCLUDED.#{&1}")
+    insert_fields = Enum.join(profile_fields, ", ")
+    value_placeholders = Enum.map_join(6..(5 + length(profile_fields)), ", ", &"$#{&1}")
+
+    query = """
+    WITH actor_lookup AS (
+      SELECT id FROM actors
+      WHERE account_id = $1 AND email = $2 AND disabled_at IS NULL AND $3 = true
+      LIMIT 1
+    ),
+    existing_identity AS (
+      SELECT actor_id FROM auth_identities
+      WHERE account_id = $1 AND issuer = $4 AND idp_id = $5
+      LIMIT 1
+    )
+    INSERT INTO auth_identities (
+      id, account_id, issuer, idp_id, actor_id,
+      #{insert_fields},
+      inserted_at, created_by, created_by_subject
+    )
+    SELECT uuid_generate_v4(), $1, $4, $5,
+           COALESCE(actor_lookup.id, existing_identity.actor_id),
+           #{value_placeholders}, $14, $15,
+           jsonb_build_object('name', 'System', 'email', null)
+    FROM (SELECT 1) AS dummy
+    LEFT JOIN actor_lookup ON true
+    LEFT JOIN existing_identity ON true
+    WHERE actor_lookup.id IS NOT NULL OR existing_identity.actor_id IS NOT NULL
+    ON CONFLICT (account_id, issuer, idp_id) WHERE issuer IS NOT NULL OR idp_id IS NOT NULL
+    DO UPDATE SET #{update_set}
+    RETURNING *
+    """
+
+    params =
+      [Ecto.UUID.dump!(account_id), email, email_verified, issuer, idp_id] ++
+        profile_values ++ [DateTime.utc_now(), "system"]
+
+    case Repo.query(query, params) do
+      {:ok, %{rows: [row], columns: cols}} ->
+        identity = Repo.load(Domain.Auth.Identity, {cols, row})
+        {:ok, Repo.preload(identity, [:actor, :account])}
+
+      {:ok, %{rows: []}} ->
+        {:error, :actor_not_found}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
   # Pagination
 
   @impl Domain.Repo.Query

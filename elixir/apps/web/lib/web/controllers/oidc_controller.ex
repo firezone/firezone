@@ -72,7 +72,8 @@ defmodule Web.OIDCController do
          {:ok, tokens} <-
            Web.OIDC.exchange_code(provider, code, cookie["verifier"], callback_url()),
          {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"], callback_url()),
-         {:ok, identity} <- fetch_identity(account, provider, claims),
+         userinfo = fetch_userinfo(provider, tokens["access_token"]),
+         {:ok, identity} <- upsert_identity(account, provider, claims, userinfo),
          :ok <- check_admin(identity, context_type),
          {:ok, token} <- create_token(conn, identity, provider, cookie["params"]) do
       signed_in(
@@ -130,51 +131,131 @@ defmodule Web.OIDCController do
 
   defp fetch_auth_provider(account, %{"auth_provider_type" => "oidc"} = params) do
     OIDC.fetch_auth_provider_by_id(account, params["auth_provider_id"])
-    |> dbg()
   end
 
   defp fetch_auth_provider(_account, _params) do
     {:error, :invalid_provider}
   end
 
+  defp fetch_userinfo(provider, access_token) do
+    case Web.OIDC.fetch_userinfo(provider, access_token, callback_url()) do
+      {:ok, userinfo} -> userinfo
+      _ -> %{}
+    end
+  end
+
   # Entra
-  defp fetch_identity(account, %Entra.AuthProvider{issuer: issuer}, %{
-         "iss" => issuer,
-         "oid" => idp_id
-       }) do
-    Identities.fetch_identity_by_idp_fields(account, issuer, idp_id)
+  defp upsert_identity(
+         account,
+         %Entra.AuthProvider{issuer: issuer},
+         %{
+           "iss" => issuer,
+           "oid" => idp_id
+         } = claims,
+         userinfo
+       ) do
+    email = claims["email"]
+    email_verified = claims["email_verified"] == true
+    profile_attrs = extract_profile_attrs(claims, userinfo)
+
+    Identities.upsert_identity_by_idp_fields(
+      account,
+      email,
+      email_verified,
+      issuer,
+      idp_id,
+      profile_attrs
+    )
   end
 
   # Google
-  defp fetch_identity(account, %Google.AuthProvider{issuer: issuer}, %{
-         "iss" => issuer,
-         "sub" => idp_id
-       }) do
-    Identities.fetch_identity_by_idp_fields(account, issuer, idp_id)
+  defp upsert_identity(
+         account,
+         %Google.AuthProvider{issuer: issuer},
+         %{
+           "iss" => issuer,
+           "sub" => idp_id
+         } = claims,
+         userinfo
+       ) do
+    email = claims["email"]
+    email_verified = claims["email_verified"] == true
+    profile_attrs = extract_profile_attrs(claims, userinfo)
+
+    Identities.upsert_identity_by_idp_fields(
+      account,
+      email,
+      email_verified,
+      issuer,
+      idp_id,
+      profile_attrs
+    )
   end
 
   # Okta
-  defp fetch_identity(account, %Okta.AuthProvider{issuer: issuer}, %{
-         "iss" => issuer,
-         "sub" => idp_id
-       }) do
-    Identities.fetch_identity_by_idp_fields(account, issuer, idp_id)
+  defp upsert_identity(
+         account,
+         %Okta.AuthProvider{issuer: issuer},
+         %{
+           "iss" => issuer,
+           "sub" => idp_id
+         } = claims,
+         userinfo
+       ) do
+    email = claims["email"]
+    email_verified = claims["email_verified"] == true
+    profile_attrs = extract_profile_attrs(claims, userinfo)
+
+    Identities.upsert_identity_by_idp_fields(
+      account,
+      email,
+      email_verified,
+      issuer,
+      idp_id,
+      profile_attrs
+    )
   end
 
   # Generic OIDC
-  defp fetch_identity(
+  defp upsert_identity(
          account,
          %OIDC.AuthProvider{issuer: issuer},
-         %{"iss" => issuer} = claims
+         %{"iss" => issuer} = claims,
+         userinfo
        ) do
     # Prefer "oid" claim (Microsoft Entra), fall back to "sub"
     idp_id = claims["oid"] || claims["sub"]
 
     if idp_id do
-      Identities.fetch_identity_by_idp_fields(account, issuer, idp_id)
+      email = claims["email"]
+      email_verified = claims["email_verified"] == true
+      profile_attrs = extract_profile_attrs(claims, userinfo)
+
+      Identities.upsert_identity_by_idp_fields(
+        account,
+        email,
+        email_verified,
+        issuer,
+        idp_id,
+        profile_attrs
+      )
     else
       {:error, :missing_identifier}
     end
+  end
+
+  defp extract_profile_attrs(claims, userinfo) do
+    Map.merge(claims, userinfo)
+    |> Map.take([
+      "name",
+      "given_name",
+      "family_name",
+      "middle_name",
+      "nickname",
+      "preferred_username",
+      "profile",
+      "picture"
+    ])
   end
 
   defp check_admin(

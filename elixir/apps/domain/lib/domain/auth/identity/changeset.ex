@@ -43,6 +43,15 @@ defmodule Domain.Auth.Identity.Changeset do
     |> changeset()
   end
 
+  # Used for upserting an identity - requires account_id and optional actor_id
+  def upsert(attrs) do
+    %Identity{}
+    |> cast(attrs, @idp_create_fields ++ ~w[account_id actor_id]a)
+    |> validate_required(~w[issuer idp_id name account_id]a)
+    |> put_subject_trail(:created_by, :system)
+    |> changeset()
+  end
+
   def create_identity(
         %Actors.Actor{} = actor,
         %Provider{} = provider,

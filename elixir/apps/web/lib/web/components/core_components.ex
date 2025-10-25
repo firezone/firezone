@@ -1269,7 +1269,7 @@ defmodule Web.CoreComponents do
   end
 
   def get_identity_email(identity) do
-    dbg(Domain.Auth.get_identity_email(identity))
+    Domain.Auth.get_identity_email(identity)
   end
 
   def identity_has_email?(identity) do
