@@ -10,8 +10,18 @@ defmodule Domain.Auth.Identity.Query do
     queryable
     |> with_assoc(:inner, :actor)
     |> where([actor: actor], is_nil(actor.disabled_at))
-    |> with_assoc(:inner, :provider)
-    |> where([provider: provider], is_nil(provider.disabled_at))
+    # Don't join providers; instead allow identities with no provider, or where an enabled provider exists.
+    |> where(
+      [identities: identities],
+      is_nil(identities.provider_id) or
+        exists(
+          from provider in Domain.Auth.Provider,
+            where:
+              provider.id == parent_as(:identities).provider_id and
+                is_nil(provider.disabled_at),
+            select: 1
+        )
+    )
   end
 
   def by_id(queryable, id)
@@ -39,6 +49,14 @@ defmodule Domain.Auth.Identity.Query do
   def by_provider_id(queryable, provider_id) do
     queryable
     |> where([identities: identities], identities.provider_id == ^provider_id)
+  end
+
+  def by_issuer(queryable, issuer) do
+    where(queryable, [identities: identities], identities.issuer == ^issuer)
+  end
+
+  def by_idp_id(queryable, idp_id) do
+    where(queryable, [identities: identities], identities.idp_id == ^idp_id)
   end
 
   def by_adapter(queryable, adapter) do
@@ -261,6 +279,64 @@ defmodule Domain.Auth.Identity.Query do
       end)
 
     params ++ [Ecto.UUID.dump!(account_id), Ecto.UUID.dump!(provider_id), now]
+  end
+
+  def upsert_by_idp_fields(account_id, email, email_verified, issuer, idp_id, profile_attrs) do
+    profile_fields =
+      ~w[name given_name family_name middle_name nickname preferred_username profile picture]
+
+    profile_values = Enum.map(profile_fields, &Map.get(profile_attrs, &1))
+    update_set = Enum.map_join(profile_fields, ", ", &"#{&1} = EXCLUDED.#{&1}")
+    insert_fields = Enum.join(profile_fields, ", ")
+    value_placeholders = Enum.map_join(6..(5 + length(profile_fields)), ", ", &"$#{&1}")
+
+    query = """
+    WITH actor_lookup AS (
+      SELECT id FROM actors
+      WHERE account_id = $1 AND email = $2 AND disabled_at IS NULL AND $3 = true
+      LIMIT 1
+    ),
+    existing_identity AS (
+      SELECT ai.actor_id
+      FROM auth_identities ai
+      JOIN actors a ON a.id = ai.actor_id
+      WHERE ai.account_id = $1 AND ai.issuer = $4 AND ai.idp_id = $5
+        AND a.disabled_at IS NULL
+      LIMIT 1
+    )
+    INSERT INTO auth_identities (
+      id, account_id, issuer, idp_id, actor_id,
+      #{insert_fields},
+      inserted_at, created_by, created_by_subject
+    )
+    SELECT uuid_generate_v4(), $1, $4, $5,
+           COALESCE(actor_lookup.id, existing_identity.actor_id),
+           #{value_placeholders}, $14, $15,
+           jsonb_build_object('name', 'System', 'email', null)
+    FROM (SELECT 1) AS dummy
+    LEFT JOIN actor_lookup ON true
+    LEFT JOIN existing_identity ON true
+    WHERE actor_lookup.id IS NOT NULL OR existing_identity.actor_id IS NOT NULL
+    ON CONFLICT (account_id, issuer, idp_id) WHERE issuer IS NOT NULL OR idp_id IS NOT NULL
+    DO UPDATE SET #{update_set}
+    RETURNING *
+    """
+
+    params =
+      [Ecto.UUID.dump!(account_id), email, email_verified, issuer, idp_id] ++
+        profile_values ++ [DateTime.utc_now(), "system"]
+
+    case Repo.query(query, params) do
+      {:ok, %{rows: [row], columns: cols}} ->
+        identity = Repo.load(Domain.Auth.Identity, {cols, row})
+        {:ok, Repo.preload(identity, [:actor, :account])}
+
+      {:ok, %{rows: []}} ->
+        {:error, :actor_not_found}
+
+      {:error, _} = error ->
+        error
+    end
   end
 
   # Pagination

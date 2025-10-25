@@ -1,31 +1,23 @@
 defmodule Web.Router do
   use Web, :router
-  import Web.Auth
 
   pipeline :public do
     plug :accepts, ["html", "xml"]
+
     plug :fetch_session
+
     plug :protect_from_forgery
     plug :fetch_live_flash
     plug :put_root_layout, html: {Web.Layouts, :root}
   end
 
-  pipeline :account do
-    plug :fetch_account
-    plug :fetch_subject
-  end
-
-  pipeline :control_plane do
+  pipeline :dev_tools do
     plug :accepts, ["html"]
-    plug :fetch_session
-    plug :protect_from_forgery
-    plug :fetch_live_flash
-    plug :put_root_layout, html: {Web.Layouts, :root}
+    plug :disable_csp
   end
 
-  pipeline :ensure_authenticated_admin do
-    plug :ensure_authenticated
-    plug :ensure_authenticated_actor_type, :account_admin_user
+  defp disable_csp(conn, _opts) do
+    Plug.Conn.delete_resp_header(conn, "content-security-policy")
   end
 
   scope "/browser", Web do
@@ -49,7 +41,7 @@ defmodule Web.Router do
 
   if Mix.env() in [:dev, :test] do
     scope "/dev" do
-      pipe_through [:public]
+      pipe_through [:dev_tools]
       forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
 
@@ -73,29 +65,61 @@ defmodule Web.Router do
     live "/", SignUp
   end
 
+  scope "/auth", Web do
+    pipe_through :public
+
+    get "/oidc/callback", OIDCController, :callback
+
+    live_session :oidc_verification,
+      on_mount: [Web.LiveHooks.AllowEctoSandbox] do
+      live "/oidc/verify", OIDCVerification
+    end
+  end
+
   scope "/:account_id_or_slug", Web do
     pipe_through [
       :public,
-      :account,
-      :redirect_if_user_is_authenticated,
+      Web.Plugs.FetchAccount,
+      Web.Plugs.FetchSubject,
+      Web.Plugs.RedirectIfAuthenticated,
       Web.Plugs.AutoRedirectDefaultProvider
     ]
 
+    # Email auth entry point
+    post "/sign_in/email_otp/:auth_provider_id", EmailOTPController, :sign_in
+    post "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
+
+    # Userpass auth entry point
+    post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
+
     live_session :redirect_if_user_is_authenticated,
       on_mount: [
-        Web.Sandbox,
-        {Web.Auth, :redirect_if_user_is_authenticated}
+        Web.LiveHooks.AllowEctoSandbox,
+        Web.LiveHooks.FetchAccount,
+        Web.LiveHooks.FetchSubject,
+        Web.LiveHooks.RedirectIfAuthenticated
       ] do
       live "/", SignIn
 
       # Adapter-specific routes
       ## Email
+      # TODO: IDP REFACTOR
+      # Remove this route once all accounts have migrated
       live "/sign_in/providers/email/:provider_id", SignIn.Email
+      live "/sign_in/email_otp/:auth_provider_id", SignIn.Email
     end
+
+    # OIDC auth entry point (placed after LiveView routes to avoid conflicts)
+    get "/sign_in/:auth_provider_type/:auth_provider_id", OIDCController, :sign_in
   end
 
+  # Sign in / out routes
   scope "/:account_id_or_slug", Web do
-    pipe_through [:control_plane, :account]
+    pipe_through [
+      :public,
+      Web.Plugs.FetchAccount,
+      Web.Plugs.FetchSubject
+    ]
 
     get "/sign_in/client_redirect", SignInController, :client_redirect
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
@@ -112,24 +136,28 @@ defmodule Web.Router do
       get "/redirect", AuthController, :redirect_to_idp
       get "/handle_callback", AuthController, :handle_idp_callback
     end
-  end
-
-  scope "/:account_id_or_slug", Web do
-    pipe_through [:control_plane, :account]
 
     get "/sign_out", AuthController, :sign_out
   end
 
+  # Authenticated admin routes
   scope "/:account_id_or_slug", Web do
-    pipe_through [:control_plane, :account, :ensure_authenticated_admin]
+    pipe_through [
+      :public,
+      Web.Plugs.FetchAccount,
+      Web.Plugs.FetchSubject,
+      Web.Plugs.EnsureAuthenticated,
+      Web.Plugs.EnsureAdmin
+    ]
 
     live_session :ensure_authenticated,
       on_mount: [
-        Web.Sandbox,
-        {Web.Auth, :ensure_authenticated},
-        {Web.Auth, :ensure_account_admin_user_actor},
-        {Web.Auth, :mount_account},
-        {Web.Nav, :set_active_sidebar_item}
+        Web.LiveHooks.AllowEctoSandbox,
+        Web.LiveHooks.FetchAccount,
+        Web.LiveHooks.FetchSubject,
+        Web.LiveHooks.EnsureAuthenticated,
+        Web.LiveHooks.EnsureAdmin,
+        Web.LiveHooks.SetActiveSidebarItem
       ] do
       scope "/actors", Actors do
         live "/", Index
@@ -226,6 +254,22 @@ defmodule Web.Router do
         end
 
         scope "/identity_providers", IdentityProviders do
+          live "/auth_providers/new", Index, :new_auth_provider
+          live "/directories/new", Index, :new_directory
+
+          # Auth provider edit routes
+          live "/email_otp_auth_providers/:provider_id/edit", Index, :edit_email_otp_auth_provider
+          live "/userpass_auth_providers/:provider_id/edit", Index, :edit_userpass_auth_provider
+          live "/oidc_auth_providers/:provider_id/edit", Index, :edit_oidc_auth_provider
+          live "/google_auth_providers/:provider_id/edit", Index, :edit_google_auth_provider
+          live "/entra_auth_providers/:provider_id/edit", Index, :edit_entra_auth_provider
+          live "/okta_auth_providers/:provider_id/edit", Index, :edit_okta_auth_provider
+
+          # Directory edit routes
+          live "/google_directories/:directory_id/edit", Index, :edit_google_directory
+          live "/entra_directories/:directory_id/edit", Index, :edit_entra_directory
+          live "/okta_directories/:directory_id/edit", Index, :edit_okta_directory
+
           live "/", Index
           live "/new", New
 

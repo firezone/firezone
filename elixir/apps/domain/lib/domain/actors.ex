@@ -288,6 +288,13 @@ defmodule Domain.Actors do
     |> Repo.aggregate(:count)
   end
 
+  def fetch_actor_by_account_and_email(%Accounts.Account{} = account, email) do
+    Actor.Query.all()
+    |> Actor.Query.by_account_id(account.id)
+    |> Actor.Query.by_email(email)
+    |> Repo.fetch(Actor.Query)
+  end
+
   def fetch_actor_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()),
          true <- Repo.valid_uuid?(id) do
@@ -375,6 +382,24 @@ defmodule Domain.Actors do
           {:error, changeset}
       end
     end
+  end
+
+  @doc """
+  Creates an actor with an associated identity in a single transaction.
+  Used for the new auth system where identity creation is combined with actor creation.
+
+  The `identity_attrs` should include the auth_provider_id and identity-specific fields like
+  name, password, etc.
+  """
+  def create_actor_with_identity(%Accounts.Account{} = account, attrs) do
+    {identity_attrs, actor_attrs} = Map.pop(attrs, :identity_attrs)
+
+    Repo.transact(fn ->
+      with {:ok, actor} <- create_actor(account, actor_attrs),
+           {:ok, identity} <- Domain.Identities.create_identity(actor, identity_attrs) do
+        {:ok, %{actor: actor, identity: identity}}
+      end
+    end)
   end
 
   defp ensure_billing_limits_not_exceeded(account, %{valid?: true} = changeset) do

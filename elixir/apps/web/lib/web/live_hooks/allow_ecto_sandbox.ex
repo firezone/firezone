@@ -1,4 +1,4 @@
-defmodule Web.Hooks.AllowEctoSandbox do
+defmodule Web.LiveHooks.AllowEctoSandbox do
   def on_mount(:default, _params, _session, socket) do
     socket = Web.Sandbox.allow_live_ecto_sandbox(socket)
     {:cont, socket}

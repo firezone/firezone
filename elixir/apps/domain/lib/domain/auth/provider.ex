@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Provider do
   use Domain, :schema
 
-  schema "auth_providers" do
+  schema "legacy_auth_providers" do
     field :name, :string
 
     field :adapter, Ecto.Enum,
@@ -17,9 +17,6 @@ defmodule Domain.Auth.Provider do
     has_many :actor_groups, Domain.Actors.Group
     has_many :identities, Domain.Auth.Identity
 
-    field :created_by, Ecto.Enum, values: ~w[system identity actor]a
-    field :created_by_subject, :map
-
     field :last_syncs_failed, :integer
     field :last_sync_error, :string
     field :last_synced_at, :utc_datetime_usec
@@ -29,6 +26,8 @@ defmodule Domain.Auth.Provider do
     field :disabled_at, :utc_datetime_usec
 
     field :assigned_default_at, :utc_datetime_usec
+
+    subject_trail(~w[system identity actor]a)
     timestamps()
   end
 end

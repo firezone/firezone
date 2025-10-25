@@ -93,6 +93,34 @@ Hooks.AttachDisableSubmit = {
   },
 };
 
+Hooks.Modal = {
+  mounted() {
+    this.updateModal();
+
+    // Listen for the dialog close event
+    this.el.addEventListener("close", () => {
+      const onClose = this.el.getAttribute("phx-on-close");
+      if (onClose) {
+        this.pushEvent(onClose, {});
+      }
+    });
+  },
+
+  updated() {
+    this.updateModal();
+  },
+
+  updateModal() {
+    const show = this.el.hasAttribute("data-show");
+
+    if (show && !this.el.open) {
+      this.el.showModal();
+    } else if (!show && this.el.open) {
+      this.el.close();
+    }
+  },
+};
+
 Hooks.ConfirmDialog = {
   mounted() {
     this.el.addEventListener("click", (ev) => {
