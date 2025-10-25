@@ -319,10 +319,14 @@ class Adapter: @unchecked Sendable {
   }
 
   func reset(reason: String, path: Network.NWPath? = nil) {
-    sendCommand(.reset(reason))
-
-    if let path = (path ?? lastPath) {
-      setSystemDefaultResolvers(path)
+    workQueue.async { [weak self] in
+      guard let self = self else { return }
+      
+      self.sendCommand(.reset(reason))
+      
+      if let path = (path ?? self.lastPath) {
+        self.setSystemDefaultResolvers(path)
+      }
     }
   }
 
