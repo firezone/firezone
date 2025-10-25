@@ -156,6 +156,9 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
+  # TODO: IDP REFACTOR
+  # Add created_by_subject and updated_by_subject fields for all tables
+
   def put_subject_trail(changeset, field, :system) do
     changeset
     |> put_default_value(field, :system)
@@ -171,7 +174,10 @@ defmodule Domain.Repo.Changeset do
   def put_subject_trail(changeset, field, %Domain.Auth.Subject{identity: nil} = subject) do
     changeset
     |> put_default_value(field, :actor)
-    |> put_default_value(:"#{field}_subject", %{"name" => subject.actor.name, "email" => nil})
+    |> put_default_value(:"#{field}_subject", %{
+      "name" => subject.actor.name,
+      "email" => subject.actor.email
+    })
   end
 
   def put_subject_trail(changeset, field, %Domain.Auth.Subject{} = subject) do
@@ -179,7 +185,7 @@ defmodule Domain.Repo.Changeset do
     |> put_default_value(field, :identity)
     |> put_default_value(:"#{field}_subject", %{
       "name" => subject.actor.name,
-      "email" => subject.identity.email
+      "email" => subject.actor.email
     })
   end
 

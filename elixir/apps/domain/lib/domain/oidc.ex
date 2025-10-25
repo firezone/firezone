@@ -6,12 +6,6 @@ defmodule Domain.OIDC do
     Repo
   }
 
-  def all_enabled_auth_providers_for_account!(%Accounts.Account{} = account) do
-    OIDC.AuthProvider.Query.not_disabled()
-    |> OIDC.AuthProvider.Query.by_account_id(account.id)
-    |> Repo.all()
-  end
-
   def create_auth_provider(attrs, %Auth.Subject{} = subject) do
     required_permission = OIDC.Authorizer.manage_auth_providers_permission()
 
@@ -29,5 +23,17 @@ defmodule Domain.OIDC do
     |> OIDC.AuthProvider.Query.by_account_id(account.id)
     |> OIDC.AuthProvider.Query.by_id(id)
     |> Repo.fetch(OIDC.AuthProvider.Query)
+  end
+
+  def all_enabled_auth_providers_for_account!(%Accounts.Account{} = account) do
+    OIDC.AuthProvider.Query.not_disabled()
+    |> OIDC.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
+  end
+
+  def all_auth_providers_for_account!(%Accounts.Account{} = account) do
+    OIDC.AuthProvider.Query.all()
+    |> OIDC.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
   end
 end

@@ -6,18 +6,6 @@ defmodule Domain.Google do
     Repo
   }
 
-  def all_directories_for_account!(%Accounts.Account{} = account) do
-    Google.Directory.Query.all()
-    |> Google.Directory.Query.by_account_id(account.id)
-    |> Repo.all()
-  end
-
-  def all_enabled_auth_providers_for_account!(%Accounts.Account{} = account) do
-    Google.AuthProvider.Query.not_disabled()
-    |> Google.AuthProvider.Query.by_account_id(account.id)
-    |> Repo.all()
-  end
-
   def create_auth_provider(attrs, %Auth.Subject{} = subject) do
     required_permission = Google.Authorizer.manage_auth_providers_permission()
 
@@ -68,5 +56,23 @@ defmodule Domain.Google do
       |> Google.Directory.Changeset.update(attrs)
       |> Repo.update()
     end
+  end
+
+  def all_directories_for_account!(%Accounts.Account{} = account) do
+    Google.Directory.Query.all()
+    |> Google.Directory.Query.by_account_id(account.id)
+    |> Repo.all()
+  end
+
+  def all_enabled_auth_providers_for_account!(%Accounts.Account{} = account) do
+    Google.AuthProvider.Query.not_disabled()
+    |> Google.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
+  end
+
+  def all_auth_providers_for_account!(%Accounts.Account{} = account) do
+    Google.AuthProvider.Query.all()
+    |> Google.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
   end
 end

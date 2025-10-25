@@ -7,6 +7,7 @@ defmodule Domain.Repo.Migrations.CreateUserpassAuthProviders do
 
       account()
 
+      add(:name, :string, null: false)
       add(:issuer, :text, null: false, default: "firezone")
       add(:context, :string, null: false)
       add(:disabled_at, :utc_datetime_usec)

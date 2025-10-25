@@ -297,8 +297,11 @@ defmodule Domain.Auth.Identity.Query do
       LIMIT 1
     ),
     existing_identity AS (
-      SELECT actor_id FROM auth_identities
-      WHERE account_id = $1 AND issuer = $4 AND idp_id = $5
+      SELECT ai.actor_id
+      FROM auth_identities ai
+      JOIN actors a ON a.id = ai.actor_id
+      WHERE ai.account_id = $1 AND ai.issuer = $4 AND ai.idp_id = $5
+        AND a.disabled_at IS NULL
       LIMIT 1
     )
     INSERT INTO auth_identities (

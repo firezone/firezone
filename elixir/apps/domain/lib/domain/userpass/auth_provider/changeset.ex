@@ -7,7 +7,7 @@ defmodule Domain.Userpass.AuthProvider.Changeset do
     Userpass
   }
 
-  @required_fields ~w[context]a
+  @required_fields ~w[context name]a
   @fields @required_fields ++ ~w[disabled_at]a
 
   def create(

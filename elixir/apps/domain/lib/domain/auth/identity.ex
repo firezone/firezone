@@ -26,6 +26,9 @@ defmodule Domain.Auth.Identity do
     field :profile, :string
     field :picture, :string
 
+    # For hosting the picture internally
+    field :firezone_avatar_url, :string
+
     # TODO: IdP sync
     # Remove these field after all customers have migrated to the new sync
     field :provider_state, :map, redact: true

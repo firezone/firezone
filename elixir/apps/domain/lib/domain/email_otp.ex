@@ -27,4 +27,10 @@ defmodule Domain.EmailOTP do
     |> EmailOTP.AuthProvider.Query.by_account_id(account.id)
     |> Repo.fetch(EmailOTP.AuthProvider.Query)
   end
+
+  def all_auth_providers_for_account!(%Accounts.Account{} = account) do
+    EmailOTP.AuthProvider.Query.all()
+    |> EmailOTP.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
+  end
 end

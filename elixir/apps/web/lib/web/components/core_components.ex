@@ -750,19 +750,26 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders Gravatar img tag.
+  Renders a user avatar from either its identity picture or its gravatar.
   """
-  attr :email, :string, required: true
-  attr :size, :integer, default: 40
+  attr :identity, :any, required: true
+  attr :size, :integer, required: true
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
-  def gravatar(assigns) do
+  # TODO: IDP REFACTOR
+  # Fetch image and re-host it internally via Azure CDN
+
+  def avatar(assigns) do
     ~H"""
-    <img
-      src={"https://www.gravatar.com/avatar/#{Base.encode16(:crypto.hash(:md5, @email), case: :lower)}?s=#{@size}&d=retro"}
-      {@rest}
-    />
+    <img :if={not is_nil(@identity.picture)} src={@identity.picture} {@rest} />
+    <img :if={is_nil(@identity.picture)} src={build_gravatar_url(@identity, @size)} {@rest} />
     """
+  end
+
+  defp build_gravatar_url(identity, size) do
+    email = get_identity_email(identity)
+    hash = Base.encode16(:crypto.hash(:md5, email), case: :lower)
+    "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=retro"
   end
 
   @doc """

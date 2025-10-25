@@ -11,6 +11,9 @@ defmodule Domain.Repo.Migrations.AddProfileFieldsToAuthIdentities do
       add(:preferred_username, :text)
       add(:profile, :text)
       add(:picture, :text)
+
+      # For hosting the picture internally
+      add(:firezone_avatar_url, :text)
     end
   end
 end

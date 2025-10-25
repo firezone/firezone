@@ -6,18 +6,6 @@ defmodule Domain.Entra do
     Repo
   }
 
-  def all_directories_for_account!(%Accounts.Account{} = account) do
-    Entra.Directory.Query.all()
-    |> Entra.Directory.Query.by_account_id(account.id)
-    |> Repo.all()
-  end
-
-  def all_enabled_auth_providers_for_account!(%Accounts.Account{} = account) do
-    Entra.AuthProvider.Query.not_disabled()
-    |> Entra.AuthProvider.Query.by_account_id(account.id)
-    |> Repo.all()
-  end
-
   def create_auth_provider(attrs, %Auth.Subject{} = subject) do
     required_permission = Entra.Authorizer.manage_auth_providers_permission()
 
@@ -44,5 +32,23 @@ defmodule Domain.Entra do
     |> Entra.AuthProvider.Query.by_account_id(account.id)
     |> Entra.AuthProvider.Query.by_id(id)
     |> Repo.fetch(Entra.AuthProvider.Query)
+  end
+
+  def all_directories_for_account!(%Accounts.Account{} = account) do
+    Entra.Directory.Query.all()
+    |> Entra.Directory.Query.by_account_id(account.id)
+    |> Repo.all()
+  end
+
+  def all_enabled_auth_providers_for_account!(%Accounts.Account{} = account) do
+    Entra.AuthProvider.Query.not_disabled()
+    |> Entra.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
+  end
+
+  def all_auth_providers_for_account!(%Accounts.Account{} = account) do
+    Entra.AuthProvider.Query.all()
+    |> Entra.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
   end
 end

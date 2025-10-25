@@ -11,6 +11,7 @@ defmodule Domain.Identities do
     |> Auth.Identity.Query.by_account_id(account.id)
     |> Auth.Identity.Query.by_issuer(issuer)
     |> Auth.Identity.Query.by_idp_id(idp_id)
+    |> Auth.Identity.Query.not_disabled()
     |> Repo.fetch(Auth.Identity.Query, preload: [:actor, :account])
   end
 

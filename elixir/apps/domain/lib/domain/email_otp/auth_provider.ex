@@ -12,6 +12,8 @@ defmodule Domain.EmailOTP.AuthProvider do
       foreign_key: :id,
       define_field: false
 
+    field :name, :string
+
     field :issuer, :string, read_after_writes: true
 
     field :context, Ecto.Enum,

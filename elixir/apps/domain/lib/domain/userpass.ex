@@ -27,4 +27,10 @@ defmodule Domain.Userpass do
     |> Userpass.AuthProvider.Query.by_account_id(account.id)
     |> Repo.fetch(Userpass.AuthProvider.Query)
   end
+
+  def all_auth_providers_for_account!(%Accounts.Account{} = account) do
+    Userpass.AuthProvider.Query.all()
+    |> Userpass.AuthProvider.Query.by_account_id(account.id)
+    |> Repo.all()
+  end
 end

@@ -138,7 +138,7 @@ defmodule Domain.Repo.Seeds do
         # New auth system - create proper auth providers
         system_subject = %Auth.Subject{
           account: account,
-          actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate()},
+          actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
           identity: nil,
           token_id: nil,
           expires_at: nil,
@@ -153,10 +153,11 @@ defmodule Domain.Repo.Seeds do
             ])
         }
 
-        {:ok, email_otp} = Domain.EmailOTP.create_auth_provider(%{name: "Email"}, system_subject)
+        {:ok, email_otp} =
+          Domain.EmailOTP.create_auth_provider(%{name: "Email OTP"}, system_subject)
 
         {:ok, userpass} =
-          Domain.Userpass.create_auth_provider(%{name: "Password"}, system_subject)
+          Domain.Userpass.create_auth_provider(%{name: "Username & Password"}, system_subject)
 
         {:ok, oidc} =
           Domain.OIDC.create_auth_provider(
