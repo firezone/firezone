@@ -50,6 +50,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
   deinit {
     getLogFolderSizeTask?.cancel()
+    adapter = nil
   }
 
   override func startTunnel(
