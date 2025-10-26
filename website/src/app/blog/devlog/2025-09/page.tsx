@@ -1,9 +1,9 @@
-import _Page from "./_page";
 import { Metadata } from "next";
+import _Page from "./_page";
 
 export const metadata: Metadata = {
-  title: "JumpCloud Authentication • Firezone Docs",
-  description: "Firezone Documentation",
+  title: "September 2025 Devlog • Firezone Blog",
+  description: "September 2025 Devlog",
 };
 
 export default function Page() {

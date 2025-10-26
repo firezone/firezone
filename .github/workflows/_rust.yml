@@ -116,6 +116,7 @@ jobs:
           rg --count --no-ignore "Revoking resource authorization" "$TESTCASES_DIR"
           rg --count --no-ignore "Re-seeding records for DNS resources" "$TESTCASES_DIR"
           rg --count --no-ignore "Resource is known but its addressability changed" "$TESTCASES_DIR"
+          rg --count --no-ignore "No A / AAAA records for domain" "$TESTCASES_DIR"
 
           # Make sure we are recovering from ICE disconnect
           rg --count --no-ignore "State change \(got new possible\): Disconnected -> Checking" "$TESTCASES_DIR"

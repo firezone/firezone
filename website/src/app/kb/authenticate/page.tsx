@@ -4,7 +4,7 @@ import { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Authentication Overview • Firezone Docs",
   description:
-    "Firezone supports Google Workspace, Okta, Microsoft Entra ID, JumpCloud, OIDC, and email authentication methods.",
+    "Firezone supports Google Workspace, Okta, Microsoft Entra ID, OIDC, and email authentication methods.",
 };
 
 export default function Page() {

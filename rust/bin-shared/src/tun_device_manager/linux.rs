@@ -2,7 +2,7 @@
 
 use crate::FIREZONE_MARK;
 use anyhow::{Context as _, Result};
-use firezone_logging::err_with_src;
+use firezone_logging::{DisplayBTreeSet, err_with_src};
 use firezone_telemetry::otel;
 use futures::{
     SinkExt, StreamExt, TryStreamExt,
@@ -22,9 +22,9 @@ use netlink_packet_route::rule::RuleAction;
 use rtnetlink::sys::AsyncSocket;
 use rtnetlink::{Error::NetlinkError, Handle, RuleAddRequest, new_connection};
 use rtnetlink::{LinkUnspec, RouteMessageBuilder};
-use std::path::Path;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::{collections::BTreeSet, path::Path};
 use std::{
     collections::HashMap,
     os::fd::{FromRawFd as _, OwnedFd},
@@ -55,7 +55,7 @@ const FIREZONE_TABLE: u32 = 0x2021_fd00;
 pub struct TunDeviceManager {
     mtu: u32,
     connection: Connection,
-    routes: HashSet<IpNetwork>,
+    routes: BTreeSet<IpNetwork>,
 }
 
 struct Connection {
@@ -190,13 +190,13 @@ impl TunDeviceManager {
         ipv4: impl IntoIterator<Item = Ipv4Network>,
         ipv6: impl IntoIterator<Item = Ipv6Network>,
     ) -> Result<()> {
-        let new_routes: HashSet<IpNetwork> = ipv4
+        let new_routes = ipv4
             .into_iter()
             .map(IpNetwork::from)
             .chain(ipv6.into_iter().map(IpNetwork::from))
-            .collect();
+            .collect::<BTreeSet<_>>();
 
-        tracing::info!(?new_routes, "Setting new routes");
+        tracing::info!(new_routes = %DisplayBTreeSet(&new_routes), "Setting new routes");
 
         let handle = &self.connection.handle;
         let index = tun_device_index(handle).await?;

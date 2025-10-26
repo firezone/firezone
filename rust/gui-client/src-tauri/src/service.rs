@@ -206,7 +206,7 @@ impl Session {
                 connlib,
                 started_at,
             } => {
-                tracing::info!(elapsed = ?started_at.elapsed(), "Tunnel ready");
+                tracing::debug!(elapsed = ?started_at.elapsed(), "Tunnel ready");
 
                 *self = Self::Connected {
                     event_stream,

@@ -1,10 +1,12 @@
 mod client_on_gateway;
 mod filter_engine;
+mod flow_tracker;
 mod nat_table;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
+use crate::gateway::flow_tracker::FlowTracker;
 use crate::messages::gateway::ResourceDescription;
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::peer_store::PeerStore;
@@ -37,6 +39,8 @@ pub struct GatewayState {
     node: ServerNode<ClientId, RelayId>,
     /// All clients we are connected to and the associated, connection-specific state.
     peers: PeerStore<ClientId, ClientOnGateway>,
+
+    flow_tracker: FlowTracker,
 
     /// When to next check whether a resource-access policy has expired.
     next_expiry_resources_check: Option<Instant>,
@@ -72,6 +76,7 @@ impl GatewayState {
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),
+            flow_tracker: FlowTracker::new(now),
             tun_ip_config: None,
         }
     }
@@ -98,6 +103,8 @@ impl GatewayState {
         packet: IpPacket,
         now: Instant,
     ) -> Result<Option<snownet::Transmit>> {
+        let _guard = self.flow_tracker.new_inbound_tun(&packet, now);
+
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
@@ -114,6 +121,8 @@ impl GatewayState {
         };
         let cid = peer.id();
 
+        flow_tracker::inbound_tun::record_client(cid);
+
         let Some(packet) = peer
             .translate_inbound(packet, now)
             .context("Failed to translate inbound packet")?
@@ -128,6 +137,11 @@ impl GatewayState {
         else {
             return Ok(None);
         };
+
+        flow_tracker::inbound_tun::record_wireguard_packet(
+            encrypted_packet.src,
+            encrypted_packet.dst,
+        );
 
         Ok(Some(encrypted_packet))
     }
@@ -145,6 +159,8 @@ impl GatewayState {
         packet: &[u8],
         now: Instant,
     ) -> Result<Option<IpPacket>> {
+        let _guard = self.flow_tracker.new_inbound_wireguard(local, from, now);
+
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)
@@ -152,6 +168,9 @@ impl GatewayState {
         else {
             return Ok(None);
         };
+
+        flow_tracker::inbound_wg::record_client(cid);
+        flow_tracker::inbound_wg::record_decrypted_packet(&packet);
 
         let peer = self
             .peers
@@ -194,9 +213,15 @@ impl GatewayState {
             .translate_outbound(packet, now)
             .context("Failed to translate outbound packet")?
         {
-            TranslateOutboundResult::Send(ip_packet) => Ok(Some(ip_packet)),
+            TranslateOutboundResult::Send(packet) => {
+                flow_tracker::inbound_wg::record_translated_packet(&packet);
+
+                Ok(Some(packet))
+            }
             TranslateOutboundResult::DestinationUnreachable(reply)
             | TranslateOutboundResult::Filtered(reply) => {
+                flow_tracker::inbound_wg::record_icmp_error(&reply);
+
                 let Some(transmit) = encrypt_packet(reply, cid, &mut self.node, now)? else {
                     return Ok(None);
                 };
@@ -412,6 +437,7 @@ impl GatewayState {
     pub fn handle_timeout(&mut self, now: Instant, utc_now: DateTime<Utc>) {
         self.node.handle_timeout(now);
         self.drain_node_events();
+        self.flow_tracker.handle_timeout(now);
 
         match self.next_expiry_resources_check {
             Some(next_expiry_resources_check) if now >= next_expiry_resources_check => {
@@ -431,6 +457,67 @@ impl GatewayState {
             }
             None => self.next_expiry_resources_check = Some(now + EXPIRE_RESOURCES_INTERVAL),
             Some(_) => {}
+        }
+
+        while let Some(flow) = self.flow_tracker.poll_completed_flow() {
+            match flow {
+                flow_tracker::CompletedFlow::Tcp(flow) => {
+                    tracing::trace!(
+                        target: "flow_logs::tcp",
+
+                        client = %flow.client,
+                        resource = %flow.resource,
+                        start = ?flow.start,
+                        end = ?flow.end,
+                        last_packet = ?flow.last_packet,
+
+                        inner_src_ip = %flow.inner_src_ip,
+                        inner_dst_ip = %flow.inner_dst_ip,
+                        inner_src_port = %flow.inner_src_port,
+                        inner_dst_port = %flow.inner_dst_port,
+                        inner_domain = flow.inner_domain.map(tracing::field::display),
+
+                        outer_src_ip = %flow.outer_src_ip,
+                        outer_dst_ip = %flow.outer_dst_ip,
+                        outer_src_port = %flow.outer_src_port,
+                        outer_dst_port = %flow.outer_dst_port,
+
+                        rx_packets = %flow.rx_packets,
+                        tx_packets = %flow.tx_packets,
+                        rx_bytes = %flow.rx_bytes,
+                        tx_bytes = %flow.tx_bytes,
+                        "TCP flow completed"
+                    );
+                }
+                flow_tracker::CompletedFlow::Udp(flow) => {
+                    tracing::trace!(
+                        target: "flow_logs::udp",
+
+                        client = %flow.client,
+                        resource = %flow.resource,
+                        start = ?flow.start,
+                        end = ?flow.end,
+                        last_packet = ?flow.last_packet,
+
+                        inner_src_ip = %flow.inner_src_ip,
+                        inner_dst_ip = %flow.inner_dst_ip,
+                        inner_src_port = %flow.inner_src_port,
+                        inner_dst_port = %flow.inner_dst_port,
+                        inner_domain = flow.inner_domain.map(tracing::field::display),
+
+                        outer_src_ip = %flow.outer_src_ip,
+                        outer_dst_ip = %flow.outer_dst_ip,
+                        outer_src_port = %flow.outer_src_port,
+                        outer_dst_port = %flow.outer_dst_port,
+
+                        rx_packets = %flow.rx_packets,
+                        tx_packets = %flow.tx_packets,
+                        rx_bytes = %flow.rx_bytes,
+                        tx_bytes = %flow.tx_bytes,
+                        "UDP flow completed"
+                    );
+                }
+            }
         }
     }
 

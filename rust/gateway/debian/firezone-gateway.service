@@ -1,0 +1,76 @@
+[Unit]
+Description=Firezone Gateway
+After=network.target
+Documentation=https://www.firezone.dev/kb
+
+[Service]
+
+# DO NOT EDIT ANY OF THE BELOW BY HAND. USE "systemctl edit firezone-gateway" INSTEAD TO CUSTOMIZE.
+# Most configuration should go as environment variables into `/etc/firezone/gateway-env`.
+# The access token should be in `/etc/firezone/gateway-token`.
+
+Type=simple
+User=firezone
+Group=firezone
+PermissionsStartOnly=true
+SyslogIdentifier=firezone-gateway
+
+LoadCredential=FIREZONE_TOKEN:/etc/firezone/gateway-token
+EnvironmentFile=/etc/firezone/gateway-preset-env
+EnvironmentFile=/etc/firezone/gateway-env
+
+ExecStartPre=/usr/bin/firezone-gateway-init
+ExecStart=/usr/bin/firezone-gateway
+
+# Restart on failure
+TimeoutStartSec=15s
+TimeoutStopSec=15s
+Restart=always
+RestartSec=7
+
+#####################
+# HARDENING OPTIONS #
+#####################
+
+# Give the service its own private /tmp directory.
+PrivateTmp=true
+
+# Mount the system directories read-only (except those explicitly allowed).
+ProtectSystem=full
+
+# Make users' home directories read-only.
+ProtectHome=read-only
+
+# Disallow gaining new privileges (e.g. via execve() of setuid binaries).
+NoNewPrivileges=true
+
+# Disallow the creation of new namespaces.
+RestrictNamespaces=yes
+
+# Prevent memory from being both writable and executable.
+MemoryDenyWriteExecute=true
+
+# Prevent the service from calling personality(2) to change process execution domain.
+LockPersonality=true
+
+# Restrict the set of allowed address families.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_NETLINK
+
+# Allow the process to have CAP_NET_ADMIN (needed for network administration)
+# while restricting it to only that capability.
+AmbientCapabilities=CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_ADMIN
+
+# Make some sensitive paths inaccessible.
+InaccessiblePaths=/root /home
+
+# Set resource limits
+LimitNOFILE=4096
+LimitNPROC=512
+LimitCORE=0
+
+# Set a sane system call filter
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

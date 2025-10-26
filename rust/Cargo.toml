@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "bin-shared",
+    "cli",
     "client-ffi",
     "client-shared",
     "connlib/bufferpool",
@@ -70,12 +71,12 @@ derive_more = { version = "2.0.1", default-features = false }
 difference = "2.0.0"
 dirs = "6.0.0"
 divan = "0.1.21"
-dns-lookup = "2.0"
+dns-lookup = "3.0"
 dns-over-tcp = { path = "connlib/dns-over-tcp" }
 dns-types = { path = "connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
 either = "1"
-etherparse = { version = "0.17", default-features = false }
+etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "connlib/etherparse-ext" }
 firezone-bin-shared = { path = "bin-shared" }
 firezone-headless-client = { path = "headless-client" }
@@ -85,12 +86,12 @@ firezone-telemetry = { path = "telemetry" }
 firezone-tunnel = { path = "connlib/tunnel" }
 flume = { version = "0.11.1", features = ["async"] }
 futures = { version = "0.3.31" }
-futures-bounded = "0.2.1"
+futures-bounded = "0.3.0"
 gat-lending-iterator = "0.1.6"
 glob = "0.3.3"
 hex = "0.4.3"
 hex-display = "0.3.0"
-hex-literal = "0.4.1"
+hex-literal = "1.0.0"
 hickory-resolver = "0.25.2"
 humantime = "2.3"
 ip-packet = { path = "connlib/ip-packet" }
@@ -128,7 +129,7 @@ phoenix-channel = { path = "connlib/phoenix-channel" }
 png = "0.17.16"
 proc-macro2 = "1.0"
 proptest = "1.7.0"
-proptest-state-machine = "0.3.1"
+proptest-state-machine = "0.4.0"
 quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
 quote = "1.0"
 rand = "0.8.5"
@@ -136,16 +137,17 @@ rand_core = "0.6.4"
 rangemap = "1.6.0"
 reqwest = { version = "0.12.23", default-features = false }
 resolv-conf = "0.7.5"
-ringbuffer = "0.15.0"
+ringbuffer = "0.16.0"
 roxmltree = "0.20"
+rpassword = "7.4.0"
 rtnetlink = { version = "0.17.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.31", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.8"
 semver = "1.0.27"
-sentry = { version = "0.41.0", default-features = false }
-sentry-tracing = "0.41.0"
+sentry = { version = "0.42.0", default-features = false }
+sentry-tracing = "0.42.0"
 serde = "1.0.219"
 serde_json = "1.0.145"
 serde_variant = "0.1.3"
@@ -178,7 +180,7 @@ tauri-plugin-shell = "2.3.1"
 tauri-runtime = "2.7.1"
 tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
 tauri-utils = "2.2.0"
-tempfile = "3.22.0"
+tempfile = "3.23.0"
 test-case = "3.3.1"
 test-strategy = "0.4.3"
 thiserror = "2.0.16"
@@ -206,9 +208,9 @@ windows = "0.61.3"
 windows-core = "0.61.1"
 windows-implement = "0.60.0"
 windows-service = "0.8.0"
-winreg = "0.52.0"
+winreg = "0.55.0"
 zbus = "5.11.0"
-zip = { version = "2", default-features = false }
+zip = { version = "5", default-features = false }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"

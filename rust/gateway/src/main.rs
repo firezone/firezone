@@ -22,7 +22,7 @@ use phoenix_channel::get_user_agent;
 
 use phoenix_channel::PhoenixChannel;
 use secrecy::{Secret, SecretString};
-use std::{collections::BTreeSet, path::Path};
+use std::{collections::BTreeSet, fmt, path::Path};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
@@ -91,8 +91,14 @@ fn has_necessary_permissions() -> bool {
 }
 
 async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
-    firezone_logging::setup_global_subscriber(layer::Identity::default())
-        .context("Failed to set up logging")?;
+    firezone_logging::setup_global_subscriber(
+        layer::Identity::default(),
+        match cli.log_format {
+            LogFormat::Json => true,
+            LogFormat::Human => false,
+        },
+    )
+    .context("Failed to set up logging")?;
 
     tracing::info!(
         arch = std::env::consts::ARCH,
@@ -270,7 +276,7 @@ async fn read_systemd_credential(name: &str) -> Result<SecretString> {
     let path = PathBuf::from(creds_dir).join(name);
     let content = tokio::fs::read_to_string(&path).await?;
 
-    Ok(SecretString::new(content))
+    Ok(SecretString::new(content.trim().to_owned()))
 }
 
 #[derive(Parser, Debug)]
@@ -306,6 +312,9 @@ struct Cli {
     #[arg(short = 'i', long, env = "FIREZONE_ID")]
     firezone_id: Option<String>,
 
+    #[arg(long, env = "FIREZONE_LOG_FORMAT", default_value_t = LogFormat::Human)]
+    log_format: LogFormat,
+
     /// Where to export metrics to.
     ///
     /// This configuration option is private API and has no stability guarantees.
@@ -334,6 +343,21 @@ struct Cli {
     /// Do not try to increase the `core.rmem_max` and `core.wmem_max` kernel parameters.
     #[arg(long, env = "FIREZONE_NO_INC_BUF", default_value_t = false)]
     no_inc_buf: bool,
+}
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+enum LogFormat {
+    Json,
+    Human,
+}
+
+impl fmt::Display for LogFormat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogFormat::Json => write!(f, "json"),
+            LogFormat::Human => write!(f, "human"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, clap::ValueEnum)]
@@ -433,7 +457,7 @@ mod tests {
         let cred_path = temp_dir.path().join("FIREZONE_TOKEN");
 
         // Write token to credential file
-        std::fs::write(cred_path, "systemd-token").unwrap();
+        std::fs::write(cred_path, "systemd-token\n").unwrap();
 
         // Set CREDENTIALS_DIRECTORY environment variable
         unsafe {

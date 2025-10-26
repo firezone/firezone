@@ -264,7 +264,7 @@ jobs:
         run: ${{ matrix.arch.install_dependencies }}
       - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
         with:
-          tool: bpf-linker
+          tool: bpf-linker,cargo-deb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Build binaries
@@ -318,6 +318,12 @@ jobs:
             --overwrite true \
             --no-progress \
             --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+      - name: Create Firezone Gateway .deb package
+        if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.artifact == 'firezone-gateway' }}
+        run: |
+          cargo build --bin firezone-cli --release --target ${{ matrix.arch.target }}
+          cargo deb --package firezone-gateway --target ${{ matrix.arch.target }} --no-build --no-strip
+          cp target/debian/*.deb "$BINARY_DEST_PATH".deb
       - name: Upload Release Assets
         if: ${{ inputs.profile == 'release' && matrix.stage == 'release' && matrix.name.release_name && github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
         env:
@@ -339,8 +345,24 @@ jobs:
           gh release upload ${{ matrix.name.release_name }} \
             "$BINARY_DEST_PATH" \
             "$BINARY_DEST_PATH".sha256sum.txt \
+            # "$BINARY_DEST_PATH".deb \ # Enable this once we have all the necessary documentation in place.
             "$clobber" \
             --repo ${{ github.repository }}
+
+          az storage blob upload-batch \
+            --destination apt \
+            --source . \
+            --pattern "*.deb" \
+            --destination-path import-preview \
+            --overwrite \
+            --no-progress \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+      - name: Upload `.deb` artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.BINARY_DEST_PATH }}.deb
+          path: rust/${{ env.BINARY_DEST_PATH }}.deb
+          retention-days: 1
       - name: Set up QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
       - name: Set up Docker Buildx
@@ -475,3 +497,9 @@ jobs:
           # shellcheck disable=SC2086 # $tags and $sources must be split by whitespace
           docker buildx imagetools create $tags $sources
           docker buildx imagetools inspect "${{ steps.login.outputs.registry }}/firezone/${{ matrix.image_prefix && format('{0}/', matrix.image_prefix) || '' }}${{ matrix.image.name }}"
+
+  regenerate-apt-index:
+    needs: data-plane-linux
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name == 'main' }}
+    uses: ./.github/workflows/_apt.yml
+    secrets: inherit

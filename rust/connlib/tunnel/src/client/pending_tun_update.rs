@@ -1,4 +1,4 @@
-use crate::{ClientEvent, TunConfig};
+use crate::TunConfig;
 
 /// Acts as a "buffer" for updates to the TUN interface that need to be applied.
 ///
@@ -20,13 +20,13 @@ impl PendingTunUpdate {
         self.want = want;
     }
 
-    pub fn into_event(self) -> Option<ClientEvent> {
+    pub fn into_new_config(self) -> Option<TunConfig> {
         if let Some(current) = self.current
             && current == self.want
         {
             return None;
         };
 
-        Some(ClientEvent::TunInterfaceUpdated(self.want))
+        Some(self.want)
     }
 }

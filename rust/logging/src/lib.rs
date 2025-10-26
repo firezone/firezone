@@ -6,6 +6,7 @@ mod format;
 mod unwrap_or;
 mod ansi;
 mod capturing_writer;
+mod display_btree_set;
 mod err_with_sources;
 mod event_message_contains_filter;
 
@@ -29,11 +30,15 @@ use tracing_subscriber::{
 
 pub use ansi::stdout_supports_ansi;
 pub use capturing_writer::CapturingWriter;
+pub use display_btree_set::DisplayBTreeSet;
 pub use err_with_sources::{ErrorWithSources, err_with_src};
 pub use format::Format;
 
 /// Registers a global subscriber with stdout logging and `additional_layer`
-pub fn setup_global_subscriber<L>(additional_layer: L) -> Result<FilterReloadHandle>
+pub fn setup_global_subscriber<L>(
+    additional_layer: L,
+    stdout_json: bool,
+) -> Result<FilterReloadHandle>
 where
     L: Layer<Registry> + Send + Sync,
 {
@@ -41,7 +46,7 @@ where
         tracing::debug!("Failed to init terminal colors: {error}");
     }
 
-    let directives = std::env::var("RUST_LOG").unwrap_or_default();
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 
     let (filter1, reload_handle1) =
         try_filter(&directives).context("Failed to parse directives")?;
@@ -51,12 +56,19 @@ where
     let subscriber = Registry::default()
         .with(additional_layer.with_filter(filter1))
         .with(sentry_layer())
-        .with(
-            fmt::layer()
+        .with(match stdout_json {
+            true => fmt::layer()
+                .json()
+                .flatten_event(true)
+                .with_ansi(stdout_supports_ansi())
+                .with_filter(filter2)
+                .boxed(),
+            false => fmt::layer()
                 .with_ansi(stdout_supports_ansi())
                 .event_format(Format::new())
-                .with_filter(filter2),
-        );
+                .with_filter(filter2)
+                .boxed(),
+        });
     init(subscriber)?;
 
     Ok(reload_handle1.merge(reload_handle2))
@@ -112,7 +124,7 @@ fn parse_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     ///
     /// By prepending this directive to the active log filter, a simple directive like `debug` actually produces useful logs.
     /// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
-    const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn,opentelemetry_sdk=info,opentelemetry=info,hyper_util=info,h2=info";
+    const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn,opentelemetry_sdk=info,opentelemetry=info,hyper_util=info,h2=info,hickory_proto=info";
 
     let env_filter = if directives.is_empty() {
         EnvFilter::try_new(IRRELEVANT_CRATES)?

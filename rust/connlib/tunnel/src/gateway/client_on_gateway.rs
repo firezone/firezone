@@ -10,9 +10,11 @@ use dns_types::DomainName;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, Protocol, UnsupportedProtocol};
+use itertools::{EitherOrBoth, Itertools};
 
 use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::gateway::filter_engine::FilterEngine;
+use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
 use crate::messages::gateway::Filters;
 use crate::messages::gateway::ResourceDescription;
@@ -104,35 +106,51 @@ impl ClientOnGateway {
 
         anyhow::ensure!(crate::dns::is_subdomain(&name, address));
 
-        let mapped_ipv4 = mapped_ipv4(&resolved_ips);
-        let mapped_ipv6 = mapped_ipv6(&resolved_ips);
+        if resolved_ips.is_empty() {
+            tracing::debug!(domain = %name, %resource_id, "No A / AAAA records for domain")
+        }
 
-        let ipv4_maps = proxy_ips
-            .iter()
-            .filter(|ip| ip.is_ipv4())
-            .zip(mapped_ipv4.iter().cycle().copied());
+        let ipv4_maps = proxy_ips.iter().filter(|ip| ip.is_ipv4()).zip_longest(
+            resolved_ips
+                .iter()
+                .filter(|ip| ip.is_ipv4())
+                .copied()
+                .cycle(),
+        );
+        let ipv6_maps = proxy_ips.iter().filter(|ip| ip.is_ipv6()).zip_longest(
+            resolved_ips
+                .iter()
+                .filter(|ip| ip.is_ipv6())
+                .copied()
+                .cycle(),
+        );
 
-        let ipv6_maps = proxy_ips
-            .iter()
-            .filter(|ip| ip.is_ipv6())
-            .zip(mapped_ipv6.iter().cycle().copied());
+        let mut ip_maps = ipv4_maps.chain(ipv6_maps);
 
-        let ip_maps = ipv4_maps.chain(ipv6_maps);
+        loop {
+            let Some(either_or_both) = ip_maps.next() else {
+                break;
+            };
 
-        for (proxy_ip, real_ip) in ip_maps {
+            let (proxy_ip, maybe_real_ip) = match either_or_both {
+                EitherOrBoth::Both(proxy_ip, real_ip) => (proxy_ip, Some(real_ip)),
+                EitherOrBoth::Left(proxy_ip) => (proxy_ip, None),
+                EitherOrBoth::Right(_) => break,
+            };
+
             if let Some(state) = self.permanent_translations.get(proxy_ip)
                 && self.nat_table.has_entry_for_inside(*proxy_ip)
-                && state.resolved_ip != real_ip
+                && state.resolved_ip != maybe_real_ip
             {
-                tracing::debug!(%name, %proxy_ip, new_real_ip = %real_ip, current_real_ip = %state.resolved_ip, "Skipping DNS resource NAT entry because we have open NAT sessions for it");
+                tracing::debug!(%name, %proxy_ip, new_real_ip = ?maybe_real_ip, current_real_ip = ?state.resolved_ip, "Skipping DNS resource NAT entry because we have open NAT sessions for it");
                 continue;
             }
 
-            tracing::debug!(%name, %proxy_ip, %real_ip);
+            tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
 
             self.permanent_translations.insert(
                 *proxy_ip,
-                TranslationState::new(resource_id, real_ip, name.clone()),
+                TranslationState::new(resource_id, maybe_real_ip, name.clone()),
             );
         }
 
@@ -319,7 +337,7 @@ impl ClientOnGateway {
         now: Instant,
     ) -> anyhow::Result<TranslateOutboundResult> {
         // Filtering a packet is not an error.
-        if let Err(e) = self.ensure_allowed_src_and_dst(&packet) {
+        if let Err(e) = self.ensure_allowed_outbound(&packet) {
             tracing::debug!(filtered_packet = ?packet, "{e:#}");
             return Ok(TranslateOutboundResult::Filtered(
                 ip_packet::make::icmp_dest_unreachable_prohibited(&packet)?,
@@ -355,21 +373,24 @@ impl ClientOnGateway {
             return Ok(Some(packet));
         }
 
-        if let Err(e) = self.classify_resource(packet.source(), packet.source_protocol()) {
-            tracing::debug!(
-                "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
-            );
-
-            self.num_dropped_packets.add(
-                1,
-                &[
-                    otel::attr::network_type_for_packet(&packet),
-                    otel::attr::network_io_direction_receive(),
-                    otel::attr::error_type(e.root_cause().to_string()),
-                ],
-            );
-
-            return Ok(None);
+        match self.classify_resource(packet.source(), packet.source_protocol()) {
+            Ok(rid) => {
+                flow_tracker::inbound_tun::record_resource(rid);
+            }
+            Err(e) => {
+                tracing::debug!(
+                    "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
+                );
+                self.num_dropped_packets.add(
+                    1,
+                    &[
+                        otel::attr::network_type_for_packet(&packet),
+                        otel::attr::network_io_direction_receive(),
+                        otel::attr::error_type(e.root_cause().to_string()),
+                    ],
+                );
+                return Ok(None);
+            }
         }
 
         Ok(Some(packet))
@@ -400,10 +421,16 @@ impl ClientOnGateway {
             ));
         };
 
-        if state.resolved_ip.is_ipv4() != dst.is_ipv4() {
+        let Some(resolved_ip) = state.resolved_ip else {
+            return Ok(TranslateOutboundResult::DestinationUnreachable(
+                ip_packet::make::icmp_dest_unreachable_network(&packet)?,
+            ));
+        };
+
+        if resolved_ip.is_ipv4() != dst.is_ipv4() {
             tracing::debug!(
                 %dst,
-                resolved = %state.resolved_ip,
+                resolved = %resolved_ip,
                 "Cannot translate between IP versions"
             );
 
@@ -412,9 +439,11 @@ impl ClientOnGateway {
             ));
         }
 
+        flow_tracker::inbound_wg::record_domain(state.domain.clone());
+
         let (source_protocol, real_ip) =
             self.nat_table
-                .translate_outgoing(&packet, state.resolved_ip, now)?;
+                .translate_outgoing(&packet, resolved_ip, now)?;
 
         packet
             .translate_destination(source_protocol, real_ip)
@@ -476,7 +505,7 @@ impl ClientOnGateway {
         self.resources.contains_key(&resource)
     }
 
-    fn ensure_allowed_src_and_dst(&self, packet: &IpPacket) -> anyhow::Result<()> {
+    fn ensure_allowed_outbound(&self, packet: &IpPacket) -> anyhow::Result<()> {
         self.ensure_client_ip(packet.source())?;
 
         // Traffic to our own IP is allowed.
@@ -484,7 +513,9 @@ impl ClientOnGateway {
             return Ok(());
         }
 
-        self.classify_resource(packet.destination(), packet.destination_protocol())?;
+        let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
+
+        flow_tracker::inbound_wg::record_resource(rid);
 
         Ok(())
     }
@@ -645,42 +676,18 @@ struct TranslationState {
     /// Which (DNS) resource we belong to.
     resource_id: ResourceId,
     /// The IP we have resolved for the domain.
-    resolved_ip: IpAddr,
+    resolved_ip: Option<IpAddr>,
     /// The domain we have resolved.
     domain: DomainName,
 }
 
 impl TranslationState {
-    fn new(resource_id: ResourceId, resolved_ip: IpAddr, domain: DomainName) -> Self {
+    fn new(resource_id: ResourceId, resolved_ip: Option<IpAddr>, domain: DomainName) -> Self {
         Self {
             resource_id,
             resolved_ip,
             domain,
         }
-    }
-}
-
-fn ipv4_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv4()).copied().collect()
-}
-
-fn ipv6_addresses(ip: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    ip.iter().filter(|ip| ip.is_ipv6()).copied().collect()
-}
-
-fn mapped_ipv4(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    if !ipv4_addresses(ips).is_empty() {
-        ipv4_addresses(ips)
-    } else {
-        ipv6_addresses(ips)
-    }
-}
-
-fn mapped_ipv6(ips: &BTreeSet<IpAddr>) -> BTreeSet<IpAddr> {
-    if !ipv6_addresses(ips).is_empty() {
-        ipv6_addresses(ips)
-    } else {
-        ipv4_addresses(ips)
     }
 }
 
@@ -1274,7 +1281,6 @@ mod proptests {
     };
     use crate::proptest::*;
     use ip_packet::make::{TcpFlags, icmp_request_packet, tcp_packet, udp_packet};
-    use itertools::Itertools as _;
     use proptest::{
         arbitrary::any,
         collection, prop_oneof,

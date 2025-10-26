@@ -39,11 +39,13 @@ import kotlinx.coroutines.channels.produce
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
+import uniffi.connlib.ConnlibException
 import uniffi.connlib.DeviceInfo
 import uniffi.connlib.Event
 import uniffi.connlib.ProtectSocket
 import uniffi.connlib.Session
 import uniffi.connlib.SessionInterface
+import uniffi.connlib.use
 import java.nio.file.Files
 import java.nio.file.Paths
 import javax.inject.Inject
@@ -283,38 +285,44 @@ class TunnelService : VpnService() {
             commandChannel = Channel<TunnelCommand>(Channel.UNLIMITED)
 
             serviceScope.launch {
-                Session
-                    .newAndroid(
-                        apiUrl = config.apiUrl,
-                        token = token,
-                        accountSlug = config.accountSlug,
-                        deviceId = deviceId(),
-                        deviceName = getDeviceName(),
-                        osVersion = Build.VERSION.RELEASE,
-                        logDir = getLogDir(),
-                        logFilter = config.logFilter,
-                        isInternetResourceActive = resourceState.isEnabled(),
-                        protectSocket = protectSocket,
-                        deviceInfo = deviceInfo,
-                    ).use { session ->
-                        startNetworkMonitoring()
-                        startDisconnectMonitoring()
+                try {
+                    Session
+                        .newAndroid(
+                            apiUrl = config.apiUrl,
+                            token = token,
+                            accountSlug = config.accountSlug,
+                            deviceId = deviceId(),
+                            deviceName = getDeviceName(),
+                            osVersion = Build.VERSION.RELEASE,
+                            logDir = getLogDir(),
+                            logFilter = config.logFilter,
+                            isInternetResourceActive = resourceState.isEnabled(),
+                            protectSocket = protectSocket,
+                            deviceInfo = deviceInfo,
+                        ).use { session ->
+                            startNetworkMonitoring()
+                            startDisconnectMonitoring()
 
-                        eventLoop(session, commandChannel!!)
+                            eventLoop(session, commandChannel!!)
 
-                        Log.i(TAG, "Event-loop finished")
+                            Log.i(TAG, "Event-loop finished")
 
-                        commandChannel = null
-                        tunnelState = State.DOWN
-
-                        if (startedByUser) {
-                            updateStatusNotification(TunnelStatusNotification.SignedOut)
+                            if (startedByUser) {
+                                updateStatusNotification(TunnelStatusNotification.SignedOut)
+                            }
                         }
+                } catch (e: ConnlibException) {
+                    Log.e(TAG, "Failed to start session", e)
 
-                        stopNetworkMonitoring()
-                        stopDisconnectMonitoring()
-                        stopSelf()
-                    }
+                    e.close()
+                } finally {
+                    commandChannel = null
+                    tunnelState = State.DOWN
+
+                    stopNetworkMonitoring()
+                    stopDisconnectMonitoring()
+                    stopSelf()
+                }
             }
         }
     }
@@ -501,42 +509,50 @@ class TunnelService : VpnService() {
                         }
                     }
                     eventChannel.onReceive { event ->
-                        when (event) {
-                            is Event.ResourcesUpdated -> {
-                                tunnelResources = event.resources.map { convertResource(it) }
-                                resourcesUpdated()
-                            }
+                        event.use { event ->
+                            when (event) {
+                                is Event.ResourcesUpdated -> {
+                                    tunnelResources = event.resources.map { convertResource(it) }
+                                    resourcesUpdated()
+                                }
 
-                            is Event.TunInterfaceUpdated -> {
-                                tunnelDnsAddresses = event.dns.toMutableList()
-                                tunnelSearchDomain = event.searchDomain
-                                tunnelIpv4Address = event.ipv4
-                                tunnelIpv6Address = event.ipv6
-                                tunnelRoutes.clear()
-                                tunnelRoutes.addAll(
-                                    event.ipv4Routes.map { cidr ->
-                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
-                                    },
-                                )
-                                tunnelRoutes.addAll(
-                                    event.ipv6Routes.map { cidr ->
-                                        Cidr(address = cidr.address, prefix = cidr.prefix.toInt())
-                                    },
-                                )
-                                buildVpnService()
-                            }
+                                is Event.TunInterfaceUpdated -> {
+                                    tunnelDnsAddresses = event.dns.toMutableList()
+                                    tunnelSearchDomain = event.searchDomain
+                                    tunnelIpv4Address = event.ipv4
+                                    tunnelIpv6Address = event.ipv6
+                                    tunnelRoutes.clear()
+                                    tunnelRoutes.addAll(
+                                        event.ipv4Routes.map { cidr ->
+                                            Cidr(
+                                                address = cidr.address,
+                                                prefix = cidr.prefix.toInt(),
+                                            )
+                                        },
+                                    )
+                                    tunnelRoutes.addAll(
+                                        event.ipv6Routes.map { cidr ->
+                                            Cidr(
+                                                address = cidr.address,
+                                                prefix = cidr.prefix.toInt(),
+                                            )
+                                        },
+                                    )
+                                    buildVpnService()
+                                }
 
-                            is Event.Disconnected -> {
-                                // Clear any user tokens and actorNames
-                                repo.clearToken()
-                                repo.clearActorName()
+                                is Event.Disconnected -> {
+                                    // Clear any user tokens and actorNames
+                                    repo.clearToken()
+                                    repo.clearActorName()
 
-                                running = false
-                            }
+                                    running = false
+                                }
 
-                            null -> {
-                                Log.i(TAG, "Event channel closed")
-                                running = false
+                                null -> {
+                                    Log.i(TAG, "Event channel closed")
+                                    running = false
+                                }
                             }
                         }
                     }

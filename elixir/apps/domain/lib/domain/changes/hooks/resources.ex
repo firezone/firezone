@@ -12,14 +12,6 @@ defmodule Domain.Changes.Hooks.Resources do
   end
 
   @impl true
-
-  # Soft-delete - process as delete
-  def on_update(lsn, %{"deleted_at" => nil} = old_data, %{"deleted_at" => deleted_at})
-      when not is_nil(deleted_at) do
-    on_delete(lsn, old_data)
-  end
-
-  # Regular update
   def on_update(lsn, old_data, data) do
     old_resource = struct_from_params(Resources.Resource, old_data)
     resource = struct_from_params(Resources.Resource, data)
@@ -47,10 +39,6 @@ defmodule Domain.Changes.Hooks.Resources do
   def on_delete(lsn, old_data) do
     resource = struct_from_params(Resources.Resource, old_data)
     change = %Change{lsn: lsn, op: :delete, old_struct: resource}
-
-    # TODO: Hard delete
-    # This can be removed upon implementation of hard delete
-    Flows.delete_flows_for(resource)
 
     PubSub.Account.broadcast(resource.account_id, change)
   end
