@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use secrecy::SecretString;
 
 const ETC_FIREZONE_GATEWAY_TOKEN: &str = "/etc/firezone/gateway-token";
 
@@ -35,7 +36,7 @@ fn main() -> Result<()> {
                     continue;
                 }
 
-                break token;
+                break SecretString::new(token);
             };
 
             install_firezone_gateway_token(token)?;
@@ -102,8 +103,10 @@ fn is_root() -> bool {
 }
 
 #[cfg(target_os = "linux")]
-fn install_firezone_gateway_token(token: String) -> Result<()> {
-    std::fs::write(ETC_FIREZONE_GATEWAY_TOKEN, token)
+fn install_firezone_gateway_token(token: SecretString) -> Result<()> {
+    use secrecy::ExposeSecret;
+
+    std::fs::write(ETC_FIREZONE_GATEWAY_TOKEN, token.expose_secret())
         .with_context(|| format!("Failed to write token to `{ETC_FIREZONE_GATEWAY_TOKEN}`"))?;
 
     Ok(())

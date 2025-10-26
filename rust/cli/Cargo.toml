@@ -9,6 +9,7 @@ description = "CLI for managing Firezone installations"
 anyhow = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 rpassword = { workspace = true }
+secrecy = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 nix = { workspace = true, features = ["user"] }
