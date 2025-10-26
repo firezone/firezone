@@ -244,7 +244,6 @@ RUN cd apps/web \
 
 # Tailwind needs assets and app directories to look for used classes,
 # so we can't optimize further at this stage
-COPY priv priv
 COPY apps apps
 
 # Install pipeline and compile assets for Web app
