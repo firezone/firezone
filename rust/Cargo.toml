@@ -139,6 +139,7 @@ reqwest = { version = "0.12.23", default-features = false }
 resolv-conf = "0.7.5"
 ringbuffer = "0.16.0"
 roxmltree = "0.20"
+rpassword = "7.4.0"
 rtnetlink = { version = "0.17.0", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.31", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
