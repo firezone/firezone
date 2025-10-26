@@ -650,7 +650,7 @@ defmodule Web.FormComponents do
   def button(%{href: _} = assigns) do
     ~H"""
     <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} href={@href} {@rest}>
-      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
+      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
     </.link>
     """
@@ -659,7 +659,7 @@ defmodule Web.FormComponents do
   def button(%{navigate: _} = assigns) do
     ~H"""
     <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} navigate={@navigate} {@rest}>
-      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
+      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
     </.link>
     """
@@ -668,7 +668,7 @@ defmodule Web.FormComponents do
   def button(%{patch: _} = assigns) do
     ~H"""
     <.link class={button_style(@style) ++ button_size(@size) ++ [@class]} patch={@patch} {@rest}>
-      <.icon :if={@icon} name={@icon} class="h-3.5 w-3.5 mr-2" />
+      <.icon :if={@icon} name={@icon} class={icon_size(@size)} />
       {render_slot(@inner_block)}
     </.link>
     """

@@ -238,7 +238,110 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
       <:title>Add Authentication Provider</:title>
       <:body>
         <p>Select an authentication provider type to add:</p>
-        {# TODO: Add provider selection UI }
+        <form>
+          <ul class="grid w-full gap-6 grid-cols-1">
+            <li>
+              <.input
+                id="provider-type--google"
+                type="radio_button_group"
+                name="provider_type"
+                value="google"
+                checked={false}
+                required
+              />
+              <label for="provider-type--google" class={~w[
+                component bg-white rounded p-4 flex items-center
+                cursor-pointer hover:bg-neutral-50
+                border border-neutral-300 hover:border-neutral-900
+              ]}>
+                <span class="w-1/3 flex items-center">
+                  <.provider_icon type={:google} class="w-10 h-10 inline-block mr-2" />
+                  <span class="font-medium">
+                    Google
+                  </span>
+                </span>
+                <span class="w-2/3">
+                  Authenticate users against a Google Workspace account.
+                </span>
+              </label>
+            </li>
+            <li>
+              <.input
+                id="provider-type--entra"
+                type="radio_button_group"
+                name="provider_type"
+                value="entra"
+                checked={false}
+                required
+              />
+              <label for="provider-type--entra" class={~w[
+                component bg-white rounded p-4 flex items-center
+                cursor-pointer hover:bg-neutral-50
+                border border-neutral-300 hover:border-neutral-900
+              ]}>
+                <span class="w-1/3 flex items-center">
+                  <.provider_icon type={:entra} class="w-10 h-10 inline-block mr-2" />
+                  <span class="font-medium">
+                    Entra
+                  </span>
+                </span>
+                <span class="w-2/3">
+                  Authenticate users against a Microsoft Entra account.
+                </span>
+              </label>
+            </li>
+            <li>
+              <.input
+                id="provider-type--okta"
+                type="radio_button_group"
+                name="provider_type"
+                value="okta"
+                checked={false}
+                required
+              />
+              <label for="provider-type--okta" class={~w[
+                component bg-white rounded p-4 flex items-center
+                cursor-pointer hover:bg-neutral-50
+                border border-neutral-300 hover:border-neutral-900
+              ]}>
+                <span class="w-1/3 flex items-center">
+                  <.provider_icon type={:okta} class="w-10 h-10 inline-block mr-2" />
+                  <span class="font-medium">
+                    Okta
+                  </span>
+                </span>
+                <span class="w-2/3">
+                  Authenticate users against an Okta account.
+                </span>
+              </label>
+            </li>
+            <li>
+              <.input
+                id="provider-type--oidc"
+                type="radio_button_group"
+                name="provider_type"
+                value="oidc"
+                checked={false}
+                required
+              />
+              <label for="provider-type--oidc" class={~w[
+                component bg-white rounded p-4 flex items-center
+                cursor-pointer hover:bg-neutral-50
+                border border-neutral-300 hover:border-neutral-900
+              ]}>
+                <span class="w-1/3 flex items-center">
+                  <.provider_icon type={:oidc} class="w-10 h-10 inline-block mr-2" />
+                  <span class="font-medium">
+                    OpenID Connect
+                  </span>
+                </span>
+                <span class="w-2/3">
+                  Authenticate users against an OpenID Connect compliant identity provider.
+                </span>
+              </label>
+            </li>
+          </ul>
+        </form>
       </:body>
     </.modal>
 
@@ -299,7 +402,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     ~H"""
     <div class="flex items-center justify-between py-2 border-b">
       <span>{@provider.name}</span>
-      <.button size="xs" patch={@edit_path}>
+      <.button size="xs" icon="hero-pencil" patch={@edit_path}>
         Edit
       </.button>
     </div>
@@ -310,7 +413,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     ~H"""
     <div class="flex items-center justify-between py-2 border-b">
       <span>{@directory.name}</span>
-      <.button size="xs" patch={@edit_path}>
+      <.button size="xs" icon="hero-pencil" patch={@edit_path}>
         Edit
       </.button>
     </div>
