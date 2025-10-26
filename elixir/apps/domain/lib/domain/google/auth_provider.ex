@@ -12,7 +12,7 @@ defmodule Domain.Google.AuthProvider do
       foreign_key: :id,
       define_field: false
 
-    field :issuer, :string
+    field :issuer, :string, default: "https://accounts.google.com"
 
     field :context, Ecto.Enum,
       values: ~w[clients_and_portal clients_only portal_only]a,
@@ -22,7 +22,7 @@ defmodule Domain.Google.AuthProvider do
     field :verified_at, :utc_datetime_usec
     field :assigned_default_at, :utc_datetime_usec
 
-    field :name, :string
+    field :name, :string, default: "Google"
     field :hosted_domain, :string
 
     subject_trail(~w[actor identity system]a)

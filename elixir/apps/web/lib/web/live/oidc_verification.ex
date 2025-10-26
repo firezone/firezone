@@ -20,6 +20,9 @@ defmodule Web.OIDCVerification do
           {:oidc_verify, self(), verification_code, verification_token}
         )
 
+        # Set a 5-second timeout for verification
+        Process.send_after(self(), :timeout, 5_000)
+
         {:ok, socket}
       else
         {:ok, assign(socket, error: "Missing verification information")}
@@ -37,6 +40,15 @@ defmodule Web.OIDCVerification do
     {:noreply, assign(socket, error: inspect(reason))}
   end
 
+  def handle_info(:timeout, socket) do
+    # Only show timeout error if not already verified or errored
+    if !socket.assigns.verified && !socket.assigns.error do
+      {:noreply, assign(socket, error: "Verification timed out. Please try again.")}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def render(assigns) do
     ~H"""
     <!DOCTYPE html>
@@ -51,42 +63,33 @@ defmodule Web.OIDCVerification do
         <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
         </script>
       </head>
-      <body class="h-full bg-gray-50">
-        <.flash_group flash={@flash} />
-        <div class="flex min-h-full items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-          <div class="w-full max-w-md space-y-8">
-            <div class="text-center">
+      <body class="h-screen bg-gray-50">
+        <div class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
+          <div class="w-full max-w-md">
+            <div class="text-center space-y-4">
               <%= if @verified do %>
-                <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100">
-                  <svg
-                    class="h-6 w-6 text-green-600"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke-width="1.5"
-                    stroke="currentColor"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                  </svg>
+                <div class="mx-auto flex h-32 w-32 items-center justify-center">
+                  <.icon name="hero-check-circle" class="h-32 w-32 text-green-600" />
                 </div>
-                <h2 class="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+                <h2 class="text-4xl font-bold tracking-tight text-gray-900">
                   Provider Verified
                 </h2>
-                <p class="mt-2 text-sm text-gray-600">
+                <p class="mt-2 text-base text-gray-600">
                   You can close this window and return to the migration wizard.
                 </p>
               <% else %>
                 <%= if @error do %>
-                  <h2 class="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+                  <h2 class="text-4xl font-bold tracking-tight text-gray-900">
                     Verification Failed
                   </h2>
-                  <p class="mt-2 text-sm text-red-600">
+                  <p class="mt-2 text-base text-red-600">
                     {@error}
                   </p>
                 <% else %>
-                  <h2 class="mt-6 text-3xl font-bold tracking-tight text-gray-900">
+                  <h2 class="text-4xl font-bold tracking-tight text-gray-900">
                     Verifying Provider...
                   </h2>
-                  <p class="mt-2 text-sm text-gray-600">
+                  <p class="mt-2 text-base text-gray-600">
                     Please wait while we verify your identity provider.
                   </p>
                 <% end %>

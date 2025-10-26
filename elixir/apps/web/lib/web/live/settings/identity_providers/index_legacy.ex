@@ -211,45 +211,56 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
               <%= if Enum.empty?(@legacy_providers) do %>
                 <p class="text-sm text-gray-500">No OIDC or Okta providers found.</p>
               <% else %>
-                <ul class="space-y-2">
+                <div class="space-y-4">
                   <%= for provider <- @legacy_providers do %>
-                    <li class="flex items-center justify-between p-3 bg-gray-50 rounded">
-                      <div class="flex items-center space-x-3">
-                        <span class="text-sm font-medium">{provider.name}</span>
-                        <span class="text-xs text-gray-500">({provider.adapter})</span>
+                    <div class="p-4 border-2 border-accent-200 bg-accent-50 rounded-lg">
+                      <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                          <h3 class="text-base font-semibold text-gray-900">{provider.name}</h3>
+                          <p class="mt-1 text-sm text-gray-600">
+                            Verify your {provider.adapter} provider configuration by signing in.
+                          </p>
+                        </div>
+                        <div class="ml-4">
+                          <%= case Map.get(@provider_verifications, provider.id) do %>
+                            <% :verified -> %>
+                              <div class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-md">
+                                <.icon name="hero-check-circle" class="h-5 w-5 mr-2" />
+                                <span class="font-medium">Verified</span>
+                              </div>
+                            <% :failed -> %>
+                              <div class="flex items-center space-x-2">
+                                <span class="text-sm text-red-600 font-medium">Verification Failed</span>
+                                <%= if verification_url = Map.get(@provider_verification_urls, provider.id) do %>
+                                  <.button
+                                    style="primary"
+                                    icon="hero-arrow-top-right-on-square"
+                                    navigate={verification_url}
+                                    target="_blank"
+                                  >
+                                    Retry
+                                  </.button>
+                                <% end %>
+                              </div>
+                            <% _ -> %>
+                              <%= if verification_url = Map.get(@provider_verification_urls, provider.id) do %>
+                                <.button
+                                  style="primary"
+                                  icon="hero-arrow-top-right-on-square"
+                                  navigate={verification_url}
+                                  target="_blank"
+                                >
+                                  Verify Now
+                                </.button>
+                              <% else %>
+                                <span class="text-sm text-red-600 font-medium">Configuration Error</span>
+                              <% end %>
+                          <% end %>
+                        </div>
                       </div>
-                      <div class="flex items-center space-x-2">
-                        <%= case Map.get(@provider_verifications, provider.id) do %>
-                          <% :verified -> %>
-                            <span class="text-green-600">
-                              <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 20 20">
-                                <path
-                                  fill-rule="evenodd"
-                                  d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                                  clip-rule="evenodd"
-                                />
-                              </svg>
-                            </span>
-                          <% :failed -> %>
-                            <span class="text-red-600 text-xs">Failed</span>
-                            <%= if verification_url = Map.get(@provider_verification_urls, provider.id) do %>
-                              <.link href={verification_url} target="_blank" class={[link_style()]}>
-                                Retry
-                              </.link>
-                            <% end %>
-                          <% _ -> %>
-                            <%= if verification_url = Map.get(@provider_verification_urls, provider.id) do %>
-                              <.link href={verification_url} target="_blank" class={[link_style()]}>
-                                Verify
-                              </.link>
-                            <% else %>
-                              <span class="text-xs text-red-600">Config Error</span>
-                            <% end %>
-                        <% end %>
-                      </div>
-                    </li>
+                    </div>
                   <% end %>
-                </ul>
+                </div>
               <% end %>
             </div>
           <% 3 -> %>
@@ -394,35 +405,22 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
       config = Map.get(socket.assigns.provider_configs, provider.id)
       callback_url = url(~p"/auth/oidc/callback")
 
-      # Exchange authorization code for tokens using PKCE
-      case Web.OIDC.exchange_code_with_config(config, code, code_verifier, callback_url) do
-        {:ok, tokens} ->
-          case Web.OIDC.verify_token_with_config(config, tokens["id_token"]) do
-            {:ok, claims} ->
-              issuer = Map.get(claims, "iss")
-              Logger.info("Provider #{provider.id} verified with issuer: #{issuer}")
+      case Web.OIDC.verify_callback(config, code, code_verifier, callback_url) do
+        {:ok, claims} ->
+          issuer = Map.get(claims, "iss")
+          Logger.info("Provider #{provider.id} verified with issuer: #{issuer}")
 
-              # Mark provider as verified
-              provider_verifications =
-                Map.put(socket.assigns.provider_verifications, provider.id, :verified)
+          # Mark provider as verified
+          provider_verifications =
+            Map.put(socket.assigns.provider_verifications, provider.id, :verified)
 
-              # Send success to the verification LiveView
-              send(pid, :success)
+          # Send success to the verification LiveView
+          send(pid, :success)
 
-              {:noreply, assign(socket, provider_verifications: provider_verifications)}
-
-            {:error, reason} ->
-              Logger.warning("Failed to verify ID token: #{inspect(reason)}")
-              send(pid, {:error, reason})
-
-              provider_verifications =
-                Map.put(socket.assigns.provider_verifications, provider.id, :failed)
-
-              {:noreply, assign(socket, provider_verifications: provider_verifications)}
-          end
+          {:noreply, assign(socket, provider_verifications: provider_verifications)}
 
         {:error, reason} ->
-          Logger.warning("Failed to fetch tokens: #{inspect(reason)}")
+          Logger.warning("Failed to verify provider #{provider.id}: #{inspect(reason)}")
           send(pid, {:error, reason})
 
           provider_verifications =
@@ -517,43 +515,23 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
       Enum.reduce(providers, {%{}, %{}, %{}}, fn provider,
                                                  {urls_acc, verifiers_acc, configs_acc} ->
         token = Map.get(provider_tokens, provider.id)
-        state = "oidc-verification:#{token}"
-        verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-        challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
 
-        config = %{
-          client_id: get_in(provider.adapter_config, ["client_id"]),
-          client_secret: get_in(provider.adapter_config, ["client_secret"]),
-          discovery_document_uri: get_in(provider.adapter_config, ["discovery_document_uri"]),
-          redirect_uri: callback_url,
-          response_type: "code",
-          scope: "openid email profile"
-        }
+        verification = Web.OIDC.setup_legacy_provider_verification(provider, token, callback_url)
 
-        oidc_params = %{
-          state: state,
-          code_challenge_method: :S256,
-          code_challenge: challenge
-        }
+        if verification.url do
+          {
+            Map.put(urls_acc, provider.id, verification.url),
+            Map.put(verifiers_acc, token, verification.verifier),
+            Map.put(configs_acc, provider.id, verification.config)
+          }
+        else
+          Logger.warning("Failed to build auth URI for provider #{provider.id}")
 
-        case OpenIDConnect.authorization_uri(config, callback_url, oidc_params) do
-          {:ok, uri} ->
-            {
-              Map.put(urls_acc, provider.id, uri),
-              Map.put(verifiers_acc, token, verifier),
-              Map.put(configs_acc, provider.id, config)
-            }
-
-          {:error, reason} ->
-            Logger.warning(
-              "Failed to build auth URI for provider #{provider.id}: #{inspect(reason)}"
-            )
-
-            {
-              Map.put(urls_acc, provider.id, nil),
-              verifiers_acc,
-              configs_acc
-            }
+          {
+            Map.put(urls_acc, provider.id, nil),
+            verifiers_acc,
+            configs_acc
+          }
         end
       end)
 

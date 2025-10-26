@@ -435,6 +435,10 @@ defmodule Web.FormComponents do
 
   attr :show, :boolean, default: false, doc: "Whether the modal is shown by default"
 
+  attr :phx_submit, :string,
+    default: nil,
+    doc: "The phx-submit event to broadcast when the form is submitted"
+
   slot :title, doc: "The title of the modal"
   slot :body, required: true, doc: "The content of the modal"
   slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
@@ -455,7 +459,7 @@ defmodule Web.FormComponents do
       phx-on-close={@on_close}
       data-show={@show}
     >
-      <form method="dialog" class="flex items-center justify-center">
+      <form method="dialog" phx-submit={@phx_submit} class="flex items-center justify-center">
         <div class="relative bg-white rounded-lg shadow w-full max-w-2xl">
           <div
             :if={@title != []}
@@ -540,7 +544,7 @@ defmodule Web.FormComponents do
         "overflow-y-auto overflow-x-hidden"
       ]}
     >
-      <form method="dialog" class="flex items-center justify-center">
+      <form method="dialog" phx-submit={@phx_submit} class="flex items-center justify-center">
         <div class="relative bg-white rounded-lg shadow max-w-2xl">
           <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
             <h3 class="text-xl font-semibold text-neutral-900">

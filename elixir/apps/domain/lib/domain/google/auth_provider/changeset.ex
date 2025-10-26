@@ -10,6 +10,11 @@ defmodule Domain.Google.AuthProvider.Changeset do
   @required_fields ~w[name context issuer]a
   @fields @required_fields ++ ~w[disabled_at hosted_domain verified_at assigned_default_at]a
 
+  def new do
+    %Google.AuthProvider{}
+    |> cast(%{}, @fields)
+  end
+
   def create(
         %Google.AuthProvider{} = auth_provider \\ %Google.AuthProvider{},
         attrs,
