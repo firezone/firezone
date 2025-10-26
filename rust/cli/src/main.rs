@@ -25,21 +25,18 @@ fn main() -> Result<()> {
                 );
             }
 
-            let mut token = String::with_capacity(512); // Our tokens are ~270 characters, grab the next power of 2.
-
-            loop {
+            let token = loop {
                 println!("Paste the token from the portal's deploy page:");
 
-                let num_bytes = std::io::stdin()
-                    .read_line(&mut token)
-                    .context("Failed to read token from stdin")?;
+                let token =
+                    rpassword::read_password().context("Failed to read token from stdin")?;
 
-                if num_bytes == 0 || token.trim().is_empty() {
+                if token.trim().is_empty() {
                     continue;
                 }
 
-                break;
-            }
+                break token;
+            };
 
             install_firezone_gateway_token(token)?;
 
