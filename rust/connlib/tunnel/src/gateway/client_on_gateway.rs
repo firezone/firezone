@@ -515,7 +515,16 @@ impl ClientOnGateway {
 
         let rid = self.classify_resource(packet.destination(), packet.destination_protocol())?;
 
-        flow_tracker::inbound_wg::record_resource(rid);
+        let Some(resource) = self.resources.get(&rid) else {
+            tracing::warn!(%rid, "Internal state mismatch: No resource for ID");
+            return Ok(());
+        };
+
+        flow_tracker::inbound_wg::record_resource(
+            rid,
+            resource.name(),
+            resource.address(packet.destination()),
+        );
 
         Ok(())
     }
@@ -564,11 +573,13 @@ impl ClientOnGateway {
 #[derive(Debug)]
 enum ResourceOnGateway {
     Cidr {
+        name: String,
         network: IpNetwork,
         filters: Filters,
         expires_at: Option<DateTime<Utc>>,
     },
     Dns {
+        name: String,
         address: String,
         domains: BTreeMap<DomainName, BTreeSet<IpAddr>>,
         filters: Filters,
@@ -583,12 +594,14 @@ impl ResourceOnGateway {
     fn new(resource: ResourceDescription, expires_at: Option<DateTime<Utc>>) -> Self {
         match resource {
             ResourceDescription::Dns(r) => ResourceOnGateway::Dns {
+                name: r.name,
                 domains: BTreeMap::default(),
                 filters: r.filters,
                 address: r.address,
                 expires_at,
             },
             ResourceDescription::Cidr(r) => ResourceOnGateway::Cidr {
+                name: r.name,
                 network: r.address,
                 filters: r.filters,
                 expires_at,
@@ -667,6 +680,25 @@ impl ResourceOnGateway {
 
     fn is_internet_resource(&self) -> bool {
         matches!(self, ResourceOnGateway::Internet { .. })
+    }
+
+    fn name(&self) -> String {
+        match self {
+            ResourceOnGateway::Cidr { name, .. } => name.clone(),
+            ResourceOnGateway::Dns { name, .. } => name.clone(),
+            ResourceOnGateway::Internet { .. } => "Internet".to_owned(),
+        }
+    }
+
+    fn address(&self, dst: IpAddr) -> String {
+        match self {
+            ResourceOnGateway::Cidr { network, .. } => network.to_string(),
+            ResourceOnGateway::Dns { address, .. } => address.clone(),
+            ResourceOnGateway::Internet { .. } => match dst {
+                IpAddr::V4(_) => "0.0.0.0/0".to_owned(),
+                IpAddr::V6(_) => "::/0".to_owned(),
+            },
+        }
     }
 }
 
