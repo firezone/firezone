@@ -210,6 +210,14 @@ pub struct Client {
     pub preshared_key: SecretKey,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
+    pub client_version: String,
+    pub device_serial: String,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Subject {
+    pub name: String,
+    pub email: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -220,6 +228,7 @@ pub struct AuthorizeFlow {
     pub resource: ResourceDescription,
     pub gateway_ice_credentials: IceCredentials,
     pub client: Client,
+    pub subject: Subject,
     pub client_ice_credentials: IceCredentials,
 
     #[serde(with = "ts_seconds_option")]
