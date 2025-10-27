@@ -7051,7 +7051,6 @@ dependencies = [
  "once_cell",
  "rand 0.8.5",
  "ringbuffer",
- "secrecy",
  "sha2",
  "str0m",
  "stun_codec",
