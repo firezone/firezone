@@ -31,7 +31,7 @@ defmodule Web.Sites.NewToken do
     {:noreply,
      assign(socket,
        uri: uri,
-       selected_tab: Map.get(params, "method", "systemd-instructions")
+       selected_tab: Map.get(params, "method", "debian-instructions")
      )}
   end
 
@@ -68,6 +68,61 @@ defmodule Web.Sites.NewToken do
           </div>
 
           <.tabs :if={@env} id="deployment-instructions">
+            <:tab
+              id="debian-instructions"
+              icon="hero-command-line"
+              label="Debian / Ubuntu"
+              phx_click="tab_selected"
+              selected={@selected_tab == "debian-instructions"}
+            >
+              <p class="p-6">
+                Step 1: Add the Firezone package repository.
+              </p>
+
+              <.code_block
+                id="code-sample-debian1"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= debian_command_apt_repository() %></.code_block>
+
+              <p class="p-6">
+                Step 2: Install the Gateway:
+              </p>
+
+              <.code_block
+                id="code-sample-debian2"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= debian_command_install() %></.code_block>
+
+              <p class="p-6">
+                Step 3: Copy the token:
+              </p>
+
+              <.code_block
+                id="code-sample-debian3"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= token(@env) %></.code_block>
+
+              <p class="p-6">
+                Step 4: Configure the token:
+              </p>
+
+              <.code_block
+                id="code-sample-debian4"
+                class="w-full text-xs whitespace-pre-line"
+                phx-no-format
+                phx-update="ignore"
+              ><%= debian_command_authenticate() %></.code_block>
+
+              <p class="p-6">
+                Step 5: You are now ready to manage the Gateway using the <code>firezone</code> CLI.
+              </p>
+            </:tab>
             <:tab
               id="systemd-instructions"
               icon="hero-command-line"
@@ -253,6 +308,27 @@ defmodule Web.Sites.NewToken do
     {"FIREZONE_TOKEN", value} = List.keyfind(env, "FIREZONE_TOKEN", 0)
 
     value
+  end
+
+  defp debian_command_apt_repository do
+    """
+    mkdir --parents /etc/apt/keyrings
+    wget https://artifacts.firezone.dev/apt/key.gpg -O /etc/apt/keyrings/firezone.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" > /etc/apt/sources.list.d/firezone.list
+    """
+  end
+
+  defp debian_command_install do
+    """
+    sudo apt update
+    sudo apt install firezone-gateway
+    """
+  end
+
+  defp debian_command_authenticate do
+    """
+    sudo firezone gateway authenticate
+    """
   end
 
   defp docker_command(env) do
