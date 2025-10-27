@@ -6,6 +6,7 @@ mod resource;
 
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 use crate::client::pending_tun_update::PendingTunUpdate;
+use boringtun::x25519;
 #[cfg(all(feature = "proptest", test))]
 pub(crate) use resource::DnsResource;
 pub(crate) use resource::{CidrResource, InternetResource, Resource};
@@ -14,6 +15,7 @@ use dns_resource_nat::DnsResourceNat;
 use dns_types::ResponseCode;
 use firezone_telemetry::{analytics, feature_flags};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
+use secrecy::ExposeSecret as _;
 
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
@@ -37,7 +39,6 @@ use itertools::Itertools;
 
 use crate::ClientEvent;
 use lru::LruCache;
-use secrecy::{ExposeSecret as _, Secret};
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
@@ -705,7 +706,7 @@ impl ClientState {
         match self.node.upsert_connection(
             gid,
             gateway_key,
-            Secret::new(preshared_key.expose_secret().0),
+            x25519::StaticSecret::from(preshared_key.expose_secret().0),
             snownet::Credentials {
                 username: client_ice.username,
                 password: client_ice.password,
