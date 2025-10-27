@@ -115,40 +115,39 @@ jobs:
 
   required-check:
     name: required-check
-    needs: planner
+    needs:
+      [
+        kotlin,
+        swift,
+        elixir,
+        rust,
+        tauri,
+        static-analysis,
+        codeql,
+        control-plane,
+        data-plane,
+        data-plane-perf,
+        integration-tests,
+        compatibility-tests,
+        perf-tests,
+      ]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Wait for all jobs to complete
-        timeout-minutes: 60
+      - name: Check if all jobs are successful
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
-          while true; do
-            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not)))')
+          jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not)))')
+          failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
 
-            total_jobs=$(echo "$jobs_json" | jq 'length')
-            failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
-            completed_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed")] | length')
-
-            if [ "$failed_jobs" -gt 0 ]; then
-              echo "At least one job has failed."
-              exit 1
-            fi
-
-            echo "Completed: $completed_jobs/$total_jobs"
-
-            if [ "$completed_jobs" -eq "$total_jobs" ]; then
-              break
-            fi
-
-            echo "Jobs not yet completed:"
-            echo "$jobs_json" | jq -r '.[] | select(.status != "completed") | "- " + .name + " (Status: " + .status + ")" '
-
-            sleep 60
-          done
+          if [ "$failed_jobs" -gt 0 ]; then
+            echo "At least one job has failed."
+            exit 1
+          fi
 
   kotlin:
     needs: planner
