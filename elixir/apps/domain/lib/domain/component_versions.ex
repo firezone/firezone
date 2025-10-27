@@ -58,6 +58,16 @@ defmodule Domain.ComponentVersions do
     end
   end
 
+  def get_component_type(%Client{last_seen_user_agent: "Mac OS" <> _rest}), do: :apple
+  def get_component_type(%Client{last_seen_user_agent: "iOS" <> _rest}), do: :apple
+
+  def get_component_type(%Client{last_seen_user_agent: "Android" <> _rest}),
+    do: :android
+
+  def get_component_type(%Client{actor: %Actor{type: :service_account}}), do: :headless
+
+  def get_component_type(_), do: :gui
+
   defp fetch_config! do
     Domain.Config.fetch_env!(:domain, __MODULE__)
   end
@@ -98,14 +108,4 @@ defmodule Domain.ComponentVersions do
         |> Keyword.fetch!(:versions)
     end
   end
-
-  defp get_component_type(%Client{last_seen_user_agent: "Mac OS" <> _rest}), do: :apple
-  defp get_component_type(%Client{last_seen_user_agent: "iOS" <> _rest}), do: :apple
-
-  defp get_component_type(%Client{last_seen_user_agent: "Android" <> _rest}),
-    do: :android
-
-  defp get_component_type(%Client{actor: %Actor{type: :service_account}}), do: :headless
-
-  defp get_component_type(_), do: :gui
 end
