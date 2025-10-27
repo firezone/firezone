@@ -22,20 +22,29 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
     {:ok,
      assign(socket,
-       provider_type: nil,
        auth_providers: auth_providers,
        directories: directories,
-       provider: nil,
-       directory: nil,
+
+       # Add Auth Provider
+       provider_type: nil,
        create_step: 1,
        verification_token: nil,
        verification_url: nil,
        code_verifier: nil,
        provider_config: nil,
-       verified_at: nil,
        form: nil,
+       verified_at: nil,
+       portal_only?: false,
+       issuer: nil,
+       hosted_domain: nil,
        verification_loading: false,
-       verification_error: nil
+       verification_error: nil,
+
+       # Edit Auth Provider
+       provider: nil,
+
+       # Edit Directory
+       directory: nil
      )}
   end
 
@@ -160,16 +169,12 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
       confirm_type={if @create_step == 2, do: "submit", else: "button"}
       confirm_disabled={
         (@create_step == 1 and is_nil(@provider_type)) or
-          (@create_step == 2 and @provider_type in ["oidc", "google", "entra", "okta"] and
-             is_nil(@verified_at))
+          (@create_step == 2 and is_nil(@verified_at))
       }
+      for={@form}
     >
       <:title>
-        <%= if @create_step == 1 do %>
-          Add Authentication Provider
-        <% else %>
-          Configure {String.capitalize(@provider_type || "Provider")} Provider
-        <% end %>
+        {modal_title(@create_step, @provider_type)}
       </:title>
       <:body>
         <%= if @create_step == 1 do %>
@@ -249,95 +254,73 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
             type={@provider_type}
             form={@form}
             verified_at={@verified_at}
+            portal_only?={@portal_only?}
           />
-          <%= if @provider_type in ["oidc", "google", "entra", "okta"] do %>
-            <div class="mt-6 p-4 border-2 border-accent-200 bg-accent-50 rounded-lg">
-              <%= if @verification_error do %>
-                <.flash kind={:error} class="mb-4">
-                  {@verification_error}
-                </.flash>
-              <% end %>
+          <div class="mt-6 p-4 border-2 border-accent-200 bg-accent-50 rounded-lg">
+            <%= if @verification_error do %>
+              <.flash kind={:error} class="mb-4">
+                {@verification_error}
+              </.flash>
+            <% end %>
 
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <h3 class="text-base font-semibold text-gray-900">Provider Verification</h3>
-                  <p class="mt-1 text-sm text-gray-600">
-                    Verify your provider configuration by signing in with your {String.capitalize(
-                      @provider_type
-                    )} account.
-                  </p>
-                </div>
-                <div class="ml-4">
-                  <%= cond do %>
-                    <% @verification_loading -> %>
-                      <.button style="primary" disabled>
-                        <.icon name="hero-arrow-path" class="h-5 w-5 mr-2 animate-spin" /> Loading...
-                      </.button>
-                    <% @verified_at -> %>
-                      <div class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-md">
-                        <.icon name="hero-check-circle" class="h-5 w-5 mr-2" />
-                        <span class="font-medium">Verified</span>
-                      </div>
-                    <% @verification_url -> %>
-                      <.button
-                        style="primary"
-                        icon="hero-arrow-top-right-on-square"
-                        href={@verification_url}
-                        target="_blank"
-                      >
-                        Verify Now
-                      </.button>
-                    <% true -> %>
-                      <span class="text-sm text-red-600 font-medium">Configuration Error</span>
-                  <% end %>
-                </div>
+            <div class="flex items-center justify-between">
+              <div class="flex-1">
+                <h3 class="text-base font-semibold text-gray-900">Provider Verification</h3>
+                <p class="mt-1 text-sm text-gray-600">
+                  Verify your provider configuration by signing in with your {capitalize_provider_type(
+                    @provider_type
+                  )} account.
+                </p>
               </div>
+              <div class="ml-4">
+                <.verification_status_badge
+                  verification_loading={@verification_loading}
+                  verified_at={@verified_at}
+                  verification_url={@verification_url}
+                />
+              </div>
+            </div>
 
-              <%= if @provider_type == "google" do %>
-                <div class="mt-4 pt-4 border-t border-accent-300 space-y-3">
+            <%= if @provider_type == "google" do %>
+              <div class="mt-4 pt-4 border-t border-accent-300 space-y-3">
+                <div>
                   <div class="flex justify-between items-center">
                     <label class="text-sm font-medium text-neutral-700">Issuer</label>
                     <p class="text-base font-semibold text-neutral-900">
-                      <%= if @form_fields[:issuer] in [nil, ""] do %>
-                        {if @verified_at, do: "None", else: "Awaiting verification..."}
-                      <% else %>
-                        {@form_fields[:issuer]}
-                      <% end %>
+                      {verification_field_display(@issuer, @verified_at != nil)}
                     </p>
                   </div>
+                  <%= if @form && @form[:issuer].errors != [] do %>
+                    <p class="mt-1 text-sm text-red-600">
+                      {@form[:issuer].errors |> Enum.map(&elem(&1, 0)) |> Enum.join(", ")}
+                    </p>
+                  <% end %>
+                </div>
+                <div>
                   <div class="flex justify-between items-center">
                     <label class="text-sm font-medium text-neutral-700">Hosted Domain</label>
                     <div class="text-right">
                       <p class="text-base font-semibold text-neutral-900">
-                        <%= if @form_fields[:hosted_domain] in [nil, ""] do %>
-                          {if @verified_at, do: "None", else: "Awaiting verification..."}
-                        <% else %>
-                          {@form_fields[:hosted_domain]}
-                        <% end %>
+                        {verification_field_display(@hosted_domain, @verified_at != nil)}
                       </p>
-                      <% extracted_errors = extract_verification_errors(@form_errors) %>
-                      <%= if extracted_errors[:hosted_domain] do %>
-                        <p class="mt-1 text-sm text-red-600">
-                          {extracted_errors[:hosted_domain]}
-                        </p>
-                      <% end %>
                     </div>
                   </div>
+                  <%= if @form && @form[:hosted_domain].errors != [] do %>
+                    <p class="mt-1 text-sm text-red-600">
+                      {@form[:hosted_domain].errors |> Enum.map(&elem(&1, 0)) |> Enum.join(", ")}
+                    </p>
+                  <% end %>
                 </div>
-              <% end %>
-            </div>
-          <% end %>
+              </div>
+            <% end %>
+          </div>
         <% end %>
       </:body>
       <:back_button :if={@create_step == 2}>
         Back
       </:back_button>
       <:confirm_button>
-        <%= if @create_step == 1 do %>
-          Next
-        <% else %>
-          Create
-        <% end %>
+        {modal_confirm_button_text(@create_step)}
       </:confirm_button>
     </.modal>
 
@@ -481,14 +464,43 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   end
 
   def handle_event("close_modal", _params, socket) do
-    {:noreply, push_patch(socket, to: ~p"/#{socket.assigns.account}/settings/identity_providers")}
+    socket =
+      socket
+      |> assign(
+        provider_type: nil,
+        form: nil,
+        create_step: 1,
+        verification_token: nil,
+        verification_url: nil,
+        code_verifier: nil,
+        provider_config: nil,
+        verified_at: nil,
+        portal_only?: false,
+        issuer: nil,
+        hosted_domain: nil,
+        verification_loading: false,
+        verification_error: nil
+      )
+      |> push_patch(to: ~p"/#{socket.assigns.account}/settings/identity_providers")
+
+    {:noreply, socket}
   end
 
   def handle_event("select_provider_type", %{"provider_type" => "google"}, socket) do
     changeset = Google.new_auth_provider()
     form = to_form(changeset)
 
-    socket = assign(socket, provider_type: "google", form: form)
+    # Initialize issuer with the default value from the schema
+    default_issuer = changeset.data.issuer
+
+    socket =
+      assign(socket,
+        provider_type: "google",
+        form: form,
+        portal_only?: false,
+        issuer: default_issuer
+      )
+
     {:noreply, socket}
   end
 
@@ -498,32 +510,21 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   end
 
   def handle_event("update_context", %{"context" => context}, socket) do
-    # Update the form_fields to track the current context for UI state
-    form_fields = Map.put(socket.assigns.form_fields, :context, context)
-    {:noreply, assign(socket, form_fields: form_fields)}
+    portal_only? = context == "portal_only"
+    {:noreply, assign(socket, portal_only?: portal_only?)}
   end
 
   def handle_event("next_auth_provider", _params, socket) do
-    # Move from step 1 (selection) to step 2 (form)
-    # For OIDC providers, setup verification asynchronously
-    if socket.assigns.provider_type in ["oidc", "google", "entra", "okta"] do
-      # Set loading state immediately
-      send(self(), :setup_verification)
-      {:noreply, assign(socket, verification_loading: true, create_step: 2)}
-    else
-      {:noreply, assign(socket, create_step: 2)}
-    end
+    send(self(), :setup_verification)
+    {:noreply, assign(socket, verification_loading: true, create_step: 2)}
   end
 
   def handle_event("back_auth_provider", _params, socket) do
-    # Go back from step 2 (form) to step 1 (selection)
     {:noreply, assign(socket, create_step: 1, provider_type: nil, verified_at: nil)}
   end
 
   def handle_event("create_auth_provider", params, socket) do
-    # Create the provider (only enabled after verification for OIDC)
-    socket = create_provider(params, socket)
-    {:noreply, socket}
+    {:noreply, create_provider(params, socket)}
   end
 
   defp provider_selection_classes(selected?) do
@@ -533,6 +534,73 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
       selected? && "border-accent-500 bg-accent-50",
       !selected? && "border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50"
     ]
+  end
+
+  # Modal title helpers
+  defp modal_title(step, provider_type) do
+    case step do
+      2 -> "Configure #{capitalize_provider_type(provider_type)} Provider"
+      _ -> "Add Authentication Provider"
+    end
+  end
+
+  defp modal_confirm_button_text(step) do
+    case step do
+      2 -> "Create"
+      _ -> "Next"
+    end
+  end
+
+  # Provider type formatting
+  defp capitalize_provider_type(nil), do: "Provider"
+  defp capitalize_provider_type(provider_type), do: String.capitalize(provider_type)
+
+  # Verification field display helpers
+  defp verification_field_display(value, verified?) do
+    case {value, verified?} do
+      {nil, true} -> "None"
+      {"", true} -> "None"
+      {nil, false} -> "Awaiting verification..."
+      {"", false} -> "Awaiting verification..."
+      {val, _} -> val
+    end
+  end
+
+  # Verification status badge
+  defp verification_status_badge(assigns) do
+    ~H"""
+    <%= cond do %>
+      <% @verification_loading -> %>
+        <.button style="primary" disabled>
+          <.icon name="hero-arrow-path" class="h-5 w-5 mr-2 animate-spin" /> Loading...
+        </.button>
+      <% @verified_at -> %>
+        <div class="flex items-center text-green-700 bg-green-100 px-4 py-2 rounded-md">
+          <.icon name="hero-check-circle" class="h-5 w-5 mr-2" />
+          <span class="font-medium">Verified</span>
+        </div>
+      <% @verification_url -> %>
+        <.button
+          style="primary"
+          icon="hero-arrow-top-right-on-square"
+          href={@verification_url}
+          target="_blank"
+        >
+          Verify Now
+        </.button>
+      <% true -> %>
+        <span class="text-sm text-red-600 font-medium">Configuration Error</span>
+    <% end %>
+    """
+  end
+
+  # Checkbox helper text for default provider option
+  defp default_provider_helper_text(portal_only?) do
+    if portal_only? do
+      "Portal-only providers cannot be set as default."
+    else
+      "When selected, users signing in from the Firezone client will be taken directly to this provider for authentication."
+    end
   end
 
   defp auth_provider_item(assigns) do
@@ -577,10 +645,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   end
 
   defp auth_provider_form(%{type: "google"} = assigns) do
-    assigns =
-      assigns
-      |> assign(:portal_only?, assigns.form[:context].value == "portal_only")
-      |> assign_new(:verified_at, fn -> nil end)
+    assigns = assign_new(assigns, :verified_at, fn -> nil end)
 
     ~H"""
     <div class="space-y-4">
@@ -612,17 +677,13 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         <.input
           field={@form[:assigned_default_at]}
           type="checkbox"
-          name="default"
           label="Set as default provider"
           disabled={@portal_only?}
+          checked={not is_nil(@form[:assigned_default_at].value)}
           class={@portal_only? && "cursor-not-allowed"}
         />
         <p class="mt-1 text-xs text-gray-500">
-          <%= if @portal_only? do %>
-            Portal-only providers cannot be set as default
-          <% else %>
-            When selected, users signing in from the Firezone client will be taken directly to this provider for authentication.
-          <% end %>
+          {default_provider_helper_text(@portal_only?)}
         </p>
       </div>
     </div>
@@ -647,78 +708,11 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     """
   end
 
-  defp initialize_form_fields("google") do
-    %{
-      name: "Google",
-      context: "clients_and_portal",
-      hosted_domain: nil,
-      issuer: nil,
-      default: false
-    }
-  end
-
-  defp initialize_form_fields("okta") do
-    %{
-      name: "Okta",
-      org_domain: nil,
-      client_id: nil,
-      client_secret: nil
-    }
-  end
-
-  defp initialize_form_fields("entra") do
-    %{
-      name: "Entra",
-      tenant_id: nil
-    }
-  end
-
-  defp initialize_form_fields("oidc") do
-    %{
-      name: "OpenID Connect",
-      client_id: nil,
-      client_secret: nil,
-      discovery_document_uri: nil
-    }
-  end
-
-  defp initialize_form_fields(_), do: %{}
-
-  defp extract_form_errors(nil), do: %{}
-
-  defp extract_form_errors(changeset) do
-    changeset.errors
-    |> Enum.into(%{})
-    |> Map.new(fn {field, {msg, opts}} ->
-      # Handle unique constraint errors with more context
-      case Keyword.get(opts, :constraint) do
-        :unique ->
-          case Keyword.get(opts, :constraint_name) do
-            "google_auth_providers_account_id_issuer_hosted_domain_index" ->
-              {field, "A Google provider with this issuer and hosted domain already exists"}
-
-            _ ->
-              {field, msg}
-          end
-
-        _ ->
-          {field, msg}
-      end
-    end)
-  end
-
-  defp extract_verification_errors(nil), do: %{}
-  defp extract_verification_errors(changeset), do: extract_form_errors(changeset)
-
   defp setup_oidc_verification(socket) do
-    callback_url = url(~p"/auth/oidc/callback")
+    verification = Web.OIDC.setup_verification(socket.assigns.provider_type)
 
-    verification =
-      Web.OIDC.setup_verification(
-        socket.assigns.provider_type,
-        callback_url,
-        connected?: connected?(socket)
-      )
+    # Subscribe to verification PubSub topic if connected
+    Domain.PubSub.subscribe("oidc-verification:#{verification.token}")
 
     assign(socket,
       verification_token: verification.token,
@@ -728,16 +722,18 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     )
   end
 
-  defp create_provider(params, %{assigns: %{provider_type: "google"}} = socket) do
-    is_default = params["default"] == "true"
+  defp create_provider(
+         %{"auth_provider" => attrs},
+         %{assigns: %{provider_type: "google"}} = socket
+       ) do
+    is_default = attrs["assigned_default_at"] == "on"
 
-    attrs = %{
-      name: params["name"],
-      hosted_domain: socket.assigns.form_fields.hosted_domain,
-      issuer: socket.assigns.form_fields.issuer,
-      context: String.to_existing_atom(params["context"]),
-      assigned_default_at: if(is_default, do: DateTime.utc_now(), else: nil)
-    }
+    attrs =
+      attrs
+      |> Map.put("hosted_domain", socket.assigns.hosted_domain)
+      |> Map.put("issuer", socket.assigns.issuer)
+      |> Map.put("verified_at", socket.assigns.verified_at)
+      |> Map.put("assigned_default_at", if(is_default, do: DateTime.utc_now(), else: nil))
 
     case Domain.Google.create_auth_provider(attrs, socket.assigns.subject) do
       {:ok, provider} ->
@@ -746,9 +742,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         |> push_patch(to: ~p"/#{socket.assigns.account}/settings/identity_providers")
 
       {:error, changeset} ->
-        Logger.error("Failed to create provider. Changeset errors: #{inspect(changeset.errors)}")
-        Logger.error("Full changeset: #{inspect(changeset)}")
-        assign(socket, :form_errors, changeset)
+        assign(socket, form: to_form(changeset))
     end
   end
 
@@ -781,28 +775,22 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
       code_verifier = socket.assigns.code_verifier
       config = socket.assigns.provider_config
-      callback_url = url(~p"/auth/oidc/callback")
 
-      case Web.OIDC.verify_callback(config, code, code_verifier, callback_url) do
+      case Web.OIDC.verify_callback(config, code, code_verifier) do
         {:ok, claims} ->
           Logger.info("Provider verified successfully")
           send(pid, :success)
 
-          socket =
-            socket
-            |> assign(verified_at: DateTime.utc_now())
-            |> assign(form_errors: nil)
+          socket = assign(socket, verified_at: DateTime.utc_now())
 
           # Extract provider-specific fields from claims
           socket =
             case socket.assigns.provider_type do
               "google" ->
-                form_fields =
-                  socket.assigns.form_fields
-                  |> Map.put(:hosted_domain, claims["hd"])
-                  |> Map.put(:issuer, claims["iss"])
-
-                assign(socket, form_fields: form_fields)
+                assign(socket,
+                  hosted_domain: claims["hd"],
+                  issuer: claims["iss"]
+                )
 
               _ ->
                 socket

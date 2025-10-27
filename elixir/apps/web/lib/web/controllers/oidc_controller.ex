@@ -70,8 +70,8 @@ defmodule Web.OIDCController do
          {:ok, provider} <- fetch_auth_provider(account, cookie),
          :ok <- validate_context(provider, context_type),
          {:ok, tokens} <-
-           Web.OIDC.exchange_code(provider, code, cookie["verifier"], callback_url()),
-         {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"], callback_url()),
+           Web.OIDC.exchange_code(provider, code, cookie["verifier"]),
+         {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
          {:ok, identity} <- upsert_identity(account, provider, claims, userinfo),
          :ok <- check_admin(identity, context_type),
@@ -100,7 +100,7 @@ defmodule Web.OIDCController do
   end
 
   defp provider_redirect(conn, account, provider, params) do
-    with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider, callback_url()) do
+    with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider) do
       cookie =
         %{
           "auth_provider_type" => params["auth_provider_type"],
@@ -138,7 +138,7 @@ defmodule Web.OIDCController do
   end
 
   defp fetch_userinfo(provider, access_token) do
-    case Web.OIDC.fetch_userinfo(provider, access_token, callback_url()) do
+    case Web.OIDC.fetch_userinfo(provider, access_token) do
       {:ok, userinfo} -> userinfo
       _ -> %{}
     end
@@ -337,10 +337,10 @@ defmodule Web.OIDCController do
   end
 
   defp handle_error(conn, error, params) do
-    Logger.warning("OIDC sign in error: #{inspect(error)}")
-    Logger.warning("Failed to sign in", error: inspect(error))
+    Logger.warning("OIDC sign-in error: #{inspect(error)}")
+    account_id = get_in(conn.cookies, [@cookie_key, "account_id"]) || ""
     error = "An unexpected error occurred while signing you in. Please try again."
-    path = ~p"/?#{sanitize(params)}"
+    path = ~p"/#{account_id}?#{sanitize(params)}"
 
     redirect_for_error(conn, error, path)
   end
@@ -355,6 +355,4 @@ defmodule Web.OIDCController do
   defp sanitize(params) do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
-
-  defp callback_url, do: url(~p"/auth/oidc/callback")
 end

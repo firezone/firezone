@@ -1,5 +1,5 @@
 defmodule Web.OIDCVerification do
-  use Web, {:live_view, layout: false}
+  use Web, {:live_view, layout: {Web.Layouts, :public}}
 
   def mount(_params, session, socket) do
     verification_token = Map.get(session, "verification_token")
@@ -51,54 +51,45 @@ defmodule Web.OIDCVerification do
 
   def render(assigns) do
     ~H"""
-    <!DOCTYPE html>
-    <html lang="en" class="h-full">
-      <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <.live_title>
-          {@page_title}
-        </.live_title>
-        <link phx-track-static rel="stylesheet" href={~p"/assets/app.css"} />
-        <script defer phx-track-static type="text/javascript" src={~p"/assets/app.js"}>
-        </script>
-      </head>
-      <body class="h-screen bg-gray-50">
-        <div class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8">
-          <div class="w-full max-w-md">
-            <div class="text-center space-y-4">
-              <%= if @verified do %>
-                <div class="mx-auto flex h-32 w-32 items-center justify-center">
-                  <.icon name="hero-check-circle" class="h-32 w-32 text-green-600" />
-                </div>
-                <h2 class="text-4xl font-bold tracking-tight text-gray-900">
-                  Provider Verified
-                </h2>
-                <p class="mt-2 text-base text-gray-600">
-                  You can close this window and return to the migration wizard.
-                </p>
-              <% else %>
-                <%= if @error do %>
-                  <h2 class="text-4xl font-bold tracking-tight text-gray-900">
-                    Verification Failed
-                  </h2>
-                  <p class="mt-2 text-base text-red-600">
-                    {@error}
-                  </p>
-                <% else %>
-                  <h2 class="text-4xl font-bold tracking-tight text-gray-900">
-                    Verifying Provider...
-                  </h2>
-                  <p class="mt-2 text-base text-gray-600">
-                    Please wait while we verify your identity provider.
-                  </p>
-                <% end %>
-              <% end %>
+    <div class="min-h-screen flex items-center justify-center px-4 sm:px-6 lg:px-8 h-screen bg-gray-50">
+      <div class="w-full max-w-md">
+        <div class="text-center space-y-4">
+          <%= if @verified do %>
+            <div class="mx-auto flex h-32 w-32 items-center justify-center">
+              <.icon name="hero-check-circle" class="h-32 w-32 text-green-600" />
             </div>
-          </div>
+            <h2 class="text-4xl font-bold tracking-tight text-gray-900">
+              Provider Verified
+            </h2>
+            <p class="mt-2 text-base text-gray-600">
+              You can close this window and return to the migration wizard.
+            </p>
+          <% else %>
+            <%= if @error do %>
+              <div class="mx-auto flex h-32 w-32 items-center justify-center">
+                <.icon name="hero-exclamation-circle" class="h-32 w-32 text-red-600" />
+              </div>
+              <h2 class="text-4xl font-bold tracking-tight text-gray-900">
+                Verification Failed
+              </h2>
+              <p class="mt-2 text-base text-red-600">
+                {@error}
+              </p>
+            <% else %>
+              <div class="mx-auto flex h-32 w-32 items-center justify-center">
+                <.icon name="hero-check-circl" class="transition-colors h-32 w-32 text-neutral-100" />
+              </div>
+              <h2 class="text-4xl font-bold tracking-tight text-gray-900">
+                Verifying Provider...
+              </h2>
+              <p class="mt-2 text-base text-gray-600">
+                Please wait while we verify your identity provider.
+              </p>
+            <% end %>
+          <% end %>
         </div>
-      </body>
-    </html>
+      </div>
+    </div>
     """
   end
 end

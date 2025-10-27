@@ -43,8 +43,14 @@ defmodule Domain.Entra.AuthProvider.Changeset do
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
-    |> unique_constraint(:issuer, name: :entra_auth_providers_account_id_issuer_index)
-    |> unique_constraint(:name, name: :entra_auth_providers_account_id_name_index)
+    |> unique_constraint(:tenant_id,
+      name: :entra_auth_providers_account_id_issuer_index,
+      message: "An authentication provider with this tenant_id already exists."
+    )
+    |> unique_constraint(:name,
+      name: :entra_auth_providers_account_id_name_index,
+      message: "An authentication provider with this name already exists."
+    )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :entra_auth_providers_account_id_fkey)
     |> foreign_key_constraint(:auth_provider_id,

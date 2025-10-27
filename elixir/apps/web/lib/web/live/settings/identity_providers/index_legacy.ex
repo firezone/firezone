@@ -230,7 +230,9 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
                               </div>
                             <% :failed -> %>
                               <div class="flex items-center space-x-2">
-                                <span class="text-sm text-red-600 font-medium">Verification Failed</span>
+                                <span class="text-sm text-red-600 font-medium">
+                                  Verification Failed
+                                </span>
                                 <%= if verification_url = Map.get(@provider_verification_urls, provider.id) do %>
                                   <.button
                                     style="primary"
@@ -253,7 +255,9 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
                                   Verify Now
                                 </.button>
                               <% else %>
-                                <span class="text-sm text-red-600 font-medium">Configuration Error</span>
+                                <span class="text-sm text-red-600 font-medium">
+                                  Configuration Error
+                                </span>
                               <% end %>
                           <% end %>
                         </div>
@@ -403,9 +407,8 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
       # Get the PKCE code_verifier that was generated for this state
       code_verifier = Map.get(socket.assigns.provider_verifiers, state_token)
       config = Map.get(socket.assigns.provider_configs, provider.id)
-      callback_url = url(~p"/auth/oidc/callback")
 
-      case Web.OIDC.verify_callback(config, code, code_verifier, callback_url) do
+      case Web.OIDC.verify_callback(config, code, code_verifier) do
         {:ok, claims} ->
           issuer = Map.get(claims, "iss")
           Logger.info("Provider #{provider.id} verified with issuer: #{issuer}")
@@ -509,14 +512,12 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
   end
 
   defp build_provider_verification_urls(providers, _account, provider_tokens) do
-    callback_url = url(~p"/auth/oidc/callback")
-
     {urls, verifiers, configs} =
       Enum.reduce(providers, {%{}, %{}, %{}}, fn provider,
                                                  {urls_acc, verifiers_acc, configs_acc} ->
         token = Map.get(provider_tokens, provider.id)
 
-        verification = Web.OIDC.setup_legacy_provider_verification(provider, token, callback_url)
+        verification = Web.OIDC.setup_legacy_provider_verification(provider, token)
 
         if verification.url do
           {

@@ -49,9 +49,13 @@ defmodule Domain.Google.AuthProvider.Changeset do
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:hosted_domain,
-      name: :google_auth_providers_account_id_issuer_hosted_domain_index
+      name: :google_auth_providers_account_id_issuer_hosted_domain_index,
+      message: "An authentication provider for this hosted domain already exists."
     )
-    |> unique_constraint(:name, name: :google_auth_providers_account_id_name_index)
+    |> unique_constraint(:name,
+      name: :google_auth_providers_account_id_name_index,
+      message: "An authentication provider with this name already exists."
+    )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :google_auth_providers_account_id_fkey)
     |> foreign_key_constraint(:auth_provider_id,

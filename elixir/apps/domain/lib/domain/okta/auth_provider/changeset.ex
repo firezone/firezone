@@ -45,8 +45,14 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     |> validate_length(:client_secret, min: 1, max: 255)
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
-    |> unique_constraint(:client_id, name: :okta_auth_providers_account_id_client_id_index)
-    |> unique_constraint(:name, name: :okta_auth_providers_account_id_name_index)
+    |> unique_constraint(:client_id,
+      name: :okta_auth_providers_account_id_client_id_index,
+      message: "An authentication provider with this client_id already exists."
+    )
+    |> unique_constraint(:name,
+      name: :okta_auth_providers_account_id_name_index,
+      message: "An authentication provider with this name already exists."
+    )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :okta_auth_providers_account_id_fkey)
     |> foreign_key_constraint(:auth_provider_id,

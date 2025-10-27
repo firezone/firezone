@@ -22,7 +22,7 @@ defmodule Domain.Entra.AuthProvider do
     field :verified_at, :utc_datetime_usec
     field :assigned_default_at, :utc_datetime_usec
 
-    field :name, :string
+    field :name, :string, default: "Entra"
     field :tenant_id, :string
 
     subject_trail(~w[actor identity system]a)

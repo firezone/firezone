@@ -439,6 +439,14 @@ defmodule Web.FormComponents do
     default: nil,
     doc: "The phx-submit event to broadcast when the form is submitted"
 
+  attr :confirm_button_title, :string,
+    default: nil,
+    doc: "The title attribute (tooltip) for the confirm button"
+
+  attr :for, :any,
+    default: nil,
+    doc: "The form to pass to .form component for phx-change support"
+
   slot :title, doc: "The title of the modal"
   slot :body, required: true, doc: "The content of the modal"
   slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
@@ -459,7 +467,12 @@ defmodule Web.FormComponents do
       phx-on-close={@on_close}
       data-show={@show}
     >
-      <form method="dialog" phx-submit={@phx_submit} class="flex items-center justify-center">
+      <.form
+        for={@for}
+        phx-submit={@phx_submit}
+        method={if @phx_submit, do: nil, else: "dialog"}
+        class="flex items-center justify-center"
+      >
         <div class="relative bg-white rounded-lg shadow w-full max-w-2xl">
           <div
             :if={@title != []}
@@ -470,8 +483,9 @@ defmodule Web.FormComponents do
             </h3>
             <button
               class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
-              type="submit"
+              type={if @phx_submit, do: "button", else: "submit"}
               value="cancel"
+              phx-click={if @phx_submit, do: @on_close, else: nil}
             >
               <.icon name="hero-x-mark" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
@@ -504,13 +518,14 @@ defmodule Web.FormComponents do
                 style={@confirm_style}
                 class="py-2.5 px-5"
                 disabled={@confirm_disabled}
+                title={@confirm_button_title}
               >
                 {render_slot(@confirm_button)}
               </.button>
             <% end %>
           </div>
         </div>
-      </form>
+      </.form>
     </dialog>
     """
   end
@@ -648,7 +663,7 @@ defmodule Web.FormComponents do
     required: false,
     doc: "The icon to be displayed on the button"
 
-  attr :rest, :global, include: ~w(disabled form name value navigate href patch)
+  attr :rest, :global, include: ~w(disabled form name value navigate href patch title)
   slot :inner_block, required: true, doc: "The label for the button"
 
   def button(%{href: _} = assigns) do

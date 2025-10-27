@@ -22,7 +22,7 @@ defmodule Domain.OIDC.AuthProvider do
     field :verified_at, :utc_datetime_usec
     field :assigned_default_at, :utc_datetime_usec
 
-    field :name, :string
+    field :name, :string, default: "OpenID Connect"
     field :client_id, :string
     field :client_secret, :string, redact: true
     field :discovery_document_uri, :string

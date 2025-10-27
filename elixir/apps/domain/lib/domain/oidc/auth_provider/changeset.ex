@@ -45,8 +45,14 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
     |> validate_length(:issuer, min: 1, max: 2000)
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
-    |> unique_constraint(:client_id, name: :oidc_auth_providers_account_id_client_id_index)
-    |> unique_constraint(:name, name: :oidc_auth_providers_account_id_name_index)
+    |> unique_constraint(:client_id,
+      name: :oidc_auth_providers_account_id_client_id_index,
+      message: "An authentication provider with this client_id already exists."
+    )
+    |> unique_constraint(:name,
+      name: :oidc_auth_providers_account_id_name_index,
+      message: "An authentication provider with this name already exists."
+    )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :oidc_auth_providers_account_id_fkey)
     |> foreign_key_constraint(:auth_provider_id,

@@ -22,7 +22,7 @@ defmodule Domain.Okta.AuthProvider do
     field :verified_at, :utc_datetime_usec
     field :assigned_default_at, :utc_datetime_usec
 
-    field :name, :string
+    field :name, :string, default: "Okta"
     field :org_domain, :string
     field :client_id, :string
     field :client_secret, :string, redact: true
