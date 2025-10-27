@@ -155,20 +155,16 @@ impl TunDeviceManager {
             .context("Failed to bring up interface")?;
 
         if res_v4.is_ok() {
-            match install_rule(make_rule(handle).v4()).await {
-                Ok(()) => tracing::debug!("Successfully created ip rule for ipv4"),
-                Err(e) => tracing::warn!(
-                    "Couldn't add ip rule for ipv4: {e:?}, ipv4 packets won't be routed"
-                ),
+            match install_rules([make_rule(handle).v4()]).await {
+                Ok(()) => tracing::debug!("Successfully created routing rules for IPv4"),
+                Err(e) => tracing::warn!("Failed to add IPv4 routing rules: {e}"),
             }
         }
 
         if res_v6.is_ok() {
-            match install_rule(make_rule(handle).v6()).await {
-                Ok(()) => tracing::debug!("Successfully created ip rule for ipv6"),
-                Err(e) => tracing::warn!(
-                    "Couldn't add ip rule for ipv6: {e:?}, ipv6 packets won't be routed"
-                ),
+            match install_rules([make_rule(handle).v6()]).await {
+                Ok(()) => tracing::debug!("Successfully created routing rule for IPv6"),
+                Err(e) => tracing::warn!("Failed to add IPv6 routing rules: {e}"),
             }
         }
 
@@ -283,12 +279,18 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
     rule
 }
 
-async fn install_rule<T>(req: RuleAddRequest<T>) -> Result<(), rtnetlink::Error> {
-    match req.execute().await {
-        Err(e) if matches!(&e, NetlinkError(err) if err.raw_code() == -EEXIST) => Ok(()),
-        Err(e) => Err(e),
-        Ok(()) => Ok(()),
+async fn install_rules<const N: usize, T>(
+    requests: [RuleAddRequest<T>; N],
+) -> Result<(), rtnetlink::Error> {
+    for req in requests {
+        match req.execute().await {
+            Err(e) if matches!(&e, NetlinkError(err) if err.raw_code() == -EEXIST) => {}
+            Err(e) => return Err(e),
+            Ok(()) => {}
+        }
     }
+
+    Ok(())
 }
 
 async fn tun_device_index(handle: &Handle) -> Result<u32> {
