@@ -992,7 +992,8 @@ fn make_preshared_key_and_ice(
     client_key: PublicKey,
     gateway_key: PublicKey,
 ) -> (SecretKey, IceCredentials, IceCredentials) {
-    let secret_key = SecretKey::new(Key(hkdf("SECRET_KEY_DOMAIN_SEP", client_key, gateway_key)));
+    let secret_key =
+        SecretKey::init_with(|| Key(hkdf("SECRET_KEY_DOMAIN_SEP", client_key, gateway_key)));
     let client_ice = ice_creds("CLIENT_ICE_DOMAIN_SEP", client_key, gateway_key);
     let gateway_ice = ice_creds("GATEWAY_ICE_DOMAIN_SEP", client_key, gateway_key);
 
