@@ -169,13 +169,14 @@ impl GatewayState {
             return Ok(None);
         };
 
-        flow_tracker::inbound_wg::record_client(cid);
         flow_tracker::inbound_wg::record_decrypted_packet(&packet);
 
         let peer = self
             .peers
             .get_mut(&cid)
             .with_context(|| format!("No peer for connection {cid}"))?;
+
+        flow_tracker::inbound_wg::record_client(cid, peer.client_flow_properties());
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             let immediate_response = match fz_p2p_control.event_type() {
@@ -327,21 +328,17 @@ impl GatewayState {
             now,
         )?;
 
-        self.flow_tracker.update_client_properties(
-            client.id,
-            flow_tracker::ClientProperties {
-                client_version: client.client_version,
-                device_serial: client.device_serial,
-                subject_name: subject.name,
-                subject_email: subject.email,
-            },
-        );
-
         let result = self.allow_access(
             client.id,
             IpConfig {
                 v4: client.ipv4,
                 v6: client.ipv6,
+            },
+            flow_tracker::ClientProperties {
+                version: client.client_version,
+                device_serial: client.device_serial,
+                actor_name: subject.name,
+                actor_email: subject.email,
             },
             expires_at,
             resource,
@@ -359,6 +356,7 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         client_tun: IpConfig,
+        client_props: flow_tracker::ClientProperties,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
@@ -368,7 +366,7 @@ impl GatewayState {
         let peer = self
             .peers
             .entry(client)
-            .or_insert_with(|| ClientOnGateway::new(client, client_tun, gateway_tun));
+            .or_insert_with(|| ClientOnGateway::new(client, client_tun, gateway_tun, client_props));
 
         peer.add_resource(resource.clone(), expires_at);
 
@@ -482,7 +480,14 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::tcp",
 
-                        client_id = %flow.client,
+                        client_id = %flow.client_id,
+                        client_version = %flow.client_version,
+
+                        device_serial = %flow.device_serial,
+
+                        actor_name = %flow.actor_name,
+                        actor_email = %flow.actor_email,
+
                         resource_id = %flow.resource_id,
                         resource_name = %flow.resource_name,
                         resource_address = %flow.resource_address,
@@ -512,7 +517,14 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::udp",
 
-                        client_id = %flow.client,
+                        client_id = %flow.client_id,
+                        client_version = %flow.client_version,
+
+                        device_serial = %flow.device_serial,
+
+                        actor_name = %flow.actor_name,
+                        actor_email = %flow.actor_email,
+
                         resource_id = %flow.resource_id,
                         resource_name = %flow.resource_name,
                         resource_address = %flow.resource_address,

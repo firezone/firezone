@@ -588,6 +588,7 @@ impl Eventloop {
                 v4: req.client.peer.ipv4,
                 v6: req.client.peer.ipv6,
             },
+            Default::default(), // Additional client properties are not supported for 1.3.x Clients and will just be empty.
             req.expires_at,
             req.resource,
             req.client
@@ -643,6 +644,7 @@ impl Eventloop {
                 v4: req.client_ipv4,
                 v6: req.client_ipv6,
             },
+            Default::default(), // Additional client properties are not supported for 1.3.x Clients and will just be empty.
             req.expires_at,
             req.resource,
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),

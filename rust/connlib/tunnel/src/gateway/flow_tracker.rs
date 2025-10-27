@@ -29,23 +29,17 @@ pub struct FlowTracker {
 
     completed_flows: VecDeque<CompletedFlow>,
 
-    client_properties: HashMap<ClientId, ClientProperties>,
-
     created_at: Instant,
     created_at_utc: DateTime<Utc>,
 }
 
-/// Additional properties that we know about a client.
-///
-/// A user (i.e. subject) can have multiple clients.
-/// A given flow is always initiated by a client, and hence we can store the subject properties inline with that.
-#[derive(Debug)]
-pub(crate) struct ClientProperties {
-    pub client_version: String,
+/// Additional properties we track for a client.
+#[derive(Debug, Clone, Default)]
+pub struct ClientProperties {
+    pub version: String,
     pub device_serial: String,
-
-    pub subject_name: String,
-    pub subject_email: String,
+    pub actor_name: String,
+    pub actor_email: String,
 }
 
 impl FlowTracker {
@@ -54,7 +48,6 @@ impl FlowTracker {
             active_tcp_flows: Default::default(),
             active_udp_flows: Default::default(),
             completed_flows: Default::default(),
-            client_properties: Default::default(),
             created_at: now,
             created_at_utc: Utc::now(),
         }
@@ -119,10 +112,6 @@ impl FlowTracker {
             inner: self,
             created_at: now,
         }
-    }
-
-    pub fn update_client_properties(&mut self, id: ClientId, properties: ClientProperties) {
-        self.client_properties.insert(id, properties);
     }
 
     pub fn poll_completed_flow(&mut self) -> Option<CompletedFlow> {
@@ -202,7 +191,7 @@ impl FlowTracker {
         match (src_proto, dst_proto) {
             (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
                 let key = TcpFlowKey {
-                    client,
+                    client: client.id,
                     resource: resource.id,
                     src_ip,
                     dst_ip,
@@ -229,6 +218,10 @@ impl FlowTracker {
                             domain,
                             resource_name: resource.name,
                             resource_address: resource.address,
+                            client_version: client.version,
+                            device_serial: client.device_serial,
+                            actor_name: client.actor_name,
+                            actor_email: client.actor_email,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -257,6 +250,11 @@ impl FlowTracker {
                                 domain,
                                 resource_name: resource.name,
                                 resource_address: resource.address,
+
+                                client_version: client.version,
+                                device_serial: client.device_serial,
+                                actor_name: client.actor_name,
+                                actor_email: client.actor_email,
                             },
                         );
                     }
@@ -281,6 +279,10 @@ impl FlowTracker {
                                 domain,
                                 resource_name: resource.name,
                                 resource_address: resource.address,
+                                client_version: client.version,
+                                device_serial: client.device_serial,
+                                actor_name: client.actor_name,
+                                actor_email: client.actor_email,
                             },
                         );
                     }
@@ -306,7 +308,7 @@ impl FlowTracker {
             }
             (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
                 let key = UdpFlowKey {
-                    client,
+                    client: client.id,
                     resource: resource.id,
                     src_ip,
                     dst_ip,
@@ -326,6 +328,10 @@ impl FlowTracker {
                             domain,
                             resource_name: resource.name,
                             resource_address: resource.address,
+                            client_version: client.version,
+                            device_serial: client.device_serial,
+                            actor_name: client.actor_name,
+                            actor_email: client.actor_email,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -352,6 +358,10 @@ impl FlowTracker {
                                 domain,
                                 resource_name: value.resource_name,
                                 resource_address: value.resource_address,
+                                client_version: client.version,
+                                device_serial: client.device_serial,
+                                actor_name: client.actor_name,
+                                actor_email: client.actor_email,
                             },
                         );
                     }
@@ -477,7 +487,13 @@ pub enum CompletedFlow {
 
 #[derive(Debug)]
 pub struct CompletedTcpFlow {
-    pub client: ClientId,
+    pub client_id: ClientId,
+    pub client_version: String,
+
+    pub device_serial: String,
+
+    pub actor_name: String,
+    pub actor_email: String,
 
     pub resource_id: ResourceId,
     pub resource_name: String,
@@ -506,7 +522,13 @@ pub struct CompletedTcpFlow {
 
 #[derive(Debug)]
 pub struct CompletedUdpFlow {
-    pub client: ClientId,
+    pub client_id: ClientId,
+    pub client_version: String,
+
+    pub device_serial: String,
+
+    pub actor_name: String,
+    pub actor_email: String,
 
     pub resource_id: ResourceId,
     pub resource_name: String,
@@ -536,7 +558,11 @@ pub struct CompletedUdpFlow {
 impl CompletedTcpFlow {
     fn new(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
-            client: key.client,
+            client_id: key.client,
+            client_version: value.client_version,
+            device_serial: value.device_serial,
+            actor_email: value.actor_email,
+            actor_name: value.actor_name,
             resource_id: key.resource,
             resource_name: value.resource_name,
             resource_address: value.resource_address,
@@ -563,7 +589,11 @@ impl CompletedTcpFlow {
 impl CompletedUdpFlow {
     fn new(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
-            client: key.client,
+            client_id: key.client,
+            client_version: value.client_version,
+            device_serial: value.device_serial,
+            actor_email: value.actor_email,
+            actor_name: value.actor_name,
             resource_id: key.resource,
             resource_name: value.resource_name,
             resource_address: value.resource_address,
@@ -619,6 +649,12 @@ struct TcpFlowValue {
     resource_name: String,
     resource_address: String,
 
+    client_version: String,
+    device_serial: String,
+
+    actor_name: String,
+    actor_email: String,
+
     fin_tx: bool,
     fin_rx: bool,
 }
@@ -634,6 +670,12 @@ struct UdpFlowValue {
 
     resource_name: String,
     resource_address: String,
+
+    client_version: String,
+    device_serial: String,
+
+    actor_name: String,
+    actor_email: String,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -728,8 +770,16 @@ pub mod inbound_wg {
 
     use super::*;
 
-    pub fn record_client(cid: ClientId) {
-        update_current_flow_inbound_wireguard(|wg| wg.client.replace(cid));
+    pub fn record_client(cid: ClientId, props: ClientProperties) {
+        update_current_flow_inbound_wireguard(|wg| {
+            wg.client.replace(Client {
+                id: cid,
+                version: props.version,
+                device_serial: props.device_serial,
+                actor_name: props.actor_name,
+                actor_email: props.actor_email,
+            })
+        });
     }
 
     pub fn record_resource(id: ResourceId, name: String, address: String) {
@@ -832,7 +882,7 @@ enum FlowData {
 struct InboundWireGuard {
     outer: OuterFlow<SocketAddr>,
     inner: Option<InnerFlow>,
-    client: Option<ClientId>,
+    client: Option<Client>,
     resource: Option<Resource>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
@@ -865,6 +915,15 @@ struct InnerFlow {
     tcp_rst: bool,
 
     payload_len: usize,
+}
+
+#[derive(Debug)]
+struct Client {
+    id: ClientId,
+    version: String,
+    device_serial: String,
+    actor_name: String,
+    actor_email: String,
 }
 
 #[derive(Debug)]
