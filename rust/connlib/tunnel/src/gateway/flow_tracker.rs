@@ -29,8 +29,23 @@ pub struct FlowTracker {
 
     completed_flows: VecDeque<CompletedFlow>,
 
+    client_properties: HashMap<ClientId, ClientProperties>,
+
     created_at: Instant,
     created_at_utc: DateTime<Utc>,
+}
+
+/// Additional properties that we know about a client.
+///
+/// A user (i.e. subject) can have multiple clients.
+/// A given flow is always initiated by a client, and hence we can store the subject properties inline with that.
+#[derive(Debug)]
+pub(crate) struct ClientProperties {
+    pub client_version: String,
+    pub device_serial: String,
+
+    pub subject_name: String,
+    pub subject_email: String,
 }
 
 impl FlowTracker {
@@ -39,6 +54,7 @@ impl FlowTracker {
             active_tcp_flows: Default::default(),
             active_udp_flows: Default::default(),
             completed_flows: Default::default(),
+            client_properties: Default::default(),
             created_at: now,
             created_at_utc: Utc::now(),
         }
@@ -103,6 +119,10 @@ impl FlowTracker {
             inner: self,
             created_at: now,
         }
+    }
+
+    pub fn update_client_properties(&mut self, id: ClientId, properties: ClientProperties) {
+        self.client_properties.insert(id, properties);
     }
 
     pub fn poll_completed_flow(&mut self) -> Option<CompletedFlow> {

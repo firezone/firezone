@@ -833,6 +833,10 @@ impl TunnelTest {
                                 client_version: "1.0.0".to_owned(),
                                 device_serial: "deadbeef".to_owned(),
                             },
+                            Subject {
+                                name: "John Doe".to_owned(),
+                                email: "john@example.com".to_owned(),
+                            },
                             client_ice.clone(),
                             gateway_ice.clone(),
                             None,

@@ -7,8 +7,8 @@ pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::gateway::flow_tracker::FlowTracker;
-use crate::messages::gateway::{AuthorizeFlow, Client, ResourceDescription, Subject};
-use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
+use crate::messages::gateway::{Client, ResourceDescription, Subject};
+use crate::messages::{Answer, IceCredentials, ResolveRequest};
 use crate::peer_store::PeerStore;
 use crate::{GatewayEvent, IpConfig, p2p_control};
 use anyhow::{Context, Result};
@@ -305,6 +305,7 @@ impl GatewayState {
     pub fn authorize_flow(
         &mut self,
         client: Client,
+        subject: Subject,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
         expires_at: Option<DateTime<Utc>>,
@@ -325,6 +326,16 @@ impl GatewayState {
             },
             now,
         )?;
+
+        self.flow_tracker.update_client_properties(
+            client.id,
+            flow_tracker::ClientProperties {
+                client_version: client.client_version,
+                device_serial: client.device_serial,
+                subject_name: subject.name,
+                subject_email: subject.email,
+            },
+        );
 
         let result = self.allow_access(
             client.id,
