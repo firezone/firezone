@@ -465,8 +465,10 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::tcp",
 
-                        client = %flow.client,
-                        resource = %flow.resource,
+                        client_id = %flow.client,
+                        resource_id = %flow.resource_id,
+                        resource_name = %flow.resource_name,
+                        resource_address = %flow.resource_address,
                         start = ?flow.start,
                         end = ?flow.end,
                         last_packet = ?flow.last_packet,
@@ -493,8 +495,10 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::udp",
 
-                        client = %flow.client,
-                        resource = %flow.resource,
+                        client_id = %flow.client,
+                        resource_id = %flow.resource_id,
+                        resource_name = %flow.resource_name,
+                        resource_address = %flow.resource_address,
                         start = ?flow.start,
                         end = ?flow.end,
                         last_packet = ?flow.last_packet,
