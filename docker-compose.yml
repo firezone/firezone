@@ -188,7 +188,7 @@ services:
         ip -6 route add 203:0:113::/64 via 172:30:0::254
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool
+        apk add --no-cache ethtool iproute2
         ethtool -K eth0 tx off
 
         ip link set dev eth0 txqueuelen 100000
@@ -259,7 +259,7 @@ services:
         ip -6 route add 203:0:113::/64 via 172:31:0::254
 
         # Disable checksum offloading so that checksums are correct when they reach the relay
-        apk add --no-cache ethtool
+        apk add --no-cache ethtool iproute2
         ethtool -K eth0 tx off
         ethtool -K eth1 tx off
         ethtool -K eth2 tx off
