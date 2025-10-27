@@ -6,11 +6,12 @@ defmodule Domain.Repo.Migrations.CreateOktaDirectories do
       add(:id, :binary_id, null: false, primary_key: true)
 
       account()
-      add(:org_domain, :string, null: false)
 
-      add(:issuer, :text, null: false)
       add(:client_id, :string)
-      add(:client_secret, :string)
+      add(:private_key_jwk, :jsonb)
+      add(:kid, :string)
+      add(:okta_domain, :string, null: false)
+      add(:issuer, :text, null: false)
 
       add(:name, :string, null: false)
       add(:error_count, :integer, null: false, default: 0)
@@ -24,7 +25,7 @@ defmodule Domain.Repo.Migrations.CreateOktaDirectories do
       timestamps()
     end
 
-    create(index(:okta_directories, [:account_id, :org_domain], unique: true))
+    create(index(:okta_directories, [:account_id, :okta_domain], unique: true))
     create(index(:okta_directories, [:account_id, :issuer], unique: true))
     create(index(:okta_directories, [:account_id, :name], unique: true))
   end

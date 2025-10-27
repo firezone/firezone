@@ -3,7 +3,11 @@ defmodule Domain.Okta.Directory do
 
   schema "okta_directories" do
     belongs_to :account, Domain.Accounts.Account
-    field :org_domain, :string
+
+    field :client_id, :string
+    field :private_key_jwk, :map
+    field :kid, :string
+    field :okta_domain, :string
 
     field :issuer, :string
     field :name, :string

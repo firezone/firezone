@@ -19,7 +19,7 @@ defmodule Web.OIDC do
 
   def config_for_provider(%Okta.AuthProvider{} = provider, redirect_uri) do
     with {:ok, config} <- Application.fetch_env(:domain, Domain.Okta.AuthProvider) do
-      discovery_document_uri = "https://#{provider.org_domain}/.well-known/openid-configuration"
+      discovery_document_uri = "https://#{provider.okta_domain}/.well-known/openid-configuration"
 
       config =
         Enum.into(config, %{
