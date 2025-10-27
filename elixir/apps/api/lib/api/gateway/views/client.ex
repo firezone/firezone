@@ -7,7 +7,9 @@ defmodule API.Gateway.Views.Client do
       public_key: client.public_key,
       preshared_key: preshared_key,
       ipv4: client.ipv4,
-      ipv6: client.ipv6
+      ipv6: client.ipv6,
+      version: client.last_seen_version,
+      device_serial: client.device_serial
     }
   end
 
