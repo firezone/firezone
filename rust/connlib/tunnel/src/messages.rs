@@ -1,6 +1,7 @@
 //! Message types that are used by both the gateway and client.
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
+use boringtun::x25519;
 use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::RelayId;
 use dns_types::DomainName;
@@ -80,7 +81,7 @@ impl Offer {
     // Not a very clean API but it is deprecated anyway.
     pub fn into_snownet_offer(self, key: Secret<Key>) -> snownet::Offer {
         snownet::Offer {
-            session_key: Secret::new(key.expose_secret().0),
+            session_key: x25519::StaticSecret::from(key.expose_secret().0),
             credentials: snownet::Credentials {
                 username: self.username,
                 password: self.password,

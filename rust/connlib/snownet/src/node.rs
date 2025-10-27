@@ -12,7 +12,7 @@ use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
     HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
 };
-use boringtun::x25519::PublicKey;
+use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
@@ -21,9 +21,8 @@ use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{RngCore, SeedableRng, random};
+use rand::{RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
-use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
@@ -233,7 +232,7 @@ where
         &mut self,
         cid: TId,
         remote: PublicKey,
-        session_key: Secret<[u8; 32]>,
+        preshared_key: x25519::StaticSecret,
         local_creds: Credentials,
         remote_creds: Credentials,
         now: Instant,
@@ -248,8 +247,6 @@ where
             );
             return Ok(());
         }
-
-        let preshared_key = *session_key.expose_secret();
 
         // Check if we already have a connection with the exact same parameters.
         // In order for the connection to be same, we need to compare:
@@ -267,9 +264,7 @@ where
                 .remote_credentials()
                 .is_some_and(|c| c == &remote_creds)
             && c.tunnel.remote_static_public() == remote
-            && c.tunnel
-                .preshared_key()
-                .is_some_and(|key| key == preshared_key)
+            && c.tunnel.preshared_key().as_bytes() == preshared_key.as_bytes()
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
 
@@ -747,7 +742,7 @@ where
         cid: TId,
         mut agent: IceAgent,
         remote: PublicKey,
-        key: [u8; 32],
+        key: x25519::StaticSecret,
         relay: RId,
         index: Index,
         intent_sent_at: Instant,
@@ -1077,7 +1072,7 @@ where
         let mut agent = new_agent();
         agent.set_controlling(true);
 
-        let session_key = Secret::new(random());
+        let session_key = x25519::StaticSecret::random_from_rng(rand::thread_rng());
         let ice_creds = agent.local_credentials();
 
         let params = Offer {
@@ -1137,7 +1132,7 @@ where
             cid,
             agent,
             remote,
-            *initial.session_key.expose_secret(),
+            initial.session_key,
             selected_relay,
             index,
             initial.intent_sent_at,
@@ -1210,7 +1205,7 @@ where
             cid,
             agent,
             remote,
-            *offer.session_key.expose_secret(),
+            offer.session_key,
             selected_relay,
             index,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
@@ -1395,7 +1390,7 @@ fn remove_local_candidate<TId>(
 #[deprecated]
 pub struct Offer {
     /// The Wireguard session key for a connection.
-    pub session_key: Secret<[u8; 32]>,
+    pub session_key: x25519::StaticSecret,
     pub credentials: Credentials,
 }
 
@@ -1485,7 +1480,7 @@ impl fmt::Debug for Transmit {
 
 struct InitialConnection<RId> {
     agent: IceAgent,
-    session_key: Secret<[u8; 32]>,
+    session_key: x25519::StaticSecret,
 
     /// The fallback relay we sampled for this potential connection.
     relay: RId,
