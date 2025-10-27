@@ -59,9 +59,9 @@ fn main() -> Result<()> {
             write_to_file(ETC_FIREZONE_GATEWAY_TOKEN, token)?;
 
             println!("Successfully installed token");
-            println!("Tip: You can now start the Gateway with `firezone gateway enable`");
+            println!("Tip: You can now start the Gateway with `firezone gateway enable-service`");
         }
-        Gateway(Enable) => {
+        Gateway(EnableService) => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
             anyhow::ensure!(is_root(), "Must be executed as root");
 
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
 
             println!("Successfully enabled `firezone-gateway.service`");
         }
-        Gateway(Disable) => {
+        Gateway(DisableService) => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
             anyhow::ensure!(is_root(), "Must be executed as root");
 
@@ -106,9 +106,9 @@ enum GatewayCommand {
         replace: bool,
     },
     /// Enable the Gateway's systemd service.
-    Enable,
+    EnableService,
     /// Disable the Gateway's systemd service.
-    Disable,
+    DisableService,
 }
 
 #[cfg(target_os = "linux")]
