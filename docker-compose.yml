@@ -191,6 +191,8 @@ services:
         apk add --no-cache ethtool
         ethtool -K eth0 tx off
 
+        ip link set dev eth0 txqueuelen 100000
+
         exec firezone-headless-client
     init: true
     build:
@@ -261,6 +263,10 @@ services:
         ethtool -K eth0 tx off
         ethtool -K eth1 tx off
         ethtool -K eth2 tx off
+
+        ip link set dev eth0 txqueuelen 100000
+        ip link set dev eth1 txqueuelen 100000
+        ip link set dev eth2 txqueuelen 100000
 
         exec firezone-gateway
     init: true
