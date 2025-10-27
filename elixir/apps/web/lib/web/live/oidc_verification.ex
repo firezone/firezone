@@ -62,7 +62,7 @@ defmodule Web.OIDCVerification do
               Provider Verified
             </h2>
             <p class="mt-2 text-base text-gray-600">
-              You can close this window and return to the migration wizard.
+              You can close this window and return to the application.
             </p>
           <% else %>
             <%= if @error do %>

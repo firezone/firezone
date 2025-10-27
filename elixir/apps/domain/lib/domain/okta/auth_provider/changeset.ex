@@ -11,22 +11,16 @@ defmodule Domain.Okta.AuthProvider.Changeset do
   @fields @required_fields ++ ~w[disabled_at verified_at assigned_default_at]a
 
   def create(
-        %Okta.AuthProvider{} = auth_provider \\ %Okta.AuthProvider{},
+        auth_provider,
         attrs,
         %Auth.Subject{} = subject
       ) do
-    id = Ecto.UUID.generate()
-
     auth_provider
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
     |> put_subject_trail(:created_by, subject)
     |> put_change(:account_id, subject.account.id)
-    |> put_change(:id, id)
-    |> put_assoc(:auth_provider, %AuthProviders.AuthProvider{
-      id: id,
-      account_id: subject.account.id
-    })
+    |> build_auth_provider_assoc(subject.account.id)
     |> changeset()
   end
 
@@ -39,6 +33,9 @@ defmodule Domain.Okta.AuthProvider.Changeset do
 
   defp changeset(changeset) do
     changeset
+    |> put_discovery_document_uri()
+    |> validate_required(:discovery_document_uri)
+    |> validate_uri(:discovery_document_uri)
     |> validate_length(:org_domain, min: 1, max: 255)
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> validate_length(:client_id, min: 1, max: 255)
@@ -58,5 +55,27 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     |> foreign_key_constraint(:auth_provider_id,
       name: :okta_auth_providers_auth_provider_id_fkey
     )
+  end
+
+  defp put_discovery_document_uri(changeset) do
+    case get_field(changeset, :org_domain) do
+      nil ->
+        changeset
+
+      org_domain ->
+        uri = "https://#{org_domain}/.well-known/openid-configuration"
+        put_change(changeset, :discovery_document_uri, uri)
+    end
+  end
+
+  defp build_auth_provider_assoc(changeset, account_id) do
+    id = get_field(changeset, :id, Ecto.UUID.generate())
+
+    changeset
+    |> put_change(:id, id)
+    |> put_assoc(:auth_provider, %AuthProviders.AuthProvider{
+      id: id,
+      account_id: account_id
+    })
   end
 end

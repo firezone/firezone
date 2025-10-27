@@ -100,7 +100,9 @@ defmodule Web.OIDCController do
   end
 
   defp provider_redirect(conn, account, provider, params) do
-    with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider) do
+    opts = [additional_params: %{prompt: "select_account"}]
+
+    with {:ok, uri, state, verifier} <- Web.OIDC.authorization_uri(provider, opts) do
       cookie =
         %{
           "auth_provider_type" => params["auth_provider_type"],

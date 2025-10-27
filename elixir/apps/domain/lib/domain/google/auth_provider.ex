@@ -12,7 +12,7 @@ defmodule Domain.Google.AuthProvider do
       foreign_key: :id,
       define_field: false
 
-    field :issuer, :string, default: "https://accounts.google.com"
+    field :issuer, :string
 
     field :context, Ecto.Enum,
       values: ~w[clients_and_portal clients_only portal_only]a,

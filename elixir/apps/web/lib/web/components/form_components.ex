@@ -310,50 +310,6 @@ defmodule Web.FormComponents do
     """
   end
 
-  def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
-    ~H"""
-    <div class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={@label} for={@id}>{@label}</.label>
-      <div class={[
-        "flex",
-        "text-sm text-neutral-900 bg-neutral-50",
-        "border border-neutral-300 rounded",
-        !@inline_errors && "w-full",
-        "focus-within:outline-none focus-within:border-accent-600",
-        "peer-disabled:bg-neutral-50 peer-disabled:text-neutral-500 peer-disabled:border-neutral-200 peer-disabled:shadow-none",
-        @errors != [] && "border-rose-400 focus:border-rose-400"
-      ]}>
-        <span
-          class={[
-            "bg-neutral-100 whitespace-nowrap rounded-e-0 rounded-s inline-flex items-center px-3"
-          ]}
-          id={"#{@id}-prefix"}
-          phx-hook="Refocus"
-          data-refocus={@id}
-        >
-          {@prefix}
-        </span>
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            "text-sm text-neutral-900 bg-transparent border-0",
-            "flex-1 min-w-0 p-2.5 block w-full",
-            "focus:outline-none focus:border-0 focus:ring-0",
-            @class
-          ]}
-          {@rest}
-        />
-      </div>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        {msg}
-      </.error>
-    </div>
-    """
-  end
-
   def input(assigns) do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
@@ -439,6 +395,10 @@ defmodule Web.FormComponents do
     default: nil,
     doc: "The phx-submit event to broadcast when the form is submitted"
 
+  attr :phx_change, :string,
+    default: nil,
+    doc: "The phx-change event to broadcast when form fields change"
+
   attr :confirm_button_title, :string,
     default: nil,
     doc: "The title attribute (tooltip) for the confirm button"
@@ -466,11 +426,13 @@ defmodule Web.FormComponents do
       phx-hook="Modal"
       phx-on-close={@on_close}
       data-show={@show}
+      phx-focus-wrap
     >
       <.form
         for={@for}
         phx-submit={@phx_submit}
-        method={if @phx_submit, do: nil, else: "dialog"}
+        phx-change={@phx_change}
+        method="dialog"
         class="flex items-center justify-center"
       >
         <div class="relative bg-white rounded-lg shadow w-full max-w-2xl">
@@ -486,6 +448,7 @@ defmodule Web.FormComponents do
               type={if @phx_submit, do: "button", else: "submit"}
               value="cancel"
               phx-click={if @phx_submit, do: @on_close, else: nil}
+              tabindex="-1"
             >
               <.icon name="hero-x-mark" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>

@@ -10,28 +10,17 @@ defmodule Domain.Google.AuthProvider.Changeset do
   @required_fields ~w[name context issuer]a
   @fields @required_fields ++ ~w[disabled_at hosted_domain verified_at assigned_default_at]a
 
-  def new do
-    %Google.AuthProvider{}
-    |> cast(%{}, @fields)
-  end
-
   def create(
-        %Google.AuthProvider{} = auth_provider \\ %Google.AuthProvider{},
+        auth_provider,
         attrs,
         %Auth.Subject{} = subject
       ) do
-    id = Ecto.UUID.generate()
-
     auth_provider
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)
     |> put_subject_trail(:created_by, subject)
     |> put_change(:account_id, subject.account.id)
-    |> put_change(:id, id)
-    |> put_assoc(:auth_provider, %AuthProviders.AuthProvider{
-      id: id,
-      account_id: subject.account.id
-    })
+    |> build_auth_provider_assoc(subject.account.id)
     |> changeset()
   end
 
@@ -61,5 +50,16 @@ defmodule Domain.Google.AuthProvider.Changeset do
     |> foreign_key_constraint(:auth_provider_id,
       name: :google_auth_providers_auth_provider_id_fkey
     )
+  end
+
+  defp build_auth_provider_assoc(changeset, account_id) do
+    id = get_field(changeset, :id, Ecto.UUID.generate())
+
+    changeset
+    |> put_change(:id, id)
+    |> put_assoc(:auth_provider, %AuthProviders.AuthProvider{
+      id: id,
+      account_id: account_id
+    })
   end
 end

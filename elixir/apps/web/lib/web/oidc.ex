@@ -87,28 +87,15 @@ defmodule Web.OIDC do
       additional_params = Keyword.get(opts, :additional_params, %{})
 
       oidc_params =
-        Map.merge(
-          %{state: state, code_challenge_method: :S256, code_challenge: challenge},
-          additional_params
-        )
+        %{state: state, code_challenge_method: :S256, code_challenge: challenge}
+        |> Map.merge(additional_params)
 
       case OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
-        {:ok, uri} -> {:ok, append_provider_hints(provider, uri), state, verifier}
+        {:ok, uri} -> {:ok, uri, state, verifier}
         error -> error
       end
     end
   end
-
-  # Pre-selects Google hosted domain if set, preventing users from accidentally signing in with the wrong
-  # account.
-
-  defp append_provider_hints(%Google.AuthProvider{hosted_domain: nil}, uri), do: uri
-
-  defp append_provider_hints(%Google.AuthProvider{hosted_domain: domain}, uri) do
-    uri <> "&hd=" <> URI.encode(domain)
-  end
-
-  defp append_provider_hints(_provider, uri), do: uri
 
   @doc """
   Exchanges authorization code for tokens using PKCE verifier.
@@ -173,35 +160,16 @@ defmodule Web.OIDC do
   end
 
   @doc """
-  Builds a verification config for a provider type (as string) before the provider exists.
-  Used during provider creation when we need to verify but don't have a provider struct yet.
-  Returns config map.
-  """
-  def verification_config_for_type("google") do
-    config = Application.fetch_env!(:domain, Domain.Google.AuthProvider)
-    Enum.into(config, %{redirect_uri: callback_url()})
-  end
-
-  def verification_config_for_type("entra") do
-    config = Application.fetch_env!(:domain, Domain.Entra.AuthProvider)
-    Enum.into(config, %{redirect_uri: callback_url()})
-  end
-
-  def verification_config_for_type("okta") do
-    config = Application.fetch_env!(:domain, Domain.Okta.AuthProvider)
-    Enum.into(config, %{redirect_uri: callback_url()})
-  end
-
-  def verification_config_for_type("oidc") do
-    config = Application.fetch_env!(:domain, Domain.OIDC.AuthProvider)
-    Enum.into(config, %{redirect_uri: callback_url()})
-  end
-
-  @doc """
   Sets up OIDC verification for a new provider being created.
   Returns a map with verification data: token, url, verifier, config.
+
+  Options:
+  - :org_domain - Required for Okta providers
+  - :client_id - Required for Okta and generic OIDC providers
+  - :client_secret - Required for Okta and generic OIDC providers
+  - :discovery_document_uri - Required for generic OIDC providers
   """
-  def setup_verification(provider_type) do
+  def setup_verification(provider_type, opts \\ []) do
     # Generate verification token for OIDC callback
     token = Domain.Crypto.random_token(32)
 
@@ -210,12 +178,13 @@ defmodule Web.OIDC do
     challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
 
     state = "oidc-verification:#{token}"
-    config = verification_config_for_type(provider_type)
+    config = verification_config_for_type(provider_type, opts)
 
     oidc_params = %{
       state: state,
       code_challenge_method: :S256,
-      code_challenge: challenge
+      code_challenge: challenge,
+      prompt: "login"
     }
 
     verification_url =
@@ -286,5 +255,47 @@ defmodule Web.OIDC do
 
   defp callback_url do
     url(~p"/auth/oidc/callback")
+  end
+
+  # TODO: This can be refactored to reduce duplication with config_for_provider/1
+
+  defp verification_config_for_type("google", _opts) do
+    config = Application.fetch_env!(:domain, Domain.Google.AuthProvider)
+    Enum.into(config, %{redirect_uri: callback_url()})
+  end
+
+  defp verification_config_for_type("entra", _opts) do
+    config = Application.fetch_env!(:domain, Domain.Entra.AuthProvider)
+    Enum.into(config, %{redirect_uri: callback_url()})
+  end
+
+  defp verification_config_for_type("okta", opts) do
+    config = Application.fetch_env!(:domain, Domain.Okta.AuthProvider)
+
+    client_id = Keyword.get(opts, :client_id)
+    client_secret = Keyword.get(opts, :client_secret)
+    discovery_document_uri = Keyword.get(opts, :discovery_document_uri)
+
+    Enum.into(config, %{
+      redirect_uri: callback_url(),
+      client_id: client_id,
+      client_secret: client_secret,
+      discovery_document_uri: discovery_document_uri
+    })
+  end
+
+  defp verification_config_for_type("oidc", opts) do
+    config = Application.fetch_env!(:domain, Domain.OIDC.AuthProvider)
+
+    client_id = Keyword.get(opts, :client_id)
+    client_secret = Keyword.get(opts, :client_secret)
+    discovery_document_uri = Keyword.get(opts, :discovery_document_uri)
+
+    Enum.into(config, %{
+      redirect_uri: callback_url(),
+      client_id: client_id,
+      client_secret: client_secret,
+      discovery_document_uri: discovery_document_uri
+    })
   end
 end

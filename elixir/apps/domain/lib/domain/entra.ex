@@ -10,7 +10,8 @@ defmodule Domain.Entra do
     required_permission = Entra.Authorizer.manage_auth_providers_permission()
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
-      Entra.AuthProvider.Changeset.create(attrs, subject)
+      %Entra.AuthProvider{}
+      |> Entra.AuthProvider.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end

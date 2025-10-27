@@ -10,7 +10,8 @@ defmodule Domain.OIDC do
     required_permission = OIDC.Authorizer.manage_auth_providers_permission()
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
-      OIDC.AuthProvider.Changeset.create(attrs, subject)
+      %OIDC.AuthProvider{}
+      |> OIDC.AuthProvider.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end
