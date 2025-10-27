@@ -155,28 +155,20 @@ impl TunDeviceManager {
             .context("Failed to bring up interface")?;
 
         if res_v4.is_ok() {
-            if let Err(e) = make_rule(handle).v4().execute().await {
-                if !matches!(&e, NetlinkError(err) if err.raw_code() == -EEXIST) {
-                    tracing::warn!(
-                        "Couldn't add ip rule for ipv4: {e:?}, ipv4 packets won't be routed"
-                    );
-                }
-                // TODO: Be smarter about this
-            } else {
-                tracing::debug!("Successfully created ip rule for ipv4");
+            match install_rule(make_rule(handle).v4()).await {
+                Ok(()) => tracing::debug!("Successfully created ip rule for ipv4"),
+                Err(e) => tracing::warn!(
+                    "Couldn't add ip rule for ipv4: {e:?}, ipv4 packets won't be routed"
+                ),
             }
         }
 
         if res_v6.is_ok() {
-            if let Err(e) = make_rule(handle).v6().execute().await {
-                if !matches!(&e, NetlinkError(err) if err.raw_code() == -EEXIST) {
-                    tracing::warn!(
-                        "Couldn't add ip rule for ipv6: {e:?}, ipv6 packets won't be routed"
-                    );
-                }
-                // TODO: Be smarter about this
-            } else {
-                tracing::debug!("Successfully created ip rule for ipv6");
+            match install_rule(make_rule(handle).v6()).await {
+                Ok(()) => tracing::debug!("Successfully created ip rule for ipv6"),
+                Err(e) => tracing::warn!(
+                    "Couldn't add ip rule for ipv6: {e:?}, ipv6 packets won't be routed"
+                ),
             }
         }
 
@@ -289,6 +281,14 @@ fn make_rule(handle: &Handle) -> RuleAddRequest {
         ));
 
     rule
+}
+
+async fn install_rule<T>(req: RuleAddRequest<T>) -> Result<(), rtnetlink::Error> {
+    match req.execute().await {
+        Err(e) if matches!(&e, NetlinkError(err) if err.raw_code() == -EEXIST) => Ok(()),
+        Err(e) => Err(e),
+        Ok(()) => Ok(()),
+    }
 }
 
 async fn tun_device_index(handle: &Handle) -> Result<u32> {
