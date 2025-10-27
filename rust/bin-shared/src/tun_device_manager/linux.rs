@@ -49,7 +49,9 @@ const TUN_DEV_MINOR: u32 = 200;
 
 const TUN_FILE: &CStr = c"/dev/net/tun";
 
-const FIREZONE_TABLE: u32 = 0x2021_fd00;
+const FIREZONE_TABLE_USER: u32 = 0x2021_fd00;
+const FIREZONE_TABLE_LINK_SCOPE: u32 = 0x2021_fd01;
+const FIREZONE_TABLE_INTERNET: u32 = 0x2021_fd02;
 
 /// For lack of a better name
 pub struct TunDeviceManager {
@@ -155,14 +157,14 @@ impl TunDeviceManager {
             .context("Failed to bring up interface")?;
 
         if res_v4.is_ok() {
-            match install_rules([make_rule(handle).v4()]).await {
+            match install_rules([make_rule(handle, FIREZONE_TABLE_USER, 100).v4()]).await {
                 Ok(()) => tracing::debug!("Successfully created routing rules for IPv4"),
                 Err(e) => tracing::warn!("Failed to add IPv4 routing rules: {e}"),
             }
         }
 
         if res_v6.is_ok() {
-            match install_rules([make_rule(handle).v6()]).await {
+            match install_rules([make_rule(handle, FIREZONE_TABLE_USER, 100).v6()]).await {
                 Ok(()) => tracing::debug!("Successfully created routing rule for IPv6"),
                 Err(e) => tracing::warn!("Failed to add IPv6 routing rules: {e}"),
             }
@@ -190,11 +192,23 @@ impl TunDeviceManager {
         let index = tun_device_index(handle).await?;
 
         for route in self.routes.difference(&new_routes) {
-            remove_route(route, index, handle).await;
+            let table = if is_default_route(route) {
+                FIREZONE_TABLE_INTERNET
+            } else {
+                FIREZONE_TABLE_USER
+            };
+
+            remove_route(route, index, table, handle).await;
         }
 
         for route in &new_routes {
-            add_route(route, index, handle).await;
+            let table = if is_default_route(route) {
+                FIREZONE_TABLE_INTERNET
+            } else {
+                FIREZONE_TABLE_USER
+            };
+
+            add_route(route, index, table, handle).await;
         }
 
         self.routes = new_routes;
@@ -257,12 +271,13 @@ async fn set_txqueue_length(handle: Handle, queue_len: u32) -> Result<()> {
     Ok(())
 }
 
-fn make_rule(handle: &Handle) -> RuleAddRequest {
+fn make_rule(handle: &Handle, table: u32, priority: u32) -> RuleAddRequest {
     let mut rule = handle
         .rule()
         .add()
         .fw_mark(FIREZONE_MARK)
-        .table_id(FIREZONE_TABLE)
+        .table_id(table)
+        .priority(priority)
         .action(RuleAction::ToTable);
 
     rule.message_mut()
@@ -308,39 +323,39 @@ async fn tun_device_index(handle: &Handle) -> Result<u32> {
     Ok(index)
 }
 
-fn make_route_v4(idx: u32, route: Ipv4Network) -> RouteMessage {
+fn make_route_v4(idx: u32, route: Ipv4Network, table: u32) -> RouteMessage {
     RouteMessageBuilder::<Ipv4Addr>::new()
         .output_interface(idx)
         .protocol(RouteProtocol::Static)
         .scope(RouteScope::Universe)
-        .table_id(FIREZONE_TABLE)
+        .table_id(table)
         .destination_prefix(route.network_address(), route.netmask())
         .build()
 }
 
-fn make_route_v6(idx: u32, route: Ipv6Network) -> RouteMessage {
+fn make_route_v6(idx: u32, route: Ipv6Network, table: u32) -> RouteMessage {
     RouteMessageBuilder::<Ipv6Addr>::new()
         .output_interface(idx)
         .protocol(RouteProtocol::Static)
         .scope(RouteScope::Universe)
-        .table_id(FIREZONE_TABLE)
+        .table_id(table)
         .destination_prefix(route.network_address(), route.netmask())
         .build()
 }
 
-async fn add_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+async fn add_route(route: &IpNetwork, idx: u32, table: u32, handle: &Handle) {
     let message = match route {
-        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
-        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
+        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet, table),
+        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet, table),
     };
 
     execute_add_route_message(message, handle).await;
 }
 
-async fn remove_route(route: &IpNetwork, idx: u32, handle: &Handle) {
+async fn remove_route(route: &IpNetwork, idx: u32, table: u32, handle: &Handle) {
     let message = match route {
-        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet),
-        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet),
+        IpNetwork::V4(ipnet) => make_route_v4(idx, *ipnet, table),
+        IpNetwork::V6(ipnet) => make_route_v6(idx, *ipnet, table),
     };
 
     execute_del_route_message(message, handle).await
@@ -467,7 +482,7 @@ async fn sync_link_scope_routes(handle: &Handle) -> Result<()> {
 
     let link_scope_routes_firezone_table = link_scope_routes
         .iter()
-        .filter(|m| table_id_from_message(m) == FIREZONE_TABLE)
+        .filter(|m| table_id_from_message(m) == FIREZONE_TABLE_LINK_SCOPE)
         .cloned()
         .collect::<Vec<_>>();
 
@@ -521,12 +536,19 @@ async fn sync_link_scope_routes(handle: &Handle) -> Result<()> {
             .retain(|a| !matches!(a, RouteAttribute::Table(_)));
         message
             .attributes
-            .push(RouteAttribute::Table(FIREZONE_TABLE));
+            .push(RouteAttribute::Table(FIREZONE_TABLE_LINK_SCOPE));
 
         execute_add_route_message(message, handle).await;
     }
 
     Ok(())
+}
+
+fn is_default_route(route: &IpNetwork) -> bool {
+    match route {
+        IpNetwork::V4(v4) => v4 == &Ipv4Network::DEFAULT_ROUTE,
+        IpNetwork::V6(v6) => v6 == &Ipv6Network::DEFAULT_ROUTE,
+    }
 }
 
 async fn all_link_scope_routes(handle: &Handle) -> Result<Vec<RouteMessage>> {
