@@ -352,15 +352,9 @@ impl Eventloop {
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
-                    msg.client.id,
-                    PublicKey::from(msg.client.public_key.0),
-                    msg.client.preshared_key,
+                    msg.client,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
-                    IpConfig {
-                        v4: msg.client.ipv4,
-                        v6: msg.client.ipv6,
-                    },
                     msg.expires_at,
                     msg.resource,
                     Instant::now(),

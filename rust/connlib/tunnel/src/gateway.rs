@@ -7,7 +7,7 @@ pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
 
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::gateway::flow_tracker::FlowTracker;
-use crate::messages::gateway::ResourceDescription;
+use crate::messages::gateway::{AuthorizeFlow, Client, ResourceDescription, Subject};
 use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::{GatewayEvent, IpConfig, p2p_control};
@@ -301,22 +301,19 @@ impl GatewayState {
         })
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
+    #[tracing::instrument(level = "debug", skip_all, fields(cid = %client.id))]
     pub fn authorize_flow(
         &mut self,
-        cid: ClientId,
-        client_key: PublicKey,
-        preshared_key: SecretKey,
+        client: Client,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
-        client_tun: IpConfig,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
-            cid,
-            client_key,
+            client.id,
+            client.public_key.into(),
             x25519::StaticSecret::from(preshared_key.expose_secret().0),
             Credentials {
                 username: gateway_ice.username,
@@ -329,7 +326,16 @@ impl GatewayState {
             now,
         )?;
 
-        let result = self.allow_access(cid, client_tun, expires_at, resource, None);
+        let result = self.allow_access(
+            client.id,
+            IpConfig {
+                v4: client.ipv4,
+                v6: client.ipv6,
+            },
+            expires_at,
+            resource,
+            None,
+        );
         debug_assert!(
             result.is_ok(),
             "`allow_access` should never fail without a `DnsResourceEntry`"

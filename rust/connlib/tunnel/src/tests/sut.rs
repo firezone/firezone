@@ -10,6 +10,7 @@ use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
+use crate::messages::gateway::{Client, Subject};
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
@@ -823,12 +824,17 @@ impl TunnelTest {
                 gateway
                     .exec_mut(|g| {
                         g.sut.authorize_flow(
-                            src,
-                            client_key,
-                            preshared_key.clone(),
+                            Client {
+                                id: src,
+                                public_key: client_key.into(),
+                                preshared_key: preshared_key.clone(),
+                                ipv4: self.client.inner().sut.tunnel_ip_config().unwrap().v4,
+                                ipv6: self.client.inner().sut.tunnel_ip_config().unwrap().v6,
+                                client_version: "1.0.0".to_owned(),
+                                device_serial: "deadbeef".to_owned(),
+                            },
                             client_ice.clone(),
                             gateway_ice.clone(),
-                            self.client.inner().sut.tunnel_ip_config().unwrap(),
                             None,
                             resource,
                             now,
