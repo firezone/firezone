@@ -337,6 +337,9 @@ impl GatewayState {
             flow_tracker::ClientProperties {
                 version: client.version,
                 device_serial: client.device_serial,
+                device_uuid: client.device_uuid,
+                identifier_for_vendor: client.identifier_for_vendor,
+                firebase_installation_id: client.firebase_installation_id,
                 actor_name: subject.name,
                 actor_email: subject.email,
             },
@@ -484,6 +487,9 @@ impl GatewayState {
                         client_version = %flow.client_version,
 
                         device_serial = %flow.device_serial,
+                        device_uuid = %flow.device_uuid,
+                        device_identifier_for_vendor = %flow.device_identifier_for_vendor,
+                        device_firebase_installation_id = %flow.device_firebase_installation_id,
 
                         actor_name = %flow.actor_name,
                         actor_email = %flow.actor_email,
@@ -521,6 +527,9 @@ impl GatewayState {
                         client_version = %flow.client_version,
 
                         device_serial = %flow.device_serial,
+                        device_uuid = %flow.device_uuid,
+                        device_identifier_for_vendor = %flow.identifier_for_vendor,
+                        device_firebase_installation_id = %flow.firebase_installation_id,
 
                         actor_name = %flow.actor_name,
                         actor_email = %flow.actor_email,

@@ -832,6 +832,9 @@ impl TunnelTest {
                                 ipv6: self.client.inner().sut.tunnel_ip_config().unwrap().v6,
                                 version: "1.0.0".to_owned(),
                                 device_serial: "deadbeef".to_owned(),
+                                device_uuid: String::new(),
+                                identifier_for_vendor: String::new(),
+                                firebase_installation_id: String::new(),
                             },
                             Subject {
                                 name: "John Doe".to_owned(),

@@ -38,6 +38,9 @@ pub struct FlowTracker {
 pub struct ClientProperties {
     pub version: String,
     pub device_serial: String,
+    pub device_uuid: String,
+    pub identifier_for_vendor: String,
+    pub firebase_installation_id: String,
     pub actor_name: String,
     pub actor_email: String,
 }
@@ -220,6 +223,9 @@ impl FlowTracker {
                             resource_address: resource.address,
                             client_version: client.version,
                             device_serial: client.device_serial,
+                            device_uuid: client.device_uuid,
+                            identifier_for_vendor: client.identifier_for_vendor,
+                            firebase_installation_id: client.firebase_installation_id,
                             actor_name: client.actor_name,
                             actor_email: client.actor_email,
                         });
@@ -253,6 +259,9 @@ impl FlowTracker {
 
                                 client_version: client.version,
                                 device_serial: client.device_serial,
+                                device_uuid: client.device_uuid,
+                                identifier_for_vendor: client.identifier_for_vendor,
+                                firebase_installation_id: client.firebase_installation_id,
                                 actor_name: client.actor_name,
                                 actor_email: client.actor_email,
                             },
@@ -281,6 +290,9 @@ impl FlowTracker {
                                 resource_address: resource.address,
                                 client_version: client.version,
                                 device_serial: client.device_serial,
+                                device_uuid: client.device_uuid,
+                                identifier_for_vendor: client.identifier_for_vendor,
+                                firebase_installation_id: client.firebase_installation_id,
                                 actor_name: client.actor_name,
                                 actor_email: client.actor_email,
                             },
@@ -330,6 +342,9 @@ impl FlowTracker {
                             resource_address: resource.address,
                             client_version: client.version,
                             device_serial: client.device_serial,
+                            device_uuid: client.device_uuid,
+                            identifier_for_vendor: client.identifier_for_vendor,
+                            firebase_installation_id: client.firebase_installation_id,
                             actor_name: client.actor_name,
                             actor_email: client.actor_email,
                         });
@@ -360,6 +375,9 @@ impl FlowTracker {
                                 resource_address: value.resource_address,
                                 client_version: client.version,
                                 device_serial: client.device_serial,
+                                device_uuid: client.device_uuid,
+                                identifier_for_vendor: client.identifier_for_vendor,
+                                firebase_installation_id: client.firebase_installation_id,
                                 actor_name: client.actor_name,
                                 actor_email: client.actor_email,
                             },
@@ -491,6 +509,9 @@ pub struct CompletedTcpFlow {
     pub client_version: String,
 
     pub device_serial: String,
+    pub device_uuid: String,
+    pub device_identifier_for_vendor: String,
+    pub device_firebase_installation_id: String,
 
     pub actor_name: String,
     pub actor_email: String,
@@ -526,6 +547,9 @@ pub struct CompletedUdpFlow {
     pub client_version: String,
 
     pub device_serial: String,
+    pub device_uuid: String,
+    pub identifier_for_vendor: String,
+    pub firebase_installation_id: String,
 
     pub actor_name: String,
     pub actor_email: String,
@@ -561,6 +585,9 @@ impl CompletedTcpFlow {
             client_id: key.client,
             client_version: value.client_version,
             device_serial: value.device_serial,
+            device_uuid: value.device_uuid,
+            device_identifier_for_vendor: value.identifier_for_vendor,
+            device_firebase_installation_id: value.firebase_installation_id,
             actor_email: value.actor_email,
             actor_name: value.actor_name,
             resource_id: key.resource,
@@ -592,6 +619,9 @@ impl CompletedUdpFlow {
             client_id: key.client,
             client_version: value.client_version,
             device_serial: value.device_serial,
+            device_uuid: value.device_uuid,
+            identifier_for_vendor: value.identifier_for_vendor,
+            firebase_installation_id: value.firebase_installation_id,
             actor_email: value.actor_email,
             actor_name: value.actor_name,
             resource_id: key.resource,
@@ -651,6 +681,9 @@ struct TcpFlowValue {
 
     client_version: String,
     device_serial: String,
+    device_uuid: String,
+    identifier_for_vendor: String,
+    firebase_installation_id: String,
 
     actor_name: String,
     actor_email: String,
@@ -673,6 +706,9 @@ struct UdpFlowValue {
 
     client_version: String,
     device_serial: String,
+    device_uuid: String,
+    identifier_for_vendor: String,
+    firebase_installation_id: String,
 
     actor_name: String,
     actor_email: String,
@@ -778,6 +814,9 @@ pub mod inbound_wg {
                 device_serial: props.device_serial,
                 actor_name: props.actor_name,
                 actor_email: props.actor_email,
+                device_uuid: props.device_uuid,
+                identifier_for_vendor: props.identifier_for_vendor,
+                firebase_installation_id: props.firebase_installation_id,
             })
         });
     }
@@ -920,8 +959,14 @@ struct InnerFlow {
 #[derive(Debug)]
 struct Client {
     id: ClientId,
+
     version: String,
+
     device_serial: String,
+    device_uuid: String,
+    identifier_for_vendor: String,
+    firebase_installation_id: String,
+
     actor_name: String,
     actor_email: String,
 }

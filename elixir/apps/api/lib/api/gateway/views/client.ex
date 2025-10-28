@@ -9,7 +9,10 @@ defmodule API.Gateway.Views.Client do
       ipv4: client.ipv4,
       ipv6: client.ipv6,
       version: client.last_seen_version,
-      device_serial: client.device_serial
+      device_serial: client.device_serial,
+      firebase_installation_id: client.firebase_installation_id,
+      identifier_for_vendor: client.identifier_for_vendor,
+      device_uuid: client.device_uuid
     }
   end
 
