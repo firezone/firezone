@@ -47,20 +47,17 @@ jobs:
             exit 0;
           fi
 
+          # For merge group, run all jobs
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
+
+            exit 0;
+          fi
+
           # Fetch base ref for PRs
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin ${{ github.base_ref }} --depth=1
             git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
-
-            echo "Changed files:"
-            cat changed_files.txt
-          fi
-
-          # Fetch base ref for merge_group
-          if [ "${{ github.event_name }}" = "merge_group" ]; then
-            # Base ref could be a few commits away, so fetch a few commits in case the queue is long
-            git fetch origin main --depth=20
-            git diff --name-only origin/main ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
