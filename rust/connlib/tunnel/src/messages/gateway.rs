@@ -211,15 +211,21 @@ pub struct Client {
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
     pub user_agent: String,
+    #[serde(default)]
     pub device_serial: Option<String>,
+    #[serde(default)]
     pub device_uuid: Option<String>,
+    #[serde(default)]
     pub identifier_for_vendor: Option<String>,
+    #[serde(default)]
     pub firebase_installation_id: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Clone)]
+#[derive(Debug, Deserialize, Clone, Default)]
 pub struct Subject {
+    #[serde(default)]
     pub identity_name: Option<String>,
+    #[serde(default)]
     pub actor_email: Option<String>,
 }
 
@@ -231,6 +237,7 @@ pub struct AuthorizeFlow {
     pub resource: ResourceDescription,
     pub gateway_ice_credentials: IceCredentials,
     pub client: Client,
+    #[serde(default)]
     pub subject: Subject,
     pub client_ice_credentials: IceCredentials,
 
