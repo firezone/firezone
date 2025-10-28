@@ -70,7 +70,7 @@ defmodule Web.Sites.NewToken do
           <.tabs :if={@env} id="deployment-instructions">
             <:tab
               id="debian-instructions"
-              icon="hero-command-line"
+              icon="os-debian"
               label="Debian / Ubuntu"
               phx_click="tab_selected"
               selected={@selected_tab == "debian-instructions"}
