@@ -837,7 +837,7 @@ impl TunnelTest {
                                 firebase_installation_id: None,
                             },
                             Subject {
-                                identity_name: "John Doe".to_owned(),
+                                identity_name: None,
                                 actor_email: None,
                             },
                             client_ice.clone(),

@@ -41,7 +41,7 @@ pub struct ClientProperties {
     pub device_uuid: Option<String>,
     pub identifier_for_vendor: Option<String>,
     pub firebase_installation_id: Option<String>,
-    pub identity_name: String,
+    pub identity_name: Option<String>,
     pub actor_email: Option<String>,
 }
 
@@ -513,7 +513,7 @@ pub struct CompletedTcpFlow {
     pub device_identifier_for_vendor: Option<String>,
     pub device_firebase_installation_id: Option<String>,
 
-    pub identity_name: String,
+    pub identity_name: Option<String>,
     pub actor_email: Option<String>,
 
     pub resource_id: ResourceId,
@@ -551,7 +551,7 @@ pub struct CompletedUdpFlow {
     pub device_identifier_for_vendor: Option<String>,
     pub device_firebase_installation_id: Option<String>,
 
-    pub identity_name: String,
+    pub identity_name: Option<String>,
     pub actor_email: Option<String>,
 
     pub resource_id: ResourceId,
@@ -685,7 +685,7 @@ struct TcpFlowValue {
     identifier_for_vendor: Option<String>,
     firebase_installation_id: Option<String>,
 
-    identity_name: String,
+    identity_name: Option<String>,
     actor_email: Option<String>,
 
     fin_tx: bool,
@@ -710,7 +710,7 @@ struct UdpFlowValue {
     identifier_for_vendor: Option<String>,
     firebase_installation_id: Option<String>,
 
-    identity_name: String,
+    identity_name: Option<String>,
     actor_email: Option<String>,
 }
 
@@ -967,7 +967,7 @@ struct Client {
     identifier_for_vendor: Option<String>,
     firebase_installation_id: Option<String>,
 
-    identity_name: String,
+    identity_name: Option<String>,
     actor_email: Option<String>,
 }
 
