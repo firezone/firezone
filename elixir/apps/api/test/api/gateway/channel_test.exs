@@ -1551,12 +1551,15 @@ defmodule API.Gateway.ChannelTest do
                preshared_key: preshared_key,
                public_key: client.public_key,
                version: client.last_seen_version,
-               device_serial: client.device_serial
+               device_serial: client.device_serial,
+               device_uuid: client.device_uuid,
+               identifier_for_vendor: client.identifier_for_vendor,
+               firebase_installation_id: client.firebase_installation_id
              }
 
       assert payload.subject == %{
-               name: subject.actor.name,
-               email: subject.identity.email
+               identity_name: subject.actor.name,
+               actor_email: subject.identity.email
              }
 
       assert payload.client_ice_credentials == ice_credentials.client
