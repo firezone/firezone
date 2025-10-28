@@ -7,7 +7,7 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     Okta
   }
 
-  @required_fields ~w[name context org_domain client_id client_secret issuer]a
+  @required_fields ~w[name context okta_domain client_id client_secret issuer]a
   @fields @required_fields ++ ~w[disabled_at verified_at is_default]a
 
   def create(
@@ -36,7 +36,7 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     |> put_discovery_document_uri()
     |> validate_required(:discovery_document_uri)
     |> validate_uri(:discovery_document_uri)
-    |> validate_length(:org_domain, min: 1, max: 255)
+    |> validate_length(:okta_domain, min: 1, max: 255)
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> validate_length(:client_id, min: 1, max: 255)
     |> validate_length(:client_secret, min: 1, max: 255)

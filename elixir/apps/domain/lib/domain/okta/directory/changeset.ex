@@ -6,8 +6,8 @@ defmodule Domain.Okta.Directory.Changeset do
     Okta.Directory
   }
 
-  @required_fields ~w[name org_domain issuer]a
-  @update_fields ~w[name error_count disabled_at disabled_reason synced_at error error_emailed_at]a
+  @required_fields ~w[name okta_domain issuer]a
+  @update_fields ~w[name private_key_jwk kid error_count disabled_at disabled_reason synced_at error error_emailed_at]a
 
   def create(attrs, %Auth.Subject{} = subject) do
     %Directory{}
@@ -26,7 +26,7 @@ defmodule Domain.Okta.Directory.Changeset do
   def changeset(changeset) do
     changeset
     |> validate_required(@required_fields)
-    |> validate_length(:org_domain, min: 1, max: 255)
+    |> validate_length(:okta_domain, min: 1, max: 255)
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_count, greater_than_or_equal_to: 0)

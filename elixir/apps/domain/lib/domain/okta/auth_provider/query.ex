@@ -17,7 +17,7 @@ defmodule Domain.Okta.AuthProvider.Query do
     where(querable, [providers: providers], providers.id == ^id)
   end
 
-  def by_org_domain(queryable, org_domain) do
-    where(queryable, [providers: providers], providers.org_domain == ^org_domain)
+  def by_okta_domain(queryable, okta_domain) do
+    where(queryable, [providers: providers], providers.okta_domain == ^okta_domain)
   end
 end

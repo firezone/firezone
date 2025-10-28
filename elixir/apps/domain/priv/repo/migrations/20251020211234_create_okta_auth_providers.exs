@@ -14,7 +14,7 @@ defmodule Domain.Repo.Migrations.CreateOktaAuthProviders do
 
       add(:issuer, :text, null: false)
       add(:name, :string, null: false)
-      add(:org_domain, :string, null: false)
+      add(:okta_domain, :string, null: false)
       add(:client_id, :string, null: false)
       add(:client_secret, :string, null: false)
 

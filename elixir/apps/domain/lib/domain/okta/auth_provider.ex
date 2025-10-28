@@ -23,7 +23,7 @@ defmodule Domain.Okta.AuthProvider do
     field :is_default, :boolean, default: false
 
     field :name, :string, default: "Okta"
-    field :org_domain, :string
+    field :okta_domain, :string
     field :client_id, :string
     field :client_secret, :string, redact: true
 

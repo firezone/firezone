@@ -13,7 +13,7 @@ defmodule Domain.Okta.Directory.Query do
     where(queryable, [directories: directories], directories.account_id == ^account_id)
   end
 
-  def by_org_domain(queryable, org_domain) do
-    where(queryable, [directories: directories], directories.org_domain == ^org_domain)
+  def by_okta_domain(queryable, okta_domain) do
+    where(queryable, [directories: directories], directories.okta_domain == ^okta_domain)
   end
 end
