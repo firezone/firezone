@@ -210,7 +210,8 @@ pub struct Client {
     pub preshared_key: SecretKey,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
-    pub user_agent: String,
+    #[serde(default)]
+    pub user_agent: Option<String>,
     #[serde(default)]
     pub device_serial: Option<String>,
     #[serde(default)]

@@ -36,7 +36,7 @@ pub struct FlowTracker {
 /// Additional properties we track for a client.
 #[derive(Debug, Clone, Default)]
 pub struct ClientProperties {
-    pub user_agent: String,
+    pub user_agent: Option<String>,
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
     pub identifier_for_vendor: Option<String>,
@@ -506,7 +506,7 @@ pub enum CompletedFlow {
 #[derive(Debug)]
 pub struct CompletedTcpFlow {
     pub client_id: ClientId,
-    pub client_user_agent: String,
+    pub client_user_agent: Option<String>,
 
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
@@ -544,7 +544,7 @@ pub struct CompletedTcpFlow {
 #[derive(Debug)]
 pub struct CompletedUdpFlow {
     pub client_id: ClientId,
-    pub client_user_agent: String,
+    pub client_user_agent: Option<String>,
 
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
@@ -679,7 +679,7 @@ struct TcpFlowValue {
     resource_name: String,
     resource_address: String,
 
-    client_user_agent: String,
+    client_user_agent: Option<String>,
     device_serial: Option<String>,
     device_uuid: Option<String>,
     identifier_for_vendor: Option<String>,
@@ -704,7 +704,7 @@ struct UdpFlowValue {
     resource_name: String,
     resource_address: String,
 
-    client_user_agent: String,
+    client_user_agent: Option<String>,
     device_serial: Option<String>,
     device_uuid: Option<String>,
     identifier_for_vendor: Option<String>,
@@ -960,7 +960,7 @@ struct InnerFlow {
 struct Client {
     id: ClientId,
 
-    user_agent: String,
+    user_agent: Option<String>,
 
     device_serial: Option<String>,
     device_uuid: Option<String>,

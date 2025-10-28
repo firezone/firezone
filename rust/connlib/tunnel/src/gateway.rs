@@ -484,7 +484,7 @@ impl GatewayState {
                         target: "flow_logs::tcp",
 
                         client_id = %flow.client_id,
-                        client_user_agent = %flow.client_user_agent,
+                        client_user_agent = flow.client_user_agent.map(tracing::field::display),
 
                         device_serial = flow.device_serial.map(tracing::field::display),
                         device_uuid = flow.device_uuid.map(tracing::field::display),
@@ -524,7 +524,7 @@ impl GatewayState {
                         target: "flow_logs::udp",
 
                         client_id = %flow.client_id,
-                        client_user_agent = %flow.client_user_agent,
+                        client_user_agent = flow.client_user_agent.map(tracing::field::display),
 
                         device_serial = flow.device_serial.map(tracing::field::display),
                         device_uuid = flow.device_uuid.map(tracing::field::display),

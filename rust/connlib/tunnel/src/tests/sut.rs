@@ -830,7 +830,7 @@ impl TunnelTest {
                                 preshared_key: preshared_key.clone(),
                                 ipv4: self.client.inner().sut.tunnel_ip_config().unwrap().v4,
                                 ipv6: self.client.inner().sut.tunnel_ip_config().unwrap().v6,
-                                user_agent: "Linux/24.04 headless-client/1.5.0".to_owned(),
+                                user_agent: None,
                                 device_serial: None,
                                 device_uuid: None,
                                 identifier_for_vendor: None,
