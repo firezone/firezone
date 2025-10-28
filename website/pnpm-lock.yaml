@@ -21,8 +21,8 @@ importers:
         specifier: ^3.1.1
         version: 3.1.1(@types/react@19.2.2)(react@19.2.0)
       '@next/mdx':
-        specifier: ~15.5.3
-        version: 15.5.3(@mdx-js/loader@3.1.1(webpack@5.92.0))(@mdx-js/react@3.1.1(@types/react@19.2.2)(react@19.2.0))
+        specifier: ~15.5.4
+        version: 15.5.4(@mdx-js/loader@3.1.1(webpack@5.92.0))(@mdx-js/react@3.1.1(@types/react@19.2.2)(react@19.2.0))
       '@next/third-parties':
         specifier: ^15.5.3
         version: 15.5.3(next@15.5.4(@opentelemetry/api@1.9.0)(react-dom@19.2.0(react@19.2.0))(react@19.2.0))(react@19.2.0)
@@ -552,8 +552,8 @@ packages:
   '@next/eslint-plugin-next@15.5.3':
     resolution: {integrity: sha512-SdhaKdko6dpsSr0DldkESItVrnPYB1NS2NpShCSX5lc7SSQmLZt5Mug6t2xbiuVWEVDLZSuIAoQyYVBYp0dR5g==}
 
-  '@next/mdx@15.5.3':
-    resolution: {integrity: sha512-tpD3sdWfAiqjqD1WXL4ZEpxswXdbeoTQjlgvDzbQOxDr37qaAo9bFkpMVb3P3pgAJAQ9Q6w1Yql6YtOsmgZrzg==}
+  '@next/mdx@15.5.4':
+    resolution: {integrity: sha512-QUc14KkswCau2/Lul13t13v8QYRiEh3aeyUMUix5mK/Zd8c/J9NQuVvLGhxS7fxGPU+fOcv0GaXqZshkvNaX7A==}
     peerDependencies:
       '@mdx-js/loader': '>=0.15.0'
       '@mdx-js/react': '>=0.15.0'
@@ -3683,7 +3683,7 @@ snapshots:
     dependencies:
       fast-glob: 3.3.1
 
-  '@next/mdx@15.5.3(@mdx-js/loader@3.1.1(webpack@5.92.0))(@mdx-js/react@3.1.1(@types/react@19.2.2)(react@19.2.0))':
+  '@next/mdx@15.5.4(@mdx-js/loader@3.1.1(webpack@5.92.0))(@mdx-js/react@3.1.1(@types/react@19.2.2)(react@19.2.0))':
     dependencies:
       source-map: 0.7.6
     optionalDependencies:
