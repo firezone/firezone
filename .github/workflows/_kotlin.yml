@@ -54,7 +54,7 @@ jobs:
     # Android SDK tools hardware accel is available only on Linux runners
     runs-on: ubuntu-24.04
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         include:
           - package-type: aab

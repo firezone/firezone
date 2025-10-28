@@ -183,7 +183,7 @@ impl FlowTracker {
             (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
                 let key = TcpFlowKey {
                     client,
-                    resource,
+                    resource: resource.id,
                     src_ip,
                     dst_ip,
                     src_port,
@@ -207,6 +207,8 @@ impl FlowTracker {
                             fin_tx: false,
                             fin_rx: false,
                             domain,
+                            resource_name: resource.name,
+                            resource_address: resource.address,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -233,6 +235,8 @@ impl FlowTracker {
                                 fin_tx: false,
                                 fin_rx: false,
                                 domain,
+                                resource_name: resource.name,
+                                resource_address: resource.address,
                             },
                         );
                     }
@@ -255,6 +259,8 @@ impl FlowTracker {
                                 fin_tx: false,
                                 fin_rx: false,
                                 domain,
+                                resource_name: resource.name,
+                                resource_address: resource.address,
                             },
                         );
                     }
@@ -281,7 +287,7 @@ impl FlowTracker {
             (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
                 let key = UdpFlowKey {
                     client,
-                    resource,
+                    resource: resource.id,
                     src_ip,
                     dst_ip,
                     src_port,
@@ -298,13 +304,15 @@ impl FlowTracker {
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             context,
                             domain,
+                            resource_name: resource.name,
+                            resource_address: resource.address,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
                         let context_diff = FlowContextDiff::new(value.context, context);
 
-                        let flow = CompletedUdpFlow::new(key, value, now_utc);
+                        let flow = CompletedUdpFlow::new(key, value.clone(), now_utc);
 
                         tracing::debug!(
                             ?key,
@@ -322,6 +330,8 @@ impl FlowTracker {
                                 stats: FlowStats::default().with_tx(payload_len as u64),
                                 context,
                                 domain,
+                                resource_name: value.resource_name,
+                                resource_address: value.resource_address,
                             },
                         );
                     }
@@ -448,7 +458,11 @@ pub enum CompletedFlow {
 #[derive(Debug)]
 pub struct CompletedTcpFlow {
     pub client: ClientId,
-    pub resource: ResourceId,
+
+    pub resource_id: ResourceId,
+    pub resource_name: String,
+    pub resource_address: String,
+
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
     pub last_packet: DateTime<Utc>,
@@ -473,7 +487,11 @@ pub struct CompletedTcpFlow {
 #[derive(Debug)]
 pub struct CompletedUdpFlow {
     pub client: ClientId,
-    pub resource: ResourceId,
+
+    pub resource_id: ResourceId,
+    pub resource_name: String,
+    pub resource_address: String,
+
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
     pub last_packet: DateTime<Utc>,
@@ -499,7 +517,9 @@ impl CompletedTcpFlow {
     fn new(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
             client: key.client,
-            resource: key.resource,
+            resource_id: key.resource,
+            resource_name: value.resource_name,
+            resource_address: value.resource_address,
             start: value.start,
             end,
             last_packet: value.last_packet,
@@ -524,7 +544,9 @@ impl CompletedUdpFlow {
     fn new(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
             client: key.client,
-            resource: key.resource,
+            resource_id: key.resource,
+            resource_name: value.resource_name,
+            resource_address: value.resource_address,
             start: value.start,
             end,
             last_packet: value.last_packet,
@@ -574,11 +596,14 @@ struct TcpFlowValue {
 
     domain: Option<DomainName>,
 
+    resource_name: String,
+    resource_address: String,
+
     fin_tx: bool,
     fin_rx: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
@@ -586,9 +611,12 @@ struct UdpFlowValue {
     context: FlowContext,
 
     domain: Option<DomainName>,
+
+    resource_name: String,
+    resource_address: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 struct FlowStats {
     rx_packets: u64,
     tx_packets: u64,
@@ -684,8 +712,10 @@ pub mod inbound_wg {
         update_current_flow_inbound_wireguard(|wg| wg.client.replace(cid));
     }
 
-    pub fn record_resource(rid: ResourceId) {
-        update_current_flow_inbound_wireguard(|wg| wg.resource.replace(rid));
+    pub fn record_resource(id: ResourceId, name: String, address: String) {
+        update_current_flow_inbound_wireguard(|wg| {
+            wg.resource.replace(Resource { id, name, address })
+        });
     }
 
     pub fn record_domain(name: DomainName) {
@@ -724,8 +754,8 @@ pub mod inbound_tun {
         update_current_flow_inbound_tun(|tun| tun.client.replace(cid));
     }
 
-    pub fn record_resource(rid: ResourceId) {
-        update_current_flow_inbound_tun(|tun| tun.resource.replace(rid));
+    pub fn record_resource(id: ResourceId) {
+        update_current_flow_inbound_tun(|wg| wg.resource.replace(id));
     }
 
     pub fn record_wireguard_packet(local: Option<SocketAddr>, remote: SocketAddr) {
@@ -783,7 +813,7 @@ struct InboundWireGuard {
     outer: OuterFlow<SocketAddr>,
     inner: Option<InnerFlow>,
     client: Option<ClientId>,
-    resource: Option<ResourceId>,
+    resource: Option<Resource>,
     /// The domain name in case this packet is for a DNS resource.
     domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
@@ -815,6 +845,13 @@ struct InnerFlow {
     tcp_rst: bool,
 
     payload_len: usize,
+}
+
+#[derive(Debug)]
+struct Resource {
+    id: ResourceId,
+    name: String,
+    address: String,
 }
 
 impl From<&IpPacket> for InnerFlow {

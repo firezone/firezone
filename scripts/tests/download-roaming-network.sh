@@ -50,7 +50,7 @@ readarray -t flows < <(get_flow_logs "tcp")
 assert_gteq "${#flows[@]}" 2
 
 declare -A unique_src_tuples
-declare -i num_ipv4_tuples
+declare -i num_ipv4_tuples=0
 
 for flow in "${flows[@]}"; do
     # All flows should have same inner_dst_ip
