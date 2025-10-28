@@ -320,14 +320,14 @@ defmodule Web.Sites.NewToken do
 
   defp debian_command_install do
     """
-    sudo apt update
-    sudo apt install firezone-gateway
+    apt update
+    apt install firezone-gateway
     """
   end
 
   defp debian_command_authenticate do
     """
-    sudo firezone gateway authenticate
+    firezone gateway authenticate
     """
   end
 
