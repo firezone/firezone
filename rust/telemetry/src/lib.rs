@@ -368,6 +368,7 @@ fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
         "server.",
         "user.",
         "log.",
+        "code.",
         "parent_span_id",
     ];
 
