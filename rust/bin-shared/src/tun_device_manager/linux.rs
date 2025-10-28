@@ -477,7 +477,11 @@ fn subscribe_to_route_changes(
 async fn sync_link_scope_routes(handle: &Handle) -> Result<()> {
     tracing::debug!("Syncing link-scope routes to Firezone routing table");
 
-    let link_scope_routes = all_link_scope_routes(handle).await?;
+    let link_scope_routes = list_routes(handle)
+        .await?
+        .into_iter()
+        .filter(|route| route.header.scope == RouteScope::Link) // Only process link-scope routes
+        .collect::<Vec<_>>();
     let link_states = link_states(handle, &link_scope_routes).await;
 
     let link_scope_routes_firezone_table = link_scope_routes
@@ -551,19 +555,16 @@ fn is_default_route(route: &IpNetwork) -> bool {
     }
 }
 
-async fn all_link_scope_routes(handle: &Handle) -> Result<Vec<RouteMessage>> {
-    let link_scope_routes = handle
+async fn list_routes(handle: &Handle) -> Result<Vec<RouteMessage>> {
+    let all_routes = handle
         .route()
         .get(RouteMessageBuilder::<IpAddr>::new().build())
         .execute()
         .try_collect::<Vec<_>>()
         .await
-        .context("Failed to get routes")?
-        .into_iter()
-        .filter(|route| route.header.scope == RouteScope::Link) // Only process link-scope routes
-        .collect::<Vec<_>>();
+        .context("Failed to get routes")?;
 
-    Ok(link_scope_routes)
+    Ok(all_routes)
 }
 
 #[expect(
