@@ -167,14 +167,26 @@ impl TunDeviceManager {
             .context("Failed to bring up interface")?;
 
         if res_v4.is_ok() {
-            match install_rules([make_rule(handle, FIREZONE_TABLE_USER, 100).v4()]).await {
+            match install_rules([
+                make_rule(handle, FIREZONE_TABLE_USER, 100).v4(),
+                make_rule(handle, FIREZONE_TABLE_LINK_SCOPE, 200).v4(),
+                make_rule(handle, FIREZONE_TABLE_INTERNET, 300).v4(),
+            ])
+            .await
+            {
                 Ok(()) => tracing::debug!("Successfully created routing rules for IPv4"),
                 Err(e) => tracing::warn!("Failed to add IPv4 routing rules: {e}"),
             }
         }
 
         if res_v6.is_ok() {
-            match install_rules([make_rule(handle, FIREZONE_TABLE_USER, 100).v6()]).await {
+            match install_rules([
+                make_rule(handle, FIREZONE_TABLE_USER, 100).v6(),
+                make_rule(handle, FIREZONE_TABLE_LINK_SCOPE, 200).v6(),
+                make_rule(handle, FIREZONE_TABLE_INTERNET, 300).v6(),
+            ])
+            .await
+            {
                 Ok(()) => tracing::debug!("Successfully created routing rule for IPv6"),
                 Err(e) => tracing::warn!("Failed to add IPv6 routing rules: {e}"),
             }
