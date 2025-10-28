@@ -316,7 +316,7 @@ impl GatewayState {
         self.node.upsert_connection(
             client.id,
             client.public_key.into(),
-            x25519::StaticSecret::from(preshared_key.expose_secret().0),
+            x25519::StaticSecret::from(client.preshared_key.expose_secret().0),
             Credentials {
                 username: gateway_ice.username,
                 password: gateway_ice.password,
