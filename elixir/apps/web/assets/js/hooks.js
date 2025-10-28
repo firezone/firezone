@@ -52,18 +52,6 @@ Hooks.Analytics = {
   },
 };
 
-Hooks.Refocus = {
-  mounted() {
-    this.el.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      let target_id = ev.currentTarget.getAttribute("data-refocus");
-      let el = document.getElementById(target_id);
-      if (document.activeElement === el) return;
-      el.focus();
-    });
-  },
-};
-
 /* The phx-disable-with attribute on submit buttons only applies to liveview forms.
  * However, we need to disable the submit button for regular forms as well to prevent
  * double submissions and cases where the submit handler is slow (e.g. constant-time auth).
@@ -95,7 +83,7 @@ Hooks.AttachDisableSubmit = {
 
 Hooks.Modal = {
   mounted() {
-    this.updateModal();
+    this.el.showModal();
 
     // Listen for the dialog close event
     this.el.addEventListener("close", () => {
@@ -106,19 +94,19 @@ Hooks.Modal = {
     });
   },
 
+  beforeUpdate() {
+    this.focusedElement = document.activeElement
+  },
+
+  // When LiveView re-renders the modal, it closes, so we need to re-open it
+  // and restore the focus state.
   updated() {
-    this.updateModal();
-  },
+    if (!this.el.open) this.el.showModal();
 
-  updateModal() {
-    const show = this.el.hasAttribute("data-show");
-
-    if (show && !this.el.open) {
-      this.el.showModal();
-    } else if (!show && this.el.open) {
-      this.el.close();
+    if (this.focusedElement) {
+      this.focusedElement.focus()
     }
-  },
+  }
 };
 
 Hooks.ConfirmDialog = {
@@ -188,6 +176,14 @@ Hooks.CopyClipboard = {
 
   updated() {
     this.mounted();
+  }
+};
+
+Hooks.OpenURL = {
+  mounted() {
+    this.handleEvent("open_url", ({ url }) => {
+      window.open(url, "_blank");
+    });
   }
 };
 

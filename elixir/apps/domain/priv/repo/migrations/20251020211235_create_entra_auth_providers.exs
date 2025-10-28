@@ -10,7 +10,7 @@ defmodule Domain.Repo.Migrations.CreateEntraAuthProviders do
       add(:context, :string, null: false)
       add(:disabled_at, :utc_datetime_usec)
       add(:verified_at, :utc_datetime_usec)
-      add(:assigned_default_at, :utc_datetime_usec)
+      add(:is_default, :boolean, default: false, null: false)
 
       add(:issuer, :text, null: false)
       add(:name, :string, null: false)

@@ -9,7 +9,7 @@ defmodule Domain.Repo.Migrations.CreateGoogleAuthProviders do
       add(:context, :string, null: false)
       add(:disabled_at, :utc_datetime_usec)
       add(:verified_at, :utc_datetime_usec)
-      add(:assigned_default_at, :utc_datetime_usec)
+      add(:is_default, :boolean, default: false, null: false)
 
       add(:issuer, :text, null: false)
       add(:name, :string, null: false)
@@ -19,7 +19,14 @@ defmodule Domain.Repo.Migrations.CreateGoogleAuthProviders do
       timestamps()
     end
 
-    create(index(:google_auth_providers, [:account_id, :issuer, :hosted_domain], unique: true))
+    create(
+      index(:google_auth_providers, [:account_id, :issuer, :hosted_domain],
+        unique: true,
+        # Allow only one null hosted_domain (i.e. personal GMail accounts) per account
+        nulls_distinct: false
+      )
+    )
+
     create(index(:google_auth_providers, [:account_id, :name], unique: true))
 
     execute(

@@ -1539,7 +1539,7 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def provioder_icon(%{type: :email_otp} = assigns) do
+  def provider_icon(%{type: :email_otp} = assigns) do
     ~H"""
     <.icon name="hero-envelope" {@rest} />
     """

@@ -77,9 +77,7 @@ defmodule Web.SignUp do
         provider: nil,
         user_agent: user_agent,
         real_ip: real_ip,
-        sign_up_enabled?: sign_up_enabled?,
-        account_name_changed?: false,
-        actor_name_changed?: false
+        sign_up_enabled?: sign_up_enabled?
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -280,15 +278,7 @@ defmodule Web.SignUp do
     """
   end
 
-  def handle_event("validate", %{"registration" => attrs} = payload, socket) do
-    account_name_changed? =
-      socket.assigns.account_name_changed? ||
-        payload["_target"] == ["registration", "account", "name"]
-
-    actor_name_changed? =
-      socket.assigns.actor_name_changed? ||
-        payload["_target"] == ["registration", "actor", "name"]
-
+  def handle_event("validate", %{"registration" => attrs}, socket) do
     attrs = Map.put(attrs, "email_confirmation", attrs["email"])
 
     changeset =
@@ -296,12 +286,7 @@ defmodule Web.SignUp do
       |> Registration.changeset()
       |> Map.put(:action, :validate)
 
-    {:noreply,
-     assign(socket,
-       form: to_form(changeset),
-       account_name_changed?: account_name_changed?,
-       actor_name_changed?: actor_name_changed?
-     )}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"registration" => orig_attrs}, socket) do

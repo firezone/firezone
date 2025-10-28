@@ -10,7 +10,8 @@ defmodule Domain.Okta do
     required_permission = Okta.Authorizer.manage_auth_providers_permission()
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
-      Okta.AuthProvider.Changeset.create(attrs, subject)
+      %Okta.AuthProvider{}
+      |> Okta.AuthProvider.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end

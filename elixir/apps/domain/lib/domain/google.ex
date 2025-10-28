@@ -10,7 +10,8 @@ defmodule Domain.Google do
     required_permission = Google.Authorizer.manage_auth_providers_permission()
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
-      Google.AuthProvider.Changeset.create(attrs, subject)
+      %Google.AuthProvider{}
+      |> Google.AuthProvider.Changeset.create(attrs, subject)
       |> Repo.insert()
     end
   end

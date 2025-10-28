@@ -20,12 +20,15 @@ defmodule Domain.Okta.AuthProvider do
 
     field :disabled_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
-    field :assigned_default_at, :utc_datetime_usec
+    field :is_default, :boolean, default: false
 
-    field :name, :string
+    field :name, :string, default: "Okta"
     field :okta_domain, :string
     field :client_id, :string
     field :client_secret, :string, redact: true
+
+    # Built from the org_domain
+    field :discovery_document_uri, :string, virtual: true
 
     subject_trail(~w[actor identity system]a)
     timestamps()

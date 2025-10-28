@@ -20,9 +20,9 @@ defmodule Domain.OIDC.AuthProvider do
 
     field :disabled_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
-    field :assigned_default_at, :utc_datetime_usec
+    field :is_default, :boolean, read_after_writes: true, default: false
 
-    field :name, :string
+    field :name, :string, default: "OpenID Connect"
     field :client_id, :string
     field :client_secret, :string, redact: true
     field :discovery_document_uri, :string

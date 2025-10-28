@@ -310,50 +310,6 @@ defmodule Web.FormComponents do
     """
   end
 
-  def input(%{type: "text", prefix: prefix} = assigns) when not is_nil(prefix) do
-    ~H"""
-    <div class={@inline_errors && "flex flex-row items-center"}>
-      <.label :if={@label} for={@id}>{@label}</.label>
-      <div class={[
-        "flex",
-        "text-sm text-neutral-900 bg-neutral-50",
-        "border border-neutral-300 rounded",
-        !@inline_errors && "w-full",
-        "focus-within:outline-none focus-within:border-accent-600",
-        "peer-disabled:bg-neutral-50 peer-disabled:text-neutral-500 peer-disabled:border-neutral-200 peer-disabled:shadow-none",
-        @errors != [] && "border-rose-400 focus:border-rose-400"
-      ]}>
-        <span
-          class={[
-            "bg-neutral-100 whitespace-nowrap rounded-e-0 rounded-s inline-flex items-center px-3"
-          ]}
-          id={"#{@id}-prefix"}
-          phx-hook="Refocus"
-          data-refocus={@id}
-        >
-          {@prefix}
-        </span>
-        <input
-          type={@type}
-          name={@name}
-          id={@id}
-          value={Phoenix.HTML.Form.normalize_value(@type, @value)}
-          class={[
-            "text-sm text-neutral-900 bg-transparent border-0",
-            "flex-1 min-w-0 p-2.5 block w-full",
-            "focus:outline-none focus:border-0 focus:ring-0",
-            @class
-          ]}
-          {@rest}
-        />
-      </div>
-      <.error :for={msg <- @errors} inline={@inline_errors} data-validation-error-for={@name}>
-        {msg}
-      </.error>
-    </div>
-    """
-  end
-
   def input(assigns) do
     ~H"""
     <div class={@inline_errors && "flex flex-row items-center"}>
@@ -425,21 +381,23 @@ defmodule Web.FormComponents do
 
   attr :confirm_style, :string, default: "primary", doc: "The style of the confirm button"
 
-  attr :confirm_type, :string,
-    default: "button",
-    doc: "The type of the confirm button (button or submit)"
-
   attr :confirm_disabled, :boolean,
     default: false,
     doc: "Whether the confirm button is disabled"
 
-  attr :show, :boolean, default: false, doc: "Whether the modal is shown by default"
+  attr :confirm_button_title, :string,
+    default: nil,
+    doc: "The title attribute (tooltip) for the confirm button"
 
   slot :title, doc: "The title of the modal"
   slot :body, required: true, doc: "The content of the modal"
   slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
   slot :back_button, doc: "The content of the back button"
-  slot :confirm_button, doc: "The content of the confirm button"
+
+  slot :confirm_button do
+    attr :form, :string, doc: "The form id to associate with the button"
+    attr :type, :string, doc: "The button type (button, submit, reset)"
+  end
 
   def modal(assigns) do
     ~H"""
@@ -453,9 +411,8 @@ defmodule Web.FormComponents do
       ]}
       phx-hook="Modal"
       phx-on-close={@on_close}
-      data-show={@show}
     >
-      <form method="dialog" class="flex items-center justify-center">
+      <div class="flex items-center justify-center">
         <div class="relative bg-white rounded-lg shadow w-full max-w-2xl">
           <div
             :if={@title != []}
@@ -466,8 +423,8 @@ defmodule Web.FormComponents do
             </h3>
             <button
               class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
-              type="submit"
-              value="cancel"
+              type="button"
+              phx-click={@on_close}
             >
               <.icon name="hero-x-mark" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
@@ -494,19 +451,23 @@ defmodule Web.FormComponents do
               </.button>
               <div :if={@back_button == []}></div>
               <.button
+                :for={confirm_slot <- @confirm_button}
                 :if={@confirm_button != []}
                 phx-click={@on_confirm}
-                type={@confirm_type}
+                type={Map.get(confirm_slot, :type, "button")}
+                form={Map.get(confirm_slot, :form)}
                 style={@confirm_style}
                 class="py-2.5 px-5"
                 disabled={@confirm_disabled}
+                title={@confirm_button_title}
+                tabindex="0"
               >
-                {render_slot(@confirm_button)}
+                {render_slot(confirm_slot)}
               </.button>
             <% end %>
           </div>
         </div>
-      </form>
+      </div>
     </dialog>
     """
   end
@@ -540,7 +501,7 @@ defmodule Web.FormComponents do
         "overflow-y-auto overflow-x-hidden"
       ]}
     >
-      <form method="dialog" class="flex items-center justify-center">
+      <form method="dialog" phx-submit={@phx_submit} class="flex items-center justify-center">
         <div class="relative bg-white rounded-lg shadow max-w-2xl">
           <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
             <h3 class="text-xl font-semibold text-neutral-900">
@@ -644,7 +605,7 @@ defmodule Web.FormComponents do
     required: false,
     doc: "The icon to be displayed on the button"
 
-  attr :rest, :global, include: ~w(disabled form name value navigate href patch)
+  attr :rest, :global, include: ~w(disabled form name value navigate href patch title)
   slot :inner_block, required: true, doc: "The label for the button"
 
   def button(%{href: _} = assigns) do

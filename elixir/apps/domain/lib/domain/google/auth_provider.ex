@@ -20,9 +20,9 @@ defmodule Domain.Google.AuthProvider do
 
     field :disabled_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
-    field :assigned_default_at, :utc_datetime_usec
+    field :is_default, :boolean, read_after_writes: true, default: false
 
-    field :name, :string
+    field :name, :string, default: "Google"
     field :hosted_domain, :string
 
     subject_trail(~w[actor identity system]a)
