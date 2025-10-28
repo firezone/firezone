@@ -837,8 +837,8 @@ impl TunnelTest {
                                 firebase_installation_id: String::new(),
                             },
                             Subject {
-                                name: "John Doe".to_owned(),
-                                email: "john@example.com".to_owned(),
+                                identity_name: "John Doe".to_owned(),
+                                actor_email: "john@example.com".to_owned(),
                             },
                             client_ice.clone(),
                             gateway_ice.clone(),

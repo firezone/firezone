@@ -340,8 +340,8 @@ impl GatewayState {
                 device_uuid: client.device_uuid,
                 identifier_for_vendor: client.identifier_for_vendor,
                 firebase_installation_id: client.firebase_installation_id,
-                actor_name: subject.name,
-                actor_email: subject.email,
+                identity_name: subject.identity_name,
+                actor_email: subject.actor_email,
             },
             expires_at,
             resource,
@@ -491,7 +491,7 @@ impl GatewayState {
                         device_identifier_for_vendor = %flow.device_identifier_for_vendor,
                         device_firebase_installation_id = %flow.device_firebase_installation_id,
 
-                        actor_name = %flow.actor_name,
+                        identity_name = %flow.identity_name,
                         actor_email = %flow.actor_email,
 
                         resource_id = %flow.resource_id,
@@ -531,7 +531,7 @@ impl GatewayState {
                         device_identifier_for_vendor = %flow.identifier_for_vendor,
                         device_firebase_installation_id = %flow.firebase_installation_id,
 
-                        actor_name = %flow.actor_name,
+                        identity_name = %flow.identity_name,
                         actor_email = %flow.actor_email,
 
                         resource_id = %flow.resource_id,

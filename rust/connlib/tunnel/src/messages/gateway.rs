@@ -223,8 +223,8 @@ pub struct Client {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Subject {
-    pub name: String,
-    pub email: String,
+    pub identity_name: String,
+    pub actor_email: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
