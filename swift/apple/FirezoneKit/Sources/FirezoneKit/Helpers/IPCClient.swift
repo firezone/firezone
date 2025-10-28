@@ -103,6 +103,10 @@ class IPCClient {
     let tunnelConfiguration = configuration.toTunnelConfiguration()
     let message = ProviderMessage.setConfiguration(tunnelConfiguration)
 
+    if sessionStatus() != .connected {
+      Log.trace("Not setting configuration whilst not connected")
+      return
+    }
     try await sendMessageWithoutResponse(message)
   }
 
