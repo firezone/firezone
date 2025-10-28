@@ -83,6 +83,16 @@ impl TunDeviceManager {
         let (mut cxn, handle, messages) =
             new_connection().context("Failed to create netlink connection")?;
 
+        tokio::spawn({
+            let handle = handle.clone();
+
+            async move {
+                if let Err(e) = flush_routing_tables(handle.clone()).await {
+                    tracing::debug!("Failed to flush routing tables: {e}")
+                }
+            }
+        });
+
         subscribe_to_route_changes(&mut cxn)?;
 
         let connection = Connection {
@@ -452,6 +462,27 @@ fn route_from_message(message: &RouteMessage) -> Option<IpNetwork> {
         }
         _ => None,
     })
+}
+
+async fn flush_routing_tables(handle: Handle) -> Result<()> {
+    let routes = list_routes(&handle)
+        .await?
+        .into_iter()
+        .filter(|r| {
+            [
+                FIREZONE_TABLE_USER,
+                FIREZONE_TABLE_LINK_SCOPE,
+                FIREZONE_TABLE_INTERNET,
+            ]
+            .contains(&table_id_from_message(r))
+        })
+        .collect::<Vec<_>>();
+
+    for msg in routes {
+        execute_del_route_message(msg, &handle).await;
+    }
+
+    Ok(())
 }
 
 fn subscribe_to_route_changes(
