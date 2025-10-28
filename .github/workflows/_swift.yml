@@ -33,7 +33,7 @@ jobs:
       contents: write # for attaching the build artifacts to the release
       id-token: write
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         include:
           - job_name: build-ios

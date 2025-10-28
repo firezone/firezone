@@ -98,7 +98,7 @@ jobs:
       HTTP_TEST_SERVER_TAG: ${{ inputs.http_test_server_tag }}
       FIREZONE_INC_BUF: true
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         test:
           - script: create-flow-from-icmp-error
