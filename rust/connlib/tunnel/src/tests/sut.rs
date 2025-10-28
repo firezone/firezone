@@ -830,7 +830,7 @@ impl TunnelTest {
                                 preshared_key: preshared_key.clone(),
                                 ipv4: self.client.inner().sut.tunnel_ip_config().unwrap().v4,
                                 ipv6: self.client.inner().sut.tunnel_ip_config().unwrap().v6,
-                                client_version: "1.0.0".to_owned(),
+                                version: "1.0.0".to_owned(),
                                 device_serial: "deadbeef".to_owned(),
                             },
                             Subject {

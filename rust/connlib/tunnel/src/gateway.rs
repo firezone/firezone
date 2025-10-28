@@ -335,7 +335,7 @@ impl GatewayState {
                 v6: client.ipv6,
             },
             flow_tracker::ClientProperties {
-                version: client.client_version,
+                version: client.version,
                 device_serial: client.device_serial,
                 actor_name: subject.name,
                 actor_email: subject.email,
