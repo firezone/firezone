@@ -50,14 +50,24 @@ class IPCClient {
   let decoder = PropertyListDecoder()
 
   // Auto-connect
-  func start() throws {
-    try session().startTunnel(options: nil)
+  @MainActor
+  func start(configuration: Configuration) throws {
+    let tunnelConfiguration = configuration.toTunnelConfiguration()
+    let configData = try encoder.encode(tunnelConfiguration)
+    let options: [String: NSObject] = [
+      "configuration": configData as NSObject
+    ]
+    try session().startTunnel(options: options)
   }
 
   // Sign in
-  func start(token: String) throws {
+  @MainActor
+  func start(token: String, configuration: Configuration) throws {
+    let tunnelConfiguration = configuration.toTunnelConfiguration()
+    let configData = try encoder.encode(tunnelConfiguration)
     let options: [String: NSObject] = [
-      "token": token as NSObject
+      "token": token as NSObject,
+      "configuration": configData as NSObject,
     ]
 
     try session().startTunnel(options: options)
@@ -76,8 +86,14 @@ class IPCClient {
     // On macOS, IPC calls to the system extension won't work after it's been upgraded, until the startTunnel call.
     // Since we rely on IPC for the GUI to function, we need to send a dummy `startTunnel` that doesn't actually
     // start the tunnel, but causes the system to wake the extension.
-    func dryStartStopCycle() throws {
-      let options: [String: NSObject] = ["dryRun": true as NSObject]
+    @MainActor
+    func dryStartStopCycle(configuration: Configuration) throws {
+      let tunnelConfiguration = configuration.toTunnelConfiguration()
+      let configData = try encoder.encode(tunnelConfiguration)
+      let options: [String: NSObject] = [
+        "dryRun": true as NSObject,
+        "configuration": configData as NSObject,
+      ]
       try session().startTunnel(options: options)
     }
   #endif
@@ -87,6 +103,10 @@ class IPCClient {
     let tunnelConfiguration = configuration.toTunnelConfiguration()
     let message = ProviderMessage.setConfiguration(tunnelConfiguration)
 
+    if sessionStatus() != .connected {
+      Log.trace("Not setting configuration whilst not connected")
+      return
+    }
     try await sendMessageWithoutResponse(message)
   }
 
