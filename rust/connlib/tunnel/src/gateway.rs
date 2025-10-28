@@ -492,7 +492,7 @@ impl GatewayState {
                         device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
 
                         identity_name = %flow.identity_name,
-                        actor_email = %flow.actor_email,
+                        actor_email = flow.actor_email.map(tracing::field::display),
 
                         resource_id = %flow.resource_id,
                         resource_name = %flow.resource_name,
@@ -532,7 +532,7 @@ impl GatewayState {
                         device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
 
                         identity_name = %flow.identity_name,
-                        actor_email = %flow.actor_email,
+                        actor_email = flow.actor_email.map(tracing::field::display),
 
                         resource_id = %flow.resource_id,
                         resource_name = %flow.resource_name,

@@ -42,7 +42,7 @@ pub struct ClientProperties {
     pub identifier_for_vendor: Option<String>,
     pub firebase_installation_id: Option<String>,
     pub identity_name: String,
-    pub actor_email: String,
+    pub actor_email: Option<String>,
 }
 
 impl FlowTracker {
@@ -514,7 +514,7 @@ pub struct CompletedTcpFlow {
     pub device_firebase_installation_id: Option<String>,
 
     pub identity_name: String,
-    pub actor_email: String,
+    pub actor_email: Option<String>,
 
     pub resource_id: ResourceId,
     pub resource_name: String,
@@ -552,7 +552,7 @@ pub struct CompletedUdpFlow {
     pub device_firebase_installation_id: Option<String>,
 
     pub identity_name: String,
-    pub actor_email: String,
+    pub actor_email: Option<String>,
 
     pub resource_id: ResourceId,
     pub resource_name: String,
@@ -686,7 +686,7 @@ struct TcpFlowValue {
     firebase_installation_id: Option<String>,
 
     identity_name: String,
-    actor_email: String,
+    actor_email: Option<String>,
 
     fin_tx: bool,
     fin_rx: bool,
@@ -711,7 +711,7 @@ struct UdpFlowValue {
     firebase_installation_id: Option<String>,
 
     identity_name: String,
-    actor_email: String,
+    actor_email: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -968,7 +968,7 @@ struct Client {
     firebase_installation_id: Option<String>,
 
     identity_name: String,
-    actor_email: String,
+    actor_email: Option<String>,
 }
 
 #[derive(Debug)]

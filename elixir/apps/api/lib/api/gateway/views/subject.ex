@@ -5,7 +5,7 @@ defmodule API.Gateway.Views.Subject do
     %{
       # TODO: Fix access to these fields.
       identity_name: subject.actor.name,
-      actor_email: subject.identity.email
+      actor_email: get_in(subject, [:identity, :email])
     }
   end
 end

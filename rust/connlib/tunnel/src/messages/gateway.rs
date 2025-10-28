@@ -220,7 +220,7 @@ pub struct Client {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Subject {
     pub identity_name: String,
-    pub actor_email: String,
+    pub actor_email: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]
