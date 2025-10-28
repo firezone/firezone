@@ -98,7 +98,7 @@ function apple() {
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_client_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_apple_client_version}"'/g;}' {} \;
     find swift -type f -name "project.pbxproj" -exec sed "${SEDARG[@]}" -e "s/MARKETING_VERSION = .*;/MARKETING_VERSION = ${next_apple_client_version};/" {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_apple_client_version}"'/;}' {} \;
+    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -o -name "*.rs" -exec sed "${SEDARG[@]}" -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_apple_client_version}"'/;}' {} \;
     cargo_update_workspace
 }
 
@@ -134,7 +134,7 @@ function android() {
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_client_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_android_client_version}"'/g;}' {} \;
     find kotlin -type f -name "*.gradle.kts" -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/versionName =.*/versionName = "'"${next_android_client_version}"'"/;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_android_client_version}"'/;}' {} \;
+    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -o -name "*.rs" -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_android_client_version}"'/;}' {} \;
     cargo_update_workspace
 }
 
@@ -158,7 +158,7 @@ function gui() {
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_client_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_client_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_client_version}"'/g;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_client_version}"'/;}' {} \;
+    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -o -name "*.rs" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_client_version}"'/;}' {} \;
     find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "vite.config.ts" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_client_version}"'/;}' {} \;
     cargo_update_workspace
 }
@@ -182,7 +182,7 @@ function headless() {
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_client_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_client_version}"'/g;}' {} \;
     find .github -name "*.yml" -exec sed "${SEDARG[@]}" -e '/mark:next-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_headless_client_version}"'/g;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_headless_client_version}"'/;}' {} \;
+    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -o -name "*.rs" -exec sed "${SEDARG[@]}" -e '/mark:next-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_headless_client_version}"'/;}' {} \;
     cargo_update_workspace
 }
 
@@ -205,7 +205,7 @@ function gateway() {
     find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
     find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
     find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gateway_version}"'/g;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gateway_version}"'/;}' {} \;
+    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -o -name "*.rs" -exec sed "${SEDARG[@]}" -e '/mark:next-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gateway_version}"'/;}' {} \;
     cargo_update_workspace
 }
 
