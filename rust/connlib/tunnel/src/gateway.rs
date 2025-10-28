@@ -335,7 +335,7 @@ impl GatewayState {
                 v6: client.ipv6,
             },
             flow_tracker::ClientProperties {
-                version: client.version,
+                user_agent: client.user_agent,
                 device_serial: client.device_serial,
                 device_uuid: client.device_uuid,
                 identifier_for_vendor: client.identifier_for_vendor,
@@ -484,7 +484,7 @@ impl GatewayState {
                         target: "flow_logs::tcp",
 
                         client_id = %flow.client_id,
-                        client_version = %flow.client_version,
+                        client_user_agent = %flow.client_user_agent,
 
                         device_serial = flow.device_serial.map(tracing::field::display),
                         device_uuid = flow.device_uuid.map(tracing::field::display),
@@ -524,7 +524,7 @@ impl GatewayState {
                         target: "flow_logs::udp",
 
                         client_id = %flow.client_id,
-                        client_version = %flow.client_version,
+                        client_user_agent = %flow.client_user_agent,
 
                         device_serial = flow.device_serial.map(tracing::field::display),
                         device_uuid = flow.device_uuid.map(tracing::field::display),

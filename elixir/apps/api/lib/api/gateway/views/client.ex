@@ -8,11 +8,11 @@ defmodule API.Gateway.Views.Client do
       preshared_key: preshared_key,
       ipv4: client.ipv4,
       ipv6: client.ipv6,
-      version: client.last_seen_version,
       device_serial: client.device_serial,
       firebase_installation_id: client.firebase_installation_id,
       identifier_for_vendor: client.identifier_for_vendor,
-      device_uuid: client.device_uuid
+      device_uuid: client.device_uuid,
+      device_user_agent: client.last_seen_user_agent
     }
   end
 

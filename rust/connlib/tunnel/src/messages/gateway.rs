@@ -210,7 +210,7 @@ pub struct Client {
     pub preshared_key: SecretKey,
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
-    pub version: String,
+    pub user_agent: String,
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
     pub identifier_for_vendor: Option<String>,

@@ -36,7 +36,7 @@ pub struct FlowTracker {
 /// Additional properties we track for a client.
 #[derive(Debug, Clone, Default)]
 pub struct ClientProperties {
-    pub version: String,
+    pub user_agent: String,
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
     pub identifier_for_vendor: Option<String>,
@@ -221,7 +221,7 @@ impl FlowTracker {
                             domain,
                             resource_name: resource.name,
                             resource_address: resource.address,
-                            client_version: client.version,
+                            client_user_agent: client.user_agent,
                             device_serial: client.device_serial,
                             device_uuid: client.device_uuid,
                             identifier_for_vendor: client.identifier_for_vendor,
@@ -257,7 +257,7 @@ impl FlowTracker {
                                 resource_name: resource.name,
                                 resource_address: resource.address,
 
-                                client_version: client.version,
+                                client_user_agent: client.user_agent,
                                 device_serial: client.device_serial,
                                 device_uuid: client.device_uuid,
                                 identifier_for_vendor: client.identifier_for_vendor,
@@ -288,7 +288,7 @@ impl FlowTracker {
                                 domain,
                                 resource_name: resource.name,
                                 resource_address: resource.address,
-                                client_version: client.version,
+                                client_user_agent: client.user_agent,
                                 device_serial: client.device_serial,
                                 device_uuid: client.device_uuid,
                                 identifier_for_vendor: client.identifier_for_vendor,
@@ -340,7 +340,7 @@ impl FlowTracker {
                             domain,
                             resource_name: resource.name,
                             resource_address: resource.address,
-                            client_version: client.version,
+                            client_user_agent: client.user_agent,
                             device_serial: client.device_serial,
                             device_uuid: client.device_uuid,
                             identifier_for_vendor: client.identifier_for_vendor,
@@ -373,7 +373,7 @@ impl FlowTracker {
                                 domain,
                                 resource_name: value.resource_name,
                                 resource_address: value.resource_address,
-                                client_version: client.version,
+                                client_user_agent: client.user_agent,
                                 device_serial: client.device_serial,
                                 device_uuid: client.device_uuid,
                                 identifier_for_vendor: client.identifier_for_vendor,
@@ -506,7 +506,7 @@ pub enum CompletedFlow {
 #[derive(Debug)]
 pub struct CompletedTcpFlow {
     pub client_id: ClientId,
-    pub client_version: String,
+    pub client_user_agent: String,
 
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
@@ -544,7 +544,7 @@ pub struct CompletedTcpFlow {
 #[derive(Debug)]
 pub struct CompletedUdpFlow {
     pub client_id: ClientId,
-    pub client_version: String,
+    pub client_user_agent: String,
 
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
@@ -583,7 +583,7 @@ impl CompletedTcpFlow {
     fn new(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
             client_id: key.client,
-            client_version: value.client_version,
+            client_user_agent: value.client_user_agent,
             device_serial: value.device_serial,
             device_uuid: value.device_uuid,
             device_identifier_for_vendor: value.identifier_for_vendor,
@@ -617,7 +617,7 @@ impl CompletedUdpFlow {
     fn new(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
             client_id: key.client,
-            client_version: value.client_version,
+            client_user_agent: value.client_user_agent,
             device_serial: value.device_serial,
             device_uuid: value.device_uuid,
             device_identifier_for_vendor: value.identifier_for_vendor,
@@ -679,7 +679,7 @@ struct TcpFlowValue {
     resource_name: String,
     resource_address: String,
 
-    client_version: String,
+    client_user_agent: String,
     device_serial: Option<String>,
     device_uuid: Option<String>,
     identifier_for_vendor: Option<String>,
@@ -704,7 +704,7 @@ struct UdpFlowValue {
     resource_name: String,
     resource_address: String,
 
-    client_version: String,
+    client_user_agent: String,
     device_serial: Option<String>,
     device_uuid: Option<String>,
     identifier_for_vendor: Option<String>,
@@ -810,7 +810,7 @@ pub mod inbound_wg {
         update_current_flow_inbound_wireguard(|wg| {
             wg.client.replace(Client {
                 id: cid,
-                version: props.version,
+                user_agent: props.user_agent,
                 device_serial: props.device_serial,
                 identity_name: props.identity_name,
                 actor_email: props.actor_email,
@@ -960,7 +960,7 @@ struct InnerFlow {
 struct Client {
     id: ClientId,
 
-    version: String,
+    user_agent: String,
 
     device_serial: Option<String>,
     device_uuid: Option<String>,
