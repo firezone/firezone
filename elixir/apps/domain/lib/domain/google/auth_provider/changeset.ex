@@ -8,7 +8,7 @@ defmodule Domain.Google.AuthProvider.Changeset do
   }
 
   @required_fields ~w[name context issuer]a
-  @fields @required_fields ++ ~w[disabled_at hosted_domain verified_at assigned_default_at]a
+  @fields @required_fields ++ ~w[disabled_at hosted_domain verified_at is_default]a
 
   def create(
         auth_provider,
@@ -53,7 +53,7 @@ defmodule Domain.Google.AuthProvider.Changeset do
   end
 
   defp build_auth_provider_assoc(changeset, account_id) do
-    id = get_field(changeset, :id, Ecto.UUID.generate())
+    id = get_field(changeset, :id) || Ecto.UUID.generate()
 
     changeset
     |> put_change(:id, id)

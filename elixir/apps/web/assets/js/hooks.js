@@ -83,7 +83,7 @@ Hooks.AttachDisableSubmit = {
 
 Hooks.Modal = {
   mounted() {
-    this.updateModal();
+    this.el.showModal();
 
     // Listen for the dialog close event
     this.el.addEventListener("close", () => {
@@ -94,19 +94,19 @@ Hooks.Modal = {
     });
   },
 
+  beforeUpdate() {
+    this.focusedElement = document.activeElement
+  },
+
+  // When LiveView re-renders the modal, it closes, so we need to re-open it
+  // and restore the focus state.
   updated() {
-    this.updateModal();
-  },
+    this.el.showModal();
 
-  updateModal() {
-    const show = this.el.hasAttribute("data-show");
-
-    if (show && !this.el.open) {
-      this.el.showModal();
-    } else if (!show && this.el.open) {
-      this.el.close();
+    if (this.focusedElement) {
+      this.focusedElement.focus()
     }
-  },
+  }
 };
 
 Hooks.ConfirmDialog = {

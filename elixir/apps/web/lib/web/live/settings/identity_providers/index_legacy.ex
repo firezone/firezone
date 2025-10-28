@@ -173,9 +173,8 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
     </.section>
 
     <.modal
-      :if={not @migrated?}
+      :if={@show_migrate_modal}
       id="migrate-modal"
-      show={@show_migrate_modal}
       on_back="migrate_prev_step"
       on_confirm={if @migrate_step == 3, do: "perform_migration", else: "migrate_next_step"}
       on_close="close_migrate_modal"

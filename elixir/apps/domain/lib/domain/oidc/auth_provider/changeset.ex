@@ -8,7 +8,7 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
   }
 
   @required_fields ~w[name context client_id client_secret discovery_document_uri issuer]a
-  @fields @required_fields ++ ~w[disabled_at]a
+  @fields @required_fields ++ ~w[disabled_at is_default]a
 
   def create(
         auth_provider,
@@ -55,7 +55,7 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
   end
 
   defp build_auth_provider_assoc(changeset, account_id) do
-    id = get_field(changeset, :id, Ecto.UUID.generate())
+    id = get_field(changeset, :id) || Ecto.UUID.generate()
 
     changeset
     |> put_change(:id, id)

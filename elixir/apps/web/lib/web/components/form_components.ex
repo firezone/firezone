@@ -389,8 +389,6 @@ defmodule Web.FormComponents do
     default: false,
     doc: "Whether the confirm button is disabled"
 
-  attr :show, :boolean, default: false, doc: "Whether the modal is shown by default"
-
   attr :phx_submit, :string,
     default: nil,
     doc: "The phx-submit event to broadcast when the form is submitted"
@@ -425,8 +423,6 @@ defmodule Web.FormComponents do
       ]}
       phx-hook="Modal"
       phx-on-close={@on_close}
-      data-show={@show}
-      phx-focus-wrap
     >
       <.form
         for={@for}
@@ -482,6 +478,7 @@ defmodule Web.FormComponents do
                 class="py-2.5 px-5"
                 disabled={@confirm_disabled}
                 title={@confirm_button_title}
+                tabindex="0"
               >
                 {render_slot(@confirm_button)}
               </.button>

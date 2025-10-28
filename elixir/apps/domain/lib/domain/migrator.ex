@@ -1068,7 +1068,7 @@ defmodule Domain.Migrator do
           id: p.id,
           name: p.name,
           disabled_at: p.disabled_at,
-          assigned_default_at: p.assigned_default_at,
+          is_default: not is_nil(p.assigned_default_at),
           adapter_config: p.adapter_config,
           adapter_state: p.adapter_state
         }
@@ -1157,7 +1157,7 @@ defmodule Domain.Migrator do
               client_secret: client_secret,
               discovery_document_uri: discovery_document_uri,
               disabled_at: provider.disabled_at,
-              assigned_default_at: provider.assigned_default_at,
+              is_default: not is_nil(provider.assigned_default_at),
               verified_at: verified_at,
               context: :clients_and_portal,
               created_by: :system
@@ -1188,7 +1188,7 @@ defmodule Domain.Migrator do
           id: p.id,
           name: p.name,
           disabled_at: p.disabled_at,
-          assigned_default_at: p.assigned_default_at,
+          is_default: not is_nil(p.assigned_default_at),
           adapter_state: p.adapter_state
         }
       )
@@ -1217,7 +1217,7 @@ defmodule Domain.Migrator do
             issuer: "https://accounts.google.com",
             hosted_domain: hosted_domain,
             disabled_at: provider.disabled_at,
-            assigned_default_at: provider.assigned_default_at,
+            is_default: not is_nil(provider.assigned_default_at),
             verified_at: DateTime.utc_now(),
             context: :clients_and_portal,
             created_by: :system
@@ -1247,7 +1247,7 @@ defmodule Domain.Migrator do
           id: p.id,
           name: p.name,
           disabled_at: p.disabled_at,
-          assigned_default_at: p.assigned_default_at,
+          is_default: not is_nil(p.assigned_default_at),
           adapter_state: p.adapter_state
         }
       )
@@ -1277,7 +1277,7 @@ defmodule Domain.Migrator do
             issuer: issuer,
             tenant_id: tenant_id,
             disabled_at: provider.disabled_at,
-            assigned_default_at: provider.assigned_default_at,
+            is_default: not is_nil(provider.assigned_default_at),
             verified_at: DateTime.utc_now(),
             context: :clients_and_portal,
             created_by: :system
@@ -1308,7 +1308,7 @@ defmodule Domain.Migrator do
           id: p.id,
           name: p.name,
           disabled_at: p.disabled_at,
-          assigned_default_at: p.assigned_default_at,
+          is_default: not is_nil(p.assigned_default_at),
           adapter_config: p.adapter_config,
           adapter_state: p.adapter_state
         }
@@ -1363,7 +1363,7 @@ defmodule Domain.Migrator do
               client_secret: client_secret,
               discovery_document_uri: discovery_document_uri,
               disabled_at: provider.disabled_at,
-              assigned_default_at: provider.assigned_default_at,
+              is_default: not is_nil(provider.assigned_default_at),
               verified_at: verified_at,
               context: :clients_and_portal,
               created_by: :system

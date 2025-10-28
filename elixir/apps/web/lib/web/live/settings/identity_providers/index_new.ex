@@ -173,7 +173,6 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     <.modal
       :if={@live_action == :new_auth_provider}
       id="new-auth-provider-modal"
-      show={true}
       on_close="close_modal"
       on_back="back_auth_provider"
       on_confirm={if @create_step == 1, do: "next_auth_provider", else: nil}
@@ -353,7 +352,6 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     <.modal
       :if={@live_action == :new_directory}
       id="new-directory-modal"
-      show={true}
       on_close="close_modal"
     >
       <:title>Add Directory Provider</:title>
@@ -375,7 +373,6 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         ] && @provider
       }
       id="edit-auth-provider-modal"
-      show={true}
       on_close="close_modal"
     >
       <:title>Edit {@provider.name}</:title>
@@ -391,7 +388,6 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
           @directory
       }
       id="edit-directory-modal"
-      show={true}
       on_close="close_modal"
     >
       <:title>Edit {@directory.name}</:title>
@@ -521,54 +517,48 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   def handle_event("select_provider_type", %{"provider_type" => "google"}, socket) do
     socket = assign(socket, provider_type: "google")
     changeset = changeset(%Google.AuthProvider{}, %{}, socket)
-    {:noreply, assign(socket, form: to_provider_form(changeset))}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("select_provider_type", %{"provider_type" => "entra"}, socket) do
     socket = assign(socket, provider_type: "entra")
     changeset = changeset(%Entra.AuthProvider{}, %{}, socket)
-    {:noreply, assign(socket, form: to_provider_form(changeset))}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("select_provider_type", %{"provider_type" => "okta"}, socket) do
     socket = assign(socket, provider_type: "okta")
     changeset = changeset(%Okta.AuthProvider{}, %{}, socket)
-    {:noreply, assign(socket, form: to_provider_form(changeset))}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("select_provider_type", %{"provider_type" => "oidc"}, socket) do
     socket = assign(socket, provider_type: "oidc")
     changeset = changeset(%OIDC.AuthProvider{}, %{}, socket)
-    {:noreply, assign(socket, form: to_provider_form(changeset))}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("validate", params, socket) do
-    old_changeset = socket.assigns.form.source
-    old_form = socket.assigns.form
+    # Convert checkbox "on" to true boolean
+    params =
+      Map.update(params, "auth_provider", %{}, fn attrs ->
+        Map.update(attrs, "is_default", false, fn
+          "on" -> true
+          _ -> false
+        end)
+      end)
+
+    IO.inspect(params["auth_provider"]["is_default"], label: "is_default AFTER conversion")
 
     changeset =
-      old_changeset
+      socket.assigns.form.source
       |> changeset(params, socket)
       |> Map.put(:action, :validate)
 
-    new_form = to_provider_form(changeset)
+    IO.inspect(changeset.changes, label: "changeset.changes")
+    IO.inspect(Ecto.Changeset.get_field(changeset, :is_default), label: "is_default via get_field")
 
-    IO.puts("\n=== FORM COMPARISON ===")
-    IO.puts("Old form.id: #{old_form.id}")
-    IO.puts("New form.id: #{new_form.id}")
-    IO.puts("Old form.name: #{old_form.name}")
-    IO.puts("New form.name: #{new_form.name}")
-    IO.puts("Form IDs match? #{old_form.id == new_form.id}")
-    IO.puts("Form structs identical? #{old_form === new_form}")
-    IO.puts("Form struct hash old: #{:erlang.phash2(old_form)}")
-    IO.puts("Form struct hash new: #{:erlang.phash2(new_form)}")
-
-    IO.puts("\nOld form[:org_domain].id: #{old_form[:org_domain].id}")
-    IO.puts("New form[:org_domain].id: #{new_form[:org_domain].id}")
-    IO.puts("Field IDs match? #{old_form[:org_domain].id == new_form[:org_domain].id}")
-    IO.puts("===========================\n")
-
-    {:noreply, assign(socket, form: new_form)}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("update_context", %{"auth_provider" => %{"context" => context}}, socket) do
@@ -803,11 +793,10 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
       <div>
         <.input
-          field={@form[:assigned_default_at]}
+          field={@form[:is_default]}
           type="checkbox"
           label="Set as default provider"
           disabled={@portal_only?}
-          checked={not is_nil(@form[:assigned_default_at].value)}
           class={@portal_only? && "cursor-not-allowed"}
         />
         <p class="mt-1 text-xs text-gray-500">
@@ -863,6 +852,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         type="password"
         label="Client Secret"
         autocomplete="off"
+        phx-debounce="300"
         data-1p-ignore
         required
       />
@@ -883,11 +873,10 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
       <div>
         <.input
-          field={@form[:assigned_default_at]}
+          field={@form[:is_default]}
           type="checkbox"
           label="Set as default provider"
           disabled={@portal_only?}
-          checked={not is_nil(@form[:assigned_default_at].value)}
           class={@portal_only? && "cursor-not-allowed"}
         />
         <p class="mt-1 text-xs text-gray-500">
@@ -928,14 +917,11 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
          %{assigns: %{provider_type: provider_type}} = socket
        )
        when provider_type in ["google", "entra", "okta"] do
-    is_default = attrs["assigned_default_at"] == "on"
-
     # Add provider-specific verification fields
     attrs =
       attrs
       |> Map.put("issuer", socket.assigns.issuer)
       |> Map.put("verified_at", socket.assigns.verified_at)
-      |> Map.put("assigned_default_at", if(is_default, do: DateTime.utc_now(), else: nil))
       |> add_provider_specific_attrs(provider_type, socket)
 
     # Call the appropriate domain function
@@ -953,7 +939,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         |> push_patch(to: ~p"/#{socket.assigns.account}/settings/identity_providers")
 
       {:error, changeset} ->
-        assign(socket, form: to_provider_form(changeset))
+        assign(socket, form: to_form(changeset))
     end
   end
 
@@ -1044,9 +1030,5 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
   defp changeset(provider, attrs, %{assigns: %{provider_type: "oidc", subject: subject}}) do
     OIDC.AuthProvider.Changeset.create(provider, attrs, subject)
-  end
-
-  defp to_provider_form(changeset) do
-    to_form(changeset, as: :auth_provider, id: "auth-provider-form")
   end
 end
