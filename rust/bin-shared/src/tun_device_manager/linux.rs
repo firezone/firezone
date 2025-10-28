@@ -477,6 +477,8 @@ fn route_from_message(message: &RouteMessage) -> Option<IpNetwork> {
 }
 
 async fn flush_routing_tables(handle: Handle) -> Result<()> {
+    tracing::debug!("Flushing routing table");
+
     let routes = list_routes(&handle)
         .await?
         .into_iter()
