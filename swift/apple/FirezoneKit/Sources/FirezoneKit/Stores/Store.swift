@@ -193,7 +193,7 @@ public final class Store: ObservableObject {
   private func maybeAutoConnect() async throws {
     if configuration.connectOnStart {
       try await manager().enable()
-      try ipcClient().start()
+      try ipcClient().start(configuration: configuration)
     }
   }
   func installVPNConfiguration() async throws {
@@ -232,7 +232,7 @@ public final class Store: ObservableObject {
       if vpnStatus == .connected || vpnStatus == .connecting || vpnStatus == .reasserting {
         try ipcClient().stop()
       } else {
-        try ipcClient().dryStartStopCycle()
+        try ipcClient().dryStartStopCycle(configuration: configuration)
       }
     #else
       try ipcClient().stop()
@@ -251,14 +251,13 @@ public final class Store: ObservableObject {
     Telemetry.accountSlug = accountSlug
 
     try await manager().enable()
-    try await ipcClient().setConfiguration(configuration)
 
     // Clear shown alerts when starting a new session so user can see new errors
     shownAlertIds.removeAll()
     UserDefaults.standard.removeObject(forKey: "shownAlertIds")
 
-    // Bring the tunnel up and send it a token to start
-    try ipcClient().start(token: authResponse.token)
+    // Bring the tunnel up and send it a token and configuration to start
+    try ipcClient().start(token: authResponse.token, configuration: configuration)
   }
 
   func signOut() async throws {
