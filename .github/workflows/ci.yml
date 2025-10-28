@@ -222,7 +222,7 @@ jobs:
 
   compatibility-tests:
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         client:
           - image: "ghcr.io/firezone/client"
@@ -271,7 +271,7 @@ jobs:
       RELAY_TAG: ${{ github.sha }}
       FIREZONE_INC_BUF: true
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         test:
           - tcp-client2server
