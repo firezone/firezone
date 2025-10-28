@@ -101,7 +101,7 @@ Hooks.Modal = {
   // When LiveView re-renders the modal, it closes, so we need to re-open it
   // and restore the focus state.
   updated() {
-    this.el.showModal();
+    if (!this.el.open) this.el.showModal();
 
     if (this.focusedElement) {
       this.focusedElement.focus()

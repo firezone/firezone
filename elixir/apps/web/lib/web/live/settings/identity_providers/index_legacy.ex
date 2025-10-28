@@ -178,7 +178,6 @@ defmodule Web.Settings.IdentityProviders.IndexLegacy do
       on_back="migrate_prev_step"
       on_confirm={if @migrate_step == 3, do: "perform_migration", else: "migrate_next_step"}
       on_close="close_migrate_modal"
-      confirm_type={if @migrate_step == 4, do: "submit", else: "button"}
       confirm_disabled={
         @migrate_step == 2 and not all_providers_verified?(@legacy_providers, @provider_verifications)
       }

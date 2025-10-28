@@ -187,18 +187,17 @@ defmodule Web.OIDC do
       prompt: "login"
     }
 
-    verification_url =
-      case OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
-        {:ok, uri} -> uri
-        {:error, _reason} -> nil
-      end
-
-    %{
-      token: token,
-      url: verification_url,
-      verifier: verifier,
-      config: config
-    }
+    with {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
+      {:ok,
+       %{
+         token: token,
+         url: uri,
+         verifier: verifier,
+         config: config
+       }}
+    else
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """

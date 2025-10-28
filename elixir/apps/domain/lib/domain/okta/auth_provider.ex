@@ -20,7 +20,7 @@ defmodule Domain.Okta.AuthProvider do
 
     field :disabled_at, :utc_datetime_usec
     field :verified_at, :utc_datetime_usec
-    field :is_default, :boolean, read_after_writes: true, default: false
+    field :is_default, :boolean, default: false
 
     field :name, :string, default: "Okta"
     field :org_domain, :string

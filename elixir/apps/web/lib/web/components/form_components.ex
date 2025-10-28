@@ -381,35 +381,23 @@ defmodule Web.FormComponents do
 
   attr :confirm_style, :string, default: "primary", doc: "The style of the confirm button"
 
-  attr :confirm_type, :string,
-    default: "button",
-    doc: "The type of the confirm button (button or submit)"
-
   attr :confirm_disabled, :boolean,
     default: false,
     doc: "Whether the confirm button is disabled"
-
-  attr :phx_submit, :string,
-    default: nil,
-    doc: "The phx-submit event to broadcast when the form is submitted"
-
-  attr :phx_change, :string,
-    default: nil,
-    doc: "The phx-change event to broadcast when form fields change"
 
   attr :confirm_button_title, :string,
     default: nil,
     doc: "The title attribute (tooltip) for the confirm button"
 
-  attr :for, :any,
-    default: nil,
-    doc: "The form to pass to .form component for phx-change support"
-
   slot :title, doc: "The title of the modal"
   slot :body, required: true, doc: "The content of the modal"
   slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
   slot :back_button, doc: "The content of the back button"
-  slot :confirm_button, doc: "The content of the confirm button"
+
+  slot :confirm_button do
+    attr :form, :string, doc: "The form id to associate with the button"
+    attr :type, :string, doc: "The button type (button, submit, reset)"
+  end
 
   def modal(assigns) do
     ~H"""
@@ -424,13 +412,7 @@ defmodule Web.FormComponents do
       phx-hook="Modal"
       phx-on-close={@on_close}
     >
-      <.form
-        for={@for}
-        phx-submit={@phx_submit}
-        phx-change={@phx_change}
-        method="dialog"
-        class="flex items-center justify-center"
-      >
+      <div class="flex items-center justify-center">
         <div class="relative bg-white rounded-lg shadow w-full max-w-2xl">
           <div
             :if={@title != []}
@@ -441,10 +423,8 @@ defmodule Web.FormComponents do
             </h3>
             <button
               class="text-neutral-400 bg-transparent hover:text-accent-900 ml-2"
-              type={if @phx_submit, do: "button", else: "submit"}
-              value="cancel"
-              phx-click={if @phx_submit, do: @on_close, else: nil}
-              tabindex="-1"
+              type="button"
+              phx-click={@on_close}
             >
               <.icon name="hero-x-mark" class="h-4 w-4" />
               <span class="sr-only">Close modal</span>
@@ -471,21 +451,23 @@ defmodule Web.FormComponents do
               </.button>
               <div :if={@back_button == []}></div>
               <.button
+                :for={confirm_slot <- @confirm_button}
                 :if={@confirm_button != []}
                 phx-click={@on_confirm}
-                type={@confirm_type}
+                type={Map.get(confirm_slot, :type, "button")}
+                form={Map.get(confirm_slot, :form)}
                 style={@confirm_style}
                 class="py-2.5 px-5"
                 disabled={@confirm_disabled}
                 title={@confirm_button_title}
                 tabindex="0"
               >
-                {render_slot(@confirm_button)}
+                {render_slot(confirm_slot)}
               </.button>
             <% end %>
           </div>
         </div>
-      </.form>
+      </div>
     </dialog>
     """
   end
