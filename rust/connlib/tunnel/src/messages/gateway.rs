@@ -211,14 +211,10 @@ pub struct Client {
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
     pub version: String,
-    #[serde(default)]
-    pub device_serial: String,
-    #[serde(default)]
-    pub device_uuid: String,
-    #[serde(default)]
-    pub identifier_for_vendor: String,
-    #[serde(default)]
-    pub firebase_installation_id: String,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+    pub firebase_installation_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Clone)]

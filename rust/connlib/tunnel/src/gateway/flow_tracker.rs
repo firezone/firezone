@@ -37,10 +37,10 @@ pub struct FlowTracker {
 #[derive(Debug, Clone, Default)]
 pub struct ClientProperties {
     pub version: String,
-    pub device_serial: String,
-    pub device_uuid: String,
-    pub identifier_for_vendor: String,
-    pub firebase_installation_id: String,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+    pub firebase_installation_id: Option<String>,
     pub identity_name: String,
     pub actor_email: String,
 }
@@ -508,10 +508,10 @@ pub struct CompletedTcpFlow {
     pub client_id: ClientId,
     pub client_version: String,
 
-    pub device_serial: String,
-    pub device_uuid: String,
-    pub device_identifier_for_vendor: String,
-    pub device_firebase_installation_id: String,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_identifier_for_vendor: Option<String>,
+    pub device_firebase_installation_id: Option<String>,
 
     pub identity_name: String,
     pub actor_email: String,
@@ -546,10 +546,10 @@ pub struct CompletedUdpFlow {
     pub client_id: ClientId,
     pub client_version: String,
 
-    pub device_serial: String,
-    pub device_uuid: String,
-    pub identifier_for_vendor: String,
-    pub firebase_installation_id: String,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_identifier_for_vendor: Option<String>,
+    pub device_firebase_installation_id: Option<String>,
 
     pub identity_name: String,
     pub actor_email: String,
@@ -620,8 +620,8 @@ impl CompletedUdpFlow {
             client_version: value.client_version,
             device_serial: value.device_serial,
             device_uuid: value.device_uuid,
-            identifier_for_vendor: value.identifier_for_vendor,
-            firebase_installation_id: value.firebase_installation_id,
+            device_identifier_for_vendor: value.identifier_for_vendor,
+            device_firebase_installation_id: value.firebase_installation_id,
             actor_email: value.actor_email,
             identity_name: value.identity_name,
             resource_id: key.resource,
@@ -680,10 +680,10 @@ struct TcpFlowValue {
     resource_address: String,
 
     client_version: String,
-    device_serial: String,
-    device_uuid: String,
-    identifier_for_vendor: String,
-    firebase_installation_id: String,
+    device_serial: Option<String>,
+    device_uuid: Option<String>,
+    identifier_for_vendor: Option<String>,
+    firebase_installation_id: Option<String>,
 
     identity_name: String,
     actor_email: String,
@@ -705,10 +705,10 @@ struct UdpFlowValue {
     resource_address: String,
 
     client_version: String,
-    device_serial: String,
-    device_uuid: String,
-    identifier_for_vendor: String,
-    firebase_installation_id: String,
+    device_serial: Option<String>,
+    device_uuid: Option<String>,
+    identifier_for_vendor: Option<String>,
+    firebase_installation_id: Option<String>,
 
     identity_name: String,
     actor_email: String,
@@ -962,10 +962,10 @@ struct Client {
 
     version: String,
 
-    device_serial: String,
-    device_uuid: String,
-    identifier_for_vendor: String,
-    firebase_installation_id: String,
+    device_serial: Option<String>,
+    device_uuid: Option<String>,
+    identifier_for_vendor: Option<String>,
+    firebase_installation_id: Option<String>,
 
     identity_name: String,
     actor_email: String,

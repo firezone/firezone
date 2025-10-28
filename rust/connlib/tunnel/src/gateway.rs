@@ -486,10 +486,10 @@ impl GatewayState {
                         client_id = %flow.client_id,
                         client_version = %flow.client_version,
 
-                        device_serial = %flow.device_serial,
-                        device_uuid = %flow.device_uuid,
-                        device_identifier_for_vendor = %flow.device_identifier_for_vendor,
-                        device_firebase_installation_id = %flow.device_firebase_installation_id,
+                        device_serial = flow.device_serial.map(tracing::field::display),
+                        device_uuid = flow.device_uuid.map(tracing::field::display),
+                        device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
+                        device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
 
                         identity_name = %flow.identity_name,
                         actor_email = %flow.actor_email,
@@ -526,10 +526,10 @@ impl GatewayState {
                         client_id = %flow.client_id,
                         client_version = %flow.client_version,
 
-                        device_serial = %flow.device_serial,
-                        device_uuid = %flow.device_uuid,
-                        device_identifier_for_vendor = %flow.identifier_for_vendor,
-                        device_firebase_installation_id = %flow.firebase_installation_id,
+                        device_serial = flow.device_serial.map(tracing::field::display),
+                        device_uuid = flow.device_uuid.map(tracing::field::display),
+                        device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
+                        device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
 
                         identity_name = %flow.identity_name,
                         actor_email = %flow.actor_email,
