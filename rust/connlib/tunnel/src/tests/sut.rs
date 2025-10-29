@@ -537,6 +537,8 @@ impl TunnelTest {
                             query: query.message,
                             message: Ok(response), // TODO: Vary this?
                             transport,
+                            local: query.local,
+                            remote: query.remote,
                         },
                         now,
                     )
