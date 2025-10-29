@@ -102,6 +102,9 @@ public struct SettingsView: View {
   @State private var calculatedLogsSize = "Unknown"
   @State private var isClearingLogs = false
   @State private var isExportingLogs = false
+  @State private var hasCalculatedSizeWhileDisconnected = false
+  @State private var hasClearedLogsWhileDisconnected = false
+  @State private var hasExportedLogsWhileDisconnected = false
   @State private var isShowingConfirmationAlert = false
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
 
@@ -132,6 +135,10 @@ public struct SettingsView: View {
     self.store = store
     self.configuration = configuration ?? Configuration.shared
     _viewModel = StateObject(wrappedValue: SettingsViewModel())
+  }
+
+  private var isConnected: Bool {
+    store.vpnStatus == .connected
   }
 
   public var body: some View {
@@ -559,23 +566,55 @@ public struct SettingsView: View {
           .onDisappear {
             self.cancelRefreshLogSize()
           }
+          .onChange(of: store.vpnStatus) { newStatus in
+            if newStatus == .connected {
+              hasCalculatedSizeWhileDisconnected = false
+              hasClearedLogsWhileDisconnected = false
+              hasExportedLogsWhileDisconnected = false
+            }
+          }
           HStack(spacing: 30) {
-            ButtonWithProgress(
-              systemImageName: "trash",
-              title: "Clear Log Directory",
-              isProcessing: $isClearingLogs,
-              action: {
-                self.clearLogFiles()
+            if !isConnected && hasClearedLogsWhileDisconnected {
+              // Success indicator when disconnected and already cleared
+              HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                  .foregroundColor(.green)
+                Text("Logs have been cleared")
+                  .foregroundColor(.green)
               }
-            )
-            ButtonWithProgress(
-              systemImageName: "arrow.up.doc",
-              title: "Export Logs",
-              isProcessing: $isExportingLogs,
-              action: {
-                self.exportLogsWithSavePanelOnMac()
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+            } else {
+              ButtonWithProgress(
+                systemImageName: "trash",
+                title: "Clear Log Directory",
+                isProcessing: $isClearingLogs,
+                action: {
+                  self.clearLogFiles()
+                }
+              )
+            }
+
+            if !isConnected && hasExportedLogsWhileDisconnected {
+              // Success indicator when disconnected and already exported
+              HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                  .foregroundColor(.green)
+                Text("Logs have been exported")
+                  .foregroundColor(.green)
               }
-            )
+              .padding(.horizontal, 12)
+              .padding(.vertical, 8)
+            } else {
+              ButtonWithProgress(
+                systemImageName: "arrow.up.doc",
+                title: "Export Logs",
+                isProcessing: $isExportingLogs,
+                action: {
+                  self.exportLogsWithSavePanelOnMac()
+                }
+              )
+            }
           }
         }
       }
@@ -627,6 +666,11 @@ public struct SettingsView: View {
               with: store.ipcClient()
             )
 
+            // Mark as exported while disconnected
+            if !self.isConnected {
+              self.hasExportedLogsWhileDisconnected = true
+            }
+
             window.contentViewController?.presentingViewController?.dismiss(self)
           } catch {
             if let error = error as? IPCClient.Error,
@@ -651,6 +695,12 @@ public struct SettingsView: View {
     guard !self.isCalculatingLogsSize else {
       return
     }
+
+    // If disconnected and already calculated, skip
+    guard isConnected || !hasCalculatedSizeWhileDisconnected else {
+      return
+    }
+
     self.isCalculatingLogsSize = true
     self.calculateLogSizeTask =
       Task.detached(priority: .background) {
@@ -659,6 +709,10 @@ public struct SettingsView: View {
           self.calculatedLogsSize = calculatedLogsSize
           self.isCalculatingLogsSize = false
           self.calculateLogSizeTask = nil
+
+          if !self.isConnected {
+            self.hasCalculatedSizeWhileDisconnected = true
+          }
         }
       }
   }
@@ -668,12 +722,25 @@ public struct SettingsView: View {
   }
 
   private func clearLogFiles() {
+    // If disconnected and already cleared, skip
+    guard isConnected || !hasClearedLogsWhileDisconnected else {
+      return
+    }
+
     self.isClearingLogs = true
     self.cancelRefreshLogSize()
     Task.detached(priority: .background) {
       do { try await clearAllLogs() } catch { Log.error(error) }
       await MainActor.run {
         self.isClearingLogs = false
+
+        if !self.isConnected {
+          self.hasClearedLogsWhileDisconnected = true
+        }
+
+        // Reset size calculation flag so we can recalculate after clearing
+        self.hasCalculatedSizeWhileDisconnected = false
+
         if !self.isCalculatingLogsSize {
           self.refreshLogSize()
         }
