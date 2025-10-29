@@ -841,6 +841,8 @@ impl TunnelTest {
                             Subject {
                                 identity_name: None,
                                 actor_email: None,
+                                identity_id: None,
+                                actor_id: None,
                             },
                             client_ice.clone(),
                             gateway_ice.clone(),
