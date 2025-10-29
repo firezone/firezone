@@ -108,7 +108,7 @@ libc = "0.2.175"
 libfuzzer-sys = "0.4"
 log = "0.4"
 lru = "0.12.5"
-mio = "1.0.4"
+mio = "1.1.0"
 moka = "0.12.11"
 native-dialog = "0.7.0"
 netlink-packet-core = "0.7"
@@ -237,7 +237,6 @@ softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting 
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
-mio = { git = "https://github.com/firezone/mio", branch = "fix/panic-invalid-state" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
