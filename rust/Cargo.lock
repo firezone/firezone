@@ -4142,6 +4142,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "l3-udp-dns-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dns-types",
+ "ip-packet",
+ "rand 0.8.5",
+ "tracing",
+]
+
+[[package]]
 name = "l4-tcp-dns-server"
 version = "0.1.0"
 dependencies = [

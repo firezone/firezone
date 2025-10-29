@@ -1,0 +1,18 @@
+[package]
+name = "l3-udp-dns-client"
+version = "0.1.0"
+edition = { workspace = true }
+license = { workspace = true }
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+anyhow = { workspace = true }
+dns-types = { workspace = true }
+ip-packet = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
+
+[lints]
+workspace = true
