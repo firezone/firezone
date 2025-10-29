@@ -29,7 +29,8 @@ pub fn to_ipv6_channel(
         old_ipv6_src,
         old_ipv6_dst,
         old_ipv6_len,
-        old_ipv6_priority,
+        old_ipv6_dscp,
+        old_ipv6_ecn,
         old_ipv6_flow_label,
         old_ipv6_hop_limit,
         old_ipv6_next_hdr,
@@ -40,8 +41,9 @@ pub fn to_ipv6_channel(
             old_ipv6.src_addr(),
             old_ipv6.dst_addr(),
             old_ipv6.payload_len(),
-            old_ipv6.priority(),
-            old_ipv6.flow_label,
+            old_ipv6.dscp(),
+            old_ipv6.ecn(),
+            old_ipv6.flow_label(),
             old_ipv6.hop_limit,
             old_ipv6.next_hdr,
         )
@@ -53,9 +55,9 @@ pub fn to_ipv6_channel(
             unsafe { ref_mut_at::<UdpHdr>(ctx, old_data_offset + EthHdr::LEN + Ipv6Hdr::LEN)? };
         (
             old_udp.len(),
-            old_udp.source(),
-            old_udp.dest(),
-            old_udp.check(),
+            old_udp.src_port(),
+            old_udp.dst_port(),
+            old_udp.checksum(),
         )
     };
 
@@ -80,9 +82,7 @@ pub fn to_ipv6_channel(
     // SAFETY: The offset must point to the start of a valid `Ipv6Hdr`.
     let ipv6 = unsafe { ref_mut_at::<Ipv6Hdr>(ctx, EthHdr::LEN)? };
     // Set fields explicitly to avoid reading potentially corrupted memory
-    ipv6.set_version(6); // IPv6
-    ipv6.set_priority(old_ipv6_priority);
-    ipv6.flow_label = old_ipv6_flow_label;
+    ipv6.set_vcf(6, old_ipv6_dscp, old_ipv6_ecn, old_ipv6_flow_label);
     ipv6.set_payload_len(new_ipv6_len);
     ipv6.next_hdr = old_ipv6_next_hdr;
     ipv6.hop_limit = old_ipv6_hop_limit;
@@ -101,13 +101,13 @@ pub fn to_ipv6_channel(
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    udp.set_source(new_udp_src);
-    udp.set_dest(new_udp_dst);
+    udp.set_src_port(new_udp_src);
+    udp.set_dst_port(new_udp_dst);
     udp.set_len(new_udp_len);
 
     // Incrementally update UDP checksum
 
-    udp.set_check(
+    udp.set_checksum(
         ChecksumUpdate::new(old_udp_check)
             .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
             .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
