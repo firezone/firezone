@@ -6,9 +6,14 @@ defmodule API.Gateway.Views.Client do
     [os_name, rest] = String.split(client.last_seen_user_agent, "/", parts: 2)
     [os_version, rest] = String.split(rest, " ", parts: 2)
     [_, rest] = String.split(rest, "/", parts: 2)
+
+    # FIXME: For easier testing, we re-parse the client version here.
+    # Long term, we should not be parsing the user-agent at all in here.
+    # Instead we should directly store the parsed information in the DB.
     [client_version | _] = String.split(rest, " ", parts: 2)
 
-    # Note: We purposely omit the client_type as that will say `connlib` for older clients (we've only recently changed this to `apple-client` etc).
+    # Note: We purposely omit the client_type as that will say `connlib` for older clients
+    # (we've only recently changed this to `apple-client` etc).
 
     %{
       id: client.id,
@@ -16,7 +21,6 @@ defmodule API.Gateway.Views.Client do
       preshared_key: preshared_key,
       ipv4: client.ipv4,
       ipv6: client.ipv6,
-      # FIXME: For easier testing, we re-parse the client version here. Long term, we should not be parsing the user-agent at all in here and instead directly store the parsed information in the DB.
       version: client_version,
       device_serial: client.device_serial,
       device_os_name: os_name,
