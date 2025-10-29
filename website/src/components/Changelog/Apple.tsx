@@ -24,7 +24,11 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10752">
+          Fixes an issue where the reported client version was out of date.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-10-20")}>
         <ChangeItem pull="10603">
           Fixes an issue on macOS where DNS resources might fail to be routed
