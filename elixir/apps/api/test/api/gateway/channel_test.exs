@@ -1554,7 +1554,10 @@ defmodule API.Gateway.ChannelTest do
                device_serial: client.device_serial,
                device_uuid: client.device_uuid,
                identifier_for_vendor: client.identifier_for_vendor,
-               firebase_installation_id: client.firebase_installation_id
+               firebase_installation_id: client.firebase_installation_id,
+               # Hardcode these to avoid having to reparse the user agent.
+               device_os_name: "iOS",
+               device_os_version: "12.5"
              }
 
       assert payload.subject == %{

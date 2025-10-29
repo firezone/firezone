@@ -3,9 +3,8 @@ defmodule API.Gateway.Views.Subject do
 
   def render(%Auth.Subject{} = subject) do
     %{
-      # TODO: Fix access to these fields.
-      identity_name: subject.actor.name,
-      actor_email: get_in(subject, [:identity, :email])
+      identity_name: get_in(subject, [Access.key(:actor), Access.key(:name)]),
+      actor_email: get_in(subject, [Access.key(:identity), Access.key(:email)])
     }
   end
 end
