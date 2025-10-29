@@ -4,7 +4,7 @@ defmodule Web.FormComponents do
   """
   use Phoenix.Component
   use Web, :verified_routes
-  import Web.CoreComponents, only: [icon: 1, error: 1, label: 1, translate_error: 1]
+  import Web.CoreComponents, only: [icon: 1, error: 1, label: 1, translate_error: 1, provider_icon: 1]
 
   ### Inputs ###
 
@@ -142,12 +142,8 @@ defmodule Web.FormComponents do
 
   def input(%{type: "checkbox"} = assigns) do
     assigns =
-      assigns
-      |> assign_new(:checked, fn ->
-        Phoenix.HTML.Form.normalize_value("checkbox", assigns.value)
-      end)
-      |> assign_new(:value, fn ->
-        "true"
+      assign_new(assigns, :checked, fn ->
+        Phoenix.HTML.Form.normalize_value("checkbox", assigns[:value])
       end)
 
     ~H"""
@@ -157,7 +153,7 @@ defmodule Web.FormComponents do
           type="checkbox"
           id={@id}
           name={@name}
-          value={@value}
+          value="true"
           checked={@checked}
           class={[
             "bg-neutral-50",
@@ -389,7 +385,10 @@ defmodule Web.FormComponents do
     default: nil,
     doc: "The title attribute (tooltip) for the confirm button"
 
-  slot :title, doc: "The title of the modal"
+  slot :title, doc: "The title of the modal" do
+    attr :icon, :atom, doc: "Optional icon to display before the title"
+  end
+
   slot :body, required: true, doc: "The content of the modal"
   slot :footer, doc: "The footer of the modal (overrides back/confirm buttons if provided)"
   slot :back_button, doc: "The content of the back button"
@@ -418,7 +417,13 @@ defmodule Web.FormComponents do
             :if={@title != []}
             class="flex items-center justify-between p-4 md:p-5 border-b rounded-t"
           >
-            <h3 class="text-xl font-semibold text-neutral-900">
+            <h3 class="text-xl font-semibold text-neutral-900 flex items-center gap-3">
+              <.provider_icon
+                :for={title_slot <- @title}
+                :if={Map.get(title_slot, :icon)}
+                type={Map.get(title_slot, :icon)}
+                class="w-8 h-8"
+              />
               {render_slot(@title)}
             </h3>
             <button

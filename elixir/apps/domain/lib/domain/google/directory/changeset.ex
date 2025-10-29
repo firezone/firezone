@@ -6,10 +6,10 @@ defmodule Domain.Google.Directory.Changeset do
     Google.Directory
   }
 
-  @required_fields ~w[name hosted_domain issuer]a
+  @required_fields ~w[name hosted_domain issuer verified_at]a
   @create_fields @required_fields ++ ~w[superadmin_email impersonation_email]a
   @update_fields ~w[superadmin_email superadmin_emailed_at impersonation_email name
-    error_count disabled_at disabled_reason synced_at error error_emailed_at]a
+    error_count is_disabled disabled_reason synced_at error error_emailed_at]a
 
   def create(attrs, %Auth.Subject{} = subject) do
     %Directory{}

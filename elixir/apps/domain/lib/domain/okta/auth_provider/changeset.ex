@@ -7,8 +7,8 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     Okta
   }
 
-  @required_fields ~w[name context okta_domain client_id client_secret issuer]a
-  @fields @required_fields ++ ~w[disabled_at verified_at is_default]a
+  @required_fields ~w[name context okta_domain client_id client_secret issuer verified_at]a
+  @fields @required_fields ++ ~w[is_disabled is_default]a
 
   def create(
         auth_provider,
@@ -37,6 +37,7 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     |> validate_required(:discovery_document_uri)
     |> validate_uri(:discovery_document_uri)
     |> validate_length(:okta_domain, min: 1, max: 255)
+    |> validate_fqdn(:okta_domain)
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> validate_length(:client_id, min: 1, max: 255)
     |> validate_length(:client_secret, min: 1, max: 255)
@@ -44,11 +45,11 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:client_id,
       name: :okta_auth_providers_account_id_client_id_index,
-      message: "An authentication provider with this client_id already exists."
+      message: "An Okta authentication provider with this client_id already exists."
     )
     |> unique_constraint(:name,
       name: :okta_auth_providers_account_id_name_index,
-      message: "An authentication provider with this name already exists."
+      message: "An Okta authentication provider with this name already exists."
     )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :okta_auth_providers_account_id_fkey)
@@ -58,12 +59,12 @@ defmodule Domain.Okta.AuthProvider.Changeset do
   end
 
   defp put_discovery_document_uri(changeset) do
-    case get_field(changeset, :org_domain) do
+    case get_field(changeset, :okta_domain) do
       nil ->
         changeset
 
-      org_domain ->
-        uri = "https://#{org_domain}/.well-known/openid-configuration"
+      okta_domain ->
+        uri = "https://#{okta_domain}/.well-known/openid-configuration"
         put_change(changeset, :discovery_document_uri, uri)
     end
   end

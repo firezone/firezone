@@ -17,9 +17,9 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   require Logger
 
   @context_options [
-    {"Clients and Portal", "clients_and_portal"},
-    {"Clients Only", "clients_only"},
-    {"Portal Only", "portal_only"}
+    {"Client Applications and Admin Portal", "clients_and_portal"},
+    {"Client Applications Only", "clients_only"},
+    {"Admin Portal Only", "portal_only"}
   ]
 
   def mount(_params, _session, socket) do
@@ -44,7 +44,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
        issuer: nil,
        hosted_domain: nil,
        tenant_id: nil,
-       org_domain: nil,
+       okta_domain: nil,
        client_id: nil,
        client_secret: nil,
        discovery_document_uri: nil,
@@ -178,13 +178,18 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
           (@create_step == 2 and is_nil(@verified_at))
       }
     >
-      <:title>
+      <:title :if={@create_step == 2} icon={String.to_atom(@provider_type)}>
+        {modal_title(@create_step, @provider_type)}
+      </:title>
+      <:title :if={@create_step != 2}>
         {modal_title(@create_step, @provider_type)}
       </:title>
       <:body>
         <%= if @create_step == 1 do %>
-          <p>Select an authentication provider type to add:</p>
-          <ul class="grid w-full gap-6 grid-cols-1">
+          <p class="mb-4 text-base text-neutral-700">
+            Select an authentication provider type to add:
+          </p>
+          <ul class="grid w-full gap-4 grid-cols-1">
             <li>
               <div
                 phx-click="select_provider_type"
@@ -198,7 +203,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
                   </span>
                 </span>
                 <span class="w-2/3">
-                  Authenticate users against a Google Workspace account.
+                  Authenticate users against a Google account.
                 </span>
               </div>
             </li>
@@ -267,11 +272,18 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
                 {@verification_error}
               </.flash>
             <% end %>
+            <%= if @verified_at && Enum.any?(verification_errors(@form, @provider_type)) do %>
+              <.flash kind={:error} class="mb-4">
+                {verification_errors(@form, @provider_type)
+                |> Enum.map(&elem(&1, 0))
+                |> Enum.join(", ")}
+              </.flash>
+            <% end %>
 
             <div class="flex items-center justify-between">
               <div class="flex-1">
-                <h3 class="text-base font-semibold text-gray-900">Provider Verification</h3>
-                <p class="mt-1 text-sm text-gray-600">
+                <h3 class="text-base font-semibold text-neutral-900">Provider Verification</h3>
+                <p class="mt-1 text-sm text-neutral-600">
                   Verify your provider configuration by signing in with your {capitalize_provider_type(
                     @provider_type
                   )} account.
@@ -297,8 +309,9 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
                   label="Hosted Domain"
                   value={@hosted_domain}
                   verified?={@verified_at != nil}
-                  errors={@form[:hosted_domain].errors}
+                  errors={[]}
                 />
+                <.reset_verification_button verified_at={@verified_at} />
               </div>
             <% end %>
             <%= if @provider_type == "entra" do %>
@@ -314,8 +327,9 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
                   field={:tenant_id}
                   value={@tenant_id}
                   verified?={@verified_at != nil}
-                  errors={@form[:tenant_id].errors}
+                  errors={[]}
                 />
+                <.reset_verification_button verified_at={@verified_at} />
               </div>
             <% end %>
             <%= if @provider_type == "okta" do %>
@@ -326,6 +340,18 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
                   verified?={@verified_at != nil}
                   errors={[]}
                 />
+                <.reset_verification_button verified_at={@verified_at} />
+              </div>
+            <% end %>
+            <%= if @provider_type == "oidc" do %>
+              <div class="mt-4 pt-4 border-t border-accent-300 space-y-3">
+                <.verification_field
+                  label="Issuer"
+                  value={@issuer}
+                  verified?={@verified_at != nil}
+                  errors={[]}
+                />
+                <.reset_verification_button verified_at={@verified_at} />
               </div>
             <% end %>
           </div>
@@ -494,7 +520,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         issuer: nil,
         hosted_domain: nil,
         tenant_id: nil,
-        org_domain: nil,
+        okta_domain: nil,
         client_id: nil,
         client_secret: nil,
         discovery_document_uri: nil
@@ -528,21 +554,16 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     {:noreply, assign(socket, form: to_form(changeset))}
   end
 
-  def handle_event("validate", params, socket) do
-    # Convert checkbox "on" to true boolean
-    params =
-      Map.update(params, "auth_provider", %{}, fn attrs ->
-        Map.update(attrs, "is_default", false, fn
-          "on" -> true
-          _ -> false
-        end)
-      end)
+  def handle_event("validate", %{"auth_provider" => attrs}, socket) do
+    portal_only? = attrs["context"] == "portal_only"
 
     changeset =
-      changeset(params["auth_provider"], socket)
+      attrs
+      |> Map.update("is_default", nil, fn value -> if portal_only?, do: false, else: value end)
+      |> changeset(socket)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, form: to_form(changeset))}
+    {:noreply, assign(socket, portal_only?: portal_only?, form: to_form(changeset))}
   end
 
   def handle_event("update_context", %{"auth_provider" => %{"context" => context}}, socket) do
@@ -551,21 +572,20 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
   def handle_event("start_verification", _params, socket) do
     changes = socket.assigns.form.source.changes
+    type = socket.assigns.provider_type
 
     opts =
-      case socket.assigns.provider_type do
-        type when type in ["okta", "oidc"] ->
-          [
-            discovery_document_uri: changes.discovery_document_uri,
-            client_id: changes.client_id,
-            client_secret: changes.client_secret
-          ]
-
-        _ ->
-          []
+      if type in ["okta", "oidc"] do
+        [
+          discovery_document_uri: changes.discovery_document_uri,
+          client_id: changes.client_id,
+          client_secret: changes.client_secret
+        ]
+      else
+        []
       end
 
-    with {:ok, verification} <- Web.OIDC.setup_verification(socket.assigns.provider_type, opts) do
+    with {:ok, verification} <- Web.OIDC.setup_verification(type, opts) do
       # Subscribe to verification PubSub topic if connected
       Domain.PubSub.subscribe("oidc-verification:#{verification.token}")
 
@@ -579,11 +599,29 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
       # Push JS to open verification URL in new tab
       {:noreply, push_event(socket, "open_url", %{url: verification.url})}
     else
+      {:error, %Mint.TransportError{reason: reason}} ->
+        field_name = if type == "okta", do: "Okta Domain", else: "Discovery Document URI"
+
+        msg =
+          "Failed to start verification: #{inspect(reason)}. Ensure the #{field_name} is correct."
+
+        {:noreply, assign(socket, verification_error: msg)}
+
+      {:error, %Jason.DecodeError{}} ->
+        msg =
+          "Failed to start verification: the Discovery Document URI did not return a valid JSON response."
+
+        {:noreply, assign(socket, verification_error: msg)}
+
       {:error, reason} ->
-        {:noreply,
-         assign(socket,
-           verification_error: "Failed to start verification: #{inspect(reason)}"
-         )}
+        account_id = get_in(socket.assigns, [:subject, :account, :id])
+
+        Logger.warning("Failed to start OIDC verification for #{account_id}",
+          reason: inspect(reason)
+        )
+
+        msg = "An unexpected error occurred while starting verification. Please try again."
+        {:noreply, assign(socket, verification_error: msg)}
     end
   end
 
@@ -607,7 +645,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         issuer: nil,
         hosted_domain: nil,
         tenant_id: nil,
-        org_domain: nil,
+        okta_domain: nil,
         client_id: nil,
         client_secret: nil,
         discovery_document_uri: nil
@@ -616,16 +654,34 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     {:noreply, assign(socket, create_step: 1, provider_type: nil, verified_at: nil)}
   end
 
+  def handle_event("reset_verification", _params, socket) do
+    socket =
+      assign(socket,
+        verified_at: nil,
+        verification_token: nil,
+        verification_error: nil,
+        code_verifier: nil,
+        provider_config: nil,
+        issuer: nil,
+        hosted_domain: nil,
+        tenant_id: nil,
+        okta_domain: nil
+      )
+
+    {:noreply, socket}
+  end
+
   def handle_event("create_auth_provider", params, socket) do
     {:noreply, create_provider(params, socket)}
   end
 
   defp provider_selection_classes(selected?) do
     [
-      "component bg-white rounded p-4 flex items-center cursor-pointer",
-      "border transition-colors",
-      selected? && "border-accent-500 bg-accent-50",
-      !selected? && "border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50"
+      "component bg-white rounded-lg p-4 flex items-center cursor-pointer",
+      "border-2 transition-all duration-150",
+      selected? && "border-accent-500 bg-accent-50 shadow-sm",
+      !selected? &&
+        "border-neutral-200 hover:border-accent-300 hover:bg-neutral-50 hover:shadow-sm"
     ]
   end
 
@@ -646,6 +702,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
   # Provider type formatting
   defp capitalize_provider_type(nil), do: "Provider"
+  defp capitalize_provider_type("oidc"), do: "OpenID Connect"
   defp capitalize_provider_type(provider_type), do: String.capitalize(provider_type)
 
   # Verification field display helpers
@@ -690,6 +747,36 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
     """
   end
 
+  # Reset verification button
+  defp reset_verification_button(assigns) do
+    ~H"""
+    <div :if={@verified_at} class="text-right">
+      <button
+        type="button"
+        phx-click="reset_verification"
+        class="text-sm text-neutral-500 hover:text-neutral-700 underline"
+        title="Reset verification to reverify credentials"
+      >
+        Reset verification
+      </button>
+    </div>
+    """
+  end
+
+  # Collect verification field errors based on provider type
+  defp verification_errors(form, provider_type) do
+    case provider_type do
+      "google" ->
+        form[:hosted_domain].errors
+
+      "entra" ->
+        form[:tenant_id].errors
+
+      _ ->
+        []
+    end
+  end
+
   # Checkbox helper text for default provider option
   defp default_provider_helper_text(portal_only?) do
     if portal_only? do
@@ -702,7 +789,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   # Provider form descriptions
   defp provider_form_description("google"),
     do:
-      "Configure your Google Workspace authentication provider. Users will sign in using their Google Workspace accounts."
+      "Configure your Google authentication provider. Users will sign in using their Google accounts."
 
   defp provider_form_description("entra"),
     do:
@@ -711,20 +798,13 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   # Verification field component
   defp verification_field(assigns) do
     ~H"""
-    <div>
-      <div class="flex justify-between items-center">
-        <label class="text-sm font-medium text-neutral-700">{@label}</label>
-        <div class="text-right">
-          <p class="text-sm font-semibold text-neutral-900">
-            {verification_field_display(@value, @verified?)}
-          </p>
-        </div>
-      </div>
-      <%= if Enum.any?(@errors) do %>
-        <p class="mt-1 text-sm text-red-600">
-          {@errors |> Enum.map(&elem(&1, 0)) |> Enum.join(", ")}
+    <div class="flex justify-between items-center">
+      <label class="text-sm font-medium text-neutral-700">{@label}</label>
+      <div class="text-right">
+        <p class="text-sm font-semibold text-neutral-900">
+          {verification_field_display(@value, @verified?)}
         </p>
-      <% end %>
+      </div>
     </div>
     """
   end
@@ -784,26 +864,30 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
       phx-submit="create_auth_provider"
     >
       <div class="space-y-4">
-        <p class="text-sm text-gray-600">
+        <p class="text-base text-neutral-600">
           {@description}
         </p>
 
-        <.input
-          field={@form[:name]}
-          type="text"
-          label="Name"
-          autocomplete="off"
-          phx-debounce="300"
-          data-1p-ignore
-          required
-        />
+        <div>
+          <.input
+            field={@form[:name]}
+            type="text"
+            label="Name"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Enter a name to identify this provider. This will be shown to end-users during authentication.
+          </p>
+        </div>
 
         <div>
           <.input
             field={@form[:context]}
             type="select"
             label="Context"
-            phx-change="update_context"
             options={context_options()}
             required
           />
@@ -840,50 +924,69 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
       phx-submit="create_auth_provider"
     >
       <div class="space-y-4">
-        <p class="text-sm text-gray-600">
+        <p class="text-base text-neutral-600">
           Configure your Okta authentication provider. Users will sign in using their Okta accounts.
         </p>
 
-        <.input
-          field={@form[:name]}
-          type="text"
-          label="Name"
-          autocomplete="off"
-          phx-debounce="300"
-          data-1p-ignore
-          required
-        />
+        <div>
+          <.input
+            field={@form[:name]}
+            type="text"
+            label="Name"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Enter a name to identify this provider. This will be shown to end-users during authentication.
+          </p>
+        </div>
 
-        <.input
-          field={@form[:org_domain]}
-          type="text"
-          label="Okta Domain"
-          placeholder="example.okta.com"
-          autocomplete="off"
-          phx-debounce="300"
-          data-1p-ignore
-          required
-        />
+        <div>
+          <.input
+            field={@form[:okta_domain]}
+            type="text"
+            label="Okta Domain"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Enter your fully-qualified Okta organization domain (e.g., example.okta.com).
+          </p>
+        </div>
 
-        <.input
-          field={@form[:client_id]}
-          type="text"
-          label="Client ID"
-          autocomplete="off"
-          phx-debounce="300"
-          data-1p-ignore
-          required
-        />
+        <div>
+          <.input
+            field={@form[:client_id]}
+            type="text"
+            label="Client ID"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Paste the Client ID from your Okta application settings.
+          </p>
+        </div>
 
-        <.input
-          field={@form[:client_secret]}
-          type="password"
-          label="Client Secret"
-          autocomplete="off"
-          phx-debounce="300"
-          data-1p-ignore
-          required
-        />
+        <div>
+          <.input
+            field={@form[:client_secret]}
+            type="password"
+            label="Client Secret"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Paste the Client Secret from your Okta application settings.
+          </p>
+        </div>
 
         <div>
           <.input
@@ -895,7 +998,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
             required
           />
           <p class="mt-1 text-xs text-gray-500">
-            Choose where this provider can be used for authentication
+            Choose where this provider can be used for authentication.
           </p>
         </div>
 
@@ -917,16 +1020,115 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
   end
 
   defp auth_provider_form(%{type: "oidc"} = assigns) do
+    assigns = assign_new(assigns, :verified_at, fn -> nil end)
+
     ~H"""
-    <p>OIDC Provider Form Goes Here</p>
+    <.form
+      id="auth-provider-form"
+      for={@form}
+      phx-change="validate"
+      phx-submit="create_auth_provider"
+    >
+      <div class="space-y-4">
+        <p class="text-base text-neutral-600">
+          Configure your OpenID Connect authentication provider. Users will sign in using an OpenID Connect compliant identity provider.
+        </p>
+
+        <div>
+          <.input
+            field={@form[:name]}
+            type="text"
+            label="Name"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Enter a name to identify this provider. This will be shown to end-users during authentication.
+          </p>
+        </div>
+
+        <div>
+          <.input
+            field={@form[:discovery_document_uri]}
+            type="text"
+            label="Discovery Document URI"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Enter the OpenID Connect discovery document URI (e.g., https://example.com/.well-known/openid-configuration).
+          </p>
+        </div>
+
+        <div>
+          <.input
+            field={@form[:client_id]}
+            type="text"
+            label="Client ID"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Paste the Client ID from your OpenID Connect application settings.
+          </p>
+        </div>
+
+        <div>
+          <.input
+            field={@form[:client_secret]}
+            type="password"
+            label="Client Secret"
+            autocomplete="off"
+            phx-debounce="300"
+            data-1p-ignore
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Paste the Client Secret from your OpenID Connect application settings.
+          </p>
+        </div>
+
+        <div>
+          <.input
+            field={@form[:context]}
+            type="select"
+            label="Context"
+            phx-change="update_context"
+            options={context_options()}
+            required
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            Choose where this provider can be used for authentication.
+          </p>
+        </div>
+
+        <div>
+          <.input
+            field={@form[:is_default]}
+            type="checkbox"
+            label="Set as default provider"
+            disabled={@portal_only?}
+            class={@portal_only? && "cursor-not-allowed"}
+          />
+          <p class="mt-1 text-xs text-gray-500">
+            {default_provider_helper_text(@portal_only?)}
+          </p>
+        </div>
+      </div>
+    </.form>
     """
   end
 
   defp create_provider(
          %{"auth_provider" => attrs},
          %{assigns: %{provider_type: provider_type}} = socket
-       )
-       when provider_type in ["google", "entra", "okta"] do
+       ) do
     # Add provider-specific verification fields
     attrs =
       attrs
@@ -940,6 +1142,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
         "google" -> Domain.Google.create_auth_provider(attrs, socket.assigns.subject)
         "entra" -> Domain.Entra.create_auth_provider(attrs, socket.assigns.subject)
         "okta" -> Domain.Okta.create_auth_provider(attrs, socket.assigns.subject)
+        "oidc" -> Domain.OIDC.create_auth_provider(attrs, socket.assigns.subject)
       end
 
     case result do
@@ -970,7 +1173,7 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
   defp add_provider_specific_attrs(attrs, "okta", socket) do
     attrs
-    |> Map.put("org_domain", socket.assigns.org_domain)
+    |> Map.put("okta_domain", socket.assigns.org_domain)
     |> Map.put("client_id", socket.assigns.client_id)
     |> Map.put("client_secret", socket.assigns.client_secret)
   end
@@ -1026,26 +1229,44 @@ defmodule Web.Settings.IdentityProviders.IndexNew do
 
   defp context_options, do: @context_options
 
-  defp changeset(attrs, %{assigns: %{provider_type: "google", subject: subject}}) do
-    Google.AuthProvider.Changeset.create(%Google.AuthProvider{}, attrs, subject)
+  defp changeset(attrs, %{assigns: %{provider_type: "google"}} = socket) do
+    attrs =
+      attrs
+      |> Map.put_new("hosted_domain", socket.assigns.hosted_domain)
+      |> Map.put_new("issuer", socket.assigns.issuer)
+
+    Google.AuthProvider.Changeset.create(%Google.AuthProvider{}, attrs, socket.assigns.subject)
   end
 
-  defp changeset(attrs, %{assigns: %{provider_type: "entra", subject: subject}}) do
-    Entra.AuthProvider.Changeset.create(%Entra.AuthProvider{}, attrs, subject)
+  defp changeset(attrs, %{assigns: %{provider_type: "entra"}} = socket) do
+    attrs =
+      attrs
+      |> Map.put_new("tenant_id", socket.assigns.tenant_id)
+      |> Map.put_new("issuer", socket.assigns.issuer)
+
+    Entra.AuthProvider.Changeset.create(%Entra.AuthProvider{}, attrs, socket.assigns.subject)
   end
 
-  defp changeset(attrs, %{assigns: %{provider_type: "okta", subject: subject}}) do
-    Okta.AuthProvider.Changeset.create(%Okta.AuthProvider{}, attrs, subject)
+  defp changeset(attrs, %{assigns: %{provider_type: "okta"}} = socket) do
+    attrs =
+      attrs
+      |> Map.put_new("issuer", socket.assigns.issuer)
+
+    Okta.AuthProvider.Changeset.create(%Okta.AuthProvider{}, attrs, socket.assigns.subject)
   end
 
-  defp changeset(attrs, %{assigns: %{provider_type: "oidc", subject: subject}}) do
-    OIDC.AuthProvider.Changeset.create(%OIDC.AuthProvider{}, attrs, subject)
+  defp changeset(attrs, %{assigns: %{provider_type: "oidc"}} = socket) do
+    attrs =
+      attrs
+      |> Map.put_new("issuer", socket.assigns.issuer)
+
+    OIDC.AuthProvider.Changeset.create(%OIDC.AuthProvider{}, attrs, socket.assigns.subject)
   end
 
-  # We'll set issuer during verification, so ignore its validation checks
   defp ready_to_verify?(form) do
     Enum.all?(form.source.errors, fn
-      {:issuer, _errors} -> true
+      # We'll set these fields during verification
+      {excluded, _errors} when excluded in [:verified_at, :issuer, :tenant_id] -> true
       {_field, _errors} -> false
     end)
   end

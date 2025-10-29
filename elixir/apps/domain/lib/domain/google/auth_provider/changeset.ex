@@ -7,8 +7,8 @@ defmodule Domain.Google.AuthProvider.Changeset do
     Google
   }
 
-  @required_fields ~w[name context issuer]a
-  @fields @required_fields ++ ~w[disabled_at hosted_domain verified_at is_default]a
+  @required_fields ~w[name context issuer verified_at]a
+  @fields @required_fields ++ ~w[is_disabled hosted_domain is_default]a
 
   def create(
         auth_provider,
@@ -39,11 +39,11 @@ defmodule Domain.Google.AuthProvider.Changeset do
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:hosted_domain,
       name: :google_auth_providers_account_id_issuer_hosted_domain_index,
-      message: "An authentication provider for this hosted domain already exists."
+      message: "A Google authentication provider for this hosted domain already exists."
     )
     |> unique_constraint(:name,
       name: :google_auth_providers_account_id_name_index,
-      message: "An authentication provider with this name already exists."
+      message: "A Google authentication provider with this name already exists."
     )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :google_auth_providers_account_id_fkey)

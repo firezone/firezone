@@ -164,7 +164,7 @@ defmodule Web.OIDC do
   Returns a map with verification data: token, url, verifier, config.
 
   Options:
-  - :org_domain - Required for Okta providers
+  - :okta_domain - Required for Okta providers
   - :client_id - Required for Okta and generic OIDC providers
   - :client_secret - Required for Okta and generic OIDC providers
   - :discovery_document_uri - Required for generic OIDC providers

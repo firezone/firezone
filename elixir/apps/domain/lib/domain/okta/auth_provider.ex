@@ -18,16 +18,17 @@ defmodule Domain.Okta.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
-    field :disabled_at, :utc_datetime_usec
-    field :verified_at, :utc_datetime_usec
-    field :is_default, :boolean, default: false
+    field :verified_at, :utc_datetime, virtual: true
+
+    field :is_disabled, :boolean, read_after_writes: true, default: false
+    field :is_default, :boolean, read_after_writes: true, default: false
 
     field :name, :string, default: "Okta"
     field :okta_domain, :string
     field :client_id, :string
     field :client_secret, :string, redact: true
 
-    # Built from the org_domain
+    # Built from the okta_domain
     field :discovery_document_uri, :string, virtual: true
 
     subject_trail(~w[actor identity system]a)

@@ -6,7 +6,7 @@ defmodule Domain.Entra.Directory.Query do
   end
 
   def not_disabled(queryable \\ all()) do
-    where(queryable, [directories: directories], is_nil(directories.disabled_at))
+    where(queryable, [directories: directories], not directories.is_disabled)
   end
 
   def by_id(queryable, id) do

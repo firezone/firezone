@@ -7,8 +7,7 @@ defmodule Domain.Repo.Migrations.CreateGoogleAuthProviders do
       account()
 
       add(:context, :string, null: false)
-      add(:disabled_at, :utc_datetime_usec)
-      add(:verified_at, :utc_datetime_usec)
+      add(:is_disabled, :boolean, default: false, null: false)
       add(:is_default, :boolean, default: false, null: false)
 
       add(:issuer, :text, null: false)

@@ -6,7 +6,7 @@ defmodule Domain.Userpass.AuthProvider.Query do
   end
 
   def not_disabled(queryable \\ all()) do
-    where(queryable, [providers: providers], is_nil(providers.disabled_at))
+    where(queryable, [providers: providers], not providers.is_disabled)
   end
 
   def by_account_id(queryable, account_id) do

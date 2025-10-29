@@ -1129,14 +1129,6 @@ defmodule Domain.Migrator do
         client_secret = get_in(provider.adapter_config, ["client_secret"])
         discovery_document_uri = get_in(provider.adapter_config, ["discovery_document_uri"])
 
-        # Only set verified_at if status is "connected"
-        verified_at =
-          if get_in(provider.adapter_state, ["status"]) == "connected" do
-            DateTime.utc_now()
-          else
-            nil
-          end
-
         # Create the new OIDC auth provider
         try do
           # First create the base auth_provider record
@@ -1156,9 +1148,8 @@ defmodule Domain.Migrator do
               client_id: client_id,
               client_secret: client_secret,
               discovery_document_uri: discovery_document_uri,
-              disabled_at: provider.disabled_at,
+              is_disabled: not is_nil(provider.disabled_at),
               is_default: not is_nil(provider.assigned_default_at),
-              verified_at: verified_at,
               context: :clients_and_portal,
               created_by: :system
             })
@@ -1216,9 +1207,8 @@ defmodule Domain.Migrator do
             name: provider.name,
             issuer: "https://accounts.google.com",
             hosted_domain: hosted_domain,
-            disabled_at: provider.disabled_at,
+            is_disabled: not is_nil(provider.disabled_at),
             is_default: not is_nil(provider.assigned_default_at),
-            verified_at: DateTime.utc_now(),
             context: :clients_and_portal,
             created_by: :system
           })
@@ -1276,9 +1266,8 @@ defmodule Domain.Migrator do
             name: provider.name,
             issuer: issuer,
             tenant_id: tenant_id,
-            disabled_at: provider.disabled_at,
+            is_disabled: not is_nil(provider.disabled_at),
             is_default: not is_nil(provider.assigned_default_at),
-            verified_at: DateTime.utc_now(),
             context: :clients_and_portal,
             created_by: :system
           })
@@ -1335,14 +1324,6 @@ defmodule Domain.Migrator do
         client_secret = get_in(provider.adapter_config, ["client_secret"])
         discovery_document_uri = get_in(provider.adapter_config, ["discovery_document_uri"])
 
-        # Only set verified_at if status is "connected"
-        verified_at =
-          if get_in(provider.adapter_state, ["status"]) == "connected" do
-            DateTime.utc_now()
-          else
-            nil
-          end
-
         # Create OIDC auth provider (not Okta-specific) since we don't have all required Okta fields
         try do
           # First create the base auth_provider record
@@ -1362,9 +1343,8 @@ defmodule Domain.Migrator do
               client_id: client_id,
               client_secret: client_secret,
               discovery_document_uri: discovery_document_uri,
-              disabled_at: provider.disabled_at,
+              is_disabled: not is_nil(provider.disabled_at),
               is_default: not is_nil(provider.assigned_default_at),
-              verified_at: verified_at,
               context: :clients_and_portal,
               created_by: :system
             })
@@ -1390,7 +1370,7 @@ defmodule Domain.Migrator do
     if legacy_email_provider = legacy_email_otp_provider(subject.account) do
       attrs = %{
         name: "Email OTP",
-        disabled_at: legacy_email_provider.disabled_at
+        is_disabled: not is_nil(legacy_email_provider.disabled_at)
       }
 
       case EmailOTP.create_auth_provider(attrs, subject) do
@@ -1405,7 +1385,7 @@ defmodule Domain.Migrator do
     if legacy_userpass_provider = legacy_userpass_provider(subject.account) do
       attrs = %{
         name: "Username & Password",
-        disabled_at: legacy_userpass_provider.disabled_at
+        is_disabled: not is_nil(legacy_userpass_provider.disabled_at)
       }
 
       case Domain.Userpass.create_auth_provider(attrs, subject) do

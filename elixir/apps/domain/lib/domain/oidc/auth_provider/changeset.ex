@@ -7,8 +7,8 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
     OIDC
   }
 
-  @required_fields ~w[name context client_id client_secret discovery_document_uri issuer]a
-  @fields @required_fields ++ ~w[disabled_at is_default]a
+  @required_fields ~w[name context client_id client_secret discovery_document_uri issuer verified_at]a
+  @fields @required_fields ++ ~w[is_disabled is_default]a
 
   def create(
         auth_provider,
@@ -35,17 +35,18 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
     changeset
     |> validate_length(:client_id, min: 1, max: 255)
     |> validate_length(:client_secret, min: 1, max: 255)
+    |> validate_uri(:discovery_document_uri)
     |> validate_length(:discovery_document_uri, min: 1, max: 2000)
     |> validate_length(:issuer, min: 1, max: 2000)
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:client_id,
       name: :oidc_auth_providers_account_id_client_id_index,
-      message: "An authentication provider with this client_id already exists."
+      message: "An OIDC authentication provider with this client_id already exists."
     )
     |> unique_constraint(:name,
       name: :oidc_auth_providers_account_id_name_index,
-      message: "An authentication provider with this name already exists."
+      message: "An OIDC authentication provider with this name already exists."
     )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :oidc_auth_providers_account_id_fkey)

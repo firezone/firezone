@@ -131,7 +131,7 @@ defmodule Domain.Repo.Seeds do
 
     # TODO: IDP REFACTOR
     # This conditional can be removed once all accounts are migrated
-    new_auth? = System.get_env("NEW_AUTH") == "true"
+    new_auth? = System.get_env("LEGACY_AUTH") != "true"
 
     {email_provider, oidc_provider, userpass_provider, _google_provider, _entra_provider} =
       if new_auth? do

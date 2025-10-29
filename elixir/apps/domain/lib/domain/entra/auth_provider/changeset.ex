@@ -7,8 +7,8 @@ defmodule Domain.Entra.AuthProvider.Changeset do
     Entra
   }
 
-  @required_fields ~w[name context tenant_id issuer]a
-  @fields @required_fields ++ ~w[disabled_at verified_at is_default]a
+  @required_fields ~w[name context tenant_id issuer verified_at]a
+  @fields @required_fields ++ ~w[is_disabled verified_at is_default]a
 
   def create(
         auth_provider,
@@ -39,11 +39,11 @@ defmodule Domain.Entra.AuthProvider.Changeset do
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:tenant_id,
       name: :entra_auth_providers_account_id_issuer_index,
-      message: "An authentication provider with this tenant_id already exists."
+      message: "An Entra authentication provider with this tenant_id already exists."
     )
     |> unique_constraint(:name,
       name: :entra_auth_providers_account_id_name_index,
-      message: "An authentication provider with this name already exists."
+      message: "An Entra authentication provider with this name already exists."
     )
     |> check_constraint(:context, name: :context_must_be_valid)
     |> foreign_key_constraint(:account_id, name: :entra_auth_providers_account_id_fkey)
