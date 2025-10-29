@@ -187,7 +187,7 @@ thiserror = "2.0.17"
 time = "0.3.43"
 tokio = "1.47"
 tokio-stream = "0.1.17"
-tokio-tungstenite = "0.27.0"
+tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.16"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.3"
