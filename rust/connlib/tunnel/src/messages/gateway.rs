@@ -211,7 +211,11 @@ pub struct Client {
     pub ipv4: Ipv4Addr,
     pub ipv6: Ipv6Addr,
     #[serde(default)]
-    pub user_agent: Option<String>,
+    pub version: Option<String>,
+    #[serde(default)]
+    pub device_os_name: Option<String>,
+    #[serde(default)]
+    pub device_os_version: Option<String>,
     #[serde(default)]
     pub device_serial: Option<String>,
     #[serde(default)]

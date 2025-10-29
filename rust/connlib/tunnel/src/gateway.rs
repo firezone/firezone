@@ -335,7 +335,9 @@ impl GatewayState {
                 v6: client.ipv6,
             },
             flow_tracker::ClientProperties {
-                user_agent: client.user_agent,
+                version: client.version,
+                device_os_name: client.device_os_name,
+                device_os_version: client.device_os_version,
                 device_serial: client.device_serial,
                 device_uuid: client.device_uuid,
                 identifier_for_vendor: client.identifier_for_vendor,
@@ -484,8 +486,10 @@ impl GatewayState {
                         target: "flow_logs::tcp",
 
                         client_id = %flow.client_id,
-                        client_user_agent = flow.client_user_agent.map(tracing::field::display),
+                        client_version = flow.client_version.map(tracing::field::display),
 
+                        device_os_name = flow.device_os_name.map(tracing::field::display),
+                        device_os_version = flow.device_os_version.map(tracing::field::display),
                         device_serial = flow.device_serial.map(tracing::field::display),
                         device_uuid = flow.device_uuid.map(tracing::field::display),
                         device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
@@ -524,8 +528,10 @@ impl GatewayState {
                         target: "flow_logs::udp",
 
                         client_id = %flow.client_id,
-                        client_user_agent = flow.client_user_agent.map(tracing::field::display),
+                        client_version = flow.client_version.map(tracing::field::display),
 
+                        device_os_name = flow.device_os_name.map(tracing::field::display),
+                        device_os_version = flow.device_os_version.map(tracing::field::display),
                         device_serial = flow.device_serial.map(tracing::field::display),
                         device_uuid = flow.device_uuid.map(tracing::field::display),
                         device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),

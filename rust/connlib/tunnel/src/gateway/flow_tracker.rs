@@ -36,9 +36,11 @@ pub struct FlowTracker {
 /// Additional properties we track for a client.
 #[derive(Debug, Clone, Default)]
 pub struct ClientProperties {
-    pub user_agent: Option<String>,
+    pub version: Option<String>,
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
+    pub device_os_name: Option<String>,
+    pub device_os_version: Option<String>,
     pub identifier_for_vendor: Option<String>,
     pub firebase_installation_id: Option<String>,
     pub identity_name: Option<String>,
@@ -221,7 +223,9 @@ impl FlowTracker {
                             domain,
                             resource_name: resource.name,
                             resource_address: resource.address,
-                            client_user_agent: client.user_agent,
+                            client_version: client.version,
+                            device_os_name: client.device_os_name,
+                            device_os_version: client.device_os_version,
                             device_serial: client.device_serial,
                             device_uuid: client.device_uuid,
                             identifier_for_vendor: client.identifier_for_vendor,
@@ -256,8 +260,9 @@ impl FlowTracker {
                                 domain,
                                 resource_name: resource.name,
                                 resource_address: resource.address,
-
-                                client_user_agent: client.user_agent,
+                                client_version: client.version,
+                                device_os_name: client.device_os_name,
+                                device_os_version: client.device_os_version,
                                 device_serial: client.device_serial,
                                 device_uuid: client.device_uuid,
                                 identifier_for_vendor: client.identifier_for_vendor,
@@ -288,7 +293,9 @@ impl FlowTracker {
                                 domain,
                                 resource_name: resource.name,
                                 resource_address: resource.address,
-                                client_user_agent: client.user_agent,
+                                client_version: client.version,
+                                device_os_name: client.device_os_name,
+                                device_os_version: client.device_os_version,
                                 device_serial: client.device_serial,
                                 device_uuid: client.device_uuid,
                                 identifier_for_vendor: client.identifier_for_vendor,
@@ -340,7 +347,9 @@ impl FlowTracker {
                             domain,
                             resource_name: resource.name,
                             resource_address: resource.address,
-                            client_user_agent: client.user_agent,
+                            client_version: client.version,
+                            device_os_name: client.device_os_name,
+                            device_os_version: client.device_os_version,
                             device_serial: client.device_serial,
                             device_uuid: client.device_uuid,
                             identifier_for_vendor: client.identifier_for_vendor,
@@ -373,7 +382,9 @@ impl FlowTracker {
                                 domain,
                                 resource_name: value.resource_name,
                                 resource_address: value.resource_address,
-                                client_user_agent: client.user_agent,
+                                client_version: client.version,
+                                device_os_name: client.device_os_name,
+                                device_os_version: client.device_os_version,
                                 device_serial: client.device_serial,
                                 device_uuid: client.device_uuid,
                                 identifier_for_vendor: client.identifier_for_vendor,
@@ -506,8 +517,10 @@ pub enum CompletedFlow {
 #[derive(Debug)]
 pub struct CompletedTcpFlow {
     pub client_id: ClientId,
-    pub client_user_agent: Option<String>,
+    pub client_version: Option<String>,
 
+    pub device_os_name: Option<String>,
+    pub device_os_version: Option<String>,
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
     pub device_identifier_for_vendor: Option<String>,
@@ -544,8 +557,10 @@ pub struct CompletedTcpFlow {
 #[derive(Debug)]
 pub struct CompletedUdpFlow {
     pub client_id: ClientId,
-    pub client_user_agent: Option<String>,
+    pub client_version: Option<String>,
 
+    pub device_os_name: Option<String>,
+    pub device_os_version: Option<String>,
     pub device_serial: Option<String>,
     pub device_uuid: Option<String>,
     pub device_identifier_for_vendor: Option<String>,
@@ -583,7 +598,9 @@ impl CompletedTcpFlow {
     fn new(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
             client_id: key.client,
-            client_user_agent: value.client_user_agent,
+            client_version: value.client_version,
+            device_os_name: value.device_os_name,
+            device_os_version: value.device_os_version,
             device_serial: value.device_serial,
             device_uuid: value.device_uuid,
             device_identifier_for_vendor: value.identifier_for_vendor,
@@ -617,7 +634,9 @@ impl CompletedUdpFlow {
     fn new(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
             client_id: key.client,
-            client_user_agent: value.client_user_agent,
+            client_version: value.client_version,
+            device_os_name: value.device_os_name,
+            device_os_version: value.device_os_version,
             device_serial: value.device_serial,
             device_uuid: value.device_uuid,
             device_identifier_for_vendor: value.identifier_for_vendor,
@@ -679,9 +698,11 @@ struct TcpFlowValue {
     resource_name: String,
     resource_address: String,
 
-    client_user_agent: Option<String>,
+    client_version: Option<String>,
     device_serial: Option<String>,
     device_uuid: Option<String>,
+    device_os_name: Option<String>,
+    device_os_version: Option<String>,
     identifier_for_vendor: Option<String>,
     firebase_installation_id: Option<String>,
 
@@ -704,9 +725,11 @@ struct UdpFlowValue {
     resource_name: String,
     resource_address: String,
 
-    client_user_agent: Option<String>,
+    client_version: Option<String>,
     device_serial: Option<String>,
     device_uuid: Option<String>,
+    device_os_name: Option<String>,
+    device_os_version: Option<String>,
     identifier_for_vendor: Option<String>,
     firebase_installation_id: Option<String>,
 
@@ -810,7 +833,9 @@ pub mod inbound_wg {
         update_current_flow_inbound_wireguard(|wg| {
             wg.client.replace(Client {
                 id: cid,
-                user_agent: props.user_agent,
+                version: props.version,
+                device_os_name: props.device_os_name,
+                device_os_version: props.device_os_version,
                 device_serial: props.device_serial,
                 identity_name: props.identity_name,
                 actor_email: props.actor_email,
@@ -960,10 +985,13 @@ struct InnerFlow {
 struct Client {
     id: ClientId,
 
-    user_agent: Option<String>,
+    version: Option<String>,
 
     device_serial: Option<String>,
     device_uuid: Option<String>,
+    device_os_name: Option<String>,
+    device_os_version: Option<String>,
+
     identifier_for_vendor: Option<String>,
     firebase_installation_id: Option<String>,
 
