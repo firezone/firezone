@@ -1,8 +1,8 @@
 self-hosted-runner:
   labels:
-    - macos-13-xlarge
     - macos-14-xlarge
     - macos-15-xlarge
+    - macos-26-xlarge
     - ubuntu-22.04-arm-xlarge
     - ubuntu-22.04-xlarge
     - ubuntu-24.04-xlarge
