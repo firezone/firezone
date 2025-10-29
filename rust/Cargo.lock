@@ -4647,9 +4647,12 @@ dependencies = [
 
 [[package]]
 name = "network-types"
-version = "0.0.8"
+version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f2df15b1cb023b9d205ae287d5dbe74510ae4d62b5131ceec516f4913ed05230"
+checksum = "f06f1863cb5565864300c6bfb012312969908878d2ca5881eaf0bbdb8b519c23"
+dependencies = [
+ "memoffset",
+]
 
 [[package]]
 name = "new_debug_unreachable"
