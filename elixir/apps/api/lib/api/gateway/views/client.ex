@@ -7,7 +7,7 @@ defmodule API.Gateway.Views.Client do
     [os_version, rest] = String.split(rest, " ", parts: 2)
     [_, rest] = String.split(rest, "/", parts: 2)
 
-    # FIXME: For easier testing, we re-parse the client version here.
+    # TODO: For easier testing, we re-parse the client version here.
     # Long term, we should not be parsing the user-agent at all in here.
     # Instead we should directly store the parsed information in the DB.
     [client_version | _] = String.split(rest, " ", parts: 2)
