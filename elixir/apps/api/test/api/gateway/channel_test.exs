@@ -1561,7 +1561,9 @@ defmodule API.Gateway.ChannelTest do
              }
 
       assert payload.subject == %{
+               identity_id: subject.identity.id,
                identity_name: subject.actor.name,
+               actor_id: subject.actor.id,
                actor_email: subject.identity.email
              }
 
