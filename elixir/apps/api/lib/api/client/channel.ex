@@ -377,7 +377,8 @@ defmodule API.Client.Channel do
              flow_id: flow.id,
              authorization_expires_at: expires_at,
              ice_credentials: ice_credentials,
-             preshared_key: preshared_key
+             preshared_key: preshared_key,
+             subject: socket.assigns.subject
            }}
         )
 

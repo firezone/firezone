@@ -10,7 +10,7 @@ defmodule API.Client.SocketTest do
   ]
 
   @connect_info %{
-    user_agent: "iOS/12.7 (iPhone) connlib/1.3.0",
+    user_agent: "iOS/12.7 connlib/1.3.0",
     peer_data: %{address: {189, 172, 73, 001}},
     x_headers:
       [

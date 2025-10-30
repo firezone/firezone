@@ -8,6 +8,7 @@ defmodule API.Gateway.Channel do
     Changes.Change,
     Flows,
     Gateways,
+    Auth,
     PubSub,
     Relays,
     Resources
@@ -226,7 +227,8 @@ defmodule API.Gateway.Channel do
       flow_id: flow_id,
       authorization_expires_at: authorization_expires_at,
       ice_credentials: ice_credentials,
-      preshared_key: preshared_key
+      preshared_key: preshared_key,
+      subject: %Auth.Subject{} = subject
     } = payload
 
     ref =
@@ -244,7 +246,8 @@ defmodule API.Gateway.Channel do
       gateway_ice_credentials: ice_credentials.gateway,
       client: Views.Client.render(client, preshared_key),
       client_ice_credentials: ice_credentials.client,
-      expires_at: DateTime.to_unix(authorization_expires_at, :second)
+      expires_at: DateTime.to_unix(authorization_expires_at, :second),
+      subject: Views.Subject.render(subject)
     })
 
     cache =

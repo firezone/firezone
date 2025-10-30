@@ -117,7 +117,8 @@ defmodule API.Gateway.ChannelTest do
       client: client,
       resource: resource,
       socket: socket,
-      gateway: gateway
+      gateway: gateway,
+      subject: subject
     } do
       expired_flow =
         Fixtures.Flows.create_flow(
@@ -146,7 +147,8 @@ defmodule API.Gateway.ChannelTest do
            flow_id: expired_flow.id,
            authorization_expires_at: expired_expiration,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           subject: subject
          }}
       )
 
@@ -177,7 +179,8 @@ defmodule API.Gateway.ChannelTest do
       client: client,
       resource: resource,
       socket: socket,
-      gateway: gateway
+      gateway: gateway,
+      subject: subject
     } do
       expired_flow =
         Fixtures.Flows.create_flow(
@@ -216,7 +219,8 @@ defmodule API.Gateway.ChannelTest do
            flow_id: expired_flow.id,
            authorization_expires_at: expired_expiration,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           subject: subject
          }}
       )
 
@@ -231,7 +235,8 @@ defmodule API.Gateway.ChannelTest do
            flow_id: unexpired_flow.id,
            authorization_expires_at: unexpired_expiration,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           subject: subject
          }}
       )
 
@@ -1488,7 +1493,8 @@ defmodule API.Gateway.ChannelTest do
       account: account,
       gateway: gateway,
       resource: resource,
-      socket: socket
+      socket: socket,
+      subject: subject
     } do
       flow =
         Fixtures.Flows.create_flow(
@@ -1516,7 +1522,8 @@ defmodule API.Gateway.ChannelTest do
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           subject: subject
          }}
       )
 
@@ -1542,7 +1549,22 @@ defmodule API.Gateway.ChannelTest do
                ipv4: client.ipv4,
                ipv6: client.ipv6,
                preshared_key: preshared_key,
-               public_key: client.public_key
+               public_key: client.public_key,
+               version: client.last_seen_version,
+               device_serial: client.device_serial,
+               device_uuid: client.device_uuid,
+               identifier_for_vendor: client.identifier_for_vendor,
+               firebase_installation_id: client.firebase_installation_id,
+               # Hardcode these to avoid having to reparse the user agent.
+               device_os_name: "iOS",
+               device_os_version: "12.5"
+             }
+
+      assert payload.subject == %{
+               identity_id: subject.identity.id,
+               identity_name: subject.actor.name,
+               actor_id: subject.actor.id,
+               actor_email: subject.identity.email
              }
 
       assert payload.client_ice_credentials == ice_credentials.client
@@ -1588,7 +1610,8 @@ defmodule API.Gateway.ChannelTest do
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           subject: subject
          }}
       )
 
@@ -1629,7 +1652,8 @@ defmodule API.Gateway.ChannelTest do
       account: account,
       resource: resource,
       gateway: gateway,
-      socket: socket
+      socket: socket,
+      subject: subject
     } do
       flow =
         Fixtures.Flows.create_flow(
@@ -1663,7 +1687,8 @@ defmodule API.Gateway.ChannelTest do
            flow_id: flow.id,
            authorization_expires_at: expires_at,
            ice_credentials: ice_credentials,
-           preshared_key: preshared_key
+           preshared_key: preshared_key,
+           subject: subject
          }}
       )
 
