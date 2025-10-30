@@ -149,8 +149,8 @@ pub struct ClientState {
 struct PendingFlow {
     last_intent_sent_at: Instant,
     resource_packets: UniquePacketBuffer,
-    udp_dns_queries: AllocRingBuffer<(IpPacket, dns_types::Query)>,
-    tcp_dns_queries: AllocRingBuffer<dns_over_tcp::Query>,
+    udp_dns_queries: AllocRingBuffer<DnsQueryForSite>,
+    tcp_dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
 
 impl PendingFlow {
@@ -178,8 +178,8 @@ impl PendingFlow {
     fn push(&mut self, trigger: ConnectionTrigger) {
         match trigger {
             ConnectionTrigger::PacketForResource(packet) => self.resource_packets.push(packet),
-            ConnectionTrigger::UdpDnsQueryForSite(packet, query) => {
-                self.udp_dns_queries.enqueue((packet, query));
+            ConnectionTrigger::UdpDnsQueryForSite(query) => {
+                self.udp_dns_queries.enqueue(query);
             }
             ConnectionTrigger::TcpDnsQueryForSite(query) => {
                 self.tcp_dns_queries.enqueue(query);
@@ -761,24 +761,16 @@ impl ClientState {
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
-        for (packet, query) in pending_flow.udp_dns_queries {
+        for query in pending_flow.udp_dns_queries {
             let gateway = self.peers.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
-            // TODO: Consider not reparsing here but storing more information in the pending flow?
-            let Some(datagram) = packet.as_udp() else {
-                tracing::error!(?packet, "Not a UDP datagram");
-                continue;
-            };
-
-            let destination = SocketAddr::new(packet.destination(), datagram.destination_port());
-            let source = SocketAddr::new(packet.source(), datagram.source_port());
-            let upstream = gateway.tun_dns_server_endpoint(packet.destination());
+            let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
 
             self.forward_udp_dns_query_to_new_upstream_via_tunnel(
-                destination,
-                source,
+                query.local,
+                query.remote,
                 upstream,
-                query,
+                query.message,
                 now,
             );
         }
@@ -1328,7 +1320,11 @@ impl ClientState {
                 else {
                     self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::UdpDnsQueryForSite(packet, message),
+                        ConnectionTrigger::UdpDnsQueryForSite(DnsQueryForSite {
+                            local: destination,
+                            remote: source,
+                            message,
+                        }),
                         now,
                     );
                     return;
@@ -1467,7 +1463,11 @@ impl ClientState {
                 else {
                     self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::TcpDnsQueryForSite(query),
+                        ConnectionTrigger::TcpDnsQueryForSite(DnsQueryForSite {
+                            local: query.local,
+                            remote: query.remote,
+                            message: query.message,
+                        }),
                         now,
                     );
                     return;
@@ -2022,20 +2022,26 @@ enum ConnectionTrigger {
     /// A packet received on the TUN device with a destination IP that maps to one of our resources.
     PacketForResource(IpPacket),
     /// A UDP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    UdpDnsQueryForSite(IpPacket, dns_types::Query),
+    UdpDnsQueryForSite(DnsQueryForSite),
     /// A TCP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    TcpDnsQueryForSite(dns_over_tcp::Query),
+    TcpDnsQueryForSite(DnsQueryForSite),
     /// We have received an ICMP error that is marked as "access prohibited".
     ///
     /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
     IcmpDestinationUnreachableProhibited,
 }
 
+struct DnsQueryForSite {
+    local: SocketAddr,
+    remote: SocketAddr,
+    message: dns_types::Query,
+}
+
 impl ConnectionTrigger {
     fn name(&self) -> &'static str {
         match self {
             ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
-            ConnectionTrigger::UdpDnsQueryForSite(..) => "udp-dns-query-for-site",
+            ConnectionTrigger::UdpDnsQueryForSite(_) => "udp-dns-query-for-site",
             ConnectionTrigger::TcpDnsQueryForSite(_) => "tcp-dns-query-for-site",
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
                 "icmp-destination-unreachable-prohibited"
