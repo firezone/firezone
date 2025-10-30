@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    net::{IpAddr, SocketAddr},
-};
+use std::{collections::HashSet, net::SocketAddr};
 
 use connlib_model::{GatewayId, ResourceId};
 use ip_network::IpNetwork;
@@ -26,15 +23,8 @@ impl GatewayOnClient {
         }
     }
 
-    /// For a given destination IP, return the endpoint to which the DNS query should be sent.
-    pub(crate) fn tun_dns_server_endpoint(&self, dst: IpAddr) -> SocketAddr {
-        let new_dst_ip = match dst {
-            IpAddr::V4(_) => self.gateway_tun.v4.into(),
-            IpAddr::V6(_) => self.gateway_tun.v6.into(),
-        };
-        let new_dst_port = crate::gateway::TUN_DNS_PORT;
-
-        SocketAddr::new(new_dst_ip, new_dst_port)
+    pub(crate) fn tun_dns_server_endpoint(&self) -> SocketAddr {
+        SocketAddr::new(self.gateway_tun.v4.into(), crate::gateway::TUN_DNS_PORT)
     }
 }
 

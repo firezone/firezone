@@ -561,7 +561,7 @@ impl ClientState {
                     return None;
                 };
 
-                let upstream = gateway.tun_dns_server_endpoint(query.local.ip()); // TODO: Should we always use the IPv4 TUN address going forward?
+                let upstream = gateway.tun_dns_server_endpoint();
 
                 self.forward_dns_query_to_new_upstream_via_tunnel(
                     query.local,
@@ -802,7 +802,7 @@ impl ClientState {
         for query in pending_flow.dns_queries {
             let gateway = self.peers.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
-            let upstream = gateway.tun_dns_server_endpoint(query.local.ip()); // TODO: Always use IPv4 here?
+            let upstream = gateway.tun_dns_server_endpoint();
 
             self.forward_dns_query_to_new_upstream_via_tunnel(
                 query.local,
