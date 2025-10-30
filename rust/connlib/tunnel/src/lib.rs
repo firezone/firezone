@@ -202,8 +202,7 @@ impl ClientTunnel {
                 now_utc: _,
                 timeout,
                 dns_response,
-                tcp_dns_queries: _,
-                udp_dns_queries: _,
+                dns_queries: _,
                 device,
                 network,
                 error,
@@ -362,39 +361,21 @@ impl GatewayTunnel {
                 now_utc,
                 timeout,
                 dns_response,
-                tcp_dns_queries,
-                udp_dns_queries,
+                dns_queries,
                 device,
                 network,
                 mut error,
             }) = self.io.poll(cx, &mut self.buffers)
             {
                 if let Some(response) = dns_response {
-                    let message = response.message.unwrap_or_else(|e| {
+                    let response = response.unwrap_or(|query, e| {
                         tracing::debug!("DNS query failed: {e}");
 
-                        dns_types::Response::servfail(&response.query)
+                        dns_types::Response::servfail(query)
                     });
 
-                    match response.transport {
-                        dns::Transport::Udp => {
-                            if let Err(e) = self.io.send_udp_dns_response(
-                                response.remote,
-                                response.local,
-                                message,
-                            ) {
-                                error.push(e);
-                            }
-                        }
-                        dns::Transport::Tcp => {
-                            if let Err(e) = self.io.send_tcp_dns_response(
-                                response.remote,
-                                response.local,
-                                message,
-                            ) {
-                                error.push(e);
-                            }
-                        }
+                    if let Err(e) = self.io.send_dns_response(response) {
+                        error.push(e);
                     }
 
                     ready = true;
@@ -454,45 +435,22 @@ impl GatewayTunnel {
                     ready = true;
                 }
 
-                for query in udp_dns_queries {
+                for query in dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_udp(
-                            query.local,
-                            query.remote,
+                        self.io.send_dns_query(dns::RecursiveQuery::new(
+                            query,
                             SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
                         ));
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
-                        if let Err(e) = self.io.send_udp_dns_response(
-                            query.remote,
-                            query.local,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
-                            error.push(e);
-                        }
-                    }
-
-                    ready = true;
-                }
-
-                for query in tcp_dns_queries {
-                    if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
-                            query.local,
-                            query.remote,
-                            SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
-                        ));
-                    } else {
-                        tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
-
-                        if let Err(e) = self.io.send_tcp_dns_response(
-                            query.remote,
-                            query.local,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
+                        if let Err(e) = self.io.send_dns_response(dns::Response {
+                            local: query.local,
+                            remote: query.remote,
+                            message: dns_types::Response::servfail(&query.message),
+                            query: query.message,
+                            transport: query.transport,
+                        }) {
                             error.push(e);
                         }
                     }

@@ -52,6 +52,41 @@ struct Resource {
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
 #[derive(Debug)]
+pub(crate) struct Query {
+    /// The local address we received the query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and should forward).
+    pub message: dns_types::Query,
+
+    /// The transport we received the query on.
+    pub transport: Transport,
+}
+
+/// A response to a [`RecursiveQuery`].
+#[derive(Debug)]
+pub(crate) struct Response {
+    /// The local address we received the original query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the original query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and forwarded).
+    pub query: dns_types::Query,
+
+    /// The result of forwarding the DNS query.
+    pub message: dns_types::Response,
+
+    /// The transport we used.
+    pub transport: Transport,
+}
+
+/// A query that needs to be forwarded to an upstream DNS server for resolution.
+#[derive(Debug)]
 pub(crate) struct RecursiveQuery {
     /// The server we want to send the query to.
     pub server: SocketAddr,
@@ -119,6 +154,31 @@ impl RecursiveQuery {
             remote,
             message,
             transport: Transport::Tcp,
+        }
+    }
+
+    pub(crate) fn new(query: Query, server: SocketAddr) -> Self {
+        Self {
+            server,
+            local: query.local,
+            remote: query.remote,
+            message: query.message,
+            transport: query.transport,
+        }
+    }
+}
+
+impl RecursiveResponse {
+    pub fn unwrap_or(
+        self,
+        fallback: impl FnOnce(&dns_types::Query, io::Error) -> dns_types::Response,
+    ) -> Response {
+        Response {
+            message: self.message.unwrap_or_else(|e| fallback(&self.query, e)),
+            local: self.local,
+            remote: self.remote,
+            query: self.query,
+            transport: self.transport,
         }
     }
 }
@@ -477,6 +537,28 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
     match ip {
         IpAddr::V4(_) => None,
         IpAddr::V6(v6) => Some(v6),
+    }
+}
+
+impl From<l4_udp_dns_server::Query> for Query {
+    fn from(value: l4_udp_dns_server::Query) -> Self {
+        Self {
+            local: value.local,
+            remote: value.remote,
+            message: value.message,
+            transport: Transport::Udp,
+        }
+    }
+}
+
+impl From<l4_tcp_dns_server::Query> for Query {
+    fn from(value: l4_tcp_dns_server::Query) -> Self {
+        Self {
+            local: value.local,
+            remote: value.remote,
+            message: value.message,
+            transport: Transport::Tcp,
+        }
     }
 }
 

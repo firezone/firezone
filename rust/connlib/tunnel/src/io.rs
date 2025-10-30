@@ -95,8 +95,7 @@ pub struct Input<D, I> {
     pub timeout: bool,
     pub device: Option<D>,
     pub network: Option<I>,
-    pub tcp_dns_queries: Vec<l4_tcp_dns_server::Query>,
-    pub udp_dns_queries: Vec<l4_udp_dns_server::Query>,
+    pub dns_queries: Vec<dns::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
@@ -109,8 +108,7 @@ impl<D, I> Input<D, I> {
             timeout: false,
             device: None,
             network: None,
-            tcp_dns_queries: Vec::new(),
-            udp_dns_queries: Vec::new(),
+            dns_queries: Vec::new(),
             dns_response: None,
             error: TunnelError::single(e),
         }
@@ -268,33 +266,23 @@ impl Io {
                 buffers.ip.drain(..num_packets)
             });
 
-        let udp_dns_queries = self
-            .udp_dns_server
-            .values_mut()
-            .flat_map(|s| match s.poll(cx) {
-                Poll::Ready(Ok(q)) => Some(q),
-                Poll::Ready(Err(e)) => {
-                    error.push(e);
+        let mut dns_queries = Vec::new();
 
-                    None
-                }
-                Poll::Pending => None,
-            })
-            .collect::<Vec<_>>();
+        for server in self.udp_dns_server.values_mut() {
+            match server.poll(cx) {
+                Poll::Ready(Ok(q)) => dns_queries.push(q.into()),
+                Poll::Ready(Err(e)) => error.push(e),
+                Poll::Pending => {}
+            }
+        }
 
-        let tcp_dns_queries = self
-            .tcp_dns_server
-            .values_mut()
-            .flat_map(|s| match s.poll(cx) {
-                Poll::Ready(Ok(q)) => Some(q),
-                Poll::Ready(Err(e)) => {
-                    error.push(e);
-
-                    None
-                }
-                Poll::Pending => None,
-            })
-            .collect::<Vec<_>>();
+        for server in self.tcp_dns_server.values_mut() {
+            match server.poll(cx) {
+                Poll::Ready(Ok(q)) => dns_queries.push(q.into()),
+                Poll::Ready(Err(e)) => error.push(e),
+                Poll::Pending => {}
+            }
+        }
 
         let dns_response = self
             .dns_queries
@@ -331,8 +319,7 @@ impl Io {
         if !timeout
             && device.is_pending()
             && network.is_pending()
-            && tcp_dns_queries.is_empty()
-            && udp_dns_queries.is_empty()
+            && dns_queries.is_empty()
             && dns_response.is_pending()
             && error.is_empty()
         {
@@ -345,8 +332,7 @@ impl Io {
             timeout,
             device: poll_to_option(device),
             network: poll_result_to_option(network, &mut error),
-            tcp_dns_queries,
-            udp_dns_queries,
+            dns_queries,
             dns_response: poll_to_option(dns_response),
             error,
         })
@@ -499,28 +485,23 @@ impl Io {
         }
     }
 
-    pub(crate) fn send_udp_dns_response(
-        &mut self,
-        to: SocketAddr,
-        from: SocketAddr,
-        message: dns_types::Response,
-    ) -> io::Result<()> {
-        self.udp_dns_server
-            .get_mut(&from)
-            .ok_or(io::Error::other("No DNS server"))?
-            .send_response(to, message)
-    }
+    pub(crate) fn send_dns_response(&mut self, response: dns::Response) -> io::Result<()> {
+        let from = response.local;
+        let to = response.remote;
+        let message = response.message;
 
-    pub(crate) fn send_tcp_dns_response(
-        &mut self,
-        to: SocketAddr,
-        from: SocketAddr,
-        message: dns_types::Response,
-    ) -> io::Result<()> {
-        self.tcp_dns_server
-            .get_mut(&from)
-            .ok_or(io::Error::other("No DNS server"))?
-            .send_response(to, message)
+        match response.transport {
+            dns::Transport::Udp => self
+                .udp_dns_server
+                .get_mut(&from)
+                .ok_or(io::Error::other("No DNS server"))?
+                .send_response(to, message),
+            dns::Transport::Tcp => self
+                .tcp_dns_server
+                .get_mut(&from)
+                .ok_or(io::Error::other("No DNS server"))?
+                .send_response(to, message),
+        }
     }
 }
 
