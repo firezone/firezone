@@ -541,7 +541,7 @@ impl ClientState {
                     });
 
                 unwrap_or_warn!(
-                    self.try_queue_udp_dns_response(server, response.remote, message),
+                    self.try_queue_udp_dns_response(response.local, response.remote, message),
                     "Failed to queue UDP DNS response: {}"
                 );
             }
@@ -623,16 +623,12 @@ impl ClientState {
         dst: SocketAddr,
         message: dns_types::Response,
     ) -> anyhow::Result<()> {
-        let saddr = self
-            .dns_config
-            .mapping()
-            .sentinel_by_upstream(from)
-            .context("Unknown DNS server")?;
+        debug_assert_eq!(from.port(), DNS_PORT);
 
         let ip_packet = ip_packet::make::udp_packet(
-            saddr,
+            from.ip(),
             dst.ip(),
-            DNS_PORT,
+            from.port(),
             dst.port(),
             message.into_bytes(MAX_UDP_PAYLOAD),
         )?;
@@ -1259,7 +1255,7 @@ impl ClientState {
 
         if let Some(response) = self.dns_cache.try_answer(&message, now) {
             unwrap_or_debug!(
-                self.try_queue_udp_dns_response(upstream, source, response),
+                self.try_queue_udp_dns_response(destination, source, response),
                 "Failed to queue UDP DNS response: {}"
             );
 
@@ -1273,7 +1269,7 @@ impl ClientState {
                 self.dns_cache.insert(message.domain(), &response, now);
 
                 unwrap_or_debug!(
-                    self.try_queue_udp_dns_response(upstream, source, response),
+                    self.try_queue_udp_dns_response(destination, source, response),
                     "Failed to queue UDP DNS response: {}"
                 );
             }
