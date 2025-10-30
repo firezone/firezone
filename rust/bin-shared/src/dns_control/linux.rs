@@ -7,7 +7,7 @@ use std::{net::IpAddr, process::Command, str::FromStr};
 
 mod etc_resolv_conf;
 
-#[derive(clap::ValueEnum, Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default)]
 pub enum DnsControlMethod {
     /// Explicitly disable DNS control.
     ///
@@ -22,13 +22,8 @@ pub enum DnsControlMethod {
     /// Cooperate with `systemd-resolved`
     ///
     /// Suitable for most Ubuntu systems, probably
+    #[default]
     SystemdResolved,
-}
-
-impl Default for DnsControlMethod {
-    fn default() -> Self {
-        Self::SystemdResolved
-    }
 }
 
 impl DnsController {
