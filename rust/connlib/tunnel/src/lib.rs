@@ -47,6 +47,9 @@ mod utils;
 
 const REALM: &str = "firezone";
 
+const FI: u8 = 34; // "FI" when typed on a phone pad.
+const RE: u8 = 73; // "RE" when typed on a phone pad.
+
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
 ///
 /// It is obviously system-dependent, how long it takes for the event loop to exhaust these iterations.
