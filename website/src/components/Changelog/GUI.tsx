@@ -14,7 +14,7 @@ export default function GUI({ os }: { os: OS }) {
         {os == OS.Linux && (
           <ChangeItem pull="10742">
             Fixes an issue where CIDR/IP resources whose routes conflict with
-            the local network where not routable.
+            the local network were not routable.
           </ChangeItem>
         )}
       </Unreleased>
