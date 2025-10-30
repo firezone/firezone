@@ -21,7 +21,7 @@ use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::{self, Future, poll_fn};
-use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
@@ -501,20 +501,13 @@ impl Eventloop {
                     .await
                     .context("Failed to set TUN routes")?;
 
-                let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
-                let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
+                let ipv4_socket = SocketAddr::V4(SocketAddrV4::new(interface.ipv4, 53535));
+                let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
-                let ipv4_result = tunnel
-                    .rebind_dns_ipv4(ipv4_socket)
-                    .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
-                    .inspect_err(|e| tracing::debug!("{e:#}"));
-
-                let ipv6_result = tunnel
-                    .rebind_dns_ipv6(ipv6_socket)
-                    .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
-                    .inspect_err(|e| tracing::debug!("{e:#}"));
-
-                ipv4_result.or(ipv6_result)?;
+                tunnel
+                    .rebind_dns(vec![ipv4_socket, ipv6_socket])
+                    .context("Failed to bind DNS server")
+                    .inspect_err(|e| tracing::debug!("{e:#}"))?;
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
