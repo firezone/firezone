@@ -77,7 +77,7 @@ runs:
     - name: Install nightly Rust
       id: nightly
       run: |
-        NIGHTLY="nightly-2025-05-30"
+        NIGHTLY="nightly-2025-09-30"
         # Check if nightly toolchain is already installed
         if ! rustup toolchain list | grep -q "$NIGHTLY"; then
           rustup toolchain install $NIGHTLY
