@@ -1,3 +1,6 @@
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::print_stdout)]
+
 use std::{
     collections::BTreeSet,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},

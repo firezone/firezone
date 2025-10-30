@@ -135,7 +135,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         match packet.destination() {
             IpAddr::V4(v4) if v4 != ipv4_source => return false,
             IpAddr::V6(v6) if v6 != ipv6_source => return false,
-            _ => {}
+            IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
         let remote = SocketAddr::new(packet.source(), tcp.source_port());

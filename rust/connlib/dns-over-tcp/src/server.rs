@@ -182,7 +182,10 @@ impl Server {
         }
 
         for (handle, l3_tcp::AnySocket::Tcp(socket)) in self.sockets.iter_mut() {
-            let local = self.listen_endpoints.get(&handle).copied().unwrap();
+            let Some(local) = self.listen_endpoints.get(&handle).copied() else {
+                tracing::warn!(%handle, "No listen endpoint for socket");
+                continue;
+            };
 
             let _guard = tracing::trace_span!("socket", %handle).entered();
 

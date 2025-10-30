@@ -20,3 +20,6 @@ futures = { workspace = true }
 ip_network = { workspace = true }
 tokio = { workspace = true, features = ["process", "rt", "macros"] }
 tun = { workspace = true }
+
+[lints]
+workspace = true
