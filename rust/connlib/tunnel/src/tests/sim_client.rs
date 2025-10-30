@@ -7,7 +7,7 @@ use super::{
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{ClientState, DnsResourceRecord, proptest::*};
+use crate::{ClientState, DnsResourceRecord, dns, proptest::*};
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
@@ -57,8 +57,8 @@ pub(crate) struct SimClient {
 
     pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
 
-    pub(crate) sent_udp_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
-    pub(crate) received_udp_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket>,
+    pub(crate) sent_udp_dns_queries: HashSet<(SocketAddr, QueryId)>,
+    pub(crate) received_udp_dns_responses: BTreeSet<(SocketAddr, QueryId)>,
 
     pub(crate) sent_tcp_dns_queries: HashSet<(SocketAddr, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(SocketAddr, QueryId)>,
@@ -68,8 +68,6 @@ pub(crate) struct SimClient {
 
     pub(crate) sent_udp_requests: HashMap<(SPort, DPort), IpPacket>,
     pub(crate) received_udp_replies: BTreeMap<(SPort, DPort), IpPacket>,
-
-    pub(crate) tcp_dns_client: dns_over_tcp::Client,
 
     /// TCP connections to resources.
     pub(crate) tcp_client: crate::tests::tcp::Client,
@@ -95,7 +93,6 @@ impl SimClient {
             ipv6_routes: Default::default(),
             search_domain: Default::default(),
             resource_status: Default::default(),
-            tcp_dns_client: dns_over_tcp::Client::new(now, [0u8; 32]),
             tcp_client: crate::tests::tcp::Client::new(now),
             failed_tcp_packets: Default::default(),
             dns_resource_record_cache: Default::default(),
@@ -139,7 +136,6 @@ impl SimClient {
 
     pub(crate) fn set_new_dns_servers(&mut self, mapping: BiMap<IpAddr, SocketAddr>) {
         self.dns_by_sentinel = mapping;
-        self.tcp_dns_client.reset();
     }
 
     pub(crate) fn dns_mapping(&self) -> &BiMap<IpAddr, SocketAddr> {
@@ -154,10 +150,10 @@ impl SimClient {
         upstream: SocketAddr,
         dns_transport: DnsTransport,
         now: Instant,
-    ) -> Option<Transmit> {
+    ) {
         let Some(sentinel) = self.dns_by_sentinel.get_by_right(&upstream).copied() else {
             tracing::error!(%upstream, "Unknown DNS server");
-            return None;
+            return;
         };
 
         tracing::debug!(%sentinel, %domain, "Sending DNS query");
@@ -171,27 +167,26 @@ impl SimClient {
 
         match dns_transport {
             DnsTransport::Udp => {
-                let packet = ip_packet::make::udp_packet(
-                    src,
-                    sentinel,
-                    9999, // An application would pick a free source port.
-                    53,
-                    query.into_bytes(),
-                )
-                .unwrap();
-
-                self.sent_udp_dns_queries
-                    .insert((upstream, query_id), packet.clone());
-                self.encapsulate(packet, now)
+                self.sent_udp_dns_queries.insert((upstream, query_id));
             }
             DnsTransport::Tcp => {
-                self.tcp_dns_client
-                    .send_query(SocketAddr::new(sentinel, 53), query)
-                    .unwrap();
                 self.sent_tcp_dns_queries.insert((upstream, query_id));
-
-                None
             }
+        }
+
+        if let Some(response) = self.sut.handle_dns_input(
+            dns::Query {
+                local: SocketAddr::new(sentinel, 53),
+                remote: SocketAddr::new(src, 9999), // TODO: Pick a random port?
+                message: query,
+                transport: match dns_transport {
+                    DnsTransport::Udp => dns::Transport::Udp,
+                    DnsTransport::Tcp => dns::Transport::Tcp,
+                },
+            },
+            now,
+        ) {
+            self.handle_dns_response(&response);
         }
     }
 
@@ -220,13 +215,10 @@ impl SimClient {
     }
 
     pub fn poll_outbound(&mut self) -> Option<IpPacket> {
-        self.tcp_dns_client
-            .poll_outbound()
-            .or_else(|| self.tcp_client.poll_outbound())
+        self.tcp_client.poll_outbound()
     }
 
     pub fn handle_timeout(&mut self, now: Instant) {
-        self.tcp_dns_client.handle_timeout(now);
         self.tcp_client.handle_timeout(now);
 
         if self.sut.poll_timeout().is_some_and(|(t, _)| t <= now) {
@@ -304,36 +296,10 @@ impl SimClient {
         }
 
         if let Some(udp) = packet.as_udp() {
-            if udp.source_port() == 53 {
-                let response = dns_types::Response::parse(udp.payload())
-                    .expect("ip packets on port 53 to be DNS packets");
-
-                // Map back to upstream socket so we can assert on it correctly.
-                let sentinel = SocketAddr::from((packet.source(), udp.source_port()));
-                let Some(upstream) = self.upstream_dns_by_sentinel(&sentinel) else {
-                    tracing::error!(%sentinel, mapping = ?self.dns_by_sentinel, "Unknown DNS server");
-                    return;
-                };
-
-                self.received_udp_dns_responses
-                    .insert((upstream, response.id()), packet.clone());
-
-                if !response.truncated() {
-                    self.handle_dns_response(&response);
-                }
-
-                return;
-            }
-
             self.received_udp_replies.insert(
                 (SPort(udp.source_port()), DPort(udp.destination_port())),
                 packet.clone(),
             );
-            return;
-        }
-
-        if self.tcp_dns_client.accepts(&packet) {
-            self.tcp_dns_client.handle_inbound(packet);
             return;
         }
 
@@ -374,14 +340,27 @@ impl SimClient {
         )
     }
 
-    fn upstream_dns_by_sentinel(&self, sentinel: &SocketAddr) -> Option<SocketAddr> {
-        let socket = self.dns_by_sentinel.get_by_left(&sentinel.ip())?;
+    pub(crate) fn handle_dns_response(&mut self, response: &dns::Response) {
+        let server = response.local;
 
-        Some(*socket)
-    }
+        let Some(upstream) = self.dns_mapping().get_by_left(&server.ip()) else {
+            tracing::error!(%server, "Response from unknown DNS server");
 
-    pub(crate) fn handle_dns_response(&mut self, response: &dns_types::Response) {
-        for record in response.records() {
+            return;
+        };
+
+        match response.transport {
+            dns::Transport::Udp => {
+                self.received_udp_dns_responses
+                    .insert((*upstream, response.message.id()));
+            }
+            dns::Transport::Tcp => {
+                self.received_tcp_dns_responses
+                    .insert((*upstream, response.message.id()));
+            }
+        };
+
+        for record in response.message.records() {
             #[expect(clippy::wildcard_enum_match_arm)]
             let ip = match record.data() {
                 RecordData::A(a) => IpAddr::from(a.addr()),
@@ -401,7 +380,7 @@ impl SimClient {
             };
 
             self.dns_records
-                .entry(response.domain())
+                .entry(response.message.domain())
                 .or_default()
                 .push(ip);
         }
@@ -1339,7 +1318,6 @@ fn default_routes_v4() -> Vec<Ipv4Network> {
     vec![
         Ipv4Network::new(Ipv4Addr::new(100, 64, 0, 0), 11).unwrap(),
         Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11).unwrap(),
-        Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap(),
     ]
 }
 
@@ -1349,11 +1327,6 @@ fn default_routes_v6() -> Vec<Ipv6Network> {
         Ipv6Network::new(
             Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0, 0, 0, 0),
             107,
-        )
-        .unwrap(),
-        Ipv6Network::new(
-            Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
-            120,
         )
         .unwrap(),
     ]

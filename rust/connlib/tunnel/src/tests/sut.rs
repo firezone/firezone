@@ -257,11 +257,9 @@ impl TunnelTest {
                     transport,
                 } in queries
                 {
-                    let transmit = state.client.exec_mut(|sim| {
+                    state.client.exec_mut(|sim| {
                         sim.send_dns_query_for(domain, r_type, query_id, dns_server, transport, now)
-                    });
-
-                    buffered_transmits.push_from(transmit, &state.client, now);
+                    })
                 }
             }
             Transition::UpdateSystemDnsServers(servers) => {
@@ -452,7 +450,7 @@ impl TunnelTest {
             &ref_state.global_dns_records,
         );
         assert_tcp_connections(ref_client, sim_client);
-        assert_udp_dns_packets_properties(ref_client, sim_client);
+        assert_udp_dns(ref_client, sim_client);
         assert_tcp_dns(ref_client, sim_client);
         assert_dns_servers_are_valid(ref_client, sim_client);
         assert_search_domain_is_valid(ref_client, sim_client);
@@ -544,6 +542,11 @@ impl TunnelTest {
                         now,
                     )
                 });
+
+                continue;
+            }
+            if let Some(response) = self.client.exec_mut(|c| c.sut.poll_dns_responses()) {
+                self.client.exec_mut(|c| c.handle_dns_response(&response));
 
                 continue;
             }
@@ -640,23 +643,6 @@ impl TunnelTest {
         buffered_transmits: &mut BufferedTransmits,
         now: Instant,
     ) {
-        // Handle the TCP DNS client, i.e. simulate applications making TCP DNS queries.
-        self.client.exec_mut(|c| {
-            while let Some(result) = c.tcp_dns_client.poll_query_result() {
-                match result.result {
-                    Ok(message) => {
-                        let upstream = c.dns_mapping().get_by_left(&result.server.ip()).unwrap();
-
-                        c.received_tcp_dns_responses
-                            .insert((*upstream, result.query.id()));
-                        c.handle_dns_response(&message)
-                    }
-                    Err(e) => {
-                        tracing::error!("TCP DNS query failed: {e:#}");
-                    }
-                }
-            }
-        });
         while let Some(transmit) = self.client.exec_mut(|c| {
             let packet = c.poll_outbound()?;
             c.encapsulate(packet, now)
@@ -912,8 +898,6 @@ impl TunnelTest {
                     c.ipv4_routes = config.ipv4_routes;
                     c.ipv6_routes = config.ipv6_routes;
                     c.search_domain = config.search_domain;
-                    c.tcp_dns_client
-                        .set_source_interface(config.ip.v4, config.ip.v6);
                 });
 
                 Ok(())

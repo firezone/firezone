@@ -23,14 +23,14 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
+use crate::{FI, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, RE, TunConfig, dns, is_peer, p2p_control};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
-use firezone_logging::{err_with_src, unwrap_or_debug, unwrap_or_warn};
+use firezone_logging::err_with_src;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
@@ -42,7 +42,6 @@ use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
-use std::ops::ControlFlow;
 use std::time::{Duration, Instant};
 use std::{io, iter};
 
@@ -66,26 +65,16 @@ const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
 const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
 
 pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
-    match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
+    match Ipv4Network::new(Ipv4Addr::new(127, FI, RE, 0), 24) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
-pub(crate) const DNS_SENTINELS_V6: Ipv6Network = match Ipv6Network::new(
-    Ipv6Addr::new(0xfd00, 0x2021, 0x1111, 0x8000, 0x0100, 0x0100, 0x0111, 0),
-    120,
-) {
-    Ok(n) => n,
-    Err(_) => unreachable!(),
-};
 
 /// How many gateways we at most remember that we connected to.
 ///
 /// 100 has been chosen as a pretty arbitrary value.
 /// We only store [`GatewayId`]s so the memory footprint is negligible.
 const MAX_REMEMBERED_GATEWAYS: NonZeroUsize = NonZeroUsize::new(100).expect("100 > 0");
-
-/// How many concurrent TCP DNS clients we can server _per_ sentinel DNS server IP.
-const NUM_CONCURRENT_TCP_DNS_CLIENTS: usize = 10;
 
 /// A sans-IO implementation of a Client's functionality.
 ///
@@ -135,7 +124,6 @@ pub struct ClientState {
     udp_dns_streams_by_upstream_and_query_id: HashMap<(SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
     tcp_dns_client: dns_over_tcp::Client,
-    tcp_dns_server: dns_over_tcp::Server,
     /// Tracks the TCP stream (i.e. socket-pair) on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
     tcp_dns_streams_by_upstream_and_query_id: HashMap<(SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
@@ -149,13 +137,13 @@ pub struct ClientState {
     buffered_packets: VecDeque<IpPacket>,
     buffered_transmits: VecDeque<Transmit>,
     buffered_dns_queries: VecDeque<dns::RecursiveQuery>,
+    buffered_dns_responses: VecDeque<dns::Response>,
 }
 
 struct PendingFlow {
     last_intent_sent_at: Instant,
     resource_packets: UniquePacketBuffer,
-    udp_dns_queries: AllocRingBuffer<DnsQueryForSite>,
-    tcp_dns_queries: AllocRingBuffer<DnsQueryForSite>,
+    dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
 
 impl PendingFlow {
@@ -172,8 +160,7 @@ impl PendingFlow {
                 Self::CAPACITY_POW_2,
                 "pending-flow-resources",
             ),
-            udp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
-            tcp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
+            dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
         };
         this.push(trigger);
 
@@ -183,11 +170,8 @@ impl PendingFlow {
     fn push(&mut self, trigger: ConnectionTrigger) {
         match trigger {
             ConnectionTrigger::PacketForResource(packet) => self.resource_packets.push(packet),
-            ConnectionTrigger::UdpDnsQueryForSite(query) => {
-                self.udp_dns_queries.enqueue(query);
-            }
-            ConnectionTrigger::TcpDnsQueryForSite(query) => {
-                self.tcp_dns_queries.enqueue(query);
+            ConnectionTrigger::DnsQueryForSite(query) => {
+                self.dns_queries.enqueue(query);
             }
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
         }
@@ -224,11 +208,11 @@ impl ClientState {
             buffered_dns_queries: Default::default(),
             udp_dns_client: l3_udp_dns_client::Client::new(now, seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
-            tcp_dns_server: dns_over_tcp::Server::new(now),
             tcp_dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
             pending_tun_update: Default::default(),
+            buffered_dns_responses: Default::default(),
         }
     }
 
@@ -409,6 +393,11 @@ impl ClientState {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
         }
 
+        if is_llmnr(packet.destination()) {
+            self.handle_llmnr_dns_query(packet, now);
+            return None;
+        }
+
         let tun_config = self.tun_config.as_ref()?;
 
         if !tun_config.ip.is_ip(packet.source()) {
@@ -417,12 +406,7 @@ impl ClientState {
             return None;
         }
 
-        let non_dns_packet = match self.try_handle_dns(packet, now) {
-            ControlFlow::Break(()) => return None,
-            ControlFlow::Continue(non_dns_packet) => non_dns_packet,
-        };
-
-        self.encapsulate(non_dns_packet, now)
+        self.encapsulate(packet, now)
     }
 
     /// Handles UDP packets received on the network interface.
@@ -515,59 +499,137 @@ impl ClientState {
         Some(packet)
     }
 
+    pub(crate) fn handle_dns_input(
+        &mut self,
+        query: dns::Query,
+        now: Instant,
+    ) -> Option<dns::Response> {
+        let message = &query.message;
+
+        if let Some(response) = self.dns_cache.try_answer(message, now) {
+            return Some(dns::Response {
+                local: query.local,
+                remote: query.remote,
+                query: query.message,
+                message: response,
+                transport: query.transport,
+            });
+        }
+
+        let upstream = self
+            .dns_mapping
+            .get_by_left(&query.local.ip())
+            .map(|s| s.address())?; // TODO: Better error handling?
+
+        match self.stub_resolver.handle(message) {
+            dns::ResolveStrategy::LocalResponse(response) => {
+                self.dns_resource_nat.recreate(message.domain());
+                self.update_dns_resource_nat(now, iter::empty());
+                self.dns_cache.insert(message.domain(), &response, now);
+
+                return Some(dns::Response {
+                    local: query.local,
+                    remote: query.remote,
+                    query: query.message,
+                    message: response,
+                    transport: query.transport,
+                });
+            }
+            dns::ResolveStrategy::RecurseLocal => {
+                if self.should_forward_dns_query_to_gateway(upstream.ip()) {
+                    self.forward_dns_query_to_new_upstream_via_tunnel(
+                        query.local,
+                        query.remote,
+                        upstream,
+                        query.message,
+                        query.transport,
+                        now,
+                    );
+                    return None;
+                }
+                let query_id = message.id();
+
+                tracing::trace!(server = %upstream, %query_id, "Forwarding {} DNS query directly via host", query.transport);
+
+                self.buffered_dns_queries
+                    .push_back(dns::RecursiveQuery::new(query, upstream));
+            }
+            dns::ResolveStrategy::RecurseSite(resource) => {
+                let Some(gateway) =
+                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
+                else {
+                    self.on_not_connected_resource(
+                        resource,
+                        ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
+                            local: query.local,
+                            remote: query.remote,
+                            message: query.message,
+                            transport: query.transport,
+                        }),
+                        now,
+                    );
+                    return None;
+                };
+
+                let upstream = gateway.tun_dns_server_endpoint(query.local.ip()); // TODO: Should we always use the IPv4 TUN address going forward?
+
+                self.forward_dns_query_to_new_upstream_via_tunnel(
+                    query.local,
+                    query.remote,
+                    upstream,
+                    query.message,
+                    query.transport,
+                    now,
+                );
+            }
+        }
+
+        None
+    }
+
     pub(crate) fn handle_dns_response(&mut self, response: dns::RecursiveResponse, now: Instant) {
         let qid = response.query.id();
         let server = response.server;
         let domain = response.query.domain();
+        let transport = response.transport;
 
-        let _span = tracing::debug_span!("handle_dns_response", %qid, %server, local = %response.local, %domain).entered();
+        let _span = tracing::debug_span!("handle_dns_response", %qid, %server, local = %response.local, %transport, %domain).entered();
 
-        match (response.transport, response.message) {
-            (dns::Transport::Udp, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
-                tracing::debug!("Recursive UDP DNS query timed out")
-            }
-            (dns::Transport::Udp, result) => {
-                let message = result
-                    .inspect(|message| {
-                        tracing::trace!("Received recursive UDP DNS response");
-
-                        if message.truncated() {
-                            tracing::debug!("Upstream DNS server had to truncate response");
-                        }
-
-                        self.dns_cache.insert(domain, message, now);
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive UDP DNS query failed: {}", err_with_src(&e));
-
-                        dns_types::Response::servfail(&response.query)
-                    });
-
-                unwrap_or_warn!(
-                    self.try_queue_udp_dns_response(response.local, response.remote, message),
-                    "Failed to queue UDP DNS response: {}"
-                );
-            }
-            (dns::Transport::Tcp, result) => {
-                let message = result
-                    .inspect(|message| {
-                        tracing::trace!("Received recursive TCP DNS response");
-
-                        self.dns_cache.insert(domain, message, now);
-                    })
-                    .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive TCP DNS query failed: {}", err_with_src(&e));
-
-                        dns_types::Response::servfail(&response.query)
-                    });
-
-                unwrap_or_warn!(
-                    self.tcp_dns_server
-                        .send_message(response.local, response.remote, message),
-                    "Failed to send TCP DNS response: {}"
-                );
-            }
+        if let dns::Transport::Udp = transport
+            && let Err(e) = &response.message
+            && e.kind() == io::ErrorKind::TimedOut
+        {
+            tracing::debug!("Recursive UDP DNS query timed out");
+            return;
         }
+
+        let message = response
+            .message
+            .inspect(|message| {
+                tracing::trace!("Received recursive {transport} DNS response");
+
+                if message.truncated() {
+                    tracing::debug!("Upstream DNS server had to truncate response");
+                }
+
+                self.dns_cache.insert(domain, message, now);
+            })
+            .unwrap_or_else(|e| {
+                tracing::debug!(
+                    "Recursive {transport} DNS query failed: {}",
+                    err_with_src(&e)
+                );
+
+                dns_types::Response::servfail(&response.query)
+            });
+
+        self.buffered_dns_responses.push_back(dns::Response {
+            local: response.local,
+            remote: response.remote,
+            query: response.query,
+            message,
+            transport,
+        });
     }
 
     fn encapsulate(&mut self, mut packet: IpPacket, now: Instant) -> Option<snownet::Transmit> {
@@ -618,27 +680,6 @@ impl ClientState {
             .ok()??;
 
         Some(transmit)
-    }
-
-    fn try_queue_udp_dns_response(
-        &mut self,
-        from: SocketAddr,
-        dst: SocketAddr,
-        message: dns_types::Response,
-    ) -> anyhow::Result<()> {
-        debug_assert_eq!(from.port(), DNS_PORT);
-
-        let ip_packet = ip_packet::make::udp_packet(
-            from.ip(),
-            dst.ip(),
-            from.port(),
-            dst.port(),
-            message.into_bytes(MAX_UDP_PAYLOAD),
-        )?;
-
-        self.buffered_packets.push_back(ip_packet);
-
-        Ok(())
     }
 
     pub fn add_ice_candidate(
@@ -756,7 +797,7 @@ impl ClientState {
 
         // If we are making this connection because we want to send a DNS query to the Gateway,
         // mark it as "used" through the DNS resource ID.
-        if !pending_flow.udp_dns_queries.is_empty() || !pending_flow.tcp_dns_queries.is_empty() {
+        if !pending_flow.dns_queries.is_empty() {
             self.peers.add_ips_with_resource(
                 &gid,
                 [
@@ -767,37 +808,19 @@ impl ClientState {
             );
         }
 
-        // 2. Buffered UDP DNS queries for the Gateway
-        for query in pending_flow.udp_dns_queries {
+        // 2. Buffered DNS queries for the Gateway
+        for query in pending_flow.dns_queries {
             let gateway = self.peers.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
-            let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
+            let upstream = gateway.tun_dns_server_endpoint(query.local.ip()); // TODO: Always use IPv4 here?
 
-            self.forward_udp_dns_query_to_new_upstream_via_tunnel(
+            self.forward_dns_query_to_new_upstream_via_tunnel(
                 query.local,
                 query.remote,
                 upstream,
                 query.message,
+                query.transport,
                 now,
-            );
-        }
-
-        // 3. Buffered TCP DNS queries for the Gateway
-        for query in pending_flow.tcp_dns_queries {
-            let server = match query.local {
-                SocketAddr::V4(_) => {
-                    SocketAddr::new(gateway_tun.v4.into(), crate::gateway::TUN_DNS_PORT)
-                }
-                SocketAddr::V6(_) => {
-                    SocketAddr::new(gateway_tun.v6.into(), crate::gateway::TUN_DNS_PORT)
-                }
-            };
-
-            self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
-                query.local,
-                query.remote,
-                server,
-                query.message,
             );
         }
 
@@ -822,29 +845,6 @@ impl ClientState {
         self.active_cidr_resources
             .longest_match(dns_server)
             .is_some()
-    }
-
-    /// Handles UDP & TCP packets targeted at our stub resolver.
-    fn try_handle_dns(&mut self, packet: IpPacket, now: Instant) -> ControlFlow<(), IpPacket> {
-        let dst = packet.destination();
-
-        if is_llmnr(dst) {
-            self.handle_llmnr_dns_query(packet, now);
-            return ControlFlow::Break(());
-        }
-
-        let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
-            return ControlFlow::Continue(packet); // Not for our DNS resolver.
-        };
-
-        if self.tcp_dns_server.accepts(&packet) {
-            self.tcp_dns_server.handle_inbound(packet);
-            return ControlFlow::Break(());
-        }
-
-        self.handle_udp_dns_query(upstream, packet, now);
-
-        ControlFlow::Break(())
     }
 
     pub fn on_connection_failed(&mut self, resource: ResourceId) {
@@ -914,7 +914,7 @@ impl ClientState {
         self.dns_mapping = new_mapping;
     }
 
-    fn initialise_tcp_dns_client(&mut self) {
+    fn initialise_dns_clients(&mut self) {
         let Some(tun_config) = self.tun_config.as_ref() else {
             return;
         };
@@ -924,17 +924,6 @@ impl ClientState {
         self.tcp_dns_client
             .set_source_interface(tun_config.ip.v4, tun_config.ip.v6);
         self.tcp_dns_client.reset();
-    }
-
-    fn initialise_tcp_dns_server(&mut self) {
-        let sentinel_sockets = self
-            .dns_mapping
-            .left_values()
-            .map(|ip| SocketAddr::new(*ip, DNS_PORT))
-            .collect();
-
-        self.tcp_dns_server
-            .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(sentinel_sockets);
     }
 
     /// Sets the Internet Resource state.
@@ -988,8 +977,6 @@ impl ClientState {
             .chain(iter::once(IPV6_TUNNEL.into()))
             .chain(iter::once(IPV4_RESOURCES.into()))
             .chain(iter::once(IPV6_RESOURCES.into()))
-            .chain(iter::once(DNS_SENTINELS_V4.into()))
-            .chain(iter::once(DNS_SENTINELS_V6.into()))
             .chain(
                 self.active_internet_resource()
                     .map(|_| Ipv4Network::DEFAULT_ROUTE.into()),
@@ -1097,9 +1084,7 @@ impl ClientState {
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
-        self.buffered_packets
-            .pop_front()
-            .or_else(|| self.tcp_dns_server.poll_outbound())
+        self.buffered_packets.pop_front()
     }
 
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
@@ -1119,11 +1104,6 @@ impl ClientState {
                     .poll_timeout()
                     .map(|instant| (instant, "TCP DNS client")),
             )
-            .chain(
-                self.tcp_dns_server
-                    .poll_timeout()
-                    .map(|instant| (instant, "TCP DNS server")),
-            )
             .chain(self.node.poll_timeout())
             .min_by_key(|(instant, _)| *instant)
     }
@@ -1132,7 +1112,7 @@ impl ClientState {
         self.node.handle_timeout(now);
         self.drain_node_events();
 
-        self.advance_dns_clients_and_servers(now);
+        self.advance_dns_clients(now);
         self.send_dns_resource_nat_packets(now);
 
         self.dns_cache.handle_timeout(now);
@@ -1142,17 +1122,10 @@ impl ClientState {
     ///
     /// Receiving something on a UDP/TCP server socket may trigger packets to be sent on the UDP/TCP client socket and vice versa.
     /// Therefore, we loop here until non of the `poll-X` functions return anything anymore.
-    fn advance_dns_clients_and_servers(&mut self, now: Instant) {
+    fn advance_dns_clients(&mut self, now: Instant) {
         loop {
-            self.tcp_dns_server.handle_timeout(now);
             self.tcp_dns_client.handle_timeout(now);
             self.udp_dns_client.handle_timeout(now);
-
-            // Check if have any pending TCP DNS queries.
-            if let Some(query) = self.tcp_dns_server.poll_queries() {
-                self.handle_tcp_dns_query(query, now);
-                continue;
-            }
 
             // Check if the clients wants to emit any packets.
             if let Some(packet) = self
@@ -1169,7 +1142,7 @@ impl ClientState {
                 continue;
             }
 
-            // Check if the UDP DNS client has assembled a response to a query.
+            // Check if the UDP DNS client has received a response to a query.
             if let Some(query_result) = self.udp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
@@ -1243,104 +1216,6 @@ impl ClientState {
         }
     }
 
-    fn handle_udp_dns_query(&mut self, upstream: SocketAddr, packet: IpPacket, now: Instant) {
-        let Some(datagram) = packet.as_udp() else {
-            tracing::debug!(?packet, "Not a UDP packet");
-
-            return;
-        };
-
-        if datagram.destination_port() != DNS_PORT {
-            tracing::debug!(
-                ?packet,
-                "UDP DNS queries are only supported on port {DNS_PORT}"
-            );
-            return;
-        }
-
-        let message = match dns_types::Query::parse(datagram.payload()) {
-            Ok(message) => message,
-            Err(e) => {
-                tracing::warn!(?packet, "Failed to parse DNS query: {e:#}");
-                return;
-            }
-        };
-
-        let destination = SocketAddr::new(packet.destination(), datagram.destination_port());
-        let source = SocketAddr::new(packet.source(), datagram.source_port());
-
-        if let Some(response) = self.dns_cache.try_answer(&message, now) {
-            unwrap_or_debug!(
-                self.try_queue_udp_dns_response(destination, source, response),
-                "Failed to queue UDP DNS response: {}"
-            );
-
-            return;
-        }
-
-        match self.stub_resolver.handle(&message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
-                self.dns_resource_nat.recreate(message.domain());
-                self.update_dns_resource_nat(now, iter::empty());
-                self.dns_cache.insert(message.domain(), &response, now);
-
-                unwrap_or_debug!(
-                    self.try_queue_udp_dns_response(destination, source, response),
-                    "Failed to queue UDP DNS response: {}"
-                );
-            }
-            dns::ResolveStrategy::RecurseLocal => {
-                if self.should_forward_dns_query_to_gateway(upstream.ip()) {
-                    self.forward_udp_dns_query_to_new_upstream_via_tunnel(
-                        destination,
-                        source,
-                        upstream,
-                        message,
-                        now,
-                    );
-                    return;
-                }
-                let query_id = message.id();
-
-                tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
-
-                self.buffered_dns_queries
-                    .push_back(dns::RecursiveQuery::via_udp(
-                        destination,
-                        source,
-                        upstream,
-                        message,
-                    ));
-            }
-            dns::ResolveStrategy::RecurseSite(resource) => {
-                let Some(gateway) =
-                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-                else {
-                    self.on_not_connected_resource(
-                        resource,
-                        ConnectionTrigger::UdpDnsQueryForSite(DnsQueryForSite {
-                            local: destination,
-                            remote: source,
-                            message,
-                        }),
-                        now,
-                    );
-                    return;
-                };
-
-                let upstream = gateway.tun_dns_server_endpoint(packet.destination());
-
-                self.forward_udp_dns_query_to_new_upstream_via_tunnel(
-                    destination,
-                    source,
-                    upstream,
-                    message,
-                    now,
-                );
-            }
-        }
-    }
-
     fn handle_llmnr_dns_query(&mut self, packet: IpPacket, now: Instant) {
         let Some(datagram) = packet.as_udp() else {
             tracing::debug!(?packet, "Not a UDP packet");
@@ -1397,161 +1272,44 @@ impl ClientState {
             }
         }
     }
-
-    fn handle_tcp_dns_query(&mut self, query: dns_over_tcp::Query, now: Instant) {
-        let query_id = query.message.id();
-
-        let Some(upstream) = self.dns_mapping.get_by_left(&query.local.ip()) else {
-            // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
-            return;
-        };
-        let server = upstream.address();
-
-        if let Some(response) = self.dns_cache.try_answer(&query.message, now) {
-            unwrap_or_debug!(
-                self.tcp_dns_server
-                    .send_message(query.local, query.remote, response),
-                "Failed to send TCP DNS response: {}"
-            );
-
-            return;
-        }
-
-        match self.stub_resolver.handle(&query.message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
-                self.dns_resource_nat.recreate(query.message.domain());
-                self.update_dns_resource_nat(now, iter::empty());
-                self.dns_cache
-                    .insert(query.message.domain(), &response, now);
-
-                unwrap_or_debug!(
-                    self.tcp_dns_server
-                        .send_message(query.local, query.remote, response),
-                    "Failed to send TCP DNS response: {}"
-                );
-            }
-            dns::ResolveStrategy::RecurseLocal => {
-                if self.should_forward_dns_query_to_gateway(server.ip()) {
-                    self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
-                        query.local,
-                        query.remote,
-                        server,
-                        query.message,
-                    );
-
-                    return;
-                }
-
-                tracing::trace!(%server, %query_id, "Forwarding TCP DNS query");
-
-                self.buffered_dns_queries
-                    .push_back(dns::RecursiveQuery::via_tcp(
-                        query.local,
-                        query.remote,
-                        server,
-                        query.message,
-                    ));
-            }
-            dns::ResolveStrategy::RecurseSite(resource) => {
-                let Some(gateway) =
-                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-                else {
-                    self.on_not_connected_resource(
-                        resource,
-                        ConnectionTrigger::TcpDnsQueryForSite(DnsQueryForSite {
-                            local: query.local,
-                            remote: query.remote,
-                            message: query.message,
-                        }),
-                        now,
-                    );
-                    return;
-                };
-
-                let server = gateway.tun_dns_server_endpoint(query.local.ip());
-
-                self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
-                    query.local,
-                    query.remote,
-                    server,
-                    query.message,
-                );
-            }
-        };
-    }
-
-    fn forward_udp_dns_query_to_new_upstream_via_tunnel(
+    fn forward_dns_query_to_new_upstream_via_tunnel(
         &mut self,
         local: SocketAddr,
         remote: SocketAddr,
         server: SocketAddr,
         query: dns_types::Query,
+        transport: dns::Transport,
         now: Instant,
     ) {
         let query_id = query.id();
 
-        match self.udp_dns_client.send_query(server, query, now) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to send recursive UDP DNS query to upstream resolver: {e:#}"
-                );
-                return;
-            }
+        let result = match transport {
+            dns::Transport::Udp => self.udp_dns_client.send_query(server, query, now),
+            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query),
         };
 
-        tracing::trace!(%server, %local, %query_id, "Forwarding UDP DNS query via tunnel");
+        if let Err(e) = result {
+            tracing::warn!(
+                "Failed to send recursive {transport} DNS query to upstream resolver: {e:#}"
+            );
+            return;
+        };
 
-        let existing = self
-            .udp_dns_streams_by_upstream_and_query_id
-            .insert((server, query_id), (local, remote));
+        tracing::trace!(%server, %local, %query_id, "Forwarding {transport} DNS query via tunnel");
+
+        let map = match transport {
+            dns::Transport::Udp => &mut self.udp_dns_streams_by_upstream_and_query_id,
+            dns::Transport::Tcp => &mut self.tcp_dns_streams_by_upstream_and_query_id,
+        };
+        let existing = map.insert((server, query_id), (local, remote));
 
         if let Some((existing_local, existing_remote)) = existing
             && (existing_local != local || existing_remote != remote)
         {
             debug_assert!(false, "Query IDs should be unique");
         }
-    }
 
-    fn forward_tcp_dns_query_to_new_upstream_via_tunnel(
-        &mut self,
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        query: dns_types::Query,
-    ) {
-        let query_id = query.id();
-
-        match self.tcp_dns_client.send_query(server, query.clone()) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to send recursive TCP DNS query to upstream resolver: {e:#}"
-                );
-
-                unwrap_or_debug!(
-                    self.tcp_dns_server.send_message(
-                        local,
-                        remote,
-                        dns_types::Response::servfail(&query)
-                    ),
-                    "Failed to send TCP DNS response: {}"
-                );
-                return;
-            }
-        };
-
-        tracing::trace!(%server, local = %local, %query_id, "Forwarding TCP DNS query via tunnel");
-
-        let existing = self
-            .tcp_dns_streams_by_upstream_and_query_id
-            .insert((server, query_id), (local, remote));
-
-        if let Some((existing_local, existing_remote)) = existing
-            && (existing_local != local || existing_remote != remote)
-        {
-            debug_assert!(false, "Query IDs should be unique");
-        }
+        self.advance_dns_clients(now);
     }
 
     fn maybe_update_tun_routes(&mut self) {
@@ -1614,8 +1372,7 @@ impl ClientState {
         }
         self.tun_config = Some(new_tun_config);
 
-        self.initialise_tcp_dns_client(); // We must reset the TCP DNS client because changed CIDR resources (and thus changed routes) might affect which site we connect to.
-        self.initialise_tcp_dns_server();
+        self.initialise_dns_clients(); // We must reset the TCP DNS client because changed CIDR resources (and thus changed routes) might affect which site we connect to.
     }
 
     fn drain_node_events(&mut self) {
@@ -1730,6 +1487,10 @@ impl ClientState {
 
     pub(crate) fn poll_dns_queries(&mut self) -> Option<dns::RecursiveQuery> {
         self.buffered_dns_queries.pop_front()
+    }
+
+    pub(crate) fn poll_dns_responses(&mut self) -> Option<dns::Response> {
+        self.buffered_dns_responses.pop_front()
     }
 
     /// Sets a new set of resources.
@@ -2068,26 +1829,26 @@ fn effective_dns_servers(
 
 fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
     let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
-    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
 
-    (!is_v4_dns && !is_v6_dns).then_some(srv)
+    (!is_v4_dns).then_some(srv)
 }
 
 fn sentinel_dns_mapping(
     dns: &[DnsServer],
     old_sentinels: Vec<IpNetwork>,
 ) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
+    let mut ip_provider = DNS_SENTINELS_V4
+        .hosts()
+        .filter(|h| !old_sentinels.iter().any(|e| e.contains(*h)));
 
     dns.iter()
         .cloned()
         .map(|i| {
-            (
-                ip_provider
-                    .get_proxy_ip_for(&i.ip())
-                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
-                i,
-            )
+            let addr = ip_provider
+                .next()
+                .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers");
+
+            (IpAddr::V4(addr), i)
         })
         .collect()
 }
@@ -2120,10 +1881,8 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 enum ConnectionTrigger {
     /// A packet received on the TUN device with a destination IP that maps to one of our resources.
     PacketForResource(IpPacket),
-    /// A UDP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    UdpDnsQueryForSite(DnsQueryForSite),
-    /// A TCP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    TcpDnsQueryForSite(DnsQueryForSite),
+    /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
+    DnsQueryForSite(DnsQueryForSite),
     /// We have received an ICMP error that is marked as "access prohibited".
     ///
     /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
@@ -2134,14 +1893,14 @@ struct DnsQueryForSite {
     local: SocketAddr,
     remote: SocketAddr,
     message: dns_types::Query,
+    transport: dns::Transport,
 }
 
 impl ConnectionTrigger {
     fn name(&self) -> &'static str {
         match self {
             ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
-            ConnectionTrigger::UdpDnsQueryForSite(_) => "udp-dns-query-for-site",
-            ConnectionTrigger::TcpDnsQueryForSite(_) => "tcp-dns-query-for-site",
+            ConnectionTrigger::DnsQueryForSite(_) => "dns-query-for-site",
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
                 "icmp-destination-unreachable-prohibited"
             }
@@ -2162,48 +1921,14 @@ pub struct IpProvider {
 
 impl IpProvider {
     pub fn for_resources() -> Self {
-        IpProvider::new(
-            IPV4_RESOURCES,
-            IPV6_RESOURCES,
-            vec![
-                IpNetwork::V4(DNS_SENTINELS_V4),
-                IpNetwork::V6(DNS_SENTINELS_V6),
-            ],
-        )
+        IpProvider::new(IPV4_RESOURCES, IPV6_RESOURCES)
     }
 
-    pub fn for_stub_dns_servers(exclusions: Vec<IpNetwork>) -> Self {
-        IpProvider::new(DNS_SENTINELS_V4, DNS_SENTINELS_V6, exclusions)
-    }
-
-    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network, exclusions: Vec<IpNetwork>) -> Self {
+    fn new(ipv4: Ipv4Network, ipv6: Ipv6Network) -> Self {
         Self {
-            ipv4: Box::new({
-                let exclusions = exclusions.clone();
-                ipv4.hosts()
-                    .filter(move |ip| !exclusions.iter().any(|e| e.contains(*ip)))
-            }),
-            ipv6: Box::new({
-                ipv6.subnets_with_prefix(128)
-                    .map(|ip| ip.network_address())
-                    .filter(move |ip| !exclusions.iter().any(|e| e.contains(*ip)))
-            }),
+            ipv4: Box::new(ipv4.hosts()),
+            ipv6: Box::new(ipv6.subnets_with_prefix(128).map(|ip| ip.network_address())),
         }
-    }
-
-    pub fn get_proxy_ip_for(&mut self, ip: &IpAddr) -> Option<IpAddr> {
-        let proxy_ip = match ip {
-            IpAddr::V4(_) => self.ipv4.next().map(Into::into),
-            IpAddr::V6(_) => self.ipv6.next().map(Into::into),
-        };
-
-        if proxy_ip.is_none() {
-            // TODO: we might want to make the iterator cyclic or another strategy to prevent ip exhaustion
-            // this might happen in ipv4 if tokens are too long lived.
-            tracing::error!("IP exhaustion: Please reset your client");
-        }
-
-        proxy_ip
     }
 
     pub fn get_n_ipv4(&mut self, n: usize) -> Vec<IpAddr> {
@@ -2269,10 +1994,7 @@ mod tests {
     }
 
     fn sentinel_ranges() -> Vec<IpNetwork> {
-        vec![
-            IpNetwork::V4(DNS_SENTINELS_V4),
-            IpNetwork::V6(DNS_SENTINELS_V6),
-        ]
+        vec![IpNetwork::V4(DNS_SENTINELS_V4)]
     }
 
     fn dns_list() -> Vec<DnsServer> {
@@ -2564,9 +2286,7 @@ mod proptests {
                 .chain(iter::once(IPV4_TUNNEL.into()))
                 .chain(iter::once(IPV6_TUNNEL.into()))
                 .chain(iter::once(IPV4_RESOURCES.into()))
-                .chain(iter::once(IPV6_RESOURCES.into()))
-                .chain(iter::once(DNS_SENTINELS_V4.into()))
-                .chain(iter::once(DNS_SENTINELS_V6.into())),
+                .chain(iter::once(IPV6_RESOURCES.into())),
         )
     }
 

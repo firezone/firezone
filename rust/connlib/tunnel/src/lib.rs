@@ -199,16 +199,34 @@ impl ClientTunnel {
                 ready = true;
             }
 
+            {
+                let mut error = TunnelError::default();
+
+                while let Some(response) = self.role_state.poll_dns_responses() {
+                    if let Err(e) = self
+                        .io
+                        .send_dns_response(response)
+                        .context("Failed to send DNS response")
+                    {
+                        error.push(e);
+                    }
+                }
+
+                if !error.is_empty() {
+                    return Poll::Ready(ClientEvent::Error(error));
+                }
+            }
+
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 now,
                 now_utc: _,
                 timeout,
                 dns_response,
-                dns_queries: _,
+                dns_queries,
                 device,
                 network,
-                error,
+                mut error,
             }) = self.io.poll(cx, &mut self.buffers)
             {
                 if let Some(response) = dns_response {
@@ -268,6 +286,18 @@ impl ClientTunnel {
                     }
 
                     ready = true;
+                }
+
+                for query in dns_queries {
+                    ready = true;
+
+                    let Some(response) = self.role_state.handle_dns_input(query, now) else {
+                        continue;
+                    };
+
+                    if let Err(e) = self.io.send_dns_response(response) {
+                        error.push(e);
+                    }
                 }
 
                 // Reset timer for time-based wakeup.

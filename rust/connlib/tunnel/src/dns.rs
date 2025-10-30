@@ -8,12 +8,12 @@ use firezone_logging::err_with_src;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeSet, VecDeque};
-use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
 };
+use std::{fmt, io};
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -76,6 +76,7 @@ pub(crate) struct Response {
     pub remote: SocketAddr,
 
     /// The query we received from the client (and forwarded).
+    #[expect(dead_code, reason = "We keep it for consistency.")]
     pub query: dns_types::Query,
 
     /// The result of forwarding the DNS query.
@@ -127,36 +128,6 @@ pub(crate) struct RecursiveResponse {
 }
 
 impl RecursiveQuery {
-    pub(crate) fn via_udp(
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
-        Self {
-            server,
-            local,
-            remote,
-            message,
-            transport: Transport::Udp,
-        }
-    }
-
-    pub(crate) fn via_tcp(
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
-        Self {
-            server,
-            local,
-            remote,
-            message,
-            transport: Transport::Tcp,
-        }
-    }
-
     pub(crate) fn new(query: Query, server: SocketAddr) -> Self {
         Self {
             server,
@@ -183,10 +154,19 @@ impl RecursiveResponse {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Transport {
     Udp,
     Tcp,
+}
+
+impl fmt::Display for Transport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Transport::Udp => write!(f, "UDP"),
+            Transport::Tcp => write!(f, "TCP"),
+        }
+    }
 }
 
 /// Tells the Client how to reply to a single DNS query

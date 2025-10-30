@@ -299,17 +299,7 @@ pub(crate) fn assert_routes_are_valid(ref_client: &RefClient, sim_client: &SimCl
     }
 }
 
-pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_client: &SimClient) {
-    let unexpected_dns_replies = find_unexpected_entries(
-        &ref_client.expected_udp_dns_handshakes,
-        &sim_client.received_udp_dns_responses,
-        |(_, id_a), (_, id_b)| id_a == id_b,
-    );
-
-    if !unexpected_dns_replies.is_empty() {
-        tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
-    }
-
+pub(crate) fn assert_udp_dns(ref_client: &RefClient, sim_client: &SimClient) {
     for (dns_server, query_id) in ref_client.expected_udp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "udp_dns", %query_id, %dns_server).entered();
@@ -318,17 +308,14 @@ pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_clie
         let queries = &sim_client.sent_udp_dns_queries;
         let responses = &sim_client.received_udp_dns_responses;
 
-        let Some(client_sent_query) = queries.get(key) else {
+        if queries.get(key).is_none() {
             tracing::error!(target: "assertions", ?queries, "❌ Missing UDP DNS query on client");
             continue;
         };
-        let Some(client_received_response) = responses.get(key) else {
+        if !responses.contains(key) {
             tracing::error!(target: "assertions", ?responses, "❌ Missing UDP DNS response on client");
             continue;
         };
-
-        assert_correct_src_and_dst_ips(client_sent_query, client_received_response);
-        assert_correct_src_and_dst_udp_ports(client_sent_query, client_received_response);
     }
 }
 
@@ -345,7 +332,7 @@ pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
             tracing::error!(target: "assertions", ?queries, "❌ Missing TCP DNS query on client");
             continue;
         };
-        if responses.get(key).is_none() {
+        if !responses.contains(key) {
             tracing::error!(target: "assertions", ?responses, "❌ Missing TCP DNS response on client");
             continue;
         };
@@ -372,32 +359,6 @@ fn assert_correct_src_and_dst_ips(
         tracing::error!(target: "assertions", %req_src, %res_dst, "❌ req src IP != res dst IP");
     } else {
         tracing::info!(target: "assertions", ip = %req_src, "✅ req src IP == res dst IP");
-    }
-}
-
-fn assert_correct_src_and_dst_udp_ports(
-    client_sent_request: &IpPacket,
-    client_received_reply: &IpPacket,
-) {
-    let client_sent_request = client_sent_request.as_udp().unwrap();
-    let client_received_reply = client_received_reply.as_udp().unwrap();
-
-    let req_dst = client_sent_request.destination_port();
-    let res_src = client_received_reply.source_port();
-
-    if req_dst != res_src {
-        tracing::error!(target: "assertions", %req_dst, %res_src, "❌ req dst port != res src port");
-    } else {
-        tracing::info!(target: "assertions", port = %req_dst, "✅ req dst port == res src port");
-    }
-
-    let req_src = client_sent_request.source_port();
-    let res_dst = client_received_reply.destination_port();
-
-    if req_src != res_dst {
-        tracing::error!(target: "assertions", %req_src, %res_dst, "❌ req src port != res dst port");
-    } else {
-        tracing::info!(target: "assertions", port = %req_src, "✅ req src port == res dst port");
     }
 }
 
