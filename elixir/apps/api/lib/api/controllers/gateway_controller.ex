@@ -3,6 +3,7 @@ defmodule API.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Gateways
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -21,7 +22,8 @@ defmodule API.GatewayController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.ListResponse}
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List Gateways
@@ -60,7 +62,9 @@ defmodule API.GatewayController do
       ]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Show a specific Gateway
@@ -88,7 +92,9 @@ defmodule API.GatewayController do
       ]
     ],
     responses: [
-      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response}
+      ok: {"Gateway Response", "application/json", API.Schemas.Gateway.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete a Gateway
