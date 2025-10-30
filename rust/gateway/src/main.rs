@@ -21,7 +21,7 @@ use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 
 use phoenix_channel::PhoenixChannel;
-use secrecy::{Secret, SecretString};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::{collections::BTreeSet, fmt, path::Path};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
@@ -196,7 +196,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         nameservers,
     );
     let portal = PhoenixChannel::disconnected(
-        Secret::new(login),
+        SecretBox::init_with(|| login),
         get_user_agent(None, "gateway", env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
@@ -276,7 +276,13 @@ async fn read_systemd_credential(name: &str) -> Result<SecretString> {
     let path = PathBuf::from(creds_dir).join(name);
     let content = tokio::fs::read_to_string(&path).await?;
 
-    Ok(SecretString::new(content.trim().to_owned()))
+    // Immediately wrap in `SecretString` to ensure it will be zeroized.
+    let untrimmed_token = SecretString::from(content);
+
+    // Create a 2nd `SecretString` that is trimmed.
+    let trimmed_token = SecretString::from(untrimmed_token.expose_secret().trim());
+
+    Ok(trimmed_token)
 }
 
 #[derive(Parser, Debug)]
@@ -447,7 +453,6 @@ impl ValidateChecksumAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use secrecy::ExposeSecret as _;
     use tempfile::TempDir;
 
     #[tokio::test]

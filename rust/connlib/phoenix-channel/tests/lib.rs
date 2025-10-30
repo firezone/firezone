@@ -1,6 +1,8 @@
 #![cfg(not(windows))] // For some reason, Windows doesn't like this test.
 #![allow(clippy::unwrap_used)]
 
+use secrecy::SecretBox;
+
 #[tokio::test]
 async fn client_does_not_pipeline_messages() {
     use std::{str::FromStr, sync::Arc, time::Duration};
@@ -8,7 +10,7 @@ async fn client_does_not_pipeline_messages() {
     use backoff::exponential::ExponentialBackoff;
     use futures::{SinkExt, StreamExt};
     use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, PublicKeyParam};
-    use secrecy::{Secret, SecretString};
+    use secrecy::SecretString;
     use tokio::net::TcpListener;
     use tokio_tungstenite::tungstenite::Message;
     use url::Url;
@@ -59,16 +61,16 @@ async fn client_does_not_pipeline_messages() {
         }
     });
 
-    let login_url = Secret::new(
+    let login_url = SecretBox::init_with(|| {
         LoginUrl::client(
             Url::from_str(&format!("ws://localhost:{}", server_addr.port())).unwrap(),
-            &SecretString::new("secret".to_owned()),
+            &SecretString::from("secret"),
             String::new(),
             None,
             DeviceInfo::default(),
         )
-        .unwrap(),
-    );
+        .unwrap()
+    });
 
     let mut channel = PhoenixChannel::<(), InboundMsg, _>::disconnected(
         login_url,

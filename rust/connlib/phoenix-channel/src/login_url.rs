@@ -1,5 +1,5 @@
 use base64::{Engine, engine::general_purpose::STANDARD};
-use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, Zeroize};
+use secrecy::{CloneableSecret, ExposeSecret as _, SecretString, zeroize::Zeroize};
 use serde::Deserialize;
 use sha2::Digest as _;
 use std::{
@@ -52,6 +52,7 @@ impl<TFinish> Zeroize for LoginUrl<TFinish> {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct PublicKeyParam(pub [u8; 32]);
 
 impl IntoIterator for PublicKeyParam {
@@ -63,6 +64,7 @@ impl IntoIterator for PublicKeyParam {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct NoParams;
 
 impl IntoIterator for NoParams {
@@ -332,7 +334,7 @@ mod tests {
     fn base_url_removes_params_and_path() {
         let login_url = LoginUrl::client(
             "wss://api.firez.one",
-            &SecretString::new("foobar".to_owned()),
+            &SecretString::from("foobar"),
             "some-id".to_owned(),
             None,
             DeviceInfo::default(),

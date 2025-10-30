@@ -228,7 +228,7 @@ pub fn generate_password(relay_secret: &SecretString, expiry: u64, username_salt
 
     hasher.update(format!("{expiry}"));
     hasher.update(":");
-    hasher.update(relay_secret.expose_secret().as_str());
+    hasher.update(relay_secret.expose_secret());
     hasher.update(":");
     hasher.update(username_salt);
 
@@ -256,7 +256,7 @@ mod tests {
     fn generate_password_test_vector() {
         let expiry = 60 * 60 * 24 * 365 * 60;
 
-        let password = generate_password(&RELAY_SECRET_1.parse().unwrap(), expiry, SAMPLE_USERNAME);
+        let password = generate_password(&RELAY_SECRET_1.into(), expiry, SAMPLE_USERNAME);
 
         assert_eq!(password, "00hqldgk5xLeKKOB+xls9mHMVtgqzie9DulfgQwMv68")
     }
@@ -265,7 +265,7 @@ mod tests {
     fn generate_password_test_vector_elixir() {
         let expiry = 1685984278;
         let password = generate_password(
-            &"1cab293a-4032-46f4-862a-40e5d174b0d2".parse().unwrap(),
+            &"1cab293a-4032-46f4-862a-40e5d174b0d2".into(),
             expiry,
             "uvdgKvS9GXYZ_vmv",
         );
@@ -274,14 +274,11 @@ mod tests {
 
     #[test]
     fn smoke() {
-        let message_integrity = message_integrity(
-            &RELAY_SECRET_1.parse().unwrap(),
-            1685200000,
-            "n23JJ2wKKtt30oXi",
-        );
+        let message_integrity =
+            message_integrity(&RELAY_SECRET_1.into(), 1685200000, "n23JJ2wKKtt30oXi");
 
         let result = message_integrity.verify(
-            &RELAY_SECRET_1.parse().unwrap(),
+            &RELAY_SECRET_1.into(),
             "1685200000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000 - 1000),
         );
@@ -292,13 +289,13 @@ mod tests {
     #[test]
     fn expired_is_not_valid() {
         let message_integrity = message_integrity(
-            &RELAY_SECRET_1.parse().unwrap(),
+            &RELAY_SECRET_1.into(),
             1685200000 - 1000,
             "n23JJ2wKKtt30oXi",
         );
 
         let result = message_integrity.verify(
-            &RELAY_SECRET_1.parse().unwrap(),
+            &RELAY_SECRET_1.into(),
             "1685199000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(1685200000),
         );
@@ -308,14 +305,11 @@ mod tests {
 
     #[test]
     fn different_relay_secret_makes_password_invalid() {
-        let message_integrity = message_integrity(
-            &RELAY_SECRET_2.parse().unwrap(),
-            1685200000,
-            "n23JJ2wKKtt30oXi",
-        );
+        let message_integrity =
+            message_integrity(&RELAY_SECRET_2.into(), 1685200000, "n23JJ2wKKtt30oXi");
 
         let result = message_integrity.verify(
-            &RELAY_SECRET_1.parse().unwrap(),
+            &RELAY_SECRET_1.into(),
             "1685200000:n23JJ2wKKtt30oXi",
             systemtime_from_unix(168520000 + 1000),
         );
@@ -325,14 +319,11 @@ mod tests {
 
     #[test]
     fn invalid_username_format_fails() {
-        let message_integrity = message_integrity(
-            &RELAY_SECRET_2.parse().unwrap(),
-            1685200000,
-            "n23JJ2wKKtt30oXi",
-        );
+        let message_integrity =
+            message_integrity(&RELAY_SECRET_2.into(), 1685200000, "n23JJ2wKKtt30oXi");
 
         let result = message_integrity.verify(
-            &RELAY_SECRET_1.parse().unwrap(),
+            &RELAY_SECRET_1.into(),
             "foobar",
             systemtime_from_unix(168520000 + 1000),
         );

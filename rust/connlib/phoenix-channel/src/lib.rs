@@ -19,7 +19,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use rand_core::{OsRng, RngCore};
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretBox};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
@@ -51,7 +51,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
     pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
 
     // Stored here to allow re-connecting.
-    url_prototype: Secret<LoginUrl<TFinish>>,
+    url_prototype: SecretBox<LoginUrl<TFinish>>,
     last_url: Option<Url>,
     user_agent: String,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
@@ -259,7 +259,7 @@ where
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
     pub fn disconnected(
-        url: Secret<LoginUrl<TFinish>>,
+        url: SecretBox<LoginUrl<TFinish>>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,

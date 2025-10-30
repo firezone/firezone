@@ -14,7 +14,7 @@ use firezone_logging::sentry_layer;
 use firezone_telemetry::{Telemetry, analytics};
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
-use secrecy::{Secret, SecretString};
+use secrecy::{SecretBox, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
@@ -495,7 +495,7 @@ fn connect(
     let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let portal = PhoenixChannel::disconnected(
-        Secret::new(url),
+        SecretBox::init_with(|| url),
         get_user_agent(os_version, platform::COMPONENT, platform::VERSION),
         "client",
         (),
