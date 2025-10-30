@@ -12,7 +12,6 @@ pub(crate) use resource::DnsResource;
 pub(crate) use resource::{CidrResource, InternetResource, Resource};
 
 use dns_resource_nat::DnsResourceNat;
-use dns_types::ResponseCode;
 use firezone_telemetry::{analytics, feature_flags};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use secrecy::ExposeSecret as _;
@@ -33,7 +32,7 @@ use connlib_model::{Site, SiteId};
 use firezone_logging::err_with_src;
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
-use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
+use ip_packet::IpPacket;
 use itertools::Itertools;
 
 use crate::ClientEvent;
@@ -59,10 +58,6 @@ pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
 };
 
 const DNS_PORT: u16 = 53;
-
-const LLMNR_PORT: u16 = 5355;
-const LLMNR_IPV4: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 252);
-const LLMNR_IPV6: Ipv6Addr = Ipv6Addr::new(0xff02, 0, 0, 0, 0, 1, 0, 3);
 
 pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
     match Ipv4Network::new(Ipv4Addr::new(127, FI, RE, 0), 24) {
@@ -391,11 +386,6 @@ impl ClientState {
     ) -> Option<snownet::Transmit> {
         if packet.is_fz_p2p_control() {
             tracing::warn!("Packet matches heuristics of FZ p2p control protocol");
-        }
-
-        if is_llmnr(packet.destination()) {
-            self.handle_llmnr_dns_query(packet, now);
-            return None;
         }
 
         let tun_config = self.tun_config.as_ref()?;
@@ -1216,62 +1206,6 @@ impl ClientState {
         }
     }
 
-    fn handle_llmnr_dns_query(&mut self, packet: IpPacket, now: Instant) {
-        let Some(datagram) = packet.as_udp() else {
-            tracing::debug!(?packet, "Not a UDP packet");
-
-            return;
-        };
-
-        if datagram.destination_port() != LLMNR_PORT {
-            tracing::debug!(
-                ?packet,
-                "LLMNR queries are only supported on port {LLMNR_PORT}"
-            );
-            return;
-        }
-
-        let message = match dns_types::Query::parse(datagram.payload()) {
-            Ok(message) => message,
-            Err(e) => {
-                tracing::warn!(?packet, "Failed to parse DNS query: {e:#}");
-                return;
-            }
-        };
-
-        match self.stub_resolver.handle(&message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
-                if response.response_code() == ResponseCode::NXDOMAIN
-                    && firezone_telemetry::feature_flags::drop_llmnr_nxdomain_responses()
-                {
-                    return;
-                }
-
-                self.dns_resource_nat.recreate(message.domain());
-                self.update_dns_resource_nat(now, iter::empty());
-
-                let maybe_packet = ip_packet::make::udp_packet(
-                    packet.destination(),
-                    packet.source(),
-                    datagram.destination_port(),
-                    datagram.source_port(),
-                    response.into_bytes(MAX_UDP_PAYLOAD),
-                )
-                .inspect_err(|e| {
-                    tracing::debug!("Failed to create LLMNR DNS response packet: {e:#}");
-                })
-                .ok();
-
-                self.buffered_packets.extend(maybe_packet);
-            }
-            dns::ResolveStrategy::RecurseLocal => {
-                tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
-            }
-            dns::ResolveStrategy::RecurseSite(_) => {
-                tracing::trace!("LLMNR queries are not forwarded to upstream resolvers");
-            }
-        }
-    }
     fn forward_dns_query_to_new_upstream_via_tunnel(
         &mut self,
         local: SocketAddr,
@@ -1758,13 +1692,6 @@ impl ClientState {
     ) {
         self.node.update_relays(to_remove, &to_add, now);
         self.drain_node_events(); // Ensure all state changes are fully-propagated.
-    }
-}
-
-fn is_llmnr(dst: IpAddr) -> bool {
-    match dst {
-        IpAddr::V4(ip) => ip == LLMNR_IPV4,
-        IpAddr::V6(ip) => ip == LLMNR_IPV6,
     }
 }
 
