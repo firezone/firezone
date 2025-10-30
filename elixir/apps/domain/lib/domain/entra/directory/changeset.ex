@@ -6,7 +6,7 @@ defmodule Domain.Entra.Directory.Changeset do
     Entra.Directory
   }
 
-  @required_fields ~w[name tenant_id issuer verified_at]a
+  @required_fields ~w[name tenant_id issuer is_verified]a
   @update_fields ~w[name error_count is_disabled disabled_reason synced_at error error_emailed_at]a
 
   def create(attrs, %Auth.Subject{} = subject) do

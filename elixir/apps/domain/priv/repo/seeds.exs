@@ -162,7 +162,7 @@ defmodule Domain.Repo.Seeds do
         {:ok, oidc} =
           Domain.OIDC.create_auth_provider(
             %{
-              verified_at: DateTime.utc_now(),
+              is_verified: true,
               name: "OIDC",
               issuer: "https://common.auth0.com",
               client_id: "CLIENT_ID",
@@ -176,7 +176,7 @@ defmodule Domain.Repo.Seeds do
         {:ok, google} =
           Domain.Google.create_auth_provider(
             %{
-              verified_at: DateTime.utc_now(),
+              is_verified: true,
               name: "Google",
               issuer: "https://accounts.google.com",
               hosted_domain: "firezone.dev"
@@ -187,7 +187,7 @@ defmodule Domain.Repo.Seeds do
         {:ok, entra} =
           Domain.Entra.create_auth_provider(
             %{
-              verified_at: DateTime.utc_now(),
+              is_verified: true,
               name: "Entra",
               issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
               tenant_id: entra_tenant_id()

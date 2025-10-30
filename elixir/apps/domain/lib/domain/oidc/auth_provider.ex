@@ -18,7 +18,7 @@ defmodule Domain.OIDC.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
-    field :verified_at, :utc_datetime, virtual: true
+    field :is_verified, :boolean, virtual: true, default: true
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false

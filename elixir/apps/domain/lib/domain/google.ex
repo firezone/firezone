@@ -6,6 +6,14 @@ defmodule Domain.Google do
     Repo
   }
 
+  def create_auth_provider(%Ecto.Changeset{} = changeset, %Auth.Subject{} = subject) do
+    required_permission = Google.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Repo.insert(changeset)
+    end
+  end
+
   def create_auth_provider(attrs, %Auth.Subject{} = subject) do
     required_permission = Google.Authorizer.manage_auth_providers_permission()
 
@@ -71,6 +79,14 @@ defmodule Domain.Google do
     end
   end
 
+  def update_auth_provider(%Ecto.Changeset{} = changeset, %Auth.Subject{} = subject) do
+    required_permission = Google.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Repo.update(changeset)
+    end
+  end
+
   def update_directory(%Google.Directory{} = directory, attrs, %Auth.Subject{} = subject) do
     required_permission = Google.Authorizer.manage_directories_permission()
 
@@ -78,6 +94,15 @@ defmodule Domain.Google do
       directory
       |> Google.Directory.Changeset.update(attrs)
       |> Repo.update()
+    end
+  end
+
+  def delete_auth_provider_by_id(id, %Auth.Subject{} = subject) do
+    required_permission = Google.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission),
+         {:ok, auth_provider} <- fetch_auth_provider_by_id(id, subject) do
+      Repo.delete(auth_provider)
     end
   end
 

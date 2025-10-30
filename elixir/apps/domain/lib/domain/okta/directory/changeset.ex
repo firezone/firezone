@@ -6,7 +6,7 @@ defmodule Domain.Okta.Directory.Changeset do
     Okta.Directory
   }
 
-  @required_fields ~w[name okta_domain issuer verified_at]a
+  @required_fields ~w[name okta_domain issuer is_verified]a
   @update_fields ~w[name private_key_jwk kid error_count is_disabled disabled_reason synced_at error error_emailed_at]a
 
   def create(attrs, %Auth.Subject{} = subject) do

@@ -189,7 +189,7 @@ defmodule Web.OIDC do
 
     with {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
       {:ok,
-       %{
+       %Web.OIDC.Verification{
          token: token,
          url: uri,
          verifier: verifier,

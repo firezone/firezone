@@ -3,11 +3,10 @@ defmodule Domain.Google.AuthProvider.Changeset do
 
   alias Domain.{
     Auth,
-    AuthProviders,
-    Google
+    AuthProviders
   }
 
-  @required_fields ~w[name context issuer verified_at]a
+  @required_fields ~w[name context issuer is_verified]a
   @fields @required_fields ++ ~w[is_disabled hosted_domain is_default]a
 
   def create(
@@ -24,7 +23,7 @@ defmodule Domain.Google.AuthProvider.Changeset do
     |> changeset()
   end
 
-  def update(%Google.AuthProvider{} = auth_provider, attrs) do
+  def update(auth_provider, attrs) do
     auth_provider
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)

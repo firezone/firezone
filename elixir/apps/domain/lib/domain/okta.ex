@@ -6,6 +6,14 @@ defmodule Domain.Okta do
     Repo
   }
 
+  def create_auth_provider(%Ecto.Changeset{} = changeset, %Auth.Subject{} = subject) do
+    required_permission = Okta.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Repo.insert(changeset)
+    end
+  end
+
   def create_auth_provider(attrs, %Auth.Subject{} = subject) do
     required_permission = Okta.Authorizer.manage_auth_providers_permission()
 
@@ -13,6 +21,28 @@ defmodule Domain.Okta do
       %Okta.AuthProvider{}
       |> Okta.AuthProvider.Changeset.create(attrs, subject)
       |> Repo.insert()
+    end
+  end
+
+  def update_auth_provider(
+        %Okta.AuthProvider{} = auth_provider,
+        attrs,
+        %Auth.Subject{} = subject
+      ) do
+    required_permission = Okta.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      auth_provider
+      |> Okta.AuthProvider.Changeset.update(attrs)
+      |> Repo.update()
+    end
+  end
+
+  def update_auth_provider(%Ecto.Changeset{} = changeset, %Auth.Subject{} = subject) do
+    required_permission = Okta.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Repo.update(changeset)
     end
   end
 
@@ -54,6 +84,15 @@ defmodule Domain.Okta do
       |> Okta.Directory.Query.by_account_id(subject.account.id)
       |> Okta.Directory.Query.by_id(id)
       |> Repo.fetch(Okta.Directory.Query)
+    end
+  end
+
+  def delete_auth_provider_by_id(id, %Auth.Subject{} = subject) do
+    required_permission = Okta.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission),
+         {:ok, auth_provider} <- fetch_auth_provider_by_id(id, subject) do
+      Repo.delete(auth_provider)
     end
   end
 

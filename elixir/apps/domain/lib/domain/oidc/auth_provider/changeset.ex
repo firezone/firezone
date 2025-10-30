@@ -3,12 +3,11 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
 
   alias Domain.{
     Auth,
-    AuthProviders,
-    OIDC
+    AuthProviders
   }
 
-  @required_fields ~w[name context client_id client_secret discovery_document_uri issuer verified_at]a
-  @fields @required_fields ++ ~w[is_disabled is_default]a
+  @required_fields ~w[name context client_id client_secret discovery_document_uri issuer is_verified]a
+  @fields @required_fields ++ ~w[is_disabled]a
 
   def create(
         auth_provider,
@@ -24,7 +23,7 @@ defmodule Domain.OIDC.AuthProvider.Changeset do
     |> changeset()
   end
 
-  def update(%OIDC.AuthProvider{} = auth_provider, attrs) do
+  def update(auth_provider, attrs) do
     auth_provider
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)

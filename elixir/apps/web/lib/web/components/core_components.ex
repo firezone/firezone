@@ -1526,44 +1526,44 @@ defmodule Web.CoreComponents do
 
   <.provider_icon type={:google} class="w-5 h-5 mr-2" />
   """
-  attr :type, :atom, required: false
+  attr :type, :string, required: false
   attr :rest, :global
 
   # TODO: IDP REFACTOR
   # Can be removed after all accounts have migrated
   attr :adapter, :atom, required: false
 
-  def provider_icon(%{type: :okta} = assigns) do
+  def provider_icon(%{type: "okta"} = assigns) do
     ~H"""
     <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
     """
   end
 
-  def provider_icon(%{type: :email_otp} = assigns) do
+  def provider_icon(%{type: "email_otp"} = assigns) do
     ~H"""
     <.icon name="hero-envelope" {@rest} />
     """
   end
 
-  def provider_icon(%{type: :oidc} = assigns) do
+  def provider_icon(%{type: "oidc"} = assigns) do
     ~H"""
     <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
     """
   end
 
-  def provider_icon(%{type: :google} = assigns) do
+  def provider_icon(%{type: "google"} = assigns) do
     ~H"""
     <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
     """
   end
 
-  def provider_icon(%{type: :entra} = assigns) do
+  def provider_icon(%{type: "entra"} = assigns) do
     ~H"""
     <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
     """
   end
 
-  def provider_icon(%{type: :userpass} = assigns) do
+  def provider_icon(%{type: "userpass"} = assigns) do
     ~H"""
     <.icon name="hero-key" {@rest} />
     """

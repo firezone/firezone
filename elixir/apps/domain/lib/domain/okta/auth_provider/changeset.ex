@@ -3,11 +3,10 @@ defmodule Domain.Okta.AuthProvider.Changeset do
 
   alias Domain.{
     Auth,
-    AuthProviders,
-    Okta
+    AuthProviders
   }
 
-  @required_fields ~w[name context okta_domain client_id client_secret issuer verified_at]a
+  @required_fields ~w[name context okta_domain client_id client_secret issuer is_verified]a
   @fields @required_fields ++ ~w[is_disabled is_default]a
 
   def create(
@@ -24,7 +23,7 @@ defmodule Domain.Okta.AuthProvider.Changeset do
     |> changeset()
   end
 
-  def update(%Okta.AuthProvider{} = auth_provider, attrs) do
+  def update(auth_provider, attrs) do
     auth_provider
     |> cast(attrs, @fields)
     |> validate_required(@required_fields)

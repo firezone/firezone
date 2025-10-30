@@ -612,6 +612,27 @@ defmodule Domain.Repo.Changeset do
     {changeset, original_type}
   end
 
+  def errors_to_string(%Ecto.Changeset{} = changeset, fields \\ :all) do
+    errors =
+      Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+        Enum.reduce(opts, msg, fn {key, value}, acc ->
+          String.replace(acc, "%{#{key}}", to_string(value))
+        end)
+      end)
+
+    # Filter only requested fields (unless :all)
+    filtered_errors =
+      case fields do
+        :all -> errors
+        _ when is_list(fields) -> Map.take(errors, fields)
+      end
+
+    # Join all messages into a single string
+    Enum.map_join(filtered_errors, "\n", fn {field, messages} ->
+      "#{field}: #{Enum.join(messages, "; ")}"
+    end)
+  end
+
   defp field_invalid?(%Ecto.Changeset{} = changeset, field) do
     Keyword.has_key?(changeset.errors, field)
   end

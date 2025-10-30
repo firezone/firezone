@@ -123,13 +123,19 @@ defmodule Domain.Auth.Adapters do
   end
 
   def refresh_access_token(%Provider{} = provider, %Identity{} = identity) do
-    adapter = fetch_provider_adapter!(provider)
-    capabilities = adapter.capabilities()
+    account = Domain.Repo.preload(provider, :account).account
 
-    if Keyword.get(capabilities, :parent_adapter) == :openid_connect do
-      adapter.refresh_access_token(%{identity | provider: provider})
+    if Domain.Migrator.migrated?(account) do
+      :ok
     else
-      {:error, :not_supported}
+      adapter = fetch_provider_adapter!(provider)
+      capabilities = adapter.capabilities()
+
+      if Keyword.get(capabilities, :parent_adapter) == :openid_connect do
+        adapter.refresh_access_token(%{identity | provider: provider})
+      else
+        {:error, :not_supported}
+      end
     end
   end
 

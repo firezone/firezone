@@ -17,7 +17,7 @@ defmodule Domain.Google.Directory do
     field :error, :string
     field :error_emailed_at, :utc_datetime_usec
 
-    field :verified_at, :utc_datetime, virtual: true
+    field :is_verified, :boolean, virtual: true, default: true
 
     subject_trail(~w[actor identity system]a)
     timestamps()

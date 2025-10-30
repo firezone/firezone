@@ -4,7 +4,9 @@ defmodule Web.FormComponents do
   """
   use Phoenix.Component
   use Web, :verified_routes
-  import Web.CoreComponents, only: [icon: 1, error: 1, label: 1, translate_error: 1, provider_icon: 1]
+
+  import Web.CoreComponents,
+    only: [icon: 1, error: 1, label: 1, translate_error: 1, provider_icon: 1]
 
   ### Inputs ###
 
@@ -506,7 +508,7 @@ defmodule Web.FormComponents do
         "overflow-y-auto overflow-x-hidden"
       ]}
     >
-      <form method="dialog" phx-submit={@phx_submit} class="flex items-center justify-center">
+      <form method="dialog" class="flex items-center justify-center">
         <div class="relative bg-white rounded-lg shadow max-w-2xl">
           <div class="flex items-center justify-between p-4 md:p-5 border-b rounded-t">
             <h3 class="text-xl font-semibold text-neutral-900">

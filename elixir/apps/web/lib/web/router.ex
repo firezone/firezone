@@ -253,23 +253,23 @@ defmodule Web.Router do
           live "/:id/edit", Edit
         end
 
+        # AuthProviders
+        scope "/authentication" do
+          live "/", Authentication
+          live "/select_type", Authentication, :select_type
+          live "/:type/new", Authentication, :new
+          live "/:type/:id/edit", Authentication, :edit
+        end
+
+        # Directories
+        scope "/directory_sync" do
+          live "/", DirectorySync
+          live "/select_type", DirectorySync, :select_type
+          live "/:type/new", DirectorySync, :new
+          live "/:type/:id/edit", DirectorySync, :edit
+        end
+
         scope "/identity_providers", IdentityProviders do
-          live "/auth_providers/new", Index, :new_auth_provider
-          live "/directories/new", Index, :new_directory
-
-          # Auth provider edit routes
-          live "/email_otp_auth_providers/:provider_id/edit", Index, :edit_email_otp_auth_provider
-          live "/userpass_auth_providers/:provider_id/edit", Index, :edit_userpass_auth_provider
-          live "/oidc_auth_providers/:provider_id/edit", Index, :edit_oidc_auth_provider
-          live "/google_auth_providers/:provider_id/edit", Index, :edit_google_auth_provider
-          live "/entra_auth_providers/:provider_id/edit", Index, :edit_entra_auth_provider
-          live "/okta_auth_providers/:provider_id/edit", Index, :edit_okta_auth_provider
-
-          # Directory edit routes
-          live "/google_directories/:directory_id/edit", Index, :edit_google_directory
-          live "/entra_directories/:directory_id/edit", Index, :edit_entra_directory
-          live "/okta_directories/:directory_id/edit", Index, :edit_okta_directory
-
           live "/", Index
           live "/new", New
 

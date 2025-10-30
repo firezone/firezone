@@ -10,7 +10,7 @@ defmodule Domain.EmailOTP do
     required_permission = EmailOTP.Authorizer.manage_auth_providers_permission()
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
-      EmailOTP.AuthProvider.Changeset.create(attrs, subject)
+      EmailOTP.AuthProvider.Changeset.create(%EmailOTP.AuthProvider{}, attrs, subject)
       |> Repo.insert()
     end
   end
@@ -37,6 +37,14 @@ defmodule Domain.EmailOTP do
     EmailOTP.AuthProvider.Query.not_disabled()
     |> EmailOTP.AuthProvider.Query.by_account_id(account.id)
     |> Repo.fetch(EmailOTP.AuthProvider.Query)
+  end
+
+  def update_auth_provider(%Ecto.Changeset{} = changeset, %Auth.Subject{} = subject) do
+    required_permission = EmailOTP.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Repo.update(changeset)
+    end
   end
 
   def all_auth_providers_for_account!(%Accounts.Account{} = account) do

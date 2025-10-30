@@ -6,7 +6,7 @@ defmodule Domain.Google.Directory.Changeset do
     Google.Directory
   }
 
-  @required_fields ~w[name hosted_domain issuer verified_at]a
+  @required_fields ~w[name hosted_domain issuer is_verified]a
   @create_fields @required_fields ++ ~w[superadmin_email impersonation_email]a
   @update_fields ~w[superadmin_email superadmin_emailed_at impersonation_email name
     error_count is_disabled disabled_reason synced_at error error_emailed_at]a

@@ -68,7 +68,22 @@
     >
       Billing
     </:item>
-    <:item navigate={~p"/#{@account}/settings/identity_providers"}>
+    <:item
+      :if={Domain.Migrator.migrated?(@account)}
+      navigate={~p"/#{@account}/settings/authentication"}
+    >
+      Authentication
+    </:item>
+    <:item
+      :if={Domain.Migrator.migrated?(@account)}
+      navigate={~p"/#{@account}/settings/directory_sync"}
+    >
+      Directory Sync
+    </:item>
+    <:item
+      :if={not Domain.Migrator.migrated?(@account)}
+      navigate={~p"/#{@account}/settings/identity_providers"}
+    >
       Identity Providers
     </:item>
     <:item navigate={~p"/#{@account}/settings/dns"}>DNS</:item>

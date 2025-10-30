@@ -10,7 +10,7 @@ defmodule Domain.Userpass do
     required_permission = Userpass.Authorizer.manage_auth_providers_permission()
 
     with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
-      Userpass.AuthProvider.Changeset.create(attrs, subject)
+      Userpass.AuthProvider.Changeset.create(%Userpass.AuthProvider{}, attrs, subject)
       |> Repo.insert()
     end
   end
@@ -37,6 +37,14 @@ defmodule Domain.Userpass do
     Userpass.AuthProvider.Query.not_disabled()
     |> Userpass.AuthProvider.Query.by_account_id(account.id)
     |> Repo.fetch(Userpass.AuthProvider.Query)
+  end
+
+  def update_auth_provider(%Ecto.Changeset{} = changeset, %Auth.Subject{} = subject) do
+    required_permission = Userpass.Authorizer.manage_auth_providers_permission()
+
+    with :ok <- Auth.ensure_has_permissions(subject, required_permission) do
+      Repo.update(changeset)
+    end
   end
 
   def all_auth_providers_for_account!(%Accounts.Account{} = account) do
