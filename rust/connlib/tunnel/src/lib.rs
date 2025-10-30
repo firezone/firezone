@@ -458,7 +458,7 @@ impl GatewayTunnel {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
                         self.io.send_dns_query(dns::RecursiveQuery::via_udp(
                             query.local,
-                            query.from,
+                            query.remote,
                             SocketAddr::new(nameserver, dns::DNS_PORT),
                             query.message,
                         ));
@@ -466,7 +466,7 @@ impl GatewayTunnel {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
                         if let Err(e) = self.io.send_udp_dns_response(
-                            query.from,
+                            query.remote,
                             query.local,
                             dns_types::Response::servfail(&query.message),
                         ) {
