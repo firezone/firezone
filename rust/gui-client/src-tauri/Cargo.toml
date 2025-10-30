@@ -44,7 +44,7 @@ rand = { workspace = true }
 reqwest = { workspace = true, features = ["stream", "rustls-tls"] }
 rustls = { workspace = true }
 sadness-generator = { workspace = true }
-secrecy = { workspace = true }
+secrecy = { workspace = true, features = ["serde"] }
 semver = { workspace = true, features = ["serde"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
