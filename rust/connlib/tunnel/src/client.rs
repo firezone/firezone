@@ -794,7 +794,12 @@ impl ClientState {
                 }
             };
 
-            self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
+            self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
+                query.local,
+                query.remote,
+                server,
+                query.message,
+            );
         }
 
         Ok(Ok(()))
@@ -1436,7 +1441,12 @@ impl ClientState {
             }
             dns::ResolveStrategy::RecurseLocal => {
                 if self.should_forward_dns_query_to_gateway(server.ip()) {
-                    self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
+                    self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
+                        query.local,
+                        query.remote,
+                        server,
+                        query.message,
+                    );
 
                     return;
                 }
@@ -1465,7 +1475,12 @@ impl ClientState {
 
                 let server = gateway.tun_dns_server_endpoint(query.local.ip());
 
-                self.forward_tcp_dns_query_to_new_upstream_via_tunnel(server, query);
+                self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
+                    query.local,
+                    query.remote,
+                    server,
+                    query.message,
+                );
             }
         };
     }
@@ -1505,15 +1520,14 @@ impl ClientState {
 
     fn forward_tcp_dns_query_to_new_upstream_via_tunnel(
         &mut self,
+        local: SocketAddr,
+        remote: SocketAddr,
         server: SocketAddr,
-        query: dns_over_tcp::Query,
+        query: dns_types::Query,
     ) {
-        let query_id = query.message.id();
+        let query_id = query.id();
 
-        match self
-            .tcp_dns_client
-            .send_query(server, query.message.clone())
-        {
+        match self.tcp_dns_client.send_query(server, query.clone()) {
             Ok(()) => {}
             Err(e) => {
                 tracing::warn!(
@@ -1522,9 +1536,9 @@ impl ClientState {
 
                 unwrap_or_debug!(
                     self.tcp_dns_server.send_message(
-                        query.local,
-                        query.remote,
-                        dns_types::Response::servfail(&query.message)
+                        local,
+                        remote,
+                        dns_types::Response::servfail(&query)
                     ),
                     "Failed to send TCP DNS response: {}"
                 );
@@ -1532,14 +1546,14 @@ impl ClientState {
             }
         };
 
-        tracing::trace!(%server, local = %query.local, %query_id, "Forwarding TCP DNS query via tunnel");
+        tracing::trace!(%server, local = %local, %query_id, "Forwarding TCP DNS query via tunnel");
 
         let existing = self
             .tcp_dns_streams_by_upstream_and_query_id
-            .insert((server, query_id), (query.local, query.remote));
+            .insert((server, query_id), (local, remote));
 
         if let Some((existing_local, existing_remote)) = existing
-            && (existing_local != query.local || existing_remote != query.remote)
+            && (existing_local != local || existing_remote != remote)
         {
             debug_assert!(false, "Query IDs should be unique");
         }
