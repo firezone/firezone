@@ -53,6 +53,12 @@ impl From<PublicKey> for Key {
     }
 }
 
+impl From<Key> for PublicKey {
+    fn from(value: Key) -> Self {
+        value.0.into()
+    }
+}
+
 impl fmt::Display for Key {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", Base64Display::new(&self.0, &STANDARD))

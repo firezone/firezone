@@ -2823,7 +2823,7 @@ defmodule API.Client.ChannelTest do
           account: account,
           group: internet_gateway_group,
           context: %{
-            user_agent: "iOS/12.5 (iPhone) connlib/1.2.0"
+            user_agent: "iOS/12.5 connlib/1.2.0"
           }
         )
         |> Repo.preload(:group)
@@ -2841,7 +2841,7 @@ defmodule API.Client.ChannelTest do
           account: account,
           group: internet_gateway_group,
           context: %{
-            user_agent: "iOS/12.5 (iPhone) connlib/1.3.0"
+            user_agent: "iOS/12.5 connlib/1.3.0"
           }
         )
         |> Repo.preload(:group)
