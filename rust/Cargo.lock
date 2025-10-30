@@ -2688,6 +2688,7 @@ dependencies = [
  "ip_network_table",
  "itertools 0.14.0",
  "l3-tcp",
+ "l3-udp-dns-client",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
  "lru",
