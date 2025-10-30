@@ -1,4 +1,9 @@
 defmodule Domain.Version do
+  alias Domain.{
+    Clients.Client,
+    ComponentVersions
+  }
+
   def fetch_version(user_agent) when is_binary(user_agent) do
     user_agent
     |> String.split(" ")
@@ -20,5 +25,16 @@ defmodule Domain.Version do
 
   def fetch_gateway_version(_user_agent) do
     {:error, :invalid_user_agent}
+  end
+
+  # TODO: Remove once all clients are on versions that support resources changing sites.
+  # Connlib didn't support resources changing sites until https://github.com/firezone/firezone/pull/10604
+  def resource_cannot_change_sites_on_client?(%Client{last_seen_version: version} = client) do
+    case ComponentVersions.get_component_type(client) do
+      :apple -> Version.compare(version, "1.5.9") == :lt
+      :android -> Version.compare(version, "1.5.5") == :lt
+      :headless -> Version.compare(version, "1.5.5") == :lt
+      :gui -> Version.compare(version, "1.5.9") == :lt
+    end
   end
 end

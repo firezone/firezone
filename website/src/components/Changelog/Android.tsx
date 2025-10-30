@@ -21,11 +21,16 @@ export default function Android() {
     <Entries downloadLinks={downloadLinks} title="Android">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="10752">
+          Fixes an issue where the reported client version was out of date.
+        </ChangeItem>
+      </Unreleased>
+      <Entry version="1.5.6" date={new Date("2025-10-28")}>
         <ChangeItem pull="10667">
           Fixes an issue where the Tunnel service would crash when trying to
           connect Firezone without an Internet connection.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.5.5" date={new Date("2025-10-18")}>
         <ChangeItem pull="10509">
           Fixes an issue where the Internet Resource could be briefly active on

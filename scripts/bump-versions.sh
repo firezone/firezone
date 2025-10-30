@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-# This is script is used to bump the versions in support of our release process.
+# This script is used to bump the versions in support of our release process.
 
 # See discussion here: https://github.com/firezone/firezone/issues/2041
 # and PR changing it here: https://github.com/firezone/firezone/pull/2949
@@ -41,6 +41,16 @@ function update_changelog() {
       /<Entry version=\"${current_version}\"/i\\
       <Unreleased></Unreleased>
     " "$changelog_file"
+}
+
+function update_version_marker() {
+    local marker="$1"
+    local new_version="$2"
+
+    # Use git grep to find files containing the marker (much faster and git-aware)
+    git grep -l "$marker" 2>/dev/null | while IFS= read -r file; do
+        sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/${new_version}/;}" "$file"
+    done
 }
 
 function update_version_variables() {
@@ -94,11 +104,9 @@ function apple() {
     next_apple_client_version="1.5.10"
 
     update_changelog "website/src/components/Changelog/Apple.tsx" "$current_apple_client_version"
-    find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_client_version}"'/g;}' {} \;
-    find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_apple_client_version}"'/g;}' {} \;
-    find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_apple_client_version}"'/g;}' {} \;
-    find swift -type f -name "project.pbxproj" -exec sed "${SEDARG[@]}" -e "s/MARKETING_VERSION = .*;/MARKETING_VERSION = ${next_apple_client_version};/" {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-apple-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_apple_client_version}"'/;}' {} \;
+    update_version_marker "mark:current-apple-version" "$current_apple_client_version"
+    update_version_marker "mark:next-apple-version" "$next_apple_client_version"
+
     cargo_update_workspace
 }
 
@@ -113,7 +121,7 @@ function apple() {
 # As such, the process for releasing Android is similar to Apple.
 #
 # Instructions:
-# 1. Run the `Kotlin` workflow from `main`. This will push an AAB to Firebase.
+# 1. Run the `Kotlin` workflow from `main`. This will push an AAB to Firebase
 #    and upload a new APK to the drafted release.
 # 2. Sign in to Firebase and download the build AAB, optionally distributing it
 #    for release testing to perform any final QA tests.
@@ -126,15 +134,13 @@ function apple() {
 # 6. Run `scripts/bump-versions.sh android` to update the versions in the codebase.
 # 7. Commit the changes and open a PR.
 function android() {
-    current_android_client_version="1.5.5"
-    next_android_client_version="1.5.6"
+    current_android_client_version="1.5.6"
+    next_android_client_version="1.5.7"
 
     update_changelog "website/src/components/Changelog/Android.tsx" "$current_android_client_version"
-    find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_client_version}"'/g;}' {} \;
-    find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_android_client_version}"'/g;}' {} \;
-    find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_android_client_version}"'/g;}' {} \;
-    find kotlin -type f -name "*.gradle.kts" -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/versionName =.*/versionName = "'"${next_android_client_version}"'"/;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-android-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_android_client_version}"'/;}' {} \;
+    update_version_marker "mark:current-android-version" "$current_android_client_version"
+    update_version_marker "mark:next-android-version" "$next_android_client_version"
+
     cargo_update_workspace
 }
 
@@ -155,11 +161,9 @@ function gui() {
     next_gui_client_version="1.5.9"
 
     update_changelog "website/src/components/Changelog/GUI.tsx" "$current_gui_client_version"
-    find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_client_version}"'/g;}' {} \;
-    find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gui_client_version}"'/g;}' {} \;
-    find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_client_version}"'/g;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_client_version}"'/;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "vite.config.ts" -exec sed "${SEDARG[@]}" -e '/mark:next-gui-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gui_client_version}"'/;}' {} \;
+    update_version_marker "mark:current-gui-version" "$current_gui_client_version"
+    update_version_marker "mark:next-gui-version" "$next_gui_client_version"
+
     cargo_update_workspace
 }
 
@@ -179,10 +183,9 @@ function headless() {
     next_headless_client_version="1.5.5"
 
     update_changelog "website/src/components/Changelog/Headless.tsx" "$current_headless_client_version"
-    find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_client_version}"'/g;}' {} \;
-    find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_headless_client_version}"'/g;}' {} \;
-    find .github -name "*.yml" -exec sed "${SEDARG[@]}" -e '/mark:next-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_headless_client_version}"'/g;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-headless-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_headless_client_version}"'/;}' {} \;
+    update_version_marker "mark:current-headless-version" "$current_headless_client_version"
+    update_version_marker "mark:next-headless-version" "$next_headless_client_version"
+
     cargo_update_workspace
 }
 
@@ -202,10 +205,9 @@ function gateway() {
     next_gateway_version="1.4.18"
 
     update_changelog "website/src/components/Changelog/Gateway.tsx" "$current_gateway_version"
-    find website -type f -name "redirects.js" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
-    find website -type f -name "route.ts" -exec sed "${SEDARG[@]}" -e '/mark:current-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${current_gateway_version}"'/g;}' {} \;
-    find .github -type f -exec sed "${SEDARG[@]}" -e '/mark:next-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gateway_version}"'/g;}' {} \;
-    find rust -path rust/gui-client/node_modules -prune -o -path rust/target -prune -o -name "Cargo.toml" -exec sed "${SEDARG[@]}" -e '/mark:next-gateway-version/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/'"${next_gateway_version}"'/;}' {} \;
+    update_version_marker "mark:current-gateway-version" "$current_gateway_version"
+    update_version_marker "mark:next-gateway-version" "$next_gateway_version"
+
     cargo_update_workspace
 }
 

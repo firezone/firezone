@@ -12,12 +12,12 @@ use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::{GatewayEvent, IpConfig, p2p_control};
 use anyhow::{Context, Result};
-use boringtun::x25519::PublicKey;
+use boringtun::x25519::{self, PublicKey};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
-use secrecy::{ExposeSecret as _, Secret};
+use secrecy::ExposeSecret as _;
 use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
@@ -317,7 +317,7 @@ impl GatewayState {
         self.node.upsert_connection(
             cid,
             client_key,
-            Secret::new(preshared_key.expose_secret().0),
+            x25519::StaticSecret::from(preshared_key.expose_secret().0),
             Credentials {
                 username: gateway_ice.username,
                 password: gateway_ice.password,
@@ -465,8 +465,10 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::tcp",
 
-                        client = %flow.client,
-                        resource = %flow.resource,
+                        client_id = %flow.client,
+                        resource_id = %flow.resource_id,
+                        resource_name = %flow.resource_name,
+                        resource_address = %flow.resource_address,
                         start = ?flow.start,
                         end = ?flow.end,
                         last_packet = ?flow.last_packet,
@@ -493,8 +495,10 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::udp",
 
-                        client = %flow.client,
-                        resource = %flow.resource,
+                        client_id = %flow.client,
+                        resource_id = %flow.resource_id,
+                        resource_name = %flow.resource_name,
+                        resource_address = %flow.resource_address,
                         start = ?flow.start,
                         end = ?flow.end,
                         last_packet = ?flow.last_packet,

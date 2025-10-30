@@ -22,7 +22,7 @@ use futures::{
     task::{Context, Poll},
 };
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
-use secrecy::{Secret, SecretString};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::{
     io::{self, Write},
     mem,
@@ -47,12 +47,13 @@ mod platform;
 
 pub use platform::{elevation_check, install, run};
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
     Connect {
         api_url: String,
-        token: String,
+        #[serde(serialize_with = "serialize_token")]
+        token: SecretString,
         is_internet_resource_active: bool,
     },
     Disconnect,
@@ -65,6 +66,13 @@ pub enum ClientMsg {
         release: String,
         account_slug: Option<String>,
     },
+}
+
+fn serialize_token<S>(token: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(token.expose_secret())
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
@@ -516,8 +524,6 @@ impl<'a> Handler<'a> {
                 token,
                 is_internet_resource_active,
             } => {
-                let token = SecretString::new(token);
-
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Connecting despite existing session");
                 }
@@ -641,7 +647,7 @@ impl<'a> Handler<'a> {
 
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
-            Secret::new(url),
+            SecretBox::init_with(|| url),
             get_user_agent(None, "gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),

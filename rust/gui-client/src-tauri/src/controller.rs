@@ -331,7 +331,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.send_ipc(&service::ClientMsg::Connect {
             api_url: api_url.to_string(),
-            token: token.expose_secret().clone(),
+            token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
         })
         .await?;

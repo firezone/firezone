@@ -19,7 +19,7 @@ use opentelemetry_sdk::metrics::SdkMeterProvider;
 use phoenix_channel::PhoenixChannel;
 use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
-use secrecy::{Secret, SecretString};
+use secrecy::{SecretBox, SecretString};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -336,7 +336,7 @@ fn try_main() -> Result<()> {
         // for an Internet connection if it launches us at startup.
         // When running interactively, it is useful for the user to see that we can't reach the portal.
         let portal = PhoenixChannel::disconnected(
-            Secret::new(url),
+            SecretBox::init_with(|| url),
             get_user_agent(None, "headless-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),

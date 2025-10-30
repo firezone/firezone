@@ -1,11 +1,29 @@
 #![expect(clippy::print_stdout, reason = "We are a CLI.")]
 
+use std::{process::Command, sync::LazyLock};
+
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use secrecy::{ExposeSecret as _, SecretString};
+use tracing_subscriber::{EnvFilter, util::SubscriberInitExt};
 
 const ETC_FIREZONE_GATEWAY_TOKEN: &str = "/etc/firezone/gateway-token";
 
+static DRY_RUN: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var("FZ_DRY_RUN")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or_default()
+});
+
 fn main() -> Result<()> {
+    let _guard = tracing_subscriber::fmt()
+        .without_time()
+        .with_target(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_writer(std::io::stdout)
+        .set_default();
+
     let cli = Cli::parse();
 
     use Component::*;
@@ -25,40 +43,39 @@ fn main() -> Result<()> {
                 );
             }
 
-            let mut token = String::with_capacity(512); // Our tokens are ~270 characters, grab the next power of 2.
-
-            loop {
+            let token = loop {
                 println!("Paste the token from the portal's deploy page:");
 
-                let num_bytes = std::io::stdin()
-                    .read_line(&mut token)
-                    .context("Failed to read token from stdin")?;
+                let token =
+                    rpassword::read_password().context("Failed to read token from stdin")?;
 
-                if num_bytes == 0 || token.trim().is_empty() {
+                if token.trim().is_empty() {
                     continue;
                 }
 
-                break;
-            }
+                break SecretString::new(token.into_boxed_str());
+            };
 
-            install_firezone_gateway_token(token)?;
+            write_to_file(ETC_FIREZONE_GATEWAY_TOKEN, token)?;
 
             println!("Successfully installed token");
-            println!("Tip: You can now start the Gateway with `firezone gateway enable`");
+            println!("Tip: You can now start the Gateway with `firezone gateway enable-service`");
         }
-        Gateway(Enable) => {
+        Gateway(EnableService) => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
             anyhow::ensure!(is_root(), "Must be executed as root");
 
-            enable_gateway_service().context("Failed to enable `firezone-gateway.service`")?;
+            run("systemctl", "enable --now firezone-gateway.service")
+                .context("Failed to enable `firezone-gateway.service`")?;
 
             println!("Successfully enabled `firezone-gateway.service`");
         }
-        Gateway(Disable) => {
+        Gateway(DisableService) => {
             anyhow::ensure!(cfg!(target_os = "linux"), "Only supported Linux right now");
             anyhow::ensure!(is_root(), "Must be executed as root");
 
-            disable_gateway_service().context("Failed to disable `firezone-gateway.service`")?;
+            run("systemctl", "disable firezone-gateway.service")
+                .context("Failed to disable `firezone-gateway.service`")?;
 
             println!("Successfully disabled `firezone-gateway.service`");
         }
@@ -89,13 +106,17 @@ enum GatewayCommand {
         replace: bool,
     },
     /// Enable the Gateway's systemd service.
-    Enable,
+    EnableService,
     /// Disable the Gateway's systemd service.
-    Disable,
+    DisableService,
 }
 
 #[cfg(target_os = "linux")]
 fn is_root() -> bool {
+    if *DRY_RUN {
+        return true;
+    }
+
     nix::unistd::Uid::current().is_root()
 }
 
@@ -104,62 +125,37 @@ fn is_root() -> bool {
     true
 }
 
-#[cfg(target_os = "linux")]
-fn install_firezone_gateway_token(token: String) -> Result<()> {
-    std::fs::write(ETC_FIREZONE_GATEWAY_TOKEN, token)
-        .with_context(|| format!("Failed to write token to `{ETC_FIREZONE_GATEWAY_TOKEN}`"))?;
+fn write_to_file(path: &str, content: SecretString) -> Result<()> {
+    tracing::debug!("Writing {} bytes to {path}", content.expose_secret().len());
+
+    check_dry_run()?;
+
+    std::fs::write(path, content.expose_secret())
+        .with_context(|| format!("Failed to write to `{path}`"))?;
 
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
-fn install_firezone_gateway_token(token: String) -> Result<()> {
-    anyhow::bail!("Not implemented")
-}
+fn run(bin: &str, args: &str) -> Result<()> {
+    tracing::debug!("Running `{bin} {args}`");
 
-#[cfg(target_os = "linux")]
-fn enable_gateway_service() -> Result<()> {
-    use std::process::Command;
+    check_dry_run()?;
 
-    let output = Command::new("systemctl")
-        .arg("enable")
-        .arg("--now")
-        .arg("firezone-gateway.service")
+    let output = Command::new(bin)
+        .args(args.split_ascii_whitespace())
         .output()?;
 
     anyhow::ensure!(
         output.status.success(),
-        "`systemctl enable` exited with {}",
+        "`{bin} {args}` exited with {}",
         output.status
     );
 
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
-fn enable_gateway_service() -> Result<()> {
-    anyhow::bail!("Not implemented")
-}
-
-#[cfg(target_os = "linux")]
-fn disable_gateway_service() -> Result<()> {
-    use std::process::Command;
-
-    let output = Command::new("systemctl")
-        .arg("disable")
-        .arg("firezone-gateway.service")
-        .output()?;
-
-    anyhow::ensure!(
-        output.status.success(),
-        "`systemctl disable` exited with {}",
-        output.status
-    );
+fn check_dry_run() -> Result<()> {
+    anyhow::ensure!(!*DRY_RUN, "Aborting because `FZ_DRY_RUN=true`");
 
     Ok(())
-}
-
-#[cfg(not(target_os = "linux"))]
-fn disable_gateway_service() -> Result<()> {
-    anyhow::bail!("Not implemented")
 }

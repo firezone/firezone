@@ -108,12 +108,12 @@ libc = "0.2.175"
 libfuzzer-sys = "0.4"
 log = "0.4"
 lru = "0.12.5"
-mio = "1.0.4"
+mio = "1.1.0"
 moka = "0.12.11"
 native-dialog = "0.7.0"
-netlink-packet-core = "0.7"
-netlink-packet-route = "0.24"
-network-types = "0.0.8"
+netlink-packet-core = "0.8"
+netlink-packet-route = "0.25"
+network-types = "0.1.0"
 nix = "0.30.1"
 nu-ansi-term = "0.50"
 num_cpus = "1.17.0"
@@ -129,7 +129,7 @@ phoenix-channel = { path = "connlib/phoenix-channel" }
 png = "0.17.16"
 proc-macro2 = "1.0"
 proptest = "1.7.0"
-proptest-state-machine = "0.4.0"
+proptest-state-machine = "0.5.0"
 quinn-udp = { version = "0.5.12", features = ["fast-apple-datapath"] }
 quote = "1.0"
 rand = "0.8.5"
@@ -139,11 +139,12 @@ reqwest = { version = "0.12.23", default-features = false }
 resolv-conf = "0.7.5"
 ringbuffer = "0.16.0"
 roxmltree = "0.20"
-rtnetlink = { version = "0.17.0", default-features = false, features = ["tokio_socket"] }
+rpassword = "7.4.0"
+rtnetlink = { version = "0.18.1", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.31", default-features = false, features = ["ring"] }
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
-secrecy = "0.8"
+secrecy = "0.10"
 semver = "1.0.27"
 sentry = { version = "0.42.0", default-features = false }
 sentry-tracing = "0.42.0"
@@ -182,11 +183,11 @@ tauri-utils = "2.2.0"
 tempfile = "3.23.0"
 test-case = "3.3.1"
 test-strategy = "0.4.3"
-thiserror = "2.0.16"
+thiserror = "2.0.17"
 time = "0.3.43"
 tokio = "1.47"
 tokio-stream = "0.1.17"
-tokio-tungstenite = "0.27.0"
+tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.16"
 tracing = { version = "0.1.40" }
 tracing-appender = "0.2.3"
@@ -236,7 +237,6 @@ softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting 
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
-mio = { git = "https://github.com/firezone/mio", branch = "fix/panic-invalid-state" }
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']

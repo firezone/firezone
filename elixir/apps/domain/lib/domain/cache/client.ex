@@ -51,7 +51,7 @@ defmodule Domain.Cache.Client do
 
   """
 
-  alias Domain.{Actors, Auth, Clients, Cache, Gateways, Resources, Policies}
+  alias Domain.{Actors, Auth, Clients, Cache, Gateways, Resources, Policies, Version}
   require Logger
   require OpenTelemetry.Tracer
   import Ecto.UUID, only: [dump!: 1, load!: 1]
@@ -159,8 +159,8 @@ defmodule Domain.Cache.Client do
 
     added_ids = Enum.map(added, & &1.id)
 
-    # connlib can handle all resource attribute changes except for changing sites, so we can omit the deleted IDs
-    # of added resources since they'll be updated gracefully.
+    # connlib can handle all resource attribute changes except for changing sites (on older clients),
+    # so we can omit the deleted IDs of added resources since they'll be updated gracefully.
     removed_ids =
       for r <- cache.connectable_resources -- connectable_resources,
           toggle or r.id not in added_ids do
@@ -273,9 +273,11 @@ defmodule Domain.Cache.Client do
 
     cache = %{cache | resources: resources}
 
+    toggle = Version.resource_cannot_change_sites_on_client?(client)
+
     # For these updates we need to make sure the resource is toggled deleted then created.
     # See https://github.com/firezone/firezone/issues/9881
-    recompute_connectable_resources(cache, client, toggle: true)
+    recompute_connectable_resources(cache, client, toggle: toggle)
   end
 
   @doc """
