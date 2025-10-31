@@ -171,7 +171,10 @@ class TunnelService : VpnService() {
                 addAddress(tunnelIpv6Address!!, 128)
             }.establish()
             ?.detachFd()
-            ?.also { fd -> sendTunnelCommand(TunnelCommand.SetTun(fd)) }
+            ?.also { fd -> {
+                sendTunnelCommand(TunnelCommand.SetTun(fd))
+                sendTunnelCommand(TunnelCommand.BindDns(tunnelDnsAddresses))
+            } }
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)

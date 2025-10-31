@@ -409,11 +409,13 @@ fn try_main() -> Result<()> {
                     dns_controller.flush()?;
                 }
                 client_shared::Event::TunInterfaceUpdated(config) => {
+                    let dns_servers = config.dns_sentinel_ips();
+
                     let mut ips = vec![IpAddr::V4(config.ip.v4), IpAddr::V6(config.ip.v6)];
-                    ips.extend(config.dns_sentinel_ips());
+                    ips.extend(dns_servers.clone());
 
                     tun_device.set_ips(ips).await?;
-                    dns_controller.set_dns(config.dns_sentinel_ips(), config.search_domain).await?;
+                    dns_controller.set_dns(dns_servers.clone(), config.search_domain).await?;
                     tun_device.set_routes(config.ipv4_routes, config.ipv6_routes).await?;
 
                     // `on_set_interface_config` is guaranteed to be called when the tunnel is completely ready
@@ -423,6 +425,9 @@ fn try_main() -> Result<()> {
                         tracing::debug!(elapsed = ?instant.elapsed(), "Tunnel ready");
                         platform::notify_service_controller()?;
                     }
+
+                    session.bind_dns(dns_servers);
+
                     if cli.exit {
                         tracing::info!("Exiting due to `--exit` CLI flag");
                         break Ok(());

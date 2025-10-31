@@ -65,6 +65,7 @@ pub enum Command {
     Reset(String),
     Stop,
     SetDns(Vec<IpAddr>),
+    BindDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
 }
@@ -225,6 +226,15 @@ impl Eventloop {
                     .await
                     .context("Failed to connect phoenix-channel")?;
             }
+            Command::BindDns(ips) => {
+                let dns_servers = ips.into_iter().map(|ip| SocketAddr::new(ip, 53)).collect();
+
+                self.tunnel
+                    .as_mut()
+                    .context("No tunnel")?
+                    .rebind_dns(dns_servers)
+                    .context("Failed to rebind DNS servers")?;
+            }
         }
 
         Ok(ControlFlow::Continue(()))
@@ -282,18 +292,6 @@ impl Eventloop {
                     .context("Failed to emit event")?;
             }
             ClientEvent::TunInterfaceUpdated(config) => {
-                let dns_servers = config
-                    .dns_by_sentinel
-                    .left_values()
-                    .map(|ip| SocketAddr::new(*ip, 53))
-                    .collect();
-
-                self.tunnel
-                    .as_mut()
-                    .context("No tunnel")?
-                    .rebind_dns(dns_servers)
-                    .context("Failed to rebind DNS servers")?;
-
                 self.tun_config_sender
                     .send(Some(config))
                     .context("Failed to emit event")?;

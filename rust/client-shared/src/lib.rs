@@ -106,6 +106,10 @@ impl Session {
         let _ = self.channel.send(Command::SetDns(new_dns));
     }
 
+    pub fn bind_dns(&self, servers: Vec<IpAddr>) {
+        let _ = self.channel.send(Command::BindDns(servers));
+    }
+
     pub fn set_internet_resource_state(&self, active: bool) {
         let _ = self.channel.send(Command::SetInternetResourceState(active));
     }

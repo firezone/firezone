@@ -493,17 +493,26 @@ impl<'a> Handler<'a> {
             }
             client_shared::Event::TunInterfaceUpdated(config) => {
                 self.session.transition_to_connected()?;
+
+                let dns_servers = config.dns_sentinel_ips();
+
                 let mut ips = vec![IpAddr::V4(config.ip.v4), IpAddr::V6(config.ip.v6)];
-                ips.extend(config.dns_sentinel_ips());
+                ips.extend(dns_servers.clone());
 
                 self.tun_device.set_ips(ips).await?;
                 self.dns_controller
-                    .set_dns(config.dns_sentinel_ips(), config.search_domain)
+                    .set_dns(dns_servers.clone(), config.search_domain)
                     .await?;
                 self.tun_device
                     .set_routes(config.ipv4_routes, config.ipv6_routes)
                     .await?;
                 self.dns_controller.flush()?;
+
+                let Some(session) = self.session.as_connlib() else {
+                    return Ok(());
+                };
+
+                session.bind_dns(dns_servers);
             }
             client_shared::Event::ResourcesUpdated(resources) => {
                 // On every resources update, flush DNS to mitigate <https://github.com/firezone/firezone/issues/5052>
