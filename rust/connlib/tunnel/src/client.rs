@@ -22,7 +22,7 @@ use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
-use crate::{FI, IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, RE, TunConfig, dns, is_peer, p2p_control};
+use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::Context;
 use bimap::BiMap;
 use connlib_model::{

@@ -459,6 +459,10 @@ class TunnelService : VpnService() {
             val dnsServers: List<String>,
         ) : TunnelCommand()
 
+        data class BindDns(
+            val dnsServers: List<String>,
+        ) : TunnelCommand()
+
         data class SetLogDirectives(
             val directives: String,
         ) : TunnelCommand()
@@ -495,8 +499,13 @@ class TunnelService : VpnService() {
                             is TunnelCommand.SetInternetResourceState -> {
                                 session.setInternetResourceState(command.active)
                             }
+
                             is TunnelCommand.SetDns -> {
                                 session.setDns(command.dnsServers)
+                            }
+
+                            is TunnelCommand.BindDns -> {
+                                session.bindDns(command.dnsServers)
                             }
 
                             is TunnelCommand.SetLogDirectives -> {

@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use std::{
     collections::HashSet,
     io::{self, Read as _},
-    net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6},
+    net::{SocketAddrV4, SocketAddrV6},
     path::{Path, PathBuf},
     sync::Arc,
     task::{Context, Poll},
