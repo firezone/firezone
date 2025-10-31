@@ -417,13 +417,27 @@ defmodule Domain.Auth do
     Identity.Sync.sync_provider_identities(provider, attrs_list)
   end
 
+  # TODO: IDP REFACTOR
+  # This function becomes obsolete after migrating all accounts
   def get_identity_email(%Identity{} = identity) do
-    provider_email(identity) || identity.provider_identifier
+    identity = Repo.preload(identity, [:account, :actor])
+
+    if Domain.Migrator.migrated?(identity.account) do
+      identity.actor.email
+    else
+      provider_email(identity) || identity.provider_identifier
+    end
   end
 
   def identity_has_email?(%Identity{} = identity) do
-    not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
-      identity.provider_identifier =~ "@"
+    identity = Repo.preload(identity, [:account])
+
+    if Domain.Migrator.migrated?(identity.account) do
+      true
+    else
+      not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
+        identity.provider_identifier =~ "@"
+    end
   end
 
   defp provider_email(%Identity{} = identity) do
@@ -435,7 +449,9 @@ defmodule Domain.Auth do
     Identity.Changeset.create_identity(actor, provider, attrs)
     |> Adapters.identity_changeset(provider)
     |> Repo.insert(
-      conflict_target: {:unsafe_fragment, "(account_id, provider_id, provider_identifier)"},
+      conflict_target:
+        {:unsafe_fragment,
+         "(account_id, provider_id, provider_identifier) WHERE provider_id IS NOT NULL"},
       on_conflict: {:replace, [:provider_state]},
       returning: true
     )
@@ -613,8 +629,9 @@ defmodule Domain.Auth do
   end
 
   @doc """
-  Revokes the Firezone token used by the given subject and,
-  if IdP was used for Sign In, revokes the IdP token too by redirecting user to IdP logout endpoint.
+  Revokes the Firezone token used by the given subject.
+  TODO: IDP REFACTOR
+  Can be removed after all accounts are migrated.
   """
   def sign_out(%Subject{} = subject, redirect_url) do
     {:ok, _num_deleted} = Tokens.delete_token_for(subject)
@@ -831,7 +848,6 @@ defmodule Domain.Auth do
   end
 
   def email_regex do
-    # Regex to check if string is in the shape of an email
-    ~r/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z0-9]+$/
+    ~r/^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
   end
 end

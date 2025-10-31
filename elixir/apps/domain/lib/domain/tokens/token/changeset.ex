@@ -9,7 +9,7 @@ defmodule Domain.Tokens.Token.Changeset do
 
   @create_attrs ~w[
     name
-    account_id identity_id actor_id relay_group_id gateway_group_id
+    account_id identity_id actor_id relay_group_id gateway_group_id auth_provider_id
     secret_fragment secret_nonce
     remaining_attempts
     created_by_user_agent created_by_remote_ip

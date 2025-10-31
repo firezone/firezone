@@ -10,8 +10,18 @@ defmodule Domain.Auth.Identity.Query do
     queryable
     |> with_assoc(:inner, :actor)
     |> where([actor: actor], is_nil(actor.disabled_at))
-    |> with_assoc(:inner, :provider)
-    |> where([provider: provider], is_nil(provider.disabled_at))
+    # Don't join providers; instead allow identities with no provider, or where an enabled provider exists.
+    |> where(
+      [identities: identities],
+      is_nil(identities.provider_id) or
+        exists(
+          from provider in Domain.Auth.Provider,
+            where:
+              provider.id == parent_as(:identities).provider_id and
+                is_nil(provider.disabled_at),
+            select: 1
+        )
+    )
   end
 
   def by_id(queryable, id)
@@ -39,6 +49,14 @@ defmodule Domain.Auth.Identity.Query do
   def by_provider_id(queryable, provider_id) do
     queryable
     |> where([identities: identities], identities.provider_id == ^provider_id)
+  end
+
+  def by_issuer(queryable, issuer) do
+    where(queryable, [identities: identities], identities.issuer == ^issuer)
+  end
+
+  def by_idp_id(queryable, idp_id) do
+    where(queryable, [identities: identities], identities.idp_id == ^idp_id)
   end
 
   def by_adapter(queryable, adapter) do

@@ -156,6 +156,9 @@ defmodule Domain.Repo.Changeset do
     end
   end
 
+  # TODO: IDP REFACTOR
+  # Add created_by_subject and updated_by_subject fields for all tables
+
   def put_subject_trail(changeset, field, :system) do
     changeset
     |> put_default_value(field, :system)
@@ -171,7 +174,10 @@ defmodule Domain.Repo.Changeset do
   def put_subject_trail(changeset, field, %Domain.Auth.Subject{identity: nil} = subject) do
     changeset
     |> put_default_value(field, :actor)
-    |> put_default_value(:"#{field}_subject", %{"name" => subject.actor.name, "email" => nil})
+    |> put_default_value(:"#{field}_subject", %{
+      "name" => subject.actor.name,
+      "email" => subject.actor.email
+    })
   end
 
   def put_subject_trail(changeset, field, %Domain.Auth.Subject{} = subject) do
@@ -179,7 +185,7 @@ defmodule Domain.Repo.Changeset do
     |> put_default_value(field, :identity)
     |> put_default_value(:"#{field}_subject", %{
       "name" => subject.actor.name,
-      "email" => subject.identity.email
+      "email" => subject.actor.email
     })
   end
 
@@ -225,6 +231,43 @@ defmodule Domain.Repo.Changeset do
       {:error, %{errors: errors}} ->
         {error, meta} = errors[:value]
         [{field, {error, meta ++ [validated_as: :list, at: index]}}]
+    end
+  end
+
+  def normalize_email(%Ecto.Changeset{} = changeset, field) do
+    update_change(changeset, field, fn
+      nil ->
+        nil
+
+      email when is_binary(email) ->
+        [local, domain] = String.split(email, "@", parts: 2)
+
+        # 1. Trim and downcase domain
+        local = String.trim(local)
+        domain = String.trim(domain) |> String.downcase()
+
+        # 2. Convert internationalized domains to punycode
+        case try_encode_domain(domain) do
+          {:ok, punycode_domain} ->
+            local <> "@" <> to_string(punycode_domain)
+
+          _error ->
+            add_error(changeset, field, "has an invalid domain")
+            email
+        end
+
+      other ->
+        other
+    end)
+  end
+
+  defp try_encode_domain(domain) do
+    charlist = String.to_charlist(domain)
+
+    try do
+      {:ok, :idna.encode(charlist, :uts46) |> to_string()}
+    catch
+      error -> error
     end
   end
 
@@ -567,6 +610,27 @@ defmodule Domain.Repo.Changeset do
     }
 
     {changeset, original_type}
+  end
+
+  def errors_to_string(%Ecto.Changeset{} = changeset, fields \\ :all) do
+    errors =
+      Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
+        Enum.reduce(opts, msg, fn {key, value}, acc ->
+          String.replace(acc, "%{#{key}}", to_string(value))
+        end)
+      end)
+
+    # Filter only requested fields (unless :all)
+    filtered_errors =
+      case fields do
+        :all -> errors
+        _ when is_list(fields) -> Map.take(errors, fields)
+      end
+
+    # Join all messages into a single string
+    Enum.map_join(filtered_errors, "\n", fn {field, messages} ->
+      "#{field}: #{Enum.join(messages, "; ")}"
+    end)
   end
 
   defp field_invalid?(%Ecto.Changeset{} = changeset, field) do

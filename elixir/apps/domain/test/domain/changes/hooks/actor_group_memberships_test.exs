@@ -61,7 +61,12 @@ defmodule Domain.Changes.Hooks.ActorGroupMembershipsTest do
 
       assert :ok == on_delete(0, old_data)
 
-      assert_receive %Change{op: :delete, old_struct: %Actors.Membership{} = membership, lsn: 0}
+      assert_receive %Change{
+        op: :delete,
+        old_struct: %Actors.Membership{} = membership,
+        lsn: 0
+      }
+
       assert membership.id == "00000000-0000-0000-0000-000000000000"
       assert membership.account_id == "00000000-0000-0000-0000-000000000001"
       assert membership.actor_id == "00000000-0000-0000-0000-000000000002"
