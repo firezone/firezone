@@ -131,19 +131,21 @@ impl TunDeviceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+    pub async fn set_ips(&mut self, ips: Vec<IpAddr>) -> Result<()> {
         let handle = &self.connection.handle;
         let index = tun_device_index(handle).await?;
 
-        let ips = handle
-            .address()
-            .get()
-            .set_link_index_filter(index)
-            .execute();
+        {
+            let ips = handle
+                .address()
+                .get()
+                .set_link_index_filter(index)
+                .execute();
 
-        ips.try_for_each(|ip| handle.address().del(ip).execute())
-            .await
-            .context("Failed to delete existing addresses")?;
+            ips.try_for_each(|ip| handle.address().del(ip).execute())
+                .await
+                .context("Failed to delete existing addresses")?;
+        }
 
         handle
             .link()
@@ -152,12 +154,24 @@ impl TunDeviceManager {
             .await
             .context("Failed to set default MTU")?;
 
-        let res_v4 = handle.address().add(index, ipv4.into(), 32).execute().await;
-        let res_v6 = handle
-            .address()
-            .add(index, ipv6.into(), 128)
-            .execute()
-            .await;
+        let mut ipv4_successful = false;
+        let mut ipv6_successful = false;
+
+        for ip in ips {
+            let prefix = match ip {
+                IpAddr::V4(_) => 32,
+                IpAddr::V6(_) => 128,
+            };
+
+            let res = handle.address().add(index, ip, prefix).execute().await;
+
+            if res.is_ok() {
+                match ip {
+                    IpAddr::V4(_) => ipv4_successful = true,
+                    IpAddr::V6(_) => ipv6_successful = true,
+                }
+            }
+        }
 
         handle
             .link()
@@ -166,7 +180,7 @@ impl TunDeviceManager {
             .await
             .context("Failed to bring up interface")?;
 
-        if res_v4.is_ok() {
+        if ipv4_successful {
             match install_rules([
                 make_rule(handle, FIREZONE_TABLE_USER, 100).v4(),
                 make_rule(handle, FIREZONE_TABLE_LINK_SCOPE, 200).v4(),
@@ -179,7 +193,7 @@ impl TunDeviceManager {
             }
         }
 
-        if res_v6.is_ok() {
+        if ipv6_successful {
             match install_rules([
                 make_rule(handle, FIREZONE_TABLE_USER, 100).v6(),
                 make_rule(handle, FIREZONE_TABLE_LINK_SCOPE, 200).v6(),
@@ -191,8 +205,6 @@ impl TunDeviceManager {
                 Err(e) => tracing::warn!("Failed to add IPv6 routing rules: {e}"),
             }
         }
-
-        res_v4.or(res_v6)?;
 
         Ok(())
     }

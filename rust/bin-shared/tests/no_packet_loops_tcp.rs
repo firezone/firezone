@@ -2,7 +2,7 @@
 
 use firezone_bin_shared::{TunDeviceManager, platform::tcp_socket_factory};
 use ip_network::Ipv4Network;
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
 // Starts up a WinTun device, claims all routes, and checks if we can still make
@@ -17,7 +17,10 @@ async fn no_packet_loops_tcp() {
 
     let mut device_manager = TunDeviceManager::new(1280).unwrap();
     let _tun = device_manager.make_tun().unwrap();
-    device_manager.set_ips(ipv4, ipv6).await.unwrap();
+    device_manager
+        .set_ips(vec![IpAddr::V4(ipv4), IpAddr::V6(ipv6)])
+        .await
+        .unwrap();
 
     // Configure `0.0.0.0/0` route.
     device_manager

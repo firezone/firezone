@@ -26,6 +26,7 @@ use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::{
     io::{self, Write},
     mem,
+    net::IpAddr,
     pin::pin,
     sync::Arc,
     time::Duration,
@@ -492,8 +493,10 @@ impl<'a> Handler<'a> {
             }
             client_shared::Event::TunInterfaceUpdated(config) => {
                 self.session.transition_to_connected()?;
+                let mut ips = vec![IpAddr::V4(config.ip.v4), IpAddr::V6(config.ip.v6)];
+                ips.extend(config.dns_sentinel_ips());
 
-                self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
+                self.tun_device.set_ips(ips).await?;
                 self.dns_controller
                     .set_dns(config.dns_sentinel_ips(), config.search_domain)
                     .await?;

@@ -493,7 +493,7 @@ impl Eventloop {
                 }
 
                 self.tun_device_manager
-                    .set_ips(interface.ipv4, interface.ipv6)
+                    .set_ips(vec![IpAddr::V4(interface.ipv4), IpAddr::V6(interface.ipv6)])
                     .await
                     .context("Failed to set TUN interface IPs")?;
                 self.tun_device_manager

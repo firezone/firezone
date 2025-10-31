@@ -27,7 +27,10 @@ async fn smoke() {
 
     let mut device_manager = TunDeviceManager::new(1280).unwrap();
     let tun = device_manager.make_tun().unwrap();
-    device_manager.set_ips(ipv4, ipv6).await.unwrap();
+    device_manager
+        .set_ips(vec![IpAddr::V4(ipv4), IpAddr::V6(ipv6)])
+        .await
+        .unwrap();
     device_manager
         .set_routes(
             vec![Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24).unwrap()],

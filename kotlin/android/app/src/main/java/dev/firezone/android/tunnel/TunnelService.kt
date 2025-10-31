@@ -160,6 +160,7 @@ class TunnelService : VpnService() {
 
                 tunnelDnsAddresses.forEach { dns ->
                     addDnsServer(dns)
+                    addAddress(dns, 32)
                 }
 
                 tunnelSearchDomain?.let {

@@ -21,6 +21,7 @@ use phoenix_channel::get_user_agent;
 use phoenix_channel::{DeviceInfo, LoginUrl};
 use secrecy::{SecretBox, SecretString};
 use std::{
+    net::IpAddr,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -408,7 +409,10 @@ fn try_main() -> Result<()> {
                     dns_controller.flush()?;
                 }
                 client_shared::Event::TunInterfaceUpdated(config) => {
-                    tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
+                    let mut ips = vec![IpAddr::V4(config.ip.v4), IpAddr::V6(config.ip.v6)];
+                    ips.extend(config.dns_sentinel_ips());
+
+                    tun_device.set_ips(ips).await?;
                     dns_controller.set_dns(config.dns_sentinel_ips(), config.search_domain).await?;
                     tun_device.set_routes(config.ipv4_routes, config.ipv6_routes).await?;
 

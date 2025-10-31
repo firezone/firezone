@@ -60,7 +60,7 @@ pub(crate) const IPV6_RESOURCES: Ipv6Network = match Ipv6Network::new(
 const DNS_PORT: u16 = 53;
 
 pub(crate) const DNS_SENTINELS_V4: Ipv4Network =
-    match Ipv4Network::new(Ipv4Addr::new(127, FI, RE, 0), 24) {
+    match Ipv4Network::new(Ipv4Addr::new(100, 100, 111, 0), 24) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };

@@ -8,6 +8,7 @@ use ip_network::Ipv4Network;
 use ip_packet::Ecn;
 use socket_factory::DatagramOut;
 use socket_factory::SocketFactory as _;
+use std::net::IpAddr;
 use std::{
     net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4},
     time::Duration,
@@ -26,7 +27,10 @@ async fn no_packet_loops_udp() {
 
     let mut device_manager = TunDeviceManager::new(1280).unwrap();
     let _tun = device_manager.make_tun().unwrap();
-    device_manager.set_ips(ipv4, ipv6).await.unwrap();
+    device_manager
+        .set_ips(vec![IpAddr::V4(ipv4), IpAddr::V6(ipv6)])
+        .await
+        .unwrap();
 
     // Configure `0.0.0.0/0` route.
     device_manager

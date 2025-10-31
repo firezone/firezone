@@ -80,7 +80,7 @@ impl TunDeviceManager {
     }
 
     #[tracing::instrument(level = "trace", skip(self))]
-    pub async fn set_ips(&mut self, ipv4: Ipv4Addr, ipv6: Ipv6Addr) -> Result<()> {
+    pub async fn set_ips(&mut self, ips: Vec<IpAddr>) -> Result<()> {
         let luid = self
             .luid
             .context("Cannot set IPs prior to creating an adapter")?;
@@ -92,10 +92,11 @@ impl TunDeviceManager {
             Value: unsafe { luid.Value },
         };
 
-        tracing::debug!(%ipv4, %ipv6, "Setting tunnel interface IPs");
+        tracing::debug!(?ips, "Setting tunnel interface IPs");
 
-        try_set_ip(luid, IpAddr::V4(ipv4)).context("Failed to set IPv4 address")?;
-        try_set_ip(luid, IpAddr::V6(ipv6)).context("Failed to set IPv6 address")?;
+        for ip in ips {
+            try_set_ip(luid, ip).context("Failed to set IP address")?
+        }
 
         Ok(())
     }
