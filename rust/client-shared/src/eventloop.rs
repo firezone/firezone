@@ -151,6 +151,10 @@ impl Eventloop {
                     return Ok(());
                 }
                 Err(e) => {
+                    if !e.is_authentication_error() {
+                        tracing::error!("Fatal tunnel error: {e:#}");
+                    }
+
                     // Ignore error from shutdown to not obscure the original error.
                     let _ = self.shut_down_tunnel().await;
 
