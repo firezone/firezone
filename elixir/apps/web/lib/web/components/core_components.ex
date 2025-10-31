@@ -1044,13 +1044,18 @@ defmodule Web.CoreComponents do
   Renders a popover element with title and content.
   """
   attr :placement, :string, default: "top"
+  attr :trigger, :string, default: "hover"
   slot :target, required: true
   slot :content, required: true
 
   def popover(assigns) do
     # Any id will do
     target_id = "popover-#{System.unique_integer([:positive, :monotonic])}"
-    assigns = assign(assigns, :target_id, target_id)
+
+    assigns =
+      assigns
+      |> assign(:target_id, target_id)
+      |> assign_new(:trigger, fn -> "hover" end)
 
     ~H"""
     <span
@@ -1058,6 +1063,7 @@ defmodule Web.CoreComponents do
       id={@target_id <> "-trigger"}
       data-popover-target-id={@target_id}
       data-popover-placement={@placement}
+      data-popover-trigger={@trigger}
     >
       {render_slot(@target)}
     </span>
@@ -1066,7 +1072,7 @@ defmodule Web.CoreComponents do
       absolute z-10 invisible inline-block
       text-sm text-neutral-500 transition-opacity
       duration-50 bg-white border border-neutral-200
-      rounded shadow-sm opacity-0
+      rounded-lg shadow-sm opacity-0
       ]}>
       <div class="px-3 py-2">
         {render_slot(@content)}

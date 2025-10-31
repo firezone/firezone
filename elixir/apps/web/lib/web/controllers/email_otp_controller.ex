@@ -4,7 +4,14 @@ defmodule Web.EmailOTPController do
   """
   use Web, :controller
 
-  alias Domain.{Accounts, Auth, EmailOTP, Identities, Tokens}
+  alias Domain.{
+    Accounts,
+    Auth,
+    EmailOTP,
+    Repo,
+    Tokens
+  }
+
   alias Web.Session.Redirector
 
   require Logger
@@ -37,7 +44,7 @@ defmodule Web.EmailOTPController do
     idp_id = email_params["idp_id"]
 
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, _provider} <- EmailOTP.fetch_auth_provider_by_id(account, auth_provider_id) do
+         %EmailOTP.AuthProvider{} <- fetch_provider(account, auth_provider_id) do
       conn = maybe_send_email_otp(conn, account, idp_id, params, auth_provider_id)
 
       signed_idp_id =
@@ -81,13 +88,8 @@ defmodule Web.EmailOTPController do
          {fragment, idp_id, _stored_params} <- :erlang.binary_to_term(cookie_binary),
          conn = delete_resp_cookie(conn, cookie_key),
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, _provider} <- EmailOTP.fetch_auth_provider_by_id(account, auth_provider_id),
-         {:ok, identity} <-
-           Identities.fetch_identity_by_idp_fields(
-             account,
-             issuer,
-             idp_id
-           ),
+         %EmailOTP.AuthProvider{} <- fetch_provider(account, auth_provider_id),
+         %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
          :ok <- check_admin(identity, context_type),
          secret = String.downcase(nonce) <> fragment,
          {:ok, identity, _expires_at} <- verify_secret(identity, secret, conn),
@@ -113,12 +115,7 @@ defmodule Web.EmailOTPController do
     {fragment, error} =
       Web.Auth.execute_with_constant_time(
         fn ->
-          with {:ok, identity} <-
-                 Identities.fetch_identity_by_idp_fields(
-                   account,
-                   issuer,
-                   idp_id
-                 ),
+          with %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
                {:ok, identity} <-
                  Domain.Auth.Adapters.Email.request_sign_in_token(identity, context),
                {:ok, fragment} <- send_email_otp(conn, identity, params) do
@@ -175,6 +172,30 @@ defmodule Web.EmailOTPController do
       _ ->
         conn
     end
+  end
+
+  defp fetch_provider(account, id) do
+    import Ecto.Query
+
+    # Fetch the email OTP auth provider by account and id, ensuring it is not disabled
+    from(p in EmailOTP.AuthProvider,
+      where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
+    )
+    |> Repo.one()
+  end
+
+  defp fetch_identity(account, issuer, idp_id) do
+    import Ecto.Query
+
+    account_id = account.id
+
+    # Fetch identity by idp_id, issuer, and account_id, ensuring the associated actor is not disabled
+    from(i in Auth.Identity,
+      where: i.idp_id == ^idp_id and i.issuer == ^issuer and i.account_id == ^account_id
+    )
+    |> join(:inner, [i], a in assoc(i, :actor))
+    |> where([_i, a], is_nil(a.disabled_at))
+    |> Repo.one()
   end
 
   defp send_email_otp(conn, identity, params) do

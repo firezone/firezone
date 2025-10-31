@@ -134,9 +134,12 @@ Hooks.Popover = {
       $triggerEl.getAttribute("data-popover-target-id")
     );
 
+    const placement = $triggerEl.getAttribute("data-popover-placement") || "top";
+    const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+
     const options = {
-      placement: "top",
-      triggerType: "hover",
+      placement: placement,
+      triggerType: triggerType,
       offset: 5,
     };
 

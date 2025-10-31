@@ -15,6 +15,8 @@ defmodule Domain do
     quote do
       use Ecto.Schema
       import Domain, only: [subject_trail: 1]
+      import Ecto.Changeset
+      import Domain.Repo.Changeset
 
       @primary_key {:id, :binary_id, autogenerate: true}
       @foreign_key_type :binary_id

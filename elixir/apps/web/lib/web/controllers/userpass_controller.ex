@@ -4,7 +4,14 @@ defmodule Web.UserpassController do
   """
   use Web, :controller
 
-  alias Domain.{Accounts, Auth, Identities, Tokens, Userpass}
+  alias Domain.{
+    Accounts,
+    Auth,
+    Repo,
+    Tokens,
+    Userpass
+  }
+
   alias Web.Session.Redirector
 
   require Logger
@@ -28,9 +35,8 @@ defmodule Web.UserpassController do
     context_type = context_type(params)
 
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, _provider} <- Userpass.fetch_auth_provider_by_id(account, auth_provider_id),
-         {:ok, identity} <-
-           Identities.fetch_identity_by_idp_fields(account, issuer, idp_id),
+         %Userpass.AuthProvider{} <- fetch_provider(account, auth_provider_id),
+         %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
          :ok <- check_admin(identity, context_type),
          {:ok, identity, _expires_at} <- verify_password(identity, password, conn),
          {:ok, token} <- create_token(conn, identity, params) do
@@ -104,6 +110,30 @@ defmodule Web.UserpassController do
       token,
       params["state"]
     )
+  end
+
+  defp fetch_provider(account, id) do
+    import Ecto.Query
+
+    # Fetch the email OTP auth provider by account and id, ensuring it is not disabled
+    from(p in Userpass.AuthProvider,
+      where: p.account_id == ^account.id and p.id == ^id and not p.is_disabled
+    )
+    |> Repo.one()
+  end
+
+  defp fetch_identity(account, issuer, idp_id) do
+    import Ecto.Query
+
+    account_id = account.id
+
+    # Fetch identity by idp_id, issuer, and account_id, ensuring the associated actor is not disabled
+    from(i in Auth.Identity,
+      where: i.idp_id == ^idp_id and i.issuer == ^issuer and i.account_id == ^account_id
+    )
+    |> join(:inner, [i], a in assoc(i, :actor))
+    |> where([_i, a], is_nil(a.disabled_at))
+    |> Repo.one()
   end
 
   defp handle_error(conn, {:error, :not_found}, params) do

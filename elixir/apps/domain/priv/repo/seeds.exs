@@ -6,13 +6,19 @@ defmodule Domain.Repo.Seeds do
     Repo,
     Accounts,
     Auth,
+    AuthProviders,
     Actors,
     Relays,
     Gateways,
     Resources,
     Policies,
     Flows,
-    Tokens
+    Tokens,
+    EmailOTP,
+    Userpass,
+    OIDC,
+    Google,
+    Entra
   }
 
   # Populate these in your .env
@@ -26,6 +32,32 @@ defmodule Domain.Repo.Seeds do
 
   defp entra_tenant_id do
     System.get_env("ENTRA_TENANT_ID")
+  end
+
+  # Helper function to create auth providers with the new structure
+  defp create_auth_provider(provider_module, attrs, subject) do
+    provider_id = Ecto.UUID.generate()
+
+    # First create the base auth_provider record using Repo directly
+    {:ok, _base_provider} =
+      Repo.insert(%AuthProviders.AuthProvider{
+        id: provider_id,
+        account_id: subject.account.id
+      })
+
+    # Then create the provider-specific record using Repo directly (seeds don't need authorization)
+    attrs_with_id =
+      attrs
+      |> Map.put(:id, provider_id)
+      |> Map.put(:account_id, subject.account.id)
+      |> Map.put(:created_by, :system)
+
+    changeset =
+      struct(provider_module, attrs_with_id)
+      |> Ecto.Changeset.change()
+      |> provider_module.changeset()
+
+    Repo.insert(changeset)
   end
 
   def seed do
@@ -154,13 +186,18 @@ defmodule Domain.Repo.Seeds do
         }
 
         {:ok, email_otp} =
-          Domain.EmailOTP.create_auth_provider(%{name: "Email OTP"}, system_subject)
+          create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, system_subject)
 
         {:ok, userpass} =
-          Domain.Userpass.create_auth_provider(%{name: "Username & Password"}, system_subject)
+          create_auth_provider(
+            Userpass.AuthProvider,
+            %{name: "Username & Password"},
+            system_subject
+          )
 
         {:ok, oidc} =
-          Domain.OIDC.create_auth_provider(
+          create_auth_provider(
+            OIDC.AuthProvider,
             %{
               is_verified: true,
               name: "OIDC",
@@ -174,7 +211,8 @@ defmodule Domain.Repo.Seeds do
           )
 
         {:ok, google} =
-          Domain.Google.create_auth_provider(
+          create_auth_provider(
+            Google.AuthProvider,
             %{
               is_verified: true,
               name: "Google",
@@ -185,7 +223,8 @@ defmodule Domain.Repo.Seeds do
           )
 
         {:ok, entra} =
-          Domain.Entra.create_auth_provider(
+          create_auth_provider(
+            Entra.AuthProvider,
             %{
               is_verified: true,
               name: "Entra",

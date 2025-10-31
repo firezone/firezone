@@ -10,9 +10,12 @@ defmodule Domain.Migrator do
   alias Domain.{
     Auth,
     Accounts,
+    AuthProviders,
     EmailOTP,
+    Userpass,
     PubSub,
-    Repo
+    Repo,
+    Safe
   }
 
   def legacy_google_providers(%Accounts.Account{} = account) do
@@ -1188,7 +1191,10 @@ defmodule Domain.Migrator do
     # Process each legacy provider
     Enum.flat_map(legacy_providers, fn provider ->
       # Extract hosted domain from adapter_state
-      hosted_domain = get_in(provider.adapter_state, ["claims", "hd"])
+      issuer = get_in(provider.adapter_state, ["claims", "iss"])
+      client_id = get_in(provider.adapter_config, ["client_id"])
+      client_secret = get_in(provider.adapter_config, ["client_secret"])
+      discovery_document_uri = get_in(provider.adapter_config, ["discovery_document_uri"])
 
       # Create the new Google auth provider
       try do
@@ -1201,12 +1207,14 @@ defmodule Domain.Migrator do
 
         # Then create the Google-specific record
         {:ok, _google_provider} =
-          Repo.insert(%Domain.Google.AuthProvider{
+          Repo.insert(%Domain.OIDC.AuthProvider{
             id: provider.id,
             account_id: subject.account.id,
             name: provider.name,
-            issuer: "https://accounts.google.com",
-            hosted_domain: hosted_domain,
+            issuer: issuer,
+            client_id: client_id,
+            client_secret: client_secret,
+            discovery_document_uri: discovery_document_uri,
             is_disabled: not is_nil(provider.disabled_at),
             is_default: not is_nil(provider.assigned_default_at),
             context: :clients_and_portal,
@@ -1220,7 +1228,6 @@ defmodule Domain.Migrator do
             %{
               provider_id: provider.id,
               provider_name: provider.name,
-              hosted_domain: hosted_domain,
               error: Exception.message(e)
             }
           ]
@@ -1247,7 +1254,9 @@ defmodule Domain.Migrator do
     Enum.flat_map(legacy_providers, fn provider ->
       # Extract issuer and tenant_id from adapter_state
       issuer = get_in(provider.adapter_state, ["claims", "iss"])
-      tenant_id = get_in(provider.adapter_state, ["claims", "tid"])
+      client_id = get_in(provider.adapter_config, ["client_id"])
+      client_secret = get_in(provider.adapter_config, ["client_secret"])
+      discovery_document_uri = get_in(provider.adapter_config, ["discovery_document_uri"])
 
       # Create the new Entra auth provider
       try do
@@ -1260,12 +1269,14 @@ defmodule Domain.Migrator do
 
         # Then create the Entra-specific record
         {:ok, _entra_provider} =
-          Repo.insert(%Domain.Entra.AuthProvider{
+          Repo.insert(%Domain.OIDC.AuthProvider{
             id: provider.id,
             account_id: subject.account.id,
             name: provider.name,
             issuer: issuer,
-            tenant_id: tenant_id,
+            client_id: client_id,
+            client_secret: client_secret,
+            discovery_document_uri: discovery_document_uri,
             is_disabled: not is_nil(provider.disabled_at),
             is_default: not is_nil(provider.assigned_default_at),
             context: :clients_and_portal,
@@ -1280,7 +1291,6 @@ defmodule Domain.Migrator do
               provider_id: provider.id,
               provider_name: provider.name,
               issuer: issuer,
-              tenant_id: tenant_id,
               error: Exception.message(e)
             }
           ]
@@ -1368,12 +1378,26 @@ defmodule Domain.Migrator do
   defp migrate_email_provider(%Auth.Subject{} = subject) do
     # Email provider
     if legacy_email_provider = legacy_email_otp_provider(subject.account) do
-      attrs = %{
-        name: "Email OTP",
-        is_disabled: not is_nil(legacy_email_provider.disabled_at)
-      }
+      # First create the base auth_provider record using Repo directly
+      {:ok, _base_provider} =
+        Repo.insert(%AuthProviders.AuthProvider{
+          id: legacy_email_provider.id,
+          account_id: subject.account.id
+        })
 
-      case EmailOTP.create_auth_provider(attrs, subject) do
+      # Then create the EmailOTP-specific record using Safe
+      changeset =
+        %EmailOTP.AuthProvider{
+          id: legacy_email_provider.id,
+          account_id: subject.account.id,
+          name: "Email OTP",
+          context: :clients_and_portal,
+          is_disabled: not is_nil(legacy_email_provider.disabled_at)
+        }
+        |> Ecto.Changeset.change()
+        |> EmailOTP.AuthProvider.changeset()
+
+      case Safe.insert(changeset, subject) do
         {:ok, _provider} -> :ok
         {:error, reason} -> raise "Failed to create email provider: #{inspect(reason)}"
       end
@@ -1383,12 +1407,26 @@ defmodule Domain.Migrator do
   defp migrate_userpass_provider(%Auth.Subject{} = subject) do
     # Userpass provider
     if legacy_userpass_provider = legacy_userpass_provider(subject.account) do
-      attrs = %{
-        name: "Username & Password",
-        is_disabled: not is_nil(legacy_userpass_provider.disabled_at)
-      }
+      # First create the base auth_provider record using Repo directly
+      {:ok, _base_provider} =
+        Repo.insert(%AuthProviders.AuthProvider{
+          id: legacy_userpass_provider.id,
+          account_id: subject.account.id
+        })
 
-      case Domain.Userpass.create_auth_provider(attrs, subject) do
+      # Then create the Userpass-specific record using Safe
+      changeset =
+        %Userpass.AuthProvider{
+          id: legacy_userpass_provider.id,
+          account_id: subject.account.id,
+          name: "Username & Password",
+          context: :clients_and_portal,
+          is_disabled: not is_nil(legacy_userpass_provider.disabled_at)
+        }
+        |> Ecto.Changeset.change()
+        |> Userpass.AuthProvider.changeset()
+
+      case Safe.insert(changeset, subject) do
         {:ok, _provider} -> :ok
         {:error, reason} -> raise "Failed to create userpass provider: #{inspect(reason)}"
       end
@@ -1408,9 +1446,7 @@ defmodule Domain.Migrator do
   end
 
   def migrated?(%Accounts.Account{} = account) do
-    case EmailOTP.fetch_auth_provider_by_account(account) do
-      {:ok, _auth_provider} -> true
-      {:error, :not_found} -> false
-    end
+    from(p in EmailOTP.AuthProvider, where: p.account_id == ^account.id)
+    |> Repo.exists?()
   end
 end

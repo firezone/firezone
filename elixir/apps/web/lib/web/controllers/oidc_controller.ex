@@ -4,13 +4,10 @@ defmodule Web.OIDCController do
   alias Domain.{
     Accounts,
     Actors,
+    AuthProviders,
     Auth,
-    Entra,
-    Google,
-    Identities,
-    Okta,
-    OIDC,
-    Tokens
+    Tokens,
+    Repo
   }
 
   alias Web.Session.Redirector
@@ -35,7 +32,7 @@ defmodule Web.OIDCController do
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         {:ok, provider} <- fetch_auth_provider(account, params) do
+         provider when not is_nil(provider) <- fetch_provider(account, params) do
       provider_redirect(conn, account, provider, params)
     else
       error -> handle_error(conn, error, params)
@@ -67,13 +64,13 @@ defmodule Web.OIDCController do
          conn = delete_resp_cookie(conn, @cookie_key),
          true = Plug.Crypto.secure_compare(cookie["state"], state),
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(cookie["account_id"]),
-         {:ok, provider} <- fetch_auth_provider(account, cookie),
+         provider when not is_nil(provider) <- fetch_provider(account, cookie),
          :ok <- validate_context(provider, context_type),
          {:ok, tokens} <-
            Web.OIDC.exchange_code(provider, code, cookie["verifier"]),
          {:ok, claims} <- Web.OIDC.verify_token(provider, tokens["id_token"]),
          userinfo = fetch_userinfo(provider, tokens["access_token"]),
-         {:ok, identity} <- upsert_identity(account, provider, claims, userinfo),
+         {:ok, identity} <- upsert_identity(account, claims, userinfo),
          :ok <- check_admin(identity, context_type),
          {:ok, token} <- create_token(conn, identity, provider, cookie["params"]) do
       signed_in(
@@ -119,23 +116,22 @@ defmodule Web.OIDCController do
     end
   end
 
-  defp fetch_auth_provider(account, %{"auth_provider_type" => "google"} = params) do
-    Google.fetch_auth_provider_by_id(account, params["auth_provider_id"])
+  defp fetch_provider(
+         account,
+         %{"auth_provider_type" => type, "auth_provider_id" => id}
+       ) do
+    account_id = account.id
+    schema = AuthProviders.AuthProvider.module!(type)
+
+    import Ecto.Query
+
+    from(p in schema,
+      where: p.account_id == ^account_id and p.id == ^id and p.is_disabled == false
+    )
+    |> Repo.one()
   end
 
-  defp fetch_auth_provider(account, %{"auth_provider_type" => "okta"} = params) do
-    Okta.fetch_auth_provider_by_id(account, params["auth_provider_id"])
-  end
-
-  defp fetch_auth_provider(account, %{"auth_provider_type" => "entra"} = params) do
-    Entra.fetch_auth_provider_by_id(account, params["auth_provider_id"])
-  end
-
-  defp fetch_auth_provider(account, %{"auth_provider_type" => "oidc"} = params) do
-    OIDC.fetch_auth_provider_by_id(account, params["auth_provider_id"])
-  end
-
-  defp fetch_auth_provider(_account, _params) do
+  defp fetch_provider(_account, _params) do
     {:error, :invalid_provider}
   end
 
@@ -147,102 +143,105 @@ defmodule Web.OIDCController do
   end
 
   # Entra
-  defp upsert_identity(
-         account,
-         %Entra.AuthProvider{issuer: issuer},
-         %{
-           "iss" => issuer,
-           "oid" => idp_id
-         } = claims,
-         userinfo
-       ) do
+  defp upsert_identity(account, claims, userinfo) do
     email = claims["email"]
-    email_verified = claims["email_verified"] == true
-    profile_attrs = extract_profile_attrs(claims, userinfo)
-
-    Identities.upsert_identity_by_idp_fields(
-      account,
-      email,
-      email_verified,
-      issuer,
-      idp_id,
-      profile_attrs
-    )
-  end
-
-  # Google
-  defp upsert_identity(
-         account,
-         %Google.AuthProvider{issuer: issuer},
-         %{
-           "iss" => issuer,
-           "sub" => idp_id
-         } = claims,
-         userinfo
-       ) do
-    email = claims["email"]
-    email_verified = claims["email_verified"] == true
-    profile_attrs = extract_profile_attrs(claims, userinfo)
-
-    Identities.upsert_identity_by_idp_fields(
-      account,
-      email,
-      email_verified,
-      issuer,
-      idp_id,
-      profile_attrs
-    )
-  end
-
-  # Okta
-  defp upsert_identity(
-         account,
-         %Okta.AuthProvider{issuer: issuer},
-         %{
-           "iss" => issuer,
-           "sub" => idp_id
-         } = claims,
-         userinfo
-       ) do
-    email = claims["email"]
-    email_verified = claims["email_verified"] == true
-    profile_attrs = extract_profile_attrs(claims, userinfo)
-
-    Identities.upsert_identity_by_idp_fields(
-      account,
-      email,
-      email_verified,
-      issuer,
-      idp_id,
-      profile_attrs
-    )
-  end
-
-  # Generic OIDC
-  defp upsert_identity(
-         account,
-         %OIDC.AuthProvider{issuer: issuer},
-         %{"iss" => issuer} = claims,
-         userinfo
-       ) do
-    # Prefer "oid" claim (Microsoft Entra), fall back to "sub"
     idp_id = claims["oid"] || claims["sub"]
+    issuer = claims["iss"]
+    email_verified = claims["email_verified"] == true
+    profile_attrs = extract_profile_attrs(claims, userinfo)
 
-    if idp_id do
-      email = claims["email"]
-      email_verified = claims["email_verified"] == true
-      profile_attrs = extract_profile_attrs(claims, userinfo)
+    # Validate attributes first
+    attrs =
+      profile_attrs
+      |> Map.put("account_id", account.id)
+      |> Map.put("issuer", issuer)
+      |> Map.put("idp_id", idp_id)
 
-      Identities.upsert_identity_by_idp_fields(
-        account,
-        email,
-        email_verified,
-        issuer,
-        idp_id,
-        profile_attrs
-      )
+    with %{valid?: true} <- validate_upsert_attrs(attrs) do
+      upsert_identity_query(account.id, email, email_verified, issuer, idp_id, profile_attrs)
     else
-      {:error, :missing_identifier}
+      changeset -> {:error, changeset}
+    end
+  end
+
+  defp validate_upsert_attrs(attrs) do
+    import Ecto.Changeset
+
+    idp_fields = ~w[
+      issuer
+      idp_id
+      name
+      given_name
+      family_name
+      middle_name
+      nickname
+      preferred_username
+      profile
+      picture
+      email
+    ]a
+
+    %Auth.Identity{}
+    |> cast(attrs, idp_fields ++ ~w[account_id actor_id]a)
+    |> validate_required(~w[issuer idp_id name account_id]a)
+    |> Auth.Identity.Changeset.changeset()
+  end
+
+  defp upsert_identity_query(account_id, email, email_verified, issuer, idp_id, profile_attrs) do
+    profile_fields =
+      ~w[name given_name family_name middle_name nickname preferred_username profile picture]
+
+    profile_values = Enum.map(profile_fields, &Map.get(profile_attrs, &1))
+    update_set = Enum.map_join(profile_fields, ", ", &"#{&1} = EXCLUDED.#{&1}")
+    insert_fields = Enum.join(profile_fields, ", ")
+    value_placeholders = Enum.map_join(6..(5 + length(profile_fields)), ", ", &"$#{&1}")
+
+    query = """
+    WITH actor_lookup AS (
+      SELECT id FROM actors
+      WHERE account_id = $1 AND email = $2 AND disabled_at IS NULL AND $3 = true
+      LIMIT 1
+    ),
+    existing_identity AS (
+      SELECT ai.actor_id
+      FROM auth_identities ai
+      JOIN actors a ON a.id = ai.actor_id
+      WHERE ai.account_id = $1 AND ai.issuer = $4 AND ai.idp_id = $5
+        AND a.disabled_at IS NULL
+      LIMIT 1
+    )
+    INSERT INTO auth_identities (
+      id, account_id, issuer, idp_id, actor_id,
+      #{insert_fields},
+      inserted_at, created_by, created_by_subject
+    )
+    SELECT uuid_generate_v4(), $1, $4, $5,
+           COALESCE(actor_lookup.id, existing_identity.actor_id),
+           #{value_placeholders}, $14, $15,
+           jsonb_build_object('name', 'System', 'email', null)
+    FROM (SELECT 1) AS dummy
+    LEFT JOIN actor_lookup ON true
+    LEFT JOIN existing_identity ON true
+    WHERE actor_lookup.id IS NOT NULL OR existing_identity.actor_id IS NOT NULL
+    ON CONFLICT (account_id, issuer, idp_id) WHERE issuer IS NOT NULL OR idp_id IS NOT NULL
+    DO UPDATE SET #{update_set}
+    RETURNING *
+    """
+
+    params =
+      [Ecto.UUID.dump!(account_id), email, email_verified, issuer, idp_id] ++
+        profile_values ++ [DateTime.utc_now(), "system"]
+
+    case Repo.query(query, params) do
+      {:ok, %{rows: [row], columns: cols}} ->
+        identity = Repo.load(Auth.Identity, {cols, row})
+        {:ok, Repo.preload(identity, [:actor, :account])}
+
+      {:ok, %{rows: []}} ->
+        {:error, :actor_not_found}
+
+      {:error, _} = error ->
+        error
     end
   end
 

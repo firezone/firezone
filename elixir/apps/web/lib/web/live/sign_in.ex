@@ -4,6 +4,7 @@ defmodule Web.SignIn do
   alias Domain.{
     Auth,
     Accounts,
+    Repo,
     Google,
     EmailOTP,
     Entra,
@@ -34,12 +35,12 @@ defmodule Web.SignIn do
         page_title: "Sign In",
         account: account,
         params: Web.Auth.take_sign_in_params(params),
-        google_auth_providers: google_auth_providers(account),
-        okta_auth_providers: okta_auth_providers(account),
-        entra_auth_providers: entra_auth_providers(account),
-        oidc_auth_providers: oidc_auth_providers(account),
-        email_otp_auth_provider: email_otp_auth_provider(account),
-        userpass_auth_provider: userpass_auth_provider(account)
+        google_auth_providers: auth_providers(account, Google.AuthProvider),
+        okta_auth_providers: auth_providers(account, Okta.AuthProvider),
+        entra_auth_providers: auth_providers(account, Entra.AuthProvider),
+        oidc_auth_providers: auth_providers(account, OIDC.AuthProvider),
+        email_otp_auth_provider: auth_providers(account, EmailOTP.AuthProvider),
+        userpass_auth_provider: auth_providers(account, Userpass.AuthProvider)
       )
 
     {:ok, socket}
@@ -528,33 +529,15 @@ defmodule Web.SignIn do
     Map.get(providers_by_adapter, adapter, []) != []
   end
 
-  defp google_auth_providers(account) do
-    Google.all_enabled_auth_providers_for_account!(account)
-  end
+  defp auth_providers(account, module) do
+    import Ecto.Query
 
-  defp okta_auth_providers(account) do
-    Okta.all_enabled_auth_providers_for_account!(account)
-  end
+    queryable = from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
 
-  defp entra_auth_providers(account) do
-    Entra.all_enabled_auth_providers_for_account!(account)
-  end
-
-  defp oidc_auth_providers(account) do
-    OIDC.all_enabled_auth_providers_for_account!(account)
-  end
-
-  defp email_otp_auth_provider(account) do
-    case EmailOTP.fetch_auth_provider_by_account(account) do
-      {:ok, provider} -> provider
-      {:error, :not_found} -> nil
-    end
-  end
-
-  defp userpass_auth_provider(account) do
-    case Userpass.fetch_auth_provider_by_account(account) do
-      {:ok, provider} -> provider
-      {:error, :not_found} -> nil
+    if module in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
+      Repo.one(queryable)
+    else
+      Repo.all(queryable)
     end
   end
 end
