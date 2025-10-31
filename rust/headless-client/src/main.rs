@@ -188,7 +188,7 @@ fn main() {
 fn try_main() -> Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Calling `install_default` only once per process should always succeed");
+        .map_err(|_| anyhow!("Failed to install default crypto provider"))?;
 
     let cli = Cli::parse();
 

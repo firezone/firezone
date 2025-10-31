@@ -49,36 +49,23 @@ where
     const RECENT_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
     pub(crate) fn handle_timeout(&mut self, events: &mut VecDeque<Event<TId>>, now: Instant) {
-        self.initial.retain(|id, conn| {
-            if conn.is_failed {
-                events.push_back(Event::ConnectionFailed(*id));
-                return false;
+        for (id, _) in self.initial.extract_if(.., |_, conn| conn.is_failed) {
+            events.push_back(Event::ConnectionFailed(id));
+        }
+
+        for (id, conn) in self.established.extract_if(.., |_, conn| conn.is_failed()) {
+            events.push_back(Event::ConnectionFailed(id));
+
+            for (index, _) in self
+                .established_by_wireguard_session_index
+                .extract_if(.., |_, c| *c == id)
+            {
+                self.disconnected_session_indices.insert(index, now);
             }
-
-            true
-        });
-
-        self.established.retain(|id, conn| {
-            if conn.is_failed() {
-                events.push_back(Event::ConnectionFailed(*id));
-                self.established_by_wireguard_session_index
-                    .retain(|index, c| {
-                        if c == id {
-                            self.disconnected_session_indices.insert(*index, now);
-
-                            return false;
-                        }
-
-                        true
-                    });
-                self.disconnected_public_keys
-                    .insert(conn.tunnel.remote_static_public().to_bytes(), now);
-                self.disconnected_ids.insert(*id, now);
-                return false;
-            }
-
-            true
-        });
+            self.disconnected_public_keys
+                .insert(conn.tunnel.remote_static_public().to_bytes(), now);
+            self.disconnected_ids.insert(id, now);
+        }
 
         self.disconnected_ids
             .retain(|_, v| now.duration_since(*v) < Self::RECENT_DISCONNECT_TIMEOUT);

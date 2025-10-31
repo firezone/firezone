@@ -174,17 +174,10 @@ impl ClientOnGateway {
         let cid = self.id;
         let mut any_expired = false;
 
-        // TODO: Replace with `extract_if` once we are on Rust 1.91
-        self.resources.retain(|rid, r| {
-            if r.is_allowed(&now) {
-                return true;
-            }
-
+        for (rid, _) in self.resources.extract_if(.., |_, r| !r.is_allowed(&now)) {
             tracing::info!(%cid, %rid, "Access to resource expired");
-
             any_expired = true;
-            false
-        });
+        }
 
         if any_expired {
             self.recalculate_filters();
@@ -252,15 +245,12 @@ impl ClientOnGateway {
     }
 
     pub(crate) fn retain_authorizations(&mut self, authorization: BTreeSet<ResourceId>) {
-        // TODO: Replace with `extract_if` once we are on Rust 1.91
-        self.resources.retain(|rid, _| {
-            if authorization.contains(rid) {
-                return true;
-            }
-
+        for (rid, _) in self
+            .resources
+            .extract_if(.., |rid, _| !authorization.contains(rid))
+        {
             tracing::info!(%rid, "Revoking resource authorization");
-            false
-        });
+        }
 
         self.recalculate_filters();
     }
