@@ -350,6 +350,20 @@ impl Session {
         self.inner.set_dns(dns_servers);
     }
 
+    pub fn bind_dns(&self, dns_servers: Vec<String>) {
+        let dns_servers = dns_servers
+            .into_iter()
+            .filter_map(|server| {
+                server
+                    .parse()
+                    .inspect_err(|e| tracing::error!(%server, "Failed to parse DNS server as IP address: {e}"))
+                    .ok()
+            })
+            .collect();
+
+        self.inner.bind_dns(dns_servers);
+    }
+
     pub fn reset(&self, reason: String) {
         self.inner.reset(reason)
     }

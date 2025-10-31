@@ -9,7 +9,7 @@ use futures::{
 use std::{
     collections::HashMap,
     io,
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
+    net::{SocketAddr, ToSocketAddrs},
     task::{Context, Poll},
 };
 use tokio::{
@@ -19,8 +19,7 @@ use tokio::{
 
 #[derive(Default)]
 pub struct Server {
-    tcp_v4: Option<TcpListener>,
-    tcp_v6: Option<TcpListener>,
+    listener: Option<TcpListener>,
 
     /// Tracks open TCP streams by their remote address.
     ///
@@ -39,26 +38,12 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn rebind_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
-        self.tcp_v4 = None;
+    pub fn rebind(&mut self, socket: SocketAddr) -> Result<()> {
+        self.listener = None;
 
         let tcp_listener = make_tcp_listener(socket)?;
 
-        self.tcp_v4 = Some(tcp_listener);
-
-        self.waker.wake();
-
-        tracing::debug!(%socket, "Listening for TCP DNS queries");
-
-        Ok(())
-    }
-
-    pub fn rebind_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
-        self.tcp_v6 = None;
-
-        let tcp_listener = make_tcp_listener(socket)?;
-
-        self.tcp_v6 = Some(tcp_listener);
+        self.listener = Some(tcp_listener);
 
         self.waker.wake();
 
@@ -136,16 +121,8 @@ impl Server {
                 }));
             }
 
-            if let Some(tcp_v4) = self.tcp_v4.as_mut()
-                && let Poll::Ready((stream, from)) = tcp_v4.poll_accept(cx)?
-            {
-                self.reading_tcp_queries
-                    .push(read_tcp_query(stream, from).boxed());
-                continue;
-            }
-
-            if let Some(tcp_v6) = self.tcp_v6.as_mut()
-                && let Poll::Ready((stream, from)) = tcp_v6.poll_accept(cx)?
+            if let Some(tcp) = self.listener.as_mut()
+                && let Poll::Ready((stream, from)) = tcp.poll_accept(cx)?
             {
                 self.reading_tcp_queries
                     .push(read_tcp_query(stream, from).boxed());
@@ -210,21 +187,19 @@ fn make_tcp_listener(socket: impl ToSocketAddrs) -> Result<TcpListener> {
 #[cfg(all(test, unix))]
 mod tests {
     use std::future::poll_fn;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
     use std::process::ExitStatus;
 
     use super::*;
 
     #[tokio::test]
-    async fn smoke() {
+    async fn smoke_ipv4() {
         let mut server = Server::default();
 
-        let v4_socket = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 127), 8080);
-        let v6_socket = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), 8080, 0, 0);
+        let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 127), 8080));
 
         let server_task = tokio::spawn(async move {
-            server.rebind_ipv4(v4_socket).unwrap();
-            server.rebind_ipv6(v6_socket).unwrap();
+            server.rebind(socket).unwrap();
 
             loop {
                 let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
@@ -235,13 +210,41 @@ mod tests {
             }
         });
 
-        assert!(dig(v4_socket.into()).await.success());
-        assert!(dig(v4_socket.into()).await.success());
-        assert!(dig(v4_socket.into()).await.success());
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
 
-        assert!(dig(v6_socket.into()).await.success());
-        assert!(dig(v6_socket.into()).await.success());
-        assert!(dig(v6_socket.into()).await.success());
+        assert!(!server_task.is_finished());
+
+        server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn smoke_ipv6() {
+        let mut server = Server::default();
+
+        let socket = SocketAddr::V6(SocketAddrV6::new(
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+            8080,
+            0,
+            0,
+        ));
+
+        let server_task = tokio::spawn(async move {
+            server.rebind(socket).unwrap();
+
+            loop {
+                let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
+
+                server
+                    .send_response(query.remote, dns_types::Response::no_error(&query.message))
+                    .unwrap();
+            }
+        });
+
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
 
         assert!(!server_task.is_finished());
 

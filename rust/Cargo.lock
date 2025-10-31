@@ -2680,6 +2680,7 @@ dependencies = [
  "ip_network_table",
  "itertools 0.14.0",
  "l3-tcp",
+ "l3-udp-dns-client",
  "l4-tcp-dns-server",
  "l4-udp-dns-server",
  "lru",
@@ -4136,6 +4137,17 @@ dependencies = [
  "anyhow",
  "ip-packet",
  "smoltcp",
+ "tracing",
+]
+
+[[package]]
+name = "l3-udp-dns-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dns-types",
+ "ip-packet",
+ "rand 0.8.5",
  "tracing",
 ]
 

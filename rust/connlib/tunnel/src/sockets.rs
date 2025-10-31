@@ -1,4 +1,4 @@
-use crate::otel;
+use crate::{FI, RE, otel};
 use anyhow::{Context as _, Result};
 use futures::{SinkExt, ready};
 use gat_lending_iterator::LendingIterator;
@@ -17,7 +17,7 @@ use tokio_util::sync::PollSender;
 
 const DEFAULT_LISTEN_PORT: u16 = EPHEMERAL_PORT_RANGE_START + FIRE;
 const EPHEMERAL_PORT_RANGE_START: u16 = 49152;
-const FIRE: u16 = 3473; // "FIRE" when typed on a phone pad.
+const FIRE: u16 = (FI as u16 * 100) + RE as u16;
 
 const UNSPECIFIED_V4_SOCKET: SocketAddrV4 =
     SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, DEFAULT_LISTEN_PORT);
@@ -430,3 +430,18 @@ fn read_end_var_usize(name: &str) -> Result<Option<usize>> {
 #[derive(thiserror::Error, Debug)]
 #[error("UDP socket thread stopped")]
 pub struct UdpSocketThreadStopped;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fire_constant() {
+        assert_eq!(FIRE, 3473);
+    }
+
+    #[test]
+    fn default_port() {
+        assert_eq!(DEFAULT_LISTEN_PORT, 52625);
+    }
+}

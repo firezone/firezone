@@ -2,19 +2,18 @@ use crate::client::IpProvider;
 use anyhow::Result;
 use connlib_model::{IpStack, ResourceId};
 use dns_types::{
-    DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response, ResponseBuilder,
-    ResponseCode,
+    DomainName, DomainNameRef, OwnedRecordData, RecordType, ResponseBuilder, ResponseCode,
 };
 use firezone_logging::err_with_src;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeSet, VecDeque};
-use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
 };
+use std::{fmt, io};
 
 const DNS_TTL: u32 = 1;
 const REVERSE_DNS_ADDRESS_END: &str = "arpa";
@@ -53,65 +52,128 @@ struct Resource {
 
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
 #[derive(Debug)]
-pub(crate) struct RecursiveQuery {
-    pub server: SocketAddr,
+pub(crate) struct Query {
+    /// The local address we received the query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and should forward).
     pub message: dns_types::Query,
+
+    /// The transport we received the query on.
+    pub transport: Transport,
+}
+
+/// A response to a [`RecursiveQuery`].
+#[derive(Debug)]
+pub(crate) struct Response {
+    /// The local address we received the original query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the original query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and forwarded).
+    #[expect(dead_code, reason = "We keep it for consistency.")]
+    pub query: dns_types::Query,
+
+    /// The result of forwarding the DNS query.
+    pub message: dns_types::Response,
+
+    /// The transport we used.
+    pub transport: Transport,
+}
+
+/// A query that needs to be forwarded to an upstream DNS server for resolution.
+#[derive(Debug)]
+pub(crate) struct RecursiveQuery {
+    /// The server we want to send the query to.
+    pub server: SocketAddr,
+
+    /// The local address we received the query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and should forward).
+    pub message: dns_types::Query,
+
+    /// The transport we received the query on.
     pub transport: Transport,
 }
 
 /// A response to a [`RecursiveQuery`].
 #[derive(Debug)]
 pub(crate) struct RecursiveResponse {
+    /// The server we sent the query to.
     pub server: SocketAddr,
+
+    /// The local address we received the original query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the original query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and forwarded).
     pub query: dns_types::Query,
+
+    /// The result of forwarding the DNS query.
     pub message: io::Result<dns_types::Response>,
+
+    /// The transport we used.
     pub transport: Transport,
 }
 
 impl RecursiveQuery {
-    pub(crate) fn via_udp(
-        source: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
+    pub(crate) fn new(query: Query, server: SocketAddr) -> Self {
         Self {
             server,
-            message,
-            transport: Transport::Udp { source },
-        }
-    }
-
-    pub(crate) fn via_tcp(
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
-        Self {
-            server,
-            message,
-            transport: Transport::Tcp { local, remote },
+            local: query.local,
+            remote: query.remote,
+            message: query.message,
+            transport: query.transport,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+impl RecursiveResponse {
+    pub fn unwrap_or(
+        self,
+        fallback: impl FnOnce(&dns_types::Query, io::Error) -> dns_types::Response,
+    ) -> Response {
+        Response {
+            message: self.message.unwrap_or_else(|e| fallback(&self.query, e)),
+            local: self.local,
+            remote: self.remote,
+            query: self.query,
+            transport: self.transport,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Transport {
-    Udp {
-        /// The original source we received the DNS query on.
-        source: SocketAddr,
-    },
-    Tcp {
-        local: SocketAddr,
-        remote: SocketAddr,
-    },
+    Udp,
+    Tcp,
+}
+
+impl fmt::Display for Transport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Transport::Udp => write!(f, "UDP"),
+            Transport::Tcp => write!(f, "TCP"),
+        }
+    }
 }
 
 /// Tells the Client how to reply to a single DNS query
 #[derive(Debug)]
 pub(crate) enum ResolveStrategy {
     /// The query is for a Resource, we have an IP mapped already, and we can respond instantly
-    LocalResponse(Response),
+    LocalResponse(dns_types::Response),
     /// The query is for a non-Resource, forward it locally to an upstream or system resolver.
     RecurseLocal,
     /// The query is for a DNS resource but for a type that we don't intercept (i.e. SRV, TXT, ...), forward it to the site that hosts the DNS resource and resolve it there.
@@ -309,14 +371,14 @@ impl StubResolver {
     }
 
     /// Processes the incoming DNS query.
-    pub(crate) fn handle(&mut self, query: &Query) -> ResolveStrategy {
+    pub(crate) fn handle(&mut self, query: &dns_types::Query) -> ResolveStrategy {
         let domain = query.domain();
         let qtype = query.qtype();
 
         tracing::trace!("Parsed packet as DNS query: '{qtype} {domain}'");
 
         if domain == DOH_CANARY_DOMAIN {
-            return ResolveStrategy::LocalResponse(Response::nxdomain(query));
+            return ResolveStrategy::LocalResponse(dns_types::Response::nxdomain(query));
         }
 
         // `match_resource` is `O(N)` which we deem fine for DNS queries.
@@ -345,7 +407,7 @@ impl StubResolver {
                 // We must intercept queries for the HTTPS record type to force the client to issue an A / AAAA query instead.
                 // Otherwise, the client won't use the IPs we issue for a particular domain and the traffic cannot be tunneled.
 
-                return ResolveStrategy::LocalResponse(Response::no_error(query));
+                return ResolveStrategy::LocalResponse(dns_types::Response::no_error(query));
             }
             _ => return ResolveStrategy::RecurseLocal,
         };
@@ -455,6 +517,28 @@ fn get_v6(ip: IpAddr) -> Option<Ipv6Addr> {
     match ip {
         IpAddr::V4(_) => None,
         IpAddr::V6(v6) => Some(v6),
+    }
+}
+
+impl From<l4_udp_dns_server::Query> for Query {
+    fn from(value: l4_udp_dns_server::Query) -> Self {
+        Self {
+            local: value.local,
+            remote: value.remote,
+            message: value.message,
+            transport: Transport::Udp,
+        }
+    }
+}
+
+impl From<l4_tcp_dns_server::Query> for Query {
+    fn from(value: l4_tcp_dns_server::Query) -> Self {
+        Self {
+            local: value.local,
+            remote: value.remote,
+            message: value.message,
+            transport: Transport::Tcp,
+        }
     }
 }
 
@@ -752,7 +836,7 @@ mod tests {
     fn query_for_doh_canary_domain_records_nx_domain() {
         let mut resolver = StubResolver::default();
 
-        let query = Query::new(
+        let query = dns_types::Query::new(
             "use-application-dns.net"
                 .parse::<dns_types::DomainName>()
                 .unwrap(),
@@ -777,7 +861,7 @@ mod tests {
             IpStack::Ipv6Only,
         );
 
-        let query = Query::new(
+        let query = dns_types::Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         );
@@ -800,7 +884,7 @@ mod tests {
             IpStack::Ipv4Only,
         );
 
-        let query = Query::new(
+        let query = dns_types::Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::AAAA,
         );
@@ -823,7 +907,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle(&dns_types::Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -861,7 +945,7 @@ mod tests {
             IpStack::Dual,
         );
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle(&dns_types::Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {
@@ -870,7 +954,7 @@ mod tests {
 
         assert!(resolver.poll_event().is_some());
 
-        let ResolveStrategy::LocalResponse(_) = resolver.handle(&Query::new(
+        let ResolveStrategy::LocalResponse(_) = resolver.handle(&dns_types::Query::new(
             "example.com".parse::<dns_types::DomainName>().unwrap(),
             RecordType::A,
         )) else {

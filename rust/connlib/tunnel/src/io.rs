@@ -14,9 +14,9 @@ use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
 use std::{
-    collections::{BTreeSet, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     io,
-    net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, SocketAddr},
     pin::Pin,
     sync::Arc,
     task::{Context, Poll, ready},
@@ -49,8 +49,8 @@ pub struct Io {
     nameservers: NameserverSet,
     reval_nameserver_interval: tokio::time::Interval,
 
-    udp_dns_server: l4_udp_dns_server::Server,
-    tcp_dns_server: l4_tcp_dns_server::Server,
+    udp_dns_server: BTreeMap<SocketAddr, l4_udp_dns_server::Server>,
+    tcp_dns_server: BTreeMap<SocketAddr, l4_tcp_dns_server::Server>,
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
@@ -68,6 +68,8 @@ pub struct Io {
 struct DnsQueryMetaData {
     query: dns_types::Query,
     server: SocketAddr,
+    local: SocketAddr,
+    remote: SocketAddr,
     transport: dns::Transport,
 }
 
@@ -93,8 +95,7 @@ pub struct Input<D, I> {
     pub timeout: bool,
     pub device: Option<D>,
     pub network: Option<I>,
-    pub tcp_dns_query: Option<l4_tcp_dns_server::Query>,
-    pub udp_dns_query: Option<l4_udp_dns_server::Query>,
+    pub dns_queries: Vec<dns::Query>,
     pub dns_response: Option<dns::RecursiveResponse>,
     pub error: TunnelError,
 }
@@ -107,8 +108,7 @@ impl<D, I> Input<D, I> {
             timeout: false,
             device: None,
             network: None,
-            tcp_dns_query: None,
-            udp_dns_query: None,
+            dns_queries: Vec::new(),
             dns_response: None,
             error: TunnelError::single(e),
         }
@@ -179,16 +179,22 @@ impl Io {
         }
     }
 
-    pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
-        self.udp_dns_server.rebind_ipv4(socket)?;
-        self.tcp_dns_server.rebind_ipv4(socket)?;
+    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<()> {
+        tracing::debug!(?sockets, "Rebinding DNS servers");
 
-        Ok(())
-    }
+        self.udp_dns_server.clear();
+        self.tcp_dns_server.clear();
 
-    pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
-        self.udp_dns_server.rebind_ipv6(socket)?;
-        self.tcp_dns_server.rebind_ipv6(socket)?;
+        for socket in sockets {
+            let mut udp = l4_udp_dns_server::Server::default();
+            let mut tcp = l4_tcp_dns_server::Server::default();
+
+            udp.rebind(socket)?;
+            tcp.rebind(socket)?;
+
+            self.udp_dns_server.insert(socket, udp);
+            self.tcp_dns_server.insert(socket, tcp);
+        }
 
         Ok(())
     }
@@ -214,6 +220,8 @@ impl Io {
         if let Err(e) = ready!(self.flush(cx)) {
             return Poll::Ready(Input::error(e));
         }
+
+        let mut error = TunnelError::default();
 
         if self.reval_nameserver_interval.poll_tick(cx).is_ready() {
             self.nameservers.evaluate();
@@ -258,15 +266,23 @@ impl Io {
                 buffers.ip.drain(..num_packets)
             });
 
-        let udp_dns_query = self
-            .udp_dns_server
-            .poll(cx)
-            .map(|query| query.context("Failed to poll UDP DNS server"));
+        let mut dns_queries = Vec::new();
 
-        let tcp_dns_query = self
-            .tcp_dns_server
-            .poll(cx)
-            .map(|query| query.context("Failed to poll TCP DNS server"));
+        for server in self.udp_dns_server.values_mut() {
+            match server.poll(cx) {
+                Poll::Ready(Ok(q)) => dns_queries.push(q.into()),
+                Poll::Ready(Err(e)) => error.push(e),
+                Poll::Pending => {}
+            }
+        }
+
+        for server in self.tcp_dns_server.values_mut() {
+            match server.poll(cx) {
+                Poll::Ready(Ok(q)) => dns_queries.push(q.into()),
+                Poll::Ready(Err(e)) => error.push(e),
+                Poll::Pending => {}
+            }
+        }
 
         let dns_response = self
             .dns_queries
@@ -277,12 +293,16 @@ impl Io {
                     query: meta.query,
                     message: result,
                     transport: meta.transport,
+                    local: meta.local,
+                    remote: meta.remote,
                 },
                 Err(e @ futures_bounded::Timeout { .. }) => dns::RecursiveResponse {
                     server: meta.server,
                     query: meta.query,
                     message: Err(io::Error::new(io::ErrorKind::TimedOut, e)),
                     transport: meta.transport,
+                    local: meta.local,
+                    remote: meta.remote,
                 },
             });
 
@@ -299,14 +319,12 @@ impl Io {
         if !timeout
             && device.is_pending()
             && network.is_pending()
-            && tcp_dns_query.is_pending()
-            && udp_dns_query.is_pending()
+            && dns_queries.is_empty()
             && dns_response.is_pending()
+            && error.is_empty()
         {
             return Poll::Pending;
         }
-
-        let mut error = TunnelError::default();
 
         Poll::Ready(Input {
             now: Instant::now(),
@@ -314,8 +332,7 @@ impl Io {
             timeout,
             device: poll_to_option(device),
             network: poll_result_to_option(network, &mut error),
-            tcp_dns_query: poll_result_to_option(tcp_dns_query, &mut error),
-            udp_dns_query: poll_result_to_option(udp_dns_query, &mut error),
+            dns_queries,
             dns_response: poll_to_option(dns_response),
             error,
         })
@@ -436,10 +453,12 @@ impl Io {
             query: query.message.clone(),
             server: query.server,
             transport: query.transport,
+            local: query.local,
+            remote: query.remote,
         };
 
         match query.transport {
-            dns::Transport::Udp { .. } => {
+            dns::Transport::Udp => {
                 if self
                     .dns_queries
                     .try_push(
@@ -451,7 +470,7 @@ impl Io {
                     tracing::debug!("Failed to queue UDP DNS query")
                 }
             }
-            dns::Transport::Tcp { .. } => {
+            dns::Transport::Tcp => {
                 if self
                     .dns_queries
                     .try_push(
@@ -466,20 +485,23 @@ impl Io {
         }
     }
 
-    pub(crate) fn send_udp_dns_response(
-        &mut self,
-        to: SocketAddr,
-        message: dns_types::Response,
-    ) -> io::Result<()> {
-        self.udp_dns_server.send_response(to, message)
-    }
+    pub(crate) fn send_dns_response(&mut self, response: dns::Response) -> io::Result<()> {
+        let from = response.local;
+        let to = response.remote;
+        let message = response.message;
 
-    pub(crate) fn send_tcp_dns_response(
-        &mut self,
-        to: SocketAddr,
-        message: dns_types::Response,
-    ) -> io::Result<()> {
-        self.tcp_dns_server.send_response(to, message)
+        match response.transport {
+            dns::Transport::Udp => self
+                .udp_dns_server
+                .get_mut(&from)
+                .ok_or(io::Error::other("No DNS server"))?
+                .send_response(to, message),
+            dns::Transport::Tcp => self
+                .tcp_dns_server
+                .get_mut(&from)
+                .ok_or(io::Error::other("No DNS server"))?
+                .send_response(to, message),
+        }
     }
 }
 

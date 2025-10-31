@@ -19,7 +19,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
     future, mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
     time::{Duration, Instant},
@@ -46,6 +46,9 @@ mod unique_packet_buffer;
 mod utils;
 
 const REALM: &str = "firezone";
+
+const FI: u8 = 34; // "FI" when typed on a phone pad.
+const RE: u8 = 73; // "RE" when typed on a phone pad.
 
 /// How many times we will at most loop before force-yielding from [`ClientTunnel::poll_next_event`] & [`GatewayTunnel::poll_next_event`].
 ///
@@ -100,12 +103,8 @@ impl<TRoleState> Tunnel<TRoleState> {
         self.io.set_tun(tun);
     }
 
-    pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
-        self.io.rebind_dns_ipv4(socket)
-    }
-
-    pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
-        self.io.rebind_dns_ipv6(socket)
+    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<()> {
+        self.io.rebind_dns(sockets)
     }
 }
 
@@ -200,17 +199,34 @@ impl ClientTunnel {
                 ready = true;
             }
 
+            {
+                let mut error = TunnelError::default();
+
+                while let Some(response) = self.role_state.poll_dns_responses() {
+                    if let Err(e) = self
+                        .io
+                        .send_dns_response(response)
+                        .context("Failed to send DNS response")
+                    {
+                        error.push(e);
+                    }
+                }
+
+                if !error.is_empty() {
+                    return Poll::Ready(ClientEvent::Error(error));
+                }
+            }
+
             // Process all IO sources that are ready.
             if let Poll::Ready(io::Input {
                 now,
                 now_utc: _,
                 timeout,
                 dns_response,
-                tcp_dns_query: _,
-                udp_dns_query: _,
+                dns_queries,
                 device,
                 network,
-                error,
+                mut error,
             }) = self.io.poll(cx, &mut self.buffers)
             {
                 if let Some(response) = dns_response {
@@ -270,6 +286,18 @@ impl ClientTunnel {
                     }
 
                     ready = true;
+                }
+
+                for query in dns_queries {
+                    ready = true;
+
+                    let Some(response) = self.role_state.handle_dns_input(query, now) else {
+                        continue;
+                    };
+
+                    if let Err(e) = self.io.send_dns_response(response) {
+                        error.push(e);
+                    }
                 }
 
                 // Reset timer for time-based wakeup.
@@ -366,31 +394,21 @@ impl GatewayTunnel {
                 now_utc,
                 timeout,
                 dns_response,
-                tcp_dns_query,
-                udp_dns_query,
+                dns_queries,
                 device,
                 network,
                 mut error,
             }) = self.io.poll(cx, &mut self.buffers)
             {
                 if let Some(response) = dns_response {
-                    let message = response.message.unwrap_or_else(|e| {
+                    let response = response.unwrap_or(|query, e| {
                         tracing::debug!("DNS query failed: {e}");
 
-                        dns_types::Response::servfail(&response.query)
+                        dns_types::Response::servfail(query)
                     });
 
-                    match response.transport {
-                        dns::Transport::Udp { source } => {
-                            if let Err(e) = self.io.send_udp_dns_response(source, message) {
-                                error.push(e);
-                            }
-                        }
-                        dns::Transport::Tcp { remote, .. } => {
-                            if let Err(e) = self.io.send_tcp_dns_response(remote, message) {
-                                error.push(e);
-                            }
-                        }
+                    if let Err(e) = self.io.send_dns_response(response) {
+                        error.push(e);
                     }
 
                     ready = true;
@@ -450,42 +468,22 @@ impl GatewayTunnel {
                     ready = true;
                 }
 
-                if let Some(query) = udp_dns_query {
+                for query in dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_udp(
-                            query.source,
+                        self.io.send_dns_query(dns::RecursiveQuery::new(
+                            query,
                             SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
                         ));
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
-                        if let Err(e) = self.io.send_udp_dns_response(
-                            query.source,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
-                            error.push(e);
-                        }
-                    }
-
-                    ready = true;
-                }
-
-                if let Some(query) = tcp_dns_query {
-                    if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
-                            query.local,
-                            query.remote,
-                            SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
-                        ));
-                    } else {
-                        tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
-
-                        if let Err(e) = self.io.send_tcp_dns_response(
-                            query.remote,
-                            dns_types::Response::servfail(&query.message),
-                        ) {
+                        if let Err(e) = self.io.send_dns_response(dns::Response {
+                            local: query.local,
+                            remote: query.remote,
+                            message: dns_types::Response::servfail(&query.message),
+                            query: query.message,
+                            transport: query.transport,
+                        }) {
                             error.push(e);
                         }
                     }

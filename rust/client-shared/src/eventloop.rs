@@ -12,6 +12,7 @@ use firezone_tunnel::{
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
+use std::net::SocketAddr;
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
@@ -64,6 +65,7 @@ pub enum Command {
     Reset(String),
     Stop,
     SetDns(Vec<IpAddr>),
+    BindDns(Vec<IpAddr>),
     SetTun(Box<dyn Tun>),
     SetInternetResourceState(bool),
 }
@@ -223,6 +225,15 @@ impl Eventloop {
                     )))
                     .await
                     .context("Failed to connect phoenix-channel")?;
+            }
+            Command::BindDns(ips) => {
+                let dns_servers = ips.into_iter().map(|ip| SocketAddr::new(ip, 53)).collect();
+
+                self.tunnel
+                    .as_mut()
+                    .context("No tunnel")?
+                    .rebind_dns(dns_servers)
+                    .context("Failed to rebind DNS servers")?;
             }
         }
 

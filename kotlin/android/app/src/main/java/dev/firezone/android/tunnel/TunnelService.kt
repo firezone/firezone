@@ -160,6 +160,7 @@ class TunnelService : VpnService() {
 
                 tunnelDnsAddresses.forEach { dns ->
                     addDnsServer(dns)
+                    addAddress(dns, 32)
                 }
 
                 tunnelSearchDomain?.let {
@@ -170,7 +171,10 @@ class TunnelService : VpnService() {
                 addAddress(tunnelIpv6Address!!, 128)
             }.establish()
             ?.detachFd()
-            ?.also { fd -> sendTunnelCommand(TunnelCommand.SetTun(fd)) }
+            ?.also { fd -> {
+                sendTunnelCommand(TunnelCommand.SetTun(fd))
+                sendTunnelCommand(TunnelCommand.BindDns(tunnelDnsAddresses))
+            } }
     }
 
     private val restrictionsFilter = IntentFilter(Intent.ACTION_APPLICATION_RESTRICTIONS_CHANGED)
@@ -455,6 +459,10 @@ class TunnelService : VpnService() {
             val dnsServers: List<String>,
         ) : TunnelCommand()
 
+        data class BindDns(
+            val dnsServers: List<String>,
+        ) : TunnelCommand()
+
         data class SetLogDirectives(
             val directives: String,
         ) : TunnelCommand()
@@ -491,8 +499,13 @@ class TunnelService : VpnService() {
                             is TunnelCommand.SetInternetResourceState -> {
                                 session.setInternetResourceState(command.active)
                             }
+
                             is TunnelCommand.SetDns -> {
                                 session.setDns(command.dnsServers)
+                            }
+
+                            is TunnelCommand.BindDns -> {
+                                session.bindDns(command.dnsServers)
                             }
 
                             is TunnelCommand.SetLogDirectives -> {

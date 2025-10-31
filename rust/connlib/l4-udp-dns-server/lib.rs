@@ -11,55 +11,35 @@ use futures::{
 };
 use std::{
     io,
-    net::{SocketAddr, SocketAddrV4, SocketAddrV6, ToSocketAddrs},
+    net::{SocketAddr, ToSocketAddrs},
     sync::{Arc, Weak},
     task::{Context, Poll},
 };
 use tokio::net::UdpSocket;
 
 pub struct Server {
-    // Strong references to the UDP sockets.
-    udp_v4: Option<Arc<UdpSocket>>,
-    udp_v6: Option<Arc<UdpSocket>>,
+    // Strong references to the UDP socket.
+    socket: Option<Arc<UdpSocket>>,
 
-    // Streams that read incoming queries from the UDP sockets.
-    reading_udp_v4_queries: BoxStream<'static, Result<(SocketAddr, dns_types::Query)>>,
-    reading_udp_v6_queries: BoxStream<'static, Result<(SocketAddr, dns_types::Query)>>,
+    // Stream that read incoming queries from the UDP sockets.
+    reading_udp_queries: BoxStream<'static, Result<(SocketAddr, dns_types::Query)>>,
 
-    // Futures that send responses on the UDP sockets.
-    sending_udp_v4_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
-    sending_udp_v6_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
+    // Futures that send responses on the UDP socket.
+    sending_udp_responses: FuturesUnordered<BoxFuture<'static, Result<()>>>,
 
     waker: AtomicWaker,
 }
 
 impl Server {
-    pub fn rebind_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
-        self.udp_v4 = None;
-        self.reading_udp_v4_queries = stream::empty().boxed();
-        self.sending_udp_v4_responses.clear();
+    pub fn rebind(&mut self, socket: SocketAddr) -> Result<()> {
+        self.socket = None;
+        self.reading_udp_queries = stream::empty().boxed();
+        self.sending_udp_responses.clear();
 
         let udp_socket = Arc::new(make_udp_socket(socket)?);
 
-        self.reading_udp_v4_queries = udp_dns_query_stream(Arc::downgrade(&udp_socket));
-        self.udp_v4 = Some(udp_socket);
-
-        self.waker.wake();
-
-        tracing::debug!(%socket, "Listening for UDP DNS queries");
-
-        Ok(())
-    }
-
-    pub fn rebind_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
-        self.udp_v6 = None;
-        self.reading_udp_v6_queries = stream::empty().boxed();
-        self.sending_udp_v6_responses.clear();
-
-        let udp_socket = Arc::new(make_udp_socket(socket)?);
-
-        self.reading_udp_v6_queries = udp_dns_query_stream(Arc::downgrade(&udp_socket));
-        self.udp_v6 = Some(udp_socket);
+        self.reading_udp_queries = udp_dns_query_stream(Arc::downgrade(&udp_socket));
+        self.socket = Some(udp_socket);
 
         self.waker.wake();
 
@@ -73,14 +53,12 @@ impl Server {
         to: SocketAddr,
         response: dns_types::Response,
     ) -> io::Result<()> {
-        let (udp_socket, workers) = match (to, self.udp_v4.clone(), self.udp_v6.clone()) {
-            (SocketAddr::V4(_), Some(socket), _) => (socket, &mut self.sending_udp_v4_responses),
-            (SocketAddr::V6(_), _, Some(socket)) => (socket, &mut self.sending_udp_v6_responses),
-            (SocketAddr::V4(_), None, _) => return Err(io::Error::other("No UDPv4 socket")),
-            (SocketAddr::V6(_), _, None) => return Err(io::Error::other("No UDPv6 socket")),
-        };
+        let udp_socket = self
+            .socket
+            .clone()
+            .ok_or(io::Error::other("No UDP socket"))?;
 
-        workers.push(
+        self.sending_udp_responses.push(
             async move {
                 // TODO: Make this limit configurable.
                 // The current 1200 are conservative and should be safe for the public Internet and our WireGuard tunnel.
@@ -102,40 +80,29 @@ impl Server {
 
     pub fn poll(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<Query>> {
         loop {
-            if let Poll::Ready(Some(result)) = self.sending_udp_v4_responses.poll_next_unpin(cx) {
+            if let Poll::Ready(Some(result)) = self.sending_udp_responses.poll_next_unpin(cx) {
                 result
-                    .context("Failed to send UDPv4 DNS response")
+                    .context("Failed to send UDP DNS response")
                     .map_err(anyhow_to_io)?;
 
                 continue;
             }
 
-            if let Poll::Ready(Some(result)) = self.sending_udp_v6_responses.poll_next_unpin(cx) {
-                result
-                    .context("Failed to send UDPv6 DNS response")
+            if let Poll::Ready(Some(result)) = self.reading_udp_queries.poll_next_unpin(cx) {
+                let (remote, message) = result
+                    .context("Failed to read UDP DNS query")
                     .map_err(anyhow_to_io)?;
 
-                continue;
-            }
-
-            if let Poll::Ready(Some(result)) = self.reading_udp_v4_queries.poll_next_unpin(cx) {
-                let (from, message) = result
-                    .context("Failed to read UDPv4 DNS query")
-                    .map_err(anyhow_to_io)?;
+                let local = self
+                    .socket
+                    .as_ref()
+                    .context("No UDP socket")
+                    .map_err(anyhow_to_io)?
+                    .local_addr()?;
 
                 return Poll::Ready(Ok(Query {
-                    source: from,
-                    message,
-                }));
-            }
-
-            if let Poll::Ready(Some(result)) = self.reading_udp_v6_queries.poll_next_unpin(cx) {
-                let (from, message) = result
-                    .context("Failed to read UDPv6 DNS query")
-                    .map_err(anyhow_to_io)?;
-
-                return Poll::Ready(Ok(Query {
-                    source: from,
+                    local,
+                    remote,
                     message,
                 }));
             }
@@ -176,7 +143,8 @@ async fn read_udp_query(socket: Arc<UdpSocket>) -> Result<(SocketAddr, dns_types
 }
 
 pub struct Query {
-    pub source: SocketAddr,
+    pub local: SocketAddr,
+    pub remote: SocketAddr,
     pub message: dns_types::Query,
 }
 
@@ -195,12 +163,9 @@ fn make_udp_socket(socket: impl ToSocketAddrs) -> Result<UdpSocket> {
 impl Default for Server {
     fn default() -> Self {
         Self {
-            udp_v4: None,
-            udp_v6: None,
-            reading_udp_v4_queries: stream::empty().boxed(),
-            reading_udp_v6_queries: stream::empty().boxed(),
-            sending_udp_v4_responses: FuturesUnordered::new(),
-            sending_udp_v6_responses: FuturesUnordered::new(),
+            socket: None,
+            reading_udp_queries: stream::empty().boxed(),
+            sending_udp_responses: FuturesUnordered::new(),
             waker: AtomicWaker::new(),
         }
     }
@@ -209,38 +174,64 @@ impl Default for Server {
 #[cfg(all(test, unix))]
 mod tests {
     use std::future::poll_fn;
-    use std::net::{Ipv4Addr, Ipv6Addr};
+    use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, SocketAddrV6};
     use std::process::ExitStatus;
 
     use super::*;
 
     #[tokio::test]
-    async fn smoke() {
+    async fn smoke_ipv4() {
         let mut server = Server::default();
 
-        let v4_socket = SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 127), 8080);
-        let v6_socket = SocketAddrV6::new(Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1), 8080, 0, 0);
+        let socket = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 127), 8080));
 
         let server_task = tokio::spawn(async move {
-            server.rebind_ipv4(v4_socket).unwrap();
-            server.rebind_ipv6(v6_socket).unwrap();
+            server.rebind(socket).unwrap();
 
             loop {
                 let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
 
                 server
-                    .send_response(query.source, dns_types::Response::no_error(&query.message))
+                    .send_response(query.remote, dns_types::Response::no_error(&query.message))
                     .unwrap();
             }
         });
 
-        assert!(dig(v4_socket.into()).await.success());
-        assert!(dig(v4_socket.into()).await.success());
-        assert!(dig(v4_socket.into()).await.success());
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
 
-        assert!(dig(v6_socket.into()).await.success());
-        assert!(dig(v6_socket.into()).await.success());
-        assert!(dig(v6_socket.into()).await.success());
+        assert!(!server_task.is_finished());
+
+        server_task.abort();
+    }
+
+    #[tokio::test]
+    async fn smoke_ipv6() {
+        let mut server = Server::default();
+
+        let socket = SocketAddr::V6(SocketAddrV6::new(
+            Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 1),
+            8080,
+            0,
+            0,
+        ));
+
+        let server_task = tokio::spawn(async move {
+            server.rebind(socket).unwrap();
+
+            loop {
+                let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
+
+                server
+                    .send_response(query.remote, dns_types::Response::no_error(&query.message))
+                    .unwrap();
+            }
+        });
+
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
+        assert!(dig(socket).await.success());
 
         assert!(!server_task.is_finished());
 

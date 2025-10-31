@@ -379,6 +379,8 @@ class Adapter: @unchecked Sendable {
         }
       }
 
+      self.sendCommand(.bindDns(dnsAddresses))
+
     case .resourcesUpdated(let resourceList):
       Log.log("Received ResourcesUpdated event with \(resourceList.count) resources")
 
