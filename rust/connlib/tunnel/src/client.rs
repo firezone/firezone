@@ -1,9 +1,11 @@
 mod dns_cache;
+mod dns_mapping;
 mod dns_resource_nat;
 mod gateway_on_client;
 mod pending_tun_update;
 mod resource;
 
+use crate::client::dns_mapping::{effective_dns_servers, sentinel_dns_mapping};
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 use crate::client::pending_tun_update::PendingTunUpdate;
 use boringtun::x25519;
@@ -20,7 +22,7 @@ use secrecy::ExposeSecret as _;
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
 use crate::expiring_map::{self, ExpiringMap};
-use crate::messages::{DnsServer, Interface as InterfaceConfig, IpDnsServer};
+use crate::messages::{DnsServer, Interface as InterfaceConfig};
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
@@ -1996,61 +1998,6 @@ fn peer_by_resource_mut<'p>(
     Some(peer)
 }
 
-fn effective_dns_servers(
-    upstream_dns: Vec<DnsServer>,
-    default_resolvers: Vec<IpAddr>,
-) -> Vec<DnsServer> {
-    let mut upstream_dns = upstream_dns.into_iter().filter_map(not_sentinel).peekable();
-    if upstream_dns.peek().is_some() {
-        return upstream_dns.collect();
-    }
-
-    let mut dns_servers = default_resolvers
-        .into_iter()
-        .map(|ip| {
-            DnsServer::IpPort(IpDnsServer {
-                address: (ip, DNS_PORT).into(),
-            })
-        })
-        .filter_map(not_sentinel)
-        .peekable();
-
-    if dns_servers.peek().is_none() {
-        tracing::info!(
-            "No system default DNS servers available! Can't initialize resolver. DNS resources won't work."
-        );
-        return Vec::new();
-    }
-
-    dns_servers.collect()
-}
-
-fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
-    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
-    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
-
-    (!is_v4_dns && !is_v6_dns).then_some(srv)
-}
-
-fn sentinel_dns_mapping(
-    dns: &[DnsServer],
-    old_sentinels: Vec<IpNetwork>,
-) -> BiMap<IpAddr, DnsServer> {
-    let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
-
-    dns.iter()
-        .cloned()
-        .map(|i| {
-            (
-                ip_provider
-                    .get_proxy_ip_for(&i.ip())
-                    .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
-                i,
-            )
-        })
-        .collect()
-}
-
 /// Compares the given [`IpAddr`] against a static set of ignored IPs that are definitely not resources.
 fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     /// Source: https://en.wikipedia.org/wiki/Multicast_address#Notable_IPv4_multicast_addresses
@@ -2229,64 +2176,10 @@ mod tests {
         assert!(is_definitely_not_a_resource(ip("ff02::2")))
     }
 
-    #[test]
-    fn sentinel_dns_works() {
-        let servers = dns_list();
-        let sentinel_dns = sentinel_dns_mapping(&servers, vec![]);
-
-        for server in servers {
-            assert!(
-                sentinel_dns
-                    .get_by_right(&server)
-                    .is_some_and(|s| sentinel_ranges().iter().any(|e| e.contains(*s)))
-            )
-        }
-    }
-
-    #[test]
-    fn sentinel_dns_excludes_old_ones() {
-        let servers = dns_list();
-        let sentinel_dns_old = sentinel_dns_mapping(&servers, vec![]);
-        let sentinel_dns_new = sentinel_dns_mapping(
-            &servers,
-            sentinel_dns_old
-                .left_values()
-                .copied()
-                .map(Into::into)
-                .collect_vec(),
-        );
-
-        assert!(
-            HashSet::<&IpAddr>::from_iter(sentinel_dns_old.left_values())
-                .is_disjoint(&HashSet::from_iter(sentinel_dns_new.left_values()))
-        )
-    }
-
     impl ClientState {
         pub fn for_test() -> ClientState {
             ClientState::new(rand::random(), Default::default(), false, Instant::now())
         }
-    }
-
-    fn sentinel_ranges() -> Vec<IpNetwork> {
-        vec![
-            IpNetwork::V4(DNS_SENTINELS_V4),
-            IpNetwork::V6(DNS_SENTINELS_V6),
-        ]
-    }
-
-    fn dns_list() -> Vec<DnsServer> {
-        vec![
-            dns("1.1.1.1:53"),
-            dns("1.0.0.1:53"),
-            dns("[2606:4700:4700::1111]:53"),
-        ]
-    }
-
-    fn dns(address: &str) -> DnsServer {
-        DnsServer::IpPort(IpDnsServer {
-            address: address.parse().unwrap(),
-        })
     }
 
     fn ip(addr: &str) -> IpAddr {
