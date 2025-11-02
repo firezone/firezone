@@ -18,7 +18,7 @@ jobs:
   static-analysis:
     name: static-analysis-${{ matrix.runs-on }}
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         runs-on: [ubuntu-24.04, macos-14, windows-2022]
@@ -58,16 +58,16 @@ jobs:
   test:
     name: test-${{ matrix.runs-on }}
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         # TODO: https://github.com/rust-lang/cargo/issues/5220
         runs-on:
           [
             ubuntu-22.04,
             ubuntu-24.04,
-            macos-13,
             macos-14,
             macos-15,
+            macos-26,
             windows-2022,
             windows-2025,
           ]
@@ -133,7 +133,7 @@ jobs:
   fuzz:
     name: fuzz
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         fuzz-target: [ip_packet]
     runs-on: ubuntu-24.04
@@ -155,7 +155,7 @@ jobs:
   headless-client:
     name: headless-client-${{ matrix.test }}-${{ matrix.runs-on }}
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         include:
           - { runs-on: windows-2022, test: token-path-windows.ps1 }

@@ -53,7 +53,7 @@ fn main() -> Result<()> {
                     continue;
                 }
 
-                break SecretString::new(token);
+                break SecretString::new(token.into_boxed_str());
             };
 
             write_to_file(ETC_FIREZONE_GATEWAY_TOKEN, token)?;

@@ -22,8 +22,9 @@ pub fn to_ipv6_channel(
             old_ipv6.src_addr(),
             old_ipv6.dst_addr(),
             old_ipv6.payload_len(),
-            old_ipv6.priority(),
-            old_ipv6.flow_label,
+            old_ipv6.dscp(),
+            old_ipv6.ecn(),
+            old_ipv6.flow_label(),
             old_ipv6.hop_limit,
             old_ipv6.next_hdr,
         )
@@ -34,9 +35,9 @@ pub fn to_ipv6_channel(
         let old_udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
         (
             old_udp.len(),
-            old_udp.source(),
-            old_udp.dest(),
-            old_udp.check(),
+            old_udp.src_port(),
+            old_udp.dst_port(),
+            old_udp.checksum(),
         )
     };
 
@@ -78,12 +79,12 @@ pub fn to_ipv6_channel(
 
     // SAFETY: The offset must point to the start of a valid `UdpHdr`.
     let udp = unsafe { ref_mut_at::<UdpHdr>(ctx, EthHdr::LEN + Ipv6Hdr::LEN)? };
-    udp.set_source(new_udp_src);
-    udp.set_dest(new_udp_dst);
+    udp.set_src_port(new_udp_src);
+    udp.set_dst_port(new_udp_dst);
 
     // Incrementally update UDP checksum
 
-    udp.set_check(
+    udp.set_checksum(
         ChecksumUpdate::new(old_udp_check)
             .remove_u128(u128::from_be_bytes(old_ipv6_src.octets()))
             .add_u128(u128::from_be_bytes(new_ipv6_dst.octets()))
