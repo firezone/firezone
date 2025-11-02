@@ -1,11 +1,11 @@
 mod dns_cache;
-mod dns_mapping;
+mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
 mod pending_tun_update;
 mod resource;
 
-use crate::client::dns_mapping::{effective_dns_servers, sentinel_dns_mapping};
+use crate::client::dns_config::DnsConfig;
 pub(crate) use crate::client::gateway_on_client::GatewayOnClient;
 use crate::client::pending_tun_update::PendingTunUpdate;
 use boringtun::x25519;
@@ -22,13 +22,12 @@ use secrecy::ExposeSecret as _;
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
 use crate::expiring_map::{self, ExpiringMap};
-use crate::messages::{DnsServer, Interface as InterfaceConfig};
+use crate::messages::Interface as InterfaceConfig;
 use crate::messages::{IceCredentials, SecretKey};
 use crate::peer_store::PeerStore;
 use crate::unique_packet_buffer::UniquePacketBuffer;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, IpConfig, TunConfig, dns, is_peer, p2p_control};
 use anyhow::Context;
-use bimap::BiMap;
 use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
@@ -42,7 +41,7 @@ use itertools::Itertools;
 use crate::ClientEvent;
 use lru::LruCache;
 use snownet::{ClientNode, NoTurnServers, RelaySocket, Transmit};
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::num::NonZeroUsize;
 use std::ops::ControlFlow;
@@ -120,15 +119,9 @@ pub struct ClientState {
     /// All resources indexed by their ID.
     resources_by_id: BTreeMap<ResourceId, Resource>,
 
-    /// The DNS resolvers configured on the system outside of connlib.
-    system_resolvers: Vec<IpAddr>,
-    /// The DNS resolvers configured in the portal.
-    ///
-    /// Has priority over system-configured DNS servers.
-    upstream_dns: Vec<DnsServer>,
+    /// Manages the DNS configuration.
+    dns_config: DnsConfig,
 
-    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
-    dns_mapping: BiMap<IpAddr, DnsServer>,
     /// UDP DNS queries that had their destination IP mangled to redirect them to another DNS resolver through the tunnel.
     udp_dns_sockets_by_upstream_and_query_id: ExpiringMap<(SocketAddr, u16), SocketAddr>,
     /// Manages internal dns records and emits forwarding event when not internally handled
@@ -211,12 +204,11 @@ impl ClientState {
             active_cidr_resources: IpNetworkTable::new(),
             resources_by_id: Default::default(),
             peers: Default::default(),
-            dns_mapping: Default::default(),
+            dns_config: Default::default(),
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
             node: ClientNode::new(seed, now),
-            system_resolvers: Default::default(),
             sites_status: Default::default(),
             gateways_site: Default::default(),
             udp_dns_sockets_by_upstream_and_query_id: Default::default(),
@@ -225,7 +217,6 @@ impl ClientState {
             buffered_transmits: Default::default(),
             is_internet_resource_active,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
-            upstream_dns: Default::default(),
             buffered_dns_queries: Default::default(),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
@@ -631,10 +622,7 @@ impl ClientState {
         dst: SocketAddr,
         message: dns_types::Response,
     ) -> anyhow::Result<()> {
-        let saddr = *self
-            .dns_mapping
-            .get_by_right(&DnsServer::from(from))
-            .context("Unknown DNS server")?;
+        let saddr = self.dns_config.get_sentinel_by_upstream(from)?;
 
         let ip_packet = ip_packet::make::udp_packet(
             saddr,
@@ -809,15 +797,11 @@ impl ClientState {
         Ok(Ok(()))
     }
 
-    fn is_upstream_set_by_the_portal(&self) -> bool {
-        !self.upstream_dns.is_empty()
-    }
-
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
     ///
     /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
     fn should_forward_dns_query_to_gateway(&self, dns_server: IpAddr) -> bool {
-        if !self.is_upstream_set_by_the_portal() {
+        if !self.dns_config.has_custom_upstream() {
             return false;
         }
         if self.active_internet_resource().is_some() {
@@ -838,7 +822,7 @@ impl ClientState {
             return ControlFlow::Break(());
         }
 
-        let Some(upstream) = self.dns_mapping.get_by_left(&dst).map(|s| s.address()) else {
+        let Ok(upstream) = self.dns_config.get_upstream_by_sentinel(dst) else {
             return ControlFlow::Continue(packet); // Not for our DNS resolver.
         };
 
@@ -913,10 +897,6 @@ impl ClientState {
         self.resources_gateways.get(resource).copied()
     }
 
-    fn set_dns_mapping(&mut self, new_mapping: BiMap<IpAddr, DnsServer>) {
-        self.dns_mapping = new_mapping;
-    }
-
     fn initialise_tcp_dns_client(&mut self) {
         let Some(tun_config) = self.tun_config.as_ref() else {
             return;
@@ -928,14 +908,12 @@ impl ClientState {
     }
 
     fn initialise_tcp_dns_server(&mut self) {
-        let sentinel_sockets = self
-            .dns_mapping
-            .left_values()
-            .map(|ip| SocketAddr::new(*ip, DNS_PORT))
-            .collect();
+        let sentinel_sockets = self.dns_config.sentinel_servers();
 
         self.tcp_dns_server
-            .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(sentinel_sockets);
+            .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(BTreeSet::from_iter(
+                sentinel_sockets,
+            ));
     }
 
     /// Sets the Internet Resource state.
@@ -966,10 +944,6 @@ impl ClientState {
         }
 
         self.maybe_update_tun_routes();
-    }
-
-    pub fn dns_mapping(&self) -> BiMap<IpAddr, DnsServer> {
-        self.dns_mapping.clone()
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(gateway = %disconnected_gateway))]
@@ -1048,11 +1022,7 @@ impl ClientState {
     }
 
     pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
-        tracing::debug!(servers = ?new_dns, "Received system-defined DNS servers");
-
-        self.system_resolvers = new_dns;
-
-        self.update_dns_mapping()
+        self.dns_config.update_system_resolvers(new_dns);
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
@@ -1083,7 +1053,7 @@ impl ClientState {
                         v4: config.ipv4,
                         v6: config.ipv6,
                     },
-                    dns_by_sentinel: Default::default(),
+                    dns_by_sentinel: self.dns_config.mapping(),
                     search_domain: config.search_domain.clone(),
                     ipv4_routes,
                     ipv6_routes,
@@ -1092,9 +1062,8 @@ impl ClientState {
 
         // Apply the new `TunConfig` if it differs from the existing one.
         self.maybe_update_tun_config(new_tun_config);
-
-        self.upstream_dns = config.upstream_dns;
-        self.update_dns_mapping();
+        self.dns_config
+            .update_upstream_resolvers(config.upstream_dns);
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
@@ -1132,6 +1101,8 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events();
+
+        self.drain_dns_config_events();
 
         self.udp_dns_sockets_by_upstream_and_query_id
             .handle_timeout(now);
@@ -1410,11 +1381,10 @@ impl ClientState {
     fn handle_tcp_dns_query(&mut self, query: dns_over_tcp::Query, now: Instant) {
         let query_id = query.message.id();
 
-        let Some(upstream) = self.dns_mapping.get_by_left(&query.local.ip()) else {
+        let Ok(server) = self.dns_config.get_upstream_by_sentinel(query.local.ip()) else {
             // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
             return;
         };
-        let server = upstream.address();
 
         if let Some(response) = self.dns_cache.try_answer(&query.message, now) {
             unwrap_or_debug!(
@@ -1633,6 +1603,27 @@ impl ClientState {
                     conn_id,
                     candidates,
                 })
+        }
+    }
+
+    fn drain_dns_config_events(&mut self) {
+        while let Some(event) = self.dns_config.poll_event() {
+            let Some(config) = self.tun_config.clone() else {
+                tracing::debug!("Unable to update DNS servers without interface configuration");
+                return;
+            };
+
+            match event {
+                dns_config::Event::DnsServersUpdated => {
+                    let dns_by_sentinel = self.dns_config.mapping();
+
+                    self.maybe_update_tun_config(TunConfig {
+                        dns_by_sentinel,
+                        ..config.clone()
+                    });
+                    self.dns_cache.flush("DNS servers changed");
+                }
+            }
         }
     }
 
@@ -1901,55 +1892,6 @@ impl ClientState {
         }
     }
 
-    fn update_dns_mapping(&mut self) {
-        let Some(config) = self.tun_config.clone() else {
-            // For the Tauri clients this can happen because it's called immediately after phoenix_channel's connect, before on_set_interface_config
-            tracing::debug!("Unable to update DNS servers without interface configuration");
-
-            return;
-        };
-
-        let effective_dns_servers =
-            effective_dns_servers(self.upstream_dns.clone(), self.system_resolvers.clone());
-
-        if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
-            == HashSet::from_iter(self.dns_mapping.right_values())
-        {
-            tracing::debug!(servers = ?effective_dns_servers, "Effective DNS servers are unchanged");
-
-            return;
-        }
-
-        let dns_mapping = sentinel_dns_mapping(
-            &effective_dns_servers,
-            self.dns_mapping()
-                .left_values()
-                .copied()
-                .map(Into::into)
-                .collect_vec(),
-        );
-
-        let (ipv4_routes, ipv6_routes) = self.routes().partition_map(|route| match route {
-            IpNetwork::V4(v4) => itertools::Either::Left(v4),
-            IpNetwork::V6(v6) => itertools::Either::Right(v6),
-        });
-
-        let new_tun_config = TunConfig {
-            ip: config.ip,
-            dns_by_sentinel: dns_mapping
-                .iter()
-                .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
-                .collect::<BiMap<_, _>>(),
-            search_domain: config.search_domain,
-            ipv4_routes,
-            ipv6_routes,
-        };
-
-        self.set_dns_mapping(dns_mapping);
-        self.maybe_update_tun_config(new_tun_config);
-        self.dns_cache.flush("DNS servers changed");
-    }
-
     pub fn update_relays(
         &mut self,
         to_remove: BTreeSet<RelayId>,
@@ -2189,6 +2131,8 @@ mod tests {
 
 #[cfg(all(test, feature = "proptest"))]
 mod proptests {
+    use std::collections::HashSet;
+
     use super::*;
     use crate::proptest::*;
     use connlib_model::ResourceView;

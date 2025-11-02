@@ -1,7 +1,12 @@
-use std::net::IpAddr;
+use std::{
+    collections::{HashSet, VecDeque},
+    net::{IpAddr, SocketAddr},
+};
 
+use anyhow::{Context as _, Result};
 use bimap::BiMap;
 use ip_network::IpNetwork;
+use itertools::Itertools as _;
 
 use crate::{
     client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
@@ -9,7 +14,109 @@ use crate::{
     messages::{DnsServer, IpDnsServer},
 };
 
-pub(crate) fn effective_dns_servers(
+#[derive(Debug, Default)]
+pub(crate) struct DnsConfig {
+    /// The DNS resolvers configured on the system outside of connlib.
+    system_resolvers: Vec<IpAddr>,
+    /// The DNS resolvers configured in the portal.
+    ///
+    /// Has priority over system-configured DNS servers.
+    upstream_dns: Vec<DnsServer>,
+
+    /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
+    mapping: BiMap<IpAddr, DnsServer>,
+
+    pending_events: VecDeque<Event>,
+}
+
+impl DnsConfig {
+    pub(crate) fn get_sentinel_by_upstream(&self, upstream: SocketAddr) -> Result<IpAddr> {
+        let ip_addr = self
+            .mapping
+            .get_by_right(&DnsServer::from(upstream))
+            .context("Unknown DNS server")?;
+
+        Ok(*ip_addr)
+    }
+
+    pub(crate) fn get_upstream_by_sentinel(&self, sentinel: IpAddr) -> Result<SocketAddr> {
+        let upstream = self
+            .mapping
+            .get_by_left(&sentinel)
+            .context("Unknown DNS server")?;
+
+        Ok(upstream.address())
+    }
+
+    pub(crate) fn sentinel_servers(&self) -> Vec<SocketAddr> {
+        self.mapping
+            .left_values()
+            .map(|ip| SocketAddr::new(*ip, DNS_PORT))
+            .collect()
+    }
+
+    pub(crate) fn update_system_resolvers(&mut self, servers: Vec<IpAddr>) {
+        tracing::debug!(?servers, "Received system-defined DNS servers");
+
+        self.system_resolvers = servers;
+
+        self.update_dns_mapping()
+    }
+
+    pub(crate) fn update_upstream_resolvers(&mut self, servers: Vec<DnsServer>) {
+        tracing::debug!(?servers, "Received upstream-defined DNS servers");
+
+        self.upstream_dns = servers;
+
+        self.update_dns_mapping()
+    }
+
+    pub(crate) fn has_custom_upstream(&self) -> bool {
+        !self.upstream_dns.is_empty()
+    }
+
+    pub(crate) fn poll_event(&mut self) -> Option<Event> {
+        self.pending_events.pop_front()
+    }
+
+    pub(crate) fn mapping(&mut self) -> BiMap<IpAddr, SocketAddr> {
+        self.mapping
+            .iter()
+            .map(|(sentinel_dns, effective_dns)| (*sentinel_dns, effective_dns.address()))
+            .collect::<BiMap<_, _>>()
+    }
+
+    fn update_dns_mapping(&mut self) {
+        let effective_dns_servers =
+            effective_dns_servers(self.upstream_dns.clone(), self.system_resolvers.clone());
+
+        if HashSet::<&DnsServer>::from_iter(effective_dns_servers.iter())
+            == HashSet::from_iter(self.mapping.right_values())
+        {
+            tracing::debug!(servers = ?effective_dns_servers, "Effective DNS servers are unchanged");
+
+            return;
+        }
+
+        self.mapping = sentinel_dns_mapping(
+            &effective_dns_servers,
+            self.mapping
+                .left_values()
+                .copied()
+                .map(Into::into)
+                .collect_vec(),
+        );
+
+        self.pending_events.push_back(Event::DnsServersUpdated);
+    }
+}
+
+#[derive(Debug)]
+pub(crate) enum Event {
+    DnsServersUpdated,
+}
+
+fn effective_dns_servers(
     upstream_dns: Vec<DnsServer>,
     default_resolvers: Vec<IpAddr>,
 ) -> Vec<DnsServer> {
@@ -38,7 +145,7 @@ pub(crate) fn effective_dns_servers(
     dns_servers.collect()
 }
 
-pub(crate) fn sentinel_dns_mapping(
+fn sentinel_dns_mapping(
     dns: &[DnsServer],
     old_sentinels: Vec<IpNetwork>,
 ) -> BiMap<IpAddr, DnsServer> {
@@ -67,8 +174,6 @@ fn not_sentinel(srv: DnsServer) -> Option<DnsServer> {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
-
-    use itertools::Itertools as _;
 
     use super::*;
 
