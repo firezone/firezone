@@ -107,7 +107,7 @@ l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 libc = "0.2.176"
 libfuzzer-sys = "0.4"
 log = "0.4"
-lru = "0.12.5"
+lru = "0.16.1"
 mio = "1.1.0"
 moka = "0.12.11"
 native-dialog = "0.7.0"
