@@ -524,7 +524,7 @@ defmodule Domain.AccountsTest do
       attrs = %{
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1:53"},
+            %{protocol: "ip_port", address: "1.1.1.1"},
             %{protocol: "ip_port", address: "1.1.1.1   "}
           ]
         }
@@ -535,6 +535,24 @@ defmodule Domain.AccountsTest do
       assert errors_on(changeset) == %{
                config: %{
                  clients_upstream_dns: ["all addresses must be unique"]
+               }
+             }
+    end
+
+    test "does not allow ports", %{account: account} do
+      attrs = %{
+        config: %{
+          clients_upstream_dns: [
+            %{protocol: "ip_port", address: "1.1.1.1:53"}
+          ]
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 clients_upstream_dns: ["must not include a port"]
                }
              }
     end
