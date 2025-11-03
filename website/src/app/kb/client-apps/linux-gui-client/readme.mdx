@@ -21,32 +21,26 @@ present to authenticate with your identity provider interactively.
 
 ## Installation (Ubuntu)
 
-Switch to the root user:
-
-```bash
-sudo su
-```
-
 Add the Firezone APT repository:
 
 ```bash
-mkdir --parents /etc/apt/keyrings
-wget https://artifacts.firezone.dev/apt/key.gpg -O /etc/apt/keyrings/firezone.gpg
-echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" > /etc/apt/sources.list.d/firezone.list
+sudo mkdir --parents /etc/apt/keyrings
+sudo wget https://artifacts.firezone.dev/apt/key.gpg -O /etc/apt/keyrings/firezone.gpg
+echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" | sudo tee /etc/apt/sources.list.d/firezone.list
 ```
 
 Install the Client:
 
 ```bash
-apt update
-apt install firezone-client-gui
+sudo apt update
+sudo apt install firezone-client-gui
 ```
 
 Join the `firezone-client` group:
 
 ```bash
 # Add yourself to the `firezone-client` group so you can use the tunnel service
-usermod -aG firezone-client "$USER"
+sudo usermod -aG firezone-client "$USER"
 
 # Reboot to finish adding yourself to the group
 reboot
