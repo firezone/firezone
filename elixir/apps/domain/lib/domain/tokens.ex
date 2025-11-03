@@ -13,8 +13,7 @@ defmodule Domain.Tokens do
   @impl true
   def init(_init_arg) do
     children = [
-      Jobs.DeleteExpiredTokens,
-      Jobs.RefreshBrowserSessionTokens
+      Jobs.DeleteExpiredTokens
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
@@ -45,13 +44,6 @@ defmodule Domain.Tokens do
       false -> {:error, :not_found}
       other -> other
     end
-  end
-
-  def all_active_browser_session_tokens! do
-    Token.Query.all()
-    |> Token.Query.expires_in(15, :minute)
-    |> Token.Query.by_type(:browser)
-    |> Repo.all()
   end
 
   def list_subject_tokens(%Auth.Subject{} = subject, opts \\ []) do

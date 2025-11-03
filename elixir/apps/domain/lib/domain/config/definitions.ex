@@ -31,6 +31,7 @@ defmodule Domain.Config.Definitions do
   alias Domain.Config.Dumper
   alias Domain.Types
 
+  @entra_sync_client_id ""
   @google_oidc_client_id "689429116054-72vkp65pqrntsq3bksj9bt4pft15if4v.apps.googleusercontent.com"
   @entra_oidc_client_id "d0b74799-63b8-4c10-8255-1c03c48a3029"
 
@@ -528,11 +529,21 @@ defmodule Domain.Config.Definitions do
   )
 
   ##############################################
+  ## Directory Sync
+  ##############################################
+
+  defconfig(:google_service_account_key, :string, default: nil, sensitive: true)
+
+  ##############################################
   ## Google / Entra / Okta authentication
   ##############################################
 
   defconfig(:google_oidc_client_id, :string, default: @google_oidc_client_id)
   defconfig(:google_oidc_client_secret, :string, default: nil, sensitive: true)
+
+  defconfig(:entra_sync_client_id, :string, default: @entra_sync_client_id)
+  defconfig(:entra_sync_client_secret, :string, default: nil, sensitive: true)
+
   defconfig(:entra_oidc_client_id, :string, default: @entra_oidc_client_id)
   defconfig(:entra_oidc_client_secret, :string, default: nil, sensitive: true)
 

@@ -79,6 +79,9 @@ if config_env() == :prod do
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
 
+  config :domain, Domain.Google.APIClient,
+    service_account_key: env_var_to_config!(:google_service_account_key)
+
   config :domain, Domain.Google.AuthProvider,
     client_id: env_var_to_config!(:google_oidc_client_id),
     client_secret: env_var_to_config!(:google_oidc_client_secret)
@@ -86,6 +89,12 @@ if config_env() == :prod do
   config :domain, Domain.Entra.AuthProvider,
     client_id: env_var_to_config!(:entra_oidc_client_id),
     client_secret: env_var_to_config!(:entra_oidc_client_secret)
+
+  config :domain, Domain.Entra.APIClient,
+    client_id: env_var_to_config!(:entra_sync_client_id),
+    client_secret: env_var_to_config!(:entra_sync_client_secret),
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://graph.microsoft.com"
 
   config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
     finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)

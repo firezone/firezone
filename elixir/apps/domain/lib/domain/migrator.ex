@@ -1397,7 +1397,7 @@ defmodule Domain.Migrator do
         |> Ecto.Changeset.change()
         |> EmailOTP.AuthProvider.changeset()
 
-      case Safe.insert(changeset, subject) do
+      case Safe.scoped(subject) |> Safe.insert(changeset) do
         {:ok, _provider} -> :ok
         {:error, reason} -> raise "Failed to create email provider: #{inspect(reason)}"
       end
@@ -1426,7 +1426,7 @@ defmodule Domain.Migrator do
         |> Ecto.Changeset.change()
         |> Userpass.AuthProvider.changeset()
 
-      case Safe.insert(changeset, subject) do
+      case Safe.scoped(subject) |> Safe.insert(changeset) do
         {:ok, _provider} -> :ok
         {:error, reason} -> raise "Failed to create userpass provider: #{inspect(reason)}"
       end

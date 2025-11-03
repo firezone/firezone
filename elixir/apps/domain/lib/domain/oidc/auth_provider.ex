@@ -1,18 +1,6 @@
 defmodule Domain.OIDC.AuthProvider do
   use Domain, :schema
 
-  @fields ~w[
-    name
-    context
-    client_id
-    client_secret
-    discovery_document_uri
-    issuer
-    is_disabled
-    is_default
-    is_verified
-  ]a
-
   @primary_key false
   schema "oidc_auth_providers" do
     # Allows setting the ID manually in changesets
@@ -30,7 +18,8 @@ defmodule Domain.OIDC.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
-    field :is_verified, :boolean, virtual: true, default: true
+    field :is_verified, :boolean, virtual: true, default: false
+
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
 
@@ -76,6 +65,4 @@ defmodule Domain.OIDC.AuthProvider do
       name: :oidc_auth_providers_auth_provider_id_fkey
     )
   end
-
-  def fields, do: @fields
 end

@@ -1,8 +1,6 @@
 defmodule Domain.EmailOTP.AuthProvider do
   use Domain, :schema
 
-  @fields ~w[name context issuer is_disabled]a
-
   @primary_key false
   schema "email_otp_auth_providers" do
     # Allows setting the ID manually in changesets
@@ -48,6 +46,4 @@ defmodule Domain.EmailOTP.AuthProvider do
       name: :email_otp_auth_providers_auth_provider_id_fkey
     )
   end
-
-  def fields, do: @fields
 end

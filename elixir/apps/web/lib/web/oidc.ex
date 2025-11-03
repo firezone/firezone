@@ -168,8 +168,45 @@ defmodule Web.OIDC do
   - :client_id - Required for Okta and generic OIDC providers
   - :client_secret - Required for Okta and generic OIDC providers
   - :discovery_document_uri - Required for generic OIDC providers
+  - :prompt - OIDC prompt parameter (default: "login")
   """
-  def setup_verification(provider_type, opts \\ []) do
+  def setup_verification("entra", opts) do
+    # For Entra, use admin consent endpoint to pre-check organization-wide consent
+    token = Domain.Crypto.random_token(32)
+    state = "entra-verification:#{token}"
+
+    config = verification_config_for_type("entra", opts)
+    client_id = config[:client_id]
+
+    # Build admin consent URL pointing to our unified verification handler
+    redirect_uri = url(~p"/verification")
+    scope = "openid email profile offline_access"
+
+    params = %{
+      client_id: client_id,
+      state: state,
+      redirect_uri: redirect_uri,
+      scope: scope
+    }
+
+    query_string = URI.encode_query(params)
+
+    admin_consent_url =
+      "https://login.microsoftonline.com/organizations/v2.0/adminconsent?#{query_string}"
+
+    # Generate PKCE verifier for later token exchange
+    verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
+
+    {:ok,
+     %Web.OIDC.Verification{
+       token: token,
+       url: admin_consent_url,
+       verifier: verifier,
+       config: config
+     }}
+  end
+
+  def setup_verification(provider_type, opts) do
     # Generate verification token for OIDC callback
     token = Domain.Crypto.random_token(32)
 
@@ -180,11 +217,14 @@ defmodule Web.OIDC do
     state = "oidc-verification:#{token}"
     config = verification_config_for_type(provider_type, opts)
 
+    # Allow custom prompt parameter
+    prompt = Keyword.get(opts, :prompt, "login")
+
     oidc_params = %{
       state: state,
       code_challenge_method: :S256,
       code_challenge: challenge,
-      prompt: "login"
+      prompt: prompt
     }
 
     with {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
@@ -258,43 +298,29 @@ defmodule Web.OIDC do
 
   # TODO: This can be refactored to reduce duplication with config_for_provider/1
 
-  defp verification_config_for_type("google", _opts) do
-    config = Application.fetch_env!(:domain, Domain.Google.AuthProvider)
-    Enum.into(config, %{redirect_uri: callback_url()})
+  defp verification_config_for_type("google", opts) do
+    Application.fetch_env!(:domain, Domain.Google.AuthProvider)
+    |> verification_config(opts)
   end
 
-  defp verification_config_for_type("entra", _opts) do
-    config = Application.fetch_env!(:domain, Domain.Entra.AuthProvider)
-    Enum.into(config, %{redirect_uri: callback_url()})
+  defp verification_config_for_type("entra", opts) do
+    Application.fetch_env!(:domain, Domain.Entra.AuthProvider)
+    |> verification_config(opts)
   end
 
   defp verification_config_for_type("okta", opts) do
-    config = Application.fetch_env!(:domain, Domain.Okta.AuthProvider)
-
-    client_id = Keyword.get(opts, :client_id)
-    client_secret = Keyword.get(opts, :client_secret)
-    discovery_document_uri = Keyword.get(opts, :discovery_document_uri)
-
-    Enum.into(config, %{
-      redirect_uri: callback_url(),
-      client_id: client_id,
-      client_secret: client_secret,
-      discovery_document_uri: discovery_document_uri
-    })
+    Application.fetch_env!(:domain, Domain.Okta.AuthProvider)
+    |> verification_config(opts)
   end
 
   defp verification_config_for_type("oidc", opts) do
-    config = Application.fetch_env!(:domain, Domain.OIDC.AuthProvider)
+    Application.fetch_env!(:domain, Domain.OIDC.AuthProvider)
+    |> verification_config(opts)
+  end
 
-    client_id = Keyword.get(opts, :client_id)
-    client_secret = Keyword.get(opts, :client_secret)
-    discovery_document_uri = Keyword.get(opts, :discovery_document_uri)
-
-    Enum.into(config, %{
-      redirect_uri: callback_url(),
-      client_id: client_id,
-      client_secret: client_secret,
-      discovery_document_uri: discovery_document_uri
-    })
+  defp verification_config(config, opts) do
+    config
+    |> Keyword.merge(opts)
+    |> Enum.into(%{redirect_uri: callback_url()})
   end
 end

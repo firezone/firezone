@@ -93,7 +93,7 @@ defmodule Web.OIDCController do
     conn
     |> Plug.Conn.put_session(:verification_token, verification_token)
     |> Plug.Conn.put_session(:verification_code, code)
-    |> redirect(to: ~p"/auth/oidc/verify")
+    |> redirect(to: ~p"/verification")
   end
 
   defp provider_redirect(conn, account, provider, params) do

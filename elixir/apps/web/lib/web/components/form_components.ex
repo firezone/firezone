@@ -485,6 +485,7 @@ defmodule Web.FormComponents do
   attr :confirm_style, :string, default: "danger", doc: "The style of the confirm button"
   attr :icon, :string, default: nil, doc: "The icon of the button"
   attr :size, :string, default: "md", doc: "The size of the button"
+  attr :type, :string, default: "button", doc: "The button type"
   attr :on_confirm, :string, required: true, doc: "The phx event to broadcast on confirm"
   attr :disabled, :boolean, default: false, doc: "Whether the button is disabled"
 
@@ -556,6 +557,7 @@ defmodule Web.FormComponents do
       style={@style}
       size={@size}
       icon={@icon}
+      type={@type}
       class={@class}
       disabled={@disabled}
       phx-hook="ConfirmDialog"

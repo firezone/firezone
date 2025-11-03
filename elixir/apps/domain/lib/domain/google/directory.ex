@@ -6,20 +6,40 @@ defmodule Domain.Google.Directory do
     field :hosted_domain, :string
 
     field :issuer, :string
-    field :name, :string
-    field :superadmin_email, :string
-    field :superadmin_emailed_at, :utc_datetime_usec
+    field :name, :string, default: "Google"
     field :impersonation_email, :string
-    field :error_count, :integer, read_after_writes: true
+    field :error_count, :integer, default: 0, read_after_writes: true
     field :is_disabled, :boolean, default: false, read_after_writes: true
     field :disabled_reason, :string
     field :synced_at, :utc_datetime_usec
     field :error, :string
     field :error_emailed_at, :utc_datetime_usec
 
-    field :is_verified, :boolean, virtual: true, default: true
+    field :is_verified, :boolean, virtual: true, default: false
 
     subject_trail(~w[actor identity system]a)
     timestamps()
+  end
+
+  def changeset(changeset) do
+    changeset
+    |> validate_required([:hosted_domain, :issuer, :is_verified, :name, :impersonation_email])
+    |> validate_acceptance(:is_verified)
+    |> validate_email(:impersonation_email)
+    |> validate_length(:hosted_domain, min: 1, max: 255)
+    |> validate_length(:issuer, min: 1, max: 2_000)
+    |> validate_length(:name, min: 1, max: 255)
+    |> validate_number(:error_count, greater_than_or_equal_to: 0)
+    |> validate_length(:error, max: 2_000)
+    |> assoc_constraint(:account)
+    |> unique_constraint(:hosted_domain,
+      name: :google_directories_account_id_issuer_hosted_domain_index,
+      message: "A Google directory for this hosted domain already exists."
+    )
+    |> unique_constraint(:name,
+      name: :google_directories_account_id_name_index,
+      message: "A Google directory with this name already exists."
+    )
+    |> foreign_key_constraint(:account_id, name: :google_directories_account_id_fkey)
   end
 end

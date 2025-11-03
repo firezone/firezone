@@ -1,8 +1,6 @@
 defmodule Domain.Google.AuthProvider do
   use Domain, :schema
 
-  @fields ~w[name context issuer is_verified is_disabled hosted_domain is_default is_verified]a
-
   @primary_key false
   schema "google_auth_providers" do
     # Allows setting the ID manually in changesets
@@ -20,7 +18,7 @@ defmodule Domain.Google.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
-    field :is_verified, :boolean, virtual: true, default: true
+    field :is_verified, :boolean, virtual: true, default: false
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
@@ -54,6 +52,4 @@ defmodule Domain.Google.AuthProvider do
       name: :google_auth_providers_auth_provider_id_fkey
     )
   end
-
-  def fields, do: @fields
 end

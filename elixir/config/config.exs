@@ -135,6 +135,17 @@ config :domain, Domain.Analytics,
   mixpanel_token: nil,
   hubspot_workspace_id: nil
 
+config :domain, Domain.Entra.APIClient,
+  client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
+  endpoint: "https://graph.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com"
+
+config :domain, Domain.Google.APIClient,
+  endpoint: "https://admin.googleapis.com",
+  service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
+  token_endpoint: "https://oauth2.googleapis.com/token"
+
 config :domain, Domain.Google.AuthProvider,
   # Should match an external OAuth2 client in Google Cloud Console
   client_id: System.get_env("GOOGLE_OIDC_CLIENT_ID"),

@@ -69,10 +69,14 @@ defmodule Web.Router do
     pipe_through :public
 
     get "/oidc/callback", OIDCController, :callback
+  end
 
-    live_session :oidc_verification,
+  scope "/", Web do
+    pipe_through :public
+
+    live_session :verification,
       on_mount: [Web.LiveHooks.AllowEctoSandbox] do
-      live "/oidc/verify", OIDCVerification
+      live "/verification", Verification
     end
   end
 

@@ -6,13 +6,12 @@ defmodule Domain.Repo.Migrations.CreateGoogleDirectories do
       add(:id, :binary_id, null: false, primary_key: true)
 
       account()
+
       add(:hosted_domain, :string, null: false)
 
       add(:issuer, :text, null: false)
       add(:name, :string, null: false)
-      add(:superadmin_email, :string)
-      add(:superadmin_emailed_at, :utc_datetime_usec)
-      add(:impersonation_email, :string)
+      add(:impersonation_email, :string, null: false)
       add(:error_count, :integer, null: false, default: 0)
       add(:synced_at, :utc_datetime_usec)
       add(:is_disabled, :boolean, default: false, null: false)

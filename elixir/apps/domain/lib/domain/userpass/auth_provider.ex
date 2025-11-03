@@ -1,8 +1,6 @@
 defmodule Domain.Userpass.AuthProvider do
   use Domain, :schema
 
-  @fields ~w[name context issuer is_disabled]a
-
   @primary_key false
   schema "userpass_auth_providers" do
     # Allows setting the ID manually in changesets
@@ -47,6 +45,4 @@ defmodule Domain.Userpass.AuthProvider do
       name: :userpass_auth_providers_auth_provider_id_fkey
     )
   end
-
-  def fields, do: @fields
 end

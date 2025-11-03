@@ -351,16 +351,18 @@ defmodule Domain.Repo.Seeds do
     {unprivileged_actor_email_identity, unprivileged_actor_userpass_identity} =
       if new_auth? do
         # New auth system: create ONE identity for local auth (works with both EmailOTP and Userpass)
+        password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
+
         {:ok, identity} =
-          Domain.Identities.create_identity(unprivileged_actor, %{
+          Repo.insert(%Auth.Identity{
+            actor_id: unprivileged_actor.id,
+            account_id: account.id,
             issuer: "firezone",
             idp_id: unprivileged_actor_email,
-            name: "Firezone Unprivileged"
+            name: "Firezone Unprivileged",
+            password_hash: password_hash,
+            created_by: :system
           })
-
-        # Set password_hash for Userpass authentication
-        password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
-        identity = Repo.update!(Ecto.Changeset.change(identity, password_hash: password_hash))
 
         # Return the same identity for both email and userpass (same user, different auth methods)
         {identity, identity}
@@ -392,39 +394,48 @@ defmodule Domain.Repo.Seeds do
     {admin_actor_email_identity, _admin_actor_userpass_identity, admin_actor_oidc_identity} =
       if new_auth? do
         # New auth system: create ONE identity for local auth (EmailOTP + Userpass)
-        {:ok, local_identity} =
-          Domain.Identities.create_identity(admin_actor, %{
-            issuer: "firezone",
-            idp_id: admin_actor_email,
-            name: "Firezone Admin"
-          })
-
-        # Set password_hash for Userpass authentication
         password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
 
-        local_identity =
-          Repo.update!(Ecto.Changeset.change(local_identity, password_hash: password_hash))
+        {:ok, local_identity} =
+          Repo.insert(%Auth.Identity{
+            actor_id: admin_actor.id,
+            account_id: account.id,
+            issuer: "firezone",
+            idp_id: admin_actor_email,
+            name: "Firezone Admin",
+            password_hash: password_hash,
+            created_by: :system
+          })
 
         # Create separate OIDC identity (different issuer)
         {:ok, oidc_identity} =
-          Domain.Identities.create_identity(admin_actor, %{
+          Repo.insert(%Auth.Identity{
+            actor_id: admin_actor.id,
+            account_id: account.id,
             issuer: "https://common.auth0.com",
             idp_id: admin_actor_email,
-            name: "Firezone Admin"
+            name: "Firezone Admin",
+            created_by: :system
           })
 
         {:ok, _google_identity} =
-          Domain.Identities.create_identity(admin_actor, %{
+          Repo.insert(%Auth.Identity{
+            actor_id: admin_actor.id,
+            account_id: account.id,
             issuer: "https://accounts.google.com",
             idp_id: google_idp_id(),
-            name: "Firezone Admin"
+            name: "Firezone Admin",
+            created_by: :system
           })
 
         {:ok, _entra_identity} =
-          Domain.Identities.create_identity(admin_actor, %{
+          Repo.insert(%Auth.Identity{
+            actor_id: admin_actor.id,
+            account_id: account.id,
             issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
             idp_id: entra_idp_id(),
-            name: "Firezone Admin"
+            name: "Firezone Admin",
+            created_by: :system
           })
 
         {local_identity, local_identity, oidc_identity}
@@ -469,10 +480,13 @@ defmodule Domain.Repo.Seeds do
     for {actor, email} <- other_actors_with_emails do
       {:ok, identity} =
         if new_auth? do
-          Domain.Identities.create_identity(actor, %{
+          Repo.insert(%Auth.Identity{
+            actor_id: actor.id,
+            account_id: account.id,
             issuer: "https://common.auth0.com",
             idp_id: email,
-            name: actor.name
+            name: actor.name,
+            created_by: :system
           })
         else
           Auth.create_identity(actor, oidc_provider, %{

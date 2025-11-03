@@ -143,8 +143,63 @@ Hooks.Popover = {
       offset: 5,
     };
 
-    new Popover($targetEl, $triggerEl, options);
+    // Store the popover instance so it can be cleaned up later
+    this.popover = new Popover($targetEl, $triggerEl, options);
+
+    // For click trigger type, manually handle toggle to ensure it works properly
+    if (triggerType === "click") {
+      this.clickHandler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.popover.toggle();
+      };
+
+      // Find the actual button element inside the trigger
+      const button = $triggerEl.querySelector('button');
+      if (button) {
+        button.addEventListener('click', this.clickHandler);
+      }
+    }
   },
+
+  updated() {
+    // Clean up old event listeners and popover
+    if (this.popover) {
+      const $triggerEl = this.el;
+      const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+
+      if (triggerType === "click" && this.clickHandler) {
+        const button = $triggerEl.querySelector('button');
+        if (button) {
+          button.removeEventListener('click', this.clickHandler);
+        }
+      }
+
+      this.popover.hide();
+      this.popover.destroyAndRemoveInstance();
+    }
+
+    // Recreate the popover with updated DOM
+    this.mounted();
+  },
+
+  destroyed() {
+    // Clean up event listeners and popover instance
+    if (this.popover) {
+      const $triggerEl = this.el;
+      const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+
+      if (triggerType === "click" && this.clickHandler) {
+        const button = $triggerEl.querySelector('button');
+        if (button) {
+          button.removeEventListener('click', this.clickHandler);
+        }
+      }
+
+      this.popover.hide();
+      this.popover.destroyAndRemoveInstance();
+    }
+  }
 };
 
 Hooks.CopyClipboard = {

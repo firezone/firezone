@@ -6,8 +6,6 @@ defmodule Domain.Safe do
   import Ecto.Query, warn: false
   import Ecto.Changeset
 
-  alias Ecto.Changeset
-
   alias Domain.{
     Auth.Subject,
     Repo,
@@ -19,7 +17,33 @@ defmodule Domain.Safe do
     Userpass
   }
 
-  def one(queryable, %Subject{account: %{id: account_id}} = subject) do
+  defmodule Scoped do
+    @moduledoc """
+    Scoped context that carries authorization information.
+    """
+    @type t :: %__MODULE__{subject: Subject.t()}
+
+    defstruct [:subject]
+  end
+
+  @doc """
+  Returns a scoped context for operations with authorization and account filtering.
+  """
+  @spec scoped(Subject.t()) :: Scoped.t()
+  def scoped(%Subject{} = subject) do
+    %Scoped{subject: subject}
+  end
+
+  @doc """
+  Returns the Repo module for unscoped operations without authorization or filtering.
+  """
+  def unscoped do
+    Repo
+  end
+
+  # Query operations
+  @spec one(Scoped.t(), Ecto.Queryable.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
+  def one(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -29,7 +53,10 @@ defmodule Domain.Safe do
     end
   end
 
-  def one!(queryable, %Subject{account: %{id: account_id}} = subject) do
+  def one(repo, queryable) when repo == Repo, do: Repo.one(queryable)
+
+  @spec one!(Scoped.t(), Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
+  def one!(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -39,7 +66,10 @@ defmodule Domain.Safe do
     end
   end
 
-  def all(queryable, %Subject{account: %{id: account_id}} = subject) do
+  def one!(repo, queryable) when repo == Repo, do: Repo.one!(queryable)
+
+  @spec all(Scoped.t(), Ecto.Queryable.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
+  def all(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -49,7 +79,12 @@ defmodule Domain.Safe do
     end
   end
 
-  def insert(%Changeset{} = changeset, %Subject{} = subject) do
+  def all(repo, queryable) when repo == Repo, do: Repo.all(queryable)
+
+  # Mutation operations
+  @spec insert(Scoped.t(), Ecto.Changeset.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def insert(%Scoped{subject: subject}, %Ecto.Changeset{} = changeset) do
     changeset = %{changeset | action: :insert}
     schema = get_schema_module(changeset.data)
 
@@ -61,7 +96,12 @@ defmodule Domain.Safe do
     end
   end
 
-  def update(%Changeset{} = changeset, %Subject{} = subject) do
+  def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo,
+    do: Repo.insert(changeset_or_struct, opts)
+
+  @spec update(Scoped.t(), Ecto.Changeset.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def update(%Scoped{subject: subject}, %Ecto.Changeset{} = changeset) do
     changeset = %{changeset | action: :update}
     schema = get_schema_module(changeset.data)
 
@@ -70,24 +110,65 @@ defmodule Domain.Safe do
     end
   end
 
-  def delete(queryable, %Subject{account: %{id: account_id}} = subject) do
-    schema = get_schema_module(queryable)
+  def update(repo, changeset, opts \\ []) when repo == Repo, do: Repo.update(changeset, opts)
+
+  @spec delete(Scoped.t(), Ecto.Changeset.t() | Ecto.Schema.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
+  def delete(
+        %Scoped{subject: %Subject{account: %{id: account_id}} = subject},
+        %Ecto.Changeset{data: %{account_id: account_id}} = changeset
+      ) do
+    changeset = %{changeset | action: :delete}
+    schema = get_schema_module(changeset.data)
 
     with :ok <- permit(:delete, schema, subject) do
-      queryable
-      |> where(account_id: ^account_id)
-      |> Repo.delete()
+      Repo.delete(changeset)
     end
   end
 
-  # TODO: AUDIT LOGS
-  # update and delete subject trails
+  def delete(
+        %Scoped{subject: %Subject{account: %{id: account_id}} = subject},
+        %{account_id: account_id} = struct
+      )
+      when is_struct(struct) do
+    schema = get_schema_module(struct)
 
-  defp put_subject_trail(changeset, %Subject{} = subject) do
+    with :ok <- permit(:delete, schema, subject) do
+      Repo.delete(struct)
+    end
+  end
+
+  def delete(repo, struct_or_changeset, opts \\ []) when repo == Repo,
+    do: Repo.delete(struct_or_changeset, opts)
+
+  # Helper functions
+  def get_schema_module(%Ecto.Query{from: %{source: {_table, schema}}}), do: schema
+  def get_schema_module(%Ecto.Changeset{data: data}), do: get_schema_module(data)
+  def get_schema_module(struct) when is_struct(struct), do: struct.__struct__
+  def get_schema_module(module) when is_atom(module), do: module
+  def get_schema_module(_), do: nil
+
+  def permit(action, schema, %Subject{} = subject) do
+    permit(action, schema, subject.actor.type)
+  end
+
+  def permit(_action, Entra.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Google.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Okta.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, OIDC.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, EmailOTP.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Userpass.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Entra.Directory, :account_admin_user), do: :ok
+  def permit(_action, Google.Directory, :account_admin_user), do: :ok
+  def permit(_action, Okta.Directory, :account_admin_user), do: :ok
+
+  def permit(_action, _struct, _type), do: {:error, :unauthorized}
+
+  def put_subject_trail(changeset, %Subject{} = subject) do
     changeset
     |> put_change(:created_by, :actor)
     |> put_change(:created_by_subject, %{
-      "ip" => subject.context.remote_ip,
+      "ip" => to_string(:inet.ntoa(subject.context.remote_ip)),
       "ip_region" => subject.context.remote_ip_location_region,
       "ip_city" => subject.context.remote_ip_location_city,
       "ip_lat" => subject.context.remote_ip_location_lat,
@@ -97,25 +178,4 @@ defmodule Domain.Safe do
       "id" => subject.actor.id
     })
   end
-
-  defp get_schema_module(%Ecto.Query{from: %{source: {_table, schema}}}), do: schema
-  defp get_schema_module(struct) when is_struct(struct), do: struct.__struct__
-  defp get_schema_module(module) when is_atom(module), do: module
-  defp get_schema_module(_), do: nil
-
-  defp permit(action, schema, %Subject{} = subject) do
-    permit(action, schema, subject.actor.type)
-  end
-
-  defp permit(_action, Entra.AuthProvider, :account_admin_user), do: :ok
-  defp permit(_action, Google.AuthProvider, :account_admin_user), do: :ok
-  defp permit(_action, Okta.AuthProvider, :account_admin_user), do: :ok
-  defp permit(_action, OIDC.AuthProvider, :account_admin_user), do: :ok
-  defp permit(_action, EmailOTP.AuthProvider, :account_admin_user), do: :ok
-  defp permit(_action, Userpass.AuthProvider, :account_admin_user), do: :ok
-  defp permit(_action, Entra.Directory, :account_admin_user), do: :ok
-  defp permit(_action, Google.Directory, :account_admin_user), do: :ok
-  defp permit(_action, Okta.Directory, :account_admin_user), do: :ok
-
-  defp permit(_action, _struct, _type), do: {:error, :unauthorized}
 end

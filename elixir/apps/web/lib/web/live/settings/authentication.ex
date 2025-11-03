@@ -13,7 +13,6 @@ defmodule Web.Settings.Authentication do
   }
 
   import Ecto.Changeset
-  import Ecto.Query
 
   require Logger
 
@@ -22,9 +21,6 @@ defmodule Web.Settings.Authentication do
     {"Client Applications Only", "clients_only"},
     {"Admin Portal Only", "portal_only"}
   ]
-
-  @okta_verification_trigger_fields ~w[okta_domain client_id client_secret]a
-  @oidc_verification_trigger_fields ~w[discovery_document_uri client_id client_secret]a
 
   @select_type_classes ~w[
     component bg-white rounded-lg p-4 flex items-center cursor-pointer
@@ -35,6 +31,18 @@ defmodule Web.Settings.Authentication do
   @new_types ~w[google entra okta oidc]
   @edit_types @new_types ++ ~w[userpass email_otp]
 
+  @common_fields ~w[name context is_disabled issuer]a
+
+  @fields %{
+    EmailOTP.AuthProvider => @common_fields,
+    Userpass.AuthProvider => @common_fields,
+    Google.AuthProvider => @common_fields ++ ~w[hosted_domain is_verified]a,
+    Entra.AuthProvider => @common_fields ++ ~w[tenant_id is_verified]a,
+    Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
+    OIDC.AuthProvider =>
+      @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified]a
+  }
+
   def mount(_params, _session, socket) do
     {:ok, init(socket)}
   end
@@ -44,7 +52,7 @@ defmodule Web.Settings.Authentication do
       when type in @new_types do
     schema = AuthProviders.AuthProvider.module!(type)
     struct = struct(schema)
-    attrs = %{id: Ecto.UUID.generate(), is_verified: false}
+    attrs = %{id: Ecto.UUID.generate()}
     changeset = changeset(struct, attrs, socket)
 
     {:noreply, assign(socket, type: type, form: to_form(changeset))}
@@ -59,14 +67,9 @@ defmodule Web.Settings.Authentication do
       when type in @edit_types do
     schema = AuthProviders.AuthProvider.module!(type)
     provider = get_provider!(schema, id, socket.assigns.subject)
-    changeset = changeset(provider, %{}, socket)
+    changeset = changeset(provider, %{is_verified: true}, socket)
 
     {:noreply, assign(socket, provider_name: provider.name, type: type, form: to_form(changeset))}
-  end
-
-  # Unknown Provider Type
-  def handle_params(%{"type" => _type}, _url, _socket) do
-    raise Web.LiveErrors.NotFoundError
   end
 
   # Default handler
@@ -95,7 +98,7 @@ defmodule Web.Settings.Authentication do
 
     # Get values from changes (if modified) or from data (if not modified yet)
     opts =
-      if type in ["okta", "idc"] do
+      if type in ["okta", "oidc"] do
         [
           discovery_document_uri: get_field(changeset, :discovery_document_uri),
           client_id: get_field(changeset, :client_id),
@@ -107,7 +110,15 @@ defmodule Web.Settings.Authentication do
 
     with {:ok, verification} <- Web.OIDC.setup_verification(type, opts) do
       # Subscribe to verification PubSub topic if connected
-      Domain.PubSub.subscribe("oidc-verification:#{verification}")
+      # For Entra, use "entra-verification:" topic; for others use "oidc-verification:"
+      topic =
+        if type == "entra" do
+          "entra-verification:#{verification.token}"
+        else
+          "oidc-verification:#{verification.token}"
+        end
+
+      :ok = Domain.PubSub.subscribe(topic)
 
       socket = assign(socket, verification: verification)
 
@@ -145,11 +156,10 @@ defmodule Web.Settings.Authentication do
     submit_provider(socket)
   end
 
-  def handle_event("delete_provider", %{"id" => composite_id}, socket) do
-    # Split composite ID "type:id"
-    [type, id] = String.split(composite_id, ":", parts: 2)
+  def handle_event("delete_provider", %{"id" => id}, socket) do
+    provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
 
-    case delete_provider(type, id, socket.assigns.subject) do
+    case delete_provider(provider, socket.assigns.subject) do
       {:ok, _provider} ->
         {:noreply,
          socket
@@ -157,8 +167,60 @@ defmodule Web.Settings.Authentication do
          |> put_flash(:info, "Authentication provider deleted successfully.")
          |> push_patch(to: ~p"/#{socket.assigns.account}/settings/authentication")}
 
-      {:error, _reason} ->
+      {:error, reason} ->
+        Logger.error("Failed to delete authentication provider: #{inspect(reason)}")
         {:noreply, put_flash(socket, :error, "Failed to delete authentication provider.")}
+    end
+  end
+
+  def handle_event("toggle_provider", %{"id" => id}, socket) do
+    provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
+    new_disabled_state = not provider.is_disabled
+
+    changeset =
+      provider
+      |> Ecto.Changeset.change(is_disabled: new_disabled_state)
+
+    case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+      {:ok, _provider} ->
+        action = if new_disabled_state, do: "disabled", else: "enabled"
+
+        {:noreply,
+         socket
+         |> init()
+         |> put_flash(:info, "Authentication provider #{action} successfully.")}
+
+      {:error, reason} ->
+        Logger.error("Failed to toggle authentication provider: #{inspect(reason)}")
+        {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
+    end
+  end
+
+  # Sent by the Entra admin consent verification process from another browser tab
+  def handle_info({:entra_verification, pid, issuer, tenant_id, state_token}, socket) do
+    :ok = Domain.PubSub.unsubscribe("entra-verification:#{state_token}")
+
+    stored_token = socket.assigns.verification.token
+
+    # Verify the state token matches
+    if stored_token && Plug.Crypto.secure_compare(stored_token, state_token) do
+      send(pid, :success)
+
+      attrs = %{
+        "is_verified" => true,
+        "issuer" => issuer,
+        "tenant_id" => tenant_id
+      }
+
+      changeset =
+        socket.assigns.form.source
+        |> apply_changes()
+        |> changeset(attrs, socket)
+
+      {:noreply, assign(socket, form: to_form(changeset))}
+    else
+      send(pid, {:error, :token_mismatch})
+      {:noreply, socket}
     end
   end
 
@@ -204,22 +266,10 @@ defmodule Web.Settings.Authentication do
   end
 
   defp clear_verification_if_trigger_fields_changed(changeset) do
-    if Enum.any?(verification_trigger_fields(changeset), fn field ->
-         Map.has_key?(changeset.changes, field)
-       end) do
-      changeset
-      |> put_change(:is_verified, false)
-      |> put_change(:issuer, nil)
-      |> case do
-        %{data: %Google.AuthProvider{}} = changeset ->
-          put_change(changeset, :hosted_domain, nil)
+    fields = [:client_id, :client_secret, :discovery_document_uri, :okta_domain]
 
-        %{data: %Entra.AuthProvider{}} = changeset ->
-          put_change(changeset, :tenant_id, nil)
-
-        changeset ->
-          changeset
-      end
+    if Enum.any?(fields, &get_change(changeset, &1)) do
+      put_change(changeset, :is_verified, false)
     else
       changeset
     end
@@ -230,12 +280,12 @@ defmodule Web.Settings.Authentication do
 
     providers =
       [
-        Safe.all(EmailOTP.AuthProvider, subject),
-        Safe.all(Userpass.AuthProvider, subject),
-        Safe.all(Google.AuthProvider, subject),
-        Safe.all(Entra.AuthProvider, subject),
-        Safe.all(Okta.AuthProvider, subject),
-        Safe.all(OIDC.AuthProvider, subject)
+        Safe.scoped(subject) |> Safe.all(EmailOTP.AuthProvider),
+        Safe.scoped(subject) |> Safe.all(Userpass.AuthProvider),
+        Safe.scoped(subject) |> Safe.all(Google.AuthProvider),
+        Safe.scoped(subject) |> Safe.all(Entra.AuthProvider),
+        Safe.scoped(subject) |> Safe.all(Okta.AuthProvider),
+        Safe.scoped(subject) |> Safe.all(OIDC.AuthProvider)
       ]
       |> List.flatten()
 
@@ -379,14 +429,6 @@ defmodule Web.Settings.Authentication do
     """
   end
 
-  defp verification_trigger_fields(%Ecto.Changeset{data: %Okta.AuthProvider{}}),
-    do: @okta_verification_trigger_fields
-
-  defp verification_trigger_fields(%Ecto.Changeset{data: %OIDC.AuthProvider{}}),
-    do: @oidc_verification_trigger_fields
-
-  defp verification_trigger_fields(_), do: []
-
   defp context_icon(:clients_and_portal), do: "hero-globe-alt"
   defp context_icon(:portal_only), do: "hero-window"
   defp context_icon(:clients_only), do: "hero-device-phone-mobile"
@@ -399,50 +441,80 @@ defmodule Web.Settings.Authentication do
 
   defp provider_card(assigns) do
     ~H"""
-    <div class="flex flex-col bg-neutral-50 rounded-lg p-4 w-64">
-      <div class="flex items-start justify-between mb-3">
-        <div class="flex items-start items-center flex-1 min-w-0">
+    <div class="flex flex-col bg-neutral-50 rounded-lg p-4 w-96">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center flex-1 min-w-0">
           <.provider_icon type={@type} class="w-7 h-7 mr-2 flex-shrink-0" />
-          <span class="font-normal text-lg break-words overflow-hidden text-ellipsis">
+          <span class="font-normal text-lg truncate" title={@provider.name}>
             {@provider.name}
           </span>
         </div>
-        <.popover placement="bottom" trigger="click">
-          <:target>
-            <button
-              type="button"
-              class="p-1 text-neutral-500 hover:text-neutral-700 rounded"
-            >
-              <.icon name="hero-ellipsis-horizontal" class="text-neutral-800 w-5 h-5" />
-            </button>
-          </:target>
-          <:content>
-            <div class="flex flex-col py-1">
-              <.link
-                patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
-                class="px-4 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2"
+        <div class="flex items-center">
+          <.button_with_confirmation
+            id={"toggle-provider-#{@provider.id}"}
+            on_confirm="toggle_provider"
+            on_confirm_id={@provider.id}
+            class="p-0 border-0 bg-transparent shadow-none hover:bg-transparent"
+          >
+            <.toggle
+              id={"provider-toggle-#{@provider.id}"}
+              checked={not @provider.is_disabled}
+            />
+            <:dialog_title>
+              {if @provider.is_disabled, do: "Enable", else: "Disable"} Authentication Provider
+            </:dialog_title>
+            <:dialog_content>
+              <p>
+                Are you sure you want to {if @provider.is_disabled, do: "enable", else: "disable"} <strong>{@provider.name}</strong>?
+              </p>
+              <%= if not @provider.is_disabled do %>
+                <p class="mt-2">
+                  Users will not be able to sign in using this provider while it is disabled.
+                </p>
+              <% end %>
+            </:dialog_content>
+            <:dialog_confirm_button>
+              {if @provider.is_disabled, do: "Enable", else: "Disable"}
+            </:dialog_confirm_button>
+            <:dialog_cancel_button>Cancel</:dialog_cancel_button>
+          </.button_with_confirmation>
+          <.popover placement="bottom" trigger="click">
+            <:target>
+              <button
+                type="button"
+                class="p-1 text-neutral-500 hover:text-neutral-700 rounded"
               >
-                <.icon name="hero-pencil" class="w-4 h-4" /> Edit
-              </.link>
-              <.button_with_confirmation
-                :if={@type not in ["email_otp", "userpass"]}
-                id={"delete-provider-#{@provider.id}"}
-                on_confirm="delete_provider"
-                on_confirm_id={"#{@type}:#{@provider.id}"}
-                class="w-full px-4 py-2 text-sm text-red-600 rounded-lg flex items-center gap-2 text-left border-0 bg-transparent"
-              >
-                <.icon name="hero-trash" class="w-4 h-4" /> Delete
-                <:dialog_title>Delete Authentication Provider</:dialog_title>
-                <:dialog_content>
-                  Are you sure you want to delete <strong>{@provider.name}</strong>?
-                  This action cannot be undone.
-                </:dialog_content>
-                <:dialog_confirm_button>Delete</:dialog_confirm_button>
-                <:dialog_cancel_button>Cancel</:dialog_cancel_button>
-              </.button_with_confirmation>
-            </div>
-          </:content>
-        </.popover>
+                <.icon name="hero-ellipsis-horizontal" class="text-neutral-800 w-5 h-5" />
+              </button>
+            </:target>
+            <:content>
+              <div class="flex flex-col py-1">
+                <.link
+                  patch={~p"/#{@account}/settings/authentication/#{@type}/#{@provider.id}/edit"}
+                  class="px-4 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2"
+                >
+                  <.icon name="hero-pencil" class="w-4 h-4" /> Edit
+                </.link>
+                <.button_with_confirmation
+                  :if={@type not in ["email_otp", "userpass"]}
+                  id={"delete-provider-#{@provider.id}"}
+                  on_confirm="delete_provider"
+                  on_confirm_id={@provider.id}
+                  class="w-full px-4 py-2 text-sm text-red-600 rounded-lg flex items-center gap-2 text-left border-0 bg-transparent"
+                >
+                  <.icon name="hero-trash" class="w-4 h-4" /> Delete
+                  <:dialog_title>Delete Authentication Provider</:dialog_title>
+                  <:dialog_content>
+                    Are you sure you want to delete <strong>{@provider.name}</strong>?
+                    This action cannot be undone.
+                  </:dialog_content>
+                  <:dialog_confirm_button>Delete</:dialog_confirm_button>
+                  <:dialog_cancel_button>Cancel</:dialog_cancel_button>
+                </.button_with_confirmation>
+              </div>
+            </:content>
+          </.popover>
+        </div>
       </div>
 
       <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
@@ -691,14 +763,14 @@ defmodule Web.Settings.Authentication do
   end
 
   defp submit_provider(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
-    changeset
-    |> Safe.insert(socket.assigns.subject)
+    Safe.scoped(socket.assigns.subject)
+    |> Safe.insert(changeset)
     |> handle_submit(socket)
   end
 
   defp submit_provider(%{assigns: %{live_action: :edit, form: %{source: changeset}}} = socket) do
-    changeset
-    |> Safe.update(socket.assigns.subject)
+    Safe.scoped(socket.assigns.subject)
+    |> Safe.update(changeset)
     |> handle_submit(socket)
   end
 
@@ -758,7 +830,7 @@ defmodule Web.Settings.Authentication do
 
   defp changeset(struct, attrs, socket) do
     schema = struct.__struct__
-    changeset = cast(struct, attrs, schema.fields())
+    changeset = cast(struct, attrs, Map.get(@fields, schema))
 
     changeset
     |> maybe_initialize_with_parent(socket.assigns.subject.account.id)
@@ -766,13 +838,14 @@ defmodule Web.Settings.Authentication do
   end
 
   defp get_provider!(schema, id, subject) do
-    from(p in schema, where: p.id == ^id)
-    |> Safe.one!(subject)
+    import Ecto.Query
+
+    query = from(p in schema, where: p.id == ^id)
+    Safe.scoped(subject) |> Safe.one!(query)
   end
 
-  defp delete_provider(schema, id, subject) do
-    from(p in schema, where: p.id == ^id)
-    |> Safe.delete(subject)
+  defp delete_provider(provider, subject) do
+    Safe.scoped(subject) |> Safe.delete(provider)
   end
 
   defp verified?(form) do
