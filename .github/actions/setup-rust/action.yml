@@ -87,7 +87,6 @@ runs:
       shell: bash
 
     - name: Install nightly Rust for compiling eBPF code
-      id: nightly
       run: |
         NIGHTLY="nightly-2025-05-30"
         # Check if nightly toolchain is already installed
