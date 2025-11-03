@@ -16,6 +16,10 @@ export default function Headless({ os }: { os: OS }) {
             the local network were not routable.
           </ChangeItem>
         )}
+        <ChangeItem pull="10773">
+          Fixes an issue where the order of upstream / system DNS resolvers was
+          not respected.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.4" date={new Date("2025-10-16")}>
         <ChangeItem pull="10533">

@@ -379,9 +379,10 @@ impl Session {
     pub async fn next_event(&self) -> Option<Event> {
         match self.events.lock().await.next().await? {
             client_shared::Event::TunInterfaceUpdated(config) => {
-                let dns: Vec<String> = config
+                let dns = config
                     .dns_by_sentinel
-                    .left_values()
+                    .sentinel_ips()
+                    .into_iter()
                     .map(|ip| ip.to_string())
                     .collect();
 

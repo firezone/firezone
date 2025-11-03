@@ -139,7 +139,7 @@ impl SimGateway {
 
     pub(crate) fn deploy_new_dns_servers(
         &mut self,
-        dns_servers: impl Iterator<Item = SocketAddr>,
+        dns_servers: impl IntoIterator<Item = SocketAddr>,
         now: Instant,
     ) {
         self.udp_dns_server_resources.clear();
@@ -151,7 +151,8 @@ impl SimGateway {
             return;
         };
 
-        for server in dns_servers
+        for server in iter::empty()
+            .chain(dns_servers)
             .chain(iter::once(SocketAddr::from((
                 ip_config.v4,
                 tun_dns_server_port,

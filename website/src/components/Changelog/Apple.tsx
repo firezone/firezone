@@ -28,6 +28,10 @@ export default function Apple() {
         <ChangeItem pull="10752">
           Fixes an issue where the reported client version was out of date.
         </ChangeItem>
+        <ChangeItem pull="10773">
+          Fixes an issue where the order of upstream / system DNS resolvers was
+          not respected.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-10-20")}>
         <ChangeItem pull="10603">

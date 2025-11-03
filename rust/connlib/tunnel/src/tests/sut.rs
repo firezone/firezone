@@ -643,10 +643,13 @@ impl TunnelTest {
             while let Some(result) = c.tcp_dns_client.poll_query_result() {
                 match result.result {
                     Ok(message) => {
-                        let upstream = c.dns_mapping().get_by_left(&result.server.ip()).unwrap();
+                        let upstream = c
+                            .dns_mapping()
+                            .upstream_by_sentinel(result.server.ip())
+                            .unwrap();
 
                         c.received_tcp_dns_responses
-                            .insert((*upstream, result.query.id()));
+                            .insert((upstream, result.query.id()));
                         c.handle_dns_response(&message)
                     }
                     Err(e) => {
@@ -898,10 +901,7 @@ impl TunnelTest {
 
                 for gateway in self.gateways.values_mut() {
                     gateway.exec_mut(|g| {
-                        g.deploy_new_dns_servers(
-                            config.dns_by_sentinel.right_values().copied(),
-                            now,
-                        )
+                        g.deploy_new_dns_servers(config.dns_by_sentinel.upstream_sockets(), now)
                     })
                 }
 
