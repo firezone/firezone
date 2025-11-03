@@ -552,7 +552,9 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: ["must not include a port"]
+                 clients_upstream_dns: [
+                   %{address: ["must not include a port"]}
+                 ]
                }
              }
     end
