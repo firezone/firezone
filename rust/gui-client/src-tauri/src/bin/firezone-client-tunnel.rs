@@ -1,5 +1,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
+use anyhow::anyhow;
 use clap::Parser as _;
 use firezone_bin_shared::{DnsControlMethod, TOKEN_ENV_KEY};
 use firezone_gui_client::service;
@@ -8,7 +9,7 @@ use std::path::PathBuf;
 fn main() -> anyhow::Result<()> {
     rustls::crypto::ring::default_provider()
         .install_default()
-        .expect("Calling `install_default` only once per process should always succeed");
+        .map_err(|_| anyhow!("Failed to install default crypto provider"))?;
 
     // Docs indicate that `remove_var` should actually be marked unsafe
     // SAFETY: We haven't spawned any other threads, this code should be the first
@@ -58,20 +59,15 @@ pub struct Cli {
     max_partition_time: Option<humantime::Duration>,
 }
 
-#[derive(clap::Subcommand)]
+#[derive(clap::Subcommand, Default)]
 enum Cmd {
     /// Needed to test the Tunnel service on aarch64 Windows,
     /// where the Tauri MSI bundler doesn't work yet
     Install,
+    #[default]
     Run,
     RunDebug,
     RunSmokeTest,
-}
-
-impl Default for Cmd {
-    fn default() -> Self {
-        Self::Run
-    }
 }
 
 #[cfg(test)]

@@ -804,7 +804,7 @@ mod tests {
                 "MyCorp GitLab",
                 Menu::default()
                     .item(
-                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        Event::Url("https://gitlab.mycorp.com".parse()?),
                         "<https://gitlab.mycorp.com>",
                     )
                     .separator()
@@ -864,7 +864,7 @@ mod tests {
             actual,
             expected,
             "{}",
-            serde_json::to_string_pretty(&actual).unwrap()
+            serde_json::to_string_pretty(&actual)?
         );
 
         Ok(())
@@ -910,7 +910,7 @@ mod tests {
                 "MyCorp GitLab",
                 Menu::default()
                     .item(
-                        Event::Url("https://gitlab.mycorp.com".parse().unwrap()),
+                        Event::Url("https://gitlab.mycorp.com".parse()?),
                         "<https://gitlab.mycorp.com>",
                     )
                     .separator()
@@ -946,7 +946,7 @@ mod tests {
             actual,
             expected,
             "{}",
-            serde_json::to_string_pretty(&actual).unwrap(),
+            serde_json::to_string_pretty(&actual)?,
         );
 
         Ok(())
