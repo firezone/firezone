@@ -24,6 +24,10 @@ export default function Android() {
         <ChangeItem pull="10752">
           Fixes an issue where the reported client version was out of date.
         </ChangeItem>
+        <ChangeItem pull="10773">
+          Fixes an issue where the order of upstream / system DNS resolvers was
+          not respected.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.6" date={new Date("2025-10-28")}>
         <ChangeItem pull="10667">

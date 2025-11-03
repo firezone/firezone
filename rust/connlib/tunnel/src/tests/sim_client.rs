@@ -7,12 +7,11 @@ use super::{
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{ClientState, DnsResourceRecord, proptest::*};
+use crate::{ClientState, DnsMapping, DnsResourceRecord, proptest::*};
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::{DnsServer, Interface},
 };
-use bimap::BiMap;
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -47,7 +46,7 @@ pub(crate) struct SimClient {
     pub(crate) dns_resource_record_cache: BTreeSet<DnsResourceRecord>,
 
     /// Bi-directional mapping between connlib's sentinel DNS IPs and the effective DNS servers.
-    dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    dns_by_sentinel: DnsMapping,
 
     pub(crate) ipv4_routes: BTreeSet<Ipv4Network>,
     pub(crate) ipv6_routes: BTreeSet<Ipv6Network>,
@@ -123,26 +122,26 @@ impl SimClient {
         );
 
         self.search_domain = None;
-        self.dns_by_sentinel.clear();
+        self.dns_by_sentinel = DnsMapping::default();
         self.ipv4_routes.clear();
         self.ipv6_routes.clear();
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
-    pub(crate) fn effective_dns_servers(&self) -> BTreeSet<SocketAddr> {
-        self.dns_by_sentinel.right_values().copied().collect()
+    pub(crate) fn effective_dns_servers(&self) -> Vec<SocketAddr> {
+        self.dns_by_sentinel.upstream_sockets()
     }
 
     pub(crate) fn effective_search_domain(&self) -> Option<DomainName> {
         self.search_domain.clone()
     }
 
-    pub(crate) fn set_new_dns_servers(&mut self, mapping: BiMap<IpAddr, SocketAddr>) {
+    pub(crate) fn set_new_dns_servers(&mut self, mapping: DnsMapping) {
         self.dns_by_sentinel = mapping;
         self.tcp_dns_client.reset();
     }
 
-    pub(crate) fn dns_mapping(&self) -> &BiMap<IpAddr, SocketAddr> {
+    pub(crate) fn dns_mapping(&self) -> &DnsMapping {
         &self.dns_by_sentinel
     }
 
@@ -155,7 +154,7 @@ impl SimClient {
         dns_transport: DnsTransport,
         now: Instant,
     ) -> Option<Transmit> {
-        let Some(sentinel) = self.dns_by_sentinel.get_by_right(&upstream).copied() else {
+        let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
             return None;
         };
@@ -309,8 +308,8 @@ impl SimClient {
                     .expect("ip packets on port 53 to be DNS packets");
 
                 // Map back to upstream socket so we can assert on it correctly.
-                let sentinel = SocketAddr::from((packet.source(), udp.source_port()));
-                let Some(upstream) = self.upstream_dns_by_sentinel(&sentinel) else {
+                let sentinel = packet.source();
+                let Some(upstream) = self.dns_by_sentinel.upstream_by_sentinel(sentinel) else {
                     tracing::error!(%sentinel, mapping = ?self.dns_by_sentinel, "Unknown DNS server");
                     return;
                 };
@@ -372,12 +371,6 @@ impl SimClient {
             map_explode(to_add, "client").collect(),
             now,
         )
-    }
-
-    fn upstream_dns_by_sentinel(&self, sentinel: &SocketAddr) -> Option<SocketAddr> {
-        let socket = self.dns_by_sentinel.get_by_left(&sentinel.ip())?;
-
-        Some(*socket)
     }
 
     pub(crate) fn handle_dns_response(&mut self, response: &dns_types::Response) {
@@ -1052,7 +1045,9 @@ impl RefClient {
     ///
     /// If there are upstream DNS servers configured in the portal, it should use those.
     /// Otherwise it should use whatever was configured on the system prior to connlib starting.
-    pub(crate) fn expected_dns_servers(&self) -> BTreeSet<SocketAddr> {
+    ///
+    /// This purposely returns a `Vec` so we also assert the order!
+    pub(crate) fn expected_dns_servers(&self) -> Vec<SocketAddr> {
         if !self.upstream_dns_resolvers.is_empty() {
             return self
                 .upstream_dns_resolvers
