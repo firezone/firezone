@@ -6,7 +6,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{Context as _, Result};
-use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
@@ -69,6 +68,7 @@ pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
+pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
 pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
 pub use sockets::UdpSocketThreadStopped;
@@ -550,19 +550,13 @@ pub struct TunConfig {
     /// - The "right" values are the effective DNS servers.
     ///   If upstream DNS servers are configured (in the portal), we will use those.
     ///   Otherwise, we will use the DNS servers configured on the system.
-    pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    pub dns_by_sentinel: DnsMapping,
     pub search_domain: Option<DomainName>,
 
     #[debug("{}", DisplayBTreeSet(ipv4_routes))]
     pub ipv4_routes: BTreeSet<Ipv4Network>,
     #[debug("{}", DisplayBTreeSet(ipv6_routes))]
     pub ipv6_routes: BTreeSet<Ipv6Network>,
-}
-
-impl TunConfig {
-    pub fn dns_sentinel_ips(&self) -> Vec<IpAddr> {
-        self.dns_by_sentinel.left_values().copied().collect()
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

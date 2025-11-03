@@ -1,5 +1,5 @@
 mod dns_cache;
-mod dns_config;
+pub(crate) mod dns_config;
 mod dns_resource_nat;
 mod gateway_on_client;
 mod pending_tun_update;
@@ -622,7 +622,11 @@ impl ClientState {
         dst: SocketAddr,
         message: dns_types::Response,
     ) -> anyhow::Result<()> {
-        let saddr = self.dns_config.get_sentinel_by_upstream(from)?;
+        let saddr = self
+            .dns_config
+            .mapping()
+            .sentinel_by_upstream(from)
+            .context("Unknown DNS server")?;
 
         let ip_packet = ip_packet::make::udp_packet(
             saddr,
@@ -822,7 +826,7 @@ impl ClientState {
             return ControlFlow::Break(());
         }
 
-        let Ok(upstream) = self.dns_config.get_upstream_by_sentinel(dst) else {
+        let Some(upstream) = self.dns_config.mapping().upstream_by_sentinel(dst) else {
             return ControlFlow::Continue(packet); // Not for our DNS resolver.
         };
 
@@ -908,12 +912,16 @@ impl ClientState {
     }
 
     fn initialise_tcp_dns_server(&mut self) {
-        let sentinel_sockets = self.dns_config.sentinel_servers();
+        let sentinel_sockets = self
+            .dns_config
+            .mapping()
+            .sentinel_ips()
+            .into_iter()
+            .map(|ip| SocketAddr::new(ip, DNS_PORT))
+            .collect();
 
         self.tcp_dns_server
-            .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(BTreeSet::from_iter(
-                sentinel_sockets,
-            ));
+            .set_listen_addresses::<NUM_CONCURRENT_TCP_DNS_CLIENTS>(sentinel_sockets);
     }
 
     /// Sets the Internet Resource state.
@@ -1022,11 +1030,37 @@ impl ClientState {
     }
 
     pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
-        self.dns_config.update_system_resolvers(new_dns);
+        let changed = self.dns_config.update_system_resolvers(new_dns);
+
+        if !changed {
+            return;
+        }
+
+        self.dns_cache.flush("DNS servers changed");
+
+        let Some(config) = self.tun_config.clone() else {
+            tracing::debug!("Unable to update DNS servers without interface configuration");
+            return;
+        };
+
+        let dns_by_sentinel = self.dns_config.mapping();
+
+        self.maybe_update_tun_config(TunConfig {
+            dns_by_sentinel,
+            ..config
+        });
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
         tracing::trace!(upstream_dns = ?config.upstream_dns, search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+
+        let changed = self
+            .dns_config
+            .update_upstream_resolvers(config.upstream_dns);
+
+        if changed {
+            self.dns_cache.flush("DNS servers changed");
+        }
 
         // Create a new `TunConfig` by patching the corresponding fields of the existing one.
         let new_tun_config = self
@@ -1037,7 +1071,7 @@ impl ClientState {
                     v4: config.ipv4,
                     v6: config.ipv6,
                 },
-                dns_by_sentinel: existing.dns_by_sentinel.clone(),
+                dns_by_sentinel: self.dns_config.mapping(),
                 search_domain: config.search_domain.clone(),
                 ipv4_routes: existing.ipv4_routes.clone(),
                 ipv6_routes: existing.ipv6_routes.clone(),
@@ -1062,8 +1096,6 @@ impl ClientState {
 
         // Apply the new `TunConfig` if it differs from the existing one.
         self.maybe_update_tun_config(new_tun_config);
-        self.dns_config
-            .update_upstream_resolvers(config.upstream_dns);
     }
 
     pub fn poll_packets(&mut self) -> Option<IpPacket> {
@@ -1101,8 +1133,6 @@ impl ClientState {
     pub fn handle_timeout(&mut self, now: Instant) {
         self.node.handle_timeout(now);
         self.drain_node_events();
-
-        self.drain_dns_config_events();
 
         self.udp_dns_sockets_by_upstream_and_query_id
             .handle_timeout(now);
@@ -1381,7 +1411,11 @@ impl ClientState {
     fn handle_tcp_dns_query(&mut self, query: dns_over_tcp::Query, now: Instant) {
         let query_id = query.message.id();
 
-        let Ok(server) = self.dns_config.get_upstream_by_sentinel(query.local.ip()) else {
+        let Some(server) = self
+            .dns_config
+            .mapping()
+            .upstream_by_sentinel(query.local.ip())
+        else {
             // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
             return;
         };
@@ -1603,27 +1637,6 @@ impl ClientState {
                     conn_id,
                     candidates,
                 })
-        }
-    }
-
-    fn drain_dns_config_events(&mut self) {
-        while let Some(event) = self.dns_config.poll_event() {
-            let Some(config) = self.tun_config.clone() else {
-                tracing::debug!("Unable to update DNS servers without interface configuration");
-                return;
-            };
-
-            match event {
-                dns_config::Event::DnsServersUpdated => {
-                    let dns_by_sentinel = self.dns_config.mapping();
-
-                    self.maybe_update_tun_config(TunConfig {
-                        dns_by_sentinel,
-                        ..config.clone()
-                    });
-                    self.dns_cache.flush("DNS servers changed");
-                }
-            }
         }
     }
 
@@ -2061,8 +2074,12 @@ impl IpProvider {
         )
     }
 
-    pub fn for_stub_dns_servers(exclusions: Vec<IpNetwork>) -> Self {
-        IpProvider::new(DNS_SENTINELS_V4, DNS_SENTINELS_V6, exclusions)
+    pub fn for_stub_dns_servers(old_servers: Vec<IpAddr>) -> Self {
+        IpProvider::new(
+            DNS_SENTINELS_V4,
+            DNS_SENTINELS_V6,
+            old_servers.into_iter().map(IpNetwork::from).collect(),
+        )
     }
 
     fn new(ipv4: Ipv4Network, ipv6: Ipv6Network, exclusions: Vec<IpNetwork>) -> Self {
