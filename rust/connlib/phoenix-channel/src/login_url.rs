@@ -269,7 +269,7 @@ fn get_websocket_path<E>(
     {
         let mut paths = api_url
             .path_segments_mut()
-            .expect("scheme guarantees valid URL");
+            .map_err(|_| LoginUrlError::MissingHost)?;
 
         paths.pop_if_empty();
         paths.push(mode);
@@ -321,7 +321,7 @@ fn set_ws_scheme<E>(url: &mut Url) -> Result<(), LoginUrlError<E>> {
     };
 
     url.set_scheme(scheme)
-        .expect("Developer error: the match before this should make sure we can set this");
+        .map_err(|_| LoginUrlError::InvalidUrlScheme(scheme.to_owned()))?;
 
     Ok(())
 }

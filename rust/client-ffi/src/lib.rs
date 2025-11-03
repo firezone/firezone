@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use firezone_logging::sentry_layer;
 use firezone_telemetry::{Telemetry, analytics};
@@ -563,7 +563,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
 
     LOGGER_STATE
         .set((handle, reload_handle))
-        .expect("Logging guard should never be initialized twice");
+        .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
 
     Ok(())
 }

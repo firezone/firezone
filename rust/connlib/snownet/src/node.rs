@@ -1756,7 +1756,6 @@ impl PeerSocket {
         matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
     }
 
-    // TODO: Return `Arguments` here once we hit 1.89
     fn fmt<RId>(&self, relay: RId) -> String
     where
         RId: fmt::Display,

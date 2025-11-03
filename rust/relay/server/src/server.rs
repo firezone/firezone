@@ -1021,43 +1021,39 @@ where
 
         let port = allocation.port;
 
-        self.channels_by_client_and_number
-            .retain(|(cs, number), c| {
-                if c.allocation != port {
-                    return true;
-                }
+        for ((cs, number), c) in self
+            .channels_by_client_and_number
+            .extract_if(.., |_, c| c.allocation == port)
+        {
+            debug_assert_eq!(cs, client, "internal state should be consistent");
 
-                debug_assert_eq!(cs, &client, "internal state should be consistent");
+            let peer = c.peer_address;
 
-                let peer = c.peer_address;
+            if let Some(existing) = self
+                .channel_numbers_by_client_and_peer
+                .remove(&(client, peer))
+            {
+                debug_assert_eq!(existing, number, "internal state should be consistent");
+            }
 
-                if let Some(existing) = self
-                    .channel_numbers_by_client_and_peer
-                    .remove(&(client, peer))
-                {
-                    debug_assert_eq!(existing, *number, "internal state should be consistent");
-                }
+            if let Some((existing_cs, existing_n)) = self
+                .channel_and_client_by_port_and_peer
+                .remove(&(port, peer))
+            {
+                debug_assert_eq!(existing_cs, cs, "internal state should be consistent");
+                debug_assert_eq!(existing_n, number, "internal state should be consistent");
+            }
 
-                if let Some((existing_cs, existing_n)) = self
-                    .channel_and_client_by_port_and_peer
-                    .remove(&(port, peer))
-                {
-                    debug_assert_eq!(&existing_cs, cs, "internal state should be consistent");
-                    debug_assert_eq!(&existing_n, number, "internal state should be consistent");
-                }
+            self.pending_commands
+                .push_back(Command::DeleteChannelBinding {
+                    client: cs,
+                    channel_number: number,
+                    peer: c.peer_address,
+                    allocation_port: c.allocation,
+                });
 
-                self.pending_commands
-                    .push_back(Command::DeleteChannelBinding {
-                        client: *cs,
-                        channel_number: *number,
-                        peer: c.peer_address,
-                        allocation_port: c.allocation,
-                    });
-
-                tracing::info!(%peer, %number, allocation = %port, "Deleted channel binding");
-
-                false
-            });
+            tracing::info!(%peer, %number, allocation = %port, "Deleted channel binding");
+        }
 
         self.allocations_up_down_counter.add(-1, &[]);
         self.pending_commands.push_back(Command::FreeAllocation {
