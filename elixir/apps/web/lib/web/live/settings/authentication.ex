@@ -179,7 +179,8 @@ defmodule Web.Settings.Authentication do
 
     changeset =
       provider
-      |> Ecto.Changeset.change(is_disabled: new_disabled_state)
+      |> change(is_disabled: new_disabled_state)
+      |> validate_not_disabling_default_provider()
 
     case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
       {:ok, _provider} ->
@@ -190,10 +191,43 @@ defmodule Web.Settings.Authentication do
          |> init()
          |> put_flash(:info, "Authentication provider #{action} successfully.")}
 
+      {:error, %Ecto.Changeset{} = changeset} ->
+        Logger.error("Failed to toggle authentication provider",
+          errors: inspect(changeset.errors),
+          changes: inspect(changeset.changes)
+        )
+
+        error_message =
+          case Keyword.get(changeset.errors, :is_disabled) do
+            {msg, _} ->
+              msg
+
+            nil ->
+              # Get the first error message if is_disabled is not the issue
+              case changeset.errors do
+                [{_field, {msg, _}} | _] -> msg
+                [] -> "Failed to update authentication provider."
+              end
+          end
+
+        {:noreply, put_flash(socket, :error, error_message)}
+
       {:error, reason} ->
         Logger.error("Failed to toggle authentication provider: #{inspect(reason)}")
         {:noreply, put_flash(socket, :error, "Failed to update authentication provider.")}
     end
+  end
+
+  def handle_event("default_provider_change", _params, socket) do
+    {:noreply, assign(socket, default_provider_changed: true)}
+  end
+
+  def handle_event("default_provider_save", %{"provider_id" => ""}, socket) do
+    clear_default_provider(socket)
+  end
+
+  def handle_event("default_provider_save", %{"provider_id" => provider_id}, socket) do
+    assign_default_provider(provider_id, socket)
   end
 
   # Sent by the Entra admin consent verification process from another browser tab
@@ -289,7 +323,11 @@ defmodule Web.Settings.Authentication do
       ]
       |> List.flatten()
 
-    assign(socket, providers: providers, verification_error: nil)
+    assign(socket,
+      providers: providers,
+      verification_error: nil,
+      default_provider_changed: false
+    )
   end
 
   def render(assigns) do
@@ -312,6 +350,20 @@ defmodule Web.Settings.Authentication do
       </:help>
       <:content>
         <.flash_group flash={@flash} />
+
+        <div class="pb-8 px-1">
+          <div class="text-lg text-neutral-600 mb-4">
+            Default Authentication Provider
+          </div>
+          <.default_provider_form
+            providers={@providers}
+            default_provider_changed={@default_provider_changed}
+          />
+        </div>
+
+        <div class="text-lg text-neutral-600 mb-4 px-1">
+          All Authentication Providers
+        </div>
       </:content>
       <:content>
         <div class="flex flex-wrap gap-4">
@@ -433,6 +485,63 @@ defmodule Web.Settings.Authentication do
   defp context_icon(:portal_only), do: "hero-window"
   defp context_icon(:clients_only), do: "hero-device-phone-mobile"
 
+  attr :providers, :list, required: true
+  attr :default_provider_changed, :boolean, required: true
+
+  defp default_provider_form(assigns) do
+    options =
+      assigns.providers
+      |> Enum.filter(fn provider ->
+        # Exclude email_otp and userpass from being default
+        provider_type(provider) not in ["email_otp", "userpass"]
+      end)
+      |> Enum.map(fn provider ->
+        {provider.name, provider.id}
+      end)
+
+    options = [{"None", ""} | options]
+
+    value =
+      case Enum.find(assigns.providers, fn provider ->
+             # Only check is_default if the field exists (OIDC, Entra, etc.)
+             Map.has_key?(provider, :is_default) && provider.is_default
+           end) do
+        nil -> ""
+        provider -> provider.id
+      end
+
+    assigns = assign(assigns, options: options, value: value)
+
+    ~H"""
+    <.form
+      id="default-provider-form"
+      phx-submit="default_provider_save"
+      phx-change="default_provider_change"
+      for={nil}
+    >
+      <div class="flex gap-2 items-center">
+        <.input
+          id="default-provider-select"
+          name="provider_id"
+          type="select"
+          options={@options}
+          value={@value}
+        />
+        <.submit_button
+          phx-disable-with="Saving..."
+          {if @default_provider_changed, do: [], else: [disabled: true, style: "disabled"]}
+          icon="hero-identification"
+        >
+          Make Default
+        </.submit_button>
+      </div>
+      <p class="text-xs text-neutral-500 mt-2">
+        When selected, users signing in from the Firezone client will be taken directly to this provider for authentication.
+      </p>
+    </.form>
+    """
+  end
+
   defp context_title(:clients_and_portal),
     do: "Available for both client applications and admin portal"
 
@@ -443,13 +552,16 @@ defmodule Web.Settings.Authentication do
     ~H"""
     <div class="flex flex-col bg-neutral-50 rounded-lg p-4 w-96">
       <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center flex-1 min-w-0">
-          <.provider_icon type={@type} class="w-7 h-7 mr-2 flex-shrink-0" />
+        <div class="flex items-center flex-1 min-w-0 gap-2">
+          <.provider_icon type={@type} class="w-7 h-7 flex-shrink-0" />
           <span class="font-normal text-lg truncate" title={@provider.name}>
             {@provider.name}
           </span>
+          <%= if Map.has_key?(@provider, :is_default) && @provider.is_default do %>
+            <.badge type="primary" class="flex-shrink-0">DEFAULT</.badge>
+          <% end %>
         </div>
-        <div class="flex items-center">
+        <div class="flex items-center gap-1">
           <.button_with_confirmation
             id={"toggle-provider-#{@provider.id}"}
             on_confirm="toggle_provider"
@@ -837,6 +949,28 @@ defmodule Web.Settings.Authentication do
     |> schema.changeset()
   end
 
+  defp validate_not_disabling_default_provider(changeset) do
+    # Only run this validation if is_disabled is being changed
+    case get_change(changeset, :is_disabled) do
+      true ->
+        data = changeset.data
+
+        # Check if the provider is currently the default
+        if Map.has_key?(data, :is_default) && data.is_default do
+          add_error(
+            changeset,
+            :is_disabled,
+            "Cannot disable the default authentication provider. Please set a different provider as default first."
+          )
+        else
+          changeset
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
   defp get_provider!(schema, id, subject) do
     import Ecto.Query
 
@@ -891,5 +1025,101 @@ defmodule Web.Settings.Authentication do
 
   defp provider_type(module) do
     AuthProviders.AuthProvider.type!(module.__struct__)
+  end
+
+  defp assign_default_provider(provider_id, socket) do
+    provider =
+      socket.assigns.providers
+      |> Enum.find(fn provider -> provider.id == provider_id end)
+
+    with true <- provider_type(provider) not in ["email_otp", "userpass"],
+         {:ok, _result} <-
+           Domain.Repo.transaction(fn ->
+             # First, clear is_default on all providers that have the field
+             Enum.each(socket.assigns.providers, fn p ->
+               if Map.has_key?(p, :is_default) && p.is_default do
+                 changeset = change(p, is_default: false)
+
+                 case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+                   {:ok, _} -> :ok
+                   {:error, reason} -> Domain.Repo.rollback(reason)
+                 end
+               end
+             end)
+
+             # Then set is_default on the selected provider
+             changeset = change(provider, is_default: true)
+
+             case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+               {:ok, updated} -> updated
+               {:error, reason} -> Domain.Repo.rollback(reason)
+             end
+           end) do
+      socket =
+        socket
+        |> put_flash(:info, "Default authentication provider set to #{provider.name}")
+        |> init()
+
+      {:noreply, socket}
+    else
+      false ->
+        socket =
+          socket
+          |> put_flash(:error, "Email and userpass providers cannot be set as default.")
+
+        {:noreply, socket}
+
+      error ->
+        Logger.warning("Failed to set default auth provider",
+          error: inspect(error)
+        )
+
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "Failed to update default auth provider. Contact support if this issue persists."
+          )
+
+        {:noreply, socket}
+    end
+  end
+
+  defp clear_default_provider(socket) do
+    with {:ok, _result} <-
+           Domain.Repo.transaction(fn ->
+             # Clear is_default on all providers that have the field
+             Enum.each(socket.assigns.providers, fn p ->
+               if Map.has_key?(p, :is_default) && p.is_default do
+                 changeset = change(p, is_default: false)
+
+                 case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+                   {:ok, _} -> :ok
+                   {:error, reason} -> Domain.Repo.rollback(reason)
+                 end
+               end
+             end)
+           end) do
+      socket =
+        socket
+        |> put_flash(:info, "Default authentication provider cleared")
+        |> init()
+
+      {:noreply, socket}
+    else
+      error ->
+        Logger.warning("Failed to clear default auth provider",
+          error: inspect(error)
+        )
+
+        socket =
+          socket
+          |> put_flash(
+            :error,
+            "Failed to update default auth provider. Contact support if this issue persists."
+          )
+
+        {:noreply, socket}
+    end
   end
 end

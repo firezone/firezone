@@ -4,8 +4,6 @@ defmodule Web.Verification do
   alias Domain.Entra
 
   def mount(_params, session, socket) do
-    require Logger
-
     # Store session data for later use in handle_params
     socket =
       assign(socket,
@@ -17,13 +15,9 @@ defmodule Web.Verification do
   end
 
   def handle_params(params, _uri, socket) do
-    require Logger
-    Logger.info("handle_params called with params: #{inspect(params)}")
-
     # Check if this is an Entra admin consent callback (has admin_consent or state params)
     if Map.has_key?(params, "admin_consent") || Map.has_key?(params, "tenant") do
       # Entra admin consent from Microsoft redirect
-      Logger.info("Entra admin consent verification")
       handle_entra_admin_consent(params, socket)
     else
       # Check if this is an OIDC verification (from session)
@@ -31,11 +25,8 @@ defmodule Web.Verification do
       verification_code = socket.assigns[:session_verification_code]
 
       if verification_token && verification_code do
-        Logger.info("OIDC verification")
         handle_oidc_verification(verification_token, verification_code, socket)
       else
-        Logger.warning("No verification data found in session or params")
-
         {:noreply,
          assign(socket,
            page_title: "Verification",
@@ -71,9 +62,6 @@ defmodule Web.Verification do
   end
 
   defp handle_entra_admin_consent(params, socket) do
-    require Logger
-    Logger.info("mount_entra_admin_consent called with params: #{inspect(params)}")
-
     # Extract parameters from Microsoft's admin consent callback
     tenant_id = params["tenant"]
     admin_consent = params["admin_consent"]
@@ -90,8 +78,6 @@ defmodule Web.Verification do
         ["entra-verification", token] -> {token, :auth_provider}
         _ -> {nil, nil}
       end
-
-    Logger.info("Extracted token: #{verification_token}, type: #{verification_type}")
 
     # Determine error message
     error =
@@ -129,8 +115,6 @@ defmodule Web.Verification do
   end
 
   def handle_info(:success, socket) do
-    require Logger
-    Logger.info("Received :success message in Verification LiveView")
     {:noreply, assign(socket, verified: true)}
   end
 
@@ -148,8 +132,6 @@ defmodule Web.Verification do
   end
 
   defp handle_directory_sync_verification(socket, verification_token, tenant_id) do
-    require Logger
-
     # Only do verification on WebSocket connection, not initial HTTP request
     if connected?(socket) do
       # Verify directory access with client credentials
@@ -159,10 +141,6 @@ defmodule Web.Verification do
       case verify_directory_access(tenant_id, client_id) do
         {:ok, _} ->
           # Broadcast success to DirectorySync LiveView
-          Logger.info(
-            "Broadcasting to entra-admin-consent:#{verification_token} from PID #{inspect(self())}"
-          )
-
           Domain.PubSub.broadcast(
             "entra-admin-consent:#{verification_token}",
             {:entra_admin_consent, self(), tenant_id, verification_token}

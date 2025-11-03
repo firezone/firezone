@@ -54,7 +54,8 @@ defmodule Web.Settings.DirectorySync do
     attrs = %{}
     changeset = changeset(struct, attrs)
 
-    {:noreply, assign(socket, type: type, verifying: false, form: to_form(changeset))}
+    {:noreply,
+     assign(socket, type: type, verifying: false, form: to_form(changeset), public_jwk: nil)}
   end
 
   # Edit Directory
@@ -68,12 +69,21 @@ defmodule Web.Settings.DirectorySync do
     directory = get_directory!(schema, id, socket.assigns.subject)
     changeset = changeset(directory, %{is_verified: true})
 
+    # Extract public key if this is an Okta directory with a keypair
+    public_jwk =
+      if type == "okta" && directory.private_key_jwk do
+        Domain.Crypto.JWK.extract_public_key_components(directory.private_key_jwk)
+      else
+        nil
+      end
+
     {:noreply,
      assign(socket,
        directory_name: directory.name,
        verifying: false,
        type: type,
-       form: to_form(changeset)
+       form: to_form(changeset),
+       public_jwk: public_jwk
      )}
   end
 
@@ -98,6 +108,25 @@ defmodule Web.Settings.DirectorySync do
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
+  end
+
+  def handle_event("generate_keypair", _params, socket) do
+    # Generate the keypair
+    keypair = Domain.Crypto.JWK.generate_jwk_and_jwks()
+
+    # Update the changeset with the private key JWK and kid
+    changeset =
+      socket.assigns.form.source
+      |> apply_changes()
+      |> changeset(%{
+        "private_key_jwk" => keypair.jwk,
+        "kid" => keypair.kid
+      })
+
+    # Extract the public key for display
+    public_jwk = keypair.jwks
+
+    {:noreply, assign(socket, form: to_form(changeset), public_jwk: public_jwk)}
   end
 
   def handle_event("start_verification", _params, %{assigns: %{type: "entra"}} = socket) do
@@ -151,27 +180,48 @@ defmodule Web.Settings.DirectorySync do
   def handle_event("toggle_directory", %{"id" => id}, socket) do
     directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end)
     new_disabled_state = not directory.is_disabled
+    account = socket.assigns.account
 
-    # Set disabled_reason when disabling
-    disabled_reason = if new_disabled_state, do: "Disabled by admin", else: nil
+    # Check if trying to enable a directory without the IDP_SYNC feature
+    if new_disabled_state == false && not account.features.idp_sync do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Directory sync is available on the Enterprise plan. Please upgrade your plan."
+       )}
+    else
+      # Set disabled_reason when disabling
+      disabled_reason = if new_disabled_state, do: "Disabled by admin", else: nil
 
-    changeset =
-      directory
-      |> Ecto.Changeset.change(is_disabled: new_disabled_state, disabled_reason: disabled_reason)
+      changeset =
+        directory
+        |> Ecto.Changeset.change(
+          is_disabled: new_disabled_state,
+          disabled_reason: disabled_reason
+        )
 
-    case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
-      {:ok, _directory} ->
-        action = if new_disabled_state, do: "disabled", else: "enabled"
+      case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+        {:ok, _directory} ->
+          action = if new_disabled_state, do: "disabled", else: "enabled"
 
-        {:noreply,
-         socket
-         |> init()
-         |> put_flash(:info, "Directory #{action} successfully.")}
+          {:noreply,
+           socket
+           |> init()
+           |> put_flash(:info, "Directory #{action} successfully.")}
 
-      {:error, reason} ->
-        Logger.error("Failed to toggle directory: #{inspect(reason)}")
-        {:noreply, put_flash(socket, :error, "Failed to update directory.")}
+        {:error, reason} ->
+          Logger.error("Failed to toggle directory: #{inspect(reason)}")
+          {:noreply, put_flash(socket, :error, "Failed to update directory.")}
+      end
     end
+  end
+
+  def handle_event("sync_directory", %{"id" => _id, "type" => _type}, socket) do
+    # TODO: Implement directory sync functionality
+    # Use the type to determine which directory module to use (entra, google, okta)
+    # Use the id to find the specific directory
+    {:noreply, put_flash(socket, :info, "Directory sync functionality coming soon.")}
   end
 
   def handle_info(:do_verification, socket) do
@@ -244,9 +294,17 @@ defmodule Web.Settings.DirectorySync do
       <:title>Directories</:title>
       <:action><.docs_action path="/guides/settings/directory-sync" /></:action>
       <:action>
-        <.add_button patch={~p"/#{@account}/settings/directory_sync/select_type"}>
-          Add Directory
-        </.add_button>
+        <%= if @account.features.idp_sync do %>
+          <.add_button patch={~p"/#{@account}/settings/directory_sync/select_type"}>
+            Add Directory
+          </.add_button>
+        <% else %>
+          <.link navigate={~p"/#{@account}/settings/billing"} class="text-sm text-primary-500">
+            <.badge type="primary" title="Feature available on a higher pricing plan">
+              <.icon name="hero-lock-closed" class="w-3.5 h-3.5 mr-1" /> UPGRADE TO UNLOCK
+            </.badge>
+          </.link>
+        <% end %>
       </:action>
       <:help>
         Directories sync users and groups from an external source.
@@ -330,6 +388,7 @@ defmodule Web.Settings.DirectorySync do
           form={@form}
           type={@type}
           submit_event="submit_directory"
+          public_jwk={assigns[:public_jwk]}
         />
       </:body>
       <:confirm_button form="directory-form" type="submit">Create</:confirm_button>
@@ -350,6 +409,7 @@ defmodule Web.Settings.DirectorySync do
           form={@form}
           type={@type}
           submit_event="submit_directory"
+          public_jwk={assigns[:public_jwk]}
         />
       </:body>
       <:confirm_button
@@ -363,6 +423,10 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp directory_card(assigns) do
+    # Determine if toggle should be disabled (when directory is disabled and account lacks feature)
+    toggle_disabled = assigns.directory.is_disabled and not assigns.account.features.idp_sync
+    assigns = assign(assigns, :toggle_disabled, toggle_disabled)
+
     ~H"""
     <div class="flex flex-col bg-neutral-50 rounded-lg p-4 w-96">
       <div class="flex items-center justify-between mb-3">
@@ -382,6 +446,7 @@ defmodule Web.Settings.DirectorySync do
             <.toggle
               id={"directory-toggle-#{@directory.id}"}
               checked={not @directory.is_disabled}
+              disabled={@toggle_disabled}
             />
             <:dialog_title>
               {if @directory.is_disabled, do: "Enable", else: "Disable"} Directory
@@ -445,8 +510,77 @@ defmodule Web.Settings.DirectorySync do
           <span class="truncate font-medium" title={@directory.issuer}>{@directory.issuer}</span>
         </div>
 
+        <%= if @directory.is_disabled do %>
+          <div class="flex items-center gap-2">
+            <.icon name="hero-no-symbol" class="w-5 h-5 flex-shrink-0 text-red-600" title="Disabled" />
+            <span class="font-medium text-red-600">
+              Disabled
+              <%= if @directory.disabled_reason do %>
+                - {@directory.disabled_reason}
+              <% end %>
+            </span>
+          </div>
+        <% end %>
+
+        <%= if @directory.synced_at do %>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" title="Last Synced" />
+              <span class="font-medium">
+                synced <.relative_datetime datetime={@directory.synced_at} />
+              </span>
+            </div>
+            <.button
+              size="xs"
+              style="primary"
+              phx-click="sync_directory"
+              phx-value-id={@directory.id}
+              phx-value-type={@type}
+              disabled={@directory.is_disabled}
+            >
+              Sync Now
+            </.button>
+          </div>
+        <% else %>
+          <div class="flex items-center justify-between gap-2">
+            <div class="flex items-center gap-2">
+              <.icon
+                name="hero-arrow-path"
+                class="w-5 h-5 flex-shrink-0 text-neutral-400"
+                title="Never Synced"
+              />
+              <span class="font-medium text-neutral-400">
+                Never synced
+              </span>
+            </div>
+            <.button
+              size="xs"
+              style="primary"
+              phx-click="sync_directory"
+              phx-value-id={@directory.id}
+              phx-value-type={@type}
+              disabled={@directory.is_disabled}
+            >
+              Sync Now
+            </.button>
+          </div>
+        <% end %>
+
+        <%= if @directory.error do %>
+          <div class="flex items-start gap-2">
+            <.icon
+              name="hero-exclamation-triangle"
+              class="w-5 h-5 flex-shrink-0 text-orange-600"
+              title="Error"
+            />
+            <span class="font-medium text-orange-600 flex-1">
+              {@directory.error}
+            </span>
+          </div>
+        <% end %>
+
         <div class="flex items-center gap-2">
-          <.icon name="hero-clock" class="w-5 h-5" />
+          <.icon name="hero-clock" class="w-5 h-5 flex-shrink-0" title="Updated" />
           <span class="font-medium">
             updated <.relative_datetime datetime={@directory.updated_at} />
           </span>
@@ -455,6 +589,13 @@ defmodule Web.Settings.DirectorySync do
     </div>
     """
   end
+
+  attr :form, :any, required: true
+  attr :type, :string, required: true
+  attr :submit_event, :string, required: true
+  attr :verification_error, :any, default: nil
+  attr :verifying, :boolean, default: false
+  attr :public_jwk, :any, default: nil
 
   defp directory_form(assigns) do
     ~H"""
@@ -523,6 +664,49 @@ defmodule Web.Settings.DirectorySync do
           <p class="mt-1 text-xs text-neutral-600">
             Enter the Client ID from your Okta application settings.
           </p>
+        </div>
+
+        <div :if={@type == "okta"} class="p-4 border-2 border-neutral-200 bg-neutral-50 rounded-lg">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex-1">
+              <h3 class="text-base font-semibold text-neutral-900">Public Key (JWK)</h3>
+              <p class="mt-1 text-sm text-neutral-600">
+                Generate a keypair and copy the public key to your Okta application settings.
+              </p>
+            </div>
+            <div class="ml-4">
+              <.button
+                type="button"
+                phx-click="generate_keypair"
+                icon="hero-key"
+                style="primary"
+                size="sm"
+              >
+                Generate Keypair
+              </.button>
+            </div>
+          </div>
+
+          <%= if Map.get(assigns, :public_jwk) do %>
+            <% kid = get_in(@public_jwk, ["keys", Access.at(0), "kid"]) %>
+            <div class="mt-4">
+              <div id={"okta-public-jwk-wrapper-#{kid}"} phx-hook="FormatJSON">
+                <.code_block
+                  id="okta-public-jwk"
+                  class="text-xs rounded-lg [&_code]:h-72 [&_code]:overflow-y-auto [&_code]:whitespace-pre-wrap [&_code]:break-all [&_code]:p-2"
+                >
+                  {JSON.encode!(@public_jwk)}
+                </.code_block>
+              </div>
+              <p class="mt-2 text-xs text-neutral-600">
+                Copy this public key and add it to your Okta application's JWKS configuration.
+              </p>
+            </div>
+          <% else %>
+            <p class="text-sm text-neutral-500 italic">
+              No keypair generated yet. Click "Generate Keypair" to create one.
+            </p>
+          <% end %>
         </div>
 
         <div
@@ -825,11 +1009,6 @@ defmodule Web.Settings.DirectorySync do
 
     cast(struct, attrs, Map.get(@fields, schema))
     |> schema.changeset()
-  end
-
-  defp generate_okta_keypair do
-    keypair = Domain.Crypto.JWK.generate_jwk_and_jwks()
-    %{"private_key_jwk" => keypair.jwk, "kid" => keypair.kid}
   end
 
   defp parse_google_verification_error({:ok, %Req.Response{status: 401, body: body}}) do
