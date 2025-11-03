@@ -17,7 +17,8 @@
           "/usr/lib/sysusers.d/firezone-client-tunnel.conf": "./linux_package/sysusers.conf",
           "/usr/bin/firezone-client-tunnel": "../../target/release/firezone-client-tunnel"
         },
-        "desktopTemplate": "./linux_package/firezone-client-gui.desktop"
+        "desktopTemplate": "./linux_package/firezone-client-gui.desktop",
+        "depends": ["systemd-resolved"]
       },
       "rpm": {
         "postInstallScript": "./linux_package/postinst",
