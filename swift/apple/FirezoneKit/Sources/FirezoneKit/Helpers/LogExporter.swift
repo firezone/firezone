@@ -6,6 +6,7 @@
 
 import AppleArchive
 import Foundation
+@preconcurrency import NetworkExtension
 import System
 
 /// Convenience module for smoothing over the differences between exporting logs on macOS and iOS.
@@ -28,7 +29,7 @@ import System
 
     static func export(
       to archiveURL: URL,
-      with ipcClient: IPCClient
+      session: NETunnelProviderSession
     ) async throws {
       guard let logFolderURL = SharedAccess.logFolderURL
       else {
@@ -54,7 +55,8 @@ import System
 
       // 3. Await tunnel log export from tunnel process
       try await withCheckedThrowingContinuation { continuation in
-        ipcClient.exportLogs(
+        IPCClient.exportLogs(
+          session: session,
           appender: { chunk in
             do {
               // Append each chunk to the archive
