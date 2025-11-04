@@ -310,20 +310,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
   }
 
-  func consumeStopReason(_ completionHandler: @Sendable (Data?) -> Void) {
-    guard let data = try? Data(contentsOf: SharedAccess.providerStopReasonURL)
-    else {
-      completionHandler(nil)
-
-      return
-    }
-
-    try? FileManager.default
-      .removeItem(at: SharedAccess.providerStopReasonURL)
-
-    completionHandler(data)
-  }
-
   // Firezone ID migration. Can be removed once most clients migrate past 1.4.15.
   private func migrateFirezoneId() {
     let filename = "firezone-id"
