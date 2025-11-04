@@ -11,6 +11,7 @@ function debug_exit() {
     exit 1
 }
 
+sudo apt-get update
 sudo apt-get install --yes systemd-resolved
 
 # Test the deb package, since this script is the easiest place to get a release build
