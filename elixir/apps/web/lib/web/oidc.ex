@@ -197,7 +197,7 @@ defmodule Web.OIDC do
     verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
 
     {:ok,
-     %Web.OIDC.Verification{
+     %{
        token: token,
        url: admin_consent_url,
        verifier: verifier,
@@ -228,7 +228,7 @@ defmodule Web.OIDC do
 
     with {:ok, uri} <- OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
       {:ok,
-       %Web.OIDC.Verification{
+       %{
          token: token,
          url: uri,
          verifier: verifier,
@@ -237,47 +237,6 @@ defmodule Web.OIDC do
     else
       {:error, reason} -> {:error, reason}
     end
-  end
-
-  @doc """
-  Sets up OIDC verification for an existing legacy provider (with adapter_config).
-  Used during migration to verify legacy OIDC/Okta providers.
-  Returns a map with verification data: url, verifier, config.
-  """
-  def setup_legacy_provider_verification(provider, token) do
-    # Generate PKCE verifier and challenge
-    verifier = :crypto.strong_rand_bytes(32) |> Base.url_encode64(padding: false)
-    challenge = :crypto.hash(:sha256, verifier) |> Base.url_encode64(padding: false)
-
-    state = "oidc-verification:#{token}"
-
-    # Build config from legacy provider's adapter_config
-    config = %{
-      client_id: get_in(provider.adapter_config, ["client_id"]),
-      client_secret: get_in(provider.adapter_config, ["client_secret"]),
-      discovery_document_uri: get_in(provider.adapter_config, ["discovery_document_uri"]),
-      redirect_uri: callback_url(),
-      response_type: "code",
-      scope: "openid email profile"
-    }
-
-    oidc_params = %{
-      state: state,
-      code_challenge_method: :S256,
-      code_challenge: challenge
-    }
-
-    verification_url =
-      case OpenIDConnect.authorization_uri(config, callback_url(), oidc_params) do
-        {:ok, uri} -> uri
-        {:error, _reason} -> nil
-      end
-
-    %{
-      url: verification_url,
-      verifier: verifier,
-      config: config
-    }
   end
 
   @doc """

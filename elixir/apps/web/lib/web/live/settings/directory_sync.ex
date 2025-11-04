@@ -848,8 +848,6 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp ready_to_verify?(form) do
-    dbg(form.source.errors)
-
     Enum.all?(form.source.errors, fn
       {excluded, _errors}
       when excluded in [:is_verified, :domain, :tenant_id, :okta_domain] ->

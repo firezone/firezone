@@ -41,7 +41,7 @@ defmodule Domain.Google.AuthProvider do
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:issuer,
       name: :google_auth_providers_account_id_issuer_index,
-      message: "A Google authentication provider for this domain already exists."
+      message: "A Google authentication provider for this account already exists."
     )
     |> unique_constraint(:name,
       name: :google_auth_providers_account_id_name_index,
