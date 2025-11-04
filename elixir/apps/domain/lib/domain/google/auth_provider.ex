@@ -18,13 +18,15 @@ defmodule Domain.Google.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
+    field :client_session_lifetime_secs, :integer
+    field :portal_session_lifetime_secs, :integer
+
     field :is_verified, :boolean, virtual: true, default: false
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
 
     field :name, :string, default: "Google"
-    field :hosted_domain, :string
 
     subject_trail(~w[actor identity system]a)
     timestamps()
@@ -34,13 +36,12 @@ defmodule Domain.Google.AuthProvider do
     changeset
     |> validate_required([:name, :context, :issuer, :is_verified])
     |> validate_acceptance(:is_verified)
-    |> validate_length(:hosted_domain, min: 1, max: 255)
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
-    |> unique_constraint(:hosted_domain,
-      name: :google_auth_providers_account_id_issuer_hosted_domain_index,
-      message: "A Google authentication provider for this hosted domain already exists."
+    |> unique_constraint(:issuer,
+      name: :google_auth_providers_account_id_issuer_index,
+      message: "A Google authentication provider for this domain already exists."
     )
     |> unique_constraint(:name,
       name: :google_auth_providers_account_id_name_index,

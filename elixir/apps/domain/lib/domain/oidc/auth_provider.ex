@@ -18,6 +18,9 @@ defmodule Domain.OIDC.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
+    field :client_session_lifetime_secs, :integer
+    field :portal_session_lifetime_secs, :integer
+
     field :is_verified, :boolean, virtual: true, default: false
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
@@ -53,7 +56,7 @@ defmodule Domain.OIDC.AuthProvider do
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:client_id,
       name: :oidc_auth_providers_account_id_client_id_index,
-      message: "An OIDC authentication provider with this client_id already exists."
+      message: "An OIDC authentication provider with this client id already exists."
     )
     |> unique_constraint(:name,
       name: :oidc_auth_providers_account_id_name_index,

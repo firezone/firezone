@@ -15,7 +15,7 @@ defmodule Web.OIDCController do
   require Logger
 
   # For persisting state across the IdP redirect
-  @cookie_key "oidc"
+  @cookie_prefix "_oidc_"
   @cookie_options [
     sign: true,
     max_age: 30 * 60,
@@ -52,16 +52,17 @@ defmodule Web.OIDCController do
 
   def callback(conn, params) do
     conn
-    |> delete_resp_cookie(@cookie_key)
+    |> delete_resp_cookie(cookie_key(params["state"]))
     |> handle_error(:invalid_callback_params, params)
   end
 
   defp handle_authentication_callback(conn, state, code, params) do
-    conn = fetch_cookies(conn, signed: [@cookie_key])
+    cookie_key = cookie_key(state)
+    conn = fetch_cookies(conn, signed: [cookie_key])
     context_type = context_type(params)
 
-    with {:ok, cookie} <- Map.fetch(conn.cookies, @cookie_key),
-         conn = delete_resp_cookie(conn, @cookie_key),
+    with {:ok, cookie} <- Map.fetch(conn.cookies, cookie_key),
+         conn = delete_resp_cookie(conn, cookie_key),
          true = Plug.Crypto.secure_compare(cookie["state"], state),
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(cookie["account_id"]),
          provider when not is_nil(provider) <- fetch_provider(account, cookie),
@@ -91,8 +92,8 @@ defmodule Web.OIDCController do
   defp handle_verification_callback(conn, verification_token, code, _params) do
     # Store verification info in session for the LiveView to pick up
     conn
-    |> Plug.Conn.put_session(:verification_token, verification_token)
-    |> Plug.Conn.put_session(:verification_code, code)
+    |> put_session(:verification_token, verification_token)
+    |> put_session(:verification_code, code)
     |> redirect(to: ~p"/verification")
   end
 
@@ -111,7 +112,7 @@ defmodule Web.OIDCController do
         }
 
       conn
-      |> put_resp_cookie(@cookie_key, cookie, @cookie_options)
+      |> put_resp_cookie(cookie_key(state), cookie, @cookie_options)
       |> redirect(external: uri)
     end
   end
@@ -339,7 +340,7 @@ defmodule Web.OIDCController do
 
   defp handle_error(conn, error, params) do
     Logger.warning("OIDC sign-in error: #{inspect(error)}")
-    account_id = get_in(conn.cookies, [@cookie_key, "account_id"]) || ""
+    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
     error = "An unexpected error occurred while signing you in. Please try again."
     path = ~p"/#{account_id}?#{sanitize(params)}"
 
@@ -356,4 +357,6 @@ defmodule Web.OIDCController do
   defp sanitize(params) do
     Map.take(params, ["as", "redirect_to", "state", "nonce"])
   end
+
+  defp cookie_key(state), do: @cookie_prefix <> state
 end

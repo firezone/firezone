@@ -217,7 +217,7 @@ defmodule Domain.Repo.Seeds do
               is_verified: true,
               name: "Google",
               issuer: "https://accounts.google.com",
-              hosted_domain: "firezone.dev"
+              domain: "firezone.dev"
             },
             system_subject
           )

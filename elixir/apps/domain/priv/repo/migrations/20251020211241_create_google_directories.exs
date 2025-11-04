@@ -7,9 +7,8 @@ defmodule Domain.Repo.Migrations.CreateGoogleDirectories do
 
       account()
 
-      add(:hosted_domain, :string, null: false)
+      add(:domain, :string, null: false)
 
-      add(:issuer, :text, null: false)
       add(:name, :string, null: false)
       add(:impersonation_email, :string, null: false)
       add(:error_count, :integer, null: false, default: 0)
@@ -23,7 +22,7 @@ defmodule Domain.Repo.Migrations.CreateGoogleDirectories do
       timestamps()
     end
 
-    create(index(:google_directories, [:account_id, :issuer, :hosted_domain], unique: true))
+    create(index(:google_directories, [:account_id, :domain], unique: true))
     create(index(:google_directories, [:account_id, :name], unique: true))
   end
 end

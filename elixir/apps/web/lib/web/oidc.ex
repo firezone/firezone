@@ -37,8 +37,7 @@ defmodule Web.OIDC do
 
   def config_for_provider(%Entra.AuthProvider{} = provider) do
     with {:ok, config} <- Application.fetch_env(:domain, Domain.Entra.AuthProvider) do
-      discovery_document_uri =
-        "https://login.microsoftonline.com/#{provider.tenant_id}/v2.0/.well-known/openid-configuration"
+      discovery_document_uri = "#{provider.issuer}/.well-known/openid-configuration"
 
       config =
         Enum.into(config, %{
@@ -180,7 +179,7 @@ defmodule Web.OIDC do
 
     # Build admin consent URL pointing to our unified verification handler
     redirect_uri = url(~p"/verification")
-    scope = "openid email profile offline_access"
+    scope = "openid email profile"
 
     params = %{
       client_id: client_id,

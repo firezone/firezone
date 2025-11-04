@@ -18,13 +18,15 @@ defmodule Domain.Entra.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
+    field :client_session_lifetime_secs, :integer
+    field :portal_session_lifetime_secs, :integer
+
     field :is_verified, :boolean, virtual: true, default: false
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
 
     field :name, :string, default: "Entra"
-    field :tenant_id, :string
 
     subject_trail(~w[actor identity system]a)
     timestamps()
@@ -32,15 +34,14 @@ defmodule Domain.Entra.AuthProvider do
 
   def changeset(changeset) do
     changeset
-    |> validate_required([:name, :context, :tenant_id, :issuer, :is_verified])
+    |> validate_required([:name, :context, :issuer, :is_verified])
     |> validate_acceptance(:is_verified)
-    |> validate_length(:tenant_id, min: 1, max: 255)
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
-    |> unique_constraint(:tenant_id,
+    |> unique_constraint(:issuer,
       name: :entra_auth_providers_account_id_issuer_index,
-      message: "An Entra authentication provider with this tenant_id already exists."
+      message: "An Entra authentication provider with this issuer already exists."
     )
     |> unique_constraint(:name,
       name: :entra_auth_providers_account_id_name_index,

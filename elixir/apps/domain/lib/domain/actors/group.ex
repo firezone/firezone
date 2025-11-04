@@ -5,7 +5,7 @@ defmodule Domain.Actors.Group do
     field :name, :string
     field :type, Ecto.Enum, values: ~w[managed static]a
 
-    field :issuer, :string
+    field :directory, :string
     field :idp_id, :string
 
     # Those fields will be set for groups we synced from IdP's

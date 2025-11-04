@@ -8,7 +8,6 @@ defmodule Domain.Repo.Migrations.CreateEntraDirectories do
       account()
       add(:tenant_id, :string, null: false)
 
-      add(:issuer, :text, null: false)
       add(:name, :string, null: false)
       add(:error_count, :integer, null: false, default: 0)
       add(:synced_at, :utc_datetime_usec)
@@ -22,7 +21,6 @@ defmodule Domain.Repo.Migrations.CreateEntraDirectories do
     end
 
     create(index(:entra_directories, [:account_id, :tenant_id], unique: true))
-    create(index(:entra_directories, [:account_id, :issuer], unique: true))
     create(index(:entra_directories, [:account_id, :name], unique: true))
   end
 end

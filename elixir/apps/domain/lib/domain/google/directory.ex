@@ -3,9 +3,8 @@ defmodule Domain.Google.Directory do
 
   schema "google_directories" do
     belongs_to :account, Domain.Accounts.Account
-    field :hosted_domain, :string
+    field :domain, :string
 
-    field :issuer, :string
     field :name, :string, default: "Google"
     field :impersonation_email, :string
     field :error_count, :integer, default: 0, read_after_writes: true
@@ -23,18 +22,17 @@ defmodule Domain.Google.Directory do
 
   def changeset(changeset) do
     changeset
-    |> validate_required([:hosted_domain, :issuer, :is_verified, :name, :impersonation_email])
+    |> validate_required([:domain, :is_verified, :name, :impersonation_email])
     |> validate_acceptance(:is_verified)
     |> validate_email(:impersonation_email)
-    |> validate_length(:hosted_domain, min: 1, max: 255)
-    |> validate_length(:issuer, min: 1, max: 2_000)
+    |> validate_length(:domain, min: 1, max: 255)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_count, greater_than_or_equal_to: 0)
     |> validate_length(:error, max: 2_000)
     |> assoc_constraint(:account)
-    |> unique_constraint(:hosted_domain,
-      name: :google_directories_account_id_issuer_hosted_domain_index,
-      message: "A Google directory for this hosted domain already exists."
+    |> unique_constraint(:domain,
+      name: :google_directories_account_id_domain_index,
+      message: "A Google directory for this domain already exists."
     )
     |> unique_constraint(:name,
       name: :google_directories_account_id_name_index,

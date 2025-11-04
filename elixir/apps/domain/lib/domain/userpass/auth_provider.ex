@@ -19,6 +19,9 @@ defmodule Domain.Userpass.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
+    field :client_session_lifetime_secs, :integer
+    field :portal_session_lifetime_secs, :integer
+
     field :is_disabled, :boolean, read_after_writes: true, default: false
 
     subject_trail(~w[actor system]a)

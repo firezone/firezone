@@ -20,11 +20,11 @@ defmodule Web.Settings.DirectorySync do
 
   @types Map.keys(@modules)
 
-  @common_fields ~w[name issuer is_verified]a
+  @common_fields ~w[name is_verified]a
 
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id]a,
-    Google.Directory => @common_fields ++ ~w[hosted_domain impersonation_email]a,
+    Google.Directory => @common_fields ++ ~w[domain impersonation_email]a,
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
   }
 
@@ -114,7 +114,7 @@ defmodule Web.Settings.DirectorySync do
     # Generate the keypair
     keypair = Domain.Crypto.JWK.generate_jwk_and_jwks()
 
-    # Update the changeset with the private key JWK and kid
+    # Update the changeset with the prevate key JWK and kid
     changeset =
       socket.assigns.form.source
       |> apply_changes()
@@ -142,15 +142,15 @@ defmodule Web.Settings.DirectorySync do
     changeset =
       socket.assigns.form.source
       |> delete_change(:is_verified)
-      |> delete_change(:issuer)
-      |> delete_change(:hosted_domain)
+      |> delete_change(:domain)
       |> delete_change(:tenant_id)
+      |> delete_change(:okta_domain)
       |> apply_changes()
       |> changeset(%{
         "is_verified" => false,
-        "issuer" => nil,
-        "hosted_domain" => nil,
-        "tenant_id" => nil
+        "domain" => nil,
+        "tenant_id" => nil,
+        "okta_domain" => nil
       })
 
     {:noreply, assign(socket, verification_error: nil, form: to_form(changeset))}
@@ -247,9 +247,6 @@ defmodule Web.Settings.DirectorySync do
       config = Domain.Config.fetch_env!(:domain, Entra.APIClient)
       client_id = config[:client_id]
 
-      # Build issuer URL from tenant_id
-      issuer = "https://login.microsoftonline.com/#{tenant_id}/v2.0"
-
       with {:ok, %Req.Response{status: 200, body: %{"access_token" => access_token}}} <-
              Entra.APIClient.get_access_token(tenant_id),
            {:ok, %Req.Response{status: 200, body: %{"value" => [service_principal | _]}}} <-
@@ -261,7 +258,6 @@ defmodule Web.Settings.DirectorySync do
              ) do
         attrs = %{
           "is_verified" => true,
-          "issuer" => issuer,
           "tenant_id" => tenant_id
         }
 
@@ -432,7 +428,7 @@ defmodule Web.Settings.DirectorySync do
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0">
           <.provider_icon type={@type} class="w-7 h-7 mr-2 flex-shrink-0" />
-          <span class="font-normal text-lg truncate" title={@directory.name}>
+          <span class="font-medium text-xl truncate" title={@directory.name}>
             {@directory.name}
           </span>
         </div>
@@ -505,11 +501,6 @@ defmodule Web.Settings.DirectorySync do
       </div>
 
       <div class="mt-auto bg-white rounded-lg p-3 space-y-3 text-sm text-neutral-600">
-        <div :if={Map.get(@directory, :issuer)} class="flex items-center gap-2 min-w-0">
-          <.icon name="hero-identification" class="w-5 h-5 flex-shrink-0" title="Issuer" />
-          <span class="truncate font-medium" title={@directory.issuer}>{@directory.issuer}</span>
-        </div>
-
         <%= if @directory.is_disabled do %>
           <div class="flex items-center gap-2">
             <.icon name="hero-no-symbol" class="w-5 h-5 flex-shrink-0 text-red-600" title="Disabled" />
@@ -521,6 +512,13 @@ defmodule Web.Settings.DirectorySync do
             </span>
           </div>
         <% end %>
+
+        <div class="flex items-center gap-2">
+          <.icon name="hero-identification" class="w-5 h-5 flex-shrink-0" title="Tenant" />
+          <span class="font-medium">
+            {directory_identifier(@type, @directory)}
+          </span>
+        </div>
 
         <%= if @directory.synced_at do %>
           <div class="flex items-center justify-between gap-2">
@@ -743,11 +741,11 @@ defmodule Web.Settings.DirectorySync do
     """
   end
 
-  defp verification_help_text(form, type) do
+  defp verification_help_text(form, _type) do
     if verified?(form) do
       "This directory has been successfully verified."
     else
-      "Verify your directory configuration by signing in with your #{titleize(type)} account."
+      "Verify your directory configuration by clicking \"Verify Now\"."
     end
   end
 
@@ -801,26 +799,24 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp verification_fields_status(assigns) do
-    fields =
+    field =
       case assigns.type do
-        "google" -> [:issuer, :hosted_domain]
-        "entra" -> [:issuer, :tenant_id]
-        "okta" -> [:issuer]
+        "google" -> :domain
+        "entra" -> :tenant_id
+        "okta" -> :okta_domain
       end
 
-    assigns = assign(assigns, :fields, fields)
+    assigns = assign(assigns, :field, field)
 
     ~H"""
-    <%= for field <- @fields do %>
-      <div class="flex justify-between items-center">
-        <label class="text-sm font-medium text-neutral-700">{Phoenix.Naming.humanize(field)}</label>
-        <div class="text-right">
-          <p class="text-sm font-semibold text-neutral-900">
-            {verification_field_display(@form.source, field)}
-          </p>
-        </div>
+    <div class="flex justify-between items-center">
+      <label class="text-sm font-medium text-neutral-700">{Phoenix.Naming.humanize(@field)}</label>
+      <div class="text-right">
+        <p class="text-sm font-semibold text-neutral-900">
+          {verification_field_display(@form.source, @field)}
+        </p>
       </div>
-    <% end %>
+    </div>
     """
   end
 
@@ -852,8 +848,11 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp ready_to_verify?(form) do
+    dbg(form.source.errors)
+
     Enum.all?(form.source.errors, fn
-      {excluded, _errors} when excluded in [:is_verified, :issuer, :hosted_domain, :tenant_id] ->
+      {excluded, _errors}
+      when excluded in [:is_verified, :domain, :tenant_id, :okta_domain] ->
         true
 
       {_field, _errors} ->
@@ -909,7 +908,9 @@ defmodule Web.Settings.DirectorySync do
 
   defp verification_errors(changeset) do
     changeset.errors
-    |> Enum.filter(fn {field, _error} -> field in [:hosted_domain, :issuer, :tenant_id] end)
+    |> Enum.filter(fn {field, _error} ->
+      field in [:domain, :tenant_id, :okta_domain]
+    end)
     |> Enum.map(fn {_field, {message, _opts}} -> message end)
     |> Enum.join(" ")
   end
@@ -935,9 +936,11 @@ defmodule Web.Settings.DirectorySync do
            Google.APIClient.get_customer(access_token) do
       changeset =
         changeset
-        |> put_change(:hosted_domain, body["customerDomain"])
-        |> put_change(:issuer, "https://accounts.google.com")
-        |> put_change(:is_verified, true)
+        |> apply_changes()
+        |> changeset(%{
+          "domain" => body["customerDomain"],
+          "is_verified" => true
+        })
 
       {:noreply,
        assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
@@ -991,7 +994,27 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp start_verification(%{assigns: %{type: "okta"}} = socket) do
-    {:noreply, assign(socket, verifying: false)}
+    changeset = socket.assigns.form.source
+    okta_domain = get_field(changeset, :okta_domain)
+    client_id = get_field(changeset, :client_id)
+    private_key_jwk = get_field(changeset, :private_key_jwk)
+    kid = get_field(changeset, :kid)
+
+    with {:ok, %{"access_token" => access_token}} <-
+           Okta.APIClient.get_access_token(okta_domain, client_id, private_key_jwk, kid),
+         :ok <- Okta.APIClient.test_connection(okta_domain, access_token) do
+      changeset =
+        changeset
+        |> apply_changes()
+        |> changeset(%{"is_verified" => true})
+
+      {:noreply,
+       assign(socket, form: to_form(changeset), verification_error: nil, verifying: false)}
+    else
+      error ->
+        msg = parse_okta_verification_error(error)
+        {:noreply, assign(socket, verification_error: msg, verifying: false)}
+    end
   end
 
   defp clear_verification_if_trigger_fields_changed(changeset) do
@@ -1054,5 +1077,39 @@ defmodule Web.Settings.DirectorySync do
     Logger.error("Unknown Entra verification error", error: inspect(error))
 
     "Unknown error during verification. Please try again. If the problem persists, contact support."
+  end
+
+  defp parse_okta_verification_error({:error, {401, body}}) do
+    error_description = body["error_description"] || body["error"] || "Unauthorized"
+
+    "HTTP 401 error during verification: #{error_description}. Ensure the client ID and private key are correct."
+  end
+
+  defp parse_okta_verification_error({:error, {403, body}}) do
+    error_message = body["errorSummary"] || body["error"] || "Forbidden"
+
+    "HTTP 403 error during verification: #{error_message}. Ensure the application has the required scopes."
+  end
+
+  defp parse_okta_verification_error({:error, {status, _body}}) when status >= 500 do
+    "Okta service is currently unavailable (HTTP #{status}). Please try again later."
+  end
+
+  defp parse_okta_verification_error(error) do
+    Logger.error("Unknown Okta verification error", error: inspect(error))
+
+    "Unknown error during verification. Please try again. If the problem persists, contact support."
+  end
+
+  defp directory_identifier("google", directory) do
+    directory.domain
+  end
+
+  defp directory_identifier("entra", directory) do
+    directory.tenant_id
+  end
+
+  defp directory_identifier("okta", directory) do
+    directory.okta_domain
   end
 end

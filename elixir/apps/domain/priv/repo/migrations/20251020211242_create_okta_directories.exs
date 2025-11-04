@@ -11,7 +11,6 @@ defmodule Domain.Repo.Migrations.CreateOktaDirectories do
       add(:private_key_jwk, :jsonb)
       add(:kid, :string)
       add(:okta_domain, :string, null: false)
-      add(:issuer, :text, null: false)
 
       add(:name, :string, null: false)
       add(:error_count, :integer, null: false, default: 0)
@@ -26,7 +25,6 @@ defmodule Domain.Repo.Migrations.CreateOktaDirectories do
     end
 
     create(index(:okta_directories, [:account_id, :okta_domain], unique: true))
-    create(index(:okta_directories, [:account_id, :issuer], unique: true))
     create(index(:okta_directories, [:account_id, :name], unique: true))
   end
 end

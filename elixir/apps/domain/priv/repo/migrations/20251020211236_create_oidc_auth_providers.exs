@@ -8,6 +8,8 @@ defmodule Domain.Repo.Migrations.CreateOidcAuthProviders do
       account()
 
       add(:context, :string, null: false)
+      add(:client_session_lifetime_secs, :integer)
+      add(:portal_session_lifetime_secs, :integer)
       add(:is_disabled, :boolean, default: false, null: false)
       add(:is_default, :boolean, default: false, null: false)
 

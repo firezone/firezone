@@ -31,13 +31,13 @@ defmodule Web.Settings.Authentication do
   @new_types ~w[google entra okta oidc]
   @edit_types @new_types ++ ~w[userpass email_otp]
 
-  @common_fields ~w[name context is_disabled issuer]a
+  @common_fields ~w[name context is_disabled issuer client_session_lifetime_secs portal_session_lifetime_secs]a
 
   @fields %{
     EmailOTP.AuthProvider => @common_fields,
     Userpass.AuthProvider => @common_fields,
-    Google.AuthProvider => @common_fields ++ ~w[hosted_domain is_verified]a,
-    Entra.AuthProvider => @common_fields ++ ~w[tenant_id is_verified]a,
+    Google.AuthProvider => @common_fields ++ ~w[is_verified]a,
+    Entra.AuthProvider => @common_fields ++ ~w[is_verified]a,
     Okta.AuthProvider => @common_fields ++ ~w[okta_domain client_id client_secret is_verified]a,
     OIDC.AuthProvider =>
       @common_fields ++ ~w[discovery_document_uri client_id client_secret is_verified]a
@@ -136,15 +136,11 @@ defmodule Web.Settings.Authentication do
       socket.assigns.form.source
       |> delete_change(:is_verified)
       |> delete_change(:issuer)
-      |> delete_change(:hosted_domain)
-      |> delete_change(:tenant_id)
       |> apply_changes()
       |> changeset(
         %{
           "is_verified" => false,
-          "issuer" => nil,
-          "hosted_domain" => nil,
-          "tenant_id" => nil
+          "issuer" => nil
         },
         socket
       )
@@ -231,7 +227,7 @@ defmodule Web.Settings.Authentication do
   end
 
   # Sent by the Entra admin consent verification process from another browser tab
-  def handle_info({:entra_verification, pid, issuer, tenant_id, state_token}, socket) do
+  def handle_info({:entra_verification, pid, issuer, state_token}, socket) do
     :ok = Domain.PubSub.unsubscribe("entra-verification:#{state_token}")
 
     stored_token = socket.assigns.verification.token
@@ -242,8 +238,7 @@ defmodule Web.Settings.Authentication do
 
       attrs = %{
         "is_verified" => true,
-        "issuer" => issuer,
-        "tenant_id" => tenant_id
+        "issuer" => issuer
       }
 
       changeset =
@@ -275,9 +270,7 @@ defmodule Web.Settings.Authentication do
 
           attrs = %{
             "is_verified" => true,
-            "issuer" => claims["iss"],
-            "hosted_domain" => claims["hd"],
-            "tenant_id" => claims["tid"]
+            "issuer" => claims["iss"]
           }
 
           changeset =
@@ -554,7 +547,7 @@ defmodule Web.Settings.Authentication do
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center flex-1 min-w-0 gap-2">
           <.provider_icon type={@type} class="w-7 h-7 flex-shrink-0" />
-          <span class="font-normal text-lg truncate" title={@provider.name}>
+          <span class="font-medium text-xl truncate" title={@provider.name}>
             {@provider.name}
           </span>
           <%= if Map.has_key?(@provider, :is_default) && @provider.is_default do %>
@@ -818,41 +811,22 @@ defmodule Web.Settings.Authentication do
     """
   end
 
-  # Verification fields status
   defp verification_fields_status(assigns) do
-    fields =
-      case assigns.type do
-        "oidc" -> [:issuer]
-        "okta" -> [:issuer]
-        "google" -> [:issuer, :hosted_domain]
-        "entra" -> [:issuer, :tenant_id]
-      end
-
-    assigns = assign(assigns, :fields, fields)
-
     ~H"""
-    <%= for field <- @fields do %>
-      <div class="flex justify-between items-center">
-        <label class="text-sm font-medium text-neutral-700">{Phoenix.Naming.humanize(field)}</label>
-        <div class="text-right">
-          <p class="text-sm font-semibold text-neutral-900">
-            {verification_field_display(@form.source, field)}
-          </p>
-        </div>
+    <div class="flex justify-between items-center">
+      <label class="text-sm font-medium text-neutral-700">Issuer</label>
+      <div class="text-right">
+        <p class="text-sm font-semibold text-neutral-900">
+          {verification_field_display(@form.source, :issuer)}
+        </p>
       </div>
-    <% end %>
+    </div>
     """
   end
 
   defp verification_field_display(changeset, field) do
     if get_field(changeset, :is_verified) do
-      val = get_field(changeset, field)
-
-      if field == :hosted_domain do
-        if val == "" or is_nil(val), do: "Personal Gmail accounts only", else: val
-      else
-        val
-      end
+      get_field(changeset, field)
     else
       "Awaiting verification..."
     end
@@ -901,7 +875,7 @@ defmodule Web.Settings.Authentication do
 
   defp verification_errors(changeset) do
     changeset.errors
-    |> Enum.filter(fn {field, _error} -> field in [:hosted_domain, :issuer, :tenant_id] end)
+    |> Enum.filter(fn {field, _error} -> field in [:issuer] end)
     |> Enum.map(fn {_field, {message, _opts}} -> message end)
     |> Enum.join(" ")
   end
@@ -909,7 +883,7 @@ defmodule Web.Settings.Authentication do
   defp ready_to_verify?(form) do
     Enum.all?(form.source.errors, fn
       # We'll set these fields during verification
-      {excluded, _errors} when excluded in [:is_verified, :issuer, :hosted_domain, :tenant_id] ->
+      {excluded, _errors} when excluded in [:is_verified, :issuer] ->
         true
 
       {_field, _errors} ->

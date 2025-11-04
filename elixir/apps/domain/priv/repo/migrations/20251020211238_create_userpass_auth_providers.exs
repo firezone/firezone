@@ -8,6 +8,8 @@ defmodule Domain.Repo.Migrations.CreateUserpassAuthProviders do
       account()
 
       add(:name, :string, null: false)
+      add(:client_session_lifetime_secs, :integer)
+      add(:portal_session_lifetime_secs, :integer)
       add(:issuer, :text, null: false, default: "firezone")
       add(:context, :string, null: false)
       add(:is_disabled, :boolean, default: false, null: false)

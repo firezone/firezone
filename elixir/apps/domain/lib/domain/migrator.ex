@@ -764,7 +764,7 @@ defmodule Domain.Migrator do
 
     # Process each group
     Enum.flat_map(groups, fn group ->
-      {issuer, idp_id} =
+      {directory, idp_id} =
         cond do
           # No provider - set issuer to 'firezone'
           is_nil(group.provider_id) or is_nil(group.provider_identifier) ->
@@ -772,18 +772,20 @@ defmodule Domain.Migrator do
 
           # Google Workspace
           group.provider_adapter == :google_workspace ->
-            {"https://accounts.google.com", group.provider_identifier}
+            domain = get_in(group.provider_adapter_state, ["claims", "hd"])
+            {"g:#{domain}", group.provider_identifier}
 
           # Okta
           group.provider_adapter == :okta ->
-            issuer = get_in(group.provider_adapter_state, ["claims", "iss"])
+            "https://" <> okta_domain = get_in(group.provider_adapter_state, ["claims", "iss"])
 
-            {issuer, group.provider_identifier}
+            {"o:#{okta_domain}", group.provider_identifier}
 
           # Microsoft Entra
           group.provider_adapter == :microsoft_entra ->
-            issuer = get_in(group.provider_adapter_state, ["claims", "iss"])
-            {issuer, group.provider_identifier}
+            tenant_id = get_in(group.provider_adapter_state, ["claims", "tid"])
+
+            {"e:#{tenant_id}", group.provider_identifier}
 
           # Unknown adapter type - log error and skip
           true ->
@@ -791,15 +793,15 @@ defmodule Domain.Migrator do
         end
 
       # Skip groups where issuer is nil
-      if is_nil(issuer) do
+      if is_nil(directory) do
         [
           %{
             group_id: group.group_id,
             group_name: group.group_name,
             provider_adapter: group.provider_adapter,
-            issuer: issuer,
+            directory: directory,
             idp_id: idp_id,
-            error: "Skipped - unable to determine issuer"
+            error: "Skipped - unable to determine directory"
           }
         ]
       else
@@ -808,7 +810,7 @@ defmodule Domain.Migrator do
           case Repo.update_all(
                  from(g in Domain.Actors.Group, where: g.id == ^group.group_id),
                  set: [
-                   issuer: issuer,
+                   directory: directory,
                    idp_id: idp_id,
                    provider_id: nil,
                    provider_identifier: nil
@@ -823,7 +825,7 @@ defmodule Domain.Migrator do
                   group_id: group.group_id,
                   group_name: group.group_name,
                   provider_adapter: group.provider_adapter,
-                  issuer: issuer,
+                  directory: directory,
                   idp_id: idp_id,
                   error: "Group not found"
                 }
@@ -836,7 +838,7 @@ defmodule Domain.Migrator do
                 group_id: group.group_id,
                 group_name: group.group_name,
                 provider_adapter: group.provider_adapter,
-                issuer: issuer,
+                directory: directory,
                 idp_id: idp_id,
                 error: "Constraint violation (skipped): #{Exception.message(e)}"
               }

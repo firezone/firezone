@@ -18,18 +18,18 @@ defmodule Domain.Okta.AuthProvider do
       values: ~w[clients_and_portal clients_only portal_only]a,
       default: :clients_and_portal
 
+    field :client_session_lifetime_secs, :integer
+    field :portal_session_lifetime_secs, :integer
+
     field :is_verified, :boolean, virtual: true, default: false
+    field :okta_domain, :string, virtual: true
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
 
     field :name, :string, default: "Okta"
-    field :okta_domain, :string
     field :client_id, :string
     field :client_secret, :string, redact: true
-
-    # Built from the okta_domain
-    field :discovery_document_uri, :string, virtual: true
 
     subject_trail(~w[actor identity system]a)
     timestamps()
@@ -46,9 +46,6 @@ defmodule Domain.Okta.AuthProvider do
       :is_verified
     ])
     |> validate_acceptance(:is_verified)
-    |> put_discovery_document_uri()
-    |> validate_required(:discovery_document_uri)
-    |> validate_uri(:discovery_document_uri)
     |> validate_length(:okta_domain, min: 1, max: 255)
     |> validate_fqdn(:okta_domain)
     |> validate_length(:issuer, min: 1, max: 2_000)
@@ -58,7 +55,7 @@ defmodule Domain.Okta.AuthProvider do
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:client_id,
       name: :okta_auth_providers_account_id_client_id_index,
-      message: "An Okta authentication provider with this client_id already exists."
+      message: "An Okta authentication provider with this client id already exists."
     )
     |> unique_constraint(:name,
       name: :okta_auth_providers_account_id_name_index,
@@ -69,16 +66,5 @@ defmodule Domain.Okta.AuthProvider do
     |> foreign_key_constraint(:auth_provider_id,
       name: :okta_auth_providers_auth_provider_id_fkey
     )
-  end
-
-  defp put_discovery_document_uri(changeset) do
-    case get_field(changeset, :okta_domain) do
-      nil ->
-        changeset
-
-      okta_domain ->
-        uri = "https://#{okta_domain}/.well-known/openid-configuration"
-        put_change(changeset, :discovery_document_uri, uri)
-    end
   end
 end

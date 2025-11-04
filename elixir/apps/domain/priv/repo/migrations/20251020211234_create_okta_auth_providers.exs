@@ -8,12 +8,13 @@ defmodule Domain.Repo.Migrations.CreateOktaAuthProviders do
       account()
 
       add(:context, :string, null: false)
+      add(:client_session_lifetime_secs, :integer)
+      add(:portal_session_lifetime_secs, :integer)
       add(:is_disabled, :boolean, default: false, null: false)
       add(:is_default, :boolean, default: false, null: false)
 
       add(:issuer, :text, null: false)
       add(:name, :string, null: false)
-      add(:okta_domain, :string, null: false)
       add(:client_id, :string, null: false)
       add(:client_secret, :string, null: false)
 

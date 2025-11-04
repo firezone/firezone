@@ -9,7 +9,6 @@ defmodule Domain.Okta.Directory do
     field :kid, :string
     field :okta_domain, :string
 
-    field :issuer, :string
     field :name, :string, default: "Okta"
     field :error_count, :integer, read_after_writes: true
     field :is_disabled, :boolean, default: false, read_after_writes: true
@@ -26,18 +25,20 @@ defmodule Domain.Okta.Directory do
 
   def changeset(changeset) do
     changeset
-    |> validate_required([:name, :okta_domain, :issuer, :is_verified])
+    |> validate_required([
+      :name,
+      :okta_domain,
+      :client_id,
+      :private_key_jwk,
+      :kid,
+      :is_verified
+    ])
     |> validate_acceptance(:is_verified)
     |> validate_length(:okta_domain, min: 1, max: 255)
-    |> validate_length(:issuer, min: 1, max: 2_000)
     |> validate_length(:name, min: 1, max: 255)
     |> validate_number(:error_count, greater_than_or_equal_to: 0)
     |> validate_length(:error, max: 2_000)
     |> assoc_constraint(:account)
-    |> unique_constraint(:issuer,
-      name: :okta_directories_account_id_issuer_index,
-      message: "An Okta directory for this issuer already exists."
-    )
     |> unique_constraint(:okta_domain,
       name: :okta_directories_account_id_okta_domain_index,
       message: "An Okta directory for this Okta domain already exists."
