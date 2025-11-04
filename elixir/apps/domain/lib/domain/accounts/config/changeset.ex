@@ -106,7 +106,8 @@ defmodule Domain.Accounts.Config.Changeset do
   defp validate_ip_port(changeset) do
     validate_change(changeset, :address, fn :address, address ->
       case IPPort.cast(address) do
-        {:ok, _ip} -> []
+        {:ok, %IPPort{port: nil}} -> []
+        {:ok, %IPPort{}} -> [address: "must not include a port"]
         _ -> [address: "must be a valid IP address"]
       end
     end)
