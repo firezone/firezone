@@ -49,6 +49,7 @@ impl DnsMapping {
     // For such small numbers, linear search is usually more efficient.
     // Most importantly, it is much easier for us to retain the ordering of the DNS servers if we don't use a map.
 
+    #[cfg(test)]
     pub(crate) fn sentinel_by_upstream(&self, upstream: SocketAddr) -> Option<IpAddr> {
         self.inner
             .iter()
