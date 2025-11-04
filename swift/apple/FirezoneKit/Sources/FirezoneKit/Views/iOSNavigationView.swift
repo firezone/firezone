@@ -24,10 +24,17 @@ import SwiftUI
     }
 
     var body: some View {
-      NavigationView {
+      NavigationStack {
         content
           .navigationBarTitleDisplayMode(.inline)
-          .navigationBarItems(leading: authMenu, trailing: settingsButton)
+          .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+              authMenu
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+              settingsButton
+            }
+          }
           .alert(
             item: $errorHandler.currentAlert,
             content: { alert in
@@ -40,11 +47,10 @@ import SwiftUI
               )
             }
           )
+          .sheet(isPresented: $isSettingsPresented) {
+            SettingsView(store: store)
+          }
       }
-      .sheet(isPresented: $isSettingsPresented) {
-        SettingsView(store: store)
-      }
-      .navigationViewStyle(StackNavigationViewStyle())
     }
 
     private var settingsButton: some View {
@@ -53,7 +59,7 @@ import SwiftUI
           isSettingsPresented = true
         },
         label: {
-          Label("Settings", systemImage: "gear")
+          Image(systemName: "gear")
         }
       )
       .disabled(store.vpnStatus == .invalid)
