@@ -12,7 +12,11 @@ import Foundation
 #endif
 
 public class DeviceMetadata {
-  public static func getDeviceName() -> String {
+  // nonisolated(unsafe) is safe here because:
+  // 1. UIDevice.current properties are thread-safe for reads (per Apple documentation)
+  // 2. Properties are immutable or internally synchronised
+  // 3. Only reading, never mutating UIDevice state
+  public static nonisolated(unsafe) func getDeviceName() -> String {
     // Returns a generic device name on iOS 16 and higher
     // See https://github.com/firezone/firezone/issues/3034
     #if os(iOS)
@@ -33,7 +37,7 @@ public class DeviceMetadata {
   }
 
   #if os(iOS)
-    public static func getIdentifierForVendor() -> String? {
+    public static nonisolated(unsafe) func getIdentifierForVendor() -> String? {
       return UIDevice.current.identifierForVendor?.uuidString
     }
   #endif

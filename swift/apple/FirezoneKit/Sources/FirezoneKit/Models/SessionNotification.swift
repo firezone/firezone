@@ -128,8 +128,7 @@ public class SessionNotification: NSObject {
 
 #if os(iOS)
   extension SessionNotification: UNUserNotificationCenterDelegate {
-    @concurrent
-    public func userNotificationCenter(
+    nonisolated public func userNotificationCenter(
       _ center: UNUserNotificationCenter,
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
