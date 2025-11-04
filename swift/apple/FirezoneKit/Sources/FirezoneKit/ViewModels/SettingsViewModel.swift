@@ -7,12 +7,42 @@
 import Combine
 import Foundation
 
+enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
+  case general = "General"
+  case advanced = "Advanced"
+  case logs = "Diagnostic Logs"
+  case about = "About"
+
+  var id: String { rawValue }
+
+  var icon: String {
+    switch self {
+    case .general: return "slider.horizontal.3"
+    case .advanced: return "gearshape.2"
+    case .logs: return "doc.text.magnifyingglass"
+    case .about: return "info.circle"
+    }
+  }
+}
+
+enum SettingsField: Hashable {
+  case authURL
+  case apiURL
+  case logFilter
+  case accountSlug
+}
+
+enum SettingsToggle {
+  case connectOnStart
+  case startOnLogin
+}
+
 @MainActor
 class SettingsViewModel: ObservableObject {
   private let configuration: Configuration
+  private let store: Store?
   private var cancellables: Set<AnyCancellable> = []
 
-  @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
   @Published var authURL: String
   @Published var apiURL: String
@@ -21,8 +51,16 @@ class SettingsViewModel: ObservableObject {
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
 
-  init(configuration: Configuration? = nil) {
+  // Sign-out confirmation for identity-related field changes
+  @Published var showSignOutConfirmation: Bool = false
+  private var savedAuthURL: String
+  private var savedApiURL: String
+  private var savedAccountSlug: String
+  var pendingFieldChange: (field: SettingsField, value: String)?
+
+  init(configuration: Configuration? = nil, store: Store? = nil) {
     self.configuration = configuration ?? Configuration.shared
+    self.store = store
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
@@ -30,6 +68,10 @@ class SettingsViewModel: ObservableObject {
     accountSlug = self.configuration.accountSlug
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
+
+    savedAuthURL = self.configuration.authURL
+    savedApiURL = self.configuration.apiURL
+    savedAccountSlug = self.configuration.accountSlug
 
     Publishers.MergeMany(
       $authURL,
@@ -66,92 +108,196 @@ class SettingsViewModel: ObservableObject {
   }
 
   func reset() {
-    if !configuration.isAuthURLForced { authURL = ConfigurationDefaults.authURL }
-    if !configuration.isApiURLForced { apiURL = ConfigurationDefaults.apiURL }
-    if !configuration.isLogFilterForced { logFilter = ConfigurationDefaults.logFilter }
-    if !configuration.isAccountSlugForced { accountSlug = ConfigurationDefaults.accountSlug }
+    if !configuration.isAuthURLForced {
+      authURL = ConfigurationDefaults.authURL
+      configuration.authURL = authURL
+      savedAuthURL = authURL
+    }
+    if !configuration.isApiURLForced {
+      apiURL = ConfigurationDefaults.apiURL
+      configuration.apiURL = apiURL
+      savedApiURL = apiURL
+    }
+    if !configuration.isLogFilterForced {
+      logFilter = ConfigurationDefaults.logFilter
+      configuration.logFilter = logFilter
+    }
+    if !configuration.isAccountSlugForced {
+      accountSlug = ConfigurationDefaults.accountSlug
+      configuration.accountSlug = accountSlug
+      savedAccountSlug = accountSlug
+    }
     if !configuration.isConnectOnStartForced {
       connectOnStart = ConfigurationDefaults.connectOnStart
+      configuration.connectOnStart = connectOnStart
     }
-    if !configuration.isStartOnLoginForced { startOnLogin = ConfigurationDefaults.startOnLogin }
+    if !configuration.isStartOnLoginForced {
+      startOnLogin = ConfigurationDefaults.startOnLogin
+      configuration.startOnLogin = startOnLogin
+    }
 
     updateDerivedState()
   }
 
-  func save() async throws {
-    if !configuration.isAuthURLForced { configuration.authURL = authURL }
-    if !configuration.isApiURLForced { configuration.apiURL = apiURL }
-    if !configuration.isLogFilterForced { configuration.logFilter = logFilter }
-    if !configuration.isAccountSlugForced { configuration.accountSlug = accountSlug }
-    if !configuration.isConnectOnStartForced { configuration.connectOnStart = connectOnStart }
-    if !configuration.isStartOnLoginForced { configuration.startOnLogin = startOnLogin }
+  func saveField(_ field: SettingsField) async throws {
+    switch field {
+    case .authURL:
+      guard !configuration.isAuthURLForced, isAuthURLValid else { return }
+      if authURL != savedAuthURL, requiresSignOut {
+        pendingFieldChange = (field: .authURL, value: authURL)
+        showSignOutConfirmation = true
+        return
+      }
+      configuration.authURL = authURL
+      savedAuthURL = authURL
 
-    updateDerivedState()
+    case .apiURL:
+      guard !configuration.isApiURLForced, isApiURLValid else { return }
+      if apiURL != savedApiURL, requiresSignOut {
+        pendingFieldChange = (field: .apiURL, value: apiURL)
+        showSignOutConfirmation = true
+        return
+      }
+      configuration.apiURL = apiURL
+      savedApiURL = apiURL
+
+    case .logFilter:
+      guard !configuration.isLogFilterForced, isLogFilterValid else { return }
+      configuration.logFilter = logFilter
+
+    case .accountSlug:
+      guard !configuration.isAccountSlugForced else { return }
+      if accountSlug != savedAccountSlug, requiresSignOut {
+        pendingFieldChange = (field: .accountSlug, value: accountSlug)
+        showSignOutConfirmation = true
+        return
+      }
+      configuration.accountSlug = accountSlug
+      savedAccountSlug = accountSlug
+    }
   }
 
-  func isAllForced() -> Bool {
-    return
-      (configuration.isAuthURLForced && configuration.isApiURLForced
+  private var requiresSignOut: Bool {
+    guard let store = store else { return false }
+    return [.connected, .connecting, .reasserting].contains(store.vpnStatus)
+  }
+
+  func saveToggle(_ field: SettingsToggle) async throws {
+    switch field {
+    case .connectOnStart:
+      guard !configuration.isConnectOnStartForced else { return }
+      configuration.connectOnStart = connectOnStart
+    case .startOnLogin:
+      guard !configuration.isStartOnLoginForced else { return }
+      configuration.startOnLogin = startOnLogin
+      #if os(macOS)
+        try await configuration.updateAppService()
+      #endif
+    }
+  }
+
+  func confirmSignOutChange() async throws {
+    guard let pending = pendingFieldChange else { return }
+
+    switch pending.field {
+    case .authURL:
+      authURL = pending.value
+      configuration.authURL = authURL
+      savedAuthURL = authURL
+    case .apiURL:
+      apiURL = pending.value
+      configuration.apiURL = apiURL
+      savedApiURL = apiURL
+    case .accountSlug:
+      accountSlug = pending.value
+      configuration.accountSlug = accountSlug
+      savedAccountSlug = accountSlug
+    case .logFilter:
+      break
+    }
+
+    if let store = store {
+      try await store.signOut()
+    }
+
+    pendingFieldChange = nil
+    showSignOutConfirmation = false
+  }
+
+  func cancelSignOutChange() {
+    guard let pending = pendingFieldChange else { return }
+
+    switch pending.field {
+    case .authURL: authURL = savedAuthURL
+    case .apiURL: apiURL = savedApiURL
+    case .accountSlug: accountSlug = savedAccountSlug
+    case .logFilter: break
+    }
+
+    pendingFieldChange = nil
+    showSignOutConfirmation = false
+  }
+
+  var isAllForced: Bool {
+    configuration.isAuthURLForced && configuration.isApiURLForced
       && configuration.isLogFilterForced && configuration.isAccountSlugForced
-      && configuration.isConnectOnStartForced && configuration.isStartOnLoginForced)
+      && configuration.isConnectOnStartForced && configuration.isStartOnLoginForced
   }
 
-  func isValid() -> Bool {
-    guard let apiURL = URL(string: apiURL),
-      apiURL.host != nil,
-      ["wss", "ws"].contains(apiURL.scheme),
-      apiURL.pathComponents.isEmpty
-    else {
-      return false
-    }
-
-    guard let authURL = URL(string: authURL),
-      authURL.host != nil,
-      ["http", "https"].contains(authURL.scheme),
-      authURL.pathComponents.isEmpty
-    else {
-      return false
-    }
-
-    guard !logFilter.isEmpty
-    else {
-      return false
-    }
-
+  var isAuthURLValid: Bool {
+    guard let url = URL(string: authURL),
+      url.host != nil,
+      ["http", "https"].contains(url.scheme),
+      url.pathComponents.isEmpty
+    else { return false }
     return true
   }
 
-  func isDefault() -> Bool {
-    return
-      ((configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
+  var isApiURLValid: Bool {
+    guard let url = URL(string: apiURL),
+      url.host != nil,
+      ["wss", "ws"].contains(url.scheme),
+      url.pathComponents.isEmpty
+    else { return false }
+    return true
+  }
+
+  var isLogFilterValid: Bool {
+    !logFilter.isEmpty
+  }
+
+  var isValid: Bool {
+    isAuthURLValid && isApiURLValid && isLogFilterValid
+  }
+
+  var isDefault: Bool {
+    (configuration.isAuthURLForced || authURL == ConfigurationDefaults.authURL)
       && (configuration.isApiURLForced || apiURL == ConfigurationDefaults.apiURL)
       && (configuration.isLogFilterForced || logFilter == ConfigurationDefaults.logFilter)
       && (configuration.isAccountSlugForced || accountSlug == ConfigurationDefaults.accountSlug)
       && (configuration.isConnectOnStartForced
         || connectOnStart == ConfigurationDefaults.connectOnStart)
-      && (configuration.isStartOnLoginForced
-        || startOnLogin == ConfigurationDefaults.startOnLogin))
-  }
-
-  func isSaved() -> Bool {
-    return
-      (authURL == configuration.authURL && apiURL == configuration.apiURL
-      && logFilter == configuration.logFilter && accountSlug == configuration.accountSlug
-      && connectOnStart == configuration.connectOnStart
-      && startOnLogin == configuration.startOnLogin)
+      && (configuration.isStartOnLoginForced || startOnLogin == ConfigurationDefaults.startOnLogin)
   }
 
   private func updateDerivedState() {
-    shouldDisableApplyButton = (isAllForced() || isSaved() || !isValid())
-
-    shouldDisableResetButton = (isAllForced() || isDefault())
+    shouldDisableResetButton = (isAllForced || isDefault)
   }
 
   private func syncForcedValuesFromConfiguration() {
-    if configuration.isAuthURLForced { authURL = configuration.authURL }
-    if configuration.isApiURLForced { apiURL = configuration.apiURL }
+    if configuration.isAuthURLForced {
+      authURL = configuration.authURL
+      savedAuthURL = configuration.authURL
+    }
+    if configuration.isApiURLForced {
+      apiURL = configuration.apiURL
+      savedApiURL = configuration.apiURL
+    }
     if configuration.isLogFilterForced { logFilter = configuration.logFilter }
-    if configuration.isAccountSlugForced { accountSlug = configuration.accountSlug }
+    if configuration.isAccountSlugForced {
+      accountSlug = configuration.accountSlug
+      savedAccountSlug = configuration.accountSlug
+    }
     if configuration.isConnectOnStartForced { connectOnStart = configuration.connectOnStart }
     if configuration.isStartOnLoginForced { startOnLogin = configuration.startOnLogin }
   }
