@@ -8,6 +8,7 @@ members = [
     "connlib/dns-over-tcp",
     "connlib/dns-types",
     "connlib/etherparse-ext",
+    "connlib/http-client",
     "connlib/ip-packet",
     "connlib/l3-tcp",
     "connlib/l3-udp-dns-client",
@@ -94,7 +95,12 @@ hex = "0.4.3"
 hex-display = "0.3.0"
 hex-literal = "1.0.0"
 hickory-resolver = "0.25.2"
+http = "1.3.1"
+http-body-util = "0.1.3"
+http-client = { path = "connlib/http-client" }
 humantime = "2.3"
+hyper = "1.7.0"
+hyper-util = "0.1.17"
 ip-packet = { path = "connlib/ip-packet" }
 ip_network = { version = "0.4", default-features = false }
 ip_network_table = { version = "0.2", default-features = false }
@@ -144,6 +150,7 @@ roxmltree = "0.20"
 rpassword = "7.4.0"
 rtnetlink = { version = "0.18.1", default-features = false, features = ["tokio_socket"] }
 rustls = { version = "0.23.31", default-features = false, features = ["ring"] }
+rustls-pki-types = "1.13.0"
 sadness-generator = "0.6.0"
 sd-notify = "0.4.5" # This is a pure Rust re-implementation, so it isn't vulnerable to CVE-2024-3094
 secrecy = "0.10"
@@ -188,6 +195,7 @@ test-strategy = "0.4.3"
 thiserror = "2.0.17"
 time = "0.3.43"
 tokio = "1.48.0"
+tokio-rustls = { version = "0.26.4", default-features = false }
 tokio-stream = "0.1.17"
 tokio-tungstenite = "0.28.0"
 tokio-util = "0.7.16"
@@ -205,6 +213,7 @@ tun = { path = "connlib/tun" }
 uniffi = "0.29.4"
 url = "2.5.2"
 uuid = "1.18.1"
+webpki-roots = "1.0.4"
 which = "4.4.2"
 windows = "0.61.3"
 windows-core = "0.61.1"
