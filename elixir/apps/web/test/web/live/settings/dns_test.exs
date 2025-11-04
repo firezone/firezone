@@ -259,7 +259,7 @@ defmodule Web.Live.Settings.DNSTest do
     conn: conn
   } do
     addr1 = %{address: "8.8.8.8"}
-    addr1_dup = %{address: "8.8.8.8:53"}
+    addr1_dup = %{address: "8.8.8.8"}
     addr2 = %{address: "1.1.1.1"}
 
     attrs = %{

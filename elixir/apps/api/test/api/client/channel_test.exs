@@ -9,7 +9,7 @@ defmodule API.Client.ChannelTest do
         config: %{
           clients_upstream_dns: [
             %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8:53"}
+            %{protocol: "ip_port", address: "8.8.8.8"}
           ],
           search_domain: "example.com"
         },
