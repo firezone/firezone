@@ -8,11 +8,9 @@ if [ -n "${PKEXEC_UID:-}" ]; then
     INVOKING_USER=$(id -un "$PKEXEC_UID" 2>/dev/null) # Detect user from PolicyKit.
 elif [ -n "${SUDO_USER:-}" ]; then
     INVOKING_USER="$SUDO_USER" # Detect user from `sudo apt/dnf install`.
-else
-    INVOKING_USER="root" # Fallback to root user so we always create a valid script.
 fi
 
-sudo sed -i "s/<<USER>>/${INVOKING_USER}/g" "/usr/lib/sysusers.d/firezone-client-tunnel.conf"
+sudo sed -i "s/<<USER>>/${INVOKING_USER:-root}/g" "/usr/lib/sysusers.d/firezone-client-tunnel.conf"
 
 # Creates the system group `firezone-client` and adds the group membership.
 sudo systemd-sysusers
