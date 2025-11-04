@@ -15,12 +15,6 @@ use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use tokio::task::JoinSet;
 use tokio_rustls::TlsConnector;
 
-/// A HTTP2 Client with pluggable sockets and explicit DNS configuration.
-///
-/// This client requires you to pre-resolve all domains you wish to establish connections to.
-/// The supplied [`SocketFactory`] will be used to create the underlying TCP sockets.
-///
-/// Once established, those connections will be kept alive indefinitely.
 pub struct HttpClient {
     sf: Arc<dyn SocketFactory<TcpSocket>>,
 
@@ -110,8 +104,8 @@ impl HttpClient {
 
                     async move {
                         match conn.await.context("HTTP2 connection failed") {
-                            Ok(()) => tracing::debug!(%host ,"HTTP2 connection finished"),
-                            Err(e) => tracing::debug!(%host ,"{e:#}"),
+                            Ok(()) => tracing::debug!(%host, "HTTP2 connection finished"),
+                            Err(e) => tracing::debug!(%host, "{e:#}"),
                         }
                     }
                 });
