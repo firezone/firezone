@@ -90,18 +90,6 @@ import SwiftUI
       return menuItem
     }()
     lazy var otherResourcesSeparatorMenuItem = NSMenuItem.separator()
-    lazy var aboutMenuItem: NSMenuItem = {
-      let menuItem = createMenuItem(
-        menu,
-        title: "About",
-        action: #selector(aboutButtonTapped),
-        target: self
-      )
-      if let appName = Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String {
-        menuItem.title = "About \(appName)"
-      }
-      return menuItem
-    }()
     lazy var adminPortalMenuItem: NSMenuItem = {
       let menuItem = createMenuItem(
         menu,
@@ -330,7 +318,7 @@ import SwiftUI
         removeItemFromMenu(menu: menu, item: otherResourcesMenuItem)
         removeItemFromMenu(menu: menu, item: otherResourcesSeparatorMenuItem)
       } else {
-        let idx = menu.index(of: aboutMenuItem)
+        let idx = menu.index(of: adminPortalMenuItem)
         addItemToMenu(menu: menu, item: otherResourcesMenuItem, location: idx)
         addItemToMenu(menu: menu, item: otherResourcesSeparatorMenuItem, location: idx + 1)
       }
@@ -477,7 +465,6 @@ import SwiftUI
         menu.addItem(otherResourcesSeparatorMenuItem)
       }
 
-      menu.addItem(aboutMenuItem)
       menu.addItem(adminPortalMenuItem)
       menu.addItem(helpMenuItem)
       menu.addItem(settingsMenuItem)
@@ -814,11 +801,6 @@ import SwiftUI
         URL(string: store.configuration.supportURL) ?? URL(string: Configuration.defaultSupportURL)!
 
       Task { await NSWorkspace.shared.openAsync(url) }
-    }
-
-    @objc func aboutButtonTapped() {
-      NSApp.activate(ignoringOtherApps: true)
-      NSApp.orderFrontStandardAboutPanel(self)
     }
 
     @objc func quitButtonTapped() {
