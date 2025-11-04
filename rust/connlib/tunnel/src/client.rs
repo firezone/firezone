@@ -520,10 +520,10 @@ impl ClientState {
         let _span = tracing::debug_span!("handle_dns_response", %qid, %server, %domain).entered();
 
         match (response.transport, response.message) {
-            (dns::Transport::Udp { .. }, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
+            (dns::Transport::Udp, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
                 tracing::debug!("Recursive UDP DNS query timed out")
             }
-            (dns::Transport::Udp { source }, result) => {
+            (dns::Transport::Udp, result) => {
                 let message = result
                     .inspect(|message| {
                         tracing::trace!("Received recursive UDP DNS response");
@@ -541,11 +541,11 @@ impl ClientState {
                     });
 
                 unwrap_or_warn!(
-                    self.try_queue_udp_dns_response(server, source, message),
+                    self.try_queue_udp_dns_response(response.local, response.remote, message),
                     "Failed to queue UDP DNS response: {}"
                 );
             }
-            (dns::Transport::Tcp { local, remote }, result) => {
+            (dns::Transport::Tcp, result) => {
                 let message = result
                     .inspect(|message| {
                         tracing::trace!("Received recursive TCP DNS response");
@@ -559,7 +559,8 @@ impl ClientState {
                     });
 
                 unwrap_or_warn!(
-                    self.tcp_dns_server.send_message(local, remote, message),
+                    self.tcp_dns_server
+                        .send_message(response.local, response.remote, message),
                     "Failed to send TCP DNS response: {}"
                 );
             }
@@ -622,16 +623,12 @@ impl ClientState {
         dst: SocketAddr,
         message: dns_types::Response,
     ) -> anyhow::Result<()> {
-        let saddr = self
-            .dns_config
-            .mapping()
-            .sentinel_by_upstream(from)
-            .context("Unknown DNS server")?;
+        debug_assert_eq!(from.port(), DNS_PORT);
 
         let ip_packet = ip_packet::make::udp_packet(
-            saddr,
+            from.ip(),
             dst.ip(),
-            DNS_PORT,
+            from.port(),
             dst.port(),
             message.into_bytes(MAX_UDP_PAYLOAD),
         )?;
@@ -1194,11 +1191,13 @@ impl ClientState {
                 self.handle_dns_response(
                     dns::RecursiveResponse {
                         server,
+                        local,
+                        remote,
                         query: query_result.query,
                         message: query_result
                             .result
                             .map_err(|e| io::Error::other(format!("{e:#}"))),
-                        transport: dns::Transport::Tcp { local, remote },
+                        transport: dns::Transport::Tcp,
                     },
                     now,
                 );
@@ -1251,11 +1250,12 @@ impl ClientState {
             }
         };
 
+        let destination = SocketAddr::new(packet.destination(), datagram.destination_port());
         let source = SocketAddr::new(packet.source(), datagram.source_port());
 
         if let Some(response) = self.dns_cache.try_answer(&message, now) {
             unwrap_or_debug!(
-                self.try_queue_udp_dns_response(upstream, source, response),
+                self.try_queue_udp_dns_response(destination, source, response),
                 "Failed to queue UDP DNS response: {}"
             );
 
@@ -1269,7 +1269,7 @@ impl ClientState {
                 self.dns_cache.insert(message.domain(), &response, now);
 
                 unwrap_or_debug!(
-                    self.try_queue_udp_dns_response(upstream, source, response),
+                    self.try_queue_udp_dns_response(destination, source, response),
                     "Failed to queue UDP DNS response: {}"
                 );
             }
@@ -1285,7 +1285,12 @@ impl ClientState {
                 tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
 
                 self.buffered_dns_queries
-                    .push_back(dns::RecursiveQuery::via_udp(source, upstream, message));
+                    .push_back(dns::RecursiveQuery::via_udp(
+                        destination,
+                        source,
+                        upstream,
+                        message,
+                    ));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
                 let Some(gateway) =
