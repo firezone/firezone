@@ -24,27 +24,64 @@ import SwiftUI
     }
 
     var body: some View {
-      NavigationView {
-        content
-          .navigationBarTitleDisplayMode(.inline)
-          .navigationBarItems(leading: authMenu, trailing: settingsButton)
-          .alert(
-            item: $errorHandler.currentAlert,
-            content: { alert in
-              Alert(
-                title: Text(alert.title),
-                message: Text(alert.error.localizedDescription),
-                dismissButton: .default(Text("OK")) {
-                  errorHandler.clear()
-                }
-              )
+      if #available(iOS 16.0, *) {
+        NavigationStack {
+          content
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+              ToolbarItem(placement: .navigationBarLeading) {
+                authMenu
+              }
+              ToolbarItem(placement: .navigationBarTrailing) {
+                settingsButton
+              }
             }
-          )
+            .alert(
+              item: $errorHandler.currentAlert,
+              content: { alert in
+                Alert(
+                  title: Text(alert.title),
+                  message: Text(alert.error.localizedDescription),
+                  dismissButton: .default(Text("OK")) {
+                    errorHandler.clear()
+                  }
+                )
+              }
+            )
+            .sheet(isPresented: $isSettingsPresented) {
+              SettingsView(store: store)
+            }
+        }
+      } else {
+        NavigationView {
+          content
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+              ToolbarItem(placement: .navigationBarLeading) {
+                authMenu
+              }
+              ToolbarItem(placement: .navigationBarTrailing) {
+                settingsButton
+              }
+            }
+            .alert(
+              item: $errorHandler.currentAlert,
+              content: { alert in
+                Alert(
+                  title: Text(alert.title),
+                  message: Text(alert.error.localizedDescription),
+                  dismissButton: .default(Text("OK")) {
+                    errorHandler.clear()
+                  }
+                )
+              }
+            )
+        }
+        .sheet(isPresented: $isSettingsPresented) {
+          SettingsView(store: store)
+        }
+        .navigationViewStyle(StackNavigationViewStyle())
       }
-      .sheet(isPresented: $isSettingsPresented) {
-        SettingsView(store: store)
-      }
-      .navigationViewStyle(StackNavigationViewStyle())
     }
 
     private var settingsButton: some View {
@@ -53,7 +90,7 @@ import SwiftUI
           isSettingsPresented = true
         },
         label: {
-          Label("Settings", systemImage: "gear")
+          Image(systemName: "gear")
         }
       )
       .disabled(store.vpnStatus == .invalid)

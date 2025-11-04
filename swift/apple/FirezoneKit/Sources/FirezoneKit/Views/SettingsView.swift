@@ -135,6 +135,129 @@ public struct SettingsView: View {
   }
 
   public var body: some View {
+    #if os(macOS)
+      if #available(macOS 13.0, *) {
+        modernSettingsView
+      } else {
+        legacySettingsView
+      }
+    #elseif os(iOS)
+      if #available(iOS 17.0, *) {
+        modernSettingsView
+      } else {
+        legacySettingsView
+      }
+    #else
+      legacySettingsView
+    #endif
+  }
+
+  @available(macOS 13.0, iOS 17.0, *)
+  private var modernSettingsView: some View {
+    VStack(spacing: 0) {
+      modernSplitView
+
+      Divider()
+
+      HStack {
+        Button("Reset to Defaults") {
+          viewModel.reset()
+        }
+        .disabled(viewModel.shouldDisableResetButton)
+        Spacer()
+      }
+      .padding()
+    }
+    .alert(
+      "Some settings may not have been applied",
+      isPresented: $isShowingConfirmationAlert,
+      presenting: confirmationAlertContinueAction,
+      actions: { confirmationAlertContinueAction in
+        Button("OK", role: .destructive) {
+          withErrorHandler { try await confirmationAlertContinueAction.performAction(on: self) }
+        }
+      },
+      message: { _ in
+        Text("Some settings require signing out and in again before they take effect.")
+      }
+    )
+  }
+
+  @available(macOS 13.0, iOS 17.0, *)
+  private var modernSplitView: some View {
+    #if os(macOS)
+      NavigationSplitView(columnVisibility: .constant(.all)) {
+        List(SettingsSection.allCases, selection: $viewModel.selectedSection) { section in
+          Label(section.rawValue, systemImage: section.icon)
+            .badge(section == .advanced && !viewModel.isValid() ? "!" : nil)
+            .tag(section)
+        }
+        .listStyle(.sidebar)
+        .navigationTitle("Settings")
+      } detail: {
+        settingsDetailView
+      }
+      .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 250)
+    #elseif os(iOS)
+      NavigationStack {
+        List {
+          ForEach(SettingsSection.allCases) { section in
+            NavigationLink(value: section) {
+              Label(section.rawValue, systemImage: section.icon)
+                .badge(section == .advanced && !viewModel.isValid() ? "!" : nil)
+            }
+          }
+        }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+              dismiss()
+            } label: {
+              Image(systemName: "xmark.circle.fill")
+                .font(.title3)
+                .foregroundColor(.secondary)
+            }
+          }
+        }
+        .navigationDestination(for: SettingsSection.self) { section in
+          settingsDetailView(for: section)
+            .navigationTitle(section.rawValue)
+        }
+      }
+    #endif
+  }
+
+  @ViewBuilder
+  private var settingsDetailView: some View {
+    switch viewModel.selectedSection {
+    case .general:
+      generalTab
+    case .advanced:
+      advancedTab
+    case .logs:
+      logsTab
+    case .about:
+      AboutView()
+    }
+  }
+
+  @ViewBuilder
+  private func settingsDetailView(for section: SettingsSection) -> some View {
+    switch section {
+    case .general:
+      generalTab
+    case .advanced:
+      advancedTab
+    case .logs:
+      logsTab
+    case .about:
+      AboutView()
+    }
+  }
+
+  private var legacySettingsView: some View {
     #if os(iOS)
       NavigationView {
         ZStack {
@@ -158,6 +281,11 @@ public struct SettingsView: View {
                 .tabItem {
                   Image(systemName: "doc.text")
                   Text("Diagnostic Logs")
+                }
+              AboutView()
+                .tabItem {
+                  Image(systemName: "info.circle")
+                  Text("About")
                 }
             }
           }
@@ -213,6 +341,10 @@ public struct SettingsView: View {
             .tabItem {
               Text("Diagnostic Logs")
             }
+          AboutView()
+            .tabItem {
+              Text("About")
+            }
         }
         .padding(20)
         Spacer()
@@ -261,8 +393,6 @@ public struct SettingsView: View {
           Text("Some settings require signing out and in again before they take effect.")
         }
       )
-    #else
-      #error("Unsupported platform")
     #endif
   }
 

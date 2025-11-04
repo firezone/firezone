@@ -8,6 +8,24 @@ import Combine
 import Foundation
 import SwiftUI
 
+public enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
+  case general = "General"
+  case advanced = "Advanced"
+  case logs = "Diagnostic Logs"
+  case about = "About"
+
+  public var id: String { rawValue }
+
+  public var icon: String {
+    switch self {
+    case .general: return "slider.horizontal.3"
+    case .advanced: return "gearshape.2"
+    case .logs: return "doc.text.magnifyingglass"
+    case .about: return "info.circle"
+    }
+  }
+}
+
 @MainActor
 class SettingsViewModel: ObservableObject {
   private let configuration: Configuration
@@ -15,6 +33,7 @@ class SettingsViewModel: ObservableObject {
 
   @Published private(set) var shouldDisableApplyButton = false
   @Published private(set) var shouldDisableResetButton = false
+  @Published var selectedSection: SettingsSection = .general
   @Published var authURL: String
   @Published var apiURL: String
   @Published var logFilter: String
