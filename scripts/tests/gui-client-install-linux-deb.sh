@@ -11,6 +11,8 @@ function debug_exit() {
     exit 1
 }
 
+sudo apt-get install --yes systemd-resolved
+
 # Test the deb package, since this script is the easiest place to get a release build
 DEB_PATH=$(realpath "$BINARY_DEST_PATH.deb")
 sudo apt-get install "$DEB_PATH"
