@@ -110,7 +110,7 @@ public final class Store: ObservableObject {
   #endif
 
   private func setupTunnelObservers() async throws {
-    let vpnStatusChangeHandler: @Sendable (NEVPNStatus) async throws -> Void = {
+    let vpnStatusChangeHandler: @MainActor (NEVPNStatus) async throws -> Void = {
       [weak self] status in
       try await self?.handleVPNStatusChange(newVPNStatus: status)
     }
