@@ -13,6 +13,7 @@ use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample::select;
+use proptest::collection::btree_set;
 use proptest::{prelude::*, sample};
 use std::net::{Ipv4Addr, Ipv6Addr};
 use std::time::Instant;
@@ -440,6 +441,10 @@ impl ReferenceState {
                     udp_packet(Just(tunnel_ip6), select_host_v6(&gateway_ips)),
                 ]
             })
+            .with_if_not_empty(5, state.dns_resource_domains(), |domains| {
+                (sample::select(domains), btree_set(dns_record(), 1..6))
+                    .prop_map(|(domain, records)| Transition::UpdateDnsRecords { domain, records })
+            })
             .boxed()
     }
 
@@ -606,6 +611,12 @@ impl ReferenceState {
             Transition::RestartClient(key) => state.client.exec_mut(|c| {
                 c.restart(*key);
             }),
+            Transition::UpdateDnsRecords { domain, records } => {
+                state.global_dns_records.merge(DnsRecords::from([(
+                    domain.clone(),
+                    BTreeMap::from([(state.now, records.clone())]),
+                )]));
+            }
         };
 
         state
@@ -800,6 +811,7 @@ impl ReferenceState {
                 // Also don't deactivate resources where we have TCP connections as those would get interrupted.
                 has_resource && has_gateway_for_resource && !has_tcp_connection
             }
+            Transition::UpdateDnsRecords { .. } => true,
         }
     }
 
@@ -864,6 +876,19 @@ impl ReferenceState {
             .values()
             .flat_map(|g| domains_and_rtypes(g.inner().dns_records(), self.start))
             .chain(domains_and_rtypes(&self.global_dns_records, self.start))
+            .collect::<BTreeSet<_>>();
+
+        Vec::from_iter(unique_domains)
+    }
+
+    fn dns_resource_domains(&self) -> Vec<DomainName> {
+        // We may have multiple gateways in a site, so we need to dedup.
+        let unique_domains = self
+            .gateways
+            .values()
+            .flat_map(|g| g.inner().dns_records().domains_iter())
+            .chain(self.global_dns_records.domains_iter())
+            .filter(|d| self.client.inner().dns_resource_by_domain(d).is_some())
             .collect::<BTreeSet<_>>();
 
         Vec::from_iter(unique_domains)

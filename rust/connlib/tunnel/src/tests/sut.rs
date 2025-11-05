@@ -422,6 +422,7 @@ impl TunnelTest {
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                 })
             }
+            Transition::UpdateDnsRecords { .. } => {}
         };
         state.advance(ref_state, &mut buffered_transmits);
 

@@ -32,7 +32,7 @@ pub(crate) fn global_dns_records(at: Instant) -> impl Strategy<Value = DnsRecord
     .prop_map_into()
 }
 
-fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
+pub(crate) fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
     prop_oneof![
         3 => non_reserved_ip().prop_map(dns_types::records::ip),
         1 => collection::vec(txt_record(), 6..=10)
