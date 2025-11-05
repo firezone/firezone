@@ -563,7 +563,11 @@ class Adapter: @unchecked Sendable {
         return BindResolvers.getServers()
       }
 
-      var resolvers: [String] = []
+      // Use a class box to safely capture result across @Sendable closure boundary
+      final class ResolversBox: @unchecked Sendable {
+        var value: [String] = []
+      }
+      let resolversBox = ResolversBox()
 
       // The caller is in an async context, so it's ok to block this thread here.
       let semaphore = DispatchSemaphore(value: 0)
@@ -576,7 +580,7 @@ class Adapter: @unchecked Sendable {
         guard let networkSettings = self.networkSettings else { return }
 
         // Only now can we get the system resolvers
-        resolvers = BindResolvers.getServers()
+        resolversBox.value = BindResolvers.getServers()
 
         // Restore connlib's DNS resolvers
         networkSettings.clearDummyMatchDomain()
@@ -584,7 +588,7 @@ class Adapter: @unchecked Sendable {
       }
 
       semaphore.wait()
-      return resolvers
+      return resolversBox.value
     }
   }
 #endif

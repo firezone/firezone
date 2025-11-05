@@ -37,6 +37,10 @@ public class DeviceMetadata {
   }
 
   #if os(iOS)
+    // nonisolated(unsafe) is safe here because:
+    // 1. UIDevice.current properties are thread-safe for reads (per Apple documentation)
+    // 2. Properties are immutable or internally synchronised
+    // 3. Only reading, never mutating UIDevice state
     public static nonisolated(unsafe) func getIdentifierForVendor() -> String? {
       return UIDevice.current.identifierForVendor?.uuidString
     }
