@@ -14,7 +14,7 @@ defmodule Domain.Entra.APIClient do
     token_base_url = config[:token_base_url]
     token_endpoint = "#{token_base_url}/#{tenant_id}/oauth2/v2.0/token"
 
-    # Request access token with Directory.Read.All scope
+    # Request access token to read what our app is set up to do (.default scope)
     scope = "https://graph.microsoft.com/.default"
 
     payload =

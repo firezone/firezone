@@ -57,7 +57,6 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     actors
     auth_identities
     legacy_auth_providers
-    auth_providers
     google_auth_providers
     entra_auth_providers
     okta_auth_providers

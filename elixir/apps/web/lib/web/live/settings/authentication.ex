@@ -82,11 +82,23 @@ defmodule Web.Settings.Authentication do
   end
 
   def handle_event("validate", %{"auth_provider" => attrs}, socket) do
+    # Get the original struct (the data field contains the original provider)
+    original_struct = socket.assigns.form.source.data
+
+    # Preserve is_verified and issuer from the current changeset
+    # is_verified is virtual, issuer gets set during verification
+    current_is_verified = get_field(socket.assigns.form.source, :is_verified)
+    current_issuer = get_field(socket.assigns.form.source, :issuer)
+
+    attrs =
+      attrs
+      |> Map.put("is_verified", current_is_verified)
+      |> Map.put("issuer", current_issuer)
+
     changeset =
-      socket.assigns.form.source
-      |> clear_verification_if_trigger_fields_changed()
-      |> apply_changes()
+      original_struct
       |> changeset(attrs, socket)
+      |> clear_verification_if_trigger_fields_changed()
       |> Map.put(:action, :validate)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -155,7 +167,7 @@ defmodule Web.Settings.Authentication do
   def handle_event("delete_provider", %{"id" => id}, socket) do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
 
-    case delete_provider(provider, socket.assigns.subject) do
+    case delete_provider!(provider, socket.assigns.subject) do
       {:ok, _provider} ->
         {:noreply,
          socket
@@ -227,7 +239,7 @@ defmodule Web.Settings.Authentication do
   end
 
   # Sent by the Entra admin consent verification process from another browser tab
-  def handle_info({:entra_verification, pid, issuer, state_token}, socket) do
+  def handle_info({:entra_admin_consent, pid, issuer, _tenant_id, state_token}, socket) do
     :ok = Domain.PubSub.unsubscribe("entra-verification:#{state_token}")
 
     stored_token = socket.assigns.verification.token
@@ -474,10 +486,6 @@ defmodule Web.Settings.Authentication do
     """
   end
 
-  defp context_icon(:clients_and_portal), do: "hero-globe-alt"
-  defp context_icon(:portal_only), do: "hero-window"
-  defp context_icon(:clients_only), do: "hero-device-phone-mobile"
-
   attr :providers, :list, required: true
   attr :default_provider_changed, :boolean, required: true
 
@@ -534,12 +542,6 @@ defmodule Web.Settings.Authentication do
     </.form>
     """
   end
-
-  defp context_title(:clients_and_portal),
-    do: "Available for both client applications and admin portal"
-
-  defp context_title(:portal_only), do: "Available only for admin portal sign-in"
-  defp context_title(:clients_only), do: "Available only for client applications"
 
   defp provider_card(assigns) do
     ~H"""
@@ -628,9 +630,38 @@ defmodule Web.Settings.Authentication do
           <span class="truncate font-medium" title={@provider.issuer}>{@provider.issuer}</span>
         </div>
 
-        <div class="flex items-center gap-2" title={context_title(@provider.context)}>
-          <.icon name={context_icon(@provider.context)} class="w-5 h-5" />
-          <span class="font-medium">{Phoenix.Naming.humanize(@provider.context)}</span>
+        <div class="flex items-center gap-2">
+          <.icon name="hero-window" class="w-5 h-5" title="Portal Session Lifetime" />
+          <span class="font-medium">
+            <%= if @provider.context in [:clients_and_portal, :portal_only] do %>
+              Portal: {format_duration(
+                Map.get(@provider, :portal_session_lifetime_secs) ||
+                  @provider.__struct__.default_portal_session_lifetime_secs()
+              )}
+              <%= if is_nil(Map.get(@provider, :portal_session_lifetime_secs)) do %>
+                <span class="text-neutral-400 text-xs">(default)</span>
+              <% end %>
+            <% else %>
+              <span class="text-neutral-400">Portal: disabled</span>
+            <% end %>
+          </span>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <.icon name="hero-device-phone-mobile" class="w-5 h-5" title="Client Session Lifetime" />
+          <span class="font-medium">
+            <%= if @provider.context in [:clients_and_portal, :clients_only] do %>
+              Client: {format_duration(
+                Map.get(@provider, :client_session_lifetime_secs) ||
+                  @provider.__struct__.default_client_session_lifetime_secs()
+              )}
+              <%= if is_nil(Map.get(@provider, :client_session_lifetime_secs)) do %>
+                <span class="text-neutral-400 text-xs">(default)</span>
+              <% end %>
+            <% else %>
+              <span class="text-neutral-400">Client: disabled</span>
+            <% end %>
+          </span>
         </div>
 
         <div class="flex items-center gap-2">
@@ -738,6 +769,32 @@ defmodule Web.Settings.Authentication do
           />
           <p class="mt-1 text-xs text-neutral-600">
             Choose where this provider can be used for authentication.
+          </p>
+        </div>
+
+        <div>
+          <.input
+            field={@form[:portal_session_lifetime_secs]}
+            type="number"
+            label="Portal Session Lifetime (seconds)"
+            placeholder="28800"
+            phx-debounce="300"
+          />
+          <p class="mt-1 text-xs text-neutral-600">
+            Session lifetime for Admin Portal users (5 minutes to 24 hours). Default: 8 hours (28800).
+          </p>
+        </div>
+
+        <div>
+          <.input
+            field={@form[:client_session_lifetime_secs]}
+            type="number"
+            label="Client Session Lifetime (seconds)"
+            placeholder="604800"
+            phx-debounce="300"
+          />
+          <p class="mt-1 text-xs text-neutral-600">
+            Session lifetime for Client applications (1 hour to 90 days). Default: 7 days (604800).
           </p>
         </div>
 
@@ -952,8 +1009,13 @@ defmodule Web.Settings.Authentication do
     Safe.scoped(subject) |> Safe.one!(query)
   end
 
-  defp delete_provider(provider, subject) do
-    Safe.scoped(subject) |> Safe.delete(provider)
+  defp delete_provider!(provider, subject) do
+    # Delete the parent auth_provider, which will CASCADE delete the child and tokens
+    import Ecto.Query
+
+    query = from(p in AuthProviders.AuthProvider, where: p.id == ^provider.id)
+    parent = Safe.scoped(subject) |> Safe.one!(query)
+    Safe.scoped(subject) |> Safe.delete(parent)
   end
 
   defp verified?(form) do
@@ -1095,5 +1157,22 @@ defmodule Web.Settings.Authentication do
 
         {:noreply, socket}
     end
+  end
+
+  defp format_duration(seconds) when seconds < 60, do: "#{seconds}s"
+
+  defp format_duration(seconds) when seconds < 3_600 do
+    minutes = div(seconds, 60)
+    "#{minutes}m"
+  end
+
+  defp format_duration(seconds) when seconds < 86_400 do
+    hours = div(seconds, 3_600)
+    "#{hours}h"
+  end
+
+  defp format_duration(seconds) do
+    days = div(seconds, 86_400)
+    "#{days}d"
   end
 end

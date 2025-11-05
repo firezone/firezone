@@ -1,6 +1,14 @@
 defmodule Domain.Okta.AuthProvider do
   use Domain, :schema
 
+  @portal_session_lifetime_min 300
+  @portal_session_lifetime_max 86_400
+  @default_portal_session_lifetime_secs 28_800
+
+  @client_session_lifetime_min 3_600
+  @client_session_lifetime_max 7_776_000
+  @default_client_session_lifetime_secs 604_800
+
   @primary_key false
   schema "okta_auth_providers" do
     # Allows setting the ID manually in changesets
@@ -51,6 +59,14 @@ defmodule Domain.Okta.AuthProvider do
     |> validate_length(:issuer, min: 1, max: 2_000)
     |> validate_length(:client_id, min: 1, max: 255)
     |> validate_length(:client_secret, min: 1, max: 255)
+    |> validate_number(:portal_session_lifetime_secs,
+      greater_than_or_equal_to: @portal_session_lifetime_min,
+      less_than_or_equal_to: @portal_session_lifetime_max
+    )
+    |> validate_number(:client_session_lifetime_secs,
+      greater_than_or_equal_to: @client_session_lifetime_min,
+      less_than_or_equal_to: @client_session_lifetime_max
+    )
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:client_id,
@@ -67,4 +83,7 @@ defmodule Domain.Okta.AuthProvider do
       name: :okta_auth_providers_auth_provider_id_fkey
     )
   end
+
+  def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs
+  def default_client_session_lifetime_secs, do: @default_client_session_lifetime_secs
 end

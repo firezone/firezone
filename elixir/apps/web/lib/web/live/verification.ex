@@ -143,7 +143,7 @@ defmodule Web.Verification do
           # Broadcast success to DirectorySync LiveView
           Domain.PubSub.broadcast(
             "entra-admin-consent:#{verification_token}",
-            {:entra_admin_consent, self(), tenant_id, verification_token}
+            {:entra_admin_consent, self(), nil, tenant_id, verification_token}
           )
 
           # Wait for response from DirectorySync LiveView
@@ -168,7 +168,7 @@ defmodule Web.Verification do
 
       Domain.PubSub.broadcast(
         "entra-verification:#{verification_token}",
-        {:entra_verification, self(), issuer, tenant_id, verification_token}
+        {:entra_admin_consent, self(), issuer, tenant_id, verification_token}
       )
 
       # Wait for response from Authentication LiveView

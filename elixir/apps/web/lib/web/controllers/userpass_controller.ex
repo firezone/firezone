@@ -16,9 +16,6 @@ defmodule Web.UserpassController do
 
   require Logger
 
-  # Session length - matches session cookie max age
-  @session_token_hours 8
-
   action_fallback Web.FallbackController
 
   def sign_in(
@@ -35,11 +32,11 @@ defmodule Web.UserpassController do
     context_type = context_type(params)
 
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         %Userpass.AuthProvider{} <- fetch_provider(account, auth_provider_id),
+         %Userpass.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
          :ok <- check_admin(identity, context_type),
          {:ok, identity, _expires_at} <- verify_password(identity, password, conn),
-         {:ok, token} <- create_token(conn, identity, params) do
+         {:ok, token} <- create_token(conn, identity, provider, params) do
       signed_in(conn, context_type, account, identity, token, params)
     else
       error -> handle_error(conn, error, params)
@@ -67,12 +64,25 @@ defmodule Web.UserpassController do
 
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
 
-  defp create_token(conn, identity, params) do
+  defp create_token(conn, identity, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
     context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
+
+    # Get the provider schema module to access default values
+    schema = provider.__struct__
+
+    # Determine session lifetime based on context type
+    session_lifetime_secs =
+      case type do
+        :client ->
+          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
+
+        :browser ->
+          provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+      end
 
     attrs = %{
       type: context.type,
@@ -82,7 +92,7 @@ defmodule Web.UserpassController do
       actor_id: identity.actor_id,
       auth_provider_id: params["auth_provider_id"],
       identity_id: identity.id,
-      expires_at: DateTime.add(DateTime.utc_now(), @session_token_hours, :hour),
+      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
       created_by_user_agent: context.user_agent,
       created_by_remote_ip: context.remote_ip
     }
@@ -133,6 +143,7 @@ defmodule Web.UserpassController do
     )
     |> join(:inner, [i], a in assoc(i, :actor))
     |> where([_i, a], is_nil(a.disabled_at))
+    |> preload([i, a], actor: a)
     |> Repo.one()
   end
 

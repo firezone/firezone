@@ -6,16 +6,7 @@ defmodule Domain.Safe do
   import Ecto.Query, warn: false
   import Ecto.Changeset
 
-  alias Domain.{
-    Auth.Subject,
-    Repo,
-    Entra,
-    Google,
-    Okta,
-    OIDC,
-    EmailOTP,
-    Userpass
-  }
+  alias Domain.{Auth.Subject, Repo}
 
   defmodule Scoped do
     @moduledoc """
@@ -152,15 +143,16 @@ defmodule Domain.Safe do
     permit(action, schema, subject.actor.type)
   end
 
-  def permit(_action, Entra.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Google.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Okta.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, OIDC.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, EmailOTP.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Userpass.AuthProvider, :account_admin_user), do: :ok
-  def permit(_action, Entra.Directory, :account_admin_user), do: :ok
-  def permit(_action, Google.Directory, :account_admin_user), do: :ok
-  def permit(_action, Okta.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.AuthProviders.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Entra.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Google.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Okta.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.OIDC.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.EmailOTP.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Userpass.AuthProvider, :account_admin_user), do: :ok
+  def permit(_action, Domain.Entra.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.Google.Directory, :account_admin_user), do: :ok
+  def permit(_action, Domain.Okta.Directory, :account_admin_user), do: :ok
 
   def permit(_action, _struct, _type), do: {:error, :unauthorized}
 

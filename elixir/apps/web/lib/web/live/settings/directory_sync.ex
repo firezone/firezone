@@ -228,7 +228,7 @@ defmodule Web.Settings.DirectorySync do
     start_verification(socket)
   end
 
-  def handle_info({:entra_admin_consent, pid, tenant_id, state_token}, socket) do
+  def handle_info({:entra_admin_consent, pid, _issuer, tenant_id, state_token}, socket) do
     require Logger
     Logger.info("DirectorySync received entra_admin_consent: #{state_token}")
 
@@ -1072,6 +1072,7 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp parse_entra_verification_error(error) do
+    dbg(error)
     Logger.error("Unknown Entra verification error", error: inspect(error))
 
     "Unknown error during verification. Please try again. If the problem persists, contact support."

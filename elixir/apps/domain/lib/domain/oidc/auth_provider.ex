@@ -1,6 +1,14 @@
 defmodule Domain.OIDC.AuthProvider do
   use Domain, :schema
 
+  @portal_session_lifetime_min 300
+  @portal_session_lifetime_max 86_400
+  @default_portal_session_lifetime_secs 28_800
+
+  @client_session_lifetime_min 3_600
+  @client_session_lifetime_max 7_776_000
+  @default_client_session_lifetime_secs 604_800
+
   @primary_key false
   schema "oidc_auth_providers" do
     # Allows setting the ID manually in changesets
@@ -52,6 +60,14 @@ defmodule Domain.OIDC.AuthProvider do
     |> validate_uri(:discovery_document_uri)
     |> validate_length(:discovery_document_uri, min: 1, max: 2000)
     |> validate_length(:issuer, min: 1, max: 2000)
+    |> validate_number(:portal_session_lifetime_secs,
+      greater_than_or_equal_to: @portal_session_lifetime_min,
+      less_than_or_equal_to: @portal_session_lifetime_max
+    )
+    |> validate_number(:client_session_lifetime_secs,
+      greater_than_or_equal_to: @client_session_lifetime_min,
+      less_than_or_equal_to: @client_session_lifetime_max
+    )
     |> assoc_constraint(:account)
     |> assoc_constraint(:auth_provider)
     |> unique_constraint(:client_id,
@@ -68,4 +84,7 @@ defmodule Domain.OIDC.AuthProvider do
       name: :oidc_auth_providers_auth_provider_id_fkey
     )
   end
+
+  def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs
+  def default_client_session_lifetime_secs, do: @default_client_session_lifetime_secs
 end

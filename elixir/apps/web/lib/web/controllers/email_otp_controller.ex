@@ -16,9 +16,6 @@ defmodule Web.EmailOTPController do
 
   require Logger
 
-  # Session length - matches session cookie max age
-  @session_token_hours 8
-
   # For persisting state across the email OTP flow
   @cookie_key "email_otp"
   @cookie_options [
@@ -88,12 +85,12 @@ defmodule Web.EmailOTPController do
          {fragment, idp_id, _stored_params} <- :erlang.binary_to_term(cookie_binary),
          conn = delete_resp_cookie(conn, cookie_key),
          {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
-         %EmailOTP.AuthProvider{} <- fetch_provider(account, auth_provider_id),
+         %EmailOTP.AuthProvider{} = provider <- fetch_provider(account, auth_provider_id),
          %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
          :ok <- check_admin(identity, context_type),
          secret = String.downcase(nonce) <> fragment,
          {:ok, identity, _expires_at} <- verify_secret(identity, secret, conn),
-         {:ok, token} <- create_token(conn, identity, params) do
+         {:ok, token} <- create_token(conn, identity, provider, params) do
       :ok = Domain.Mailer.RateLimiter.reset_rate_limit({:sign_in_link, identity.id})
       signed_in(conn, context_type, account, identity, token, params)
     else
@@ -236,12 +233,25 @@ defmodule Web.EmailOTPController do
 
   defp check_admin(_identity, _context_type), do: {:error, :not_admin}
 
-  defp create_token(conn, identity, params) do
+  defp create_token(conn, identity, provider, params) do
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     type = context_type(params)
     headers = conn.req_headers
     context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
+
+    # Get the provider schema module to access default values
+    schema = provider.__struct__
+
+    # Determine session lifetime based on context type
+    session_lifetime_secs =
+      case type do
+        :client ->
+          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
+
+        :browser ->
+          provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+      end
 
     attrs = %{
       type: context.type,
@@ -250,7 +260,7 @@ defmodule Web.EmailOTPController do
       account_id: identity.account_id,
       actor_id: identity.actor_id,
       identity_id: identity.id,
-      expires_at: DateTime.add(DateTime.utc_now(), @session_token_hours, :hour),
+      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
       created_by_user_agent: context.user_agent,
       created_by_remote_ip: context.remote_ip
     }

@@ -24,10 +24,6 @@ defmodule Web.OIDCController do
     http_only: true
   ]
 
-  # TODO: IDP REFACTOR
-  # session length - matches session cookie max age
-  @session_token_hours 8
-
   action_fallback Web.FallbackController
 
   def sign_in(conn, %{"account_id_or_slug" => account_id_or_slug} = params) do
@@ -290,6 +286,19 @@ defmodule Web.OIDCController do
     headers = conn.req_headers
     context = Domain.Auth.Context.build(remote_ip, user_agent, headers, type)
 
+    # Get the provider schema module to access default values
+    schema = provider.__struct__
+
+    # Determine session lifetime based on context type
+    session_lifetime_secs =
+      case type do
+        :client ->
+          provider.client_session_lifetime_secs || schema.default_client_session_lifetime_secs()
+
+        :browser ->
+          provider.portal_session_lifetime_secs || schema.default_portal_session_lifetime_secs()
+      end
+
     attrs = %{
       type: context.type,
       secret_nonce: params["nonce"],
@@ -298,7 +307,7 @@ defmodule Web.OIDCController do
       actor_id: identity.actor_id,
       auth_provider_id: provider.id,
       identity_id: identity.id,
-      expires_at: DateTime.add(DateTime.utc_now(), @session_token_hours, :hour),
+      expires_at: DateTime.add(DateTime.utc_now(), session_lifetime_secs, :second),
       created_by_user_agent: context.user_agent,
       created_by_remote_ip: context.remote_ip
     }
