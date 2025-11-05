@@ -21,7 +21,9 @@ enum VPNConfigurationManagerError: Error {
   }
 }
 
-public class VPNConfigurationManager {
+/// Thread-safe: Immutable wrapper around NETunnelProviderManager.
+/// Only contains a 'let' property. NETunnelProviderManager handles its own synchronisation.
+public class VPNConfigurationManager: @unchecked Sendable {
   // Persists our tunnel settings
   let manager: NETunnelProviderManager
 

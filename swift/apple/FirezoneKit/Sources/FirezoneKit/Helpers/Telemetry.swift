@@ -6,30 +6,50 @@
 
 import Sentry
 
+/// Actor that manages telemetry state with thread-safe access.
+actor TelemetryState {
+  private var firezoneId: String?
+  private var accountSlug: String?
+
+  func setFirezoneId(_ id: String?) {
+    firezoneId = id
+    updateUser()
+  }
+
+  func setAccountSlug(_ slug: String?) {
+    accountSlug = slug
+    updateUser()
+  }
+
+  private func updateUser() {
+    guard let firezoneId, let accountSlug else {
+      return
+    }
+
+    SentrySDK.configureScope { configuration in
+      // Matches the format we use in rust/telemetry/lib.rs
+      let user = User(userId: firezoneId)
+      user.data = ["account_slug": accountSlug]
+
+      configuration.setUser(user)
+    }
+  }
+}
+
 public enum Telemetry {
   // We can only create a new User object after Sentry is started; not retrieve
   // the existing one. So we need to collect these fields from various codepaths
   // during initialization / sign in so we can build a new User object any time
   // one of these is updated.
-  private static var _firezoneId: String?
-  private static var _accountSlug: String?
-  public static var firezoneId: String? {
-    get {
-      return self._firezoneId
-    }
-    set {
-      self._firezoneId = newValue
-      updateUser(id: self._firezoneId, slug: self._accountSlug)
-    }
+
+  private static let state = TelemetryState()
+
+  public static func setFirezoneId(_ id: String?) async {
+    await state.setFirezoneId(id)
   }
-  public static var accountSlug: String? {
-    get {
-      return self._accountSlug
-    }
-    set {
-      self._accountSlug = newValue
-      updateUser(id: self._firezoneId, slug: self._accountSlug)
-    }
+
+  public static func setAccountSlug(_ slug: String?) async {
+    await state.setAccountSlug(slug)
   }
 
   public static func start() {
@@ -66,22 +86,6 @@ public enum Telemetry {
 
   public static func capture(_ err: Error) {
     SentrySDK.capture(error: err)
-  }
-
-  private static func updateUser(id: String?, slug: String?) {
-    guard let id,
-      let slug
-    else {
-      return
-    }
-
-    SentrySDK.configureScope { configuration in
-      // Matches the format we use in rust/telemetry/lib.rs
-      let user = User(userId: id)
-      user.data = ["account_slug": slug]
-
-      configuration.setUser(user)
-    }
   }
 
   private static func distributionType() -> String {

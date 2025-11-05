@@ -42,6 +42,9 @@ public final class Store: ObservableObject {
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
 
+  // Cached IPCClient instance - one per Store instance
+  private var cachedIPCClient: IPCClient?
+
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
 
@@ -107,7 +110,8 @@ public final class Store: ObservableObject {
   #endif
 
   private func setupTunnelObservers() async throws {
-    let vpnStatusChangeHandler: (NEVPNStatus) async throws -> Void = { [weak self] status in
+    let vpnStatusChangeHandler: @Sendable (NEVPNStatus) async throws -> Void = {
+      [weak self] status in
       try await self?.handleVPNStatusChange(newVPNStatus: status)
     }
     try ipcClient().subscribeToVPNStatusUpdates(handler: vpnStatusChangeHandler)
@@ -200,16 +204,27 @@ public final class Store: ObservableObject {
     // Create a new VPN configuration in system settings.
     self.vpnConfigurationManager = try await VPNConfigurationManager()
 
+    // Invalidate cached IPCClient since we have a new configuration
+    cachedIPCClient = nil
+
     try await setupTunnelObservers()
   }
 
   func ipcClient() throws -> IPCClient {
+    // Return cached instance if it exists
+    if let cachedIPCClient = cachedIPCClient {
+      return cachedIPCClient
+    }
+
+    // Create new instance and cache it
     guard let session = try manager().session()
     else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    return IPCClient(session: session)
+    let client = IPCClient(session: session)
+    cachedIPCClient = client
+    return client
   }
 
   func manager() throws -> VPNConfigurationManager {
@@ -248,7 +263,7 @@ public final class Store: ObservableObject {
     UserDefaults.standard.set(actorName, forKey: "actorName")
 
     configuration.accountSlug = accountSlug
-    Telemetry.accountSlug = accountSlug
+    await Telemetry.setAccountSlug(accountSlug)
 
     try await manager().enable()
 
