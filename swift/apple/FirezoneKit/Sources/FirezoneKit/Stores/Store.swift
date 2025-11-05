@@ -5,6 +5,7 @@
 //
 
 import Combine
+import CryptoKit
 import NetworkExtension
 import OSLog
 import UserNotifications
@@ -24,6 +25,10 @@ public final class Store: ObservableObject {
   // Enacapsulate Tunnel status here to make it easier for other components to observe
   @Published private(set) var vpnStatus: NEVPNStatus?
 
+  // Hash for resource list optimisation
+  private var resourceListHash = Data()
+  private let decoder = PropertyListDecoder()
+
   // User notifications
   @Published private(set) var decision: UNAuthorizationStatus?
 
@@ -41,9 +46,6 @@ public final class Store: ObservableObject {
   private var configuration: Configuration
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
-
-  // Cached IPCClient instance - one per Store instance
-  private var cachedIPCClient: IPCClient?
 
   // Track which session expired alerts have been shown to prevent duplicates
   private var shownAlertIds: Set<String>
@@ -70,7 +72,10 @@ public final class Store: ObservableObject {
 
         if self.vpnConfigurationManager != nil {
           Task {
-            do { try await self.ipcClient().setConfiguration(self.configuration) } catch {
+            do {
+              guard let session = try self.manager().session() else { return }
+              try await IPCClient.setConfiguration(session: session, self.configuration)
+            } catch {
               Log.error(error)
             }
           }
@@ -114,9 +119,14 @@ public final class Store: ObservableObject {
       [weak self] status in
       try await self?.handleVPNStatusChange(newVPNStatus: status)
     }
-    try ipcClient().subscribeToVPNStatusUpdates(handler: vpnStatusChangeHandler)
 
-    let initialStatus = try ipcClient().sessionStatus()
+    guard let session = try manager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+
+    IPCClient.subscribeToVPNStatusUpdates(session: session, handler: vpnStatusChangeHandler)
+
+    let initialStatus = IPCClient.sessionStatus(session: session)
 
     // Handle initial status to ensure resources start loading if already connected
     try await handleVPNStatusChange(newVPNStatus: initialStatus)
@@ -197,34 +207,17 @@ public final class Store: ObservableObject {
   private func maybeAutoConnect() async throws {
     if configuration.connectOnStart {
       try await manager().enable()
-      try ipcClient().start(configuration: configuration)
+      guard let session = try manager().session() else {
+        throw VPNConfigurationManagerError.managerNotInitialized
+      }
+      try IPCClient.start(session: session, configuration: configuration)
     }
   }
   func installVPNConfiguration() async throws {
     // Create a new VPN configuration in system settings.
     self.vpnConfigurationManager = try await VPNConfigurationManager()
 
-    // Invalidate cached IPCClient since we have a new configuration
-    cachedIPCClient = nil
-
     try await setupTunnelObservers()
-  }
-
-  func ipcClient() throws -> IPCClient {
-    // Return cached instance if it exists
-    if let cachedIPCClient = cachedIPCClient {
-      return cachedIPCClient
-    }
-
-    // Create new instance and cache it
-    guard let session = try manager().session()
-    else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-
-    let client = IPCClient(session: session)
-    cachedIPCClient = client
-    return client
   }
 
   func manager() throws -> VPNConfigurationManager {
@@ -241,16 +234,20 @@ public final class Store: ObservableObject {
   }
 
   public func stop() async throws {
+    guard let session = try manager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+
     #if os(macOS)
       // On macOS, the system removes the utun interface on stop ONLY if the VPN is in a connected state.
       // So we need to do a dry run start-then-stop if we're not connected, to ensure the interface is removed.
       if vpnStatus == .connected || vpnStatus == .connecting || vpnStatus == .reasserting {
-        try ipcClient().stop()
+        try IPCClient.stop(session: session)
       } else {
-        try ipcClient().dryStartStopCycle(configuration: configuration)
+        try IPCClient.dryStartStopCycle(session: session, configuration: configuration)
       }
     #else
-      try ipcClient().stop()
+      try IPCClient.stop(session: session)
     #endif
   }
 
@@ -272,15 +269,24 @@ public final class Store: ObservableObject {
     UserDefaults.standard.removeObject(forKey: "shownAlertIds")
 
     // Bring the tunnel up and send it a token and configuration to start
-    try ipcClient().start(token: authResponse.token, configuration: configuration)
+    guard let session = try manager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    try IPCClient.start(session: session, token: authResponse.token, configuration: configuration)
   }
 
   func signOut() async throws {
-    try await ipcClient().signOut()
+    guard let session = try manager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    try await IPCClient.signOut(session: session)
   }
 
   func clearLogs() async throws {
-    try await ipcClient().clearLogs()
+    guard let session = try manager().session() else {
+      throw VPNConfigurationManagerError.managerNotInitialized
+    }
+    try await IPCClient.clearLogs(session: session)
   }
 
   // MARK: Private functions
@@ -307,7 +313,8 @@ public final class Store: ObservableObject {
           self.resourceUpdateTask = Task {
             if !Task.isCancelled {
               do {
-                self.resourceList = try await self.ipcClient().fetchResources()
+                guard let session = try self.manager().session() else { return }
+                try await self.fetchResources(session: session)
               } catch let error as NSError {
                 // https://developer.apple.com/documentation/networkextension/nevpnerror-swift.struct/code
                 if error.domain == "NEVPNErrorDomain" && error.code == 1 {
@@ -341,5 +348,49 @@ public final class Store: ObservableObject {
     resourcesTimer?.invalidate()
     resourcesTimer = nil
     resourceList = ResourceList.loading
+    resourceListHash = Data()
+  }
+
+  /// Fetches resources from the tunnel provider, using hash-based optimisation.
+  ///
+  /// If the resource list hash matches what the provider has, resources are unchanged.
+  /// Otherwise, fetches and caches the new list.
+  ///
+  /// - Parameter session: The tunnel provider session to communicate with
+  /// - Throws: IPCClient.Error if IPC communication fails
+  private func fetchResources(session: NETunnelProviderSession) async throws {
+    // Capture current hash before IPC call
+    let currentHash = resourceListHash
+
+    // Get data from the provider - if hash matches, provider returns nil
+    let data = try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Data?, Error>) in
+      do {
+        guard session.status == .connected else {
+          throw IPCClient.Error.invalidStatus(session.status)
+        }
+
+        try session.sendProviderMessage(
+          IPCClient.encoder.encode(ProviderMessage.getResourceList(currentHash))
+        ) { data in
+          continuation.resume(returning: data)
+        }
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
+
+    // If no data returned, resources haven't changed - no update needed
+    guard let data = data else {
+      return
+    }
+
+    // Compute new hash and decode resources
+    let newHash = Data(SHA256.hash(data: data))
+    let decoded = try decoder.decode([Resource].self, from: data)
+
+    // Update both hash and resource list
+    resourceListHash = newHash
+    resourceList = ResourceList.loaded(decoded)
   }
 }
