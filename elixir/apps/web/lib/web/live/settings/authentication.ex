@@ -167,17 +167,24 @@ defmodule Web.Settings.Authentication do
   def handle_event("delete_provider", %{"id" => id}, socket) do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
 
-    case delete_provider!(provider, socket.assigns.subject) do
-      {:ok, _provider} ->
-        {:noreply,
-         socket
-         |> init()
-         |> put_flash(:info, "Authentication provider deleted successfully.")
-         |> push_patch(to: ~p"/#{socket.assigns.account}/settings/authentication")}
+    # Load providers again to ensure we have the latest state
+    socket = init(socket)
 
-      {:error, reason} ->
-        Logger.error("Failed to delete authentication provider: #{inspect(reason)}")
-        {:noreply, put_flash(socket, :error, "Failed to delete authentication provider.")}
+    if other_active_providers_exist?(provider, socket.assigns.subject) do
+      case delete_provider!(provider, socket.assigns.subject) do
+        {:ok, _provider} ->
+          {:noreply,
+           socket
+           |> put_flash(:info, "Authentication provider deleted successfully.")
+           |> push_patch(to: ~p"/#{socket.assigns.account}/settings/authentication")}
+
+        {:error, reason} ->
+          Logger.warning("Failed to delete authentication provider", reason: reason)
+          {:noreply, put_flash(socket, :error, "Failed to delete authentication provider.")}
+      end
+    else
+      {:noreply,
+       put_flash(socket, :error, "Cannot delete the last active authentication provider.")}
     end
   end
 
@@ -185,10 +192,20 @@ defmodule Web.Settings.Authentication do
     provider = socket.assigns.providers |> Enum.find(fn p -> p.id == id end)
     new_disabled_state = not provider.is_disabled
 
+    # Check if we're trying to disable the last active provider
+    can_disable =
+      not new_disabled_state or other_active_providers_exist?(provider, socket.assigns.subject)
+
     changeset =
-      provider
-      |> change(is_disabled: new_disabled_state)
-      |> validate_not_disabling_default_provider()
+      if can_disable do
+        provider
+        |> change(is_disabled: new_disabled_state)
+        |> validate_not_disabling_default_provider()
+      else
+        provider
+        |> change(is_disabled: new_disabled_state)
+        |> add_error(:is_disabled, "Cannot disable the last active authentication provider")
+      end
 
     case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
       {:ok, _provider} ->
@@ -1020,6 +1037,31 @@ defmodule Web.Settings.Authentication do
 
   defp verified?(form) do
     get_field(form.source, :is_verified) == true
+  end
+
+  defp other_active_providers_exist?(provider, subject) do
+    import Ecto.Query
+
+    # List of all provider schema modules
+    provider_schemas = [
+      EmailOTP.AuthProvider,
+      Userpass.AuthProvider,
+      Google.AuthProvider,
+      Entra.AuthProvider,
+      Okta.AuthProvider,
+      OIDC.AuthProvider
+    ]
+
+    # Check if any other active provider exists across all schemas
+    Enum.any?(provider_schemas, fn schema ->
+      query =
+        from(p in schema,
+          where:
+            p.account_id == ^provider.account_id and p.id != ^provider.id and not p.is_disabled
+        )
+
+      Safe.scoped(subject) |> Safe.exists?(query)
+    end)
   end
 
   defp handle_verification_setup_error(

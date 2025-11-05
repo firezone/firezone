@@ -72,6 +72,19 @@ defmodule Domain.Safe do
 
   def all(repo, queryable) when repo == Repo, do: Repo.all(queryable)
 
+  @spec exists?(Scoped.t(), Ecto.Queryable.t()) :: boolean() | {:error, :unauthorized}
+  def exists?(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      queryable
+      |> where(account_id: ^account_id)
+      |> Repo.exists?()
+    end
+  end
+
+  def exists?(repo, queryable) when repo == Repo, do: Repo.exists?(queryable)
+
   # Mutation operations
   @spec insert(Scoped.t(), Ecto.Changeset.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}

@@ -25,7 +25,7 @@ defmodule Domain.Changes.Hooks.AuthProviders do
           "client_session_lifetime_secs" => new_client_lifetime,
           "portal_session_lifetime_secs" => new_portal_lifetime,
           "id" => provider_id
-        } = data
+        }
       )
       when old_client_lifetime != new_client_lifetime or
              old_portal_lifetime != new_portal_lifetime do
