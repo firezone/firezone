@@ -23,7 +23,11 @@
       }
     }
 
-    private var timer: Timer?
+    // nonisolated(unsafe) is required because:
+    // 1. Timer.invalidate() is thread-safe and can be called from any thread
+    // 2. Only accessed from MainActor-isolated methods (init, start/stop) and nonisolated deinit
+    // 3. deinit is nonisolated and needs access to invalidate the timer
+    private nonisolated(unsafe) var timer: Timer?
     private let notificationAdapter: NotificationAdapter = NotificationAdapter()
     private let versionCheckUrl: URL
     private let marketingVersion: SemanticVersion

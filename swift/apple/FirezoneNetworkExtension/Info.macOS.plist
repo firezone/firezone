@@ -26,6 +26,13 @@
 	<string>$(APP_GROUP_ID)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2025 Firezone, Inc. All rights reserved.</string>
+	<key>LSEnvironment</key>
+	<dict>
+		<key>SWIFT_UNEXPECTED_EXECUTOR_LOG_LEVEL</key>
+		<string>1</string>
+		<key>SWIFT_IS_CURRENT_EXECUTOR_LEGACY_MODE_OVERRIDE</key>
+		<string>nocrash</string>
+	</dict>
   <key>NetworkExtension</key>
   <dict>
     <key>NEMachServiceName</key>

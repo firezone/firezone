@@ -9,11 +9,11 @@
 import Foundation
 
 class StatusSymbol {
-  static var enabled: String = "<->"
-  static var disabled: String = "—"
+  static let enabled: String = "<->"
+  static let disabled: String = "—"
 }
 
-public enum ResourceList {
+public enum ResourceList: Sendable {
   case loading
   case loaded([Resource])
 
@@ -27,7 +27,7 @@ public enum ResourceList {
   }
 }
 
-public struct Resource: Codable, Identifiable, Equatable {
+public struct Resource: Codable, Identifiable, Equatable, Sendable {
   public let id: String
   public var name: String
   public var address: String?
@@ -59,7 +59,7 @@ public struct Resource: Codable, Identifiable, Equatable {
   }
 }
 
-public enum ResourceStatus: String, Codable {
+public enum ResourceStatus: String, Codable, Sendable {
   case offline = "Offline"
   case online = "Online"
   case unknown = "Unknown"
@@ -91,7 +91,7 @@ public enum ResourceStatus: String, Codable {
   }
 }
 
-public enum ResourceType: String, Codable {
+public enum ResourceType: String, Codable, Sendable {
   case dns
   case cidr
   case ip

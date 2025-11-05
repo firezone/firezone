@@ -22,6 +22,7 @@ public enum NotificationIndentifier: String {
   case dismissNotificationAction
 }
 
+@MainActor
 public class SessionNotification: NSObject {
   public var signInHandler = {}
   private let notificationCenter = UNUserNotificationCenter.current()
@@ -69,7 +70,7 @@ public class SessionNotification: NSObject {
   #if os(iOS)
     // In iOS, use User Notifications.
     // This gets called from the tunnel side.
-    public static func showSignedOutNotificationiOS() {
+    nonisolated public static func showSignedOutNotificationiOS() {
       UNUserNotificationCenter.current().getNotificationSettings { notificationSettings in
         if notificationSettings.authorizationStatus == .authorized {
           Log.log(
@@ -127,7 +128,7 @@ public class SessionNotification: NSObject {
 
 #if os(iOS)
   extension SessionNotification: UNUserNotificationCenterDelegate {
-    public func userNotificationCenter(
+    nonisolated public func userNotificationCenter(
       _ center: UNUserNotificationCenter,
       didReceive response: UNNotificationResponse,
       withCompletionHandler completionHandler: @escaping () -> Void
@@ -139,12 +140,12 @@ public class SessionNotification: NSObject {
         actionId == NotificationIndentifier.signInNotificationAction.rawValue
       {
         // User clicked on 'Sign In' in the notification
-        signInHandler()
+        Task { @MainActor in
+          signInHandler()
+        }
       }
 
-      DispatchQueue.main.async {
-        completionHandler()
-      }
+      completionHandler()
     }
   }
 #endif

@@ -6,12 +6,11 @@
 
 import CryptoKit
 import Foundation
-import NetworkExtension
+@preconcurrency import NetworkExtension
 
 // TODO: Use a more abstract IPC protocol to make this less terse
-// TODO: Consider making this an actor to guarantee strict ordering
 
-class IPCClient {
+actor IPCClient {
   enum Error: Swift.Error {
     case decodeIPCDataFailed
     case noIPCData
@@ -31,7 +30,7 @@ class IPCClient {
 
   // IPC only makes sense if there's a valid session. Session in this case refers to the `connection` field of
   // the NETunnelProviderManager instance.
-  let session: NETunnelProviderSession
+  nonisolated let session: NETunnelProviderSession
 
   // Track the "version" of the resource list so we can more efficiently
   // retrieve it from the Provider
@@ -46,8 +45,8 @@ class IPCClient {
   }
 
   // Encoder used to send messages to the tunnel
-  let encoder = PropertyListEncoder()
-  let decoder = PropertyListDecoder()
+  nonisolated let encoder = PropertyListEncoder()
+  nonisolated let decoder = PropertyListDecoder()
 
   // Auto-connect
   @MainActor
@@ -78,7 +77,7 @@ class IPCClient {
     try stop()
   }
 
-  func stop() throws {
+  nonisolated func stop() throws {
     try session().stopTunnel()
   }
 
@@ -98,9 +97,8 @@ class IPCClient {
     }
   #endif
 
-  @MainActor
   func setConfiguration(_ configuration: Configuration) async throws {
-    let tunnelConfiguration = configuration.toTunnelConfiguration()
+    let tunnelConfiguration = await configuration.toTunnelConfiguration()
     let message = ProviderMessage.setConfiguration(tunnelConfiguration)
 
     if sessionStatus() != .connected {
@@ -111,37 +109,38 @@ class IPCClient {
   }
 
   func fetchResources() async throws -> ResourceList {
-    return try await withCheckedThrowingContinuation { continuation in
+    // Capture current hash before entering continuation
+    let currentHash = resourceListHash
+
+    // Get data from the provider - continuation returns just the data
+    let data = try await withCheckedThrowingContinuation { continuation in
       do {
         // Request list of resources from the provider. We send the hash of the resource list we already have.
         // If it differs, we'll get the full list in the callback. If not, we'll get nil.
         try session([.connected]).sendProviderMessage(
-          encoder.encode(ProviderMessage.getResourceList(resourceListHash))
+          encoder.encode(ProviderMessage.getResourceList(currentHash))
         ) { data in
-          guard let data = data
-          else {
-            // No data returned; Resources haven't changed
-            continuation.resume(returning: self.resourcesListCache)
-
-            return
-          }
-
-          // Save hash to compare against
-          self.resourceListHash = Data(SHA256.hash(data: data))
-
-          do {
-            let decoded = try self.decoder.decode([Resource].self, from: data)
-            self.resourcesListCache = ResourceList.loaded(decoded)
-
-            continuation.resume(returning: self.resourcesListCache)
-          } catch {
-            continuation.resume(throwing: error)
-          }
+          continuation.resume(returning: data)
         }
       } catch {
         continuation.resume(throwing: error)
       }
     }
+
+    // Back on the actor - safe to access and mutate state directly
+    guard let data = data else {
+      // No data returned; Resources haven't changed
+      return resourcesListCache
+    }
+
+    // Save hash to compare against
+    resourceListHash = Data(SHA256.hash(data: data))
+
+    // Decode and cache the new resource list
+    let decoded = try decoder.decode([Resource].self, from: data)
+    resourcesListCache = ResourceList.loaded(decoded)
+
+    return resourcesListCache
   }
 
   func clearLogs() async throws {
@@ -176,7 +175,7 @@ class IPCClient {
   // Call this with a closure that will append each chunk to a buffer
   // of some sort, like a file. The completed buffer is a valid Apple Archive
   // in AAR format.
-  func exportLogs(
+  nonisolated func exportLogs(
     appender: @escaping (LogChunk) -> Void,
     errorHandler: @escaping (Error) -> Void
   ) {
@@ -220,8 +219,9 @@ class IPCClient {
 
   // Subscribe to system notifications about our VPN status changing
   // and let our handler know about them.
-  func subscribeToVPNStatusUpdates(handler: @escaping @MainActor (NEVPNStatus) async throws -> Void)
-  {
+  nonisolated func subscribeToVPNStatusUpdates(
+    handler: @escaping @MainActor (NEVPNStatus) async throws -> Void
+  ) {
     Task {
       for await notification in NotificationCenter.default.notifications(
         named: .NEVPNStatusDidChange)
@@ -232,9 +232,8 @@ class IPCClient {
         }
 
         if session.status == .disconnected {
-          // Reset resource list
-          resourceListHash = Data()
-          resourcesListCache = ResourceList.loading
+          // Reset resource list on disconnect
+          await self.resetResourceList()
         }
 
         do { try await handler(session.status) } catch { Log.error(error) }
@@ -242,11 +241,17 @@ class IPCClient {
     }
   }
 
-  func sessionStatus() -> NEVPNStatus {
+  private func resetResourceList() {
+    resourceListHash = Data()
+    resourcesListCache = ResourceList.loading
+  }
+
+  nonisolated func sessionStatus() -> NEVPNStatus {
     return session.status
   }
 
-  private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws -> NETunnelProviderSession
+  nonisolated private func session(_ requiredStatuses: Set<NEVPNStatus> = []) throws
+    -> NETunnelProviderSession
   {
     if requiredStatuses.isEmpty || requiredStatuses.contains(session.status) {
       return session

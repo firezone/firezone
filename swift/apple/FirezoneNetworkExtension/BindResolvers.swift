@@ -55,6 +55,14 @@ enum BindResolvers {
           NI_NUMERICHOST)
       }
     }
-    return String(cString: hostBuffer)
+    // Truncate null termination and decode as UTF-8
+    // Convert CChar (Int8) to UInt8 for String(decoding:)
+    if let nullIndex = hostBuffer.firstIndex(of: 0) {
+      let bytes = hostBuffer[..<nullIndex].map { UInt8(bitPattern: $0) }
+      return String(decoding: bytes, as: UTF8.self)
+    } else {
+      let bytes = hostBuffer.map { UInt8(bitPattern: $0) }
+      return String(decoding: bytes, as: UTF8.self)
+    }
   }
 }
