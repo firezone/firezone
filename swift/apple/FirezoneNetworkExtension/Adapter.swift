@@ -12,6 +12,24 @@ import Foundation
 import NetworkExtension
 import OSLog
 
+/// Thread-safe wrapper for mutable state using NSLock.
+/// Provides similar API to OSAllocatedUnfairLock but compatible with iOS 15+.
+/// We can't use OSAllocatedUnfairLock as it requires iOS 16+.
+final class LockedState<Value>: @unchecked Sendable {
+  private let lock = NSLock()
+  private var _value: Value
+
+  init(initialState: Value) {
+    _value = initialState
+  }
+
+  func withLock<Result>(_ body: (inout Value) -> Result) -> Result {
+    lock.lock()
+    defer { lock.unlock() }
+    return body(&_value)
+  }
+}
+
 enum AdapterError: Error {
   /// Failure to perform an operation in such state.
   case invalidSession(Session?)
@@ -184,19 +202,39 @@ class Adapter: @unchecked Sendable {
   func start() throws {
     Log.log("Adapter.start: Starting session for account: \(accountSlug)")
 
-    // Get device metadata
-    let deviceName = DeviceMetadata.getDeviceName()
+    // Get device metadata - synchronously get values from MainActor
+    #if os(iOS)
+      let deviceMetadata = LockedState<(String, String?)>(initialState: ("", nil))
+    #else
+      let deviceMetadata = LockedState<String>(initialState: "")
+    #endif
+    let semaphore = DispatchSemaphore(value: 0)
+
+    Task { @MainActor in
+      let name = DeviceMetadata.getDeviceName()
+      #if os(iOS)
+        let identifier = DeviceMetadata.getIdentifierForVendor()
+        deviceMetadata.withLock { $0 = (name, identifier) }
+      #else
+        deviceMetadata.withLock { $0 = name }
+      #endif
+      semaphore.signal()
+    }
+    semaphore.wait()
+
     let osVersion = DeviceMetadata.getOSVersion()
     let logDir = SharedAccess.connlibLogFolderURL?.path ?? "/tmp/firezone"
 
     #if os(iOS)
+      let (deviceName, identifierForVendor) = deviceMetadata.withLock { $0 }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: nil,
         deviceSerial: nil,
-        identifierForVendor: DeviceMetadata.getIdentifierForVendor()
+        identifierForVendor: identifierForVendor
       )
     #else
+      let deviceName = deviceMetadata.withLock { $0 }
       let deviceInfo = DeviceInfo(
         firebaseInstallationId: nil,
         deviceUuid: getDeviceUuid(),
