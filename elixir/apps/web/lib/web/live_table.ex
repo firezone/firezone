@@ -24,6 +24,7 @@ defmodule Web.LiveTable do
   attr :rows, :list, required: true
   attr :row_id, :any, default: nil, doc: "the function for generating the row id"
   attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :row_patch, :any, default: nil, doc: "the function for generating patch path for each row"
   attr :class, :string, default: nil, doc: "the class for the table"
 
   attr :row_item, :any,
@@ -56,6 +57,7 @@ defmodule Web.LiveTable do
             row={row}
             id={@row_id && @row_id.(row)}
             click={@row_click}
+            patch={@row_patch}
             mapper={@row_item}
           />
         </tbody>

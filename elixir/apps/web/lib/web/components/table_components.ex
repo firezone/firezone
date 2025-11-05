@@ -71,6 +71,7 @@ defmodule Web.TableComponents do
   attr :id, :any, default: nil, doc: "the function for generating the row id"
   attr :row, :map, required: true, doc: "the row data"
   attr :click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr :patch, :any, default: nil, doc: "the function for generating patch path for each row"
 
   attr :columns, :any, required: true, doc: "col slot taken from parent component"
   attr :actions, :list, required: true, doc: "action slot taken from parent component"
@@ -81,16 +82,28 @@ defmodule Web.TableComponents do
 
   def table_row(assigns) do
     ~H"""
-    <tr id={@id} class="border-b">
+    <tr
+      id={@id}
+      class={[
+        "border-b",
+        (@click || @patch) && "hover:cursor-pointer hover:bg-neutral-50"
+      ]}
+    >
       <td
         :for={{col, _i} <- Enum.with_index(@columns)}
         phx-click={@click && @click.(@row)}
-        class={[
-          "px-4 py-3",
-          @click && "hover:cursor-pointer"
-        ]}
+        class={@patch && "p-0"}
       >
-        {render_slot(col, @mapper.(@row))}
+        <.link
+          :if={@patch}
+          patch={@patch.(@row)}
+          class="block px-4 py-3"
+        >
+          {render_slot(col, @mapper.(@row))}
+        </.link>
+        <span :if={!@patch} class="block px-4 py-3">
+          {render_slot(col, @mapper.(@row))}
+        </span>
       </td>
       <% # this is a hack which allows to hide empty action dropdowns,
       # because LiveView doesn't allow to do <:slot :let={x} :if={x} />

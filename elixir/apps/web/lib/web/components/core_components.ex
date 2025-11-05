@@ -1539,6 +1539,12 @@ defmodule Web.CoreComponents do
   # Can be removed after all accounts have migrated
   attr :adapter, :atom, required: false
 
+  def provider_icon(%{type: "firezone"} = assigns) do
+    ~H"""
+    <img src={~p"/images/logo.svg"} alt="Firezone Logo" {@rest} />
+    """
+  end
+
   def provider_icon(%{type: "okta"} = assigns) do
     ~H"""
     <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />

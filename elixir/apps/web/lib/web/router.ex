@@ -184,6 +184,13 @@ defmodule Web.Router do
 
       scope "/groups", Groups do
         live "/", Index
+
+        live "/add", Index, :add
+        live "/show/:id", Index, :show
+        live "/edit/:id", Index, :edit
+
+        # TODO: IDP REFACTOR
+        # Remove the below routes after all accounts have migrated
         live "/new", New
         live "/:id/edit", Edit
         live "/:id/edit_actors", EditActors

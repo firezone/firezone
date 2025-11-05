@@ -5,7 +5,7 @@ defmodule Web.Actors.Index do
     account = socket.assigns.subject.account
 
     if Domain.Migrator.migrated?(account) do
-      Web.Actors.IndexNew.mount(params, session, socket)
+      Web.Actors.mount(params, session, socket)
     else
       Web.Actors.IndexLegacy.mount(params, session, socket)
     end
@@ -15,7 +15,7 @@ defmodule Web.Actors.Index do
     account = socket.assigns.subject.account
 
     if Domain.Migrator.migrated?(account) do
-      Web.Actors.IndexNew.handle_params(params, uri, socket)
+      Web.Actors.handle_params(params, uri, socket)
     else
       Web.Actors.IndexLegacy.handle_params(params, uri, socket)
     end
@@ -25,7 +25,7 @@ defmodule Web.Actors.Index do
     account = socket.assigns.subject.account
 
     if Domain.Migrator.migrated?(account) do
-      Web.Actors.IndexNew.handle_event(event, params, socket)
+      Web.Actors.handle_event(event, params, socket)
     else
       Web.Actors.IndexLegacy.handle_event(event, params, socket)
     end
@@ -35,7 +35,7 @@ defmodule Web.Actors.Index do
     account = assigns.subject.account
 
     if Domain.Migrator.migrated?(account) do
-      Web.Actors.IndexNew.render(assigns)
+      Web.Actors.render(assigns)
     else
       Web.Actors.IndexLegacy.render(assigns)
     end
