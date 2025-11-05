@@ -530,7 +530,7 @@ impl TunnelTest {
                 let transport = query.transport;
 
                 let response =
-                    self.on_recursive_dns_query(&query.message, &ref_state.global_dns_records);
+                    self.on_recursive_dns_query(&query.message, &ref_state.global_dns_records, now);
                 self.client.exec_mut(|c| {
                     c.sut.handle_dns_response(
                         dns::RecursiveResponse {
@@ -932,6 +932,7 @@ impl TunnelTest {
         &self,
         query: &dns_types::Query,
         global_dns_records: &DnsRecords,
+        now: Instant,
     ) -> dns_types::Response {
         const TTL: u32 = 1; // We deliberately chose a short TTL so we don't have to model the DNS cache in these tests.
 
@@ -941,7 +942,7 @@ impl TunnelTest {
         let response = dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(
                 global_dns_records
-                    .domain_records_iter(&domain)
+                    .domain_records_iter(&domain, now)
                     .filter(|record| qtype == record.rtype())
                     .map(|rdata| (domain.clone(), TTL, rdata)),
             )
@@ -1057,9 +1058,15 @@ fn on_gateway_event(
             }
         }),
         GatewayEvent::ResolveDns(r) => {
-            let resolved_ips = global_dns_records.domain_ips_iter(r.domain()).collect();
+            let resolved_ips = global_dns_records
+                .domain_ips_iter(r.domain(), now)
+                .collect();
 
             gateway.exec_mut(|g| {
+                g.dns_query_timestamps
+                    .entry(r.domain().clone())
+                    .or_default()
+                    .push(now);
                 g.sut
                     .handle_domain_resolved(r, Ok(resolved_ips), now)
                     .unwrap()

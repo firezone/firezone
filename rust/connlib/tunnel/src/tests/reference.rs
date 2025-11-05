@@ -7,6 +7,7 @@ use super::{
 use crate::client;
 use crate::proptest::domain_label;
 use crate::{dns::is_subdomain, proptest::relay_id};
+use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -14,6 +15,7 @@ use itertools::Itertools;
 use prop::sample::select;
 use proptest::{prelude::*, sample};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
@@ -25,6 +27,13 @@ use std::{
 /// This is the "expected" part of our test.
 #[derive(Clone, Debug)]
 pub(crate) struct ReferenceState {
+    pub(crate) start: Instant,
+    pub(crate) start_utc: DateTime<Utc>,
+
+    // Hacky solution for getting access to `now` inside `apply`.
+    // Unfortunately, the `proptest-state-machine` interface doesn't allow us to customize the fn signature.
+    pub(crate) now: Instant,
+
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
@@ -54,13 +63,16 @@ pub(crate) struct ReferenceState {
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
     pub(crate) fn initial_state() -> BoxedStrategy<Self> {
+        let start = Instant::now();
+        let start_utc = Utc::now();
+
         stub_portal()
-            .prop_flat_map(|portal| {
-                let gateways = portal.gateways();
-                let dns_resource_records = portal.dns_resource_records();
+            .prop_flat_map(move |portal| {
+                let gateways = portal.gateways(start);
+                let dns_resource_records = portal.dns_resource_records(start);
                 let client = portal.client(system_dns_servers(), upstream_dns_servers());
                 let relays = relays(relay_id());
-                let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
+                let global_dns_records = global_dns_records(start); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
 
                 (
@@ -74,7 +86,7 @@ impl ReferenceState {
                 )
             })
             .prop_flat_map(
-                |(
+                move |(
                     client,
                     gateways,
                     portal,
@@ -88,7 +100,7 @@ impl ReferenceState {
                         Just(gateways),
                         Just(portal),
                         Just(dns_resource_records.clone()),
-                        icmp_error_hosts(dns_resource_records),
+                        icmp_error_hosts(dns_resource_records, start),
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
@@ -96,7 +108,7 @@ impl ReferenceState {
                 },
             )
             .prop_flat_map(
-                |(
+                move |(
                     client,
                     gateways,
                     portal,
@@ -112,7 +124,7 @@ impl ReferenceState {
                         Just(portal),
                         Just(dns_resource_records.clone()),
                         Just(icmp_error_hosts.clone()),
-                        tcp_resources(dns_resource_records, icmp_error_hosts),
+                        tcp_resources(dns_resource_records, icmp_error_hosts, start),
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
@@ -178,7 +190,7 @@ impl ReferenceState {
                 },
             )
             .prop_map(
-                |(
+                move |(
                     client,
                     gateways,
                     relays,
@@ -190,6 +202,9 @@ impl ReferenceState {
                     network,
                 )| {
                     Self {
+                        start,
+                        start_utc,
+                        now: start,
                         client,
                         gateways,
                         relays,
@@ -384,7 +399,7 @@ impl ReferenceState {
                 state
                     .client
                     .inner()
-                    .resolved_ip4_for_non_resources(&state.global_dns_records),
+                    .resolved_ip4_for_non_resources(&state.global_dns_records, state.start),
                 |resolved_non_resource_ip4s| {
                     let tunnel_ip4 = state.client.inner().tunnel_ip4;
 
@@ -399,7 +414,7 @@ impl ReferenceState {
                 state
                     .client
                     .inner()
-                    .resolved_ip6_for_non_resources(&state.global_dns_records),
+                    .resolved_ip6_for_non_resources(&state.global_dns_records, state.start),
                 |resolved_non_resource_ip6s| {
                     let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
@@ -836,18 +851,19 @@ impl ReferenceState {
     fn all_domains(&self) -> Vec<(DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
+            at: Instant,
         ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> {
             records
                 .domains_iter()
-                .map(|d| (d.clone(), records.domain_rtypes(&d)))
+                .map(move |d| (d.clone(), records.domain_rtypes(&d, at)))
         }
 
         // We may have multiple gateways in a site, so we need to dedup.
         let unique_domains = self
             .gateways
             .values()
-            .flat_map(|g| domains_and_rtypes(g.inner().dns_records()))
-            .chain(domains_and_rtypes(&self.global_dns_records))
+            .flat_map(|g| domains_and_rtypes(g.inner().dns_records(), self.start))
+            .chain(domains_and_rtypes(&self.global_dns_records, self.start))
             .collect::<BTreeSet<_>>();
 
         Vec::from_iter(unique_domains)

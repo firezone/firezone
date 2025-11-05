@@ -59,7 +59,7 @@ fn tunnel_test() {
         &strategy,
         |(mut ref_state, transitions, mut seen_counter)| {
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let flux_capacitor = FluxCapacitor::default();
+            let flux_capacitor = FluxCapacitor::new(ref_state.start, ref_state.start_utc);
 
             let _guard = init_logging(flux_capacitor.clone(), test_index);
 
@@ -78,7 +78,7 @@ fn tunnel_test() {
 
             println!("Running test case {test_index:04} with {num_transitions:02} transitions");
 
-            let mut sut = TunnelTest::init_test(&ref_state, flux_capacitor);
+            let mut sut = TunnelTest::init_test(&ref_state, flux_capacitor.clone());
 
             // Check the invariants on the initial state
             TunnelTest::check_invariants(&sut, &ref_state);
@@ -104,6 +104,8 @@ fn tunnel_test() {
 
                 // Check the invariants after the transition is applied
                 TunnelTest::check_invariants(&sut, &ref_state);
+
+                ref_state.now = flux_capacitor.now();
             }
 
             Ok(())

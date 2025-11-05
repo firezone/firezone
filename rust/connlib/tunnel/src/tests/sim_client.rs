@@ -1095,8 +1095,9 @@ impl RefClient {
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
+        at: Instant,
     ) -> Vec<Ipv4Addr> {
-        self.resolved_ips_for_non_resources(global_dns_records)
+        self.resolved_ips_for_non_resources(global_dns_records, at)
             .filter_map(|ip| match ip {
                 IpAddr::V4(v4) => Some(v4),
                 IpAddr::V6(_) => None,
@@ -1107,8 +1108,9 @@ impl RefClient {
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
+        at: Instant,
     ) -> Vec<Ipv6Addr> {
-        self.resolved_ips_for_non_resources(global_dns_records)
+        self.resolved_ips_for_non_resources(global_dns_records, at)
             .filter_map(|ip| match ip {
                 IpAddr::V6(v6) => Some(v6),
                 IpAddr::V4(_) => None,
@@ -1119,13 +1121,14 @@ impl RefClient {
     fn resolved_ips_for_non_resources<'a>(
         &'a self,
         global_dns_records: &'a DnsRecords,
+        at: Instant,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
             .iter()
-            .filter_map(|(domain, _)| {
+            .filter_map(move |(domain, _)| {
                 self.dns_resource_by_domain(domain)
                     .is_none()
-                    .then_some(global_dns_records.domain_ips_iter(domain))
+                    .then_some(global_dns_records.domain_ips_iter(domain, at))
             })
             .flatten()
     }
