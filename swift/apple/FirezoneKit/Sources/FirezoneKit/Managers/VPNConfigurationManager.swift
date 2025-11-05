@@ -101,7 +101,6 @@ public class VPNConfigurationManager: @unchecked Sendable {
     }
 
     let configuration = Configuration.shared
-    let ipcClient = IPCClient(session: session)
 
     if let actorName = legacyConfiguration["actorName"] {
       UserDefaults.standard.set(actorName, forKey: "actorName")
@@ -131,7 +130,7 @@ public class VPNConfigurationManager: @unchecked Sendable {
       configuration.internetResourceEnabled = internetResourceEnabled == "true"
     }
 
-    try await ipcClient.setConfiguration(configuration)
+    try await IPCClient.setConfiguration(session: session, configuration)
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
     if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol {
