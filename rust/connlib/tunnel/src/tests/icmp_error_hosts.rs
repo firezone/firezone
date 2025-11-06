@@ -33,7 +33,7 @@ pub(crate) fn icmp_error_hosts(
         .prop_flat_map(|ips| {
             let num_ips = ips.len();
 
-            sample::subsequence(ips, 0..num_ips) // Pick a subset of IPs.
+            sample::subsequence(ips, num_ips / 2) // Pick a subset of IPs.
         })
         .prop_flat_map(|ips| {
             ips.into_iter()
