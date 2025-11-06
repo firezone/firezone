@@ -7,7 +7,6 @@ use super::{
 use crate::client;
 use crate::proptest::domain_label;
 use crate::{dns::is_subdomain, proptest::relay_id};
-use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
@@ -28,13 +27,6 @@ use std::{
 /// This is the "expected" part of our test.
 #[derive(Clone, Debug)]
 pub(crate) struct ReferenceState {
-    pub(crate) start: Instant,
-    pub(crate) start_utc: DateTime<Utc>,
-
-    // Hacky solution for getting access to `now` inside `apply`.
-    // Unfortunately, the `proptest-state-machine` interface doesn't allow us to customize the fn signature.
-    pub(crate) now: Instant,
-
     pub(crate) client: Host<RefClient>,
     pub(crate) gateways: BTreeMap<GatewayId, Host<RefGateway>>,
     pub(crate) relays: BTreeMap<RelayId, Host<u64>>,
@@ -63,10 +55,7 @@ pub(crate) struct ReferenceState {
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
-    pub(crate) fn initial_state() -> BoxedStrategy<Self> {
-        let start = Instant::now();
-        let start_utc = Utc::now();
-
+    pub(crate) fn initial_state(start: Instant) -> BoxedStrategy<Self> {
         stub_portal()
             .prop_flat_map(move |portal| {
                 let gateways = portal.gateways(start);
@@ -203,9 +192,6 @@ impl ReferenceState {
                     network,
                 )| {
                     Self {
-                        start,
-                        start_utc,
-                        now: start,
                         client,
                         gateways,
                         relays,
@@ -225,7 +211,7 @@ impl ReferenceState {
     ///
     /// This is invoked by proptest repeatedly to explore further state transitions.
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
-    pub(crate) fn transitions(state: &Self) -> BoxedStrategy<Transition> {
+    pub(crate) fn transitions(state: &Self, now: Instant) -> BoxedStrategy<Transition> {
         CompositeStrategy::default()
             .with(
                 1,
@@ -362,7 +348,7 @@ impl ReferenceState {
             )
             .with_if_not_empty(
                 5,
-                (state.all_domains(), state.reachable_dns_servers()),
+                (state.all_domains(now), state.reachable_dns_servers()),
                 |(domains, dns_servers)| {
                     dns_queries(sample::select(domains), sample::select(dns_servers))
                         .prop_map(Transition::SendDnsQueries)
@@ -400,7 +386,7 @@ impl ReferenceState {
                 state
                     .client
                     .inner()
-                    .resolved_ip4_for_non_resources(&state.global_dns_records, state.start),
+                    .resolved_ip4_for_non_resources(&state.global_dns_records, now),
                 |resolved_non_resource_ip4s| {
                     let tunnel_ip4 = state.client.inner().tunnel_ip4;
 
@@ -415,7 +401,7 @@ impl ReferenceState {
                 state
                     .client
                     .inner()
-                    .resolved_ip6_for_non_resources(&state.global_dns_records, state.start),
+                    .resolved_ip6_for_non_resources(&state.global_dns_records, now),
                 |resolved_non_resource_ip6s| {
                     let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
@@ -451,7 +437,7 @@ impl ReferenceState {
     /// Apply the transition to our reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    pub(crate) fn apply(mut state: Self, transition: &Transition) -> Self {
+    pub(crate) fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
         match transition {
             Transition::AddResource(resource) => {
                 state.client.exec_mut(|client| match resource {
@@ -614,7 +600,7 @@ impl ReferenceState {
             Transition::UpdateDnsRecords { domain, records } => {
                 state.global_dns_records.merge(DnsRecords::from([(
                     domain.clone(),
-                    BTreeMap::from([(state.now, records.clone())]),
+                    BTreeMap::from([(now, records.clone())]),
                 )]));
             }
         };
@@ -860,7 +846,7 @@ impl ReferenceState {
 impl ReferenceState {
     // We surface what are the existing rtypes for a domain so that it's easier
     // for the proptests to hit an existing record.
-    fn all_domains(&self) -> Vec<(DomainName, Vec<RecordType>)> {
+    fn all_domains(&self, now: Instant) -> Vec<(DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
             at: Instant,
@@ -874,8 +860,9 @@ impl ReferenceState {
         let unique_domains = self
             .gateways
             .values()
-            .flat_map(|g| domains_and_rtypes(g.inner().dns_records(), self.start))
-            .chain(domains_and_rtypes(&self.global_dns_records, self.start))
+            .flat_map(|g| domains_and_rtypes(g.inner().dns_records(), now))
+            .chain(domains_and_rtypes(&self.global_dns_records, now))
+            .filter(|(_, rtypes)| !rtypes.is_empty())
             .collect::<BTreeSet<_>>();
 
         Vec::from_iter(unique_domains)
