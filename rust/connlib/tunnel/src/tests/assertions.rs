@@ -196,7 +196,7 @@ fn assert_packets_properties<T, U>(
         tracing::error!(target: "assertions", ?unexpected_replies, ?expected_handshakes, ?received_replies, "❌ Unexpected {packet_protocol} replies on client");
     }
 
-    let mut mapping = HashMap::new();
+    let mut mappings = HashMap::new();
 
     // Assert properties of the individual handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
@@ -266,6 +266,11 @@ fn assert_packets_properties<T, U>(
                         continue;
                     };
 
+                    // Split the proxy IP mapping by DNS record snapshot.
+                    //
+                    // When we re-resolve DNS, the mapping is allowed to change.
+                    let mapping = mappings.entry(dns_record_snapshot).or_default();
+
                     assert_destination_is_dns_resource(
                         gateway_received_request,
                         global_dns_records,
@@ -276,7 +281,7 @@ fn assert_packets_properties<T, U>(
                     assert_proxy_ip_mapping_is_stable(
                         client_sent_request,
                         gateway_received_request,
-                        &mut mapping,
+                        mapping,
                     )
                 }
             }
