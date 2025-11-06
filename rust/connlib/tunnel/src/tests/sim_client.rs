@@ -653,36 +653,36 @@ impl RefClient {
     pub(crate) fn add_cidr_resource(&mut self, r: CidrResource) {
         let address = r.address;
         let r = Resource::Cidr(r);
+        let rid = r.id();
 
-        if let Some(existing) = self
-            .resources
-            .iter()
-            .find(|existing| existing.id() == r.id())
+        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
             && (existing.has_different_address(&r) || existing.has_different_site(&r))
         {
             self.remove_resource(&existing.id());
         }
 
-        self.resources.push(r.clone());
+        self.resources.push(r);
         self.cidr_resources = self.recalculate_cidr_routes();
 
         match address {
             IpNetwork::V4(v4) => {
-                self.ipv4_routes.insert(r.id(), v4);
+                self.ipv4_routes.insert(rid, v4);
             }
             IpNetwork::V6(v6) => {
-                self.ipv6_routes.insert(r.id(), v6);
+                self.ipv6_routes.insert(rid, v6);
             }
+        }
+
+        if self.expected_tcp_connections.values().contains(&rid) {
+            self.set_resource_online(rid);
         }
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
         let r = Resource::Dns(r);
+        let rid = r.id();
 
-        if let Some(existing) = self
-            .resources
-            .iter()
-            .find(|existing| existing.id() == r.id())
+        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
             && (existing.has_different_address(&r)
                 || existing.has_different_ip_stack(&r)
                 || existing.has_different_site(&r))
@@ -691,6 +691,10 @@ impl RefClient {
         }
 
         self.resources.push(r);
+
+        if self.expected_tcp_connections.values().contains(&rid) {
+            self.set_resource_online(rid);
+        }
     }
 
     /// Re-adds all resources in the order they have been initially added.
