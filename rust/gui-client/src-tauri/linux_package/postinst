@@ -4,10 +4,20 @@ set -euo pipefail
 
 SERVICE_NAME="firezone-client-tunnel"
 
+DISPLAY_USER=$(who | grep '(login screen)' | awk '{print $1}')
+
 if [ -n "${PKEXEC_UID:-}" ]; then
     INVOKING_USER=$(id -un "$PKEXEC_UID" 2>/dev/null) # Detect user from PolicyKit.
+
+    echo "Detected invoking user from PolicyKit: $INVOKING_USER"
 elif [ -n "${SUDO_USER:-}" ]; then
     INVOKING_USER="$SUDO_USER" # Detect user from `sudo apt/dnf install`.
+
+    echo "Detected invoking user from SUDO_USER: $INVOKING_USER"
+elif [ -n "${DISPLAY_USER:-}" ]; then
+    INVOKING_USER="$DISPLAY_USER" # Detect user from display session.
+
+    echo "Detected invoking user from display session: $INVOKING_USER"
 fi
 
 sudo sed -i "s/<<USER>>/${INVOKING_USER:-root}/g" "/usr/lib/sysusers.d/firezone-client-tunnel.conf"
