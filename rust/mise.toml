@@ -1,0 +1,9 @@
+[env]
+RUSTUP_TOOLCHAIN="1.91.0"
+
+[tools]
+"rust" = [
+    { version = "1.91.0", components = "clippy,rust-analyzer", targets = "x86_64-unknown-linux-musl,aarch64-linux-android,arm-linux-androideabi,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android,aarch64-apple-darwin,x86_64-apple-darwin,aarch64-apple-ios,x86_64-apple-ios" },
+    { version = "nightly-2025-05-30", components = "rust-src" }, # For eBPF kernel
+    { version = "nightly-2025-09-30" }, # For cargo-udeps and fuzzing.
+]
