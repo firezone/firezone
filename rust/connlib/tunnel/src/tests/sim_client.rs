@@ -627,6 +627,16 @@ impl RefClient {
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
         }
+
+        // TCP connections will automatically re-create connections to Gateways.
+        for r in self
+            .expected_tcp_connections
+            .values()
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.set_resource_online(r);
+        }
     }
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
@@ -700,10 +710,10 @@ impl RefClient {
         &self,
         has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
     ) -> (BTreeMap<ResourceId, ResourceStatus>, BTreeSet<ResourceId>) {
-        let maybe_online_sites = self
+        let resources_with_failed_tcp_connections = self
             .expected_tcp_connections
             .iter()
-            .filter(|((_, _, sport, dport), _)| !has_failed_tcp_connection((*sport, *dport)))
+            .filter(|((_, _, sport, dport), _)| has_failed_tcp_connection((*sport, *dport)))
             .filter_map(|(_, resource)| self.site_for_resource(*resource))
             .flat_map(|site| {
                 self.resources
@@ -726,7 +736,7 @@ impl RefClient {
             })
             .collect();
 
-        (resource_status, maybe_online_sites)
+        (resource_status, resources_with_failed_tcp_connections)
     }
 
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {

@@ -145,8 +145,9 @@ pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimCli
     if expected_status_map != actual_status_map {
         for (resource, expected_status) in expected_status_map {
             match actual_status_map.get(resource) {
-                // For resources with TCP connections, the expected status might be off.
-                // The TCP client sends its own keep-alive's so we cannot always track the internal connection state.
+                // For resources with TCP connections, the expected status might be wrong.
+                // We generally expect them to always be online because the TCP client sends its own keep-alive's.
+                // However, if we have sent an ICMP error back, the client may have given up and therefore it is okay for the site to be in `Unknown` then.
                 Some(&Online)
                     if expected_status == &Unknown && tcp_resources.contains(resource) => {}
                 Some(&Unknown)
