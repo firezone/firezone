@@ -347,6 +347,30 @@ impl ReferenceState {
                 },
             )
             .with_if_not_empty(
+                10,
+                state.resolved_v4_domains_with_icmp_errors(now),
+                |dns_v4_domains| {
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
+                    prop_oneof![
+                        icmp_packet(Just(tunnel_ip4), select(dns_v4_domains.clone())),
+                        udp_packet(Just(tunnel_ip4), select(dns_v4_domains)),
+                    ]
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.resolved_v6_domains_with_icmp_errors(now),
+                |dns_v6_domains| {
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
+                    prop_oneof![
+                        icmp_packet(Just(tunnel_ip6), select(dns_v6_domains.clone()),),
+                        udp_packet(Just(tunnel_ip6), select(dns_v6_domains),),
+                    ]
+                },
+            )
+            .with_if_not_empty(
                 5,
                 (state.all_domains(now), state.reachable_dns_servers()),
                 |(domains, dns_servers)| {
@@ -990,6 +1014,32 @@ impl ReferenceState {
             .resolved_v6_domains()
             .into_iter()
             .filter(|domain| self.tcp_resources.contains_key(domain))
+            .collect()
+    }
+
+    fn resolved_v4_domains_with_icmp_errors(&self, at: Instant) -> Vec<DomainName> {
+        self.client
+            .inner()
+            .resolved_v4_domains()
+            .into_iter()
+            .filter(|d| {
+                self.global_dns_records
+                    .domain_ips_iter(d, at)
+                    .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+            })
+            .collect()
+    }
+
+    fn resolved_v6_domains_with_icmp_errors(&self, at: Instant) -> Vec<DomainName> {
+        self.client
+            .inner()
+            .resolved_v6_domains()
+            .into_iter()
+            .filter(|d| {
+                self.global_dns_records
+                    .domain_ips_iter(d, at)
+                    .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+            })
             .collect()
     }
 
