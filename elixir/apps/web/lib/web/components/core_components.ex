@@ -1528,6 +1528,37 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Renders a logo appropriate for the given directory.
+  """
+
+  attr :directory, :map, default: %{}
+  attr :class, :string, default: "inline w-4 h-4 mr-1"
+
+  def directory_icon(%{directory: "google:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="google" class={@class} />
+    """
+  end
+
+  def directory_icon(%{directory: "entra:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="entra" class={@class} />
+    """
+  end
+
+  def directory_icon(%{directory: "okta:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="okta" class={@class} />
+    """
+  end
+
+  def directory_icon(assigns) do
+    ~H"""
+    <.provider_icon type="firezone" class={@class} />
+    """
+  end
+
+  @doc """
   Renders a logo appropriate for the given provider.
 
   <.provider_icon type={:google} class="w-5 h-5 mr-2" />

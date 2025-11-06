@@ -742,19 +742,19 @@ defmodule Domain.Migrator do
           # Google Workspace
           group.provider_adapter == :google_workspace ->
             domain = get_in(group.provider_adapter_state, ["claims", "hd"])
-            {"g:#{domain}", group.provider_identifier}
+            {"google:#{domain}", group.provider_identifier}
 
           # Okta
           group.provider_adapter == :okta ->
             "https://" <> okta_domain = get_in(group.provider_adapter_state, ["claims", "iss"])
 
-            {"o:#{okta_domain}", group.provider_identifier}
+            {"okta:#{okta_domain}", group.provider_identifier}
 
           # Microsoft Entra
           group.provider_adapter == :microsoft_entra ->
             tenant_id = get_in(group.provider_adapter_state, ["claims", "tid"])
 
-            {"e:#{tenant_id}", group.provider_identifier}
+            {"entra:#{tenant_id}", group.provider_identifier}
 
           # Unknown adapter type - log error and skip
           true ->

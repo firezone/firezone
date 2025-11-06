@@ -780,6 +780,7 @@ defmodule Domain.Repo.Seeds do
           Enum.map(chunk, fn i ->
             base_attrs = %{
               name: "#{Domain.Accounts.generate_unique_slug()}-#{i}",
+              directory: "firezone",
               type: :static,
               created_by: :provider,
               created_by_subject: %{"name" => "Provider", "email" => nil},

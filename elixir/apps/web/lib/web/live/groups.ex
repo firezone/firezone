@@ -1,7 +1,13 @@
 defmodule Web.Groups do
   use Web, :live_view
-  alias Domain.{Actors, Safe}
+
   alias __MODULE__.Query
+
+  alias Domain.{
+    Actors,
+    Safe
+  }
+
   import Ecto.Changeset
 
   def mount(_params, _session, socket) do
@@ -201,7 +207,7 @@ defmodule Web.Groups do
       |> build_attrs_with_memberships_for_add(socket)
 
     group = %Actors.Group{account_id: socket.assigns.subject.account.id}
-    changeset = changeset_with_memberships(group, attrs)
+    changeset = changeset(group, attrs)
 
     case create_group(changeset, socket.assigns.subject) do
       {:ok, _group} ->
@@ -219,7 +225,7 @@ defmodule Web.Groups do
   def handle_event("save", %{"group" => attrs}, socket) do
     if is_editable_group?(socket.assigns.group) do
       attrs = build_attrs_with_memberships(attrs, socket)
-      changeset = changeset_with_memberships(socket.assigns.group, attrs)
+      changeset = changeset(socket.assigns.group, attrs)
 
       case update_group(changeset, socket.assigns.subject) do
         {:ok, _group} ->
@@ -347,82 +353,30 @@ defmodule Web.Groups do
               </h3>
 
               <div class="border border-neutral-200 rounded-lg overflow-hidden">
-                <div
-                  class="p-3 bg-neutral-50 border-b border-neutral-200 relative"
-                  phx-click-away="blur_search"
-                >
-                  <input
-                    type="text"
-                    name={@form[:member_search].name}
-                    value={@form[:member_search].value}
-                    placeholder="Search to add members..."
-                    phx-debounce="300"
-                    phx-focus="focus_search"
-                    autocomplete="off"
-                    data-1p-ignore
-                    class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50 text-neutral-900 text-sm"
-                  />
+                <.member_search_input form={@form} member_search_results={@member_search_results} />
 
-                  <div
-                    :if={@member_search_results != nil}
-                    class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"
-                  >
-                    <button
-                      :for={actor <- @member_search_results}
-                      type="button"
-                      phx-click="add_member"
-                      phx-value-actor_id={actor.id}
-                      class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
-                    >
-                      <div class="text-sm font-medium text-neutral-900">{actor.name}</div>
-                      <div :if={actor.email} class="text-xs text-neutral-500">
-                        {actor.email}
-                      </div>
-                    </button>
-                    <div
-                      :if={@member_search_results == []}
-                      class="px-3 py-4 text-center text-sm text-neutral-500"
-                    >
-                      No members found
-                    </div>
-                  </div>
-                </div>
-
-                <ul
-                  :if={@members_to_add != []}
-                  class="divide-y divide-neutral-200 h-64 overflow-y-auto"
-                >
-                  <li
-                    :for={actor <- @members_to_add}
-                    class="p-3 flex items-center justify-between group"
-                  >
-                    <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-neutral-900 truncate">
-                        {actor.name}
-                      </p>
-                      <p :if={actor.email} class="text-xs text-neutral-500 truncate">
-                        {actor.email}
-                      </p>
-                    </div>
+                <.member_list members={@members_to_add}>
+                  <:badge :let={actor}>
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
+                      {Phoenix.Naming.humanize(actor.type)}
+                    </span>
+                  </:badge>
+                  <:actions :let={actor}>
                     <div class="ml-4 flex items-center gap-2">
                       <button
                         type="button"
                         phx-click="remove_member"
                         phx-value-actor_id={actor.id}
-                        class="flex-shrink-0 text-neutral-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        class="flex-shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
                       >
                         <.icon name="hero-user-minus" class="w-5 h-5" />
                       </button>
                     </div>
-                  </li>
-                </ul>
-
-                <div
-                  :if={@members_to_add == []}
-                  class="flex items-center justify-center h-64 bg-white"
-                >
-                  <p class="text-sm text-neutral-500">No members in this group.</p>
-                </div>
+                  </:actions>
+                  <:empty_message>
+                    No members in this group.
+                  </:empty_message>
+                </.member_list>
               </div>
             </div>
           </div>
@@ -441,25 +395,7 @@ defmodule Web.Groups do
       <:body>
         <div class="space-y-6">
           <div class="flex items-start justify-between gap-4">
-            <div class="flex items-start gap-3 flex-1 min-w-0">
-              <.directory_icon directory={@group.directory} class="w-16 h-16 flex-shrink-0" />
-              <div class="flex-1 min-w-0">
-                <h2 class="text-xl font-semibold text-neutral-900 truncate mb-1">
-                  {@group.name}
-                </h2>
-                <p class="text-sm text-neutral-500">
-                  <%= if is_firezone_directory?(@group) do %>
-                    Last updated: <.relative_datetime datetime={@group.updated_at} />
-                  <% else %>
-                    <%= if @group.last_synced_at do %>
-                      Last synced: <.relative_datetime datetime={@group.last_synced_at} />
-                    <% else %>
-                      Last updated: <.relative_datetime datetime={@group.updated_at} />
-                    <% end %>
-                  <% end %>
-                </p>
-              </div>
-            </div>
+            <.group_header {assigns} />
             <.popover :if={is_editable_group?(@group)} placement="bottom-end" trigger="click">
               <:target>
                 <button
@@ -499,57 +435,22 @@ defmodule Web.Groups do
             <% filtered_actors = filter_members(@group.actors, @show_member_filter) %>
 
             <div class="border border-neutral-200 rounded-lg overflow-hidden">
-              <form
-                phx-change="filter_show_members"
-                class="p-3 bg-neutral-50 border-b border-neutral-200"
-              >
-                <input
-                  type="text"
-                  value={@show_member_filter}
-                  placeholder="Filter members..."
-                  phx-debounce="300"
-                  name="filter"
-                  autocomplete="off"
-                  data-1p-ignore
-                  class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50 text-neutral-900 text-sm"
-                />
-              </form>
+              <.member_filter_input show_member_filter={@show_member_filter} />
 
-              <ul
-                :if={Enum.any?(filtered_actors)}
-                class="divide-y divide-neutral-200 h-64 overflow-y-auto"
-              >
-                <li :for={actor <- filtered_actors} class="p-3 hover:bg-neutral-50">
-                  <div class="flex items-center justify-between">
-                    <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-neutral-900 truncate">
-                        {actor.name}
-                      </p>
-                      <p :if={actor.email} class="text-xs text-neutral-500 truncate">
-                        {actor.email}
-                      </p>
-                    </div>
-                    <div class="ml-4 flex-shrink-0">
-                      <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800">
-                        {actor.type}
-                      </span>
-                    </div>
-                  </div>
-                </li>
-              </ul>
-
-              <div
-                :if={Enum.empty?(filtered_actors)}
-                class="flex items-center justify-center h-64 bg-white"
-              >
-                <p class="text-sm text-neutral-500">
+              <.member_list members={filtered_actors} item_class="p-3 hover:bg-neutral-50 group">
+                <:badge :let={actor}>
+                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
+                    {Phoenix.Naming.humanize(actor.type)}
+                  </span>
+                </:badge>
+                <:empty_message>
                   <%= if String.trim(@show_member_filter) != "" do %>
                     No members match your filter.
                   <% else %>
                     No members in this group.
                   <% end %>
-                </p>
-              </div>
+                </:empty_message>
+              </.member_list>
             </div>
           </div>
         </div>
@@ -571,25 +472,7 @@ defmodule Web.Groups do
       <:body>
         <.form id="group-form" for={@form} phx-change="validate" phx-submit="save">
           <div class="space-y-6">
-            <div class="flex items-start gap-3">
-              <.directory_icon directory={@group.directory} class="w-16 h-16 flex-shrink-0" />
-              <div class="flex-1 min-w-0">
-                <h2 class="text-xl font-semibold text-neutral-900 truncate mb-1">
-                  {@group.name}
-                </h2>
-                <p class="text-sm text-neutral-500">
-                  <%= if is_firezone_directory?(@group) do %>
-                    Last updated: <.relative_datetime datetime={@group.updated_at} />
-                  <% else %>
-                    <%= if @group.last_synced_at do %>
-                      Last synced: <.relative_datetime datetime={@group.last_synced_at} />
-                    <% else %>
-                      Last updated: <.relative_datetime datetime={@group.updated_at} />
-                    <% end %>
-                  <% end %>
-                </p>
-              </div>
-            </div>
+            <.group_header {assigns} />
 
             <.input
               field={@form[:name]}
@@ -609,103 +492,42 @@ defmodule Web.Groups do
               </h3>
 
               <div class="border border-neutral-200 rounded-lg overflow-hidden">
-                <div
-                  class="p-3 bg-neutral-50 border-b border-neutral-200 relative"
-                  phx-click-away="blur_search"
-                >
-                  <input
-                    type="text"
-                    name={@form[:member_search].name}
-                    value={@form[:member_search].value}
-                    placeholder="Search to add members..."
-                    phx-debounce="300"
-                    phx-focus="focus_search"
-                    autocomplete="off"
-                    data-1p-ignore
-                    class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50 text-neutral-900 text-sm"
-                  />
+                <.member_search_input form={@form} member_search_results={@member_search_results} />
 
-                  <div
-                    :if={@member_search_results != nil}
-                    class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"
-                  >
-                    <button
-                      :for={actor <- @member_search_results}
-                      type="button"
-                      phx-click="add_member"
-                      phx-value-actor_id={actor.id}
-                      class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
-                    >
-                      <div class="text-sm font-medium text-neutral-900">{actor.name}</div>
-                      <div :if={actor.email} class="text-xs text-neutral-500">
-                        {actor.email}
-                      </div>
-                    </button>
-                    <div
-                      :if={@member_search_results == []}
-                      class="px-3 py-4 text-center text-sm text-neutral-500"
-                    >
-                      No members found
-                    </div>
-                  </div>
-                </div>
-
-                <ul
-                  :if={all_members != []}
-                  class="divide-y divide-neutral-200 h-64 overflow-y-auto"
-                >
-                  <li
-                    :for={actor <- all_members}
-                    class="p-3 flex items-center justify-between group"
-                  >
-                    <div class="flex-1 min-w-0">
-                      <p class="text-sm font-medium text-neutral-900 truncate">
-                        {actor.name}
-                      </p>
-                      <p :if={actor.email} class="text-xs text-neutral-500 truncate">
-                        {actor.email}
-                      </p>
-                    </div>
+                <.member_list members={all_members}>
+                  <:badge :let={actor}>
+                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
+                      {Phoenix.Naming.humanize(actor.type)}
+                    </span>
+                  </:badge>
+                  <:actions :let={actor}>
                     <div class="ml-4 flex items-center gap-2">
                       <% is_current = is_current_member?(actor, @group)
                       is_to_add = Enum.any?(@members_to_add, &(&1.id == actor.id))
                       is_to_remove = Enum.any?(@members_to_remove, &(&1.id == actor.id)) %>
-                      <span
-                        :if={is_current and not is_to_remove}
-                        class="text-xs text-neutral-500"
-                      >
+                      <span :if={is_current and not is_to_remove} class="text-xs text-neutral-500">
                         Current
                       </span>
-                      <span
-                        :if={is_to_add}
-                        class="text-xs text-green-600 font-medium"
-                      >
+                      <span :if={is_to_add} class="text-xs text-green-600 font-medium">
                         To Add
                       </span>
-                      <span
-                        :if={is_to_remove}
-                        class="text-xs text-red-600 font-medium"
-                      >
+                      <span :if={is_to_remove} class="text-xs text-red-600 font-medium">
                         To Remove
                       </span>
                       <button
                         type="button"
                         phx-click="remove_member"
                         phx-value-actor_id={actor.id}
-                        class="flex-shrink-0 text-neutral-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                        class="flex-shrink-0 text-neutral-400 hover:text-red-600 group-hover:font-bold transition-all"
                       >
                         <.icon name="hero-user-minus" class="w-5 h-5" />
                       </button>
                     </div>
-                  </li>
-                </ul>
-
-                <div
-                  :if={all_members == []}
-                  class="flex items-center justify-center h-64 bg-white"
-                >
-                  <p class="text-sm text-neutral-500">No members in this group.</p>
-                </div>
+                  </:actions>
+                  <:empty_message>
+                    No members in this group.
+                  </:empty_message>
+                </.member_list>
               </div>
             </div>
           </div>
@@ -716,39 +538,149 @@ defmodule Web.Groups do
     """
   end
 
-  attr :directory, :map, default: %{}
-  attr :class, :string, default: "inline w-4 h-4 mr-1"
-
-  defp directory_icon(%{directory: %{"directory" => "g:" <> _directory}} = assigns) do
+  defp group_header(assigns) do
     ~H"""
-    <.provider_icon type="google" class={@class} />
+    <div class="flex items-start gap-3">
+      <.directory_icon directory={@group.directory} class="w-16 h-16 flex-shrink-0" />
+      <div class="flex-1 min-w-0">
+        <h2 class="text-xl font-semibold text-neutral-900 truncate mb-1">
+          {@group.name}
+        </h2>
+        <p class="text-sm text-neutral-500">
+          <%= if is_firezone_directory?(@group.directory) do %>
+            Last updated: <.relative_datetime datetime={@group.updated_at} />
+          <% else %>
+            Last synced: <.relative_datetime datetime={@group.last_synced_at} />
+          <% end %>
+        </p>
+      </div>
+    </div>
     """
   end
 
-  defp directory_icon(%{directory: %{"directory" => "e:" <> _directory}} = assigns) do
+  defp member_search_input(assigns) do
+    assigns = assign_new(assigns, :placeholder, fn -> "Search to add members..." end)
+
     ~H"""
-    <.provider_icon type="entra" class={@class} />
+    <div class="p-3 bg-neutral-50 border-b border-neutral-200 relative" phx-click-away="blur_search">
+      <input
+        type="text"
+        name={@form[:member_search].name}
+        value={@form[:member_search].value}
+        placeholder={@placeholder}
+        phx-debounce="300"
+        phx-focus="focus_search"
+        autocomplete="off"
+        data-1p-ignore
+        class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50 text-neutral-900 text-sm"
+      />
+
+      <div
+        :if={@member_search_results != nil}
+        class="absolute z-10 left-3 right-3 mt-1 bg-white border border-neutral-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+      >
+        <button
+          :for={actor <- @member_search_results}
+          type="button"
+          phx-click="add_member"
+          phx-value-actor_id={actor.id}
+          class="w-full text-left px-3 py-2 hover:bg-accent-50 border-b border-neutral-100 last:border-b-0"
+        >
+          <div class="space-y-0.5">
+            <div class="flex items-start gap-2">
+              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
+                {Phoenix.Naming.humanize(actor.type)}
+              </span>
+              <div class="text-sm font-medium text-neutral-900">{actor.name}</div>
+            </div>
+            <div :if={actor.email} class="text-xs text-neutral-500">
+              {actor.email}
+            </div>
+          </div>
+        </button>
+        <div
+          :if={@member_search_results == []}
+          class="px-3 py-4 text-center text-sm text-neutral-500"
+        >
+          No members found
+        </div>
+      </div>
+    </div>
     """
   end
 
-  defp directory_icon(%{directory: %{"directory" => "o:" <> _directory}} = assigns) do
+  defp member_filter_input(assigns) do
     ~H"""
-    <.provider_icon type="okta" class={@class} />
+    <form phx-change="filter_show_members" class="p-3 bg-neutral-50 border-b border-neutral-200">
+      <input
+        type="text"
+        value={@show_member_filter}
+        placeholder="Filter members..."
+        phx-debounce="300"
+        name="filter"
+        autocomplete="off"
+        data-1p-ignore
+        class="block w-full rounded-lg border-neutral-300 focus:border-accent-400 focus:ring focus:ring-accent-200 focus:ring-opacity-50 text-neutral-900 text-sm"
+      />
+    </form>
     """
   end
 
-  defp directory_icon(assigns) do
+  defp member_list(assigns) do
+    assigns =
+      assigns
+      |> assign_new(:item_class, fn -> "p-3 flex items-center justify-between group" end)
+      |> assign(:has_actions, Map.get(assigns, :actions) != nil)
+
     ~H"""
-    <.provider_icon type="firezone" class={@class} />
+    <ul :if={@members != []} class="divide-y divide-neutral-200 h-64 overflow-y-auto">
+      <li :for={actor <- @members} class={@item_class}>
+        <%= if @has_actions do %>
+          <div class="flex-1 min-w-0 space-y-0.5">
+            <div class="flex items-start gap-2">
+              <%= if Map.get(assigns, :badge) do %>
+                {render_slot(@badge, actor)}
+              <% end %>
+              <p class="text-sm font-medium text-neutral-900 truncate">
+                {actor.name}
+              </p>
+            </div>
+            <p :if={actor.email} class="text-xs text-neutral-500 truncate">
+              {actor.email}
+            </p>
+          </div>
+          {render_slot(@actions, actor)}
+        <% else %>
+          <div class="space-y-0.5">
+            <div class="flex items-start gap-2">
+              <%= if Map.get(assigns, :badge) do %>
+                {render_slot(@badge, actor)}
+              <% end %>
+              <p class="text-sm font-medium text-neutral-900">
+                {actor.name}
+              </p>
+            </div>
+            <p :if={actor.email} class="text-xs text-neutral-500">
+              {actor.email}
+            </p>
+          </div>
+        <% end %>
+      </li>
+    </ul>
+
+    <div :if={@members == []} class="flex items-center justify-center h-64 bg-white">
+      <p class="text-sm text-neutral-500">
+        {render_slot(@empty_message)}
+      </p>
+    </div>
     """
   end
 
-  defp is_firezone_directory?(%{directory: nil}), do: true
-  defp is_firezone_directory?(%{directory: ""}), do: true
+  defp is_firezone_directory?("firezone"), do: true
   defp is_firezone_directory?(_), do: false
 
   defp is_editable_group?(%{name: "Everyone"}), do: false
-  defp is_editable_group?(group), do: is_firezone_directory?(group)
+  defp is_editable_group?(group), do: is_firezone_directory?(group.directory)
 
   defp filter_members(actors, filter) do
     if String.trim(filter) != "" do
@@ -863,26 +795,17 @@ defmodule Web.Groups do
 
   # Changesets
   defp changeset(group, attrs) do
-    cast(group, attrs, [:name])
-    |> Actors.Group.changeset()
-  end
-
-  defp changeset_with_memberships(group, attrs) do
     group
     |> cast(attrs, [:name])
     |> cast_assoc(:memberships,
       with: fn membership, attrs ->
-        membership_changeset(membership, attrs, group.account_id)
+        membership
+        |> cast(attrs, [:actor_id])
+        |> validate_required([:actor_id])
+        |> put_change(:account_id, group.account_id)
       end
     )
     |> Actors.Group.changeset()
-  end
-
-  defp membership_changeset(membership, attrs, account_id) do
-    membership
-    |> cast(attrs, [:actor_id])
-    |> validate_required([:actor_id])
-    |> put_change(:account_id, account_id)
   end
 
   # Database operations

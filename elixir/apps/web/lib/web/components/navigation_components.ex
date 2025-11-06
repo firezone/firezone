@@ -2,6 +2,7 @@ defmodule Web.NavigationComponents do
   use Phoenix.Component
   use Web, :verified_routes
   import Web.CoreComponents
+  alias Phoenix.LiveView.JS
 
   attr :subject, :any, required: true
 
@@ -165,14 +166,18 @@ defmodule Web.NavigationComponents do
   def sidebar_item(assigns) do
     ~H"""
     <li>
-      <.link navigate={@navigate} class={~w[
+      <.link
+        navigate={@navigate}
+        phx-click={JS.dispatch("click", to: "[data-drawer-toggle='drawer-navigation']")}
+        class={~w[
       flex items-center px-4 py-2
       text-base
       rounded
       #{sidebar_item_active?(@current_path, @navigate) && @active_class}
       text-neutral-700
       hover:bg-neutral-100 hover:text-neutral-900
-      ]}>
+      ]}
+      >
         <.icon name={@icon} class={~w[
           w-5 h-5
         ]} />
@@ -231,12 +236,16 @@ defmodule Web.NavigationComponents do
       </button>
       <ul id={"dropdown-#{@id}"} class={if @dropdown_hidden, do: "hidden", else: ""}>
         <li :for={item <- @item}>
-          <.link navigate={item.navigate} class={~w[
+          <.link
+            navigate={item.navigate}
+            phx-click={JS.dispatch("click", to: "[data-drawer-toggle='drawer-navigation']")}
+            class={~w[
               flex items-center p-2 pl-12 w-full group rounded
               text-lg text-neutral-700
               #{String.starts_with?(@current_path, item.navigate) && @active_class}
               hover:text-neutral-900
-              hover:bg-neutral-100]}>
+              hover:bg-neutral-100]}
+          >
             {render_slot(item)}
           </.link>
         </li>
