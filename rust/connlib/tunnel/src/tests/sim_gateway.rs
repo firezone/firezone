@@ -11,6 +11,7 @@ use crate::{GatewayState, IpConfig};
 use anyhow::{Result, bail};
 use chrono::{DateTime, Utc};
 use connlib_model::{GatewayId, RelayId};
+use dns_types::DomainName;
 use ip_packet::{IcmpEchoHeader, Icmpv4Type, Icmpv6Type, IpPacket};
 use proptest::prelude::*;
 use snownet::Transmit;
@@ -27,10 +28,13 @@ pub(crate) struct SimGateway {
     pub(crate) sut: GatewayState,
 
     /// The received ICMP packets, indexed by our custom ICMP payload.
-    pub(crate) received_icmp_requests: BTreeMap<u64, IpPacket>,
+    pub(crate) received_icmp_requests: BTreeMap<u64, (Instant, IpPacket)>,
 
     /// The received UDP packets, indexed by our custom UDP payload.
-    pub(crate) received_udp_requests: BTreeMap<u64, IpPacket>,
+    pub(crate) received_udp_requests: BTreeMap<u64, (Instant, IpPacket)>,
+
+    /// The times we resolved DNS records for a domain.
+    pub(crate) dns_query_timestamps: BTreeMap<DomainName, Vec<Instant>>,
 
     site_specific_dns_records: DnsRecords,
     udp_dns_server_resources: BTreeMap<SocketAddr, UdpDnsServerResource>,
@@ -55,6 +59,7 @@ impl SimGateway {
             udp_dns_server_resources: Default::default(),
             tcp_dns_server_resources: Default::default(),
             received_udp_requests: Default::default(),
+            dns_query_timestamps: Default::default(),
             tcp_resources: tcp_resources
                 .into_iter()
                 .map(|address| {
@@ -194,7 +199,7 @@ impl SimGateway {
             let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
-                .insert(packet_id, packet.clone());
+                .insert(packet_id, (now, packet.clone()));
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
@@ -204,7 +209,7 @@ impl SimGateway {
             let packet_id = u64::from_be_bytes(*icmp.payload().first_chunk().unwrap());
             tracing::debug!(%packet_id, "Received ICMP request");
             self.received_icmp_requests
-                .insert(packet_id, packet.clone());
+                .insert(packet_id, (now, packet.clone()));
             return self.handle_icmp_request(&packet, echo, icmp.payload(), icmp_error, now);
         }
 
@@ -234,7 +239,7 @@ impl SimGateway {
         }
 
         if let Some(reply) = icmp_error.or_else(|| echo_reply(packet.clone())) {
-            self.request_received(&packet);
+            self.request_received(&packet, now);
             let transmit = self.sut.handle_tun_input(reply, now).unwrap()?;
 
             return Some(transmit);
@@ -257,11 +262,12 @@ impl SimGateway {
         )
     }
 
-    fn request_received(&mut self, packet: &IpPacket) {
+    fn request_received(&mut self, packet: &IpPacket, now: Instant) {
         if let Some(udp) = packet.as_udp() {
             let packet_id = u64::from_be_bytes(*udp.payload().first_chunk().unwrap());
             tracing::debug!(%packet_id, "Received UDP request");
-            self.received_udp_requests.insert(packet_id, packet.clone());
+            self.received_udp_requests
+                .insert(packet_id, (now, packet.clone()));
         }
     }
 

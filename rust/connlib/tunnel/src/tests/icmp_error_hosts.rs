@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::IpAddr,
+    time::Instant,
 };
 
 use proptest::{prelude::*, sample};
@@ -21,9 +22,10 @@ impl IcmpErrorHosts {
 /// Samples a subset of the provided DNS records which we will generate ICMP errors.
 pub(crate) fn icmp_error_hosts(
     dns_resource_records: DnsRecords,
+    now: Instant,
 ) -> impl Strategy<Value = IcmpErrorHosts> {
     // First, deduplicate all IPs.
-    let unique_ips = dns_resource_records.ips_iter().collect::<BTreeSet<_>>();
+    let unique_ips = dns_resource_records.ips_iter(now).collect::<BTreeSet<_>>();
     let ips = Vec::from_iter(unique_ips);
 
     Just(ips)
@@ -31,7 +33,7 @@ pub(crate) fn icmp_error_hosts(
         .prop_flat_map(|ips| {
             let num_ips = ips.len();
 
-            sample::subsequence(ips, 0..num_ips) // Pick a subset of IPs.
+            sample::subsequence(ips, num_ips / 2) // Pick a subset of IPs.
         })
         .prop_flat_map(|ips| {
             ips.into_iter()

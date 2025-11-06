@@ -5,6 +5,7 @@ use super::{
     transition::{Destination, ReplyTo},
 };
 use connlib_model::GatewayId;
+use dns_types::DomainName;
 use ip_packet::IpPacket;
 use itertools::Itertools;
 use std::{
@@ -13,6 +14,7 @@ use std::{
     marker::PhantomData,
     net::{IpAddr, SocketAddr},
     sync::atomic::{AtomicBool, Ordering},
+    time::Instant,
 };
 use tracing::{Level, Span, Subscriber};
 use tracing_subscriber::Layer;
@@ -33,10 +35,15 @@ pub(crate) fn assert_icmp_packets_properties(
         .iter()
         .map(|(g, s)| (*g, &s.received_icmp_requests))
         .collect();
+    let dns_query_timestamps = sim_gateways
+        .iter()
+        .map(|(g, s)| (*g, &s.dns_query_timestamps))
+        .collect();
 
     assert_packets_properties(
         ref_client,
         &sim_client.sent_icmp_requests,
+        &dns_query_timestamps,
         &received_icmp_requests,
         &ref_client.expected_icmp_handshakes,
         &sim_client.received_icmp_replies,
@@ -62,10 +69,15 @@ pub(crate) fn assert_udp_packets_properties(
         .iter()
         .map(|(g, s)| (*g, &s.received_udp_requests))
         .collect();
+    let dns_query_timestamps = sim_gateways
+        .iter()
+        .map(|(g, s)| (*g, &s.dns_query_timestamps))
+        .collect();
 
     assert_packets_properties(
         ref_client,
         &sim_client.sent_udp_requests,
+        &dns_query_timestamps,
         &received_udp_requests,
         &ref_client.expected_udp_handshakes,
         &sim_client.received_udp_replies,
@@ -133,8 +145,9 @@ pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimCli
     if expected_status_map != actual_status_map {
         for (resource, expected_status) in expected_status_map {
             match actual_status_map.get(resource) {
-                // For resources with TCP connections, the expected status might be off.
-                // The TCP client sends its own keep-alive's so we cannot always track the internal connection state.
+                // For resources with TCP connections, the expected status might be wrong.
+                // We generally expect them to always be online because the TCP client sends its own keep-alive's.
+                // However, if we have sent an ICMP error back, the client may have given up and therefore it is okay for the site to be in `Unknown` then.
                 Some(&Online)
                     if expected_status == &Unknown && tcp_resources.contains(resource) => {}
                 Some(&Unknown)
@@ -161,7 +174,8 @@ pub(crate) fn assert_resource_status(ref_client: &RefClient, sim_client: &SimCli
 fn assert_packets_properties<T, U>(
     ref_client: &RefClient,
     sent_requests: &HashMap<(T, U), IpPacket>,
-    received_requests: &BTreeMap<GatewayId, &BTreeMap<u64, IpPacket>>,
+    dns_query_timestamps: &BTreeMap<GatewayId, &BTreeMap<DomainName, Vec<Instant>>>,
+    received_requests: &BTreeMap<GatewayId, &BTreeMap<u64, (Instant, IpPacket)>>,
     expected_handshakes: &BTreeMap<GatewayId, BTreeMap<u64, (Destination, T, U)>>,
     received_replies: &BTreeMap<(T, U), IpPacket>,
     packet_protocol: &str,
@@ -182,13 +196,14 @@ fn assert_packets_properties<T, U>(
         tracing::error!(target: "assertions", ?unexpected_replies, ?expected_handshakes, ?received_replies, "❌ Unexpected {packet_protocol} replies on client");
     }
 
-    let mut mapping = HashMap::new();
+    let mut mappings = HashMap::new();
 
     // Assert properties of the individual handshakes per gateway.
     // Due to connlib's implementation of NAT64, we cannot match the packets sent by the client to the packets arriving at the resource by port or ICMP identifier.
     // Thus, we rely on a custom u64 payload attached to all packets to uniquely identify every individual packet.
     for (gateway, expected_handshakes) in expected_handshakes {
         let received_requests = received_requests.get(gateway).unwrap();
+        let dns_query_timestamps = dns_query_timestamps.get(gateway).unwrap();
 
         let mut num_expected_handshakes = expected_handshakes.len();
 
@@ -205,7 +220,8 @@ fn assert_packets_properties<T, U>(
             };
             assert_correct_src_and_dst_ips(client_sent_request, client_received_reply);
 
-            let Some(gateway_received_request) = received_requests.get(payload) else {
+            let Some((packet_sent_at, gateway_received_request)) = received_requests.get(payload)
+            else {
                 if client_received_reply
                     .icmp_error()
                     .ok()
@@ -234,16 +250,38 @@ fn assert_packets_properties<T, U>(
                     assert_destination_is_cdir_resource(gateway_received_request, resource_dst)
                 }
                 Destination::DomainName { name, .. } => {
+                    let Some(query_timestamps) = dns_query_timestamps.get(name) else {
+                        tracing::error!(%name, "Should have resolved domain at least once");
+                        continue;
+                    };
+
+                    // To correct assert whether the packet was routed to the correct IP, we need to find the timestamp of the DNS query closest to the packet timestamp.
+                    // In other words: Packets should always use the IPs that were most recently resolved when they were sent.
+                    let Some(dns_record_snapshot) = query_timestamps
+                        .iter()
+                        .filter(|query_timestamp| *query_timestamp <= packet_sent_at)
+                        .max()
+                    else {
+                        tracing::error!(%name, "Should have a relevant query timestamp");
+                        continue;
+                    };
+
+                    // Split the proxy IP mapping by DNS record snapshot.
+                    //
+                    // When we re-resolve DNS, the mapping is allowed to change.
+                    let mapping = mappings.entry(dns_record_snapshot).or_default();
+
                     assert_destination_is_dns_resource(
                         gateway_received_request,
                         global_dns_records,
                         name,
+                        *dns_record_snapshot,
                     );
 
                     assert_proxy_ip_mapping_is_stable(
                         client_sent_request,
                         gateway_received_request,
-                        &mut mapping,
+                        mapping,
                     )
                 }
             }
@@ -415,10 +453,11 @@ fn assert_destination_is_dns_resource(
     gateway_received_request: &IpPacket,
     global_dns_records: &DnsRecords,
     domain: &dns_types::DomainName,
+    at: Instant,
 ) {
     let actual = gateway_received_request.destination();
     let possible_resource_ips = global_dns_records
-        .domain_ips_iter(domain)
+        .domain_ips_iter(domain, at)
         .collect::<Vec<_>>();
 
     if !possible_resource_ips.contains(&actual) {

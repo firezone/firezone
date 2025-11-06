@@ -129,26 +129,17 @@ impl ClientOnGateway {
                 .cycle(),
         );
 
-        let mut ip_maps = ipv4_maps.chain(ipv6_maps);
+        // Clear out all current translations for these proxy IPs.
+        for proxy_ip in proxy_ips.iter() {
+            self.permanent_translations.remove(proxy_ip);
+        }
 
-        loop {
-            let Some(either_or_both) = ip_maps.next() else {
-                break;
-            };
-
+        for either_or_both in ipv4_maps.chain(ipv6_maps) {
             let (proxy_ip, maybe_real_ip) = match either_or_both {
                 EitherOrBoth::Both(proxy_ip, real_ip) => (proxy_ip, Some(real_ip)),
                 EitherOrBoth::Left(proxy_ip) => (proxy_ip, None),
                 EitherOrBoth::Right(_) => break,
             };
-
-            if let Some(state) = self.permanent_translations.get(proxy_ip)
-                && self.nat_table.has_entry_for_inside(*proxy_ip)
-                && state.resolved_ip != maybe_real_ip
-            {
-                tracing::debug!(%name, %proxy_ip, new_real_ip = ?maybe_real_ip, current_real_ip = ?state.resolved_ip, "Skipping DNS resource NAT entry because we have open NAT sessions for it");
-                continue;
-            }
 
             tracing::debug!(%name, %proxy_ip, real_ip = ?maybe_real_ip);
 
@@ -1099,43 +1090,81 @@ mod tests {
         )
         .unwrap();
 
-        let request = ip_packet::make::udp_packet(
-            client_tun_ipv4(),
-            proxy_ip1(),
-            1,
-            foo_allowed_port(),
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
-        )
-        .unwrap();
+        {
+            let request = ip_packet::make::udp_packet(
+                client_tun_ipv4(),
+                proxy_ip1(),
+                1,
+                foo_allowed_port(),
+                vec![0, 0, 0, 0, 0, 0, 0, 0],
+            )
+            .unwrap();
 
-        let result = peer.translate_outbound(request.clone(), now).unwrap();
+            let result = peer.translate_outbound(request.clone(), now).unwrap();
 
-        assert!(matches!(result, TranslateOutboundResult::Send(_)));
+            assert!(matches!(result, TranslateOutboundResult::Send(_)));
 
-        peer.setup_nat(
-            foo_name().parse().unwrap(),
-            foo_resource_id(),
-            BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
-            BTreeSet::from([proxy_ip1().into(), proxy_ip2().into()]),
-        )
-        .unwrap();
+            peer.setup_nat(
+                foo_name().parse().unwrap(),
+                foo_resource_id(),
+                BTreeSet::from([foo_real_ip2().into()]), // Setting up with a new IP!
+                BTreeSet::from([proxy_ip1().into(), proxy_ip2().into()]),
+            )
+            .unwrap();
 
-        let result = peer.translate_outbound(request, now).unwrap();
+            let result = peer.translate_outbound(request, now).unwrap();
 
-        assert!(matches!(result, TranslateOutboundResult::Send(_)));
+            assert!(matches!(result, TranslateOutboundResult::Send(_)));
 
-        let response = ip_packet::make::udp_packet(
-            foo_real_ip1(),
-            client_tun_ipv4(),
-            foo_allowed_port(),
-            1,
-            vec![0, 0, 0, 0, 0, 0, 0, 0],
-        )
-        .unwrap();
+            let response = ip_packet::make::udp_packet(
+                foo_real_ip1(),
+                client_tun_ipv4(),
+                foo_allowed_port(),
+                1,
+                vec![0, 0, 0, 0, 0, 0, 0, 0],
+            )
+            .unwrap();
 
-        let response = peer.translate_inbound(response, now).unwrap();
+            let response = peer.translate_inbound(response, now).unwrap();
 
-        assert!(response.is_some());
+            assert!(response.is_some());
+        }
+
+        {
+            let request = ip_packet::make::udp_packet(
+                client_tun_ipv4(),
+                proxy_ip1(),
+                2, // Using a new source port
+                foo_allowed_port(),
+                vec![0, 0, 0, 0, 0, 0, 0, 0],
+            )
+            .unwrap();
+
+            let result = peer.translate_outbound(request, now).unwrap();
+
+            let TranslateOutboundResult::Send(outside_packet) = result else {
+                panic!("Wrong result");
+            };
+
+            assert_eq!(
+                outside_packet.destination(),
+                foo_real_ip2(),
+                "Request with a new source port should use new IP"
+            );
+
+            let response = ip_packet::make::udp_packet(
+                foo_real_ip2(),
+                client_tun_ipv4(),
+                foo_allowed_port(),
+                2,
+                vec![0, 0, 0, 0, 0, 0, 0, 0],
+            )
+            .unwrap();
+
+            let response = peer.translate_inbound(response, now).unwrap();
+
+            assert!(response.is_some());
+        }
     }
 
     #[test]

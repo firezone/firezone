@@ -15,22 +15,24 @@ use prop::sample;
 use proptest::{collection, prelude::*};
 use std::iter;
 use std::num::NonZeroU16;
+use std::time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
 
-pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
+pub(crate) fn global_dns_records(at: Instant) -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
         domain_name(2..4),
-        collection::btree_set(dns_record(), 1..6),
+        collection::btree_set(dns_record(), 1..6)
+            .prop_map(move |records| BTreeMap::from([(at, records)])),
         0..5,
     )
     .prop_map_into()
 }
 
-fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
+pub(crate) fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
     prop_oneof![
         3 => non_reserved_ip().prop_map(dns_types::records::ip),
         1 => collection::vec(txt_record(), 6..=10)
@@ -141,6 +143,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
 pub(crate) fn tcp_resources(
     dns_records: DnsRecords,
     imcp_error_hosts: IcmpErrorHosts,
+    at: Instant,
 ) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<SocketAddr>>> {
     let all_domains = dns_records.domains_iter().collect::<Vec<_>>();
 
@@ -153,7 +156,7 @@ pub(crate) fn tcp_resources(
             .into_iter()
             .filter(|(domain, _)| {
                 dns_records
-                    .domain_ips_iter(domain)
+                    .domain_ips_iter(domain, at)
                     .all(|ip| imcp_error_hosts.icmp_error_for_ip(ip).is_none())
             })
             .map({
@@ -161,7 +164,7 @@ pub(crate) fn tcp_resources(
 
                 move |(domain, port)| {
                     let addresses = dns_records
-                        .domain_ips_iter(&domain)
+                        .domain_ips_iter(&domain, at)
                         .map(|address| SocketAddr::new(address, port.get()))
                         .collect::<BTreeSet<_>>();
 
@@ -311,6 +314,7 @@ pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<OwnedRecordData>>
 pub(crate) fn subdomain_records(
     base: String,
     subdomains: impl Strategy<Value = String>,
+    at: Instant,
 ) -> impl Strategy<Value = DnsRecords> {
     collection::hash_map(subdomains, resolved_ips(), 1..4).prop_map(move |subdomain_ips| {
         subdomain_ips
@@ -318,7 +322,7 @@ pub(crate) fn subdomain_records(
             .map(|(label, ips)| {
                 let domain = format!("{label}.{base}");
 
-                (domain.parse().unwrap(), ips)
+                (domain.parse().unwrap(), BTreeMap::from([(at, ips)]))
             })
             .collect()
     })

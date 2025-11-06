@@ -77,10 +77,11 @@ impl Client {
         // TODO: Upstream ICMP error handling to `smoltcp`.
         if let Ok(Some((failed_packet, _))) = packet.icmp_error()
             && let Layer4Protocol::Tcp { dst, .. } = failed_packet.layer4_protocol()
-            && let Some(handle) = self
-                .sockets_by_remote
-                .get(&SocketAddr::new(failed_packet.dst(), dst))
+            && let socket = SocketAddr::new(failed_packet.dst(), dst)
+            && let Some(handle) = self.sockets_by_remote.get(&socket)
         {
+            tracing::debug!(%socket, "Received ICMP error");
+
             self.sockets.get_mut::<l3_tcp::Socket>(*handle).abort();
         }
 

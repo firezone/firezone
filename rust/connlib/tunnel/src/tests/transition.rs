@@ -3,7 +3,7 @@ use crate::{
     proptest::{host_v4, host_v6},
 };
 use connlib_model::{RelayId, ResourceId, Site};
-use dns_types::{DomainName, RecordType};
+use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 
 use super::{
@@ -14,7 +14,7 @@ use crate::messages::DnsServer;
 use prop::collection;
 use proptest::{prelude::*, sample};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
 };
@@ -102,6 +102,12 @@ pub(crate) enum Transition {
 
     /// De-authorize access to a resource whilst the Gateway is network-partitioned from the portal.
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+
+    /// De-authorize access to a resource whilst the Gateway is network-partitioned from the portal.
+    UpdateDnsRecords {
+        domain: DomainName,
+        records: BTreeSet<OwnedRecordData>,
+    },
 }
 
 #[derive(Debug, Clone)]

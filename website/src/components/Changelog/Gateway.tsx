@@ -26,6 +26,10 @@ export default function Gateway() {
         <ChangeItem pull="10620">
           Adds a `--log-format` CLI option to output logs as JSON.
         </ChangeItem>
+        <ChangeItem pull="10796">
+          Fixes an issue where packets for DNS resources would be routed to
+          stale IPs after DNS record changes.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.4.17" date={new Date("2025-10-16")}>
         <ChangeItem pull="10367">

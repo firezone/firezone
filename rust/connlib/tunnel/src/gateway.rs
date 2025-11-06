@@ -738,4 +738,8 @@ impl ResolveDnsRequest {
     pub fn domain(&self) -> &DomainName {
         &self.domain
     }
+
+    pub fn client(&self) -> ClientId {
+        self.client
+    }
 }

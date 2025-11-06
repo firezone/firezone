@@ -627,6 +627,16 @@ impl RefClient {
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
         }
+
+        // TCP connections will automatically re-create connections to Gateways.
+        for r in self
+            .expected_tcp_connections
+            .values()
+            .copied()
+            .collect::<Vec<_>>()
+        {
+            self.set_resource_online(r);
+        }
     }
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
@@ -643,36 +653,36 @@ impl RefClient {
     pub(crate) fn add_cidr_resource(&mut self, r: CidrResource) {
         let address = r.address;
         let r = Resource::Cidr(r);
+        let rid = r.id();
 
-        if let Some(existing) = self
-            .resources
-            .iter()
-            .find(|existing| existing.id() == r.id())
+        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
             && (existing.has_different_address(&r) || existing.has_different_site(&r))
         {
             self.remove_resource(&existing.id());
         }
 
-        self.resources.push(r.clone());
+        self.resources.push(r);
         self.cidr_resources = self.recalculate_cidr_routes();
 
         match address {
             IpNetwork::V4(v4) => {
-                self.ipv4_routes.insert(r.id(), v4);
+                self.ipv4_routes.insert(rid, v4);
             }
             IpNetwork::V6(v6) => {
-                self.ipv6_routes.insert(r.id(), v6);
+                self.ipv6_routes.insert(rid, v6);
             }
+        }
+
+        if self.expected_tcp_connections.values().contains(&rid) {
+            self.set_resource_online(rid);
         }
     }
 
     pub(crate) fn add_dns_resource(&mut self, r: DnsResource) {
         let r = Resource::Dns(r);
+        let rid = r.id();
 
-        if let Some(existing) = self
-            .resources
-            .iter()
-            .find(|existing| existing.id() == r.id())
+        if let Some(existing) = self.resources.iter().find(|existing| existing.id() == rid)
             && (existing.has_different_address(&r)
                 || existing.has_different_ip_stack(&r)
                 || existing.has_different_site(&r))
@@ -681,6 +691,10 @@ impl RefClient {
         }
 
         self.resources.push(r);
+
+        if self.expected_tcp_connections.values().contains(&rid) {
+            self.set_resource_online(rid);
+        }
     }
 
     /// Re-adds all resources in the order they have been initially added.
@@ -700,10 +714,10 @@ impl RefClient {
         &self,
         has_failed_tcp_connection: impl Fn((SPort, DPort)) -> bool,
     ) -> (BTreeMap<ResourceId, ResourceStatus>, BTreeSet<ResourceId>) {
-        let maybe_online_sites = self
+        let resources_with_failed_tcp_connections = self
             .expected_tcp_connections
             .iter()
-            .filter(|((_, _, sport, dport), _)| !has_failed_tcp_connection((*sport, *dport)))
+            .filter(|((_, _, sport, dport), _)| has_failed_tcp_connection((*sport, *dport)))
             .filter_map(|(_, resource)| self.site_for_resource(*resource))
             .flat_map(|site| {
                 self.resources
@@ -726,7 +740,7 @@ impl RefClient {
             })
             .collect();
 
-        (resource_status, maybe_online_sites)
+        (resource_status, resources_with_failed_tcp_connections)
     }
 
     pub(crate) fn tunnel_ip_for(&self, dst: IpAddr) -> IpAddr {
@@ -1095,8 +1109,9 @@ impl RefClient {
     pub(crate) fn resolved_ip4_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
+        at: Instant,
     ) -> Vec<Ipv4Addr> {
-        self.resolved_ips_for_non_resources(global_dns_records)
+        self.resolved_ips_for_non_resources(global_dns_records, at)
             .filter_map(|ip| match ip {
                 IpAddr::V4(v4) => Some(v4),
                 IpAddr::V6(_) => None,
@@ -1107,8 +1122,9 @@ impl RefClient {
     pub(crate) fn resolved_ip6_for_non_resources(
         &self,
         global_dns_records: &DnsRecords,
+        at: Instant,
     ) -> Vec<Ipv6Addr> {
-        self.resolved_ips_for_non_resources(global_dns_records)
+        self.resolved_ips_for_non_resources(global_dns_records, at)
             .filter_map(|ip| match ip {
                 IpAddr::V6(v6) => Some(v6),
                 IpAddr::V4(_) => None,
@@ -1119,13 +1135,14 @@ impl RefClient {
     fn resolved_ips_for_non_resources<'a>(
         &'a self,
         global_dns_records: &'a DnsRecords,
+        at: Instant,
     ) -> impl Iterator<Item = IpAddr> + 'a {
         self.dns_records
             .iter()
-            .filter_map(|(domain, _)| {
+            .filter_map(move |(domain, _)| {
                 self.dns_resource_by_domain(domain)
                     .is_none()
-                    .then_some(global_dns_records.domain_ips_iter(domain))
+                    .then_some(global_dns_records.domain_ips_iter(domain, at))
             })
             .flatten()
     }

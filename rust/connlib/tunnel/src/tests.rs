@@ -1,5 +1,6 @@
 use crate::tests::{flux_capacitor::FluxCapacitor, sut::TunnelTest};
 use assertions::PanicOnErrorEvents;
+use chrono::Utc;
 use core::fmt;
 use proptest::{
     sample::SizeRange,
@@ -8,7 +9,10 @@ use proptest::{
 };
 use proptest_state_machine::Sequential;
 use reference::ReferenceState;
-use std::sync::atomic::{self, AtomicU32};
+use std::{
+    sync::atomic::{self, AtomicU32},
+    time::Instant,
+};
 use tracing_subscriber::{
     EnvFilter, Layer, layer::SubscriberExt as _, util::SubscriberInitExt as _,
 };
@@ -46,20 +50,27 @@ fn tunnel_test() {
     let _ = std::fs::remove_dir_all("testcases");
     let _ = std::fs::create_dir_all("testcases");
 
+    let now = Instant::now();
+    let utc_now = Utc::now();
+    let flux_capacitor = FluxCapacitor::new(now, utc_now);
+
     let test_runner = &mut TestRunner::new(config);
     let strategy = Sequential::new(
         SizeRange::new(5..=15),
-        ReferenceState::initial_state,
+        move || ReferenceState::initial_state(now),
         ReferenceState::is_valid_transition,
-        ReferenceState::transitions,
-        ReferenceState::apply,
+        move |state| ReferenceState::transitions(state, now),
+        {
+            let flux_capacitor = flux_capacitor.clone();
+
+            move |state, transition| ReferenceState::apply(state, transition, flux_capacitor.now())
+        },
     );
 
     let result = test_runner.run(
         &strategy,
         |(mut ref_state, transitions, mut seen_counter)| {
             let test_index = test_index.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            let flux_capacitor = FluxCapacitor::default();
 
             let _guard = init_logging(flux_capacitor.clone(), test_index);
 
@@ -78,7 +89,7 @@ fn tunnel_test() {
 
             println!("Running test case {test_index:04} with {num_transitions:02} transitions");
 
-            let mut sut = TunnelTest::init_test(&ref_state, flux_capacitor);
+            let mut sut = TunnelTest::init_test(&ref_state, flux_capacitor.clone());
 
             // Check the invariants on the initial state
             TunnelTest::check_invariants(&sut, &ref_state);
@@ -99,7 +110,7 @@ fn tunnel_test() {
                 );
 
                 // Apply the transition on the states
-                ref_state = ReferenceState::apply(ref_state, transition);
+                ref_state = ReferenceState::apply(ref_state, transition, flux_capacitor.now());
                 sut = TunnelTest::apply(sut, &ref_state, transition.clone());
 
                 // Check the invariants after the transition is applied
@@ -129,9 +140,11 @@ fn tunnel_test() {
 
 #[test]
 fn reference_state_is_deterministic() {
+    let now = Instant::now();
+
     for n in 0..1000 {
-        let state1 = sample_from_strategy(n, ReferenceState::initial_state());
-        let state2 = sample_from_strategy(n, ReferenceState::initial_state());
+        let state1 = sample_from_strategy(n, ReferenceState::initial_state(now));
+        let state2 = sample_from_strategy(n, ReferenceState::initial_state(now));
 
         assert_eq!(format!("{state1:?}"), format!("{state2:?}"));
     }
@@ -139,10 +152,12 @@ fn reference_state_is_deterministic() {
 
 #[test]
 fn transitions_are_deterministic() {
+    let now = Instant::now();
+
     for n in 0..1000 {
-        let state = sample_from_strategy(n, ReferenceState::initial_state());
-        let transitions1 = sample_from_strategy(n, ReferenceState::transitions(&state));
-        let transitions2 = sample_from_strategy(n, ReferenceState::transitions(&state));
+        let state = sample_from_strategy(n, ReferenceState::initial_state(now));
+        let transitions1 = sample_from_strategy(n, ReferenceState::transitions(&state, now));
+        let transitions2 = sample_from_strategy(n, ReferenceState::transitions(&state, now));
 
         assert_eq!(format!("{transitions1:?}"), format!("{transitions2:?}"));
     }

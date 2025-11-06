@@ -35,7 +35,7 @@ impl TcpDnsServerResource {
     pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
         self.server.handle_timeout(now);
         while let Some(query) = self.server.poll_queries() {
-            let response = handle_dns_query(&query.message, global_dns_records);
+            let response = handle_dns_query(&query.message, global_dns_records, now);
 
             self.server
                 .send_message(query.local, query.remote, response)
@@ -53,12 +53,12 @@ impl UdpDnsServerResource {
         self.inbound_packets.push_back(packet);
     }
 
-    pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, _: Instant) {
+    pub fn handle_timeout(&mut self, global_dns_records: &DnsRecords, now: Instant) {
         while let Some(packet) = self.inbound_packets.pop_front() {
             let udp = packet.as_udp().unwrap();
             let query = dns_types::Query::parse(udp.payload()).unwrap();
 
-            let response = handle_dns_query(&query, global_dns_records);
+            let response = handle_dns_query(&query, global_dns_records, now);
 
             self.outbound_packets.push_back(
                 ip_packet::make::udp_packet(
@@ -81,13 +81,14 @@ impl UdpDnsServerResource {
 fn handle_dns_query(
     query: &dns_types::Query,
     global_dns_records: &DnsRecords,
+    at: Instant,
 ) -> dns_types::Response {
     const TTL: u32 = 1; // We deliberately chose a short TTL so we don't have to model the DNS cache in these tests.
 
     let domain = query.domain().to_vec();
 
     let records = global_dns_records
-        .domain_records_iter(&domain)
+        .domain_records_iter(&domain, at)
         .filter(|r| r.rtype() == query.qtype())
         .map(|rdata| (domain.clone(), TTL, rdata));
 

@@ -12,8 +12,10 @@ use dns_types::{DomainName, RecordType};
 use ip_network::{Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample::select;
+use proptest::collection::btree_set;
 use proptest::{prelude::*, sample};
 use std::net::{Ipv4Addr, Ipv6Addr};
+use std::time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet, HashSet},
     fmt, iter,
@@ -53,14 +55,14 @@ pub(crate) struct ReferenceState {
 /// Care has to be taken that we don't implement things in a buggy way here.
 /// After all, if your test has bugs, it won't catch any in the actual implementation.
 impl ReferenceState {
-    pub(crate) fn initial_state() -> BoxedStrategy<Self> {
+    pub(crate) fn initial_state(start: Instant) -> BoxedStrategy<Self> {
         stub_portal()
-            .prop_flat_map(|portal| {
-                let gateways = portal.gateways();
-                let dns_resource_records = portal.dns_resource_records();
+            .prop_flat_map(move |portal| {
+                let gateways = portal.gateways(start);
+                let dns_resource_records = portal.dns_resource_records(start);
                 let client = portal.client(system_dns_servers(), upstream_dns_servers());
                 let relays = relays(relay_id());
-                let global_dns_records = global_dns_records(); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
+                let global_dns_records = global_dns_records(start); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
 
                 (
@@ -74,7 +76,7 @@ impl ReferenceState {
                 )
             })
             .prop_flat_map(
-                |(
+                move |(
                     client,
                     gateways,
                     portal,
@@ -88,7 +90,7 @@ impl ReferenceState {
                         Just(gateways),
                         Just(portal),
                         Just(dns_resource_records.clone()),
-                        icmp_error_hosts(dns_resource_records),
+                        icmp_error_hosts(dns_resource_records, start),
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
@@ -96,7 +98,7 @@ impl ReferenceState {
                 },
             )
             .prop_flat_map(
-                |(
+                move |(
                     client,
                     gateways,
                     portal,
@@ -112,7 +114,7 @@ impl ReferenceState {
                         Just(portal),
                         Just(dns_resource_records.clone()),
                         Just(icmp_error_hosts.clone()),
-                        tcp_resources(dns_resource_records, icmp_error_hosts),
+                        tcp_resources(dns_resource_records, icmp_error_hosts, start),
                         Just(relays),
                         Just(global_dns),
                         Just(drop_direct_client_traffic),
@@ -178,7 +180,7 @@ impl ReferenceState {
                 },
             )
             .prop_map(
-                |(
+                move |(
                     client,
                     gateways,
                     relays,
@@ -209,7 +211,7 @@ impl ReferenceState {
     ///
     /// This is invoked by proptest repeatedly to explore further state transitions.
     /// Here, we should only generate [`Transition`]s that make sense for the current state.
-    pub(crate) fn transitions(state: &Self) -> BoxedStrategy<Transition> {
+    pub(crate) fn transitions(state: &Self, now: Instant) -> BoxedStrategy<Transition> {
         CompositeStrategy::default()
             .with(
                 1,
@@ -345,8 +347,32 @@ impl ReferenceState {
                 },
             )
             .with_if_not_empty(
+                10,
+                state.resolved_v4_domains_with_icmp_errors(now),
+                |dns_v4_domains| {
+                    let tunnel_ip4 = state.client.inner().tunnel_ip4;
+
+                    prop_oneof![
+                        icmp_packet(Just(tunnel_ip4), select(dns_v4_domains.clone())),
+                        udp_packet(Just(tunnel_ip4), select(dns_v4_domains)),
+                    ]
+                },
+            )
+            .with_if_not_empty(
+                10,
+                state.resolved_v6_domains_with_icmp_errors(now),
+                |dns_v6_domains| {
+                    let tunnel_ip6 = state.client.inner().tunnel_ip6;
+
+                    prop_oneof![
+                        icmp_packet(Just(tunnel_ip6), select(dns_v6_domains.clone()),),
+                        udp_packet(Just(tunnel_ip6), select(dns_v6_domains),),
+                    ]
+                },
+            )
+            .with_if_not_empty(
                 5,
-                (state.all_domains(), state.reachable_dns_servers()),
+                (state.all_domains(now), state.reachable_dns_servers()),
                 |(domains, dns_servers)| {
                     dns_queries(sample::select(domains), sample::select(dns_servers))
                         .prop_map(Transition::SendDnsQueries)
@@ -384,7 +410,7 @@ impl ReferenceState {
                 state
                     .client
                     .inner()
-                    .resolved_ip4_for_non_resources(&state.global_dns_records),
+                    .resolved_ip4_for_non_resources(&state.global_dns_records, now),
                 |resolved_non_resource_ip4s| {
                     let tunnel_ip4 = state.client.inner().tunnel_ip4;
 
@@ -399,7 +425,7 @@ impl ReferenceState {
                 state
                     .client
                     .inner()
-                    .resolved_ip6_for_non_resources(&state.global_dns_records),
+                    .resolved_ip6_for_non_resources(&state.global_dns_records, now),
                 |resolved_non_resource_ip6s| {
                     let tunnel_ip6 = state.client.inner().tunnel_ip6;
 
@@ -425,13 +451,17 @@ impl ReferenceState {
                     udp_packet(Just(tunnel_ip6), select_host_v6(&gateway_ips)),
                 ]
             })
+            .with_if_not_empty(5, state.dns_resource_domains(), |domains| {
+                (sample::select(domains), btree_set(dns_record(), 1..6))
+                    .prop_map(|(domain, records)| Transition::UpdateDnsRecords { domain, records })
+            })
             .boxed()
     }
 
     /// Apply the transition to our reference state.
     ///
     /// Here is where we implement the "expected" logic.
-    pub(crate) fn apply(mut state: Self, transition: &Transition) -> Self {
+    pub(crate) fn apply(mut state: Self, transition: &Transition, now: Instant) -> Self {
         match transition {
             Transition::AddResource(resource) => {
                 state.client.exec_mut(|client| match resource {
@@ -591,6 +621,12 @@ impl ReferenceState {
             Transition::RestartClient(key) => state.client.exec_mut(|c| {
                 c.restart(*key);
             }),
+            Transition::UpdateDnsRecords { domain, records } => {
+                state.global_dns_records.merge(DnsRecords::from([(
+                    domain.clone(),
+                    BTreeMap::from([(now, records.clone())]),
+                )]));
+            }
         };
 
         state
@@ -785,6 +821,7 @@ impl ReferenceState {
                 // Also don't deactivate resources where we have TCP connections as those would get interrupted.
                 has_resource && has_gateway_for_resource && !has_tcp_connection
             }
+            Transition::UpdateDnsRecords { .. } => true,
         }
     }
 
@@ -833,21 +870,36 @@ impl ReferenceState {
 impl ReferenceState {
     // We surface what are the existing rtypes for a domain so that it's easier
     // for the proptests to hit an existing record.
-    fn all_domains(&self) -> Vec<(DomainName, Vec<RecordType>)> {
+    fn all_domains(&self, now: Instant) -> Vec<(DomainName, Vec<RecordType>)> {
         fn domains_and_rtypes(
             records: &DnsRecords,
+            at: Instant,
         ) -> impl Iterator<Item = (DomainName, Vec<RecordType>)> {
             records
                 .domains_iter()
-                .map(|d| (d.clone(), records.domain_rtypes(&d)))
+                .map(move |d| (d.clone(), records.domain_rtypes(&d, at)))
         }
 
         // We may have multiple gateways in a site, so we need to dedup.
         let unique_domains = self
             .gateways
             .values()
-            .flat_map(|g| domains_and_rtypes(g.inner().dns_records()))
-            .chain(domains_and_rtypes(&self.global_dns_records))
+            .flat_map(|g| domains_and_rtypes(g.inner().dns_records(), now))
+            .chain(domains_and_rtypes(&self.global_dns_records, now))
+            .filter(|(_, rtypes)| !rtypes.is_empty())
+            .collect::<BTreeSet<_>>();
+
+        Vec::from_iter(unique_domains)
+    }
+
+    fn dns_resource_domains(&self) -> Vec<DomainName> {
+        // We may have multiple gateways in a site, so we need to dedup.
+        let unique_domains = self
+            .gateways
+            .values()
+            .flat_map(|g| g.inner().dns_records().domains_iter())
+            .chain(self.global_dns_records.domains_iter())
+            .filter(|d| self.client.inner().dns_resource_by_domain(d).is_some())
             .collect::<BTreeSet<_>>();
 
         Vec::from_iter(unique_domains)
@@ -962,6 +1014,32 @@ impl ReferenceState {
             .resolved_v6_domains()
             .into_iter()
             .filter(|domain| self.tcp_resources.contains_key(domain))
+            .collect()
+    }
+
+    fn resolved_v4_domains_with_icmp_errors(&self, at: Instant) -> Vec<DomainName> {
+        self.client
+            .inner()
+            .resolved_v4_domains()
+            .into_iter()
+            .filter(|d| {
+                self.global_dns_records
+                    .domain_ips_iter(d, at)
+                    .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+            })
+            .collect()
+    }
+
+    fn resolved_v6_domains_with_icmp_errors(&self, at: Instant) -> Vec<DomainName> {
+        self.client
+            .inner()
+            .resolved_v6_domains()
+            .into_iter()
+            .filter(|d| {
+                self.global_dns_records
+                    .domain_ips_iter(d, at)
+                    .any(|ip| self.icmp_error_hosts.icmp_error_for_ip(ip).is_some())
+            })
             .collect()
     }
 
