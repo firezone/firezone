@@ -10,17 +10,11 @@
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>$(APP_GROUP_ID)</string>
-    <!--
-      App group id was updated in 1.4.0. Can be removed after all clients have
-      upgraded to 1.4.0.
-    -->
-    <string>$(APP_GROUP_ID_PRE_1_4_0)</string>
+		<!--
+		  App group id was updated in 1.4.0. Can be removed after all clients have
+		  upgraded to 1.4.0.
+		-->
+		<string>$(APP_GROUP_ID_PRE_1_4_0)</string>
 	</array>
-  <key>com.apple.security.app-sandbox</key>
-  <true/>
-  <key>com.apple.security.network.client</key>
-  <true/>
-  <key>com.apple.security.network.server</key>
-  <true/>
 </dict>
 </plist>
