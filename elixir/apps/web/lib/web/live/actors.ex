@@ -1,4 +1,4 @@
-defmodule Web.Actors.IndexNew do
+defmodule Web.Actors do
   use Web, :live_view
 
   def mount(_params, _session, socket) do
@@ -66,6 +66,7 @@ defmodule Web.Actors.IndexNew do
           metadata={@actors_metadata}
         >
           <:col :let={actor} class="w-1/12">
+            {actor.name}
             {# TODO: Admin/ServiceAccount/User icon}
           </:col>
           <:col :let={actor} field={{:actors, :email}} label="email" class="w-2/12">
@@ -74,9 +75,11 @@ defmodule Web.Actors.IndexNew do
             </span>
           </:col>
           <:col :let={actor} label="name" class="w-2/12">
+            {actor.name}
             {# TODO: identity name}
           </:col>
           <:col :let={actor} label="last seen" class="w-2/12">
+            {actor.name}
             {# TODO: identity last seen}
           </:col>
         </.live_table>
@@ -86,6 +89,5 @@ defmodule Web.Actors.IndexNew do
   end
 
   defmodule Query do
-    import Ecto.Query
   end
 end

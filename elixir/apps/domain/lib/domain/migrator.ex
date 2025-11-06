@@ -13,36 +13,9 @@ defmodule Domain.Migrator do
     AuthProviders,
     EmailOTP,
     Userpass,
-    PubSub,
     Repo,
     Safe
   }
-
-  def legacy_google_providers(%Accounts.Account{} = account) do
-    from(ap in Auth.Provider,
-      where: ap.account_id == ^account.id and ap.adapter == :google_workspace
-    )
-    |> Repo.all()
-  end
-
-  def legacy_entra_providers(%Accounts.Account{} = account) do
-    from(ap in Auth.Provider,
-      where: ap.account_id == ^account.id and ap.adapter == :microsoft_entra
-    )
-    |> Repo.all()
-  end
-
-  def legacy_okta_providers(%Accounts.Account{} = account) do
-    from(ap in Auth.Provider, where: ap.account_id == ^account.id and ap.adapter == :okta)
-    |> Repo.all()
-  end
-
-  def legacy_oidc_providers(%Accounts.Account{} = account) do
-    from(ap in Auth.Provider,
-      where: ap.account_id == ^account.id and ap.adapter == :openid_connect
-    )
-    |> Repo.all()
-  end
 
   def legacy_userpass_provider(%Accounts.Account{} = account) do
     from(ap in Auth.Provider, where: ap.account_id == ^account.id and ap.adapter == :userpass)
@@ -52,10 +25,6 @@ defmodule Domain.Migrator do
   def legacy_email_otp_provider(%Accounts.Account{} = account) do
     from(ap in Auth.Provider, where: ap.account_id == ^account.id and ap.adapter == :email)
     |> Repo.one()
-  end
-
-  def start_migration_monitoring(id) do
-    :ok = PubSub.subscribe("migration_monitoring:#{id}")
   end
 
   def up(%Auth.Subject{} = subject) do

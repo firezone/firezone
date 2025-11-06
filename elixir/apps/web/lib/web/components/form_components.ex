@@ -414,7 +414,7 @@ defmodule Web.FormComponents do
       phx-on-close={@on_close}
     >
       <div class="flex items-center justify-center">
-        <div class="relative bg-white rounded-lg shadow w-full max-w-2xl">
+        <div class="relative bg-white rounded-lg shadow w-full max-w-2xl" phx-click-away={@on_close}>
           <div
             :if={@title != []}
             class="flex items-center justify-between p-4 md:p-5 border-b rounded-t"

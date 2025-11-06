@@ -3,7 +3,7 @@ defmodule Domain.Actors.Group do
 
   schema "actor_groups" do
     field :name, :string
-    field :type, Ecto.Enum, values: ~w[managed static]a
+    field :type, Ecto.Enum, values: ~w[managed static]a, default: :static
 
     field :directory, :string
     field :idp_id, :string
