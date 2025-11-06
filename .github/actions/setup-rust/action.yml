@@ -42,19 +42,9 @@ runs:
       run: Set-MpPreference -DisableRealtimeMonitoring $true
       shell: powershell
 
-    - name: Extract Rust version
-      run: |
-        RUST_TOOLCHAIN=$(grep 'channel' rust/rust-toolchain.toml | awk -F '"' '{print $2}')
-        echo "RUST_TOOLCHAIN=$RUST_TOOLCHAIN" >> $GITHUB_ENV
-      shell: bash
-
-    - uses: actions-rust-lang/setup-rust-toolchain@1780873c7b576612439a134613cc4cc74ce5538c # v1.15.2
-      id: toolchain
+    - uses: jdx/mise-action@be3be2260bc02bc3fbf94c5e2fed8b7964baf074 # v3.4.0
       with:
-        toolchain: ${{ env.RUST_TOOLCHAIN }}
-        components: rustfmt,clippy
-        target: ${{ inputs.targets }}
-        cache: false # We explicitly configure the cache below because it doesn't forward `cache-targets`.
+        working_directory: rust
 
     - name: Cache registry
       uses: Swatinem/rust-cache@f13886b937689c021905a6b90929199931d60db1 # v2.8.1
@@ -73,28 +63,6 @@ runs:
         echo "SCCACHE_AZURE_CONNECTION_STRING=${{ inputs.sccache_azure_connection_string }}" >> $GITHUB_ENV
         echo "SCCACHE_AZURE_BLOB_CONTAINER=sccache" >> $GITHUB_ENV
         echo "RUSTC_WRAPPER=$SCCACHE_PATH" >> $GITHUB_ENV
-
-    - name: Install nightly Rust to use for certain tools (fuzzing, cargo-udeps)
-      id: nightly
-      run: |
-        NIGHTLY="nightly-2025-09-30"
-        # Check if nightly toolchain is already installed
-        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
-          rustup toolchain install $NIGHTLY
-          rustup component add rust-src --toolchain $NIGHTLY
-        fi
-        echo "nightly=$NIGHTLY" >> $GITHUB_OUTPUT
-      shell: bash
-
-    - name: Install nightly Rust for compiling eBPF code
-      run: |
-        NIGHTLY="nightly-2025-05-30"
-        # Check if nightly toolchain is already installed
-        if ! rustup toolchain list | grep -q "$NIGHTLY"; then
-          rustup toolchain install $NIGHTLY
-          rustup component add rust-src --toolchain $NIGHTLY
-        fi
-      shell: bash
 
     - name: Start sccache
       run: $SCCACHE_PATH --start-server
