@@ -13,6 +13,7 @@ maintainer-scripts = "debian/"
 systemd-units = { enable = false }
 extended-description = "" # Empty string to avoid embedding the README
 revision = ""
+depends = ["systemd"]
 section = "Network"
 assets = [
     ["target/release/firezone-gateway", "usr/bin/", "755"],
