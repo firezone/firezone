@@ -13,7 +13,6 @@ maintainer-scripts = "debian/"
 systemd-units = { enable = false }
 extended-description = "" # Empty string to avoid embedding the README
 revision = ""
-depends = ["systemd"]
 section = "Network"
 assets = [
     ["target/release/firezone-gateway", "usr/bin/", "755"],
@@ -22,7 +21,7 @@ assets = [
     ["debian/firezone-gateway.sysusers", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
     ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
 ]
-depends = 'iptables'
+depends = 'iptables,systemd'
 
 [dependencies]
 anyhow = { workspace = true }
