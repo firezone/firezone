@@ -23,7 +23,7 @@ fi
 sed -i "s/<<USER>>/${INVOKING_USER:-root}/g" "/usr/lib/sysusers.d/firezone-client-tunnel.conf"
 
 # Creates the system group `firezone-client` and adds the group membership.
-systemd-sysusers
+systemd-sysusers firezone-client-tunnel.conf
 
 echo "Starting and enabling Firezone Tunnel service..."
 systemctl daemon-reload
