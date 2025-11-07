@@ -51,14 +51,22 @@ fn get_at(path: &Path) -> Result<DeviceId> {
 /// Returns: The UUID as a String, suitable for sending verbatim to `client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub fn get_or_create() -> Result<DeviceId> {
+pub fn get_or_create_client() -> Result<DeviceId> {
     let path = path()?;
     let id = get_or_create_at(&path)?;
 
     Ok(id)
 }
 
-pub fn get_or_create_at(path: &Path) -> Result<DeviceId> {
+pub fn get_or_create_gateway() -> Result<DeviceId> {
+    const ID_PATH: &str = "/var/lib/firezone/gateway_id";
+
+    let id = get_or_create_at(Path::new(ID_PATH))?;
+
+    Ok(id)
+}
+
+fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
