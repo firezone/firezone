@@ -40,6 +40,7 @@ netlink-packet-route = { workspace = true }
 nix = { workspace = true, features = ["socket"] }
 resolv-conf = { workspace = true }
 rtnetlink = { workspace = true }
+systemd = { workspace = true }
 tokio-util = { workspace = true }
 zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
 
@@ -80,7 +81,7 @@ features = [
 bufferpool = { workspace = true }
 bytes = { workspace = true }
 tempfile = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "fs"] }
 
 [target.'cfg(target_os = "linux")'.dev-dependencies]
 mutants = "0.0.3" # Needed to mark functions as exempt from `cargo-mutants` testing

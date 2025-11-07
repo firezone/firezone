@@ -180,6 +180,7 @@ supports-color = "3.0.2"
 swift-bridge = "0.1.57"
 swift-bridge-build = "0.1.57"
 syn = "2.0"
+systemd = { version = "0.10.1", default-features = false }
 tauri = "2.8.4"
 tauri-build = "2.4.0"
 tauri-plugin-dialog = "2.4.0"

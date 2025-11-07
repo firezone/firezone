@@ -4,10 +4,21 @@ use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use sha2::Digest;
 use std::{
+    ffi::CStr,
     fs,
     io::Write,
     path::{Path, PathBuf},
 };
+
+/// Randomly generated, hex-encoded 128bit identifier for Clients.
+///
+/// Together with a unique hardware ID, like `/etc/machine-id`, this can be used to deterministically compute a device ID.
+const CLIENT_APP_ID: &CStr = c"e1e465ce763e4759945c650ac334501f";
+
+/// Randomly generated, hex-encoded 128bit identifier for Gateways.
+///
+/// Together with a unique hardware ID, like `/etc/machine-id`, this can be used to deterministically compute a device ID.
+const GATEWAY_APP_ID: &CStr = c"753b38f9f96947ef8083802d5909a372";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceId {
@@ -28,7 +39,7 @@ pub fn client_path() -> Result<PathBuf> {
 /// Returns the device ID without generating it
 pub fn get_client() -> Result<DeviceId> {
     let path = client_path()?;
-    let id = get_at(&path)?;
+    let id = get_at_or_compute(&path, CLIENT_APP_ID)?;
 
     Ok(id)
 }
@@ -43,7 +54,7 @@ pub fn get_client() -> Result<DeviceId> {
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create_client() -> Result<DeviceId> {
     let path = client_path()?;
-    let id = get_or_create_at(&path)?;
+    let id = get_or_create_at(&path, CLIENT_APP_ID)?;
 
     Ok(id)
 }
@@ -51,12 +62,12 @@ pub fn get_or_create_client() -> Result<DeviceId> {
 pub fn get_or_create_gateway() -> Result<DeviceId> {
     const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 
-    let id = get_or_create_at(Path::new(ID_PATH))?;
+    let id = get_or_create_at(Path::new(ID_PATH), GATEWAY_APP_ID)?;
 
     Ok(id)
 }
 
-fn get_or_create_at(path: &Path) -> Result<DeviceId> {
+fn get_or_create_at(path: &Path, app_id: &CStr) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
@@ -71,10 +82,7 @@ fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     })?;
 
     // Try to read it from the disk
-    if let Ok(j) = get_at(path) {
-        tracing::debug!(id = %j.id, "Loaded device ID from disk");
-        // Correct permissions for #6989
-        set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
+    if let Ok(j) = get_at_or_compute(path, app_id) {
         return Ok(DeviceId { id: j.id });
     }
 
@@ -94,14 +102,28 @@ fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     Ok(DeviceId { id })
 }
 
+/// Reads the device ID from the given path, or if that fails, attempts to compute it from a hardware ID.
+fn get_at_or_compute(path: &Path, app_id: &CStr) -> Result<DeviceId> {
+    match (get_at(path), compute_from_hardware_id(app_id)) {
+        (Ok(fs_id), _) => Ok(fs_id),
+        (Err(_), Ok(derived_id)) => Ok(derived_id),
+        (Err(fs_err), Err(derive_err)) => {
+            anyhow::bail!("Failed to read ({fs_err:#}) and derive ({derive_err:#}) device ID")
+        }
+    }
+}
+
 fn get_at(path: &Path) -> Result<DeviceId> {
     let content = fs::read_to_string(path).context("Failed to read file")?;
-    let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
+    let j = serde_json::from_str::<DeviceIdJson>(&content)
         .context("Failed to deserialize content as JSON")?;
 
-    Ok(DeviceId {
-        id: device_id_json.id,
-    })
+    tracing::debug!(id = %j.id, "Loaded device ID from disk");
+
+    // Correct permissions for #6989
+    set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
+
+    Ok(DeviceId { id: j.id })
 }
 
 #[cfg(target_os = "linux")]
@@ -137,6 +159,32 @@ fn set_id_permissions(_: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn compute_from_hardware_id(app_id: &CStr) -> Result<DeviceId> {
+    let app_id = systemd::id128::Id128::from_cstr(app_id).context("Failed to create app ID")?;
+    let app_specific_machine_id = systemd::id128::Id128::from_machine_app_specific(&app_id)
+        .context("Failed to derive app-specific machine ID")?;
+
+    let uuid = uuid::Uuid::from_bytes(*app_specific_machine_id.as_bytes());
+    let id = hex::encode(sha2::Sha256::digest(uuid.to_string()));
+
+    tracing::debug!(%id, "Derived device ID from /etc/machine-id");
+
+    Ok(DeviceId { id })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn compute_from_hardware_id(_: &CStr) -> Result<DeviceId> {
+    anyhow::bail!("Not implemented")
+}
+
+/// Does nothing on non-Linux systems
+#[cfg(not(target_os = "linux"))]
+#[expect(clippy::unnecessary_wraps)]
+fn set_id_permissions(_: &Path) -> Result<()> {
+    Ok(())
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 struct DeviceIdJson {
     id: String,
@@ -154,8 +202,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("id.json");
 
-        let created_device_id = get_or_create_at(&path).unwrap();
-        let read_device_id = get_at(&path).unwrap();
+        let created_device_id = get_or_create_at(&path, CLIENT_APP_ID).unwrap();
+        let read_device_id = get_at_or_compute(&path, CLIENT_APP_ID).unwrap();
 
         assert_eq!(created_device_id, read_device_id);
     }
@@ -173,7 +221,7 @@ mod tests {
         .unwrap();
         std::fs::write(&path, json).unwrap();
 
-        let read_device_id = get_or_create_at(&path).unwrap();
+        let read_device_id = get_or_create_at(&path, CLIENT_APP_ID).unwrap();
 
         assert_eq!(read_device_id.id, plain_id.to_string());
     }
