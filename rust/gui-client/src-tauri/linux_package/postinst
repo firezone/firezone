@@ -20,12 +20,11 @@ elif [ -n "${DISPLAY_USER:-}" ]; then
     echo "Detected invoking user from display session: $INVOKING_USER"
 fi
 
-sudo sed -i "s/<<USER>>/${INVOKING_USER:-root}/g" "/usr/lib/sysusers.d/firezone-client-tunnel.conf"
+sed -i "s/<<USER>>/${INVOKING_USER:-root}/g" "/usr/lib/sysusers.d/firezone-client-tunnel.conf"
 
 # Creates the system group `firezone-client` and adds the group membership.
-sudo systemd-sysusers
+systemd-sysusers firezone-client-tunnel.conf
 
-echo "Starting and enabling Firezone Tunnel service..."
-sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+systemctl daemon-reload
+systemctl enable "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME"
