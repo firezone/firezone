@@ -180,15 +180,8 @@ fn compute_from_hardware_id(app_id: &str) -> Result<DeviceId> {
 }
 
 #[cfg(not(target_os = "linux"))]
-fn compute_from_hardware_id(_: &CStr) -> Result<DeviceId> {
+fn compute_from_hardware_id(_: &str) -> Result<DeviceId> {
     anyhow::bail!("Not implemented")
-}
-
-/// Does nothing on non-Linux systems
-#[cfg(not(target_os = "linux"))]
-#[expect(clippy::unnecessary_wraps)]
-fn set_id_permissions(_: &Path) -> Result<()> {
-    Ok(())
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
