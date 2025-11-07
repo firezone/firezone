@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+set -e
+
 systemd-sysusers firezone-gateway.conf
 
 #DEBHELPER#
