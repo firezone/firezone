@@ -33,16 +33,6 @@ pub fn get_client() -> Result<DeviceId> {
     Ok(id)
 }
 
-fn get_at(path: &Path) -> Result<DeviceId> {
-    let content = fs::read_to_string(path).context("Failed to read file")?;
-    let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
-        .context("Failed to deserialize content as JSON")?;
-
-    Ok(DeviceId {
-        id: device_id_json.id,
-    })
-}
-
 /// Returns the device ID, generating it and saving it to disk if needed.
 ///
 /// Per <https://github.com/firezone/firezone/issues/2697> and <https://github.com/firezone/firezone/issues/2711>,
@@ -81,10 +71,7 @@ fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     })?;
 
     // Try to read it from the disk
-    if let Some(j) = fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
-    {
+    if let Ok(j) = get_at(path) {
         tracing::debug!(id = %j.id, "Loaded device ID from disk");
         // Correct permissions for #6989
         set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
@@ -105,6 +92,16 @@ fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     tracing::debug!(%id, "Saved device ID to disk");
     set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
     Ok(DeviceId { id })
+}
+
+fn get_at(path: &Path) -> Result<DeviceId> {
+    let content = fs::read_to_string(path).context("Failed to read file")?;
+    let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
+        .context("Failed to deserialize content as JSON")?;
+
+    Ok(DeviceId {
+        id: device_id_json.id,
+    })
 }
 
 #[cfg(target_os = "linux")]
