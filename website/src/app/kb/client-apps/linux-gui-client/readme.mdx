@@ -36,15 +36,9 @@ sudo apt update
 sudo apt install firezone-client-gui
 ```
 
-Join the `firezone-client` group:
-
-```bash
-# Add yourself to the `firezone-client` group so you can use the tunnel service
-sudo usermod -aG firezone-client "$USER"
-
-# Reboot to finish adding yourself to the group
-reboot
-```
+To finish the setup, reboot your machine.
+This is necessary to fully reflect group membership changes.
+The GUI client cannot function until the current user is in the `firezone-client` group.
 
 ## Installation (CentOS 10)
 
@@ -137,6 +131,15 @@ When you're signed out, you can't access private Resources, and the computer
 will use its normal DNS and Internet behavior.
 
 ## Upgrading
+
+If you installed the Client via `apt` you can upgrade it like any other package:
+
+```bash
+sudo apt update
+sudo apt upgrade firezone-client-gui
+```
+
+If you installed the package manually, follow these upgrade steps:
 
 1. Download the latest `.deb` or `.rpm` installer package from
    [GitHub Releases](https://www.github.com/firezone/firezone/releases).
