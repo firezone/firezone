@@ -18,7 +18,7 @@ pub struct DeviceId {
 ///
 /// e.g. `C:\ProgramData\dev.firezone.client/firezone-id.json` or
 /// `/var/lib/dev.firezone.client/config/firezone-id.json`.
-pub fn path() -> Result<PathBuf> {
+pub fn client_path() -> Result<PathBuf> {
     let path = crate::known_dirs::tunnel_service_config()
         .context("Failed to compute path for firezone-id file")?
         .join("firezone-id.json");
@@ -26,8 +26,8 @@ pub fn path() -> Result<PathBuf> {
 }
 
 /// Returns the device ID without generating it
-pub fn get() -> Result<DeviceId> {
-    let path = path()?;
+pub fn get_client() -> Result<DeviceId> {
+    let path = client_path()?;
     let id = get_at(&path)?;
 
     Ok(id)
@@ -52,7 +52,7 @@ fn get_at(path: &Path) -> Result<DeviceId> {
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
 pub fn get_or_create_client() -> Result<DeviceId> {
-    let path = path()?;
+    let path = client_path()?;
     let id = get_or_create_at(&path)?;
 
     Ok(id)

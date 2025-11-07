@@ -119,7 +119,7 @@ async fn ipc_listen(
     // Fix up the group of the device ID file and directory so the GUI client can access it.
     #[cfg(target_os = "linux")]
     {
-        let path = device_id::path().context("Failed to access device ID path")?;
+        let path = device_id::client_path().context("Failed to access device ID path")?;
         let group_id = crate::firezone_client_group()
             .context("Failed to get `firezone-client` group")?
             .gid
