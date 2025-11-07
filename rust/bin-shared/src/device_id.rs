@@ -22,6 +22,13 @@ const GATEWAY_APP_ID: &str = "753b38f9f96947ef8083802d5909a372";
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceId {
     pub id: String,
+    pub source: Source,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Source {
+    Disk,
+    HardwareId,
 }
 
 /// Returns the path of the randomly-generated Firezone device ID
@@ -81,8 +88,8 @@ fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
     })?;
 
     // Try to read it from the disk
-    if let Ok(j) = get_at_or_compute(path, app_id) {
-        return Ok(DeviceId { id: j.id });
+    if let Ok(id) = get_at_or_compute(path, app_id) {
+        return Ok(id);
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
@@ -98,7 +105,11 @@ fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
 
     tracing::debug!(%id, "Saved device ID to disk");
     set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
-    Ok(DeviceId { id })
+
+    Ok(DeviceId {
+        id: j.id,
+        source: Source::Disk,
+    })
 }
 
 /// Reads the device ID from the given path, or if that fails, attempts to compute it from a hardware ID.
@@ -122,7 +133,10 @@ fn get_at(path: &Path) -> Result<DeviceId> {
     // Correct permissions for #6989
     set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
 
-    Ok(DeviceId { id: j.id })
+    Ok(DeviceId {
+        id: j.id,
+        source: Source::Disk,
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -176,7 +190,10 @@ fn compute_from_hardware_id(app_id: &str) -> Result<DeviceId> {
 
     tracing::debug!(%id, "Derived device ID from /etc/machine-id");
 
-    Ok(DeviceId { id })
+    Ok(DeviceId {
+        id,
+        source: Source::HardwareId,
+    })
 }
 
 #[cfg(not(target_os = "linux"))]
