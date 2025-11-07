@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
 
-# Script inspired by deb helper script from `cargo-deb`
-if [ "$1" = "configure" ] || [ "$1" = "abort-upgrade" ] || [ "$1" = "abort-deconfigure" ] || [ "$1" = "abort-remove" ]; then
-    # In case this system is running systemd, we need to ensure that all
-    # necessary users are created before starting.
-    if [ -d /run/systemd/system ]; then
-        systemd-sysusers firezone-gateway.conf >/dev/null || true
-    fi
-fi
+set -e
+
+systemd-sysusers firezone-gateway.conf
 
 #DEBHELPER#
 

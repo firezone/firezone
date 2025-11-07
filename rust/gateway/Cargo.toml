@@ -21,7 +21,7 @@ assets = [
     ["debian/firezone-gateway.sysusers", "usr/lib/sysusers.d/firezone-gateway.conf", "644"],
     ["debian/firezone-gateway.tmpfiles", "usr/lib/tmpfiles.d/firezone-gateway.conf", "644"],
 ]
-depends = 'iptables'
+depends = 'iptables,systemd'
 
 [dependencies]
 anyhow = { workspace = true }
