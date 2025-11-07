@@ -34,13 +34,14 @@ uuid = { workspace = true, features = ["v4"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 atomicwrites = { workspace = true }
 dirs = { workspace = true }
+hmac = { workspace = true }
 libc = { workspace = true }
 netlink-packet-core = { workspace = true }
 netlink-packet-route = { workspace = true }
 nix = { workspace = true, features = ["socket"] }
 resolv-conf = { workspace = true }
 rtnetlink = { workspace = true }
-systemd = { workspace = true }
+sha2 = { workspace = true }
 tokio-util = { workspace = true }
 zbus = { workspace = true } # Can't use `zbus`'s `tokio` feature here, or it will break toast popups all the way over in `gui-client`.
 

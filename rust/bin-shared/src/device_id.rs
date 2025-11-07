@@ -4,7 +4,6 @@ use anyhow::{Context as _, Result};
 use atomicwrites::{AtomicFile, OverwriteBehavior};
 use sha2::Digest;
 use std::{
-    ffi::CStr,
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -13,12 +12,12 @@ use std::{
 /// Randomly generated, hex-encoded 128bit identifier for Clients.
 ///
 /// Together with a unique hardware ID, like `/etc/machine-id`, this can be used to deterministically compute a device ID.
-const CLIENT_APP_ID: &CStr = c"e1e465ce763e4759945c650ac334501f";
+const CLIENT_APP_ID: &str = "e1e465ce763e4759945c650ac334501f";
 
 /// Randomly generated, hex-encoded 128bit identifier for Gateways.
 ///
 /// Together with a unique hardware ID, like `/etc/machine-id`, this can be used to deterministically compute a device ID.
-const GATEWAY_APP_ID: &CStr = c"753b38f9f96947ef8083802d5909a372";
+const GATEWAY_APP_ID: &str = "753b38f9f96947ef8083802d5909a372";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceId {
@@ -67,7 +66,7 @@ pub fn get_or_create_gateway() -> Result<DeviceId> {
     Ok(id)
 }
 
-fn get_or_create_at(path: &Path, app_id: &CStr) -> Result<DeviceId> {
+fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
@@ -103,7 +102,7 @@ fn get_or_create_at(path: &Path, app_id: &CStr) -> Result<DeviceId> {
 }
 
 /// Reads the device ID from the given path, or if that fails, attempts to compute it from a hardware ID.
-fn get_at_or_compute(path: &Path, app_id: &CStr) -> Result<DeviceId> {
+fn get_at_or_compute(path: &Path, app_id: &str) -> Result<DeviceId> {
     match (get_at(path), compute_from_hardware_id(app_id)) {
         (Ok(fs_id), _) => Ok(fs_id),
         (Err(_), Ok(derived_id)) => Ok(derived_id),
@@ -160,13 +159,20 @@ fn set_id_permissions(_: &Path) -> Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn compute_from_hardware_id(app_id: &CStr) -> Result<DeviceId> {
-    let app_id = systemd::id128::Id128::from_cstr(app_id).context("Failed to create app ID")?;
-    let app_specific_machine_id = systemd::id128::Id128::from_machine_app_specific(&app_id)
-        .context("Failed to derive app-specific machine ID")?;
+fn compute_from_hardware_id(app_id: &str) -> Result<DeviceId> {
+    use hmac::Mac;
 
-    let uuid = uuid::Uuid::from_bytes(*app_specific_machine_id.as_bytes());
-    let id = hex::encode(sha2::Sha256::digest(uuid.to_string()));
+    let machine_id =
+        fs::read_to_string("/etc/machine-id").context("Failed to read `/etc/machine-id`")?;
+
+    let bytes = hmac::Hmac::<sha2::Sha256>::new_from_slice(app_id.as_bytes())
+        .context("Failed to create HMAC instance")?
+        .chain_update(&machine_id)
+        .finalize()
+        .into_bytes()
+        .to_vec();
+
+    let id = hex::encode(bytes);
 
     tracing::debug!(%id, "Derived device ID from /etc/machine-id");
 
@@ -224,5 +230,15 @@ mod tests {
         let read_device_id = get_or_create_at(&path, CLIENT_APP_ID).unwrap();
 
         assert_eq!(read_device_id.id, plain_id.to_string());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn compute_device_id_hardware_id() {
+        let _guard = firezone_logging::test("debug");
+
+        let id = compute_from_hardware_id(CLIENT_APP_ID).unwrap();
+
+        assert!(!id.id.is_empty())
     }
 }
