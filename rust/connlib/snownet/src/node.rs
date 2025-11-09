@@ -16,6 +16,7 @@ use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
+use firezone_telemetry::feature_flags;
 use hex_display::HexDisplayExt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use itertools::Itertools;
@@ -1695,6 +1696,10 @@ impl ConnectionState {
     }
 
     fn transition_to_idle(&mut self, peer_socket: PeerSocket, agent: &mut IceAgent) {
+        if feature_flags::gateway_no_idle_long_ice_timeout() && !agent.controlling() {
+            return;
+        }
+
         tracing::debug!("Connection is idle");
         *self = Self::Idle { peer_socket };
         apply_idle_stun_timings(agent);
@@ -1710,6 +1715,10 @@ impl ConnectionState {
     ) where
         TId: fmt::Display,
     {
+        if feature_flags::gateway_no_idle_long_ice_timeout() && !agent.controlling() {
+            return;
+        }
+
         tracing::debug!(trigger, %cid, "Connection resumed");
         *self = Self::Connected {
             peer_socket,
@@ -2399,7 +2408,12 @@ fn new_agent(controlling: bool) -> IceAgent {
     let mut agent = IceAgent::new();
     agent.set_controlling(controlling);
     agent.set_timing_advance(Duration::ZERO);
-    apply_default_stun_timings(&mut agent);
+
+    if feature_flags::gateway_no_idle_long_ice_timeout() && !controlling {
+        apply_server_long_stun_timings(&mut agent);
+    } else {
+        apply_default_stun_timings(&mut agent);
+    }
 
     agent
 }
@@ -2408,6 +2422,12 @@ fn apply_default_stun_timings(agent: &mut IceAgent) {
     agent.set_max_stun_retransmits(12);
     agent.set_max_stun_rto(Duration::from_millis(1500));
     agent.set_initial_stun_rto(Duration::from_millis(250))
+}
+
+fn apply_server_long_stun_timings(agent: &mut IceAgent) {
+    agent.set_max_stun_retransmits(120);
+    agent.set_max_stun_rto(Duration::from_millis(15_000));
+    agent.set_initial_stun_rto(Duration::from_millis(2_500))
 }
 
 fn apply_idle_stun_timings(agent: &mut IceAgent) {
@@ -2451,6 +2471,15 @@ mod tests {
         apply_default_stun_timings(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_millis(15250))
+    }
+
+    #[test]
+    fn server_long_ice_timeout() {
+        let mut agent = IceAgent::new();
+
+        apply_server_long_stun_timings(&mut agent);
+
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(1_772_500))
     }
 
     #[test]
