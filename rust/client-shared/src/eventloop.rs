@@ -644,6 +644,10 @@ impl UdpDnsClient {
             })
             .collect::<FuturesUnordered<_>>()
             .filter_map(|result| result.ok())
+            .filter(|(a, b)| {
+                a.response_code() == dns_types::ResponseCode::NOERROR
+                    && b.response_code() == dns_types::ResponseCode::NOERROR
+            })
             .next()
             .await
             .with_context(|| {
