@@ -31,13 +31,6 @@ jobs:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
       - uses: ./.github/actions/setup-tauri-v2
         timeout-minutes: 15
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        if: ${{ runner.os == 'Linux' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: bpf-linker
-
       - run: cargo clippy --all-targets --all-features ${{ steps.setup-rust.outputs.compile-packages }}
         name: cargo clippy
         shell: bash
@@ -79,12 +72,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tool: ripgrep
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        if: ${{ runner.os == 'Linux' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: bpf-linker
       - name: "cargo test"
         shell: bash
         run: |
