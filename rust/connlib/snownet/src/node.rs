@@ -302,8 +302,7 @@ where
 
         let selected_relay = self.sample_relay()?;
 
-        let mut agent = new_agent();
-        agent.set_controlling(self.mode.is_client());
+        let mut agent = new_agent(self.mode.is_client());
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -1069,8 +1068,7 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = new_agent();
-        agent.set_controlling(true);
+        let agent = new_agent(true);
 
         let session_key = x25519::StaticSecret::random_from_rng(rand::thread_rng());
         let ice_creds = agent.local_credentials();
@@ -1177,8 +1175,7 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = new_agent();
-        agent.set_controlling(false);
+        let mut agent = new_agent(false);
         agent.set_remote_credentials(IceCreds {
             ufrag: offer.credentials.username,
             pass: offer.credentials.password,
@@ -2398,8 +2395,9 @@ where
     Some(transmit)
 }
 
-fn new_agent() -> IceAgent {
+fn new_agent(controlling: bool) -> IceAgent {
     let mut agent = IceAgent::new();
+    agent.set_controlling(controlling);
     agent.set_timing_advance(Duration::ZERO);
     apply_default_stun_timings(&mut agent);
 
