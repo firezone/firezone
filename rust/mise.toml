@@ -9,6 +9,10 @@ RUSTUP_TOOLCHAIN="1.91.0"
 ]
 "cargo:cargo-fuzz" = "0.13.1"
 "cargo:cargo-udeps" = "0.1.60"
+"cargo:bpf-linker" = { version = "0.9.15", os = ["linux"] }
+"cargo:cargo-deb" = "3.6.2"
+"cargo:dump_syms" = "2.3.5"
+"pnpm" = "10.18.3"
 
 [tasks.fuzz]
 usage = '''
