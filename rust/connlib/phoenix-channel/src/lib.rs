@@ -64,6 +64,9 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
 }
 
 enum State {
+    Reconnect {
+        backoff: Duration,
+    },
     Connected(WebSocketStream<MaybeTlsStream<TcpStream>>),
     Connecting(
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
@@ -380,7 +383,7 @@ where
             State::Closing(stream) | State::Connected(stream) => {
                 self.state = State::Closing(stream);
             }
-            State::Closed => {}
+            State::Closed | State::Reconnect { .. } => {}
         }
 
         Ok(())
@@ -407,6 +410,33 @@ where
                     Poll::Pending => return Poll::Pending,
                 },
                 State::Connected(stream) => stream,
+                State::Reconnect { backoff } => {
+                    let backoff = *backoff;
+                    let socket_addresses = self.socket_addresses();
+                    let host = self.host();
+
+                    let secret_url = self
+                        .last_url
+                        .as_ref()
+                        .expect("should have last URL if we receive connection error")
+                        .clone();
+                    let user_agent = self.user_agent.clone();
+                    let socket_factory = self.socket_factory.clone();
+
+                    self.state = State::Connecting(Box::pin(async move {
+                        tokio::time::sleep(backoff).await;
+                        create_and_connect_websocket(
+                            secret_url,
+                            socket_addresses,
+                            host,
+                            user_agent,
+                            socket_factory,
+                        )
+                        .await
+                    }));
+
+                    continue;
+                }
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
                         self.reconnect_backoff = None;
@@ -437,9 +467,6 @@ where
                         return Poll::Ready(Err(Error::FatalIo(io)));
                     }
                     Poll::Ready(Err(e)) => {
-                        let socket_addresses = self.socket_addresses();
-                        let host = self.host();
-
                         let backoff = match self.reconnect_backoff.as_mut() {
                             Some(reconnect_backoff) => reconnect_backoff
                                 .next_backoff()
@@ -453,25 +480,7 @@ where
                             }
                         };
 
-                        let secret_url = self
-                            .last_url
-                            .as_ref()
-                            .expect("should have last URL if we receive connection error")
-                            .clone();
-                        let user_agent = self.user_agent.clone();
-                        let socket_factory = self.socket_factory.clone();
-
-                        self.state = State::Connecting(Box::pin(async move {
-                            tokio::time::sleep(backoff).await;
-                            create_and_connect_websocket(
-                                secret_url,
-                                socket_addresses,
-                                host,
-                                user_agent,
-                                socket_factory,
-                            )
-                            .await
-                        }));
+                        self.state = State::Reconnect { backoff };
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
