@@ -337,6 +337,18 @@ pub mod records {
     pub fn srv(priority: u16, weight: u16, port: u16, target: DomainName) -> OwnedRecordData {
         OwnedRecordData::Srv(Srv::new(priority, weight, port, target))
     }
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "We explicitly only want A and AAAA records."
+    )]
+    pub fn extract_ip(r: Record<'_>) -> Option<IpAddr> {
+        match r.into_data() {
+            RecordData::A(a) => Some(a.addr().into()),
+            RecordData::Aaaa(aaaa) => Some(aaaa.addr().into()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
