@@ -523,7 +523,7 @@ impl Eventloop {
                     .state_mut()
                     .update_access_authorization_expiry(cid, rid, expires_at)
                 {
-                    tracing::warn!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
+                    tracing::debug!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
                 };
             }
         }
