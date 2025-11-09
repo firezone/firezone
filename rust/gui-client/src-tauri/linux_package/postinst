@@ -4,7 +4,7 @@ set -euo pipefail
 
 SERVICE_NAME="firezone-client-tunnel"
 
-DISPLAY_USER=$(who | grep '(login screen)' | awk '{print $1}')
+DISPLAY_USER=$(who | awk '{print $1}' | head -n 1)
 
 if [ -n "${PKEXEC_UID:-}" ]; then
     INVOKING_USER=$(id -un "$PKEXEC_UID" 2>/dev/null) # Detect user from PolicyKit.
