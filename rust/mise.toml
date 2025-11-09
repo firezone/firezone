@@ -9,6 +9,7 @@ RUSTUP_TOOLCHAIN="1.91.0"
 ]
 "cargo:cargo-fuzz" = "0.13.1"
 "cargo:cargo-udeps" = "0.1.60"
+"pnpm" = "10.18.3"
 
 [tasks.fuzz]
 usage = '''

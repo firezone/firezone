@@ -68,6 +68,8 @@ jobs:
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
       - uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+        with:
+          path: kotlin/.tool-versions
       - uses: ./.github/actions/setup-android
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
