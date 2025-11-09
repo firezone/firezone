@@ -357,6 +357,20 @@ where
         self.url_prototype.expose_secret().base_url()
     }
 
+    pub fn host(&self) -> String {
+        self.url_prototype
+            .expose_secret()
+            .host_and_port()
+            .0
+            .to_owned()
+    }
+
+    pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
+        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, new = ?ips, "Updating resolved IPs");
+
+        self.resolved_addresses = ips;
+    }
+
     /// Initiate a graceful close of the connection.
     pub fn close(&mut self) -> Result<(), Connecting> {
         tracing::info!("Closing connection to portal");
@@ -693,14 +707,6 @@ where
             .iter()
             .map(|ip| SocketAddr::new(*ip, port))
             .collect()
-    }
-
-    fn host(&self) -> String {
-        self.url_prototype
-            .expose_secret()
-            .host_and_port()
-            .0
-            .to_owned()
     }
 }
 
