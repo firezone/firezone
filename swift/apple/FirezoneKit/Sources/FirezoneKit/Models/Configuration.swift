@@ -18,6 +18,7 @@ public class Configuration: ObservableObject {
 
   @Published private(set) var publishedInternetResourceEnabled = false
   @Published private(set) var publishedHideAdminPortalMenuItem = false
+  @Published private(set) var publishedHideResourceList = false
 
   var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
   var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
@@ -49,6 +50,11 @@ public class Configuration: ObservableObject {
   var hideAdminPortalMenuItem: Bool {
     get { defaults.bool(forKey: Keys.hideAdminPortalMenuItem) }
     set { defaults.set(newValue, forKey: Keys.hideAdminPortalMenuItem) }
+  }
+
+  var hideResourceList: Bool {
+    get { defaults.bool(forKey: Keys.hideResourceList) }
+    set { defaults.set(newValue, forKey: Keys.hideResourceList) }
   }
 
   var connectOnStart: Bool {
@@ -102,6 +108,7 @@ public class Configuration: ObservableObject {
     static let accountSlug = "accountSlug"
     static let internetResourceEnabled = "internetResourceEnabled"
     static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
+    static let hideResourceList = "hideResourceList"
     static let connectOnStart = "connectOnStart"
     static let startOnLogin = "startOnLogin"
     static let disableUpdateCheck = "disableUpdateCheck"
@@ -119,6 +126,7 @@ public class Configuration: ObservableObject {
 
     self.publishedInternetResourceEnabled = internetResourceEnabled
     self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
+    self.publishedHideResourceList = hideResourceList
 
     NotificationCenter.default.addObserver(
       self,
@@ -173,6 +181,7 @@ public class Configuration: ObservableObject {
     // Update published properties
     self.publishedInternetResourceEnabled = internetResourceEnabled
     self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
+    self.publishedHideResourceList = hideResourceList
 
     // Announce we changed
     objectWillChange.send()
