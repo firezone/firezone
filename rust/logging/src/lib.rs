@@ -20,7 +20,7 @@ use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
     EnvFilter, Layer, Registry,
-    filter::{FilterExt, ParseError},
+    filter::{FilterExt, ParseError, Targets},
     fmt,
     layer::SubscriberExt as _,
     registry::LookupSpan,
@@ -217,6 +217,8 @@ where
 {
     use tracing::Level;
 
+    let wire_api_target = Targets::new().with_target("wire::api", tracing::Level::TRACE);
+
     sentry_tracing::layer()
         .event_filter(move |md| {
             let mut event_filter = match *md.level() {
@@ -224,6 +226,10 @@ where
                 Level::INFO | Level::DEBUG => EventFilter::Breadcrumb,
                 Level::TRACE => EventFilter::Ignore,
             };
+
+            if wire_api_target.would_enable(md.target(), md.level()) {
+                event_filter |= EventFilter::Breadcrumb;
+            }
 
             if feature_flags::stream_logs(md) {
                 event_filter |= EventFilter::Log
