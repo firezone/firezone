@@ -218,7 +218,12 @@ impl Telemetry {
             max_breadcrumbs: 500,
             before_send: Some(event_rate_limiter(Duration::from_secs(60 * 5))),
             enable_logs: true,
-            before_send_log: Some(Arc::new(append_tracing_fields_to_message)),
+            before_send_log: Some(Arc::new(|log| {
+                let log = insert_user_account_slug(log);
+                let log = append_tracing_fields_to_message(log);
+
+                Some(log)
+            })),
             ..Default::default()
         };
         let inner = sentry::init((
@@ -302,6 +307,11 @@ impl Telemetry {
     pub(crate) fn current_user() -> Option<String> {
         sentry::Hub::main().configure_scope(|s| s.user()?.id.clone())
     }
+
+    fn current_account_slug() -> Option<String> {
+        sentry::Hub::main()
+            .configure_scope(|s| Some(s.user()?.other.get("account_slug")?.as_str()?.to_owned()))
+    }
 }
 
 /// Computes the [`User`] scope based on the contents of `firezone_id`.
@@ -356,11 +366,7 @@ fn event_rate_limiter(timeout: Duration) -> BeforeCallback<Event<'static>> {
 /// Sentry stores all [`tracing`] fields as attributes and only renders the message.
 /// Within Firezone, we make extensive use of attributes to provide contextual information.
 /// We want to see these attributes inline with the message which is why we emulate the behaviour of `tracing_subscriber::fmt` here.
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "We need to match Sentry's config signature."
-)]
-fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
+fn append_tracing_fields_to_message(mut log: Log) -> Log {
     const IGNORED_ATTRS: &[&str] = &[
         "os.",
         "sentry.",
@@ -396,7 +402,20 @@ fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
         log.attributes.insert(key.to_owned(), attribute);
     }
 
-    Some(log)
+    log
+}
+
+fn insert_user_account_slug(mut log: Log) -> Log {
+    let Some(account_slug) = Telemetry::current_account_slug() else {
+        return log;
+    };
+
+    log.attributes.insert(
+        "user.account_slug".to_owned(),
+        LogAttribute::from(account_slug),
+    );
+
+    log
 }
 
 fn update_user(update: impl FnOnce(&mut sentry::User)) {
@@ -504,7 +523,7 @@ mod tests {
             ],
         );
 
-        let log = append_tracing_fields_to_message(log).unwrap();
+        let log = append_tracing_fields_to_message(log);
 
         assert_eq!(
             log.body,
@@ -516,7 +535,7 @@ mod tests {
     fn does_not_append_same_attribute_twice() {
         let log = log("Foobar", &[("handle_input:cid", "1234"), ("cid", "1234")]);
 
-        let log = append_tracing_fields_to_message(log).unwrap();
+        let log = append_tracing_fields_to_message(log);
 
         assert_eq!(log.body, "Foobar cid=1234")
     }
@@ -532,7 +551,7 @@ mod tests {
             ],
         );
 
-        let log = append_tracing_fields_to_message(log).unwrap();
+        let log = append_tracing_fields_to_message(log);
 
         assert_eq!(
             log.attributes,
