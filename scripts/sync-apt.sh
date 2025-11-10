@@ -90,7 +90,7 @@ for DISTRIBUTION in "stable" "preview"; do
         done
 
         echo "Importing new packages..."
-        mv --force --target-directory="${POOL_DIR}/" "${IMPORT_DIR}"/*.deb
+        mv --force --target-directory="${POOL_DIR}/" "${IMPORT_DIR}"/**/*.deb
     fi
 
     if [ -z "$(ls -A "${POOL_DIR}")" ]; then
