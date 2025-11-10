@@ -57,7 +57,7 @@ for DISTRIBUTION in "stable" "preview"; do
     if [ "$(ls -A "${IMPORT_DIR}")" ]; then
         echo "Normalizing package names..."
 
-        for deb in "${IMPORT_DIR}"/*.deb; do
+        for deb in "${IMPORT_DIR}"/**.deb; do
             if [ -f "$deb" ]; then
                 # Extract metadata from the .deb file
                 PACKAGE=$(dpkg-deb -f "$deb" Package 2>/dev/null)
