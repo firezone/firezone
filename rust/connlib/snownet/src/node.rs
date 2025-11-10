@@ -1726,6 +1726,19 @@ impl ConnectionState {
     }
 }
 
+impl fmt::Display for ConnectionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionState::Connecting { .. } => write!(f, "Connecting"),
+            ConnectionState::Connected { peer_socket, .. } => {
+                write!(f, "Connected({})", peer_socket.kind())
+            }
+            ConnectionState::Idle { peer_socket } => write!(f, "Idle({})", peer_socket.kind()),
+            ConnectionState::Failed => write!(f, "Failed"),
+        }
+    }
+}
+
 fn idle_at(last_activity: Instant) -> Instant {
     const MAX_IDLE: Duration = Duration::from_secs(20); // Must be longer than the ICE timeout otherwise we might not detect a failed connection early enough.
 
@@ -1773,6 +1786,15 @@ impl PeerSocket {
             PeerSocket::RelayToRelay { dest } => {
                 format!("RelayToRelay {{ relay: {relay}, dest: {dest} }}")
             }
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            PeerSocket::PeerToPeer { .. } => "PeerToPeer",
+            PeerSocket::PeerToRelay { .. } => "PeerToRelay",
+            PeerSocket::RelayToPeer { .. } => "RelayToPeer",
+            PeerSocket::RelayToRelay { .. } => "RelayToRelay",
         }
     }
 }
@@ -1839,7 +1861,7 @@ where
             .candidate_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!("Connection failed (no candidates received)");
+            tracing::info!(state = %self.state, "Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -1848,7 +1870,7 @@ where
             .disconnect_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!("Connection failed (ICE timeout)");
+            tracing::info!(state = %self.state, "Connection failed (ICE timeout)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -2080,7 +2102,7 @@ where
         match self.tunnel.update_timers_at(&mut buf, now) {
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                tracing::info!("Connection failed (wireguard tunnel expired)");
+                tracing::info!(state = %self.state, "Connection failed (wireguard tunnel expired)");
                 self.state = ConnectionState::Failed;
             }
             TunnResult::Err(e) => {
