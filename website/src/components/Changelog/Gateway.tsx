@@ -22,7 +22,8 @@ export default function Gateway() {
 
   return (
     <Entries downloadLinks={downloadLinks} title="Gateway">
-      <Unreleased>
+      <Unreleased></Unreleased>
+      <Entry version="1.4.18" date={new Date("2025-11-10")}>
         <ChangeItem pull="10620">
           Adds a `--log-format` CLI option to output logs as JSON.
         </ChangeItem>
@@ -30,7 +31,7 @@ export default function Gateway() {
           Fixes an issue where packets for DNS resources would be routed to
           stale IPs after DNS record changes.
         </ChangeItem>
-      </Unreleased>
+      </Entry>
       <Entry version="1.4.17" date={new Date("2025-10-16")}>
         <ChangeItem pull="10367">
           Fixes a rare CPU-spike issue in case a Client connected with many
