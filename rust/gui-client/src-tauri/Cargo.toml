@@ -53,7 +53,7 @@ specta = { workspace = true, features = ["url"] }
 specta-typescript = { workspace = true }
 strum = { workspace = true }
 subtle = { workspace = true }
-tauri = { workspace = true, features = ["tray-icon", "image-png"] }
+tauri = { workspace = true, features = ["tray-icon", "image-png", "devtools"] }
 tauri-plugin-dialog = { workspace = true }
 tauri-plugin-notification = { workspace = true }
 tauri-plugin-opener = { workspace = true }
