@@ -246,7 +246,7 @@ fn try_main() -> Result<()> {
     // AKA "Device ID", not the Firezone slug
     let firezone_id = match cli.firezone_id.clone() {
         Some(id) => id,
-        None => device_id::get_or_create().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
+        None => device_id::get_or_create_client().context("Could not get `firezone_id` from CLI, could not read it from disk, could not generate it and save it to disk")?.id,
     };
 
     let mut telemetry = if cli.is_telemetry_allowed() {

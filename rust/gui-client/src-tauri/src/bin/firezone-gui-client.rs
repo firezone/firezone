@@ -85,7 +85,7 @@ fn try_main(
 
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    let id = firezone_bin_shared::device_id::get().context("Failed to get device ID")?;
+    let id = firezone_bin_shared::device_id::get_client().context("Failed to get device ID")?;
 
     if cli.is_telemetry_allowed() {
         rt.block_on(telemetry.start(

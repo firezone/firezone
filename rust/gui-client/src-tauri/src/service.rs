@@ -113,12 +113,13 @@ async fn ipc_listen(
 ) -> Result<()> {
     // Create the device ID and Tunnel service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
+    let device_id =
+        device_id::get_or_create_client().context("Failed to read / create device ID")?;
 
     // Fix up the group of the device ID file and directory so the GUI client can access it.
     #[cfg(target_os = "linux")]
-    {
-        let path = device_id::path().context("Failed to access device ID path")?;
+    if device_id.source == device_id::Source::Disk {
+        let path = device_id::client_path().context("Failed to access device ID path")?;
         let group_id = crate::firezone_client_group()
             .context("Failed to get `firezone-client` group")?
             .gid
@@ -630,7 +631,8 @@ impl<'a> Handler<'a> {
     ) -> Result<Session> {
         let started_at = Instant::now();
 
-        let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
+        let device_id =
+            device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,
@@ -744,7 +746,8 @@ pub fn run_smoke_test() -> Result<()> {
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
+        let device_id =
+            device_id::get_or_create_client().context("Failed to read / create device ID")?;
         let mut server = ipc::Server::new(SocketId::Tunnel)?;
         let _ = Handler::new(
             device_id,
