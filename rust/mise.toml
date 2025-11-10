@@ -12,6 +12,7 @@ RUSTUP_TOOLCHAIN="1.91.0"
 "cargo:bpf-linker" = { version = "0.9.15", os = ["linux"] }
 "cargo:cargo-deb" = "3.6.2"
 "cargo:dump_syms" = "2.3.5"
+"cargo:cargo-deny" = "0.18.5"
 "pnpm" = "10.18.3"
 
 [tasks.fuzz]
