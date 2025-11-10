@@ -32,6 +32,10 @@ export default function Apple() {
           Fixes an issue where the order of upstream / system DNS resolvers was
           not respected.
         </ChangeItem>
+        <ChangeItem pull="10824">
+          Adds support for <code>hideResourceList</code> managed configuration
+          key to hide the Resource List in the macOS and iOS apps.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-10-20")}>
         <ChangeItem pull="10603">

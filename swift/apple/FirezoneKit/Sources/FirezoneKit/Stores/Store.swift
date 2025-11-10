@@ -43,7 +43,7 @@ public final class Store: ObservableObject {
 
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
-  private var configuration: Configuration
+  public let configuration: Configuration
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
 
