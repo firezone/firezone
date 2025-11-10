@@ -513,6 +513,15 @@ mod tests {
     }
 
     #[test]
+    fn does_not_append_same_attribute_twice() {
+        let log = log("Foobar", &[("handle_input:cid", "1234"), ("cid", "1234")]);
+
+        let log = append_tracing_fields_to_message(log).unwrap();
+
+        assert_eq!(log.body, "Foobar cid=1234")
+    }
+
+    #[test]
     fn trims_name_of_span_from_attribute() {
         let log = log(
             "Foobar",
