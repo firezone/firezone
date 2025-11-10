@@ -8,6 +8,7 @@
 # The `pool-` directories are referenced by the live repository metadata and the files in there need to atomically change with the metadata.
 
 set -euo pipefail
+shopt -s globstar
 
 COMPONENT="main"
 WORK_DIR="$(mktemp -d)"
@@ -57,7 +58,11 @@ for DISTRIBUTION in "stable" "preview"; do
     if [ "$(ls -A "${IMPORT_DIR}")" ]; then
         echo "Normalizing package names..."
 
-        for deb in "${IMPORT_DIR}"/**.deb; do
+        for deb in "${IMPORT_DIR}"/**; do
+            if [[ ! "$deb" == *.deb ]]; then
+                continue
+            fi
+
             if [ -f "$deb" ]; then
                 # Extract metadata from the .deb file
                 PACKAGE=$(dpkg-deb -f "$deb" Package 2>/dev/null)
