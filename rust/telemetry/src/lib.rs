@@ -388,6 +388,10 @@ fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
             None => &key,
         };
 
+        if log.attributes.contains_key(key) {
+            continue;
+        }
+
         log.body.push_str(&format!(" {key}={attr_string}"));
         log.attributes.insert(key.to_owned(), attribute);
     }
@@ -506,6 +510,15 @@ mod tests {
             log.body,
             "Foobar class=success response from=1.1.1.1:3478 method=binding"
         )
+    }
+
+    #[test]
+    fn does_not_append_same_attribute_twice() {
+        let log = log("Foobar", &[("handle_input:cid", "1234"), ("cid", "1234")]);
+
+        let log = append_tracing_fields_to_message(log).unwrap();
+
+        assert_eq!(log.body, "Foobar cid=1234")
     }
 
     #[test]
