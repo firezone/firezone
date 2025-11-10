@@ -128,9 +128,9 @@ public struct SettingsView: View {
     )
   }
 
-  public init(store: Store, configuration: Configuration? = nil) {
+  public init(store: Store) {
     self.store = store
-    self.configuration = configuration ?? Configuration.shared
+    self.configuration = store.configuration
     _viewModel = StateObject(wrappedValue: SettingsViewModel())
   }
 
