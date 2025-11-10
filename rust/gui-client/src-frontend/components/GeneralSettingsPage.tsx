@@ -43,13 +43,8 @@ export default function GeneralSettingsPage({
   const startMinimizedInputId = useId();
   const startOnLoginInputId = useId();
   const connectOnStartInputId = useId();
-
   return (
     <div className="container p-4">
-      <div className="pb-2">
-        <h2 className="text-xl font-semibold">General settings</h2>
-      </div>
-
       <form
         onSubmit={(e) => {
           e.preventDefault();
