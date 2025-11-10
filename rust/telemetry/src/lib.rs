@@ -388,6 +388,10 @@ fn append_tracing_fields_to_message(mut log: Log) -> Option<Log> {
             None => &key,
         };
 
+        if log.attributes.contains_key(key) {
+            continue;
+        }
+
         log.body.push_str(&format!(" {key}={attr_string}"));
         log.attributes.insert(key.to_owned(), attribute);
     }
