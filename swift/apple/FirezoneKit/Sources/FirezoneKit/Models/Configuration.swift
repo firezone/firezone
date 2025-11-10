@@ -18,7 +18,7 @@ public class Configuration: ObservableObject {
 
   @Published private(set) var publishedInternetResourceEnabled = false
   @Published private(set) var publishedHideAdminPortalMenuItem = false
-  @Published private(set) var publishedHideResourceList = true
+  @Published private(set) var publishedHideResourceList = false
 
   var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
   var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
