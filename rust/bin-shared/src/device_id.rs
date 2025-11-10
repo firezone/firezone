@@ -9,16 +9,33 @@ use std::{
     path::{Path, PathBuf},
 };
 
+/// Randomly generated, hex-encoded 128bit identifier for Clients.
+///
+/// Together with a unique hardware ID, like `/etc/machine-id`, this can be used to deterministically compute a device ID.
+const CLIENT_APP_ID: &str = "e1e465ce763e4759945c650ac334501f";
+
+/// Randomly generated, hex-encoded 128bit identifier for Gateways.
+///
+/// Together with a unique hardware ID, like `/etc/machine-id`, this can be used to deterministically compute a device ID.
+const GATEWAY_APP_ID: &str = "753b38f9f96947ef8083802d5909a372";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct DeviceId {
     pub id: String,
+    pub source: Source,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Source {
+    Disk,
+    HardwareId,
 }
 
 /// Returns the path of the randomly-generated Firezone device ID
 ///
 /// e.g. `C:\ProgramData\dev.firezone.client/firezone-id.json` or
 /// `/var/lib/dev.firezone.client/config/firezone-id.json`.
-pub fn path() -> Result<PathBuf> {
+pub fn client_path() -> Result<PathBuf> {
     let path = crate::known_dirs::tunnel_service_config()
         .context("Failed to compute path for firezone-id file")?
         .join("firezone-id.json");
@@ -26,21 +43,11 @@ pub fn path() -> Result<PathBuf> {
 }
 
 /// Returns the device ID without generating it
-pub fn get() -> Result<DeviceId> {
-    let path = path()?;
-    let id = get_at(&path)?;
+pub fn get_client() -> Result<DeviceId> {
+    let path = client_path()?;
+    let id = get_at_or_compute(&path, CLIENT_APP_ID)?;
 
     Ok(id)
-}
-
-fn get_at(path: &Path) -> Result<DeviceId> {
-    let content = fs::read_to_string(path).context("Failed to read file")?;
-    let device_id_json = serde_json::from_str::<DeviceIdJson>(&content)
-        .context("Failed to deserialize content as JSON")?;
-
-    Ok(DeviceId {
-        id: device_id_json.id,
-    })
 }
 
 /// Returns the device ID, generating it and saving it to disk if needed.
@@ -51,14 +58,22 @@ fn get_at(path: &Path) -> Result<DeviceId> {
 /// Returns: The UUID as a String, suitable for sending verbatim to `client_shared::Session::connect`.
 ///
 /// Errors: If the disk is unwritable when initially generating the ID, or unwritable when re-generating an invalid ID.
-pub fn get_or_create() -> Result<DeviceId> {
-    let path = path()?;
-    let id = get_or_create_at(&path)?;
+pub fn get_or_create_client() -> Result<DeviceId> {
+    let path = client_path()?;
+    let id = get_or_create_at(&path, CLIENT_APP_ID)?;
 
     Ok(id)
 }
 
-pub fn get_or_create_at(path: &Path) -> Result<DeviceId> {
+pub fn get_or_create_gateway() -> Result<DeviceId> {
+    const ID_PATH: &str = "/var/lib/firezone/gateway_id";
+
+    let id = get_or_create_at(Path::new(ID_PATH), GATEWAY_APP_ID)?;
+
+    Ok(id)
+}
+
+fn get_or_create_at(path: &Path, app_id: &str) -> Result<DeviceId> {
     let dir = path
         .parent()
         .context("Device ID path should always have a parent")?;
@@ -73,14 +88,8 @@ pub fn get_or_create_at(path: &Path) -> Result<DeviceId> {
     })?;
 
     // Try to read it from the disk
-    if let Some(j) = fs::read_to_string(path)
-        .ok()
-        .and_then(|s| serde_json::from_str::<DeviceIdJson>(&s).ok())
-    {
-        tracing::debug!(id = %j.id, "Loaded device ID from disk");
-        // Correct permissions for #6989
-        set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
-        return Ok(DeviceId { id: j.id });
+    if let Ok(id) = get_at_or_compute(path, app_id) {
+        return Ok(id);
     }
 
     // Couldn't read, it's missing or invalid, generate a new one and save it.
@@ -96,7 +105,38 @@ pub fn get_or_create_at(path: &Path) -> Result<DeviceId> {
 
     tracing::debug!(%id, "Saved device ID to disk");
     set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
-    Ok(DeviceId { id })
+
+    Ok(DeviceId {
+        id: j.id,
+        source: Source::Disk,
+    })
+}
+
+/// Reads the device ID from the given path, or if that fails, attempts to compute it from a hardware ID.
+fn get_at_or_compute(path: &Path, app_id: &str) -> Result<DeviceId> {
+    match (get_at(path), compute_from_hardware_id(app_id)) {
+        (Ok(fs_id), _) => Ok(fs_id),
+        (Err(_), Ok(derived_id)) => Ok(derived_id),
+        (Err(fs_err), Err(derive_err)) => {
+            anyhow::bail!("Failed to read ({fs_err:#}) and derive ({derive_err:#}) device ID")
+        }
+    }
+}
+
+fn get_at(path: &Path) -> Result<DeviceId> {
+    let content = fs::read_to_string(path).context("Failed to read file")?;
+    let j = serde_json::from_str::<DeviceIdJson>(&content)
+        .context("Failed to deserialize content as JSON")?;
+
+    tracing::debug!(id = %j.id, "Loaded device ID from disk");
+
+    // Correct permissions for #6989
+    set_id_permissions(path).context("Couldn't set permissions on Firezone ID file")?;
+
+    Ok(DeviceId {
+        id: j.id,
+        source: Source::Disk,
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -132,6 +172,35 @@ fn set_id_permissions(_: &Path) -> Result<()> {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
+fn compute_from_hardware_id(app_id: &str) -> Result<DeviceId> {
+    use hmac::Mac;
+
+    let machine_id =
+        fs::read_to_string("/etc/machine-id").context("Failed to read `/etc/machine-id`")?;
+
+    let bytes = hmac::Hmac::<sha2::Sha256>::new_from_slice(app_id.as_bytes())
+        .context("Failed to create HMAC instance")?
+        .chain_update(&machine_id)
+        .finalize()
+        .into_bytes()
+        .to_vec();
+
+    let id = hex::encode(bytes);
+
+    tracing::debug!(%id, "Derived device ID from /etc/machine-id");
+
+    Ok(DeviceId {
+        id,
+        source: Source::HardwareId,
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn compute_from_hardware_id(_: &str) -> Result<DeviceId> {
+    anyhow::bail!("Not implemented")
+}
+
 #[derive(serde::Deserialize, serde::Serialize)]
 struct DeviceIdJson {
     id: String,
@@ -149,8 +218,8 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("id.json");
 
-        let created_device_id = get_or_create_at(&path).unwrap();
-        let read_device_id = get_at(&path).unwrap();
+        let created_device_id = get_or_create_at(&path, CLIENT_APP_ID).unwrap();
+        let read_device_id = get_at_or_compute(&path, CLIENT_APP_ID).unwrap();
 
         assert_eq!(created_device_id, read_device_id);
     }
@@ -168,8 +237,18 @@ mod tests {
         .unwrap();
         std::fs::write(&path, json).unwrap();
 
-        let read_device_id = get_or_create_at(&path).unwrap();
+        let read_device_id = get_or_create_at(&path, CLIENT_APP_ID).unwrap();
 
         assert_eq!(read_device_id.id, plain_id.to_string());
+    }
+
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn compute_device_id_hardware_id() {
+        let _guard = firezone_logging::test("debug");
+
+        let id = compute_from_hardware_id(CLIENT_APP_ID).unwrap();
+
+        assert!(!id.id.is_empty())
     }
 }
