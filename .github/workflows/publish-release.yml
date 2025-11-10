@@ -180,41 +180,38 @@ jobs:
           projects: ${{ matrix.projects }}
           sentry_token: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
-  upload-deb-packages:
+  promote-deb-packages:
     runs-on: ubuntu-24.04
-    if: >-
-      ${{
-        startsWith(inputs.release_name || github.event.release.name, 'gateway') ||
-        startsWith(inputs.release_name || github.event.release.name, 'gui-client')
-      }}
+    strategy:
+      matrix:
+        include:
+          - tag_prefix: gateway
+            deb_name: firezone-gateway
+          - tag_prefix: gui-client
+            deb_name: firezone-client-gui
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-depth: 0
 
-      - name: Download .deb packages from release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - name: Copy preview archive to import-stable
+        if: ${{ startsWith(inputs.release_name || github.event.release.name, matrix.tag_prefix) }}
         run: |
-          set -xe
+          set -e
 
-          # Download all .deb assets
-          gh release download "${{ inputs.release_name || github.event.release.name }}" --pattern "*.deb"
+          # Extract version from release name
+          version=${{ inputs.release_name || github.event.release.name }}
+          version=${version#${{ matrix.tag_prefix }}-}
 
-          # List downloaded files for verification
-          ls -lh ./*.deb
-
-      - name: Upload to Azure Blob Storage
-        run: az storage blob upload-batch \
-          --destination apt \
-          --source . \
-          --pattern "*.deb" \
-          --destination-path import-stable \
-          --overwrite \
-          --no-progress \
-          --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
+          # Copy `.deb`s to `import-stable`
+          az storage blob copy start-batch \
+            --destination-container apt \
+            --source-container apt \
+            --pattern "pool-preview/${{ matrix.deb_name }}_$version*" \
+            --destination-path import-stable \
+            --connection-string "${{ secrets.AZURERM_ARTIFACTS_CONNECTION_STRING }}"
 
   regenerate-apt-index:
-    needs: upload-deb-packages
+    needs: promote-deb-packages
     uses: ./.github/workflows/_apt.yml
     secrets: inherit
