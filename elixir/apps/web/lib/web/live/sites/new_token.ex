@@ -313,7 +313,7 @@ defmodule Web.Sites.NewToken do
   defp debian_command_apt_repository do
     """
     mkdir --parents /etc/apt/keyrings
-    wget https://artifacts.firezone.dev/apt/key.gpg -O /etc/apt/keyrings/firezone.gpg
+    wget -qO- https://artifacts.firezone.dev/apt/key.gpg | gpg --dearmor -o /etc/apt/keyrings/firezone.gpg
     echo "deb [signed-by=/etc/apt/keyrings/firezone.gpg] https://artifacts.firezone.dev/apt/ stable main" > /etc/apt/sources.list.d/firezone.list
     """
   end
