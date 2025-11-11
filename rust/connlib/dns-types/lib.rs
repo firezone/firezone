@@ -121,7 +121,7 @@ impl Query {
     }
 
     pub fn try_into_http_request(self, mut url: Url) -> Result<http::Request<Bytes>, http::Error> {
-        let query = self.with_id(0);
+        let query = self.with_id(0); // In order to be more HTTP-cache friendly, DoH queries should set their ID to 0.
 
         let url = url
             .query_pairs_mut()
