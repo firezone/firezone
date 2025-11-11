@@ -92,41 +92,11 @@ pub(crate) struct RecursiveResponse {
     pub transport: Transport,
 }
 
-impl RecursiveQuery {
-    pub(crate) fn via_udp(
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
-        Self {
-            server,
-            local,
-            remote,
-            message,
-            transport: Transport::Udp,
-        }
-    }
-
-    pub(crate) fn via_tcp(
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
-        Self {
-            server,
-            local,
-            remote,
-            message,
-            transport: Transport::Tcp,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]
 pub(crate) enum Transport {
+    #[display("UDP")]
     Udp,
+    #[display("TCP")]
     Tcp,
 }
 

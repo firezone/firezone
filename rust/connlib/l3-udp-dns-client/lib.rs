@@ -8,7 +8,7 @@ use anyhow::{Context as _, Result, anyhow, bail};
 use ip_packet::IpPacket;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 
-const TIMEOUT: Duration = Duration::from_secs(5);
+const TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A sans-io DNS-over-UDP client.
 pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {

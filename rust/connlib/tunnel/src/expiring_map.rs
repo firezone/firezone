@@ -53,6 +53,7 @@ where
         self.inner.get(key)
     }
 
+    #[cfg(test)]
     pub fn remove(&mut self, key: &K) -> Option<Entry<V>> {
         self.expiration.retain(|_, keys| {
             keys.retain(|k| k != key);

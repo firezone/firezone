@@ -89,7 +89,7 @@ impl Server {
             }
 
             if let Poll::Ready(Some(result)) = self.reading_udp_queries.poll_next_unpin(cx) {
-                let (from, message) = result
+                let (remote, message) = result
                     .context("Failed to read UDP DNS query")
                     .map_err(anyhow_to_io)?;
 
@@ -102,7 +102,7 @@ impl Server {
 
                 return Poll::Ready(Ok(Query {
                     local,
-                    from,
+                    remote,
                     message,
                 }));
             }
@@ -144,7 +144,7 @@ async fn read_udp_query(socket: Arc<UdpSocket>) -> Result<(SocketAddr, dns_types
 
 pub struct Query {
     pub local: SocketAddr,
-    pub from: SocketAddr,
+    pub remote: SocketAddr,
     pub message: dns_types::Query,
 }
 
@@ -192,7 +192,7 @@ mod tests {
                 let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
 
                 server
-                    .send_response(query.from, dns_types::Response::no_error(&query.message))
+                    .send_response(query.remote, dns_types::Response::no_error(&query.message))
                     .unwrap();
             }
         });
@@ -224,7 +224,7 @@ mod tests {
                 let query = poll_fn(|cx| server.poll(cx)).await.unwrap();
 
                 server
-                    .send_response(query.from, dns_types::Response::no_error(&query.message))
+                    .send_response(query.remote, dns_types::Response::no_error(&query.message))
                     .unwrap();
             }
         });
