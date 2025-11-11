@@ -21,6 +21,11 @@ export default function GUI({ os }: { os: OS }) {
           Fixes an issue where the order of upstream / system DNS resolvers was
           not respected.
         </ChangeItem>
+        {os == OS.Linux && (
+          <ChangeItem pull="10849">
+            Fixes some rendering issues on Wayland-only systems.
+          </ChangeItem>
+        )}
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-10-16")}>
         <ChangeItem pull="10509">
