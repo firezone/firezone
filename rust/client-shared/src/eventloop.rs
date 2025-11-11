@@ -723,7 +723,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "All DNS servers ([2.2.2.2:53]) failed to resolve portal host 'example.com'"
+            "All DNS servers ([2.2.2.2]) failed to resolve portal host 'example.com'"
         );
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT)
     }
