@@ -1135,14 +1135,20 @@ impl ClientState {
                     continue;
                 };
 
-                self.handle_dns_query(
+                if let Some(response) = self.handle_dns_query(
                     query.message,
                     query.local,
                     query.remote,
                     upstream,
                     dns::Transport::Tcp,
                     now,
-                );
+                ) {
+                    unwrap_or_debug!(
+                        self.tcp_dns_server
+                            .send_message(query.local, query.remote, response),
+                        "Failed to send TCP DNS response: {}"
+                    );
+                }
                 continue;
             }
 
@@ -1262,14 +1268,17 @@ impl ClientState {
             }
         };
 
-        self.handle_dns_query(
-            message,
-            SocketAddr::new(packet.destination(), datagram.destination_port()),
-            SocketAddr::new(packet.source(), datagram.source_port()),
-            upstream,
-            dns::Transport::Udp,
-            now,
-        );
+        let local = SocketAddr::new(packet.destination(), datagram.destination_port());
+        let remote = SocketAddr::new(packet.source(), datagram.source_port());
+
+        if let Some(response) =
+            self.handle_dns_query(message, local, remote, upstream, dns::Transport::Udp, now)
+        {
+            unwrap_or_warn!(
+                self.try_queue_udp_dns_response(local, remote, response),
+                "Failed to queue UDP DNS response: {}"
+            );
+        };
     }
 
     fn handle_llmnr_dns_query(&mut self, packet: IpPacket, now: Instant) {
@@ -1337,16 +1346,11 @@ impl ClientState {
         upstream: SocketAddr,
         transport: dns::Transport,
         now: Instant,
-    ) {
+    ) -> Option<dns_types::Response> {
         let query_id = message.id();
 
         if let Some(response) = self.dns_cache.try_answer(&message, now) {
-            unwrap_or_debug!(
-                self.tcp_dns_server.send_message(local, remote, response),
-                "Failed to send {transport} DNS response: {}"
-            );
-
-            return;
+            return Some(response);
         }
 
         match self.stub_resolver.handle(&message) {
@@ -1355,10 +1359,7 @@ impl ClientState {
                 self.update_dns_resource_nat(now, iter::empty());
                 self.dns_cache.insert(message.domain(), &response, now);
 
-                unwrap_or_debug!(
-                    self.tcp_dns_server.send_message(local, remote, response),
-                    "Failed to send {transport} DNS response: {}"
-                );
+                return Some(response);
             }
             dns::ResolveStrategy::RecurseLocal => {
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
@@ -1366,15 +1367,18 @@ impl ClientState {
                         local, remote, upstream, message, transport, now,
                     );
 
-                    return;
+                    return None;
                 }
 
                 tracing::trace!(%upstream, %query_id, "Forwarding {transport} DNS query");
 
-                self.buffered_dns_queries
-                    .push_back(dns::RecursiveQuery::via_tcp(
-                        local, remote, upstream, message,
-                    ));
+                self.buffered_dns_queries.push_back(dns::RecursiveQuery {
+                    server: upstream,
+                    local,
+                    remote,
+                    message,
+                    transport,
+                });
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
                 let Some(gateway) =
@@ -1390,7 +1394,7 @@ impl ClientState {
                         }),
                         now,
                     );
-                    return;
+                    return None;
                 };
 
                 let server = gateway.tun_dns_server_endpoint(local.ip());
@@ -1400,6 +1404,8 @@ impl ClientState {
                 );
             }
         };
+
+        None
     }
 
     fn forward_dns_query_to_new_upstream_via_tunnel(

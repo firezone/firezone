@@ -456,12 +456,13 @@ impl GatewayTunnel {
 
                 for query in udp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_udp(
-                            query.local,
-                            query.remote,
-                            SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
-                        ));
+                        self.io.send_dns_query(dns::RecursiveQuery {
+                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            local: query.local,
+                            remote: query.remote,
+                            message: query.message,
+                            transport: dns::Transport::Udp,
+                        });
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
@@ -479,12 +480,13 @@ impl GatewayTunnel {
 
                 for query in tcp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
-                            query.local,
-                            query.remote,
-                            SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
-                        ));
+                        self.io.send_dns_query(dns::RecursiveQuery {
+                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            local: query.local,
+                            remote: query.remote,
+                            message: query.message,
+                            transport: dns::Transport::Tcp,
+                        });
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
 
