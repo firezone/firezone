@@ -147,8 +147,7 @@ pub struct ClientState {
 struct PendingFlow {
     last_intent_sent_at: Instant,
     resource_packets: UniquePacketBuffer,
-    udp_dns_queries: AllocRingBuffer<DnsQueryForSite>,
-    tcp_dns_queries: AllocRingBuffer<DnsQueryForSite>,
+    dns_queries: AllocRingBuffer<DnsQueryForSite>,
 }
 
 impl PendingFlow {
@@ -165,8 +164,7 @@ impl PendingFlow {
                 Self::CAPACITY_POW_2,
                 "pending-flow-resources",
             ),
-            udp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
-            tcp_dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
+            dns_queries: AllocRingBuffer::with_capacity_power_of_2(Self::CAPACITY_POW_2),
         };
         this.push(trigger);
 
@@ -176,11 +174,8 @@ impl PendingFlow {
     fn push(&mut self, trigger: ConnectionTrigger) {
         match trigger {
             ConnectionTrigger::PacketForResource(packet) => self.resource_packets.push(packet),
-            ConnectionTrigger::UdpDnsQueryForSite(query) => {
-                self.udp_dns_queries.enqueue(query);
-            }
-            ConnectionTrigger::TcpDnsQueryForSite(query) => {
-                self.tcp_dns_queries.enqueue(query);
+            ConnectionTrigger::DnsQueryForSite(query) => {
+                self.dns_queries.enqueue(query);
             }
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {}
         }
@@ -746,7 +741,7 @@ impl ClientState {
 
         // If we are making this connection because we want to send a DNS query to the Gateway,
         // mark it as "used" through the DNS resource ID.
-        if !pending_flow.udp_dns_queries.is_empty() || !pending_flow.tcp_dns_queries.is_empty() {
+        if !pending_flow.dns_queries.is_empty() {
             self.peers.add_ips_with_resource(
                 &gid,
                 [
@@ -758,7 +753,7 @@ impl ClientState {
         }
 
         // 2. Buffered UDP DNS queries for the Gateway
-        for query in pending_flow.udp_dns_queries {
+        for query in pending_flow.dns_queries {
             let gateway = self.peers.get(&gid).context("Unknown peer")?; // If this error happens we have a bug: We just inserted it above.
 
             let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
@@ -768,28 +763,7 @@ impl ClientState {
                 query.remote,
                 upstream,
                 query.message,
-                dns::Transport::Udp,
-                now,
-            );
-        }
-
-        // 3. Buffered TCP DNS queries for the Gateway
-        for query in pending_flow.tcp_dns_queries {
-            let server = match query.local {
-                SocketAddr::V4(_) => {
-                    SocketAddr::new(gateway_tun.v4.into(), crate::gateway::TUN_DNS_PORT)
-                }
-                SocketAddr::V6(_) => {
-                    SocketAddr::new(gateway_tun.v6.into(), crate::gateway::TUN_DNS_PORT)
-                }
-            };
-
-            self.forward_dns_query_to_new_upstream_via_tunnel(
-                query.local,
-                query.remote,
-                server,
-                query.message,
-                dns::Transport::Udp,
+                query.transport,
                 now,
             );
         }
@@ -1325,9 +1299,10 @@ impl ClientState {
                 else {
                     self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::UdpDnsQueryForSite(DnsQueryForSite {
+                        ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
                             local: destination,
                             remote: source,
+                            transport: dns::Transport::Udp,
                             message,
                         }),
                         now,
@@ -1471,9 +1446,10 @@ impl ClientState {
                 else {
                     self.on_not_connected_resource(
                         resource,
-                        ConnectionTrigger::TcpDnsQueryForSite(DnsQueryForSite {
+                        ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
                             local: query.local,
                             remote: query.remote,
+                            transport: dns::Transport::Tcp,
                             message: query.message,
                         }),
                         now,
@@ -1996,10 +1972,8 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
 enum ConnectionTrigger {
     /// A packet received on the TUN device with a destination IP that maps to one of our resources.
     PacketForResource(IpPacket),
-    /// A UDP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    UdpDnsQueryForSite(DnsQueryForSite),
-    /// A TCP DNS query that needs to be resolved within a particular site that we aren't connected to yet.
-    TcpDnsQueryForSite(DnsQueryForSite),
+    /// A DNS query that needs to be resolved within a particular site that we aren't connected to yet.
+    DnsQueryForSite(DnsQueryForSite),
     /// We have received an ICMP error that is marked as "access prohibited".
     ///
     /// Most likely, the Gateway is filtering these packets because the Client doesn't have access (anymore).
@@ -2009,6 +1983,7 @@ enum ConnectionTrigger {
 struct DnsQueryForSite {
     local: SocketAddr,
     remote: SocketAddr,
+    transport: dns::Transport,
     message: dns_types::Query,
 }
 
@@ -2016,8 +1991,7 @@ impl ConnectionTrigger {
     fn name(&self) -> &'static str {
         match self {
             ConnectionTrigger::PacketForResource(_) => "packet-for-resource",
-            ConnectionTrigger::UdpDnsQueryForSite(_) => "udp-dns-query-for-site",
-            ConnectionTrigger::TcpDnsQueryForSite(_) => "tcp-dns-query-for-site",
+            ConnectionTrigger::DnsQueryForSite(_) => "dns-query-for-site",
             ConnectionTrigger::IcmpDestinationUnreachableProhibited => {
                 "icmp-destination-unreachable-prohibited"
             }
