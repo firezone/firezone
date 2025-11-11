@@ -208,7 +208,7 @@ impl Response {
 
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
         if response.status() != http::StatusCode::OK {
-            return Err(Error::InvalidHttpStatusCode(response.status()));
+            return Err(Error::HttpNotSuccess(response.status()));
         }
 
         if response
@@ -336,8 +336,8 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
-    #[error("HTTP response has invalid status code: {0}")]
-    InvalidHttpStatusCode(http::StatusCode),
+    #[error("HTTP response status code is not 200 OK: {0}")]
+    HttpNotSuccess(http::StatusCode),
     #[error("HTTP response has invalid Content-Type header")]
     InvalidContentType,
     #[error(transparent)]
