@@ -17,15 +17,15 @@ hyper-util = { workspace = true, features = ["tokio"] }
 rustls = { workspace = true }
 rustls-pki-types = { workspace = true }
 socket-factory = { workspace = true }
+thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-rustls = { workspace = true }
 tracing = { workspace = true }
 webpki-roots = { workspace = true }
-thiserror = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
 futures = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
 workspace = true
