@@ -208,7 +208,7 @@ impl Response {
 
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
         if response.status() != http::StatusCode::OK {
-            return Err(Error::NotAResponse);
+            return Err(Error::InvalidHttpStatusCode(response.status()));
         }
 
         if response
@@ -216,7 +216,7 @@ impl Response {
             .get("Content-Type")
             .is_none_or(|ct| ct != "application/dns-message")
         {
-            return Err(Error::NotAResponse);
+            return Err(Error::InvalidContentType);
         }
 
         Self::parse(response.body())
@@ -336,6 +336,10 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
+    #[error("HTTP response has invalid status code: {0}")]
+    InvalidHttpStatusCode(http::StatusCode),
+    #[error("HTTP response has invalid Content-Type header")]
+    InvalidContentType,
     #[error(transparent)]
     Parse(#[from] domain::base::wire::ParseError),
 }
