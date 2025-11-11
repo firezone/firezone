@@ -1126,7 +1126,23 @@ impl ClientState {
 
             // Check if have any pending TCP DNS queries.
             if let Some(query) = self.tcp_dns_server.poll_queries() {
-                self.handle_tcp_dns_query(query, now);
+                let Some(upstream) = self
+                    .dns_config
+                    .mapping()
+                    .upstream_by_sentinel(query.local.ip())
+                else {
+                    // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
+                    continue;
+                };
+
+                self.handle_dns_query(
+                    query.message,
+                    query.local,
+                    query.remote,
+                    upstream,
+                    dns::Transport::Tcp,
+                    now,
+                );
                 continue;
             }
 
@@ -1246,82 +1262,14 @@ impl ClientState {
             }
         };
 
-        let destination = SocketAddr::new(packet.destination(), datagram.destination_port());
-        let source = SocketAddr::new(packet.source(), datagram.source_port());
-
-        if let Some(response) = self.dns_cache.try_answer(&message, now) {
-            unwrap_or_debug!(
-                self.try_queue_udp_dns_response(destination, source, response),
-                "Failed to queue UDP DNS response: {}"
-            );
-
-            return;
-        }
-
-        match self.stub_resolver.handle(&message) {
-            dns::ResolveStrategy::LocalResponse(response) => {
-                self.dns_resource_nat.recreate(message.domain());
-                self.update_dns_resource_nat(now, iter::empty());
-                self.dns_cache.insert(message.domain(), &response, now);
-
-                unwrap_or_debug!(
-                    self.try_queue_udp_dns_response(destination, source, response),
-                    "Failed to queue UDP DNS response: {}"
-                );
-            }
-            dns::ResolveStrategy::RecurseLocal => {
-                if self.should_forward_dns_query_to_gateway(upstream.ip()) {
-                    self.forward_dns_query_to_new_upstream_via_tunnel(
-                        destination,
-                        source,
-                        upstream,
-                        message,
-                        dns::Transport::Udp,
-                        now,
-                    );
-                    return;
-                }
-                let query_id = message.id();
-
-                tracing::trace!(server = %upstream, %query_id, "Forwarding UDP DNS query directly via host");
-
-                self.buffered_dns_queries
-                    .push_back(dns::RecursiveQuery::via_udp(
-                        destination,
-                        source,
-                        upstream,
-                        message,
-                    ));
-            }
-            dns::ResolveStrategy::RecurseSite(resource) => {
-                let Some(gateway) =
-                    peer_by_resource_mut(&self.resources_gateways, &mut self.peers, resource)
-                else {
-                    self.on_not_connected_resource(
-                        resource,
-                        ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
-                            local: destination,
-                            remote: source,
-                            transport: dns::Transport::Udp,
-                            message,
-                        }),
-                        now,
-                    );
-                    return;
-                };
-
-                let upstream = gateway.tun_dns_server_endpoint(packet.destination());
-
-                self.forward_dns_query_to_new_upstream_via_tunnel(
-                    destination,
-                    source,
-                    upstream,
-                    message,
-                    dns::Transport::Udp,
-                    now,
-                );
-            }
-        }
+        self.handle_dns_query(
+            message,
+            SocketAddr::new(packet.destination(), datagram.destination_port()),
+            SocketAddr::new(packet.source(), datagram.source_port()),
+            upstream,
+            dns::Transport::Udp,
+            now,
+        );
     }
 
     fn handle_llmnr_dns_query(&mut self, packet: IpPacket, now: Instant) {
@@ -1381,63 +1329,51 @@ impl ClientState {
         }
     }
 
-    fn handle_tcp_dns_query(&mut self, query: dns_over_tcp::Query, now: Instant) {
-        let query_id = query.message.id();
+    fn handle_dns_query(
+        &mut self,
+        message: dns_types::Query,
+        local: SocketAddr,
+        remote: SocketAddr,
+        upstream: SocketAddr,
+        transport: dns::Transport,
+        now: Instant,
+    ) {
+        let query_id = message.id();
 
-        let Some(server) = self
-            .dns_config
-            .mapping()
-            .upstream_by_sentinel(query.local.ip())
-        else {
-            // This is highly-unlikely but might be possible if our DNS mapping changes whilst the TCP DNS server is processing a request.
-            return;
-        };
-
-        if let Some(response) = self.dns_cache.try_answer(&query.message, now) {
+        if let Some(response) = self.dns_cache.try_answer(&message, now) {
             unwrap_or_debug!(
-                self.tcp_dns_server
-                    .send_message(query.local, query.remote, response),
-                "Failed to send TCP DNS response: {}"
+                self.tcp_dns_server.send_message(local, remote, response),
+                "Failed to send {transport} DNS response: {}"
             );
 
             return;
         }
 
-        match self.stub_resolver.handle(&query.message) {
+        match self.stub_resolver.handle(&message) {
             dns::ResolveStrategy::LocalResponse(response) => {
-                self.dns_resource_nat.recreate(query.message.domain());
+                self.dns_resource_nat.recreate(message.domain());
                 self.update_dns_resource_nat(now, iter::empty());
-                self.dns_cache
-                    .insert(query.message.domain(), &response, now);
+                self.dns_cache.insert(message.domain(), &response, now);
 
                 unwrap_or_debug!(
-                    self.tcp_dns_server
-                        .send_message(query.local, query.remote, response),
-                    "Failed to send TCP DNS response: {}"
+                    self.tcp_dns_server.send_message(local, remote, response),
+                    "Failed to send {transport} DNS response: {}"
                 );
             }
             dns::ResolveStrategy::RecurseLocal => {
-                if self.should_forward_dns_query_to_gateway(server.ip()) {
+                if self.should_forward_dns_query_to_gateway(upstream.ip()) {
                     self.forward_dns_query_to_new_upstream_via_tunnel(
-                        query.local,
-                        query.remote,
-                        server,
-                        query.message,
-                        dns::Transport::Tcp,
-                        now,
+                        local, remote, upstream, message, transport, now,
                     );
 
                     return;
                 }
 
-                tracing::trace!(%server, %query_id, "Forwarding TCP DNS query");
+                tracing::trace!(%upstream, %query_id, "Forwarding {transport} DNS query");
 
                 self.buffered_dns_queries
                     .push_back(dns::RecursiveQuery::via_tcp(
-                        query.local,
-                        query.remote,
-                        server,
-                        query.message,
+                        local, remote, upstream, message,
                     ));
             }
             dns::ResolveStrategy::RecurseSite(resource) => {
@@ -1447,25 +1383,20 @@ impl ClientState {
                     self.on_not_connected_resource(
                         resource,
                         ConnectionTrigger::DnsQueryForSite(DnsQueryForSite {
-                            local: query.local,
-                            remote: query.remote,
-                            transport: dns::Transport::Tcp,
-                            message: query.message,
+                            local,
+                            remote,
+                            transport,
+                            message,
                         }),
                         now,
                     );
                     return;
                 };
 
-                let server = gateway.tun_dns_server_endpoint(query.local.ip());
+                let server = gateway.tun_dns_server_endpoint(local.ip());
 
                 self.forward_dns_query_to_new_upstream_via_tunnel(
-                    query.local,
-                    query.remote,
-                    server,
-                    query.message,
-                    dns::Transport::Tcp,
-                    now,
+                    local, remote, server, message, transport, now,
                 );
             }
         };
