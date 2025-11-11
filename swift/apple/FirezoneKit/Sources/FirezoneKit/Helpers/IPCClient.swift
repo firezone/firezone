@@ -97,31 +97,122 @@ enum IPCClient {
     try await sendMessageWithoutResponse(session: session, message: message)
   }
 
-  static func clearLogs(session: NETunnelProviderSession) async throws {
-    try await sendMessageWithoutResponse(session: session, message: ProviderMessage.clearLogs)
+  // MARK: - Log operations with utun cleanup
+
+  #if os(macOS)
+    /// Wraps an IPC call with wake-up and cleanup logic when VPN is not connected.
+    ///
+    /// On macOS, IPC calls can wake the network extension, which creates a utun device.
+    /// If not properly cleaned up (via stop), these devices accumulate.
+    @MainActor
+    private static func wrapIPCCallIfNeeded<T: Sendable>(
+      session: NETunnelProviderSession,
+      configuration: Configuration,
+      operation: @MainActor () async throws -> T
+    ) async throws -> T {
+      if session.status == .connected {
+        // Extension already running, utun already created, just execute
+        return try await operation()
+      }
+
+      // Extension needs waking, must cleanup afterwards
+      try dryStartStopCycle(session: session, configuration: configuration)
+
+      // Wait for extension to wake up and be ready for IPC (500ms)
+      try await Task.sleep(nanoseconds: 500_000_000)
+
+      defer {
+        do {
+          try stop(session: session)
+        } catch {
+          Log.error(error)
+        }
+      }
+
+      return try await operation()
+    }
+  #else
+    /// On iOS, IPC calls don't have the utun accumulation issue. Execute directly.
+    private static func wrapIPCCallIfNeeded<T: Sendable>(
+      session: NETunnelProviderSession,
+      configuration: Configuration,
+      operation: @MainActor () async throws -> T
+    ) async throws -> T {
+      return try await operation()
+    }
+  #endif
+
+  // MARK: - Low-level IPC operations
+
+  @MainActor
+  static func clearLogs(session: NETunnelProviderSession, configuration: Configuration)
+    async throws
+  {
+    try await wrapIPCCallIfNeeded(session: session, configuration: configuration) {
+      try await sendMessageWithoutResponse(session: session, message: ProviderMessage.clearLogs)
+    }
   }
 
-  static func getLogFolderSize(session: NETunnelProviderSession) async throws -> Int64 {
-    return try await withCheckedThrowingContinuation { continuation in
+  @MainActor
+  static func getLogFolderSize(
+    session: NETunnelProviderSession, configuration: Configuration
+  ) async throws -> Int64 {
+    return try await wrapIPCCallIfNeeded(session: session, configuration: configuration) {
+      return try await withCheckedThrowingContinuation { continuation in
 
-      do {
-        try validateSession(session).sendProviderMessage(
-          encoder.encode(ProviderMessage.getLogFolderSize)
-        ) { data in
+        do {
+          try validateSession(session).sendProviderMessage(
+            encoder.encode(ProviderMessage.getLogFolderSize)
+          ) { data in
 
-          guard let data = data
-          else {
-            continuation
-              .resume(throwing: Error.noIPCData)
+            guard let data = data
+            else {
+              continuation
+                .resume(throwing: Error.noIPCData)
 
-            return
+              return
+            }
+            data.withUnsafeBytes { rawBuffer in
+              continuation.resume(returning: rawBuffer.load(as: Int64.self))
+            }
           }
-          data.withUnsafeBytes { rawBuffer in
-            continuation.resume(returning: rawBuffer.load(as: Int64.self))
-          }
+        } catch {
+          continuation.resume(throwing: error)
         }
-      } catch {
-        continuation.resume(throwing: error)
+      }
+    }
+  }
+
+  @MainActor
+  static func exportLogs(
+    session: NETunnelProviderSession,
+    configuration: Configuration,
+    fileHandle: FileHandle
+  ) async throws {
+    try await wrapIPCCallIfNeeded(session: session, configuration: configuration) {
+      try await withCheckedThrowingContinuation { continuation in
+        exportLogsCallback(
+          session: session,
+          appender: { chunk in
+            do {
+              // Append each chunk to the archive
+              try fileHandle.seekToEnd()
+              fileHandle.write(chunk.data)
+
+              if chunk.done {
+                try fileHandle.close()
+                continuation.resume()
+              }
+            } catch {
+              try? fileHandle.close()
+              continuation.resume(throwing: error)
+            }
+          },
+          errorHandler: { error in
+            try? fileHandle.close()
+            continuation.resume(throwing: error)
+          }
+        )
       }
     }
   }
@@ -129,7 +220,7 @@ enum IPCClient {
   // Call this with a closure that will append each chunk to a buffer
   // of some sort, like a file. The completed buffer is a valid Apple Archive
   // in AAR format.
-  static func exportLogs(
+  private static func exportLogsCallback(
     session: NETunnelProviderSession,
     appender: @escaping (LogChunk) -> Void,
     errorHandler: @escaping (Error) -> Void

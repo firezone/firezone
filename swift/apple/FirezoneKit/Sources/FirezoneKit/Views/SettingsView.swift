@@ -627,6 +627,7 @@ public struct SettingsView: View {
             }
             try await LogExporter.export(
               to: destinationURL,
+              store: store,
               session: session
             )
 
@@ -713,7 +714,8 @@ public struct SettingsView: View {
         guard let session = try store.manager().session() else {
           throw VPNConfigurationManagerError.managerNotInitialized
         }
-        let providerLogFolderSize = try await IPCClient.getLogFolderSize(session: session)
+        let providerLogFolderSize = try await IPCClient.getLogFolderSize(
+          session: session, configuration: store.configuration)
         let totalSize = logFolderSize + providerLogFolderSize
       #else
         let totalSize = logFolderSize
@@ -749,7 +751,10 @@ public struct SettingsView: View {
     try Log.clear(in: SharedAccess.logFolderURL)
 
     #if os(macOS)
-      try await store.clearLogs()
+      guard let session = try store.manager().session() else {
+        throw VPNConfigurationManagerError.managerNotInitialized
+      }
+      try await IPCClient.clearLogs(session: session, configuration: store.configuration)
     #endif
   }
 

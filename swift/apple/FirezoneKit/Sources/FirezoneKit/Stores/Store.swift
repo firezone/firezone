@@ -282,13 +282,6 @@ public final class Store: ObservableObject {
     try await IPCClient.signOut(session: session)
   }
 
-  func clearLogs() async throws {
-    guard let session = try manager().session() else {
-      throw VPNConfigurationManagerError.managerNotInitialized
-    }
-    try await IPCClient.clearLogs(session: session)
-  }
-
   // MARK: Private functions
 
   private func markAlertAsShown(_ id: String) {

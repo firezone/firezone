@@ -29,6 +29,7 @@ import System
 
     static func export(
       to archiveURL: URL,
+      store: Store,
       session: NETunnelProviderSession
     ) async throws {
       guard let logFolderURL = SharedAccess.logFolderURL
@@ -54,31 +55,11 @@ import System
       let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
 
       // 3. Await tunnel log export from tunnel process
-      try await withCheckedThrowingContinuation { continuation in
-        IPCClient.exportLogs(
-          session: session,
-          appender: { chunk in
-            do {
-              // Append each chunk to the archive
-              try fileHandle.seekToEnd()
-              fileHandle.write(chunk.data)
-
-              if chunk.done {
-                try fileHandle.close()
-                continuation.resume()
-              }
-
-            } catch {
-              try? fileHandle.close()
-
-              continuation.resume(throwing: error)
-            }
-          },
-          errorHandler: { error in
-            continuation.resume(throwing: error)
-          }
-        )
-      }
+      try await IPCClient.exportLogs(
+        session: session,
+        configuration: store.configuration,
+        fileHandle: fileHandle
+      )
 
       // 4. Create app log archive
       let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
