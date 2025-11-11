@@ -207,12 +207,16 @@ impl Response {
     }
 
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
+        if response.status() != http::StatusCode::OK {
+            return Err(Error::HttpNotSuccess(response.status()));
+        }
+
         if response
             .headers()
             .get(http::header::CONTENT_TYPE)
             .is_none_or(|ct| ct != "application/dns-message")
         {
-            return Err(Error::NotAResponse);
+            return Err(Error::NotApplicationDnsMessage);
         }
 
         Self::parse(response.body())
@@ -332,6 +336,10 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
+    #[error("HTTP response status code is not 200 OK: {0}")]
+    HttpNotSuccess(http::StatusCode),
+    #[error("HTTP response Content-Type is not application/dns-message")]
+    NotApplicationDnsMessage,
     #[error(transparent)]
     Parse(#[from] domain::base::wire::ParseError),
 }
