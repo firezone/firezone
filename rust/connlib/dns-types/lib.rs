@@ -207,6 +207,10 @@ impl Response {
     }
 
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
+        if response.status() != http::StatusCode::OK {
+            return Err(Error::NotAResponse);
+        }
+
         if response
             .headers()
             .get("Content-Type")
