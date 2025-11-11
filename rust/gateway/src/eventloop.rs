@@ -93,6 +93,7 @@ impl Eventloop {
             portal,
             portal_event_tx,
             portal_cmd_rx,
+            resolver.clone(),
         ));
 
         Ok(Self {
@@ -696,6 +697,7 @@ async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
+    resolver: TokioResolver,
 ) {
     use futures::future::Either;
     use futures::future::select;
@@ -740,11 +742,27 @@ async fn phoenix_channel_event_loop(
                     error,
                 }),
                 _,
-            )) => tracing::info!(
-                ?backoff,
-                ?max_elapsed_time,
-                "Hiccup in portal connection: {error:#}"
-            ),
+            )) => {
+                tracing::info!(
+                    ?backoff,
+                    ?max_elapsed_time,
+                    "Hiccup in portal connection: {error:#}"
+                );
+
+                let ips = match resolver
+                    .lookup_ip(portal.host())
+                    .await
+                    .context("Failed to lookup portal host")
+                {
+                    Ok(ips) => ips.into_iter().collect(),
+                    Err(e) => {
+                        tracing::debug!(host = %portal.host(), "{e:#}");
+                        continue;
+                    }
+                };
+
+                portal.update_ips(ips);
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
