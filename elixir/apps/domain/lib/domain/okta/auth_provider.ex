@@ -30,7 +30,7 @@ defmodule Domain.Okta.AuthProvider do
     field :portal_session_lifetime_secs, :integer
 
     field :is_verified, :boolean, virtual: true, default: false
-    field :okta_domain, :string, virtual: true
+    field :okta_domain, :string
 
     field :is_disabled, :boolean, read_after_writes: true, default: false
     field :is_default, :boolean, read_after_writes: true, default: false
@@ -57,6 +57,7 @@ defmodule Domain.Okta.AuthProvider do
     |> validate_length(:okta_domain, min: 1, max: 255)
     |> validate_fqdn(:okta_domain)
     |> validate_length(:issuer, min: 1, max: 2_000)
+    |> validate_issuer_contains_okta_domain()
     |> validate_length(:client_id, min: 1, max: 255)
     |> validate_length(:client_secret, min: 1, max: 255)
     |> validate_number(:portal_session_lifetime_secs,
@@ -86,4 +87,15 @@ defmodule Domain.Okta.AuthProvider do
 
   def default_portal_session_lifetime_secs, do: @default_portal_session_lifetime_secs
   def default_client_session_lifetime_secs, do: @default_client_session_lifetime_secs
+
+  defp validate_issuer_contains_okta_domain(changeset) do
+    okta_domain = get_field(changeset, :okta_domain)
+    issuer = get_field(changeset, :issuer)
+
+    if "https://#{okta_domain}" == issuer do
+      changeset
+    else
+      add_error(changeset, :issuer, "must equal https://<okta_domain>")
+    end
+  end
 end

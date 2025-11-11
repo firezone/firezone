@@ -700,20 +700,63 @@ defmodule Web.Settings.Authentication do
       phx-change="validate"
       phx-submit={@submit_event}
     >
-      <div class="space-y-6">
-        <div>
-          <.input
-            field={@form[:name]}
-            type="text"
-            label="Name"
-            autocomplete="off"
-            phx-debounce="300"
-            data-1p-ignore
-            required
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Enter a name to identify this provider. This will be shown to end-users during authentication.
-          </p>
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <.input
+              field={@form[:name]}
+              type="text"
+              label="Name"
+              autocomplete="off"
+              phx-debounce="300"
+              data-1p-ignore
+              required
+            />
+            <p class="mt-1 text-xs text-neutral-600">
+              Enter a name to identify this provider. This will be shown to end-users during authentication.
+            </p>
+          </div>
+
+          <div>
+            <.input
+              field={@form[:context]}
+              type="select"
+              label="Context"
+              options={context_options()}
+              required
+            />
+            <p class="mt-1 text-xs text-neutral-600">
+              Choose where this provider can be used for authentication.
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <.input
+              field={@form[:portal_session_lifetime_secs]}
+              type="number"
+              label="Portal Session Lifetime (seconds)"
+              placeholder="28800"
+              phx-debounce="300"
+            />
+            <p class="mt-1 text-xs text-neutral-600">
+              Session lifetime for Admin Portal users (5 minutes to 24 hours). Default: 8 hours (28800).
+            </p>
+          </div>
+
+          <div>
+            <.input
+              field={@form[:client_session_lifetime_secs]}
+              type="number"
+              label="Client Session Lifetime (seconds)"
+              placeholder="604800"
+              phx-debounce="300"
+            />
+            <p class="mt-1 text-xs text-neutral-600">
+              Session lifetime for Client applications (1 hour to 90 days). Default: 7 days (604800).
+            </p>
+          </div>
         </div>
 
         <div :if={@type == "okta"}>
@@ -746,73 +789,36 @@ defmodule Web.Settings.Authentication do
           </p>
         </div>
 
-        <div :if={@type in ["okta", "oidc"]}>
-          <.input
-            field={@form[:client_id]}
-            type="text"
-            label="Client ID"
-            autocomplete="off"
-            phx-debounce="300"
-            data-1p-ignore
-            required
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Enter the Client ID from your {titleize(@type)} application settings.
-          </p>
-        </div>
+        <div :if={@type in ["okta", "oidc"]} class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div>
+            <.input
+              field={@form[:client_id]}
+              type="text"
+              label="Client ID"
+              autocomplete="off"
+              phx-debounce="300"
+              data-1p-ignore
+              required
+            />
+            <p class="mt-1 text-xs text-neutral-600">
+              Enter the Client ID from your {titleize(@type)} application settings.
+            </p>
+          </div>
 
-        <div :if={@type in ["okta", "oidc"]}>
-          <.input
-            field={@form[:client_secret]}
-            type="password"
-            label="Client Secret"
-            autocomplete="off"
-            phx-debounce="300"
-            data-1p-ignore
-            required
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Enter the Client Secret from your {titleize(@type)} application settings.
-          </p>
-        </div>
-
-        <div>
-          <.input
-            field={@form[:context]}
-            type="select"
-            label="Context"
-            options={context_options()}
-            required
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Choose where this provider can be used for authentication.
-          </p>
-        </div>
-
-        <div>
-          <.input
-            field={@form[:portal_session_lifetime_secs]}
-            type="number"
-            label="Portal Session Lifetime (seconds)"
-            placeholder="28800"
-            phx-debounce="300"
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Session lifetime for Admin Portal users (5 minutes to 24 hours). Default: 8 hours (28800).
-          </p>
-        </div>
-
-        <div>
-          <.input
-            field={@form[:client_session_lifetime_secs]}
-            type="number"
-            label="Client Session Lifetime (seconds)"
-            placeholder="604800"
-            phx-debounce="300"
-          />
-          <p class="mt-1 text-xs text-neutral-600">
-            Session lifetime for Client applications (1 hour to 90 days). Default: 7 days (604800).
-          </p>
+          <div>
+            <.input
+              field={@form[:client_secret]}
+              type="password"
+              label="Client Secret"
+              autocomplete="off"
+              phx-debounce="300"
+              data-1p-ignore
+              required
+            />
+            <p class="mt-1 text-xs text-neutral-600">
+              Enter the Client Secret from your {titleize(@type)} application settings.
+            </p>
+          </div>
         </div>
 
         <div
