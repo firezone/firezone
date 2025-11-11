@@ -2,7 +2,6 @@ defmodule Web.NavigationComponents do
   use Phoenix.Component
   use Web, :verified_routes
   import Web.CoreComponents
-  alias Phoenix.LiveView.JS
 
   attr :subject, :any, required: true
 
@@ -168,7 +167,7 @@ defmodule Web.NavigationComponents do
     <li>
       <.link
         navigate={@navigate}
-        phx-click={JS.dispatch("click", to: "[data-drawer-toggle='drawer-navigation']")}
+        data-drawer-hide="drawer-navigation"
         class={~w[
       flex items-center px-4 py-2
       text-base
@@ -238,7 +237,7 @@ defmodule Web.NavigationComponents do
         <li :for={item <- @item}>
           <.link
             navigate={item.navigate}
-            phx-click={JS.dispatch("click", to: "[data-drawer-toggle='drawer-navigation']")}
+            data-drawer-hide="drawer-navigation"
             class={~w[
               flex items-center p-2 pl-12 w-full group rounded
               text-lg text-neutral-700

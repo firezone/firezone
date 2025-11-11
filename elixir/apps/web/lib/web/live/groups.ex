@@ -44,16 +44,17 @@ defmodule Web.Groups do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :show}} = socket) do
     group = Query.get_group_with_actors!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
+
     {:noreply, assign(socket, group: group, show_member_filter: "")}
   end
 
   # Edit Group Modal
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     group = Query.get_group_with_actors!(id, socket.assigns.subject)
+    socket = handle_live_tables_params(socket, params, uri)
 
     if is_editable_group?(group) do
       changeset = changeset(group, %{})
-      socket = handle_live_tables_params(socket, params, uri)
 
       {:noreply,
        assign(socket,
@@ -87,7 +88,7 @@ defmodule Web.Groups do
   end
 
   def handle_event("validate", %{"group" => attrs}, socket) do
-    group = Map.get(socket.assigns, :group, %Actors.Group{type: :static})
+    group = Map.get(socket.assigns, :group, %Actors.Group{})
     changeset = changeset(group, attrs)
 
     # Only search if member_search value has changed
@@ -96,14 +97,7 @@ defmodule Web.Groups do
 
     {member_search_results, last_member_search} =
       if current_search != last_search do
-        results =
-          if String.trim(current_search) != "" do
-            search_members_for_add(attrs, socket)
-          else
-            nil
-          end
-
-        {results, current_search}
+        {get_search_results(current_search, socket), current_search}
       else
         {socket.assigns.member_search_results, last_search}
       end
@@ -117,53 +111,38 @@ defmodule Web.Groups do
   end
 
   def handle_event("focus_search", _params, socket) do
-    # Only show results if there's already a search term
     member_search = get_in(socket.assigns.form.params, ["member_search"]) || ""
-
-    search_results =
-      if String.trim(member_search) != "" do
-        search_members_for_add(%{"member_search" => member_search}, socket)
-      else
-        nil
-      end
-
+    search_results = get_search_results(member_search, socket)
     {:noreply, assign(socket, member_search_results: search_results)}
   end
 
   def handle_event("add_member", %{"actor_id" => actor_id}, socket) do
     actor = Query.get_actor!(actor_id, socket.assigns.subject)
 
-    if Map.has_key?(socket.assigns, :members_to_remove) do
-      {members_to_add, members_to_remove} = add_member(actor, socket)
+    {members_to_add, members_to_remove} =
+      if Map.has_key?(socket.assigns, :members_to_remove) do
+        add_member(actor, socket)
+      else
+        {uniq_by_id([actor | socket.assigns.members_to_add]), []}
+      end
 
-      # Clear the search input by updating form params
-      updated_params = Map.put(socket.assigns.form.params, "member_search", "")
-      changeset = socket.assigns.group |> changeset(updated_params)
+    group = Map.get(socket.assigns, :group, %Actors.Group{})
+    updated_params = Map.put(socket.assigns.form.params, "member_search", "")
+    changeset = changeset(group, updated_params)
 
-      {:noreply,
-       assign(socket,
-         members_to_add: members_to_add,
-         members_to_remove: members_to_remove,
-         member_search_results: nil,
-         form: to_form(changeset),
-         last_member_search: ""
-       )}
-    else
-      # For add modal - no remove tracking needed
-      members_to_add = [actor | socket.assigns.members_to_add] |> Enum.uniq_by(& &1.id)
+    assigns = [
+      members_to_add: members_to_add,
+      member_search_results: nil,
+      form: to_form(changeset),
+      last_member_search: ""
+    ]
 
-      # Clear the search input by updating form params
-      updated_params = Map.put(socket.assigns.form.params, "member_search", "")
-      changeset = changeset(%Actors.Group{}, updated_params)
+    assigns =
+      if members_to_remove != [],
+        do: Keyword.put(assigns, :members_to_remove, members_to_remove),
+        else: assigns
 
-      {:noreply,
-       assign(socket,
-         members_to_add: members_to_add,
-         member_search_results: nil,
-         form: to_form(changeset),
-         last_member_search: ""
-       )}
-    end
+    {:noreply, assign(socket, assigns)}
   end
 
   def handle_event("remove_member", %{"actor_id" => actor_id}, socket) do
@@ -187,11 +166,7 @@ defmodule Web.Groups do
     if is_editable_group?(group) do
       case delete_group(group, socket.assigns.subject) do
         {:ok, _group} ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Group deleted successfully")
-           |> reload_live_table!("groups")
-           |> close_modal()}
+          {:noreply, handle_success(socket, "Group deleted successfully")}
 
         {:error, _changeset} ->
           {:noreply, put_flash(socket, :error, "Failed to delete group")}
@@ -202,20 +177,13 @@ defmodule Web.Groups do
   end
 
   def handle_event("create", %{"group" => attrs}, socket) do
-    attrs =
-      attrs
-      |> build_attrs_with_memberships_for_add(socket)
-
+    attrs = build_attrs_with_memberships_for_add(attrs, socket)
     group = %Actors.Group{account_id: socket.assigns.subject.account.id}
     changeset = changeset(group, attrs)
 
     case create_group(changeset, socket.assigns.subject) do
       {:ok, _group} ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Group created successfully")
-         |> reload_live_table!("groups")
-         |> close_modal()}
+        {:noreply, handle_success(socket, "Group created successfully")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
@@ -229,11 +197,7 @@ defmodule Web.Groups do
 
       case update_group(changeset, socket.assigns.subject) do
         {:ok, _group} ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Group updated successfully")
-           |> reload_live_table!("groups")
-           |> close_modal()}
+          {:noreply, handle_success(socket, "Group updated successfully")}
 
         {:error, changeset} ->
           {:noreply, assign(socket, form: to_form(changeset))}
@@ -357,9 +321,7 @@ defmodule Web.Groups do
 
                 <.member_list members={@members_to_add}>
                   <:badge :let={actor}>
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
-                      {Phoenix.Naming.humanize(actor.type)}
-                    </span>
+                    <.actor_type_badge actor={actor} />
                   </:badge>
                   <:actions :let={actor}>
                     <div class="ml-4 flex items-center gap-2">
@@ -391,40 +353,88 @@ defmodule Web.Groups do
       id="show-group-modal"
       on_close="close_modal"
     >
-      <:title>Show Group</:title>
+      <:title>
+        <div class="flex items-center gap-3">
+          <.directory_icon directory={@group.directory} class="w-8 h-8 flex-shrink-0" />
+          <span>{@group.name}</span>
+        </div>
+      </:title>
       <:body>
         <div class="space-y-6">
-          <div class="flex items-start justify-between gap-4">
-            <.group_header {assigns} />
-            <.popover :if={is_editable_group?(@group)} placement="bottom-end" trigger="click">
-              <:target>
-                <button
-                  type="button"
-                  class="text-neutral-500 hover:text-neutral-700 focus:outline-none"
-                >
-                  <.icon name="hero-ellipsis-horizontal" class="w-6 h-6" />
-                </button>
-              </:target>
-              <:content>
-                <div class="py-1">
-                  <.link
-                    navigate={~p"/#{@account}/groups/edit/#{@group.id}?#{query_params(@uri)}"}
-                    class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
-                  >
-                    <.icon name="hero-pencil" class="w-4 h-4" /> Edit
-                  </.link>
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="text-sm font-semibold text-neutral-900">Details</h3>
+              <.popover :if={is_editable_group?(@group)} placement="bottom-end" trigger="click">
+                <:target>
                   <button
                     type="button"
-                    phx-click="delete"
-                    phx-value-id={@group.id}
-                    class="w-full px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
-                    data-confirm="Are you sure you want to delete this group?"
+                    class="text-neutral-500 hover:text-neutral-700 focus:outline-none"
                   >
-                    <.icon name="hero-trash" class="w-4 h-4" /> Delete
+                    <.icon name="hero-ellipsis-horizontal" class="w-6 h-6" />
                   </button>
+                </:target>
+                <:content>
+                  <div class="py-1">
+                    <.link
+                      navigate={~p"/#{@account}/groups/edit/#{@group.id}?#{query_params(@uri)}"}
+                      class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
+                    >
+                      <.icon name="hero-pencil" class="w-4 h-4" /> Edit
+                    </.link>
+                    <button
+                      type="button"
+                      phx-click="delete"
+                      phx-value-id={@group.id}
+                      class="w-full px-3 py-2 text-sm text-red-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
+                      data-confirm="Are you sure you want to delete this group?"
+                    >
+                      <.icon name="hero-trash" class="w-4 h-4" /> Delete
+                    </button>
+                  </div>
+                </:content>
+              </.popover>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <p class="text-xs font-medium text-neutral-500 uppercase">ID</p>
+                <p class="text-sm text-neutral-900 font-mono">{@group.id}</p>
+              </div>
+              <div>
+                <p class="text-xs font-medium text-neutral-500 uppercase">Created</p>
+                <p class="text-sm text-neutral-900">
+                  <.relative_datetime datetime={@group.inserted_at} />
+                </p>
+              </div>
+              <div>
+                <p class="text-xs font-medium text-neutral-500 uppercase">Directory Type</p>
+                <p class="text-sm text-neutral-900 capitalize">
+                  {get_directory_type(@group.directory)}
+                </p>
+              </div>
+              <div>
+                <p class="text-xs font-medium text-neutral-500 uppercase">
+                  {if is_firezone_directory?(@group.directory),
+                    do: "Last Updated",
+                    else: "Last Synced"}
+                </p>
+                <p class="text-sm text-neutral-900">
+                  <%= if is_firezone_directory?(@group.directory) do %>
+                    <.relative_datetime datetime={@group.updated_at} />
+                  <% else %>
+                    <.relative_datetime datetime={@group.last_synced_at} />
+                  <% end %>
+                </p>
+              </div>
+              <%= if not is_firezone_directory?(@group.directory) and get_idp_id(@group.directory) do %>
+                <div class="col-span-2">
+                  <p class="text-xs font-medium text-neutral-500 uppercase">Identity Provider ID</p>
+                  <p class="text-sm text-neutral-900 font-mono break-all">
+                    {get_idp_id(@group.directory)}
+                  </p>
                 </div>
-              </:content>
-            </.popover>
+              <% end %>
+            </div>
           </div>
 
           <div>
@@ -439,12 +449,10 @@ defmodule Web.Groups do
 
               <.member_list members={filtered_actors} item_class="p-3 hover:bg-neutral-50 group">
                 <:badge :let={actor}>
-                  <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
-                    {Phoenix.Naming.humanize(actor.type)}
-                  </span>
+                  <.actor_type_badge actor={actor} />
                 </:badge>
                 <:empty_message>
-                  <%= if String.trim(@show_member_filter) != "" do %>
+                  <%= if has_content?(@show_member_filter) do %>
                     No members match your filter.
                   <% else %>
                     No members in this group.
@@ -462,18 +470,17 @@ defmodule Web.Groups do
       :if={@live_action == :edit}
       id="edit-group-modal"
       on_close="close_modal"
-      confirm_disabled={
-        not @form.source.valid? or
-          (Enum.empty?(@form.source.changes) and @members_to_add == [] and
-             @members_to_remove == [])
-      }
+      confirm_disabled={edit_form_unchanged?(@form, @members_to_add, @members_to_remove)}
     >
-      <:title>Edit Group</:title>
+      <:title>
+        <div class="flex items-center gap-3">
+          <.directory_icon directory={@group.directory} class="w-8 h-8 flex-shrink-0" />
+          <span>Edit {@group.name}</span>
+        </div>
+      </:title>
       <:body>
         <.form id="group-form" for={@form} phx-change="validate" phx-submit="save">
           <div class="space-y-6">
-            <.group_header {assigns} />
-
             <.input
               field={@form[:name]}
               label="Group Name"
@@ -496,9 +503,7 @@ defmodule Web.Groups do
 
                 <.member_list members={all_members}>
                   <:badge :let={actor}>
-                    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
-                      {Phoenix.Naming.humanize(actor.type)}
-                    </span>
+                    <.actor_type_badge actor={actor} />
                   </:badge>
                   <:actions :let={actor}>
                     <div class="ml-4 flex items-center gap-2">
@@ -538,23 +543,11 @@ defmodule Web.Groups do
     """
   end
 
-  defp group_header(assigns) do
+  defp actor_type_badge(assigns) do
     ~H"""
-    <div class="flex items-start gap-3">
-      <.directory_icon directory={@group.directory} class="w-16 h-16 flex-shrink-0" />
-      <div class="flex-1 min-w-0">
-        <h2 class="text-xl font-semibold text-neutral-900 truncate mb-1">
-          {@group.name}
-        </h2>
-        <p class="text-sm text-neutral-500">
-          <%= if is_firezone_directory?(@group.directory) do %>
-            Last updated: <.relative_datetime datetime={@group.updated_at} />
-          <% else %>
-            Last synced: <.relative_datetime datetime={@group.last_synced_at} />
-          <% end %>
-        </p>
-      </div>
-    </div>
+    <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
+      {Phoenix.Naming.humanize(@actor.type)}
+    </span>
     """
   end
 
@@ -588,9 +581,7 @@ defmodule Web.Groups do
         >
           <div class="space-y-0.5">
             <div class="flex items-start gap-2">
-              <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-neutral-100 text-neutral-800 flex-shrink-0 uppercase">
-                {Phoenix.Naming.humanize(actor.type)}
-              </span>
+              <.actor_type_badge actor={actor} />
               <div class="text-sm font-medium text-neutral-900">{actor.name}</div>
             </div>
             <div :if={actor.email} class="text-xs text-neutral-500">
@@ -635,35 +626,21 @@ defmodule Web.Groups do
     ~H"""
     <ul :if={@members != []} class="divide-y divide-neutral-200 h-64 overflow-y-auto">
       <li :for={actor <- @members} class={@item_class}>
+        <div class={if @has_actions, do: "flex-1 min-w-0 space-y-0.5", else: "space-y-0.5"}>
+          <div class="flex items-start gap-2">
+            <%= if Map.get(assigns, :badge) do %>
+              {render_slot(@badge, actor)}
+            <% end %>
+            <p class={["text-sm font-medium text-neutral-900", @has_actions && "truncate"]}>
+              {actor.name}
+            </p>
+          </div>
+          <p :if={actor.email} class={["text-xs text-neutral-500", @has_actions && "truncate"]}>
+            {actor.email}
+          </p>
+        </div>
         <%= if @has_actions do %>
-          <div class="flex-1 min-w-0 space-y-0.5">
-            <div class="flex items-start gap-2">
-              <%= if Map.get(assigns, :badge) do %>
-                {render_slot(@badge, actor)}
-              <% end %>
-              <p class="text-sm font-medium text-neutral-900 truncate">
-                {actor.name}
-              </p>
-            </div>
-            <p :if={actor.email} class="text-xs text-neutral-500 truncate">
-              {actor.email}
-            </p>
-          </div>
           {render_slot(@actions, actor)}
-        <% else %>
-          <div class="space-y-0.5">
-            <div class="flex items-start gap-2">
-              <%= if Map.get(assigns, :badge) do %>
-                {render_slot(@badge, actor)}
-              <% end %>
-              <p class="text-sm font-medium text-neutral-900">
-                {actor.name}
-              </p>
-            </div>
-            <p :if={actor.email} class="text-xs text-neutral-500">
-              {actor.email}
-            </p>
-          </div>
         <% end %>
       </li>
     </ul>
@@ -682,8 +659,27 @@ defmodule Web.Groups do
   defp is_editable_group?(%{name: "Everyone"}), do: false
   defp is_editable_group?(group), do: is_firezone_directory?(group.directory)
 
+  defp get_directory_type(nil), do: "unknown"
+  defp get_directory_type("firezone"), do: "firezone"
+
+  defp get_directory_type(directory) do
+    case String.split(directory, ":", parts: 2) do
+      [provider, _idp_id] -> provider
+      _ -> directory
+    end
+  end
+
+  defp get_idp_id(nil), do: nil
+
+  defp get_idp_id(directory) do
+    case String.split(directory, ":", parts: 2) do
+      [_provider, idp_id] -> idp_id
+      _ -> directory
+    end
+  end
+
   defp filter_members(actors, filter) do
-    if String.trim(filter) != "" do
+    if has_content?(filter) do
       search_pattern = String.downcase(filter)
 
       Enum.filter(actors, fn actor ->
@@ -693,6 +689,23 @@ defmodule Web.Groups do
     else
       actors
     end
+  end
+
+  # Utility helpers
+  defp has_content?(str), do: String.trim(str) != ""
+
+  defp uniq_by_id(list), do: Enum.uniq_by(list, & &1.id)
+
+  defp handle_success(socket, message) do
+    socket
+    |> put_flash(:info, message)
+    |> reload_live_table!("groups")
+    |> close_modal()
+  end
+
+  defp edit_form_unchanged?(form, members_to_add, members_to_remove) do
+    not form.source.valid? or
+      (Enum.empty?(form.source.changes) and members_to_add == [] and members_to_remove == [])
   end
 
   # Navigation helpers
@@ -712,20 +725,18 @@ defmodule Web.Groups do
   end
 
   # Member search helpers
-  defp search_members_for_add(attrs, socket) do
-    member_search = Map.get(attrs, "member_search", "")
-
-    if String.trim(member_search) != "" do
-      Query.search_actors(member_search, socket.assigns.subject, socket.assigns.members_to_add)
+  defp get_search_results(search_term, socket) do
+    if has_content?(search_term) do
+      Query.search_actors(search_term, socket.assigns.subject, socket.assigns.members_to_add)
     else
-      []
+      nil
     end
   end
 
   # Member management helpers
   defp get_all_members_for_display(group, members_to_add, members_to_remove) do
     # Combine current members and members to add, remove duplicates
-    all_members = (group.actors ++ members_to_add) |> Enum.uniq_by(& &1.id)
+    all_members = uniq_by_id(group.actors ++ members_to_add)
 
     # Remove members marked for deletion, then add them back at the end (to show "To Remove")
     all_members
@@ -744,7 +755,7 @@ defmodule Web.Groups do
       if is_current_member?(actor, socket.assigns.group) do
         socket.assigns.members_to_add
       else
-        [actor | socket.assigns.members_to_add] |> Enum.uniq_by(& &1.id)
+        uniq_by_id([actor | socket.assigns.members_to_add])
       end
 
     {members_to_add, members_to_remove}
@@ -755,7 +766,7 @@ defmodule Web.Groups do
 
     members_to_remove =
       if actor = find_current_member(actor_id, socket.assigns.group) do
-        [actor | socket.assigns.members_to_remove] |> Enum.uniq_by(& &1.id)
+        uniq_by_id([actor | socket.assigns.members_to_remove])
       else
         socket.assigns.members_to_remove
       end
