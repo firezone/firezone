@@ -64,6 +64,7 @@
     },
     "windows": [
       {
+        "decorations": false,
         "label": "main",
         "title": "Firezone",
         "url": "index.html",
@@ -71,7 +72,8 @@
         "resizable": false,
         "width": 900,
         "height": 500,
-        "visible": false
+        "visible": false,
+        "transparent": true
       }
     ]
   }
