@@ -209,7 +209,7 @@ impl Response {
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
         if response
             .headers()
-            .get("Content-Type")
+            .get(http::header::CONTENT_TYPE)
             .is_none_or(|ct| ct != "application/dns-message")
         {
             return Err(Error::NotAResponse);
