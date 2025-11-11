@@ -2,6 +2,7 @@ defmodule Web.Settings.DirectorySync do
   use Web, :live_view
 
   alias Domain.{
+    Crypto.JWK,
     Entra,
     Google,
     Okta,
@@ -55,7 +56,13 @@ defmodule Web.Settings.DirectorySync do
     changeset = changeset(struct, attrs)
 
     {:noreply,
-     assign(socket, type: type, verifying: false, form: to_form(changeset), public_jwk: nil)}
+     assign(socket,
+       type: type,
+       verification_error: nil,
+       verifying: false,
+       form: to_form(changeset),
+       public_jwk: nil
+     )}
   end
 
   # Edit Directory
@@ -72,7 +79,7 @@ defmodule Web.Settings.DirectorySync do
     # Extract public key if this is an Okta directory with a keypair
     public_jwk =
       if type == "okta" && directory.private_key_jwk do
-        Domain.Crypto.JWK.extract_public_key_components(directory.private_key_jwk)
+        JWK.extract_public_key_components(directory.private_key_jwk)
       else
         nil
       end
@@ -112,7 +119,7 @@ defmodule Web.Settings.DirectorySync do
 
   def handle_event("generate_keypair", _params, socket) do
     # Generate the keypair
-    keypair = Domain.Crypto.JWK.generate_jwk_and_jwks()
+    keypair = JWK.generate_jwk_and_jwks()
 
     # Update the changeset with the prevate key JWK and kid
     changeset =
@@ -124,7 +131,7 @@ defmodule Web.Settings.DirectorySync do
       })
 
     # Extract the public key for display
-    public_jwk = keypair.jwks
+    public_jwk = JWK.extract_public_key_components(keypair.jwk)
 
     {:noreply, assign(socket, form: to_form(changeset), public_jwk: public_jwk)}
   end
@@ -998,9 +1005,10 @@ defmodule Web.Settings.DirectorySync do
     private_key_jwk = get_field(changeset, :private_key_jwk)
     kid = get_field(changeset, :kid)
 
-    with {:ok, %{"access_token" => access_token}} <-
-           Okta.APIClient.get_access_token(okta_domain, client_id, private_key_jwk, kid),
-         :ok <- Okta.APIClient.test_connection(okta_domain, access_token) do
+    client = Okta.APIClient.new(okta_domain, client_id, private_key_jwk, kid)
+
+    with {:ok, access_token} <- Okta.APIClient.fetch_access_token(client),
+         :ok <- Okta.APIClient.test_connection(client, access_token) do
       changeset =
         changeset
         |> apply_changes()
@@ -1072,26 +1080,40 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp parse_entra_verification_error(error) do
-    dbg(error)
     Logger.error("Unknown Entra verification error", error: inspect(error))
 
     "Unknown error during verification. Please try again. If the problem persists, contact support."
   end
 
-  defp parse_okta_verification_error({:error, {401, body}}) do
-    error_description = body["error_description"] || body["error"] || "Unauthorized"
+  defp parse_okta_verification_error({:error, %Req.Response{status: 400, body: body}}) do
+    error_message = body["errorSummary"] || body["error"] || "Bad Request."
 
-    "HTTP 401 error during verification: #{error_description}. Ensure the client ID and private key are correct."
+    "HTTP 400 error during verification: #{error_message} Ensure the Client ID and Okta Domain are correct."
   end
 
-  defp parse_okta_verification_error({:error, {403, body}}) do
-    error_message = body["errorSummary"] || body["error"] || "Forbidden"
+  defp parse_okta_verification_error({:error, %Req.Response{status: 401, body: body}}) do
+    error_message = body["errorSummary"] || body["error"] || "Unauthorized."
 
-    "HTTP 403 error during verification: #{error_message}. Ensure the application has the required scopes."
+    "HTTP 401 error during verification: #{error_message} Ensure the Client ID and Public Key are correct."
   end
 
-  defp parse_okta_verification_error({:error, {status, _body}}) when status >= 500 do
+  defp parse_okta_verification_error({:error, %Req.Response{status: 403, body: body}}) do
+    error_message = body["errorSummary"] || body["error"] || "Forbidden."
+
+    "HTTP 403 error during verification: #{error_message} Ensure the application has the required scopes."
+  end
+
+  defp parse_okta_verification_error({:error, %Req.Response{status: status}})
+       when status >= 500 do
     "Okta service is currently unavailable (HTTP #{status}). Please try again later."
+  end
+
+  defp parse_okta_verification_error({:error, %Req.TransportError{reason: :econnrefused}}) do
+    "Unable to connect to Okta.  Please try again later."
+  end
+
+  defp parse_okta_verification_error({:error, %Req.TransportError{reason: :timeout}}) do
+    "Timeout while connecting to Okta.  Please try again later."
   end
 
   defp parse_okta_verification_error(error) do

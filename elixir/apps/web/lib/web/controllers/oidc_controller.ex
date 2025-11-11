@@ -254,6 +254,15 @@ defmodule Web.OIDCController do
       "profile",
       "picture"
     ])
+    |> maybe_populate_name()
+  end
+
+  defp maybe_populate_name(attrs) do
+    case attrs["name"] do
+      nil -> Map.put(attrs, "name", attrs["given_name"] <> " " <> attrs["family_name"])
+      "" -> Map.put(attrs, "name", attrs["given_name"] <> " " <> attrs["family_name"])
+      _ -> attrs
+    end
   end
 
   defp check_admin(
@@ -343,6 +352,14 @@ defmodule Web.OIDCController do
   defp handle_error(conn, {:error, :not_admin}, params) do
     error = "This action requires admin privileges."
     path = ~p"/#{params["account_id_or_slug"]}"
+
+    redirect_for_error(conn, error, path)
+  end
+
+  defp handle_error(conn, {:error, :actor_not_found}, params) do
+    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
+    error = "Unable to sign you in. Please contact your administrator."
+    path = ~p"/#{account_id}?#{sanitize(params)}"
 
     redirect_for_error(conn, error, path)
   end
