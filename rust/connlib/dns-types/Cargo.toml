@@ -8,9 +8,16 @@ license = { workspace = true }
 path = "lib.rs"
 
 [dependencies]
+base64 = { workspace = true, features = ["alloc"] }
+bytes = { workspace = true }
 domain = { version = "0.11", features = ["serde"] } # Not a workspace dependency because we don't want any other crates to depend on it.
+http = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+hex-literal = { workspace = true }
 
 [lints]
 workspace = true

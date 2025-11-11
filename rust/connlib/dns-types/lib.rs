@@ -2,6 +2,8 @@
 
 use std::time::Duration;
 
+use base64::{Engine, prelude::BASE64_URL_SAFE};
+use bytes::Bytes;
 use domain::{
     base::{
         HeaderCounts, Message, MessageBuilder, ParsedName, Question, RecordSection,
@@ -10,6 +12,7 @@ use domain::{
     dep::octseq::OctetsInto,
     rdata::AllRecordData,
 };
+use url::Url;
 
 pub mod prelude {
     // Re-export trait names so other crates can call the functions on them.
@@ -44,6 +47,7 @@ impl std::fmt::Debug for Query {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Query")
             .field("qid", &self.inner.header().id())
+            .field("flags", &self.inner.header().flags())
             .field("type", &self.qtype())
             .field("domain", &self.domain())
             .finish()
@@ -116,6 +120,22 @@ impl Query {
         self.inner.as_slice()
     }
 
+    pub fn try_into_http_request(self, mut url: Url) -> Result<http::Request<Bytes>, http::Error> {
+        let query = self.with_id(0); // In order to be more HTTP-cache friendly, DoH queries should set their ID to 0.
+
+        let url = url
+            .query_pairs_mut()
+            .clear()
+            .append_pair("dns", &BASE64_URL_SAFE.encode(query.as_bytes()))
+            .finish();
+
+        http::Request::builder()
+            .method(http::Method::GET)
+            .uri(url.to_string())
+            .header(http::header::ACCEPT, "application/dns-message")
+            .body(Bytes::new())
+    }
+
     fn question(&self) -> Question<ParsedName<&[u8]>> {
         self.inner.sole_question().expect("verified in ctor")
     }
@@ -184,6 +204,22 @@ impl Response {
         Ok(Self {
             inner: message.octets_into(),
         })
+    }
+
+    pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
+        if response.status() != http::StatusCode::OK {
+            return Err(Error::HttpNotSuccess(response.status()));
+        }
+
+        if response
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .is_none_or(|ct| ct != "application/dns-message")
+        {
+            return Err(Error::NotApplicationDnsMessage);
+        }
+
+        Self::parse(response.body())
     }
 
     pub fn id(&self) -> u16 {
@@ -300,6 +336,10 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
+    #[error("HTTP response status code is not 200 OK: {0}")]
+    HttpNotSuccess(http::StatusCode),
+    #[error("HTTP response Content-Type is not application/dns-message")]
+    NotApplicationDnsMessage,
     #[error(transparent)]
     Parse(#[from] domain::base::wire::ParseError),
 }
@@ -353,7 +393,12 @@ pub mod records {
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::{
+        net::{IpAddr, Ipv4Addr, Ipv6Addr},
+        str::FromStr,
+    };
+
+    use http::{Method, header};
 
     use super::*;
 
@@ -376,5 +421,57 @@ mod tests {
         assert!(parsed_response.truncated());
         assert_eq!(parsed_response.records().count(), 0);
         assert_eq!(parsed_response.domain(), domain);
+    }
+
+    // Test-vector from https://datatracker.ietf.org/doc/html/rfc8484#section-4.1.1
+    #[test]
+    fn can_encode_query_as_http_request() {
+        let example_com = DomainName::vec_from_str("www.example.com.").unwrap();
+
+        let query = Query::new(example_com, RecordType::A);
+
+        let request = query
+            .try_into_http_request(
+                Url::from_str("https://dnsserver.example.net/dns-query").unwrap(),
+            )
+            .unwrap();
+
+        assert_eq!(request.method(), Method::GET);
+        assert_eq!(
+            request.headers().get(header::ACCEPT).unwrap(),
+            "application/dns-message"
+        );
+        assert_eq!(
+            request.uri().query().unwrap(),
+            "dns=AAABAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB"
+        );
+        assert_eq!(request.uri().path(), "/dns-query");
+    }
+
+    // Test-vector from https://datatracker.ietf.org/doc/html/rfc8484#section-4.2.2
+    #[test]
+    fn can_decode_http_response_as_response() {
+        let response = http::Response::builder().status(200).header(header::CONTENT_TYPE, "application/dns-message")
+            .header(header::CONTENT_LENGTH, 61)
+            .body(Bytes::from_static(&hex_literal::hex!("00008180000100010000000003777777076578616d706c6503636f6d00001c0001c00c001c000100000e7d001020010db8abcd00120001000200030004")))
+            .unwrap();
+
+        let response = Response::try_from_http_response(response).unwrap();
+
+        let ips = response
+            .records()
+            .filter_map(crate::records::extract_ip)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ips,
+            vec![IpAddr::V6(Ipv6Addr::new(
+                0x2001, 0xdb8, 0xabcd, 0x12, 0x1, 0x2, 0x3, 0x4
+            ))]
+        );
+        assert_eq!(
+            response.ttl(RecordType::AAAA).unwrap(),
+            Duration::from_secs(3709)
+        )
     }
 }
