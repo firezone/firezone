@@ -763,11 +763,12 @@ impl ClientState {
 
             let upstream = gateway.tun_dns_server_endpoint(query.local.ip());
 
-            self.forward_udp_dns_query_to_new_upstream_via_tunnel(
+            self.forward_dns_query_to_new_upstream_via_tunnel(
                 query.local,
                 query.remote,
                 upstream,
                 query.message,
+                dns::Transport::Udp,
                 now,
             );
         }
@@ -783,11 +784,13 @@ impl ClientState {
                 }
             };
 
-            self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
+            self.forward_dns_query_to_new_upstream_via_tunnel(
                 query.local,
                 query.remote,
                 server,
                 query.message,
+                dns::Transport::Udp,
+                now,
             );
         }
 
@@ -1294,11 +1297,12 @@ impl ClientState {
             }
             dns::ResolveStrategy::RecurseLocal => {
                 if self.should_forward_dns_query_to_gateway(upstream.ip()) {
-                    self.forward_udp_dns_query_to_new_upstream_via_tunnel(
+                    self.forward_dns_query_to_new_upstream_via_tunnel(
                         destination,
                         source,
                         upstream,
                         message,
+                        dns::Transport::Udp,
                         now,
                     );
                     return;
@@ -1333,11 +1337,12 @@ impl ClientState {
 
                 let upstream = gateway.tun_dns_server_endpoint(packet.destination());
 
-                self.forward_udp_dns_query_to_new_upstream_via_tunnel(
+                self.forward_dns_query_to_new_upstream_via_tunnel(
                     destination,
                     source,
                     upstream,
                     message,
+                    dns::Transport::Udp,
                     now,
                 );
             }
@@ -1438,11 +1443,13 @@ impl ClientState {
             }
             dns::ResolveStrategy::RecurseLocal => {
                 if self.should_forward_dns_query_to_gateway(server.ip()) {
-                    self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
+                    self.forward_dns_query_to_new_upstream_via_tunnel(
                         query.local,
                         query.remote,
                         server,
                         query.message,
+                        dns::Transport::Tcp,
+                        now,
                     );
 
                     return;
@@ -1476,82 +1483,49 @@ impl ClientState {
 
                 let server = gateway.tun_dns_server_endpoint(query.local.ip());
 
-                self.forward_tcp_dns_query_to_new_upstream_via_tunnel(
+                self.forward_dns_query_to_new_upstream_via_tunnel(
                     query.local,
                     query.remote,
                     server,
                     query.message,
+                    dns::Transport::Tcp,
+                    now,
                 );
             }
         };
     }
 
-    fn forward_udp_dns_query_to_new_upstream_via_tunnel(
+    fn forward_dns_query_to_new_upstream_via_tunnel(
         &mut self,
         local: SocketAddr,
         remote: SocketAddr,
         server: SocketAddr,
         query: dns_types::Query,
+        transport: dns::Transport,
         now: Instant,
     ) {
         let query_id = query.id();
 
-        match self.udp_dns_client.send_query(server, query, now) {
+        let result = match transport {
+            dns::Transport::Udp => self.udp_dns_client.send_query(server, query, now),
+            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query),
+        };
+
+        match result {
             Ok(()) => {}
             Err(e) => {
                 tracing::warn!(
-                    "Failed to send recursive UDP DNS query to upstream resolver: {e:#}"
+                    "Failed to send recursive {transport} DNS query to upstream resolver: {e:#}"
                 );
                 return;
             }
         };
 
-        tracing::trace!(%server, %local, %query_id, "Forwarding UDP DNS query via tunnel");
+        tracing::trace!(%server, %local, %query_id, "Forwarding {transport} DNS query via tunnel");
 
         let existing = self
             .dns_streams_by_upstream_and_query_id
-            .insert((dns::Transport::Udp, server, query_id), (local, remote));
-
-        if let Some((existing_local, existing_remote)) = existing
-            && (existing_local != local || existing_remote != remote)
-        {
-            debug_assert!(false, "Query IDs should be unique");
-        }
-    }
-
-    fn forward_tcp_dns_query_to_new_upstream_via_tunnel(
-        &mut self,
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        query: dns_types::Query,
-    ) {
-        let query_id = query.id();
-
-        match self.tcp_dns_client.send_query(server, query.clone()) {
-            Ok(()) => {}
-            Err(e) => {
-                tracing::warn!(
-                    "Failed to send recursive TCP DNS query to upstream resolver: {e:#}"
-                );
-
-                unwrap_or_debug!(
-                    self.tcp_dns_server.send_message(
-                        local,
-                        remote,
-                        dns_types::Response::servfail(&query)
-                    ),
-                    "Failed to send TCP DNS response: {}"
-                );
-                return;
-            }
-        };
-
-        tracing::trace!(%server, local = %local, %query_id, "Forwarding TCP DNS query via tunnel");
-
-        let existing = self
-            .dns_streams_by_upstream_and_query_id
-            .insert((dns::Transport::Tcp, server, query_id), (local, remote));
+            .insert((transport, server, query_id), (local, remote));
 
         if let Some((existing_local, existing_remote)) = existing
             && (existing_local != local || existing_remote != remote)

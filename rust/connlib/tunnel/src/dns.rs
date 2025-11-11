@@ -124,9 +124,11 @@ impl RecursiveQuery {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]
 pub(crate) enum Transport {
+    #[display("UDP")]
     Udp,
+    #[display("TCP")]
     Tcp,
 }
 
