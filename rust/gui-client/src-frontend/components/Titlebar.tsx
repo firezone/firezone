@@ -1,36 +1,21 @@
 import { XMarkIcon } from "@heroicons/react/16/solid";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Navbar } from "flowbite-react";
-import React, { useEffect, useRef } from "react";
+import React from "react";
 
 export interface TitlebarProps {
   title?: string;
 }
 
 export default function Titlebar({ title }: TitlebarProps) {
-  const titlebarRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const titlebar = titlebarRef.current;
-    if (!titlebar) return;
-
-    const handleMouseDown = (e: MouseEvent) => {
-      if (e.buttons === 1) {
-        getCurrentWindow().startDragging();
-      }
-    };
-
-    // Add listener to the titlebar and all its children
-    titlebar.addEventListener("mousedown", handleMouseDown);
-
-    // Cleanup
-    return () => {
-      titlebar.removeEventListener("mousedown", handleMouseDown);
-    };
-  }, []);
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.buttons === 1) {
+      getCurrentWindow().startDragging();
+    }
+  };
 
   return (
-    <div ref={titlebarRef} className="select-none">
+    <div onMouseDown={handleMouseDown} className="select-none">
       <Navbar
         clearTheme={{
           root: {
@@ -49,6 +34,7 @@ export default function Titlebar({ title }: TitlebarProps) {
         <h2 className="text-xl font-semibold">{title}</h2>
         <div
           className="justify-self-end"
+          onMouseDown={(e) => e.stopPropagation()}
           onClick={() => getCurrentWindow().close()}
         >
           <XMarkIcon className="h-6 p-1 rounded-full hover:text-gray-700 hover:bg-gray-200" />
