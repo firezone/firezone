@@ -84,7 +84,7 @@ export default function App() {
   const isDev = import.meta.env.DEV;
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen flex flex-col rounded-lg border border-neutral-300 overflow-hidden">
       <Routes>
         <Route path="/overview" element={<Titlebar title={"Firezone"} />} />
         <Route
@@ -105,7 +105,7 @@ export default function App() {
           element={<Titlebar title={"Colour Palette"} />}
         />
       </Routes>
-      <div className="flex-1 bg-neutral-50 flex flex-row rounded-2xl border-black shadow-2xl">
+      <div className="flex-1 bg-neutral-50 flex flex-row">
         <Sidebar
           aria-label="Sidebar"
           className="w-52 flex-shrink-0 border-r border-neutral-200"
