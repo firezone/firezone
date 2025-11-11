@@ -1,38 +1,39 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
-    collections::{HashMap, hash_map},
     net::{IpAddr, SocketAddr},
     sync::Arc,
     time::Duration,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use rustls::ClientConfig;
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
-use tokio::task::JoinSet;
+use tokio::task::JoinHandle;
 use tokio_rustls::TlsConnector;
 
+type Client = hyper::client::conn::http2::SendRequest<Full<Bytes>>;
+type Connection = hyper::client::conn::http2::Connection<
+    hyper_util::rt::TokioIo<tokio_rustls::client::TlsStream<TcpStream>>,
+    Full<Bytes>,
+    hyper_util::rt::TokioExecutor,
+>;
+
 pub struct HttpClient {
-    sf: Arc<dyn SocketFactory<TcpSocket>>,
+    host: String,
 
-    client_tls_config: Arc<rustls::ClientConfig>,
-    clients: HashMap<String, hyper::client::conn::http2::SendRequest<Full<Bytes>>>,
-    connections: JoinSet<()>,
-
-    dns_records: HashMap<String, Vec<IpAddr>>,
-}
-
-impl Default for HttpClient {
-    fn default() -> Self {
-        Self::new()
-    }
+    client: Client,
+    connection: JoinHandle<()>,
 }
 
 impl HttpClient {
-    pub fn new() -> Self {
+    pub async fn new(
+        host: String,
+        addresses: Vec<IpAddr>,
+        socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
+    ) -> Result<Self> {
         // TODO: Use `rustls-platform-verifier` instead.
         let mut root_cert_store = rustls::RootCertStore::empty();
         root_cert_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
@@ -42,101 +43,89 @@ impl HttpClient {
             .with_no_client_auth();
         config.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec(), b"http/1.0".to_vec()];
 
-        Self {
-            sf: Arc::new(socket_factory::tcp),
-            clients: HashMap::default(),
-            dns_records: HashMap::default(),
-            connections: JoinSet::new(),
-            client_tls_config: Arc::new(config),
-        }
+        let (client, conn) = connect(
+            addresses,
+            443,
+            host.clone(),
+            Arc::new(config),
+            socket_factory,
+        )
+        .await?;
+
+        let connection = tokio::spawn({
+            let host = host.clone();
+
+            async move {
+                match conn.await.context("HTTP2 connection failed") {
+                    Ok(()) => tracing::debug!(%host, "HTTP2 connection finished"),
+                    Err(e) => tracing::debug!(%host, "{e:#}"),
+                }
+            }
+        });
+
+        Ok(Self {
+            host,
+            client,
+            connection,
+        })
     }
 
-    pub fn set_socket_factory(&mut self, sf: impl SocketFactory<TcpSocket>) {
-        self.sf = Arc::new(sf);
-
-        self.clients.clear();
-        self.connections.abort_all();
-    }
-
-    pub fn set_dns_records(&mut self, domain: String, addresses: Vec<IpAddr>) {
-        self.dns_records.insert(domain, addresses);
-    }
-
-    pub async fn send_request(
-        &mut self,
+    pub fn send_request(
+        &self,
         request: http::Request<Bytes>,
-    ) -> Result<http::Response<Bytes>> {
+    ) -> Result<impl Future<Output = Result<http::Response<Bytes>>> + use<>> {
+        anyhow::ensure!(!self.client.is_closed(), Closed);
+        anyhow::ensure!(
+            request.uri().port_u16().is_none_or(|p| p == 443),
+            "Only supports requests to port 443"
+        );
+
         let host = request
             .uri()
             .host()
             .context("Missing host in request URI")?
             .to_owned();
-        let scheme = request
-            .uri()
-            .scheme_str()
-            .context("Missing scheme in request URI")?;
-        let port = match scheme {
-            "http" => request.uri().port_u16().unwrap_or(80),
-            "https" => request.uri().port_u16().unwrap_or(443),
-            other => bail!("Unsupported scheme '{other}'"),
-        };
+        anyhow::ensure!(
+            host == self.host,
+            "Can only send HTTP requests to host {}",
+            self.host
+        );
 
-        let mut client = match self.clients.entry(host.clone()) {
-            hash_map::Entry::Occupied(o) if !o.get().is_closed() => o.remove(), // We remove the Client such that it is discarded on any error.
-            hash_map::Entry::Occupied(_) | hash_map::Entry::Vacant(_) => {
-                let addresses = self
-                    .dns_records
-                    .get(&host)
-                    .with_context(|| format!("No DNS records for '{host}'"))?
-                    .clone();
+        let mut client = self.client.clone();
 
-                let (client, conn) = connect(
-                    addresses,
-                    port,
-                    host.clone(),
-                    self.client_tls_config.clone(),
-                    self.sf.clone(),
-                )
-                .await?;
+        Ok(async move {
+            client
+                .ready()
+                .await
+                .context("Failed to await readiness of HTTP2 client")?;
 
-                self.connections.spawn({
-                    let host = host.clone();
+            let (parts, body) = request.into_parts();
+            let request = http::Request::from_parts(parts, Full::new(body));
 
-                    async move {
-                        match conn.await.context("HTTP2 connection failed") {
-                            Ok(()) => tracing::debug!(%host, "HTTP2 connection finished"),
-                            Err(e) => tracing::debug!(%host, "{e:#}"),
-                        }
-                    }
-                });
+            let response = client
+                .send_request(request)
+                .await
+                .context("Failed to send HTTP request")?;
 
-                client
-            }
-        };
+            let (parts, incoming) = response.into_parts();
 
-        client
-            .ready()
-            .await
-            .context("Failed to await readiness of HTTP2 client")?;
+            let body = incoming
+                .collect()
+                .await
+                .context("Failed to receive HTTP response body")?;
 
-        let (parts, body) = request.into_parts();
-        let request = http::Request::from_parts(parts, Full::new(body));
+            Ok(http::Response::from_parts(parts, body.to_bytes()))
+        })
+    }
+}
 
-        let response = client
-            .send_request(request)
-            .await
-            .context("Failed to send HTTP request")?;
+#[derive(thiserror::Error, Debug)]
+#[error("The connection is closed")]
+pub struct Closed;
 
-        let (parts, incoming) = response.into_parts();
-
-        let body = incoming
-            .collect()
-            .await
-            .context("Failed to receive HTTP response body")?;
-
-        self.clients.insert(host.clone(), client);
-
-        Ok(http::Response::from_parts(parts, body.to_bytes()))
+impl Drop for HttpClient {
+    fn drop(&mut self) {
+        self.connection.abort();
     }
 }
 
@@ -146,14 +135,7 @@ async fn connect(
     domain: String,
     tls_config: Arc<ClientConfig>,
     sf: Arc<dyn SocketFactory<TcpSocket>>,
-) -> Result<(
-    hyper::client::conn::http2::SendRequest<Full<Bytes>>,
-    hyper::client::conn::http2::Connection<
-        hyper_util::rt::TokioIo<tokio_rustls::client::TlsStream<TcpStream>>,
-        Full<Bytes>,
-        hyper_util::rt::TokioExecutor,
-    >,
-)> {
+) -> Result<(Client, Connection)> {
     tracing::debug!(?addresses, %domain, "Creating new HTTP2 connection");
 
     for address in addresses {
@@ -172,7 +154,7 @@ async fn connect(
         }
     }
 
-    anyhow::bail!("Failed to connect to '{domain}'");
+    anyhow::bail!("Failed to connect to '{domain}' on port {port}");
 }
 
 async fn connect_one(
@@ -223,16 +205,18 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "Requires Internet"]
-    async fn doh_query() {
+    async fn parallel_doh_queries() {
         rustls::crypto::ring::default_provider()
             .install_default()
             .unwrap();
 
-        let mut http_client = HttpClient::new();
-        http_client.set_dns_records(
+        let http_client = HttpClient::new(
             "one.one.one.one".to_owned(),
             vec![IpAddr::from([1, 1, 1, 1])],
-        );
+            Arc::new(socket_factory::tcp),
+        )
+        .await
+        .unwrap();
 
         let query = http::Request::builder()
             .uri("https://one.one.one.one/dns-query?name=example.com")
@@ -241,8 +225,14 @@ mod tests {
             .body(Bytes::new())
             .unwrap();
 
-        let response = http_client.send_request(query).await.unwrap();
+        let response1 = http_client.send_request(query.clone()).unwrap();
+        let response2 = http_client.send_request(query.clone()).unwrap();
 
-        assert!(response.status().is_success());
+        let (response1, response2) = futures::future::try_join(response1, response2)
+            .await
+            .unwrap();
+
+        assert!(response1.status().is_success());
+        assert!(response2.status().is_success());
     }
 }

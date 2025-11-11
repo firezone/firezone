@@ -3552,6 +3552,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytes",
+ "futures",
  "http 1.3.1",
  "http-body-util",
  "hyper",
@@ -3559,6 +3560,7 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "socket-factory",
+ "thiserror 2.0.17",
  "tokio",
  "tokio-rustls",
  "tracing",

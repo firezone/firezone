@@ -21,9 +21,11 @@ tokio = { workspace = true }
 tokio-rustls = { workspace = true }
 tracing = { workspace = true }
 webpki-roots = { workspace = true }
+thiserror = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }
+futures = { workspace = true }
 
 [lints]
 workspace = true
