@@ -126,13 +126,11 @@ pub struct ClientState {
     tun_config: Option<TunConfig>,
 
     udp_dns_client: l3_udp_dns_client::Client,
-    /// Tracks the UDP "stream" (i.e. socket-pair) on which we received a UDP DNS query by the ID of the recursive DNS query we issued.
-    udp_dns_streams_by_upstream_and_query_id: HashMap<(SocketAddr, u16), (SocketAddr, SocketAddr)>,
-
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
-    /// Tracks the TCP stream (i.e. socket-pair) on which we received a TCP DNS query by the ID of the recursive DNS query we issued.
-    tcp_dns_streams_by_upstream_and_query_id: HashMap<(SocketAddr, u16), (SocketAddr, SocketAddr)>,
+    /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the ID of the recursive DNS query we issued.
+    dns_streams_by_upstream_and_query_id:
+        HashMap<(dns::Transport, SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
     /// Stores the gateways we recently connected to.
     ///
@@ -208,7 +206,6 @@ impl ClientState {
             node: ClientNode::new(seed, now),
             sites_status: Default::default(),
             gateways_site: Default::default(),
-            udp_dns_streams_by_upstream_and_query_id: Default::default(),
             stub_resolver: StubResolver::new(records),
             dns_cache: Default::default(),
             buffered_transmits: Default::default(),
@@ -218,7 +215,7 @@ impl ClientState {
             udp_dns_client: l3_udp_dns_client::Client::new(now, seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
-            tcp_dns_streams_by_upstream_and_query_id: Default::default(),
+            dns_streams_by_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
             pending_tun_update: Default::default(),
@@ -1175,9 +1172,11 @@ impl ClientState {
             if let Some(query_result) = self.udp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.udp_dns_streams_by_upstream_and_query_id;
+                let known_sockets = &mut self.dns_streams_by_upstream_and_query_id;
 
-                let Some((local, remote)) = known_sockets.remove(&(server, qid)) else {
+                let Some((local, remote)) =
+                    known_sockets.remove(&(dns::Transport::Udp, server, qid))
+                else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
 
                     continue;
@@ -1203,9 +1202,11 @@ impl ClientState {
             if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.tcp_dns_streams_by_upstream_and_query_id;
+                let known_sockets = &mut self.dns_streams_by_upstream_and_query_id;
 
-                let Some((local, remote)) = known_sockets.remove(&(server, qid)) else {
+                let Some((local, remote)) =
+                    known_sockets.remove(&(dns::Transport::Tcp, server, qid))
+                else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
 
                     continue;
@@ -1508,8 +1509,8 @@ impl ClientState {
         tracing::trace!(%server, %local, %query_id, "Forwarding UDP DNS query via tunnel");
 
         let existing = self
-            .udp_dns_streams_by_upstream_and_query_id
-            .insert((server, query_id), (local, remote));
+            .dns_streams_by_upstream_and_query_id
+            .insert((dns::Transport::Udp, server, query_id), (local, remote));
 
         if let Some((existing_local, existing_remote)) = existing
             && (existing_local != local || existing_remote != remote)
@@ -1549,8 +1550,8 @@ impl ClientState {
         tracing::trace!(%server, local = %local, %query_id, "Forwarding TCP DNS query via tunnel");
 
         let existing = self
-            .tcp_dns_streams_by_upstream_and_query_id
-            .insert((server, query_id), (local, remote));
+            .dns_streams_by_upstream_and_query_id
+            .insert((dns::Transport::Tcp, server, query_id), (local, remote));
 
         if let Some((existing_local, existing_remote)) = existing
             && (existing_local != local || existing_remote != remote)
