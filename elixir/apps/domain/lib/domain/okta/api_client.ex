@@ -155,57 +155,115 @@ defmodule Domain.Okta.APIClient do
   end
 
   @doc """
-  Fetches groups from the Okta API using the provided access token.
+  Fetches all apps from the Okta API (legacy - prefer stream_apps/2).
+
+  Returns all apps in a list. For large result sets, consider using stream_apps/2 instead.
   """
-  @spec list_groups(t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
-  def list_groups(client, access_token) do
-    new_request(client, access_token)
-    |> Req.merge(url: @groups_path)
-    |> list_all()
+  @spec list_apps(t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
+  def list_apps(client, access_token) do
+    stream_apps(client, access_token) |> collect_stream_results()
   end
 
   @doc """
-  Fetches users from the Okta API using the provided access token.
+  Streams groups from the Okta API.
+
+  Returns a Stream that emits `{:ok, group}` or `{:error, reason}` tuples.
+  Lazily fetches pages as needed, keeping only one page in memory at a time.
+
+  ## Examples
+
+      APIClient.stream_groups(client, token)
+      |> Stream.filter(fn
+        {:ok, _group} -> true
+        {:error, _reason} -> false
+      end)
+      |> Enum.take(10)
   """
-  @spec list_users(t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
-  def list_users(client, access_token) do
+  @spec stream_groups(t(), String.t()) :: Enumerable.t()
+  def stream_groups(client, access_token) do
+    new_request(client, access_token)
+    |> Req.merge(url: @groups_path, params: [limit: 200])
+    |> stream_all()
+  end
+
+  @doc """
+  Streams users from the Okta API.
+
+  Returns a Stream that emits `{:ok, user}` or `{:error, reason}` tuples.
+  Lazily fetches pages as needed, keeping only one page in memory at a time.
+
+  ## Examples
+
+      APIClient.stream_users(client, token)
+      |> Stream.map(fn
+        {:ok, user} -> {:ok, parse_user(user)}
+        error -> error
+      end)
+      |> Enum.to_list()
+  """
+  @spec stream_users(t(), String.t()) :: Enumerable.t()
+  def stream_users(client, access_token) do
     new_request(client, access_token)
     |> Req.merge(
       url: @users_path,
       headers: [
         {"Content-Type", "application/json; okta-response=omitCredentials,omitCredentialsLinks"}
       ],
-      params: [fields: "id,status,profile:(firstName,lastName)"]
+      params: [fields: "id,status,profile:(firstName,lastName)", limit: 200]
     )
-    |> list_all()
+    |> stream_all()
   end
 
-  @spec list_group_members(String.t(), t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
-  def list_group_members(group_id, client, access_token) do
+  @doc """
+  Streams members of a specific group from the Okta API.
+
+  Returns a Stream that emits `{:ok, member}` or `{:error, reason}` tuples.
+  Lazily fetches pages as needed, keeping only one page in memory at a time.
+  """
+  @spec stream_group_members(String.t(), t(), String.t()) :: Enumerable.t()
+  def stream_group_members(group_id, client, access_token) do
     new_request(client, access_token)
-    |> Req.merge(url: "#{@groups_path}/#{group_id}/users", params: [limit: 1])
-    |> list_all()
+    |> Req.merge(url: "#{@groups_path}/#{group_id}/users", params: [limit: 200])
+    |> stream_all()
   end
 
-  @spec list_apps(t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
-  def list_apps(client, access_token) do
+  @doc """
+  Streams apps from the Okta API.
+
+  Returns a Stream that emits `{:ok, app}` or `{:error, reason}` tuples.
+  Lazily fetches pages as needed, keeping only one page in memory at a time.
+  """
+  @spec stream_apps(t(), String.t()) :: Enumerable.t()
+  def stream_apps(client, access_token) do
     new_request(client, access_token)
-    |> Req.merge(url: "api/v1/apps")
-    |> list_all()
+    |> Req.merge(url: "api/v1/apps", params: [limit: 200])
+    |> stream_all()
   end
 
-  @spec list_app_groups(String.t(), t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
-  def list_app_groups(app_id, client, access_token) do
+  @doc """
+  Streams groups assigned to a specific app from the Okta API.
+
+  Returns a Stream that emits `{:ok, app_group}` or `{:error, reason}` tuples.
+  Lazily fetches pages as needed, keeping only one page in memory at a time.
+  """
+  @spec stream_app_groups(String.t(), t(), String.t()) :: Enumerable.t()
+  def stream_app_groups(app_id, client, access_token) do
     new_request(client, access_token)
-    |> Req.merge(url: "/api/v1/apps/#{app_id}/groups", params: [expand: "group", limit: 1])
-    |> list_all()
+    |> Req.merge(url: "/api/v1/apps/#{app_id}/groups", params: [expand: "group", limit: 200])
+    |> stream_all()
   end
 
-  @spec list_app_users(String.t(), t(), String.t()) :: {:ok, [map()]} | {:error, String.t()}
-  def list_app_users(app_id, client, access_token) do
+  @doc """
+  Streams users assigned to a specific app from the Okta API.
+
+  Returns a Stream that emits `{:ok, app_user}` or `{:error, reason}` tuples.
+  Lazily fetches pages as needed, keeping only one page in memory at a time.
+  """
+  @spec stream_app_users(String.t(), t(), String.t()) :: Enumerable.t()
+  def stream_app_users(app_id, client, access_token) do
     new_request(client, access_token)
-    |> Req.merge(url: "/api/v1/apps/#{app_id}/users", params: [expand: "user", limit: 1])
-    |> list_all()
+    |> Req.merge(url: "/api/v1/apps/#{app_id}/users", params: [expand: "user", limit: 500])
+    |> stream_all()
   end
 
   defp new_request(%APIClient{} = client, access_token, nonce \\ nil) do
@@ -217,28 +275,78 @@ defmodule Domain.Okta.APIClient do
     )
   end
 
-  @spec list_all(Req.Request.t(), [term()]) :: {:ok, [term()]} | {:error, String.t()}
-  defp list_all(req, acc \\ []) do
-    case Req.get!(req) do
-      %{status: 200, body: items, headers: headers} ->
-        case extract_next_cursor(headers) do
-          nil ->
-            {:ok, acc ++ items}
+  # Collects a stream of {:ok, item} or {:error, reason} tuples into a result.
+  # Returns {:ok, [items]} if all successful, or {:error, reason} on first error.
+  @spec collect_stream_results(Enumerable.t()) :: {:ok, [term()]} | {:error, String.t()}
+  defp collect_stream_results(stream) do
+    stream
+    |> Enum.reduce_while({:ok, []}, fn
+      {:ok, item}, {:ok, acc} ->
+        {:cont, {:ok, [item | acc]}}
 
-          next_cursor ->
-            Req.merge(req, params: [after: next_cursor])
-            |> list_all(acc ++ items)
-        end
-
-      other ->
-        Logger.warning("Unexpected error while making Okta API request",
-          status: other.status,
-          headers: inspect(other.headers),
-          response: inspect(other.body)
-        )
-
-        {:error, "Unexpected Error"}
+      {:error, reason}, _acc ->
+        {:halt, {:error, reason}}
+    end)
+    |> case do
+      {:ok, items} -> {:ok, Enum.reverse(items)}
+      error -> error
     end
+  end
+
+  # Creates a stream that lazily fetches paginated results from Okta API.
+  #
+  # Returns a Stream that emits {:ok, item} or {:error, reason} tuples.
+  # Keeps only one page in memory at a time.
+  @spec stream_all(Req.Request.t()) :: Enumerable.t()
+  defp stream_all(req) do
+    Stream.resource(
+      # Start function - returns initial state
+      fn -> {req, nil} end,
+      # Next function - fetches next page and returns {items, new_state} or {:halt, state}
+      fn
+        :halt ->
+          {:halt, :halt}
+
+        {request, cursor} ->
+          # Merge cursor param if we have one
+          request =
+            if cursor do
+              Req.merge(request, params: [after: cursor])
+            else
+              request
+            end
+
+          case Req.get!(request) do
+            %{status: 200, body: items, headers: headers} ->
+              next_cursor = extract_next_cursor(headers)
+              # Wrap each item in {:ok, item}
+              ok_items = Enum.map(items, &{:ok, &1})
+
+              if next_cursor do
+                {ok_items, {request, next_cursor}}
+              else
+                {ok_items, :halt}
+              end
+
+            %{status: 401} ->
+              {[{:error, "Authentication Error"}], :halt}
+
+            %{status: 403} ->
+              {[{:error, "Authorization Error"}], :halt}
+
+            %{status: status, headers: headers, body: body} ->
+              Logger.warning("Unexpected response while making Okta API request",
+                status: status,
+                headers: inspect(headers),
+                response: inspect(body)
+              )
+
+              {[{:error, "Unexpected response with status #{status}"}], :halt}
+          end
+      end,
+      # After function - (nothing needed here)
+      fn _state -> :ok end
+    )
   end
 
   defp create_client_assertion(%APIClient{} = client, token_endpoint) do
@@ -367,26 +475,35 @@ defmodule Domain.Okta.ReqDPoP do
   # Example: %Req.TransportError{}, %Req.HTTPError{}, etc...
   defp retry(_req, _), do: false
 
-  # Prefer Okta's x-rate-limit-reset (unix seconds). If missing, fall back to Retry-After.
+  # Prefer Okta's x-rate-limit-reset (unix seconds). If missing, fall back to Retry-After, then default backoff.
   defp delay_from_rate_limit_headers(headers) do
+    delay_from_x_rate_limit_reset(headers) ||
+      delay_from_retry_after(headers) ||
+      default_backoff_ms()
+  end
+
+  defp delay_from_x_rate_limit_reset(headers) do
     now_s = System.system_time(:second)
 
     with reset when is_binary(reset) <- get_header(headers, "x-rate-limit-reset"),
          {reset_s, ""} <- Integer.parse(reset) do
       max(reset_s - now_s, 0) * 1000
     else
-      _ ->
-        case get_header(headers, "retry-after") do
-          nil ->
-            default_backoff_ms()
+      _ -> nil
+    end
+  end
 
-          val ->
-            case Integer.parse(val) do
-              {sec, ""} -> max(sec, 1) * 1000
-              # TODO: Handle HTTP-date value
-              :error -> default_backoff_ms()
-            end
-        end
+  defp delay_from_retry_after(headers) do
+    case get_header(headers, "retry-after") do
+      nil -> nil
+      val -> parse_retry_after_seconds(val)
+    end
+  end
+
+  defp parse_retry_after_seconds(val) do
+    case Integer.parse(val) do
+      {sec, ""} -> max(sec, 1) * 1000
+      :error -> nil
     end
   end
 

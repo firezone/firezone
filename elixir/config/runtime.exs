@@ -163,23 +163,32 @@ if config_env() == :prod do
          # Schedule Google directory sync every 2 hours
          {"0 */2 * * *", Domain.Google.Scheduler},
 
+         # Schedule Okta directory sync every 2 hours
+         {"0 */2 * * *", Domain.Okta.Scheduler},
+
          # Directory sync error notifications - daily check for low error count
          {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
           args: %{provider: "entra", frequency: "daily"}},
          {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
           args: %{provider: "google", frequency: "daily"}},
+         {"0 9 * * *", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "daily"}},
 
          # Directory sync error notifications - every 3 days for medium error count
          {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
           args: %{provider: "entra", frequency: "three_days"}},
          {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
           args: %{provider: "google", frequency: "three_days"}},
+         {"0 9 */3 * *", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "three_days"}},
 
          # Directory sync error notifications - weekly for high error count
          {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
           args: %{provider: "entra", frequency: "weekly"}},
          {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
           args: %{provider: "google", frequency: "weekly"}},
+         {"0 9 * * 1", Domain.Telemetry.SyncErrorNotification,
+          args: %{provider: "okta", frequency: "weekly"}},
 
          # Check account limits every 30 minutes
          {"*/30 * * * *", Domain.Billing.Workers.CheckAccountLimits},
@@ -199,6 +208,8 @@ if config_env() == :prod do
           entra_sync: 5,
           google_scheduler: 1,
           google_sync: 5,
+          okta_scheduler: 1,
+          okta_sync: 5,
           sync_error_notifications: 1
         ],
         else: []
