@@ -216,7 +216,7 @@ impl Response {
             .get("Content-Type")
             .is_none_or(|ct| ct != "application/dns-message")
         {
-            return Err(Error::InvalidContentType);
+            return Err(Error::NotApplicationDnsMessage);
         }
 
         Self::parse(response.body())
@@ -338,8 +338,8 @@ pub enum Error {
     NotAResponse,
     #[error("HTTP response status code is not 200 OK: {0}")]
     HttpNotSuccess(http::StatusCode),
-    #[error("HTTP response has invalid Content-Type header")]
-    InvalidContentType,
+    #[error("HTTP response Content-Type is not application/dns-message")]
+    NotApplicationDnsMessage,
     #[error(transparent)]
     Parse(#[from] domain::base::wire::ParseError),
 }
