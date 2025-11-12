@@ -34,6 +34,7 @@ mod io;
 pub mod messages;
 mod otel;
 mod p2p_control;
+mod packet_kind;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]
 mod proptest;
