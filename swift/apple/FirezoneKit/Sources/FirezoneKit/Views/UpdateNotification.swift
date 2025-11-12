@@ -11,7 +11,7 @@
   import Cocoa
 
   @MainActor
-  class UpdateChecker {
+  public class UpdateChecker {
     enum UpdateError: Error {
       case invalidVersion(String)
 
@@ -31,7 +31,7 @@
 
     private var cancellables: Set<AnyCancellable> = []
 
-    @Published private(set) var updateAvailable: Bool = false
+    @Published public private(set) var updateAvailable: Bool = false
 
     init(configuration: Configuration? = nil) {
       self.configuration = configuration ?? Configuration.shared
