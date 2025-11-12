@@ -113,7 +113,7 @@ impl NatTable {
                 }));
             }
 
-            if self.expired.contains(&outside) {
+            if self.expired.contains(&inside) {
                 return Ok(TranslateIncomingResult::ExpiredNatSession);
             }
 
@@ -138,7 +138,7 @@ impl NatTable {
             return Ok(TranslateIncomingResult::Ok { proto, src });
         }
 
-        if self.expired.contains(&outside) {
+        if self.expired.contains(&inside) {
             return Ok(TranslateIncomingResult::ExpiredNatSession);
         }
 
