@@ -94,11 +94,11 @@ impl NatTable {
                 self.expired.insert(outside);
             }
 
-            // TODO: We should always have an entry here.
-            self.state_by_inside
-                .entry(inside)
-                .or_insert(EntryState::new(now))
-                .last_outgoing = now;
+            match self.state_by_inside.get_mut(&inside) {
+                Some(entry) => entry.last_outgoing = now,
+                None => tracing::warn!(?inside, "Missing NAT state entry"),
+            }
+
             return Ok(outside);
         }
 
