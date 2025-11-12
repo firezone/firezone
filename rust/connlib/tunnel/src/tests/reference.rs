@@ -60,7 +60,7 @@ impl ReferenceState {
             .prop_flat_map(move |portal| {
                 let gateways = portal.gateways(start);
                 let dns_resource_records = portal.dns_resource_records(start);
-                let client = portal.client(system_dns_servers(), upstream_dns_servers());
+                let client = portal.client(system_dns_servers(), upstream_do53_servers());
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(start); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
@@ -219,7 +219,7 @@ impl ReferenceState {
             )
             .with(
                 1,
-                upstream_dns_servers().prop_map(Transition::UpdateUpstreamDnsServers),
+                upstream_do53_servers().prop_map(Transition::UpdateUpstreamDo53Servers),
             )
             .with(
                 1,
@@ -574,7 +574,7 @@ impl ReferenceState {
                     .client
                     .exec_mut(|client| client.set_system_dns_resolvers(servers));
             }
-            Transition::UpdateUpstreamDnsServers(servers) => {
+            Transition::UpdateUpstreamDo53Servers(servers) => {
                 state
                     .client
                     .exec_mut(|client| client.set_upstream_dns_resolvers(servers));
@@ -731,14 +731,14 @@ impl ReferenceState {
                     .iter()
                     .any(|dns_server| state.client.sending_socket_for(*dns_server).is_some())
             }
-            Transition::UpdateUpstreamDnsServers(servers) => {
+            Transition::UpdateUpstreamDo53Servers(servers) => {
                 if servers.is_empty() {
                     return true; // Clearing is allowed.
                 }
 
                 servers
                     .iter()
-                    .any(|dns_server| state.client.sending_socket_for(dns_server.ip()).is_some())
+                    .any(|dns_server| state.client.sending_socket_for(dns_server.ip).is_some())
             }
             Transition::UpdateUpstreamSearchDomain(_) => true,
             Transition::SendDnsQueries(queries) => queries.iter().all(|query| {
