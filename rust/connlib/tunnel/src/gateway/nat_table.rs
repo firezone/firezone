@@ -16,11 +16,29 @@ use std::time::{Duration, Instant};
 /// Thus, purely an L3 NAT would not be sufficient as it would be impossible to map back to the proxy IP.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
-    table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
-    state_by_inside: BTreeMap<(Protocol, IpAddr), EntryState>,
+    table: BiMap<Inside, Outside>,
+    state_by_inside: BTreeMap<Inside, EntryState>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
-    expired: HashSet<(Protocol, IpAddr)>,
+    expired: HashSet<Outside>,
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
+struct Inside(Protocol, IpAddr);
+
+impl Inside {
+    fn into_inner(self) -> (Protocol, IpAddr) {
+        (self.0, self.1)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Clone, Copy)]
+struct Outside(Protocol, IpAddr);
+
+impl Outside {
+    fn into_inner(self) -> (Protocol, IpAddr) {
+        (self.0, self.1)
+    }
 }
 
 pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
@@ -36,10 +54,12 @@ impl NatTable {
         });
 
         for (inside, state) in expired {
-            self.expired.insert(inside);
-            let Some(outside) = self.table.remove_by_left(&inside) else {
+            let Some((_, outside)) = self.table.remove_by_left(&inside) else {
                 continue;
             };
+
+            self.expired.insert(outside);
+
             let Some(reason) = state.remove_reason(inside.0, now) else {
                 continue; // This should be impossible because we just checked for `is_some` in `extract_if`.
             };
@@ -57,7 +77,7 @@ impl NatTable {
         let src = packet.source_protocol()?;
         let dst = packet.destination();
 
-        let inside = (src, dst);
+        let inside = Inside(src, dst);
 
         if let Some(outside) = self.table.get_by_left(&inside).copied()
             && let Some(state) = self.state_by_inside.get_mut(&inside)
@@ -74,26 +94,24 @@ impl NatTable {
 
             state.last_outgoing = now;
 
-            return Ok(outside);
+            return Ok(outside.into_inner());
         }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.
         // This will re-assign the same port in most cases, even after the mapping expires.
         let outside = (src.value()..=u16::MAX)
             .chain(1..src.value())
-            .map(|p| (src.with_value(p), outside_dst))
+            .map(|p| Outside(src.with_value(p), outside_dst))
             .find(|outside| !self.table.contains_right(outside))
             .context("Exhausted NAT")?;
 
-        let inside = (src, dst);
-
         self.table.insert(inside, outside);
         self.state_by_inside.insert(inside, EntryState::new(now));
-        self.expired.remove(&inside);
+        self.expired.insert(outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
 
-        Ok(outside)
+        Ok(outside.into_inner())
     }
 
     pub(crate) fn translate_incoming(
@@ -102,9 +120,11 @@ impl NatTable {
         now: Instant,
     ) -> Result<TranslateIncomingResult> {
         if let Some((failed_packet, icmp_error)) = packet.icmp_error()? {
-            let outside = (failed_packet.src_proto(), failed_packet.dst());
+            let outside = Outside(failed_packet.src_proto(), failed_packet.dst());
 
-            if let Some((inside_proto, inside_dst)) = self.translate_incoming_inner(&outside, now) {
+            if let Some(Inside(inside_proto, inside_dst)) =
+                self.translate_incoming_inner(&outside, now)
+            {
                 return Ok(TranslateIncomingResult::IcmpError(IcmpErrorPrototype {
                     inside_dst,
                     inside_proto,
@@ -113,14 +133,14 @@ impl NatTable {
                 }));
             }
 
-            if self.expired.contains(&inside) {
+            if self.expired.contains(&outside) {
                 return Ok(TranslateIncomingResult::ExpiredNatSession);
             }
 
             return Ok(TranslateIncomingResult::NoNatSession);
         }
 
-        let outside = (packet.destination_protocol()?, packet.source());
+        let outside = Outside(packet.destination_protocol()?, packet.source());
 
         if let Some(inside) = self.translate_incoming_inner(&outside, now)
             && let Some(state) = self.state_by_inside.get_mut(&inside)
@@ -133,23 +153,19 @@ impl NatTable {
                 state.incoming_fin = true;
             }
 
-            let (proto, src) = inside;
+            let (proto, src) = inside.into_inner();
 
             return Ok(TranslateIncomingResult::Ok { proto, src });
         }
 
-        if self.expired.contains(&inside) {
+        if self.expired.contains(&outside) {
             return Ok(TranslateIncomingResult::ExpiredNatSession);
         }
 
         Ok(TranslateIncomingResult::NoNatSession)
     }
 
-    fn translate_incoming_inner(
-        &mut self,
-        outside: &(Protocol, IpAddr),
-        now: Instant,
-    ) -> Option<(Protocol, IpAddr)> {
+    fn translate_incoming_inner(&mut self, outside: &Outside, now: Instant) -> Option<Inside> {
         let inside = self.table.get_by_right(outside)?;
         let state = self.state_by_inside.get_mut(inside)?;
 
