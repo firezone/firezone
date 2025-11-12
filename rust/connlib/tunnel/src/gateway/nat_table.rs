@@ -80,7 +80,9 @@ impl NatTable {
 
         let inside = (src, dst);
 
-        if let Some(outside) = self.table.get_by_left(&inside).copied() {
+        if let Some(outside) = self.table.get_by_left(&inside).copied()
+            && let Some(entry) = self.state_by_inside.get_mut(&inside)
+        {
             tracing::trace!(?inside, ?outside, "Translating outgoing packet");
 
             if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
@@ -94,10 +96,7 @@ impl NatTable {
                 self.expired.insert(outside);
             }
 
-            match self.state_by_inside.get_mut(&inside) {
-                Some(entry) => entry.last_outgoing = now,
-                None => tracing::warn!(?inside, "Missing NAT state entry"),
-            }
+            entry.last_outgoing = now;
 
             return Ok(outside);
         }
@@ -177,27 +176,13 @@ impl NatTable {
         now: Instant,
     ) -> Option<(Protocol, IpAddr)> {
         let inside = self.table.get_by_right(outside)?;
+        let state = self.state_by_inside.get_mut(inside)?;
 
         tracing::trace!(?inside, ?outside, "Translating incoming packet");
 
-        match self.state_by_inside.get_mut(inside) {
-            Some(
-                entry @ EntryState {
-                    last_incoming: None,
-                    ..
-                },
-            ) => {
-                tracing::debug!(?inside, ?outside, "NAT session confirmed");
-
-                entry.last_incoming = Some(now);
-            }
-            Some(
-                entry @ EntryState {
-                    last_incoming: Some(_),
-                    ..
-                },
-            ) => entry.last_incoming = Some(now),
-            None => tracing::warn!(?inside, "Missing NAT state entry"),
+        let prev_last_incoming = state.last_incoming.replace(now);
+        if prev_last_incoming.is_none() {
+            tracing::debug!(?inside, ?outside, "NAT session confirmed");
         }
 
         Some(*inside)
