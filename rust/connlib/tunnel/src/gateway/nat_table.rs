@@ -139,7 +139,7 @@ impl NatTable {
         let inside = (src, dst);
 
         self.table.insert(inside, outside);
-        self.state_by_inside.insert(outside, EntryState::new(now));
+        self.state_by_inside.insert(inside, EntryState::new(now));
         self.expired.remove(&outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
