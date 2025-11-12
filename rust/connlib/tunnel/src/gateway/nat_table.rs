@@ -17,10 +17,33 @@ use std::time::{Duration, Instant};
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
     table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
-    last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
+    state_by_inside: BTreeMap<(Protocol, IpAddr), EntryState>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
     expired: HashSet<(Protocol, IpAddr)>,
+}
+
+#[derive(Debug)]
+struct EntryState {
+    last_outgoing: Instant,
+    last_incoming: Option<Instant>,
+}
+
+impl EntryState {
+    fn new(last_outgoing: Instant) -> Self {
+        Self {
+            last_outgoing,
+            last_incoming: None,
+        }
+    }
+
+    fn last_packet(&self) -> Instant {
+        let Some(last_incoming) = self.last_incoming else {
+            return self.last_outgoing;
+        };
+
+        std::cmp::max(self.last_outgoing, last_incoming)
+    }
 }
 
 pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
@@ -29,18 +52,19 @@ pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        for (outside, e) in self.last_seen.iter() {
-            let ttl = match outside.0 {
+        // TODO: Use `extract_if` here?
+        for (inside, state) in self.state_by_inside.iter() {
+            let ttl = match inside.0 {
                 Protocol::Tcp(_) => TCP_TTL,
                 Protocol::Udp(_) => UDP_TTL,
                 Protocol::Icmp(_) => ICMP_TTL,
             };
 
-            if now.duration_since(*e) >= ttl
-                && let Some((inside, _)) = self.table.remove_by_right(outside)
+            if now.duration_since(state.last_packet()) >= ttl
+                && let Some((inside, _)) = self.table.remove_by_left(inside)
             {
-                tracing::debug!(?inside, ?outside, ?ttl, "NAT session expired");
-                self.expired.insert(*outside);
+                tracing::debug!(?inside, ?inside, ?ttl, "NAT session expired");
+                self.expired.insert(inside);
             }
         }
     }
@@ -70,7 +94,11 @@ impl NatTable {
                 self.expired.insert(outside);
             }
 
-            self.last_seen.insert(outside, now);
+            // TODO: We should always have an entry here.
+            self.state_by_inside
+                .entry(inside)
+                .or_insert(EntryState::new(now))
+                .last_outgoing = now;
             return Ok(outside);
         }
 
@@ -85,7 +113,7 @@ impl NatTable {
         let inside = (src, dst);
 
         self.table.insert(inside, outside);
-        self.last_seen.insert(outside, now);
+        self.state_by_inside.insert(outside, EntryState::new(now));
         self.expired.remove(&outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
@@ -151,7 +179,26 @@ impl NatTable {
         let inside = self.table.get_by_right(outside)?;
 
         tracing::trace!(?inside, ?outside, "Translating incoming packet");
-        self.last_seen.insert(*inside, now);
+
+        match self.state_by_inside.get_mut(inside) {
+            Some(
+                entry @ EntryState {
+                    last_incoming: None,
+                    ..
+                },
+            ) => {
+                tracing::debug!(?inside, ?outside, "NAT session confirmed");
+
+                entry.last_incoming = Some(now);
+            }
+            Some(
+                entry @ EntryState {
+                    last_incoming: Some(_),
+                    ..
+                },
+            ) => entry.last_incoming = Some(now),
+            None => tracing::warn!(?inside, "Missing NAT state entry"),
+        }
 
         Some(*inside)
     }
