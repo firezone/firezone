@@ -9,7 +9,7 @@ import SwiftUI
 
 #if os(macOS)
   struct FirstTimeView: View {
-    @EnvironmentObject var menuBar: MenuBar
+    @EnvironmentObject var store: Store
 
     var body: some View {
       VStack(
@@ -36,7 +36,7 @@ import SwiftUI
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             Button("Open menu") {
-              menuBar.showMenu()
+              store.openMenuBar()
               AppView.WindowDefinition.main.window()?.close()
             }
             .buttonStyle(.borderedProminent)
