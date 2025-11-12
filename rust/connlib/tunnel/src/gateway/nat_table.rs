@@ -50,7 +50,9 @@ pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(30);
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let expired = self.state_by_inside.extract_if(.., |inside, state| {
-            state.remove_reason(inside.0, now).is_some()
+            state
+                .remove_at(inside.0)
+                .is_some_and(|remove_at| remove_at >= now)
         });
 
         for (inside, state) in expired {
@@ -60,11 +62,20 @@ impl NatTable {
 
             self.expired.insert(outside);
 
-            let Some(reason) = state.remove_reason(inside.0, now) else {
-                continue; // This should be impossible because we just checked for `is_some` in `extract_if`.
-            };
+            let last_outgoing = now.duration_since(state.last_outgoing);
+            let last_incoming = state.last_incoming.map(|t| now.duration_since(t));
 
-            tracing::debug!(?inside, ?outside, "{reason}");
+            tracing::debug!(
+                ?inside,
+                ?outside,
+                ?last_outgoing,
+                ?last_incoming,
+                fin_tx = %state.outgoing_fin,
+                fin_rx = %state.incoming_fin,
+                rst_tx = %state.outgoing_rst,
+                rst_rx = %state.incoming_rst,
+                "NAT entry removed"
+            );
         }
     }
 
@@ -203,35 +214,47 @@ impl EntryState {
         }
     }
 
-    fn remove_reason(&self, protocol: Protocol, now: Instant) -> Option<&'static str> {
+    fn ttl_timeout(&self, protocol: Protocol) -> Instant {
         let ttl = match protocol {
             Protocol::Tcp(_) => TCP_TTL,
             Protocol::Udp(_) => UDP_TTL,
             Protocol::Icmp(_) => ICMP_TTL,
         };
 
-        if now.duration_since(self.last_packet()) >= ttl {
-            return Some("NAT session expired");
+        self.last_packet() + ttl
+    }
+
+    fn unconfirmed_timeout(&self) -> Option<Instant> {
+        if self.last_incoming.is_some() {
+            return None;
         }
 
-        if self.last_incoming.is_none() && now.duration_since(self.last_outgoing) >= UNCONFIRMED_TTL
-        {
-            return Some("Unconfirmed NAT session expired");
+        Some(self.last_outgoing + UNCONFIRMED_TTL)
+    }
+
+    fn fin_timeout(&self) -> Option<Instant> {
+        if !self.outgoing_fin || !self.incoming_fin {
+            return None;
         }
 
-        if self.outgoing_fin && self.incoming_fin {
-            return Some("NAT session closed (rx AND tx TCP FIN)");
+        Some(self.last_packet() + Duration::from_secs(5)) // Keep NAT open for a few more seconds.
+    }
+
+    fn rst_timeout(&self) -> Option<Instant> {
+        if !self.outgoing_rst && !self.incoming_rst {
+            return None;
         }
 
-        if self.outgoing_rst {
-            return Some("NAT session closed (tx TCP RST)");
-        }
+        Some(self.last_packet()) // Close immediately.
+    }
 
-        if self.incoming_rst {
-            return Some("NAT session closed (rx TCP RST)");
-        };
-
-        None
+    fn remove_at(&self, protocol: Protocol) -> Option<Instant> {
+        std::iter::empty()
+            .chain(Some(self.ttl_timeout(protocol)))
+            .chain(self.unconfirmed_timeout())
+            .chain(self.fin_timeout())
+            .chain(self.rst_timeout())
+            .min()
     }
 
     fn last_packet(&self) -> Instant {
