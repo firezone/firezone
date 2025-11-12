@@ -687,7 +687,7 @@ fn handle_assigned_ips_event(
     };
 
     if !peer.is_allowed(req.resource) {
-        tracing::warn!(cid = %peer.id(), rid = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
+        tracing::warn!(cid = %peer.id(), rid = %req.resource, domain = %req.domain, "Received `AssignedIpsEvent` for resource that is not allowed");
 
         let packet = dns_resource_nat::domain_status(
             req.resource,
