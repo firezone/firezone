@@ -23,7 +23,7 @@ public final class Store: ObservableObject {
   @Published private(set) var resourceList: ResourceList = .loading
 
   // Enacapsulate Tunnel status here to make it easier for other components to observe
-  @Published private(set) var vpnStatus: NEVPNStatus?
+  @Published public private(set) var vpnStatus: NEVPNStatus?
 
   // Hash for resource list optimisation
   private var resourceListHash = Data()
@@ -40,6 +40,7 @@ public final class Store: ObservableObject {
   var firezoneId: String?
 
   let sessionNotification = SessionNotification()
+  public let updateChecker: UpdateChecker
 
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
@@ -52,6 +53,7 @@ public final class Store: ObservableObject {
 
   public init(configuration: Configuration? = nil) {
     self.configuration = configuration ?? Configuration.shared
+    self.updateChecker = UpdateChecker(configuration: configuration)
 
     // Load GUI-only cached state
     self.actorName = UserDefaults.standard.string(forKey: "actorName") ?? "Unknown user"
@@ -81,6 +83,18 @@ public final class Store: ObservableObject {
           }
         }
       })
+      .store(in: &cancellables)
+
+    // Forward favorites changes to Store's objectWillChange so SwiftUI redraws.
+    // This is necessary because Favorites is a separate ObservableObject, and SwiftUI
+    // doesn't automatically propagate nested ObservableObject changes through @Published
+    // properties. Without this manual forwarding, toggling favorites in MenuBarView
+    // wouldn't trigger a menu redraw until the next unrelated state change occurred.
+    self.favorites.objectWillChange
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.objectWillChange.send()
+      }
       .store(in: &cancellables)
 
     // Load our state from the system. Based on what's loaded, we may need to ask the user for permission for things.

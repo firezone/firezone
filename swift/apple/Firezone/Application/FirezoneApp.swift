@@ -41,14 +41,8 @@ struct FirezoneApp: App {
         "Welcome to Firezone",
         id: AppView.WindowDefinition.main.identifier
       ) {
-        if let menuBar = appDelegate.menuBar {
-          // menuBar will be initialized by this point
-          AppView()
-            .environmentObject(store)
-            .environmentObject(menuBar)
-        } else {
-          ProgressView("Loading...")
-        }
+        AppView()
+          .environmentObject(store)
       }
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.main.externalEventMatchString]
@@ -63,14 +57,34 @@ struct FirezoneApp: App {
       .handlesExternalEvents(
         matching: [AppView.WindowDefinition.settings.externalEventMatchString]
       )
+
+      // MenuBarExtra replaces AppKit MenuBar
+      MenuBarExtra {
+        MenuBarView()
+          .environmentObject(store)
+      } label: {
+        Label {
+          Text("Firezone")
+        } icon: {
+          Image(menuBarIconName)
+            .renderingMode(.template)
+        }
+      }
+      .menuBarExtraStyle(.menu)
     #endif
+  }
+
+  var menuBarIconName: String {
+    MenuBarIconProvider.icon(
+      for: store.vpnStatus,
+      updateAvailable: store.updateChecker.updateAvailable
+    )
   }
 }
 
 #if os(macOS)
   @MainActor
   final class AppDelegate: NSObject, NSApplicationDelegate {
-    var menuBar: MenuBar?
     var store: Store?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -83,7 +97,6 @@ struct FirezoneApp: App {
 
     func applicationDidFinishLaunching(_: Notification) {
       if let store {
-        menuBar = MenuBar(store: store)
         AppView.subscribeToGlobalEvents(store: store)
       }
 
