@@ -49,7 +49,7 @@ function update_version_marker() {
 
     # Use git grep to find files containing the marker (much faster and git-aware)
     git grep -l "$marker" 2>/dev/null | while IFS= read -r file; do
-        sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/${new_version}/;}" "$file"
+        sed "${SEDARG[@]}" -e "/${marker}/{n;s/[0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}/${new_version}/g;}" "$file"
     done
 }
 
