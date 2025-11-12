@@ -355,26 +355,8 @@ public final class Store: ObservableObject {
     // Capture current hash before IPC call
     let currentHash = resourceListHash
 
-    // Get data from the provider - if hash matches, provider returns nil
-    let data = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Data?, Error>) in
-      do {
-        guard session.status == .connected else {
-          throw IPCClient.Error.invalidStatus(session.status)
-        }
-
-        try session.sendProviderMessage(
-          IPCClient.encoder.encode(ProviderMessage.getResourceList(currentHash))
-        ) { data in
-          continuation.resume(returning: data)
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-
     // If no data returned, resources haven't changed - no update needed
-    guard let data = data else {
+    guard let data = try await IPCClient.fetchResources(session: session, currentHash: currentHash) else {
       return
     }
 

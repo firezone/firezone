@@ -28,8 +28,8 @@ enum IPCClient {
   }
 
   // Encoder used to send messages to the tunnel
-  static let encoder = PropertyListEncoder()
-  static let decoder = PropertyListDecoder()
+  private static let encoder = PropertyListEncoder()
+  private static let decoder = PropertyListDecoder()
 
   // Auto-connect
   @MainActor
@@ -39,6 +39,7 @@ enum IPCClient {
     let options: [String: NSObject] = [
       "configuration": configData as NSObject
     ]
+
     try validateSession(session).startTunnel(options: options)
   }
 
@@ -64,6 +65,22 @@ enum IPCClient {
 
   static func stop(session: NETunnelProviderSession) throws {
     try validateSession(session).stopTunnel()
+  }
+
+  @MainActor
+  static func fetchResources(session: NETunnelProviderSession, currentHash: Data) async throws -> Data? {
+    // Get data from the provider - if hash matches, provider returns nil
+    return try await withCheckedThrowingContinuation {
+      (continuation: CheckedContinuation<Data?, Swift.Error>) in
+      do {
+        let encoded = try encoder.encode(ProviderMessage.getResourceList(currentHash))
+        try validateSession(session, requiredStatuses: [.connected]).sendProviderMessage(encoded) { data in
+          continuation.resume(returning: data)
+        }
+      } catch {
+        continuation.resume(throwing: error)
+      }
+    }
   }
 
   #if os(macOS)
