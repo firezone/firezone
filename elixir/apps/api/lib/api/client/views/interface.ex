@@ -1,22 +1,25 @@
 defmodule API.Client.Views.Interface do
-  alias Domain.{Accounts, Clients}
+  alias Domain.Clients
 
   def render(%Clients.Client{} = client) do
-    # Legacy field
+    clients_upstream_dns = Map.get(client.account.config, :clients_upstream_dns, [])
+
+    # TODO: DOH RESOLVERS
+    # Remove this old field once clients are upgraded.
+    # old field - append normalized port
     upstream_dns =
-      client.account.config
-      |> Map.get(:clients_upstream_dns, [])
-      |> Enum.map(fn dns_config ->
-        address = Accounts.Config.Changeset.normalize_dns_address(dns_config)
-        Map.from_struct(%{dns_config | address: address})
+      clients_upstream_dns
+      |> Enum.map(fn %{address: address} = dns_config ->
+        ip = URI.parse("//" <> address).host
+        Map.from_struct(%{dns_config | address: "#{ip}:53"})
       end)
 
+    # new field - no port
     upstream_do53 =
-      for %{protocol: :ip_port, address: address} <-
-            Map.get(client.account.config, :clients_upstream_dns, []),
-          {:ok, ip_port} <- [Domain.Types.IPPort.cast(address)] do
-        %{ip: Domain.Types.IPPort.to_string(%{ip_port | port: nil})}
-      end
+      clients_upstream_dns
+      |> Enum.map(fn %{address: address} ->
+        %{ip: URI.parse("//" <> address).host}
+      end)
 
     %{
       search_domain: client.account.config.search_domain,
