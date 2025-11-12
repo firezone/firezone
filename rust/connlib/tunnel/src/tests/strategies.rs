@@ -5,7 +5,7 @@ use crate::client::{
     CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
     InternetResource,
 };
-use crate::messages::DnsServer;
+use crate::messages::UpstreamDo53;
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
 use dns_types::{DomainName, OwnedRecordData};
@@ -192,15 +192,11 @@ pub(crate) fn relays(
 /// Sample a list of DNS servers.
 ///
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
-pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
-    let ip4_dns_servers = collection::btree_set(
-        non_reserved_ipv4().prop_map(|ip| SocketAddr::from((ip, 53))),
-        1..4,
-    );
-    let ip6_dns_servers = collection::btree_set(
-        non_reserved_ipv6().prop_map(|ip| SocketAddr::from((ip, 53))),
-        1..4,
-    );
+pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<IpAddr>> {
+    let ip4_dns_servers =
+        collection::btree_set(non_reserved_ipv4().prop_map_into::<IpAddr>(), 1..4);
+    let ip6_dns_servers =
+        collection::btree_set(non_reserved_ipv6().prop_map_into::<IpAddr>(), 1..4);
 
     (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut v4, v6)| {
         v4.extend(v6);
@@ -366,15 +362,14 @@ pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
         let max = dns_servers.len();
 
         sample::subsequence(Vec::from_iter(dns_servers), ..=max)
-            .prop_map(|seq| seq.into_iter().map(|h| h.ip()).collect())
     })
 }
 
-pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
+pub(crate) fn upstream_do53_servers() -> impl Strategy<Value = Vec<UpstreamDo53>> {
     dns_servers().prop_flat_map(|dns_servers| {
         let max = dns_servers.len();
 
         sample::subsequence(Vec::from_iter(dns_servers), ..=max)
-            .prop_map(|seq| seq.into_iter().map(|h| h.into()).collect())
+            .prop_map(|seq| seq.into_iter().map(|ip| UpstreamDo53 { ip }).collect())
     })
 }

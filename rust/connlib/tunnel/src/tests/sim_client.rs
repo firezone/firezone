@@ -7,10 +7,10 @@ use super::{
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{ClientState, DnsMapping, DnsResourceRecord, proptest::*};
+use crate::{ClientState, DnsMapping, DnsResourceRecord, messages::UpstreamDo53, proptest::*};
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
-    messages::{DnsServer, Interface},
+    messages::Interface,
 };
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
@@ -420,9 +420,9 @@ pub struct RefClient {
     /// The DNS resolvers configured on the client outside of connlib.
     #[debug(skip)]
     system_dns_resolvers: Vec<IpAddr>,
-    /// The upstream DNS resolvers configured in the portal.
+    /// The upstream Do53 resolvers configured in the portal.
     #[debug(skip)]
-    upstream_dns_resolvers: Vec<DnsServer>,
+    upstream_do53_resolvers: Vec<UpstreamDo53>,
     /// The search-domain configured in the portal.
     pub(crate) search_domain: Option<DomainName>,
 
@@ -500,7 +500,8 @@ impl RefClient {
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
             ipv6: self.tunnel_ip6,
-            upstream_dns: self.upstream_dns_resolvers.clone(),
+            upstream_dns: Vec::new(),
+            upstream_do53: self.upstream_do53_resolvers.clone(),
             search_domain: self.search_domain.clone(),
         });
         client_state.update_system_resolvers(self.system_dns_resolvers.clone());
@@ -1062,11 +1063,11 @@ impl RefClient {
     ///
     /// This purposely returns a `Vec` so we also assert the order!
     pub(crate) fn expected_dns_servers(&self) -> Vec<SocketAddr> {
-        if !self.upstream_dns_resolvers.is_empty() {
+        if !self.upstream_do53_resolvers.is_empty() {
             return self
-                .upstream_dns_resolvers
+                .upstream_do53_resolvers
                 .iter()
-                .map(DnsServer::address)
+                .map(|u| SocketAddr::new(u.ip, 53))
                 .collect();
         }
 
@@ -1152,7 +1153,7 @@ impl RefClient {
     /// DNS servers may be resources, in which case queries that need to be forwarded actually need to be encapsulated.
     pub(crate) fn dns_query_via_resource(&self, query: &DnsQuery) -> Option<ResourceId> {
         // Unless we are using upstream resolvers, DNS queries are never routed through the tunnel.
-        if self.upstream_dns_resolvers.is_empty() {
+        if self.upstream_do53_resolvers.is_empty() {
             return None;
         }
 
@@ -1208,16 +1209,16 @@ impl RefClient {
         self.system_dns_resolvers.clone_from(servers);
     }
 
-    pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<DnsServer>) {
-        self.upstream_dns_resolvers.clone_from(servers);
+    pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<UpstreamDo53>) {
+        self.upstream_do53_resolvers.clone_from(servers);
     }
 
     pub(crate) fn set_upstream_search_domain(&mut self, domain: Option<&DomainName>) {
         self.search_domain = domain.cloned()
     }
 
-    pub(crate) fn upstream_dns_resolvers(&self) -> Vec<DnsServer> {
-        self.upstream_dns_resolvers.clone()
+    pub(crate) fn upstream_dns_resolvers(&self) -> Vec<UpstreamDo53> {
+        self.upstream_do53_resolvers.clone()
     }
 
     pub(crate) fn has_tcp_connection(
@@ -1266,7 +1267,7 @@ pub(crate) fn ref_client_host(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
-    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    upstream_do53: impl Strategy<Value = Vec<UpstreamDo53>>,
     search_domain: impl Strategy<Value = Option<DomainName>>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
@@ -1276,7 +1277,7 @@ pub(crate) fn ref_client_host(
             tunnel_ip4s,
             tunnel_ip6s,
             system_dns,
-            upstream_dns,
+            upstream_do53,
             search_domain,
         ),
         latency(250), // TODO: Increase with #6062.
@@ -1287,14 +1288,14 @@ fn ref_client(
     tunnel_ip4s: impl Strategy<Value = Ipv4Addr>,
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
-    upstream_dns: impl Strategy<Value = Vec<DnsServer>>,
+    upstream_do53: impl Strategy<Value = Vec<UpstreamDo53>>,
     search_domain: impl Strategy<Value = Option<DomainName>>,
 ) -> impl Strategy<Value = RefClient> {
     (
         tunnel_ip4s,
         tunnel_ip6s,
         system_dns,
-        upstream_dns,
+        upstream_do53,
         search_domain,
         any::<bool>(),
         client_id(),
@@ -1305,7 +1306,7 @@ fn ref_client(
                 tunnel_ip4,
                 tunnel_ip6,
                 system_dns_resolvers,
-                upstream_dns_resolvers,
+                upstream_do53_resolvers,
                 search_domain,
                 internet_resource_active,
                 id,
@@ -1317,7 +1318,7 @@ fn ref_client(
                     tunnel_ip4,
                     tunnel_ip6,
                     system_dns_resolvers,
-                    upstream_dns_resolvers,
+                    upstream_do53_resolvers,
                     search_domain,
                     internet_resource_active,
                     cidr_resources: IpNetworkTable::new(),

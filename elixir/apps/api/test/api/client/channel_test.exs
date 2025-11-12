@@ -351,6 +351,11 @@ defmodule API.Client.ChannelTest do
                  %{protocol: :ip_port, address: "1.1.1.1:53"},
                  %{protocol: :ip_port, address: "8.8.8.8:53"}
                ],
+               upstream_do53: [
+                 %{ip: "1.1.1.1"},
+                 %{ip: "8.8.8.8"}
+               ],
+               upstream_doh: [],
                search_domain: "example.com"
              }
     end
@@ -909,7 +914,12 @@ defmodule API.Client.ChannelTest do
                  upstream_dns: [
                    %{address: "1.1.1.1:53", protocol: :ip_port},
                    %{address: "8.8.8.8:53", protocol: :ip_port}
-                 ]
+                 ],
+                 upstream_do53: [
+                   %{ip: "1.1.1.1"},
+                   %{ip: "8.8.8.8"}
+                 ],
+                 upstream_doh: []
                }
              }
     end

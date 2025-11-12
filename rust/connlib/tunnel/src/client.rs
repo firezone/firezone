@@ -1026,11 +1026,11 @@ impl ClientState {
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
-        tracing::trace!(upstream_dns = ?config.upstream_dns, search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+        tracing::trace!(upstream_do53 = ?config.upstream_do53(), search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
         let changed = self
             .dns_config
-            .update_upstream_resolvers(config.upstream_dns);
+            .update_upstream_do53_resolvers(config.upstream_do53());
 
         if changed {
             self.dns_cache.flush("DNS servers changed");
