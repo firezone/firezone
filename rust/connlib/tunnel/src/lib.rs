@@ -34,6 +34,7 @@ mod io;
 pub mod messages;
 mod otel;
 mod p2p_control;
+mod packet_kind;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]
 mod proptest;
@@ -646,6 +647,10 @@ pub(crate) struct NotClientIp(IpAddr);
 #[derive(Debug, thiserror::Error)]
 #[error("Traffic to/from this resource IP is not allowed: {0}")]
 pub(crate) struct NotAllowedResource(IpAddr);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to decapsulate '{0}' packet")]
+pub(crate) struct FailedToDecapsulate(packet_kind::Kind);
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {
