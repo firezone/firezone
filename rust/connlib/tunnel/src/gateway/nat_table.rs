@@ -23,38 +23,6 @@ pub(crate) struct NatTable {
     expired: HashSet<(Protocol, IpAddr)>,
 }
 
-#[derive(Debug)]
-struct EntryState {
-    last_outgoing: Instant,
-    last_incoming: Option<Instant>,
-
-    outgoing_rst: bool,
-    incoming_rst: bool,
-    outgoing_fin: bool,
-    incoming_fin: bool,
-}
-
-impl EntryState {
-    fn new(last_outgoing: Instant) -> Self {
-        Self {
-            last_outgoing,
-            last_incoming: None,
-            outgoing_rst: false,
-            incoming_rst: false,
-            outgoing_fin: false,
-            incoming_fin: false,
-        }
-    }
-
-    fn last_packet(&self) -> Instant {
-        let Some(last_incoming) = self.last_incoming else {
-            return self.last_outgoing;
-        };
-
-        std::cmp::max(self.last_outgoing, last_incoming)
-    }
-}
-
 pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
 pub(crate) const UDP_TTL: Duration = Duration::from_secs(60 * 2);
 pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
@@ -63,61 +31,20 @@ pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(30);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
-        // TODO: Use `extract_if` here?
-        for (inside, state) in self.state_by_inside.iter() {
-            let ttl = match inside.0 {
-                Protocol::Tcp(_) => TCP_TTL,
-                Protocol::Udp(_) => UDP_TTL,
-                Protocol::Icmp(_) => ICMP_TTL,
+        let expired = self.state_by_inside.extract_if(.., |inside, state| {
+            state.remove_reason(inside.0, now).is_some()
+        });
+
+        for (inside, state) in expired {
+            self.expired.insert(inside);
+            let Some(outside) = self.table.remove_by_left(&inside) else {
+                continue;
+            };
+            let Some(reason) = state.remove_reason(inside.0, now) else {
+                continue; // This should be impossible because we just checked for `is_some` in `extract_if`.
             };
 
-            if now.duration_since(state.last_packet()) >= ttl
-                && let Some((inside, _)) = self.table.remove_by_left(inside)
-            {
-                tracing::debug!(?inside, ?inside, ?state, ?ttl, "NAT session expired");
-                self.expired.insert(inside);
-            }
-
-            if state.last_incoming.is_none()
-                && now.duration_since(state.last_outgoing) >= UNCONFIRMED_TTL
-                && let Some((inside, _)) = self.table.remove_by_left(inside)
-            {
-                tracing::debug!(
-                    ?inside,
-                    ?inside,
-                    ?state,
-                    ?ttl,
-                    "Unconfirmed NAT session expired"
-                );
-                self.expired.insert(inside);
-            }
-
-            if state.outgoing_fin
-                && state.incoming_fin
-                && let Some((inside, _)) = self.table.remove_by_left(inside)
-            {
-                tracing::debug!(
-                    ?inside,
-                    ?inside,
-                    ?state,
-                    "NAT session closed (rx AND tx TCP FIN)"
-                );
-                self.expired.insert(inside);
-            }
-
-            if state.outgoing_rst
-                && let Some((inside, _)) = self.table.remove_by_left(inside)
-            {
-                tracing::debug!(?inside, ?inside, ?state, "NAT session closed (tx TCP RST)");
-                self.expired.insert(inside);
-            }
-
-            if state.incoming_rst
-                && let Some((inside, _)) = self.table.remove_by_left(inside)
-            {
-                tracing::debug!(?inside, ?inside, ?state, "NAT session closed (rx TCP RST)");
-                self.expired.insert(inside);
-            }
+            tracing::debug!(?inside, ?outside, "{reason}");
         }
     }
 
@@ -133,13 +60,19 @@ impl NatTable {
         let inside = (src, dst);
 
         if let Some(outside) = self.table.get_by_left(&inside).copied()
-            && let Some(entry) = self.state_by_inside.get_mut(&inside)
+            && let Some(state) = self.state_by_inside.get_mut(&inside)
         {
-            tracing::trace!(?inside, ?outside, "Translating outgoing packet");
+            tracing::trace!(?inside, ?outside, ?state, "Translating outgoing packet");
 
-            entry.outgoing_rst = packet.as_tcp().is_some_and(|tcp| tcp.rst());
-            entry.outgoing_fin = packet.as_tcp().is_some_and(|tcp| tcp.fin());
-            entry.last_outgoing = now;
+            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+                state.outgoing_rst = true;
+            }
+
+            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
+                state.outgoing_fin = true;
+            }
+
+            state.last_outgoing = now;
 
             return Ok(outside);
         }
@@ -156,7 +89,7 @@ impl NatTable {
 
         self.table.insert(inside, outside);
         self.state_by_inside.insert(inside, EntryState::new(now));
-        self.expired.remove(&outside);
+        self.expired.remove(&inside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
 
@@ -190,10 +123,15 @@ impl NatTable {
         let outside = (packet.destination_protocol()?, packet.source());
 
         if let Some(inside) = self.translate_incoming_inner(&outside, now)
-            && let Some(entry) = self.state_by_inside.get_mut(&inside)
+            && let Some(state) = self.state_by_inside.get_mut(&inside)
         {
-            entry.incoming_rst = packet.as_tcp().is_some_and(|tcp| tcp.rst());
-            entry.incoming_fin = packet.as_tcp().is_some_and(|tcp| tcp.fin());
+            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+                state.incoming_rst = true;
+            }
+
+            if packet.as_tcp().is_some_and(|tcp| tcp.fin()) {
+                state.incoming_fin = true;
+            }
 
             let (proto, src) = inside;
 
@@ -215,7 +153,7 @@ impl NatTable {
         let inside = self.table.get_by_right(outside)?;
         let state = self.state_by_inside.get_mut(inside)?;
 
-        tracing::trace!(?inside, ?outside, "Translating incoming packet");
+        tracing::trace!(?inside, ?outside, ?state, "Translating incoming packet");
 
         let prev_last_incoming = state.last_incoming.replace(now);
         if prev_last_incoming.is_none() {
@@ -223,6 +161,69 @@ impl NatTable {
         }
 
         Some(*inside)
+    }
+}
+
+#[derive(Debug)]
+struct EntryState {
+    last_outgoing: Instant,
+    last_incoming: Option<Instant>,
+
+    outgoing_rst: bool,
+    incoming_rst: bool,
+    outgoing_fin: bool,
+    incoming_fin: bool,
+}
+
+impl EntryState {
+    fn new(last_outgoing: Instant) -> Self {
+        Self {
+            last_outgoing,
+            last_incoming: None,
+            outgoing_rst: false,
+            incoming_rst: false,
+            outgoing_fin: false,
+            incoming_fin: false,
+        }
+    }
+
+    fn remove_reason(&self, protocol: Protocol, now: Instant) -> Option<&'static str> {
+        let ttl = match protocol {
+            Protocol::Tcp(_) => TCP_TTL,
+            Protocol::Udp(_) => UDP_TTL,
+            Protocol::Icmp(_) => ICMP_TTL,
+        };
+
+        if now.duration_since(self.last_packet()) >= ttl {
+            return Some("NAT session expired");
+        }
+
+        if self.last_incoming.is_none() && now.duration_since(self.last_outgoing) >= UNCONFIRMED_TTL
+        {
+            return Some("Unconfirmed NAT session expired");
+        }
+
+        if self.outgoing_fin && self.incoming_fin {
+            return Some("NAT session closed (rx AND tx TCP FIN)");
+        }
+
+        if self.outgoing_rst {
+            return Some("NAT session closed (tx TCP RST)");
+        }
+
+        if self.incoming_rst {
+            return Some("NAT session closed (rx TCP RST)");
+        };
+
+        None
+    }
+
+    fn last_packet(&self) -> Instant {
+        let Some(last_incoming) = self.last_incoming else {
+            return self.last_outgoing;
+        };
+
+        std::cmp::max(self.last_outgoing, last_incoming)
     }
 }
 
