@@ -29,7 +29,6 @@ import System
 
     static func export(
       to archiveURL: URL,
-      store: Store,
       session: NETunnelProviderSession
     ) async throws {
       guard let logFolderURL = SharedAccess.logFolderURL
@@ -53,13 +52,10 @@ import System
         .appendingPathComponent("tunnel.zip")
       fileManager.createFile(atPath: tunnelLogURL.path, contents: nil)
       let fileHandle = try FileHandle(forWritingTo: tunnelLogURL)
+      defer { try? fileHandle.close() }
 
       // 3. Await tunnel log export from tunnel process
-      try await IPCClient.exportLogs(
-        session: session,
-        configuration: store.configuration,
-        fileHandle: fileHandle
-      )
+      try await IPCClient.exportLogs(session: session, fileHandle: fileHandle)
 
       // 4. Create app log archive
       let appLogURL = sharedLogFolderURL.appendingPathComponent("app.zip")
