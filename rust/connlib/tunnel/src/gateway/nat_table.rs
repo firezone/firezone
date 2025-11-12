@@ -16,8 +16,8 @@ use std::time::{Duration, Instant};
 /// Thus, purely an L3 NAT would not be sufficient as it would be impossible to map back to the proxy IP.
 #[derive(Default, Debug)]
 pub(crate) struct NatTable {
-    pub(crate) table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
-    pub(crate) last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
+    table: BiMap<(Protocol, IpAddr), (Protocol, IpAddr)>,
+    last_seen: BTreeMap<(Protocol, IpAddr), Instant>,
 
     // We don't bother with proactively freeing this because a single entry is only ~20 bytes and it gets cleanup once the connection to the client goes away.
     expired: HashSet<(Protocol, IpAddr)>,
