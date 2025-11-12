@@ -59,6 +59,8 @@ pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
 pub(crate) const UDP_TTL: Duration = Duration::from_secs(60 * 2);
 pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
+pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(30);
+
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         // TODO: Use `extract_if` here?
@@ -73,6 +75,20 @@ impl NatTable {
                 && let Some((inside, _)) = self.table.remove_by_left(inside)
             {
                 tracing::debug!(?inside, ?inside, ?state, ?ttl, "NAT session expired");
+                self.expired.insert(inside);
+            }
+
+            if state.last_incoming.is_none()
+                && now.duration_since(state.last_outgoing) >= UNCONFIRMED_TTL
+                && let Some((inside, _)) = self.table.remove_by_left(inside)
+            {
+                tracing::debug!(
+                    ?inside,
+                    ?inside,
+                    ?state,
+                    ?ttl,
+                    "Unconfirmed NAT session expired"
+                );
                 self.expired.insert(inside);
             }
 
