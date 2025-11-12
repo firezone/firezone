@@ -76,7 +76,7 @@ pub enum Command {
 enum PortalCommand {
     Connect(PublicKeyParam),
     Send(EgressMessages),
-    UpdateDnsServers(Vec<SocketAddr>),
+    UpdateDnsServers(Vec<IpAddr>),
 }
 
 /// Unified error type to use across connlib.
@@ -204,6 +204,11 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
+                self.portal_cmd_tx
+                    .send(PortalCommand::UpdateDnsServers(dns.clone()))
+                    .await
+                    .context("Failed to send message to portal")?;
+
                 tunnel.state_mut().update_system_resolvers(dns);
             }
             Command::SetInternetResourceState(active) => {
@@ -292,12 +297,6 @@ impl Eventloop {
                     .context("Failed to emit event")?;
             }
             ClientEvent::TunInterfaceUpdated(config) => {
-                self.portal_cmd_tx
-                    .send(PortalCommand::UpdateDnsServers(
-                        config.dns_by_sentinel.upstream_sockets(),
-                    ))
-                    .await
-                    .context("Failed to send message to portal")?;
                 self.tun_config_sender
                     .send(Some(config))
                     .context("Failed to emit event")?;
@@ -605,7 +604,7 @@ fn is_unreachable(e: &io::Error) -> bool {
 
 struct UdpDnsClient {
     socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    servers: Vec<SocketAddr>,
+    servers: Vec<IpAddr>,
 }
 
 impl UdpDnsClient {
@@ -628,11 +627,11 @@ impl UdpDnsClient {
             .map(|socket| {
                 futures::future::try_join(
                     self.send(
-                        *socket,
+                        SocketAddr::new(*socket, 53),
                         dns_types::Query::new(host.clone(), dns_types::RecordType::A),
                     ),
                     self.send(
-                        *socket,
+                        SocketAddr::new(*socket, 53),
                         dns_types::Query::new(host.clone(), dns_types::RecordType::AAAA),
                     ),
                 )
@@ -705,7 +704,7 @@ mod tests {
     #[ignore = "Requires Internet"]
     async fn udp_dns_client_can_resolve_host() {
         let mut client = UdpDnsClient::new(Arc::new(socket_factory::udp));
-        client.servers = vec![SocketAddr::new(IpAddr::from([1, 1, 1, 1]), 53)];
+        client.servers = vec![IpAddr::from([1, 1, 1, 1])];
 
         let ips = client.resolve("example.com".to_owned()).await.unwrap();
 
@@ -716,7 +715,7 @@ mod tests {
     #[ignore = "Requires Internet"]
     async fn udp_dns_client_times_out_unreachable_host() {
         let mut client = UdpDnsClient::new(Arc::new(socket_factory::udp));
-        client.servers = vec![SocketAddr::new(IpAddr::from([2, 2, 2, 2]), 53)];
+        client.servers = vec![IpAddr::from([2, 2, 2, 2])];
 
         let now = Instant::now();
 
@@ -724,7 +723,7 @@ mod tests {
 
         assert_eq!(
             error.to_string(),
-            "All DNS servers ([2.2.2.2:53]) failed to resolve portal host 'example.com'"
+            "All DNS servers ([2.2.2.2]) failed to resolve portal host 'example.com'"
         );
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT)
     }

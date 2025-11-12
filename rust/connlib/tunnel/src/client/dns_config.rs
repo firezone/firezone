@@ -8,17 +8,16 @@ use ip_network::IpNetwork;
 use crate::{
     client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
     dns::DNS_PORT,
-    messages::DnsServer,
 };
 
 #[derive(Debug, Default)]
 pub(crate) struct DnsConfig {
     /// The DNS resolvers configured on the system outside of connlib.
     system_resolvers: Vec<IpAddr>,
-    /// The DNS resolvers configured in the portal.
+    /// The Do53 resolvers configured in the portal.
     ///
     /// Has priority over system-configured DNS servers.
-    upstream_dns: Vec<SocketAddr>,
+    upstream_do53: Vec<IpAddr>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     mapping: DnsMapping,
@@ -74,16 +73,16 @@ impl DnsConfig {
     }
 
     #[must_use = "Check if the DNS mapping has changed"]
-    pub(crate) fn update_upstream_resolvers(&mut self, servers: Vec<DnsServer>) -> bool {
+    pub(crate) fn update_upstream_do53_resolvers(&mut self, servers: Vec<IpAddr>) -> bool {
         tracing::debug!(?servers, "Received upstream-defined DNS servers");
 
-        self.upstream_dns = servers.into_iter().map(|s| s.address()).collect();
+        self.upstream_do53 = servers;
 
         self.update_dns_mapping()
     }
 
     pub(crate) fn has_custom_upstream(&self) -> bool {
-        !self.upstream_dns.is_empty()
+        !self.upstream_do53.is_empty()
     }
 
     pub(crate) fn mapping(&mut self) -> DnsMapping {
@@ -92,7 +91,7 @@ impl DnsConfig {
 
     fn update_dns_mapping(&mut self) -> bool {
         let effective_dns_servers =
-            effective_dns_servers(self.upstream_dns.clone(), self.system_resolvers.clone());
+            effective_dns_servers(self.upstream_do53.clone(), self.system_resolvers.clone());
 
         if HashSet::<SocketAddr>::from_iter(effective_dns_servers.clone())
             == HashSet::from_iter(self.mapping.upstream_sockets())
@@ -109,18 +108,23 @@ impl DnsConfig {
 }
 
 fn effective_dns_servers(
-    upstream_dns: Vec<SocketAddr>,
+    upstream_do53: Vec<IpAddr>,
     default_resolvers: Vec<IpAddr>,
 ) -> Vec<SocketAddr> {
-    let mut upstream_dns = upstream_dns.into_iter().filter_map(not_sentinel).peekable();
+    let mut upstream_dns = upstream_do53
+        .into_iter()
+        .filter_map(not_sentinel)
+        .peekable();
     if upstream_dns.peek().is_some() {
-        return upstream_dns.collect();
+        return upstream_dns
+            .map(|ip| SocketAddr::new(ip, DNS_PORT))
+            .collect();
     }
 
     let mut dns_servers = default_resolvers
         .into_iter()
-        .map(|ip| SocketAddr::new(ip, DNS_PORT))
         .filter_map(not_sentinel)
+        .map(|ip| SocketAddr::new(ip, DNS_PORT))
         .peekable();
 
     if dns_servers.peek().is_none() {
@@ -152,9 +156,9 @@ fn sentinel_dns_mapping(dns: &[SocketAddr], old_sentinels: Vec<IpAddr>) -> DnsMa
     DnsMapping { inner: mapping }
 }
 
-fn not_sentinel(srv: SocketAddr) -> Option<SocketAddr> {
-    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv.ip());
-    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv.ip());
+fn not_sentinel(srv: IpAddr) -> Option<IpAddr> {
+    let is_v4_dns = IpNetwork::V4(DNS_SENTINELS_V4).contains(srv);
+    let is_v6_dns = IpNetwork::V6(DNS_SENTINELS_V6).contains(srv);
 
     (!is_v4_dns && !is_v6_dns).then_some(srv)
 }

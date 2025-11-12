@@ -169,9 +169,34 @@ pub struct Interface {
     /// DNS that will be used to query for DNS that aren't within our resource list.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
-    pub upstream_dns: Vec<DnsServer>,
+    pub upstream_dns: Vec<DnsServer>, // TODO: Remove once portal with `upstream_do53` support has been deployed.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub upstream_do53: Vec<UpstreamDo53>,
+
     #[serde(default)]
     pub search_domain: Option<DomainName>,
+}
+
+impl Interface {
+    pub fn upstream_do53(&self) -> Vec<IpAddr> {
+        if !self.upstream_do53.is_empty() {
+            return self.upstream_do53.iter().map(|u| u.ip).collect();
+        }
+
+        // Fallback whilst the portal does not send `upstream_do53`.
+        self.upstream_dns
+            .iter()
+            .map(|u| match u {
+                DnsServer::IpPort(ip_dns_server) => ip_dns_server.address.ip(),
+            })
+            .collect()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct UpstreamDo53 {
+    pub ip: IpAddr,
 }
 
 /// A single relay
