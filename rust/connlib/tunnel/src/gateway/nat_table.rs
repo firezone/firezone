@@ -27,6 +27,11 @@ pub(crate) struct NatTable {
 struct EntryState {
     last_outgoing: Instant,
     last_incoming: Option<Instant>,
+
+    outgoing_rst: bool,
+    incoming_rst: bool,
+    outgoing_fin: bool,
+    incoming_fin: bool,
 }
 
 impl EntryState {
@@ -34,6 +39,10 @@ impl EntryState {
         Self {
             last_outgoing,
             last_incoming: None,
+            outgoing_rst: false,
+            incoming_rst: false,
+            outgoing_fin: false,
+            incoming_fin: false,
         }
     }
 
@@ -63,7 +72,34 @@ impl NatTable {
             if now.duration_since(state.last_packet()) >= ttl
                 && let Some((inside, _)) = self.table.remove_by_left(inside)
             {
-                tracing::debug!(?inside, ?inside, ?ttl, "NAT session expired");
+                tracing::debug!(?inside, ?inside, ?state, ?ttl, "NAT session expired");
+                self.expired.insert(inside);
+            }
+
+            if state.outgoing_fin
+                && state.incoming_fin
+                && let Some((inside, _)) = self.table.remove_by_left(inside)
+            {
+                tracing::debug!(
+                    ?inside,
+                    ?inside,
+                    ?state,
+                    "NAT session closed (rx AND tx TCP FIN)"
+                );
+                self.expired.insert(inside);
+            }
+
+            if state.outgoing_rst
+                && let Some((inside, _)) = self.table.remove_by_left(inside)
+            {
+                tracing::debug!(?inside, ?inside, ?state, "NAT session closed (tx TCP RST)");
+                self.expired.insert(inside);
+            }
+
+            if state.incoming_rst
+                && let Some((inside, _)) = self.table.remove_by_left(inside)
+            {
+                tracing::debug!(?inside, ?inside, ?state, "NAT session closed (rx TCP RST)");
                 self.expired.insert(inside);
             }
         }
@@ -85,17 +121,8 @@ impl NatTable {
         {
             tracing::trace!(?inside, ?outside, "Translating outgoing packet");
 
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                tracing::debug!(
-                    ?inside,
-                    ?outside,
-                    "Witnessed outgoing TCP RST, removing NAT session"
-                );
-
-                self.table.remove_by_left(&inside);
-                self.expired.insert(outside);
-            }
-
+            entry.outgoing_rst = packet.as_tcp().is_some_and(|tcp| tcp.rst());
+            entry.outgoing_fin = packet.as_tcp().is_some_and(|tcp| tcp.fin());
             entry.last_outgoing = now;
 
             return Ok(outside);
@@ -146,17 +173,11 @@ impl NatTable {
 
         let outside = (packet.destination_protocol()?, packet.source());
 
-        if let Some(inside) = self.translate_incoming_inner(&outside, now) {
-            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                tracing::debug!(
-                    ?inside,
-                    ?outside,
-                    "Witnessed incoming TCP RST, removing NAT session"
-                );
-
-                self.table.remove_by_right(&outside);
-                self.expired.insert(outside);
-            }
+        if let Some(inside) = self.translate_incoming_inner(&outside, now)
+            && let Some(entry) = self.state_by_inside.get_mut(&inside)
+        {
+            entry.incoming_rst = packet.as_tcp().is_some_and(|tcp| tcp.rst());
+            entry.incoming_fin = packet.as_tcp().is_some_and(|tcp| tcp.fin());
 
             let (proto, src) = inside;
 
