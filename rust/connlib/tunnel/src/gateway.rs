@@ -10,7 +10,7 @@ use crate::gateway::flow_tracker::FlowTracker;
 use crate::messages::gateway::{Client, ResourceDescription, Subject};
 use crate::messages::{Answer, IceCredentials, ResolveRequest};
 use crate::peer_store::PeerStore;
-use crate::{GatewayEvent, IpConfig, p2p_control};
+use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, Result};
 use boringtun::x25519::{self, PublicKey};
 use chrono::{DateTime, Utc};
@@ -164,7 +164,7 @@ impl GatewayState {
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)
-            .context("Failed to decapsulate")?
+            .context(FailedToDecapsulate(packet_kind::classify(packet)))?
         else {
             return Ok(None);
         };
