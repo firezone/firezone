@@ -1861,7 +1861,7 @@ where
             .candidate_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!(state = %self.state, "Connection failed (no candidates received)");
+            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -1870,7 +1870,7 @@ where
             .disconnect_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!(state = %self.state, "Connection failed (ICE timeout)");
+            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -2102,7 +2102,7 @@ where
         match self.tunnel.update_timers_at(&mut buf, now) {
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                tracing::info!(state = %self.state, "Connection failed (wireguard tunnel expired)");
+                tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (wireguard tunnel expired)");
                 self.state = ConnectionState::Failed;
             }
             TunnResult::Err(e) => {
