@@ -6,10 +6,12 @@ mod udp_dns;
 use crate::{TunnelError, device_channel::Device, dns, otel, sockets::Sockets};
 use anyhow::{Context as _, Result};
 use chrono::{DateTime, Utc};
+use dns_types::DoHUrl;
 use futures::FutureExt as _;
-use futures_bounded::FuturesTupleSet;
+use futures_bounded::{FuturesMap, FuturesTupleSet};
 use gat_lending_iterator::LendingIterator;
 use gso_queue::GsoQueue;
+use http_client::HttpClient;
 use ip_packet::{Ecn, IpPacket, MAX_FZ_PAYLOAD};
 use nameserver_set::NameserverSet;
 use socket_factory::{DatagramIn, SocketFactory, TcpSocket, UdpSocket};
@@ -56,6 +58,10 @@ pub struct Io {
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
     dns_queries: FuturesTupleSet<Result<dns_types::Response>, DnsQueryMetaData>,
+
+    udp_dns_client: l4_udp_dns_client::UdpDnsClient,
+    doh_clients: BTreeMap<DoHUrl, HttpClient>,
+    doh_clients_bootstrap: FuturesMap<DoHUrl, Result<HttpClient>>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
@@ -164,12 +170,21 @@ impl Io {
                 tcp_socket_factory.clone(),
                 udp_socket_factory.clone(),
             ),
+            udp_dns_client: l4_udp_dns_client::UdpDnsClient::new(
+                udp_socket_factory.clone(),
+                Vec::default(),
+            ),
             reval_nameserver_interval: tokio::time::interval(RE_EVALUATE_NAMESERVER_INTERVAL),
             tcp_socket_factory,
             udp_socket_factory,
             dns_queries: FuturesTupleSet::new(
                 || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
                 1000,
+            ),
+            doh_clients: Default::default(),
+            doh_clients_bootstrap: FuturesMap::new(
+                || futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT),
+                10,
             ),
             gso_queue: GsoQueue::new(),
             tun: Device::new(),
@@ -203,6 +218,20 @@ impl Io {
         Ok(())
     }
 
+    pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) {
+        let non_connlib_resolvers = resolvers
+            .into_iter()
+            .filter_map(crate::client::dns_config::not_sentinel)
+            .collect();
+
+        tracing::debug!(servers = ?non_connlib_resolvers, "Re-configuring UDP DNS client with new upstreams");
+
+        self.udp_dns_client = l4_udp_dns_client::UdpDnsClient::new(
+            self.udp_socket_factory.clone(),
+            non_connlib_resolvers,
+        )
+    }
+
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
         self.sockets.poll_has_sockets(cx)
     }
@@ -233,6 +262,16 @@ impl Io {
 
         // We purposely don't want to block the event loop here because we can do plenty of other work while this is running.
         let _ = self.nameservers.poll(cx);
+
+        while let Poll::Ready((url, result)) = self.doh_clients_bootstrap.poll_unpin(cx) {
+            match result {
+                Ok(Ok(client)) => {
+                    self.doh_clients.insert(url.clone(), client);
+                }
+                Ok(Err(e)) => tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}"),
+                Err(e) => tracing::debug!(%url, "Failed to bootstrap DoH client: {e:#}"),
+            }
+        }
 
         let network = self.sockets.poll_recv_from(cx).map(|network| {
             anyhow::Ok(
@@ -423,6 +462,7 @@ impl Io {
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.nameservers.evaluate();
+        self.doh_clients.clear();
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
@@ -502,6 +542,34 @@ impl Io {
                 }
             }
         }
+    }
+
+    pub(crate) fn bootstrap_doh_client(&mut self, server: DoHUrl) {
+        if self.doh_clients.contains_key(&server) {
+            return;
+        }
+
+        if self.doh_clients_bootstrap.contains(server.clone()) {
+            return; // Already bootstrapping.
+        }
+
+        let socket_factory = self.tcp_socket_factory.clone();
+        let addresses = self.udp_dns_client.resolve(server.host());
+
+        let _ = self
+            .doh_clients_bootstrap
+            .try_push(server.clone(), async move {
+                tracing::debug!(%server, "Bootstrapping DoH client");
+
+                let addresses = addresses.await?;
+                let http_client =
+                    HttpClient::new(server.host().to_string(), addresses.clone(), socket_factory)
+                        .await?;
+
+                tracing::debug!(%server, "Bootstrapped DoH client");
+
+                Ok(http_client)
+            });
     }
 
     pub(crate) fn send_udp_dns_response(

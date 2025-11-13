@@ -142,6 +142,11 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) {
+        self.role_state.update_system_resolvers(resolvers.clone());
+        self.io.update_system_resolvers(resolvers); // IO needs the system resolvers to bootstrap DoH upstream.
+    }
+
     /// Shut down the Client tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
