@@ -7,7 +7,11 @@ use super::{
     strategies::latency,
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
-use crate::{ClientState, DnsMapping, DnsResourceRecord, messages::UpstreamDo53, proptest::*};
+use crate::{
+    ClientState, DnsMapping, DnsResourceRecord,
+    messages::{UpstreamDo53, UpstreamDoH},
+    proptest::*,
+};
 use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::Interface,
@@ -423,6 +427,9 @@ pub struct RefClient {
     /// The upstream Do53 resolvers configured in the portal.
     #[debug(skip)]
     upstream_do53_resolvers: Vec<UpstreamDo53>,
+    /// The upstream DoH resolvers configured in the portal.
+    #[debug(skip)]
+    upstream_doh_resolvers: Vec<UpstreamDoH>,
     /// The search-domain configured in the portal.
     pub(crate) search_domain: Option<DomainName>,
 
@@ -502,6 +509,7 @@ impl RefClient {
             ipv6: self.tunnel_ip6,
             upstream_dns: Vec::new(),
             upstream_do53: self.upstream_do53_resolvers.clone(),
+            upstream_doh: self.upstream_doh_resolvers,
             search_domain: self.search_domain.clone(),
         });
         client_state.update_system_resolvers(self.system_dns_resolvers.clone());
@@ -1209,16 +1217,24 @@ impl RefClient {
         self.system_dns_resolvers.clone_from(servers);
     }
 
-    pub(crate) fn set_upstream_dns_resolvers(&mut self, servers: &Vec<UpstreamDo53>) {
+    pub(crate) fn set_upstream_do53_resolvers(&mut self, servers: &Vec<UpstreamDo53>) {
         self.upstream_do53_resolvers.clone_from(servers);
+    }
+
+    pub(crate) fn set_upstream_doh_resolvers(&mut self, servers: &Vec<UpstreamDoH>) {
+        self.upstream_doh_resolvers.clone_from(servers);
     }
 
     pub(crate) fn set_upstream_search_domain(&mut self, domain: Option<&DomainName>) {
         self.search_domain = domain.cloned()
     }
 
-    pub(crate) fn upstream_dns_resolvers(&self) -> Vec<UpstreamDo53> {
+    pub(crate) fn upstream_do53_resolvers(&self) -> Vec<UpstreamDo53> {
         self.upstream_do53_resolvers.clone()
+    }
+
+    pub(crate) fn upstream_doh_resolvers(&self) -> Vec<UpstreamDoH> {
+        self.upstream_doh_resolvers.clone()
     }
 
     pub(crate) fn has_tcp_connection(
@@ -1268,6 +1284,7 @@ pub(crate) fn ref_client_host(
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
     upstream_do53: impl Strategy<Value = Vec<UpstreamDo53>>,
+    upstream_doh: impl Strategy<Value = Vec<UpstreamDoH>>,
     search_domain: impl Strategy<Value = Option<DomainName>>,
 ) -> impl Strategy<Value = Host<RefClient>> {
     host(
@@ -1278,6 +1295,7 @@ pub(crate) fn ref_client_host(
             tunnel_ip6s,
             system_dns,
             upstream_do53,
+            upstream_doh,
             search_domain,
         ),
         latency(250), // TODO: Increase with #6062.
@@ -1289,6 +1307,7 @@ fn ref_client(
     tunnel_ip6s: impl Strategy<Value = Ipv6Addr>,
     system_dns: impl Strategy<Value = Vec<IpAddr>>,
     upstream_do53: impl Strategy<Value = Vec<UpstreamDo53>>,
+    upstream_doh: impl Strategy<Value = Vec<UpstreamDoH>>,
     search_domain: impl Strategy<Value = Option<DomainName>>,
 ) -> impl Strategy<Value = RefClient> {
     (
@@ -1296,6 +1315,7 @@ fn ref_client(
         tunnel_ip6s,
         system_dns,
         upstream_do53,
+        upstream_doh,
         search_domain,
         any::<bool>(),
         client_id(),
@@ -1307,6 +1327,7 @@ fn ref_client(
                 tunnel_ip6,
                 system_dns_resolvers,
                 upstream_do53_resolvers,
+                upstream_doh_resolvers,
                 search_domain,
                 internet_resource_active,
                 id,
@@ -1319,6 +1340,7 @@ fn ref_client(
                     tunnel_ip6,
                     system_dns_resolvers,
                     upstream_do53_resolvers,
+                    upstream_doh_resolvers,
                     search_domain,
                     internet_resource_active,
                     cidr_resources: IpNetworkTable::new(),

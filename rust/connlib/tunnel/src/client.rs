@@ -18,7 +18,6 @@ use dns_types::ResponseCode;
 use firezone_telemetry::{analytics, feature_flags};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use secrecy::ExposeSecret as _;
-use url::Url;
 
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};

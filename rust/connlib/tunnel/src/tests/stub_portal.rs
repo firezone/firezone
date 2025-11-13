@@ -5,7 +5,11 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, site_specific_dns_record, subdomain_records},
 };
-use crate::{client, messages::UpstreamDo53, proptest::*};
+use crate::{
+    client,
+    messages::{UpstreamDo53, UpstreamDoH},
+    proptest::*,
+};
 use crate::{client::DnsResource, messages::gateway};
 use connlib_model::{GatewayId, Site};
 use connlib_model::{ResourceId, SiteId};
@@ -281,20 +285,23 @@ impl StubPortal {
             .prop_map(BTreeMap::from_iter)
     }
 
-    pub(crate) fn client<S1, S2>(
+    pub(crate) fn client<S1, S2, S3>(
         &self,
         system_dns: S1,
-        upstream_dns: S2,
-    ) -> impl Strategy<Value = Host<RefClient>> + use<S1, S2>
+        upstream_do53: S2,
+        upstream_doh: S3,
+    ) -> impl Strategy<Value = Host<RefClient>> + use<S1, S2, S3>
     where
         S1: Strategy<Value = Vec<IpAddr>>,
         S2: Strategy<Value = Vec<UpstreamDo53>>,
+        S3: Strategy<Value = Vec<UpstreamDoH>>,
     {
         ref_client_host(
             Just(self.client_tunnel_ipv4),
             Just(self.client_tunnel_ipv6),
             system_dns,
-            upstream_dns,
+            upstream_do53,
+            upstream_doh,
             self.search_domain(),
         )
     }

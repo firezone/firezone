@@ -5,13 +5,14 @@ use crate::client::{
     CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
     InternetResource,
 };
-use crate::messages::UpstreamDo53;
+use crate::messages::{UpstreamDo53, UpstreamDoH};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
 use dns_types::{DomainName, OwnedRecordData};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
+use proptest::collection::btree_set;
 use proptest::{collection, prelude::*};
 use std::iter;
 use std::num::NonZeroU16;
@@ -21,6 +22,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
+use url::Url;
 
 pub(crate) fn global_dns_records(at: Instant) -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
@@ -189,10 +191,10 @@ pub(crate) fn relays(
     collection::btree_map(id, ref_relay_host(), 1..=2)
 }
 
-/// Sample a list of DNS servers.
+/// Sample a list of Do53 servers.
 ///
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
-pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<IpAddr>> {
+pub(crate) fn do53_servers() -> impl Strategy<Value = BTreeSet<IpAddr>> {
     let ip4_dns_servers =
         collection::btree_set(non_reserved_ipv4().prop_map_into::<IpAddr>(), 1..4);
     let ip6_dns_servers =
@@ -202,6 +204,18 @@ pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<IpAddr>> {
         v4.extend(v6);
         v4
     })
+}
+
+/// Sample a list of Do53 servers.
+///
+/// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
+pub(crate) fn doh_server() -> impl Strategy<Value = Url> {
+    prop_oneof![
+        Just(Url::parse("https://dns.quad9.net/dns-query").unwrap()),
+        Just(Url::parse("https://cloudflare-dns.com/dns-query").unwrap()),
+        Just(Url::parse("https://dns.google/dns-query").unwrap()),
+        Just(Url::parse("https://dns.opendoh.com/dns-query").unwrap()),
+    ]
 }
 
 pub(crate) fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
@@ -358,7 +372,7 @@ pub(crate) fn documentation_ip6s(subnet: u16) -> impl Strategy<Value = Ipv6Addr>
 }
 
 pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
-    dns_servers().prop_flat_map(|dns_servers| {
+    do53_servers().prop_flat_map(|dns_servers| {
         let max = dns_servers.len();
 
         sample::subsequence(Vec::from_iter(dns_servers), ..=max)
@@ -366,10 +380,15 @@ pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
 }
 
 pub(crate) fn upstream_do53_servers() -> impl Strategy<Value = Vec<UpstreamDo53>> {
-    dns_servers().prop_flat_map(|dns_servers| {
+    do53_servers().prop_flat_map(|dns_servers| {
         let max = dns_servers.len();
 
         sample::subsequence(Vec::from_iter(dns_servers), ..=max)
             .prop_map(|seq| seq.into_iter().map(|ip| UpstreamDo53 { ip }).collect())
     })
+}
+
+pub(crate) fn upstream_doh_servers() -> impl Strategy<Value = Vec<UpstreamDoH>> {
+    btree_set(doh_server(), 0..2)
+        .prop_map(|servers| servers.into_iter().map(|url| UpstreamDoH { url }).collect())
 }
