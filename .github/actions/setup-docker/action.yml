@@ -14,6 +14,30 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Stop existing Docker daemon
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "Stopping existing Docker daemon..."
+        sudo systemctl stop docker.socket || true
+        sudo systemctl stop docker.service || true
+        sudo systemctl stop containerd.service || true
+
+        # Kill any remaining processes
+        sudo pkill -9 dockerd || true
+        sudo pkill -9 containerd || true
+
+        # Clean up pid files
+        sudo rm -f /var/run/docker.pid || true
+        sudo rm -f /run/docker.pid || true
+        sudo rm -f /var/run/containerd/containerd.pid || true
+
+        # Wait a moment for cleanup
+        sleep 2
+
+        echo "Existing Docker daemon stopped"
+
     - name: Download and install Docker
       shell: bash
       run: |
@@ -42,27 +66,58 @@ runs:
         echo "Docker binaries installed successfully"
         docker --version
 
-    - name: Start Docker daemon
+    - name: Configure and start Docker daemon
       shell: bash
       run: |
         set -euo pipefail
 
+        # Create containerd config directory
+        sudo mkdir -p /etc/containerd
+
+        # Generate default containerd config
+        sudo containerd config default | sudo tee /etc/containerd/config.toml
+
+        # Create Docker daemon config
+        sudo mkdir -p /etc/docker
+        cat <<EOF | sudo tee /etc/docker/daemon.json
+        {
+          "features": {
+            "containerd-snapshotter": true
+          }
+        }
+        EOF
+
         echo "Starting containerd..."
         sudo containerd &
 
-        # Wait a moment for containerd to start
-        sleep 2
+        # Wait for containerd to start
+        echo "Waiting for containerd to be ready..."
+        sleep 3
+
+        # Verify containerd is running
+        if ! sudo ctr version >/dev/null 2>&1; then
+          echo "ERROR: containerd failed to start"
+          ps aux | grep containerd || true
+          exit 1
+        fi
+        echo "containerd is ready"
 
         echo "Starting dockerd..."
         sudo dockerd --host=unix:///var/run/docker.sock &
 
         # Wait for Docker daemon to be ready
         echo "Waiting for Docker daemon to be ready..."
-        timeout=30
+        timeout=60
         elapsed=0
         while ! docker info >/dev/null 2>&1; do
           if [ $elapsed -ge $timeout ]; then
             echo "ERROR: Docker daemon failed to start within ${timeout} seconds"
+            echo "--- dockerd logs ---"
+            sudo journalctl -u docker --no-pager -n 50 || true
+            echo "--- containerd logs ---"
+            sudo journalctl -u containerd --no-pager -n 50 || true
+            echo "--- processes ---"
+            ps aux | grep -E 'docker|containerd' || true
             exit 1
           fi
           sleep 1
