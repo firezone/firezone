@@ -56,8 +56,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     completionHandler: @escaping @Sendable (Error?) -> Void
   ) {
     // Dummy start to attach a utun for cleanup later
-    if options?["dryStart"] as? Bool == true {
-      Log.info("Dry start requested - extension awakened and temporarily starting tunnel")
+    if options?["cycleStart"] as? Bool == true {
+      Log.info("Cycle start requested - extension awakened and temporarily starting tunnel")
       return completionHandler(nil)
     }
 

@@ -97,9 +97,9 @@ enum IPCClient {
 
   @MainActor
   static func exportLogs(session: NETunnelProviderSession, fileHandle: FileHandle) async throws {
-    let isDryStart = try await maybeDryStart(session)
+    let isCycleStart = try await maybeCycleStart(session)
     defer {
-      if isDryStart { session.stopTunnel() }
+      if isCycleStart { session.stopTunnel() }
     }
 
     let message = ProviderMessage.exportLogs
@@ -167,10 +167,10 @@ enum IPCClient {
     session: NETunnelProviderSession,
     message: ProviderMessage,
   ) async throws -> Data? {
-    let isDryStart = try await maybeDryStart(session)
+    let isCycleStart = try await maybeCycleStart(session)
 
     defer {
-      if isDryStart { session.stopTunnel() }
+      if isCycleStart { session.stopTunnel() }
     }
 
     return try await withCheckedThrowingContinuation { continuation in
@@ -187,7 +187,7 @@ enum IPCClient {
   /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed
   /// upon stopTunnel. We do this by ensuring the tunnel is "started" prior to any IPC call. If so, we return true
   /// so that the caller may stop the tunnel afterwards.
-  private static func maybeDryStart(_ session: NETunnelProviderSession) async throws -> Bool {
+  private static func maybeCycleStart(_ session: NETunnelProviderSession) async throws -> Bool {
     if session.status == .invalid {
       throw Error.invalidStatus(session.status)
     }
@@ -195,7 +195,7 @@ enum IPCClient {
     #if os(macOS)
       if [.disconnected, .disconnecting].contains(session.status) {
         let options: [String: NSObject] = [
-          "dryStart": true as NSObject
+          "cycleStart": true as NSObject
         ]
 
         try session.startTunnel(options: options)
