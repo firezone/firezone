@@ -197,7 +197,7 @@ impl Interface {
     }
 
     pub fn upstream_doh(&self) -> Vec<Url> {
-        return self.upstream_doh.iter().map(|u| u.url.clone()).collect();
+        self.upstream_doh.iter().map(|u| u.url.clone()).collect()
     }
 }
 

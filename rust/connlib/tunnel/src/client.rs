@@ -1027,7 +1027,7 @@ impl ClientState {
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
-        tracing::trace!(upstream_do53 = ?config.upstream_do53(), search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
+        tracing::trace!(upstream_do53 = ?config.upstream_do53(), upstream_doh = ?config.upstream_doh(), search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
         let changed_do53 = self
             .dns_config
