@@ -45,14 +45,14 @@ pub(crate) const TCP_TTL: Duration = Duration::from_secs(60 * 60 * 2);
 pub(crate) const UDP_TTL: Duration = Duration::from_secs(60 * 2);
 pub(crate) const ICMP_TTL: Duration = Duration::from_secs(60 * 2);
 
-pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(30);
+pub(crate) const UNCONFIRMED_TTL: Duration = Duration::from_secs(60);
 
 impl NatTable {
     pub(crate) fn handle_timeout(&mut self, now: Instant) {
         let expired = self.state_by_inside.extract_if(.., |inside, state| {
             state
                 .remove_at(inside.0)
-                .is_some_and(|remove_at| remove_at >= now)
+                .is_some_and(|remove_at| now >= remove_at)
         });
 
         for (inside, state) in expired {
@@ -368,9 +368,15 @@ mod tests {
         response.set_src(new_dst_ip).unwrap();
 
         // Update time.
-        table.handle_timeout(sent_at + response_delay);
+        table.handle_timeout(sent_at + Duration::from_secs(1));
 
-        // Translate in
+        // Confirm mapping
+        table
+            .translate_incoming(&response.clone(), sent_at + Duration::from_secs(1))
+            .unwrap();
+
+        // Simulate another packet after _response_delay_
+        table.handle_timeout(sent_at + response_delay);
         let translate_incoming = table
             .translate_incoming(&response, sent_at + response_delay)
             .unwrap();
@@ -461,16 +467,17 @@ mod tests {
         rst.set_dst(req.destination()).unwrap();
 
         let mut table = NatTable::default();
+        let mut now = Instant::now();
 
-        let outside = table
-            .translate_outgoing(&req, outside_dst, Instant::now())
-            .unwrap();
+        let outside = table.translate_outgoing(&req, outside_dst, now).unwrap();
 
         let mut response = req.clone();
         response.set_destination_protocol(outside.0.value());
         response.set_src(outside.1).unwrap();
 
-        match table.translate_incoming(&response, Instant::now()).unwrap() {
+        now += Duration::from_secs(1);
+
+        match table.translate_incoming(&response, now).unwrap() {
             TranslateIncomingResult::Ok { .. } => {}
             result @ (TranslateIncomingResult::NoNatSession
             | TranslateIncomingResult::ExpiredNatSession
@@ -479,11 +486,14 @@ mod tests {
             }
         };
 
-        table
-            .translate_outgoing(&rst, outside_dst, Instant::now())
-            .unwrap();
+        now += Duration::from_secs(1);
 
-        match table.translate_incoming(&response, Instant::now()).unwrap() {
+        table.translate_outgoing(&rst, outside_dst, now).unwrap();
+
+        now += Duration::from_secs(1);
+        table.handle_timeout(now);
+
+        match table.translate_incoming(&response, now).unwrap() {
             TranslateIncomingResult::ExpiredNatSession => {}
             result @ (TranslateIncomingResult::NoNatSession
             | TranslateIncomingResult::Ok { .. }
