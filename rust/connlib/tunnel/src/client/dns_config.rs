@@ -96,7 +96,7 @@ impl DnsConfig {
     }
 
     pub(crate) fn has_custom_upstream(&self) -> bool {
-        !self.upstream_do53.is_empty() || !self.upstream_doh.is_empty()
+        !self.upstream_do53.is_empty()
     }
 
     pub(crate) fn mapping(&mut self) -> DnsMapping {
