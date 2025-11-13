@@ -11,8 +11,8 @@ use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use rustls::ClientConfig;
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
-use tokio::task::JoinHandle;
 use tokio_rustls::TlsConnector;
+use tokio_util::task::AbortOnDropHandle;
 
 type Client = hyper::client::conn::http2::SendRequest<Full<Bytes>>;
 type Connection = hyper::client::conn::http2::Connection<
@@ -21,11 +21,13 @@ type Connection = hyper::client::conn::http2::Connection<
     hyper_util::rt::TokioExecutor,
 >;
 
+#[derive(Clone)]
 pub struct HttpClient {
     host: String,
-
     client: Client,
-    connection: JoinHandle<()>,
+
+    #[expect(dead_code, reason = "We only need to keep it around.")]
+    connection: Arc<AbortOnDropHandle<()>>,
 }
 
 impl HttpClient {
@@ -66,7 +68,7 @@ impl HttpClient {
         Ok(Self {
             host,
             client,
-            connection,
+            connection: Arc::new(AbortOnDropHandle::new(connection)),
         })
     }
 
@@ -122,12 +124,6 @@ impl HttpClient {
 #[derive(thiserror::Error, Debug)]
 #[error("The connection is closed")]
 pub struct Closed;
-
-impl Drop for HttpClient {
-    fn drop(&mut self) {
-        self.connection.abort();
-    }
-}
 
 async fn connect(
     addresses: Vec<IpAddr>,
