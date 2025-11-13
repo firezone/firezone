@@ -21,6 +21,12 @@ type Connection = hyper::client::conn::http2::Connection<
     hyper_util::rt::TokioExecutor,
 >;
 
+/// A specialised HTTP2 client that plugs into our [`SocketFactory`] abstraction.
+///
+/// One instance of this client is tied to a given domain.
+/// It maintains a TCP connection and can send multiple requests across it in parallel.
+/// If the TCP connection fails, [`Closed`] is returned.
+/// In that case, the client becomes permanently unusable and should be discarded.
 #[derive(Clone)]
 pub struct HttpClient {
     host: String,
