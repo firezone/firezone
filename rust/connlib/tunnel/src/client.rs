@@ -777,17 +777,27 @@ impl ClientState {
     /// For DNS queries to IPs that are a CIDR resources we want to mangle and forward to the gateway that handles that resource.
     ///
     /// We only want to do this if the upstream DNS server is set by the portal, otherwise, the server might be a local IP.
-    fn should_forward_dns_query_to_gateway(&self, dns_server: IpAddr) -> bool {
+    fn should_forward_dns_query_to_gateway(
+        &self,
+        dns_server: &dns::Upstream,
+    ) -> Option<SocketAddr> {
         if !self.dns_config.has_custom_upstream() {
-            return false;
+            return None;
         }
+
+        let server = match dns_server {
+            dns::Upstream::Do53 { server } => server,
+            dns::Upstream::DoH { .. } => return None, // If DoH upstreams are in effect, we never forward queries to upstreams.
+        };
+
         if self.active_internet_resource().is_some() {
-            return true;
+            return Some(*server);
         }
 
         self.active_cidr_resources
-            .longest_match(dns_server)
+            .longest_match(server.ip())
             .is_some()
+            .then_some(*server)
     }
 
     /// Handles UDP & TCP packets targeted at our stub resolver.
@@ -1013,7 +1023,7 @@ impl ClientState {
     ///
     /// Note: The returned list is not necessarily the list of DNS resolvers that is active.
     /// If DNS servers are defined in the portal, those will be preferred over the system defined ones.
-    pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> Vec<IpAddr> {
+    pub(crate) fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> Vec<IpAddr> {
         let changed = self.dns_config.update_system_resolvers(new_dns);
 
         if !changed {
@@ -1198,7 +1208,7 @@ impl ClientState {
 
                 self.handle_dns_response(
                     dns::RecursiveResponse {
-                        server,
+                        server: dns::Upstream::Do53 { server },
                         local,
                         remote,
                         query: query_result.query,
@@ -1226,7 +1236,7 @@ impl ClientState {
 
                 self.handle_dns_response(
                     dns::RecursiveResponse {
-                        server,
+                        server: dns::Upstream::Do53 { server },
                         local,
                         remote,
                         query: query_result.query,
@@ -1256,7 +1266,7 @@ impl ClientState {
         }
     }
 
-    fn handle_udp_dns_query(&mut self, upstream: SocketAddr, packet: IpPacket, now: Instant) {
+    fn handle_udp_dns_query(&mut self, upstream: dns::Upstream, packet: IpPacket, now: Instant) {
         let Some(datagram) = packet.as_udp() else {
             tracing::debug!(?packet, "Not a UDP packet");
 
@@ -1354,7 +1364,7 @@ impl ClientState {
         message: dns_types::Query,
         local: SocketAddr,
         remote: SocketAddr,
-        upstream: SocketAddr,
+        upstream: dns::Upstream,
         transport: dns::Transport,
         now: Instant,
     ) -> Option<dns_types::Response> {
@@ -1373,7 +1383,7 @@ impl ClientState {
                 return Some(response);
             }
             dns::ResolveStrategy::RecurseLocal => {
-                if self.should_forward_dns_query_to_gateway(upstream.ip()) {
+                if let Some(upstream) = self.should_forward_dns_query_to_gateway(&upstream) {
                     self.forward_dns_query_to_new_upstream_via_tunnel(
                         local, remote, upstream, message, transport, now,
                     );

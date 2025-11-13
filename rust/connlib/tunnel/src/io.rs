@@ -71,10 +71,10 @@ pub struct Io {
     packet_counter: opentelemetry::metrics::Counter<u64>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct DnsQueryMetaData {
     query: dns_types::Query,
-    server: SocketAddr,
+    server: dns::Upstream,
     local: SocketAddr,
     remote: SocketAddr,
     transport: dns::Transport,
@@ -218,17 +218,10 @@ impl Io {
     }
 
     pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) {
-        let non_connlib_resolvers = resolvers
-            .into_iter()
-            .filter_map(crate::client::dns_config::not_sentinel)
-            .collect();
+        tracing::debug!(servers = ?resolvers, "Re-configuring UDP DNS client with new upstreams");
 
-        tracing::debug!(servers = ?non_connlib_resolvers, "Re-configuring UDP DNS client with new upstreams");
-
-        self.udp_dns_client = l4_udp_dns_client::UdpDnsClient::new(
-            self.udp_socket_factory.clone(),
-            non_connlib_resolvers,
-        )
+        self.udp_dns_client =
+            l4_udp_dns_client::UdpDnsClient::new(self.udp_socket_factory.clone(), resolvers)
     }
 
     pub fn poll_has_sockets(&mut self, cx: &mut Context<'_>) -> Poll<()> {
@@ -360,6 +353,18 @@ impl Io {
                     remote: meta.remote,
                 },
             });
+
+        // We need to discard DoH clients if their queries fail because the connection got closed.
+        // They will get re-bootstrapped on the next requested DoH query.
+        if let Poll::Ready(response) = &dns_response
+            && let dns::Upstream::DoH { server } = &response.server
+            && let Err(e) = &response.message
+            && e.is::<http_client::Closed>()
+        {
+            tracing::debug!(%server, "Connection of DoH client failed");
+
+            self.doh_clients.remove(server);
+        }
 
         let timeout = self
             .timeout
@@ -509,36 +514,37 @@ impl Io {
     pub fn send_dns_query(&mut self, query: dns::RecursiveQuery) {
         let meta = DnsQueryMetaData {
             query: query.message.clone(),
-            server: query.server,
+            server: query.server.clone(),
             transport: query.transport,
             local: query.local,
             remote: query.remote,
         };
 
-        match query.transport {
-            dns::Transport::Udp => {
-                if self
-                    .dns_queries
-                    .try_push(
-                        udp_dns::send(self.udp_socket_factory.clone(), query.server, query.message),
-                        meta,
-                    )
-                    .is_err()
-                {
-                    tracing::debug!("Failed to queue UDP DNS query")
-                }
+        match (query.transport, query.server) {
+            (dns::Transport::Udp, dns::Upstream::Do53 { server }) => {
+                self.queue_dns_query(
+                    udp_dns::send(self.udp_socket_factory.clone(), server, query.message),
+                    meta,
+                );
             }
-            dns::Transport::Tcp => {
-                if self
-                    .dns_queries
-                    .try_push(
-                        tcp_dns::send(self.tcp_socket_factory.clone(), query.server, query.message),
-                        meta,
-                    )
-                    .is_err()
-                {
-                    tracing::debug!("Failed to queue TCP DNS query")
-                }
+            (dns::Transport::Tcp, dns::Upstream::Do53 { server }) => {
+                self.queue_dns_query(
+                    tcp_dns::send(self.tcp_socket_factory.clone(), server, query.message),
+                    meta,
+                );
+            }
+            (_, dns::Upstream::DoH { server }) => {
+                let Some(http_client) = self.doh_clients.get(&server).cloned() else {
+                    self.bootstrap_doh_client(server);
+
+                    // Queue a dummy "query" that instantly fails to ensure we don't let the application run into a timeout.
+                    // This will trigger a SERVFAIL response.
+                    self.queue_dns_query(async { anyhow::bail!("Bootstrapping DoH client") }, meta);
+
+                    return;
+                };
+
+                self.queue_dns_query(doh::send(http_client, server, query.message), meta);
             }
         }
     }
@@ -593,6 +599,16 @@ impl Io {
             .get_mut(&from)
             .ok_or(io::Error::other("No DNS server"))?
             .send_response(to, message)
+    }
+
+    fn queue_dns_query(
+        &mut self,
+        future: impl Future<Output = Result<dns_types::Response>> + Send + 'static,
+        meta: DnsQueryMetaData,
+    ) {
+        if self.dns_queries.try_push(future, meta.clone()).is_err() {
+            tracing::debug!(?meta, "Failed to queue DNS query")
+        }
     }
 }
 
