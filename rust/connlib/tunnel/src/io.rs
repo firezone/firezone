@@ -1,3 +1,4 @@
+mod doh;
 mod gso_queue;
 mod nameserver_set;
 mod tcp_dns;
