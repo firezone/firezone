@@ -206,9 +206,6 @@ pub(crate) fn do53_servers() -> impl Strategy<Value = BTreeSet<IpAddr>> {
     })
 }
 
-/// Sample a list of Do53 servers.
-///
-/// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
 pub(crate) fn doh_server() -> impl Strategy<Value = Url> {
     prop_oneof![
         Just(Url::parse("https://dns.quad9.net/dns-query").unwrap()),
