@@ -203,3 +203,11 @@ public struct TunnelConfiguration: Codable, Sendable {
     self.internetResourceEnabled = internetResourceEnabled
   }
 }
+
+extension TunnelConfiguration: Equatable {
+  public static func == (lhs: TunnelConfiguration, rhs: TunnelConfiguration) -> Bool {
+    return lhs.apiURL == rhs.apiURL && lhs.accountSlug == rhs.accountSlug
+      && lhs.logFilter == rhs.logFilter
+      && lhs.internetResourceEnabled == rhs.internetResourceEnabled
+  }
+}

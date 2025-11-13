@@ -28,148 +28,116 @@ enum IPCClient {
   }
 
   // Encoder used to send messages to the tunnel
-  static let encoder = PropertyListEncoder()
-  static let decoder = PropertyListDecoder()
+  private static let encoder = PropertyListEncoder()
+  private static let decoder = PropertyListDecoder()
 
   // Auto-connect
   @MainActor
-  static func start(session: NETunnelProviderSession, configuration: Configuration) throws {
-    let tunnelConfiguration = configuration.toTunnelConfiguration()
-    let configData = try encoder.encode(tunnelConfiguration)
-    let options: [String: NSObject] = [
-      "configuration": configData as NSObject
-    ]
-    try validateSession(session).startTunnel(options: options)
+  static func start(session: NETunnelProviderSession) throws {
+    try session.startTunnel()
   }
 
   // Sign in
   @MainActor
-  static func start(session: NETunnelProviderSession, token: String, configuration: Configuration)
-    throws
-  {
-    let tunnelConfiguration = configuration.toTunnelConfiguration()
-    let configData = try encoder.encode(tunnelConfiguration)
+  static func start(session: NETunnelProviderSession, token: String) throws {
     let options: [String: NSObject] = [
-      "token": token as NSObject,
-      "configuration": configData as NSObject,
+      "token": token as NSObject
     ]
 
-    try validateSession(session).startTunnel(options: options)
+    try session.startTunnel(options: options)
   }
 
+  @MainActor
   static func signOut(session: NETunnelProviderSession) async throws {
-    try await sendMessageWithoutResponse(session: session, message: ProviderMessage.signOut)
-    try stop(session: session)
+    let message = ProviderMessage.signOut
+    let _ = try await sendProviderMessage(session: session, message: message)
+
+    session.stopTunnel()
   }
 
-  static func stop(session: NETunnelProviderSession) throws {
-    try validateSession(session).stopTunnel()
+  @MainActor
+  static func fetchResources(
+    session: NETunnelProviderSession, currentHash: Data
+  ) async throws -> Data? {
+    let message = ProviderMessage.getResourceList(currentHash)
+
+    // Get data from the provider - if hash matches, provider returns nil
+    return try await sendProviderMessage(session: session, message: message)
   }
 
-  #if os(macOS)
-    // On macOS, IPC calls to the system extension won't work after it's been upgraded, until the startTunnel call.
-    // Since we rely on IPC for the GUI to function, we need to send a dummy `startTunnel` that doesn't actually
-    // start the tunnel, but causes the system to wake the extension.
-    @MainActor
-    static func dryStartStopCycle(session: NETunnelProviderSession, configuration: Configuration)
-      throws
-    {
-      let tunnelConfiguration = configuration.toTunnelConfiguration()
-      let configData = try encoder.encode(tunnelConfiguration)
-      let options: [String: NSObject] = [
-        "dryRun": true as NSObject,
-        "configuration": configData as NSObject,
-      ]
-      try validateSession(session).startTunnel(options: options)
-    }
-  #endif
-
-  static func setConfiguration(session: NETunnelProviderSession, _ configuration: Configuration)
-    async throws
-  {
-    let tunnelConfiguration = await configuration.toTunnelConfiguration()
-    let message = ProviderMessage.setConfiguration(tunnelConfiguration)
-
-    if session.status != .connected {
-      Log.trace("Not setting configuration whilst not connected")
-      return
-    }
-    try await sendMessageWithoutResponse(session: session, message: message)
+  @MainActor
+  static func setConfiguration(
+    session: NETunnelProviderSession, _ configuration: TunnelConfiguration
+  ) async throws {
+    let message = ProviderMessage.setConfiguration(configuration)
+    let _ = try await sendProviderMessage(session: session, message: message)
   }
 
+
+  // MARK: - Low-level IPC operations
+
+  @MainActor
   static func clearLogs(session: NETunnelProviderSession) async throws {
-    try await sendMessageWithoutResponse(session: session, message: ProviderMessage.clearLogs)
+    let message = ProviderMessage.clearLogs
+    let _ = try await sendProviderMessage(session: session, message: message)
   }
 
+  @MainActor
   static func getLogFolderSize(session: NETunnelProviderSession) async throws -> Int64 {
-    return try await withCheckedThrowingContinuation { continuation in
+    let message = ProviderMessage.getLogFolderSize
+    guard let data = try await sendProviderMessage(session: session, message: message)
+    else {
+      throw Error.noIPCData
+    }
 
-      do {
-        try validateSession(session).sendProviderMessage(
-          encoder.encode(ProviderMessage.getLogFolderSize)
-        ) { data in
-
-          guard let data = data
-          else {
-            continuation
-              .resume(throwing: Error.noIPCData)
-
-            return
-          }
-          data.withUnsafeBytes { rawBuffer in
-            continuation.resume(returning: rawBuffer.load(as: Int64.self))
-          }
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
+    return data.withUnsafeBytes { rawBuffer in
+      rawBuffer.load(as: Int64.self)
     }
   }
 
-  // Call this with a closure that will append each chunk to a buffer
-  // of some sort, like a file. The completed buffer is a valid Apple Archive
-  // in AAR format.
-  static func exportLogs(
-    session: NETunnelProviderSession,
-    appender: @escaping (LogChunk) -> Void,
-    errorHandler: @escaping (Error) -> Void
-  ) {
-    func loop() {
-      do {
-        try validateSession(session).sendProviderMessage(
-          encoder.encode(ProviderMessage.exportLogs)
-        ) { data in
-          guard let data = data
-          else {
-            errorHandler(Error.noIPCData)
+  @MainActor
+  static func exportLogs(session: NETunnelProviderSession, fileHandle: FileHandle) async throws {
+    let isCycleStart = try await maybeCycleStart(session)
+    defer {
+      if isCycleStart { session.stopTunnel() }
+    }
 
-            return
+    let message = ProviderMessage.exportLogs
+    let encodedMessage = try encoder.encode(message)
+
+    func loop() async throws {
+      try await withCheckedThrowingContinuation {
+        (continuation: CheckedContinuation<Void, Swift.Error>) in
+        do {
+          try session.sendProviderMessage(encodedMessage) { data in
+            guard let data = data else {
+              return continuation.resume(throwing: Error.noIPCData)
+            }
+            guard let chunk = try? decoder.decode(LogChunk.self, from: data) else {
+              return continuation.resume(throwing: Error.decodeIPCDataFailed)
+            }
+
+            do {
+              try fileHandle.seekToEnd()
+              fileHandle.write(chunk.data)
+
+              continuation.resume()
+
+              if !chunk.done {
+                Task { try await loop() }
+              }
+            } catch {
+              return continuation.resume(throwing: error)
+            }
           }
-
-          guard
-            let chunk = try? decoder.decode(
-              LogChunk.self, from: data
-            )
-          else {
-            errorHandler(Error.decodeIPCDataFailed)
-
-            return
-          }
-
-          appender(chunk)
-
-          if !chunk.done {
-            // Continue
-            loop()
-          }
+        } catch {
+          continuation.resume(throwing: error)
         }
-      } catch {
-        Log.error(error)
       }
     }
 
     // Start exporting
-    loop()
+    try await loop()
   }
 
   // Subscribe to system notifications about our VPN status changing
@@ -195,33 +163,50 @@ enum IPCClient {
     }
   }
 
-  static func sessionStatus(session: NETunnelProviderSession) -> NEVPNStatus {
-    return session.status
-  }
+  private static func sendProviderMessage(
+    session: NETunnelProviderSession,
+    message: ProviderMessage,
+  ) async throws -> Data? {
+    let isCycleStart = try await maybeCycleStart(session)
 
-  private static func validateSession(
-    _ session: NETunnelProviderSession,
-    requiredStatuses: Set<NEVPNStatus> = []
-  ) throws -> NETunnelProviderSession {
-    if requiredStatuses.isEmpty || requiredStatuses.contains(session.status) {
-      return session
+    defer {
+      if isCycleStart { session.stopTunnel() }
     }
 
-    throw Error.invalidStatus(session.status)
-  }
-
-  private static func sendMessageWithoutResponse(
-    session: NETunnelProviderSession,
-    message: ProviderMessage
-  ) async throws {
-    try await withCheckedThrowingContinuation { continuation in
+    return try await withCheckedThrowingContinuation { continuation in
       do {
-        try validateSession(session).sendProviderMessage(encoder.encode(message)) { _ in
-          continuation.resume()
+        try session.sendProviderMessage(encoder.encode(message)) { data in
+          continuation.resume(returning: data)
         }
       } catch {
         continuation.resume(throwing: error)
       }
     }
+  }
+
+  /// On macOS, the tunnel needs to be in a connected, connecting, or reasserting state for the utun to be removed
+  /// upon stopTunnel. We do this by ensuring the tunnel is "started" prior to any IPC call. If so, we return true
+  /// so that the caller may stop the tunnel afterwards.
+  private static func maybeCycleStart(_ session: NETunnelProviderSession) async throws -> Bool {
+    if session.status == .invalid {
+      throw Error.invalidStatus(session.status)
+    }
+
+    #if os(macOS)
+      if [.disconnected, .disconnecting].contains(session.status) {
+        let options: [String: NSObject] = [
+          "cycleStart": true as NSObject
+        ]
+
+        try session.startTunnel(options: options)
+
+        // Give the system some time to start the tunnel (100ms)
+        try await Task.sleep(nanoseconds: 100_000_000)
+
+        return true
+      }
+    #endif
+
+    return false
   }
 }
