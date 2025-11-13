@@ -9,6 +9,7 @@ use ip_network::IpNetwork;
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::fmt;
+use url::Url;
 
 pub mod client;
 pub mod gateway;
@@ -173,7 +174,9 @@ pub struct Interface {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
     pub upstream_do53: Vec<UpstreamDo53>,
-
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub upstream_doh: Vec<UpstreamDoH>,
     #[serde(default)]
     pub search_domain: Option<DomainName>,
 }
@@ -192,11 +195,20 @@ impl Interface {
             })
             .collect()
     }
+
+    pub fn upstream_doh(&self) -> Vec<Url> {
+        self.upstream_doh.iter().map(|u| u.url.clone()).collect()
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct UpstreamDo53 {
     pub ip: IpAddr,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct UpstreamDoH {
+    pub url: Url,
 }
 
 /// A single relay

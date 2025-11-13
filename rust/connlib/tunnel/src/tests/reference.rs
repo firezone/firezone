@@ -60,7 +60,11 @@ impl ReferenceState {
             .prop_flat_map(move |portal| {
                 let gateways = portal.gateways(start);
                 let dns_resource_records = portal.dns_resource_records(start);
-                let client = portal.client(system_dns_servers(), upstream_do53_servers());
+                let client = portal.client(
+                    system_dns_servers(),
+                    upstream_do53_servers(),
+                    upstream_doh_servers(),
+                );
                 let relays = relays(relay_id());
                 let global_dns_records = global_dns_records(start); // Start out with a set of global DNS records so we have something to resolve outside of DNS resources.
                 let drop_direct_client_traffic = any::<bool>();
@@ -220,6 +224,10 @@ impl ReferenceState {
             .with(
                 1,
                 upstream_do53_servers().prop_map(Transition::UpdateUpstreamDo53Servers),
+            )
+            .with(
+                1,
+                upstream_doh_servers().prop_map(Transition::UpdateUpstreamDoHServers),
             )
             .with(
                 1,
@@ -577,7 +585,12 @@ impl ReferenceState {
             Transition::UpdateUpstreamDo53Servers(servers) => {
                 state
                     .client
-                    .exec_mut(|client| client.set_upstream_dns_resolvers(servers));
+                    .exec_mut(|client| client.set_upstream_do53_resolvers(servers));
+            }
+            Transition::UpdateUpstreamDoHServers(servers) => {
+                state
+                    .client
+                    .exec_mut(|client| client.set_upstream_doh_resolvers(servers));
             }
             Transition::UpdateUpstreamSearchDomain(domain) => {
                 state
@@ -740,6 +753,7 @@ impl ReferenceState {
                     .iter()
                     .any(|dns_server| state.client.sending_socket_for(dns_server.ip).is_some())
             }
+            Transition::UpdateUpstreamDoHServers(_) => true,
             Transition::UpdateUpstreamSearchDomain(_) => true,
             Transition::SendDnsQueries(queries) => queries.iter().all(|query| {
                 let has_socket_for_server = state

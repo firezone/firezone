@@ -1,6 +1,6 @@
 use crate::{
     client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
-    messages::UpstreamDo53,
+    messages::{UpstreamDo53, UpstreamDoH},
     proptest::{host_v4, host_v6},
 };
 use connlib_model::{RelayId, ResourceId, Site};
@@ -68,6 +68,8 @@ pub(crate) enum Transition {
     UpdateSystemDnsServers(Vec<IpAddr>),
     /// The upstream Do53 servers changed.
     UpdateUpstreamDo53Servers(Vec<UpstreamDo53>),
+    /// The upstream DoH servers changed.
+    UpdateUpstreamDoHServers(Vec<UpstreamDoH>),
     /// The upstream search domain changed.
     UpdateUpstreamSearchDomain(Option<DomainName>),
 
