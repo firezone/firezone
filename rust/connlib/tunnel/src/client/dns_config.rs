@@ -7,7 +7,7 @@ use ip_network::IpNetwork;
 use url::Url;
 
 use crate::{
-    client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
+    client::{IpProvider, DNS_SENTINELS_V4, DNS_SENTINELS_V6},
     dns::DNS_PORT,
 };
 
@@ -70,18 +70,26 @@ impl DnsMapping {
 impl DnsConfig {
     #[must_use = "Check if the DNS mapping has changed"]
     pub(crate) fn update_system_resolvers(&mut self, servers: Vec<IpAddr>) -> bool {
-        tracing::debug!(?servers, "Received system-defined DNS servers");
+        let sanitized = without_sentinel_ips(&servers);
 
-        self.system_resolvers = servers;
+        tracing::debug!(?servers, ?sanitized, "Received system-defined DNS servers");
+
+        self.system_resolvers = sanitized;
 
         self.update_dns_mapping()
     }
 
     #[must_use = "Check if the DNS mapping has changed"]
     pub(crate) fn update_upstream_do53_resolvers(&mut self, servers: Vec<IpAddr>) -> bool {
-        tracing::debug!(?servers, "Received upstream-defined Do53 servers");
+        let sanitized = without_sentinel_ips(&servers);
 
-        self.upstream_do53 = servers;
+        tracing::debug!(
+            ?servers,
+            ?sanitized,
+            "Received upstream-defined DNS servers"
+        );
+
+        self.upstream_do53 = sanitized;
 
         self.update_dns_mapping()
     }
@@ -125,30 +133,24 @@ fn effective_dns_servers(
     upstream_do53: Vec<IpAddr>,
     default_resolvers: Vec<IpAddr>,
 ) -> Vec<SocketAddr> {
-    let mut upstream_dns = upstream_do53
-        .into_iter()
-        .filter_map(not_sentinel)
-        .peekable();
-    if upstream_dns.peek().is_some() {
-        return upstream_dns
+    if !upstream_do53.is_empty() {
+        return upstream_do53
+            .into_iter()
             .map(|ip| SocketAddr::new(ip, DNS_PORT))
             .collect();
     }
 
-    let mut dns_servers = default_resolvers
-        .into_iter()
-        .filter_map(not_sentinel)
-        .map(|ip| SocketAddr::new(ip, DNS_PORT))
-        .peekable();
-
-    if dns_servers.peek().is_none() {
+    if default_resolvers.is_empty() {
         tracing::info!(
             "No system default DNS servers available! Can't initialize resolver. DNS resources won't work."
         );
         return Vec::new();
     }
 
-    dns_servers.collect()
+    default_resolvers
+        .into_iter()
+        .map(|ip| SocketAddr::new(ip, DNS_PORT))
+        .collect()
 }
 
 fn sentinel_dns_mapping(dns: &[SocketAddr], old_sentinels: Vec<IpAddr>) -> DnsMapping {
@@ -168,6 +170,10 @@ fn sentinel_dns_mapping(dns: &[SocketAddr], old_sentinels: Vec<IpAddr>) -> DnsMa
         .collect();
 
     DnsMapping { inner: mapping }
+}
+
+fn without_sentinel_ips(servers: &[IpAddr]) -> Vec<IpAddr> {
+    servers.iter().copied().filter_map(not_sentinel).collect()
 }
 
 fn not_sentinel(srv: IpAddr) -> Option<IpAddr> {
