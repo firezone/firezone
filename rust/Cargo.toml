@@ -13,6 +13,7 @@ members = [
     "connlib/l3-tcp",
     "connlib/l3-udp-dns-client",
     "connlib/l4-tcp-dns-server",
+    "connlib/l4-udp-dns-client",
     "connlib/l4-udp-dns-server",
     "connlib/model",
     "connlib/phoenix-channel",
@@ -112,6 +113,7 @@ known-folders = "1.4.0"
 l3-tcp = { path = "connlib/l3-tcp" }
 l3-udp-dns-client = { path = "connlib/l3-udp-dns-client" }
 l4-tcp-dns-server = { path = "connlib/l4-tcp-dns-server" }
+l4-udp-dns-client = { path = "connlib/l4-udp-dns-client" }
 l4-udp-dns-server = { path = "connlib/l4-udp-dns-server" }
 libc = "0.2.176"
 libfuzzer-sys = "0.4"
