@@ -1,5 +1,6 @@
 use crate::{
     client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
+    dns,
     messages::{UpstreamDo53, UpstreamDoH},
     proptest::{host_v4, host_v6},
 };
@@ -15,7 +16,7 @@ use prop::collection;
 use proptest::{prelude::*, sample};
 use std::{
     collections::{BTreeMap, BTreeSet},
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr},
     num::NonZeroU16,
 };
 
@@ -119,7 +120,7 @@ pub(crate) struct DnsQuery {
     pub(crate) r_type: RecordType,
     /// The DNS query ID.
     pub(crate) query_id: u16,
-    pub(crate) dns_server: SocketAddr,
+    pub(crate) dns_server: dns::Upstream,
     pub(crate) transport: DnsTransport,
 }
 
@@ -352,7 +353,7 @@ fn non_dns_ports() -> impl Strategy<Value = u16> {
 /// Samples up to 5 DNS queries that will be sent concurrently into connlib.
 pub(crate) fn dns_queries(
     domain: impl Strategy<Value = (DomainName, Vec<RecordType>)>,
-    dns_server: impl Strategy<Value = SocketAddr>,
+    dns_server: impl Strategy<Value = dns::Upstream>,
 ) -> impl Strategy<Value = Vec<DnsQuery>> {
     // Queries can be uniquely identified by the tuple of DNS server and query ID.
     let unique_queries = collection::btree_set((dns_server, any::<u16>()), 1..5);
