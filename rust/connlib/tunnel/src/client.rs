@@ -48,7 +48,7 @@ use std::time::{Duration, Instant};
 use std::{io, iter};
 
 pub(crate) const IPV4_RESOURCES: Ipv4Network =
-    match Ipv4Network::new(Ipv4Addr::new(100, 96, 0, 0), 11) {
+    match Ipv4Network::new(Ipv4Addr::new(240, 0, 0, 0), 4) {
         Ok(n) => n,
         Err(_) => unreachable!(),
     };
