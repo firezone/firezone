@@ -249,7 +249,7 @@ fn try_recv_query(
             socket.abort();
             socket
                 .listen(listen)
-                .expect("Can always listen after `abort()`");
+                .context("Failed to move socket to LISTEN state")?;
         }
     }
 
