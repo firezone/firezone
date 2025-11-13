@@ -179,52 +179,80 @@ fn not_sentinel(srv: IpAddr) -> Option<IpAddr> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use super::*;
 
     #[test]
-    fn sentinel_dns_works() {
-        let servers = dns_list();
-        let sentinel_dns = sentinel_dns_mapping(&servers, vec![]);
+    fn maps_system_resolvers_to_sentinel_ips() {
+        let mut config = DnsConfig::default();
 
-        for server in servers {
-            assert!(
-                sentinel_dns
-                    .sentinel_by_upstream(server)
-                    .is_some_and(|ip| sentinel_ranges().iter().any(|e| e.contains(ip)))
-            )
-        }
+        let changed = config.update_system_resolvers(vec![
+            ip("1.1.1.1"),
+            ip("1.0.0.1"),
+            ip("2606:4700:4700::1111"),
+        ]);
+        assert!(changed);
+
+        assert_eq!(config.mapping().sentinel_ips().len(), 3);
+        assert_eq!(
+            config.mapping().upstream_sockets(),
+            vec![
+                socket("1.1.1.1:53"),
+                socket("1.0.0.1:53"),
+                socket("[2606:4700:4700::1111]:53"),
+            ]
+        );
     }
 
     #[test]
-    fn sentinel_dns_excludes_old_ones() {
-        let servers = dns_list();
-        let sentinel_dns_old = sentinel_dns_mapping(&servers, vec![]);
-        let sentinel_dns_new = sentinel_dns_mapping(&servers, sentinel_dns_old.sentinel_ips());
+    fn prefers_upstream_do53_over_system_resolvers() {
+        let mut config = DnsConfig::default();
 
-        assert!(
-            HashSet::<IpAddr>::from_iter(sentinel_dns_old.sentinel_ips())
-                .is_disjoint(&HashSet::from_iter(sentinel_dns_new.sentinel_ips()))
-        )
+        let changed = config.update_system_resolvers(vec![ip("1.1.1.1")]);
+        assert!(changed);
+        let changed = config.update_upstream_do53_resolvers(vec![ip("1.0.0.1")]);
+        assert!(changed);
+
+        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(
+            config.mapping().upstream_sockets(),
+            vec![socket("1.0.0.1:53"),]
+        );
     }
 
-    fn sentinel_ranges() -> Vec<IpNetwork> {
-        vec![
-            IpNetwork::V4(DNS_SENTINELS_V4),
-            IpNetwork::V6(DNS_SENTINELS_V6),
-        ]
+    #[test]
+    fn filters_sentinel_ips_from_system() {
+        let mut config = DnsConfig::default();
+
+        let changed = config.update_system_resolvers(vec![ip("1.1.1.1"), ip("100.100.111.1")]);
+        assert!(changed);
+
+        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(
+            config.mapping().upstream_sockets(),
+            vec![socket("1.1.1.1:53"),]
+        );
     }
 
-    fn dns_list() -> Vec<SocketAddr> {
-        vec![
-            dns("1.1.1.1:53"),
-            dns("1.0.0.1:53"),
-            dns("[2606:4700:4700::1111]:53"),
-        ]
+    #[test]
+    fn filters_sentinel_ips_from_upstream() {
+        let mut config = DnsConfig::default();
+
+        let changed =
+            config.update_upstream_do53_resolvers(vec![ip("1.1.1.1"), ip("100.100.111.1")]);
+        assert!(changed);
+
+        assert_eq!(config.mapping().sentinel_ips().len(), 1);
+        assert_eq!(
+            config.mapping().upstream_sockets(),
+            vec![socket("1.1.1.1:53"),]
+        );
     }
 
-    fn dns(address: &str) -> SocketAddr {
+    fn ip(address: &str) -> IpAddr {
         address.parse().unwrap()
+    }
+
+    fn socket(socket: &str) -> SocketAddr {
+        socket.parse().unwrap()
     }
 }
