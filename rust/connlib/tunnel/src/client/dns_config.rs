@@ -111,6 +111,10 @@ impl DnsConfig {
         self.mapping.clone()
     }
 
+    pub(crate) fn system_dns_resolvers(&self) -> Vec<IpAddr> {
+        self.system_resolvers.clone()
+    }
+
     fn update_dns_mapping(&mut self) -> bool {
         let effective_dns_servers =
             effective_dns_servers(self.upstream_do53.clone(), self.system_resolvers.clone());
