@@ -1,0 +1,73 @@
+name: "Setup Docker"
+description: "Install Docker from static binaries"
+
+inputs:
+  version:
+    description: "Docker version to install"
+    required: false
+    default: "29.0.0"
+  architecture:
+    description: "Architecture to install (x86_64 or aarch64)"
+    required: false
+    default: "x86_64"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Download and install Docker
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        DOCKER_VERSION="${{ inputs.version }}"
+        DOCKER_ARCH="${{ inputs.architecture }}"
+        DOCKER_URL="https://download.docker.com/linux/static/stable/${DOCKER_ARCH}/docker-${DOCKER_VERSION}.tgz"
+
+        echo "Downloading Docker ${DOCKER_VERSION} for ${DOCKER_ARCH}..."
+        curl -fsSL "${DOCKER_URL}" -o /tmp/docker.tgz
+
+        echo "Extracting Docker binaries..."
+        tar -xzf /tmp/docker.tgz -C /tmp
+
+        echo "Installing Docker binaries to /usr/local/bin..."
+        sudo cp /tmp/docker/* /usr/local/bin/
+        sudo chmod +x /usr/local/bin/docker*
+        sudo chmod +x /usr/local/bin/containerd*
+        sudo chmod +x /usr/local/bin/ctr
+        sudo chmod +x /usr/local/bin/runc
+
+        echo "Cleaning up..."
+        rm -rf /tmp/docker /tmp/docker.tgz
+
+        echo "Docker binaries installed successfully"
+        docker --version
+
+    - name: Start Docker daemon
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        echo "Starting containerd..."
+        sudo containerd &
+
+        # Wait a moment for containerd to start
+        sleep 2
+
+        echo "Starting dockerd..."
+        sudo dockerd --host=unix:///var/run/docker.sock &
+
+        # Wait for Docker daemon to be ready
+        echo "Waiting for Docker daemon to be ready..."
+        timeout=30
+        elapsed=0
+        while ! docker info >/dev/null 2>&1; do
+          if [ $elapsed -ge $timeout ]; then
+            echo "ERROR: Docker daemon failed to start within ${timeout} seconds"
+            exit 1
+          fi
+          sleep 1
+          elapsed=$((elapsed + 1))
+        done
+
+        echo "Docker daemon is ready"
+        docker info
