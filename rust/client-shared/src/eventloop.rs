@@ -1,7 +1,6 @@
 use crate::PHOENIX_TOPIC;
 use anyhow::{Context as _, Result};
 use connlib_model::{PublicKey, ResourceView};
-use dns_types::DomainName;
 use firezone_tunnel::messages::RelaysPresence;
 use firezone_tunnel::messages::client::{
     EgressMessages, FailReason, FlowCreated, FlowCreationFailed, GatewayIceCandidates,
@@ -10,25 +9,22 @@ use firezone_tunnel::messages::client::{
 use firezone_tunnel::{
     ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError,
 };
-use futures::TryFutureExt;
-use futures::stream::FuturesUnordered;
+use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use std::{
     collections::BTreeSet,
     io,
     net::IpAddr,
     task::{Context, Poll},
 };
-use std::{future, iter, mem};
+use std::{future, mem};
 use tokio::sync::{mpsc, watch};
-use tokio_stream::StreamExt;
 use tun::Tun;
 
 /// In-memory cache for DNS resource records.
@@ -126,7 +122,7 @@ impl Eventloop {
             portal,
             portal_event_tx,
             portal_cmd_rx,
-            UdpDnsClient::new(udp_socket_factory),
+            udp_socket_factory.clone(),
         ));
 
         Self {
@@ -506,11 +502,13 @@ async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
-    mut udp_dns_client: UdpDnsClient,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) {
     use futures::future::Either;
     use futures::future::select;
     use std::future::poll_fn;
+
+    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), vec![]);
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
@@ -580,7 +578,7 @@ async fn phoenix_channel_event_loop(
                 portal.connect(param);
             }
             Either::Right((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
-                udp_dns_client.servers = servers;
+                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
             }
             Either::Right((None, _)) => {
                 tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");
@@ -600,131 +598,4 @@ fn is_unreachable(e: &io::Error) -> bool {
     e.kind() == io::ErrorKind::NetworkUnreachable
         || e.kind() == io::ErrorKind::HostUnreachable
         || e.kind() == io::ErrorKind::AddrNotAvailable
-}
-
-struct UdpDnsClient {
-    socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    servers: Vec<IpAddr>,
-}
-
-impl UdpDnsClient {
-    const TIMEOUT: Duration = Duration::from_secs(2);
-
-    fn new(socket_factory: Arc<dyn SocketFactory<UdpSocket>>) -> Self {
-        Self {
-            socket_factory,
-            servers: Vec::default(),
-        }
-    }
-
-    async fn resolve(&self, host: String) -> Result<Vec<IpAddr>> {
-        let host = DomainName::vec_from_str(&host).context("Failed to parse domain name")?;
-        let servers = self.servers.clone();
-
-        let (a_records, aaaa_records) = self
-            .servers
-            .iter()
-            .map(|socket| {
-                futures::future::try_join(
-                    self.send(
-                        SocketAddr::new(*socket, 53),
-                        dns_types::Query::new(host.clone(), dns_types::RecordType::A),
-                    ),
-                    self.send(
-                        SocketAddr::new(*socket, 53),
-                        dns_types::Query::new(host.clone(), dns_types::RecordType::AAAA),
-                    ),
-                )
-                .map_err(|e| {
-                    tracing::debug!(%host, "DNS query failed: {e:#}");
-
-                    e
-                })
-            })
-            .collect::<FuturesUnordered<_>>()
-            .filter_map(|result| result.ok())
-            .filter(|(a, b)| {
-                a.response_code() == dns_types::ResponseCode::NOERROR
-                    && b.response_code() == dns_types::ResponseCode::NOERROR
-            })
-            .next()
-            .await
-            .with_context(|| {
-                format!("All DNS servers ({servers:?}) failed to resolve portal host '{host}'")
-            })?;
-
-        let ips = iter::empty()
-            .chain(
-                a_records
-                    .records()
-                    .filter_map(dns_types::records::extract_ip),
-            )
-            .chain(
-                aaaa_records
-                    .records()
-                    .filter_map(dns_types::records::extract_ip),
-            )
-            .collect();
-
-        Ok(ips)
-    }
-
-    async fn send(
-        &self,
-        server: SocketAddr,
-        query: dns_types::Query,
-    ) -> io::Result<dns_types::Response> {
-        let bind_addr = match server {
-            SocketAddr::V4(_) => SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0),
-            SocketAddr::V6(_) => SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0),
-        };
-
-        // To avoid fragmentation, IP and thus also UDP packets can only reliably sent with an MTU of <= 1500 on the public Internet.
-        const BUF_SIZE: usize = 1500;
-
-        let udp_socket = self.socket_factory.bind(bind_addr)?;
-
-        let response = tokio::time::timeout(
-            Self::TIMEOUT,
-            udp_socket.handshake::<BUF_SIZE>(server, &query.into_bytes()),
-        )
-        .await??;
-
-        let response = dns_types::Response::parse(&response).map_err(io::Error::other)?;
-
-        Ok(response)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    #[ignore = "Requires Internet"]
-    async fn udp_dns_client_can_resolve_host() {
-        let mut client = UdpDnsClient::new(Arc::new(socket_factory::udp));
-        client.servers = vec![IpAddr::from([1, 1, 1, 1])];
-
-        let ips = client.resolve("example.com".to_owned()).await.unwrap();
-
-        assert!(!ips.is_empty())
-    }
-
-    #[tokio::test]
-    #[ignore = "Requires Internet"]
-    async fn udp_dns_client_times_out_unreachable_host() {
-        let mut client = UdpDnsClient::new(Arc::new(socket_factory::udp));
-        client.servers = vec![IpAddr::from([2, 2, 2, 2])];
-
-        let now = Instant::now();
-
-        let error = client.resolve("example.com".to_owned()).await.unwrap_err();
-
-        assert_eq!(
-            error.to_string(),
-            "All DNS servers ([2.2.2.2]) failed to resolve portal host 'example.com'"
-        );
-        assert!(now.elapsed() >= UdpDnsClient::TIMEOUT)
-    }
 }

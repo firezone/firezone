@@ -1338,6 +1338,7 @@ dependencies = [
  "firezone-tunnel",
  "futures",
  "ip_network",
+ "l4-udp-dns-client",
  "libc",
  "parking_lot",
  "phoenix-channel",
@@ -4184,6 +4185,18 @@ dependencies = [
  "anyhow",
  "dns-types",
  "futures",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "l4-udp-dns-client"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dns-types",
+ "futures",
+ "socket-factory",
  "tokio",
  "tracing",
 ]
