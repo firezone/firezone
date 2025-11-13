@@ -4,6 +4,7 @@ use std::{
 };
 
 use ip_network::IpNetwork;
+use url::Url;
 
 use crate::{
     client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
@@ -18,6 +19,10 @@ pub(crate) struct DnsConfig {
     ///
     /// Has priority over system-configured DNS servers.
     upstream_do53: Vec<IpAddr>,
+    /// The DoH resolvers configured in the portal.
+    ///
+    /// Has priority over system-configured DNS servers.
+    upstream_doh: Vec<Url>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     mapping: DnsMapping,
@@ -74,15 +79,24 @@ impl DnsConfig {
 
     #[must_use = "Check if the DNS mapping has changed"]
     pub(crate) fn update_upstream_do53_resolvers(&mut self, servers: Vec<IpAddr>) -> bool {
-        tracing::debug!(?servers, "Received upstream-defined DNS servers");
+        tracing::debug!(?servers, "Received upstream-defined Do53 servers");
 
         self.upstream_do53 = servers;
 
         self.update_dns_mapping()
     }
 
+    #[must_use = "Check if the DNS mapping has changed"]
+    pub(crate) fn update_upstream_doh_resolvers(&mut self, servers: Vec<Url>) -> bool {
+        tracing::debug!(?servers, "Received upstream-defined DoH servers");
+
+        self.upstream_doh = servers;
+
+        self.update_dns_mapping()
+    }
+
     pub(crate) fn has_custom_upstream(&self) -> bool {
-        !self.upstream_do53.is_empty()
+        !self.upstream_do53.is_empty() || !self.upstream_doh.is_empty()
     }
 
     pub(crate) fn mapping(&mut self) -> DnsMapping {

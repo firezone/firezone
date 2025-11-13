@@ -18,6 +18,7 @@ use dns_types::ResponseCode;
 use firezone_telemetry::{analytics, feature_flags};
 use ringbuffer::{AllocRingBuffer, RingBuffer};
 use secrecy::ExposeSecret as _;
+use url::Url;
 
 use crate::client::dns_cache::DnsCache;
 use crate::dns::{DnsResourceRecord, StubResolver};
@@ -1028,11 +1029,14 @@ impl ClientState {
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
         tracing::trace!(upstream_do53 = ?config.upstream_do53(), search_domain = ?config.search_domain, ipv4 = %config.ipv4, ipv6 = %config.ipv6, "Received interface configuration from portal");
 
-        let changed = self
+        let changed_do53 = self
             .dns_config
             .update_upstream_do53_resolvers(config.upstream_do53());
+        let changed_doh = self
+            .dns_config
+            .update_upstream_doh_resolvers(config.upstream_doh());
 
-        if changed {
+        if changed_do53 || changed_doh {
             self.dns_cache.flush("DNS servers changed");
         }
 
