@@ -138,11 +138,10 @@ defmodule Web.Resources.Components do
       ]}>
         <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[tcp][protocol]"} value="tcp" />
-          <div class="mt-2.5 w-24">
+          <div class="mt-2.5 w-24" phx-update="ignore" id="tcp-filter-checkbox">
             <.input
               title="Restrict traffic to TCP traffic"
               type="checkbox"
-              field={@forms_by_protocol[:tcp]}
               name={"#{@form.name}[tcp][enabled]"}
               checked={Map.has_key?(@forms_by_protocol, :tcp)}
               value="true"
@@ -171,10 +170,9 @@ defmodule Web.Resources.Components do
 
         <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[udp][protocol]"} value="udp" />
-          <div class="mt-2.5 w-24">
+          <div class="mt-2.5 w-24" phx-update="ignore" id="udp-filter-checkbox">
             <.input
               type="checkbox"
-              field={@forms_by_protocol[:udp]}
               name={"#{@form.name}[udp][enabled]"}
               checked={Map.has_key?(@forms_by_protocol, :udp)}
               value="true"
@@ -204,11 +202,10 @@ defmodule Web.Resources.Components do
         <div class="flex items-top mb-4">
           <.input type="hidden" name={"#{@form.name}[icmp][protocol]"} value="icmp" />
 
-          <div class="mt-2.5 w-24">
+          <div class="mt-2.5 w-24" phx-update="ignore" id="icmp-filter-checkbox">
             <.input
               title="Allow ICMP echo requests/replies"
               type="checkbox"
-              field={@forms_by_protocol[:icmp]}
               name={"#{@form.name}[icmp][enabled]"}
               checked={Map.has_key?(@forms_by_protocol, :icmp)}
               value="true"
