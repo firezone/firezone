@@ -9,7 +9,6 @@ use firezone_logging::err_with_src;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeSet, VecDeque};
-use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -86,7 +85,7 @@ pub(crate) struct RecursiveResponse {
     pub query: dns_types::Query,
 
     /// The result of forwarding the DNS query.
-    pub message: io::Result<dns_types::Response>,
+    pub message: Result<dns_types::Response>,
 
     /// The transport we used.
     pub transport: Transport,

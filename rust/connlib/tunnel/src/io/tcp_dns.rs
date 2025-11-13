@@ -1,5 +1,6 @@
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{net::SocketAddr, sync::Arc};
 
+use anyhow::Result;
 use socket_factory::{SocketFactory, TcpSocket};
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
@@ -7,7 +8,7 @@ pub async fn send(
     factory: Arc<dyn SocketFactory<TcpSocket>>,
     server: SocketAddr,
     query: dns_types::Query,
-) -> io::Result<dns_types::Response> {
+) -> Result<dns_types::Response> {
     tracing::trace!(target: "wire::dns::recursive::tcp", %server, domain = %query.domain());
 
     let tcp_socket = factory.bind(server)?; // TODO: Optimise this to reuse a TCP socket to the same resolver.
@@ -27,7 +28,7 @@ pub async fn send(
     let mut response = vec![0u8; response_length];
     tcp_stream.read_exact(&mut response).await?;
 
-    let message = dns_types::Response::parse(&response).map_err(io::Error::other)?;
+    let message = dns_types::Response::parse(&response)?;
 
     Ok(message)
 }
