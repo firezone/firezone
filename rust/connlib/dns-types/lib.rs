@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use base64::{Engine, prelude::BASE64_URL_SAFE};
+use base64::{Engine, prelude::BASE64_URL_SAFE_NO_PAD};
 use bytes::Bytes;
 use domain::{
     base::{
@@ -126,7 +126,7 @@ impl Query {
         let url = url
             .query_pairs_mut()
             .clear()
-            .append_pair("dns", &BASE64_URL_SAFE.encode(query.as_bytes()))
+            .append_pair("dns", &BASE64_URL_SAFE_NO_PAD.encode(query.as_bytes()))
             .finish();
 
         http::Request::builder()
@@ -208,7 +208,10 @@ impl Response {
 
     pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
         if response.status() != http::StatusCode::OK {
-            return Err(Error::HttpNotSuccess(response.status()));
+            let status = response.status();
+            let body = String::from_utf8(response.into_body().into()).unwrap_or_default();
+
+            return Err(Error::HttpNotSuccess(status, body));
         }
 
         if response
@@ -336,8 +339,8 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
-    #[error("HTTP response status code is not 200 OK: {0}")]
-    HttpNotSuccess(http::StatusCode),
+    #[error("HTTP response is not 200: {0} {1}")]
+    HttpNotSuccess(http::StatusCode, String),
     #[error("HTTP response Content-Type is not application/dns-message")]
     NotApplicationDnsMessage,
     #[error(transparent)]
