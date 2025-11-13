@@ -118,7 +118,7 @@ impl NatTable {
 
         self.table.insert(inside, outside);
         self.state_by_inside.insert(inside, EntryState::new(now));
-        self.expired.insert(outside);
+        self.expired.remove(&outside);
 
         tracing::debug!(?inside, ?outside, "New NAT session");
 
