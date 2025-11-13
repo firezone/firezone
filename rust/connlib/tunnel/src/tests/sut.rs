@@ -277,6 +277,19 @@ impl TunnelTest {
                         upstream_dns: vec![],
                         upstream_do53,
                         search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_doh: vec![],
+                    })
+                });
+            }
+            Transition::UpdateUpstreamDoHServers(upstream_doh) => {
+                state.client.exec_mut(|c| {
+                    c.sut.update_interface_config(Interface {
+                        ipv4: c.sut.tunnel_ip_config().unwrap().v4,
+                        ipv6: c.sut.tunnel_ip_config().unwrap().v6,
+                        upstream_dns: vec![],
+                        upstream_do53: ref_state.client.inner().upstream_do53_resolvers(),
+                        search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_doh,
                     })
                 });
             }
@@ -286,7 +299,8 @@ impl TunnelTest {
                         ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                         ipv6: c.sut.tunnel_ip_config().unwrap().v6,
                         upstream_dns: vec![],
-                        upstream_do53: ref_state.client.inner().upstream_dns_resolvers(),
+                        upstream_do53: ref_state.client.inner().upstream_do53_resolvers(),
+                        upstream_doh: ref_state.client.inner().upstream_doh_resolvers(),
                         search_domain,
                     })
                 });
@@ -312,7 +326,8 @@ impl TunnelTest {
             Transition::ReconnectPortal => {
                 let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
-                let upstream_do53 = ref_state.client.inner().upstream_dns_resolvers();
+                let upstream_do53 = ref_state.client.inner().upstream_do53_resolvers();
+                let upstream_doh = ref_state.client.inner().upstream_doh_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -322,6 +337,7 @@ impl TunnelTest {
                         ipv6,
                         upstream_dns: Vec::new(),
                         upstream_do53,
+                        upstream_doh,
                         search_domain: ref_state.client.inner().search_domain.clone(),
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
@@ -405,7 +421,7 @@ impl TunnelTest {
                 let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let system_dns = ref_state.client.inner().system_dns_resolvers();
-                let upstream_do53 = ref_state.client.inner().upstream_dns_resolvers();
+                let upstream_do53 = ref_state.client.inner().upstream_do53_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
                 let internet_resource_state = ref_state.client.inner().internet_resource_active;
 
@@ -419,6 +435,7 @@ impl TunnelTest {
                         upstream_dns: Vec::new(),
                         upstream_do53,
                         search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_doh: Vec::new(),
                     });
                     c.sut.update_system_resolvers(system_dns);
                     c.sut.set_resources(all_resources, now);
