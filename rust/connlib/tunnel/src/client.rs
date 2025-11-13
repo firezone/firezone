@@ -31,7 +31,7 @@ use connlib_model::{
     GatewayId, IceCandidate, PublicKey, RelayId, ResourceId, ResourceStatus, ResourceView,
 };
 use connlib_model::{Site, SiteId};
-use firezone_logging::{err_with_src, unwrap_or_debug, unwrap_or_warn};
+use firezone_logging::{unwrap_or_debug, unwrap_or_warn};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use ip_network_table::IpNetworkTable;
 use ip_packet::{IpPacket, MAX_UDP_PAYLOAD};
@@ -508,7 +508,10 @@ impl ClientState {
         let _span = tracing::debug_span!("handle_dns_response", %qid, %server, local = %response.local, %domain).entered();
 
         match (response.transport, response.message) {
-            (dns::Transport::Udp, Err(e)) if e.kind() == io::ErrorKind::TimedOut => {
+            (dns::Transport::Udp, Err(e))
+                if e.downcast_ref::<io::Error>()
+                    .is_some_and(|e| e.kind() == io::ErrorKind::TimedOut) =>
+            {
                 tracing::debug!("Recursive UDP DNS query timed out")
             }
             (dns::Transport::Udp, result) => {
@@ -523,7 +526,7 @@ impl ClientState {
                         self.dns_cache.insert(domain, message, now);
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive UDP DNS query failed: {}", err_with_src(&e));
+                        tracing::debug!("Recursive UDP DNS query failed: {e:#}");
 
                         dns_types::Response::servfail(&response.query)
                     });
@@ -541,7 +544,7 @@ impl ClientState {
                         self.dns_cache.insert(domain, message, now);
                     })
                     .unwrap_or_else(|e| {
-                        tracing::debug!("Recursive TCP DNS query failed: {}", err_with_src(&e));
+                        tracing::debug!("Recursive TCP DNS query failed: {e:#}");
 
                         dns_types::Response::servfail(&response.query)
                     });
@@ -1187,9 +1190,7 @@ impl ClientState {
                         local,
                         remote,
                         query: query_result.query,
-                        message: query_result
-                            .result
-                            .map_err(|e| io::Error::other(format!("{e:#}"))),
+                        message: query_result.result,
                         transport: dns::Transport::Udp,
                     },
                     now,
@@ -1217,9 +1218,7 @@ impl ClientState {
                         local,
                         remote,
                         query: query_result.query,
-                        message: query_result
-                            .result
-                            .map_err(|e| io::Error::other(format!("{e:#}"))),
+                        message: query_result.result,
                         transport: dns::Transport::Tcp,
                     },
                     now,

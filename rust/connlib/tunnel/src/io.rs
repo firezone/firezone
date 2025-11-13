@@ -55,7 +55,7 @@ pub struct Io {
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 
-    dns_queries: FuturesTupleSet<io::Result<dns_types::Response>, DnsQueryMetaData>,
+    dns_queries: FuturesTupleSet<Result<dns_types::Response>, DnsQueryMetaData>,
 
     timeout: Option<Pin<Box<tokio::time::Sleep>>>,
 
@@ -311,7 +311,10 @@ impl Io {
                 Err(e @ futures_bounded::Timeout { .. }) => dns::RecursiveResponse {
                     server: meta.server,
                     query: meta.query,
-                    message: Err(io::Error::new(io::ErrorKind::TimedOut, e)),
+                    message: Err(anyhow::Error::new(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        e,
+                    ))),
                     transport: meta.transport,
                     local: meta.local,
                     remote: meta.remote,

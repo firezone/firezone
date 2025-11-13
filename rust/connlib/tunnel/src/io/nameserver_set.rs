@@ -1,12 +1,12 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io,
     net::{IpAddr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
     time::{Duration, Instant},
 };
 
+use anyhow::Result;
 use dns_types::{DomainNameRef, Query, RecordType, ResponseCode, prelude::*};
 use futures_bounded::FuturesTupleSet;
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -27,7 +27,7 @@ pub struct NameserverSet {
 
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
     udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
-    queries: FuturesTupleSet<io::Result<dns_types::Response>, QueryMetaData>,
+    queries: FuturesTupleSet<Result<dns_types::Response>, QueryMetaData>,
 }
 
 struct QueryMetaData {
