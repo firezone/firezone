@@ -1,16 +1,16 @@
 use std::{
-    io,
     net::{Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
 };
 
+use anyhow::Result;
 use socket_factory::{SocketFactory, UdpSocket};
 
 pub async fn send(
     factory: Arc<dyn SocketFactory<UdpSocket>>,
     server: SocketAddr,
     query: dns_types::Query,
-) -> io::Result<dns_types::Response> {
+) -> Result<dns_types::Response> {
     tracing::trace!(target: "wire::dns::recursive::udp", %server, domain = %query.domain());
 
     let bind_addr = match server {
@@ -27,7 +27,7 @@ pub async fn send(
         .handshake::<BUF_SIZE>(server, &query.into_bytes())
         .await?;
 
-    let response = dns_types::Response::parse(&response).map_err(io::Error::other)?;
+    let response = dns_types::Response::parse(&response)?;
 
     Ok(response)
 }
