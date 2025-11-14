@@ -10,16 +10,14 @@ defmodule API.Client.Views.Interface do
     upstream_dns =
       clients_upstream_dns
       |> Enum.map(fn %{address: address} = dns_config ->
-        ip = URI.parse("//" <> address).host
+        ip = if String.contains?(address, ":"), do: "[#{address}]", else: address
         Map.from_struct(%{dns_config | address: "#{ip}:53"})
       end)
 
     # new field - no port
     upstream_do53 =
       clients_upstream_dns
-      |> Enum.map(fn %{address: address} ->
-        %{ip: URI.parse("//" <> address).host}
-      end)
+      |> Enum.map(fn %{address: address} -> %{ip: address} end)
 
     %{
       search_domain: client.account.config.search_domain,
