@@ -7,7 +7,7 @@ use ip_network::IpNetwork;
 use url::Url;
 
 use crate::{
-    client::{IpProvider, DNS_SENTINELS_V4, DNS_SENTINELS_V6},
+    client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
     dns::DNS_PORT,
 };
 
