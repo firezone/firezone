@@ -2067,6 +2067,7 @@ dependencies = [
  "domain",
  "hex-literal",
  "http 1.3.1",
+ "serde",
  "thiserror 2.0.17",
  "tracing",
  "url",

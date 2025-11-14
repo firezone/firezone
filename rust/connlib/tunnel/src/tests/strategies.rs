@@ -8,7 +8,7 @@ use crate::client::{
 use crate::messages::{UpstreamDo53, UpstreamDoH};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
-use dns_types::{DomainName, OwnedRecordData};
+use dns_types::{DoHUrl, DomainName, OwnedRecordData};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
@@ -22,7 +22,6 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
-use url::Url;
 
 pub(crate) fn global_dns_records(at: Instant) -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
@@ -206,12 +205,12 @@ pub(crate) fn do53_servers() -> impl Strategy<Value = BTreeSet<IpAddr>> {
     })
 }
 
-pub(crate) fn doh_server() -> impl Strategy<Value = Url> {
+pub(crate) fn doh_server() -> impl Strategy<Value = DoHUrl> {
     prop_oneof![
-        Just(Url::parse("https://dns.quad9.net/dns-query").unwrap()),
-        Just(Url::parse("https://cloudflare-dns.com/dns-query").unwrap()),
-        Just(Url::parse("https://dns.google/dns-query").unwrap()),
-        Just(Url::parse("https://dns.opendoh.com/dns-query").unwrap()),
+        Just(DoHUrl::quad9()),
+        Just(DoHUrl::cloudflare()),
+        Just(DoHUrl::google()),
+        Just(DoHUrl::opendns()),
     ]
 }
 
