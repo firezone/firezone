@@ -417,7 +417,7 @@ impl fmt::Display for DoHUrl {
 
 impl fmt::Debug for DoHUrl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("DoHUrl").field(&self.to_str()).finish()
+        write!(f, "{}", self.to_str())
     }
 }
 
