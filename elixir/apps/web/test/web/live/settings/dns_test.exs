@@ -45,7 +45,7 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    Fixtures.Accounts.update_account(account, %{config: %{upstream_do53: []}})
 
     {:ok, lv, _html} =
       conn
@@ -56,7 +56,7 @@ defmodule Web.Live.Settings.DNSTest do
 
     assert find_inputs(form) == [
              "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns_drop][]",
+             "account[config][upstream_do53_drop][]",
              "account[config][search_domain]"
            ]
   end
@@ -66,7 +66,7 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    Fixtures.Accounts.update_account(account, %{config: %{upstream_do53: []}})
 
     {:ok, lv, _html} =
       conn
@@ -74,12 +74,12 @@ defmodule Web.Live.Settings.DNSTest do
       |> live(~p"/#{account}/settings/dns")
 
     attrs = %{
-      "_target" => ["account", "config", "clients_upstream_dns_sort"],
+      "_target" => ["account", "config", "upstream_do53_sort"],
       "account" => %{
         "config" => %{
           "_persistent_id" => "0",
-          "clients_upstream_dns_drop" => [""],
-          "clients_upstream_dns_sort" => ["new"]
+          "upstream_do53_drop" => [""],
+          "upstream_do53_sort" => ["new"]
         }
       }
     }
@@ -91,11 +91,10 @@ defmodule Web.Live.Settings.DNSTest do
 
     assert find_inputs(form) == [
              "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns][0][_persistent_id]",
-             "account[config][clients_upstream_dns][0][address]",
-             "account[config][clients_upstream_dns][0][protocol]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]",
+             "account[config][upstream_do53][0][address]",
+             "account[config][upstream_do53][0][protocol]",
+             "account[config][upstream_do53_drop][]",
+             "account[config][upstream_do53_sort][]",
              "account[config][search_domain]"
            ]
   end
@@ -105,7 +104,7 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    account = Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    account = Fixtures.Accounts.update_account(account, %{config: %{upstream_do53: []}})
 
     attrs = %{
       account: %{
@@ -128,7 +127,7 @@ defmodule Web.Live.Settings.DNSTest do
            |> form("form")
            |> find_inputs() == [
              "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns_drop][]",
+             "account[config][upstream_do53_drop][]",
              "account[config][search_domain]"
            ]
 
@@ -142,7 +141,7 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    account = Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    account = Fixtures.Accounts.update_account(account, %{config: %{upstream_do53: []}})
 
     attrs = %{
       account: %{
@@ -167,12 +166,12 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    Fixtures.Accounts.update_account(account, %{config: %{upstream_do53: []}})
 
     attrs = %{
       account: %{
         config: %{
-          clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
+          upstream_do53: %{"0" => %{"address" => "8.8.8.8"}}
         }
       }
     }
@@ -187,8 +186,8 @@ defmodule Web.Live.Settings.DNSTest do
     |> render_change(%{
       "account" => %{
         "config" => %{
-          "clients_upstream_dns_drop" => [""],
-          "clients_upstream_dns_sort" => ["new"]
+          "upstream_do53_drop" => [""],
+          "upstream_do53_sort" => ["new"]
         }
       }
     })
@@ -201,11 +200,10 @@ defmodule Web.Live.Settings.DNSTest do
            |> form("form")
            |> find_inputs() == [
              "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns][0][_persistent_id]",
-             "account[config][clients_upstream_dns][0][address]",
-             "account[config][clients_upstream_dns][0][protocol]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]",
+             "account[config][upstream_do53][0][address]",
+             "account[config][upstream_do53][0][protocol]",
+             "account[config][upstream_do53_drop][]",
+             "account[config][upstream_do53_sort][]",
              "account[config][search_domain]"
            ]
   end
@@ -218,9 +216,7 @@ defmodule Web.Live.Settings.DNSTest do
     attrs = %{
       account: %{
         config: %{
-          clients_upstream_dns: %{
-            "0" => %{address: ""}
-          }
+          upstream_do53: %{"0" => %{"address" => ""}}
         }
       }
     }
@@ -234,21 +230,12 @@ defmodule Web.Live.Settings.DNSTest do
     |> form("form", attrs)
     |> render_submit()
 
+    # Empty strings should be removed, so we're back to the default state
     assert lv
            |> form("form")
            |> find_inputs() == [
              "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns][0][_persistent_id]",
-             "account[config][clients_upstream_dns][0][address]",
-             "account[config][clients_upstream_dns][0][protocol]",
-             "account[config][clients_upstream_dns][1][_persistent_id]",
-             "account[config][clients_upstream_dns][1][address]",
-             "account[config][clients_upstream_dns][1][protocol]",
-             "account[config][clients_upstream_dns][2][_persistent_id]",
-             "account[config][clients_upstream_dns][2][address]",
-             "account[config][clients_upstream_dns][2][protocol]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]",
+             "account[config][upstream_do53_drop][]",
              "account[config][search_domain]"
            ]
   end
@@ -258,31 +245,28 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    addr1 = %{address: "8.8.8.8"}
-    addr1_dup = %{address: "8.8.8.8"}
-    addr2 = %{address: "1.1.1.1"}
-
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{"0" => addr1}
-        }
-      }
-    }
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
     lv
-    |> form("form", attrs)
+    |> form("form", %{
+      account: %{
+        config: %{upstream_do53: %{"0" => %{"address" => "8.8.8.8"}}}
+      }
+    })
     |> render_submit()
 
     assert lv
            |> form("form", %{
              account: %{
-               config: %{clients_upstream_dns: %{"1" => addr1}}
+               config: %{
+                 upstream_do53: %{
+                   "0" => %{"address" => "8.8.8.8"},
+                   "1" => %{"address" => "8.8.8.8"}
+                 }
+               }
              }
            })
            |> render_change() =~ "all addresses must be unique"
@@ -290,50 +274,45 @@ defmodule Web.Live.Settings.DNSTest do
     refute lv
            |> form("form", %{
              account: %{
-               config: %{clients_upstream_dns: %{"1" => addr2}}
-             }
-           })
-           |> render_change() =~ "all addresses must be unique"
-
-    assert lv
-           |> form("form", %{
-             account: %{
-               config: %{clients_upstream_dns: %{"1" => addr1_dup}}
+               config: %{
+                 upstream_do53: %{
+                   "0" => %{"address" => "8.8.8.8"},
+                   "1" => %{"address" => "1.1.1.1"}
+                 }
+               }
              }
            })
            |> render_change() =~ "all addresses must be unique"
   end
 
-  test "displays 'cannot be empty' error message", %{
+  test "validates IP addresses", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{"0" => %{address: "8.8.8.8"}}
-        }
-      }
-    }
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
-    lv
-    |> form("form", attrs)
-    |> render_submit()
-
     assert lv
            |> form("form", %{
              account: %{
                config: %{
-                 clients_upstream_dns: %{"0" => %{address: ""}}
+                 upstream_do53: %{"0" => %{"address" => "invalid"}}
                }
              }
            })
-           |> render_change() =~ "can&#39;t be blank"
+           |> render_change() =~ "must be a valid IP address"
+
+    refute lv
+           |> form("form", %{
+             account: %{
+               config: %{
+                 upstream_do53: %{"0" => %{"address" => "8.8.8.8"}}
+               }
+             }
+           })
+           |> render_change() =~ "must be a valid IP address"
   end
 end

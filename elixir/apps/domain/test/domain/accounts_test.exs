@@ -360,7 +360,7 @@ defmodule Domain.AccountsTest do
           monthly_active_users_count: -1
         },
         config: %{
-          clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
+          upstream_do53: [%{address: "!!!"}]
         }
       }
 
@@ -369,7 +369,7 @@ defmodule Domain.AccountsTest do
       assert errors_on(changeset) == %{
                name: ["should be at most 64 character(s)"],
                config: %{
-                 clients_upstream_dns: [
+                 upstream_do53: [
                    %{address: ["must be a valid IP address"]}
                  ]
                }
@@ -393,9 +393,9 @@ defmodule Domain.AccountsTest do
           }
         },
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8"}
+          upstream_do53: [
+            %{address: "1.1.1.1"},
+            %{address: "8.8.8.8"}
           ]
         }
       }
@@ -412,15 +412,9 @@ defmodule Domain.AccountsTest do
 
       assert is_nil(account.metadata.stripe.customer_id)
 
-      assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+      assert account.config.upstream_do53 == [
+               %Domain.Accounts.Config.UpstreamDo53{address: "1.1.1.1"},
+               %Domain.Accounts.Config.UpstreamDo53{address: "8.8.8.8"}
              ]
     end
 
@@ -474,7 +468,7 @@ defmodule Domain.AccountsTest do
           monthly_active_users_count: -1
         },
         config: %{
-          clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
+          upstream_do53: [%{address: "!!!"}]
         }
       }
 
@@ -489,7 +483,7 @@ defmodule Domain.AccountsTest do
                  monthly_active_users_count: ["must be greater than or equal to 0"]
                },
                config: %{
-                 clients_upstream_dns: [
+                 upstream_do53: [
                    %{address: ["must be a valid IP address"]}
                  ]
                }
@@ -499,33 +493,27 @@ defmodule Domain.AccountsTest do
     test "trims client upstream dns config address fields", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "   1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8   "}
+          upstream_do53: [
+            %{address: "   1.1.1.1"},
+            %{address: "8.8.8.8   "}
           ]
         }
       }
 
       assert {:ok, account} = update_account_by_id(account.id, attrs)
 
-      assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+      assert account.config.upstream_do53 == [
+               %Domain.Accounts.Config.UpstreamDo53{address: "1.1.1.1"},
+               %Domain.Accounts.Config.UpstreamDo53{address: "8.8.8.8"}
              ]
     end
 
     test "returns error on duplicate upstream dns config addresses", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "1.1.1.1   "}
+          upstream_do53: [
+            %{address: "1.1.1.1"},
+            %{address: "1.1.1.1   "}
           ]
         }
       }
@@ -534,7 +522,7 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: ["all addresses must be unique"]
+                 upstream_do53: ["all addresses must be unique"]
                }
              }
     end
@@ -542,8 +530,8 @@ defmodule Domain.AccountsTest do
     test "does not allow ports", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1:53"}
+          upstream_do53: [
+            %{address: "1.1.1.1:53"}
           ]
         }
       }
@@ -552,7 +540,7 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: [
+                 upstream_do53: [
                    %{address: ["must not include a port"]}
                  ]
                }
@@ -562,8 +550,8 @@ defmodule Domain.AccountsTest do
     test "returns error on dns config address in IPv4 sentinel range", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "100.64.10.1"}
+          upstream_do53: [
+            %{address: "100.64.10.1"}
           ]
         }
       }
@@ -572,7 +560,7 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: [
+                 upstream_do53: [
                    %{address: ["cannot be in the CIDR 100.64.0.0/10"]}
                  ]
                }
@@ -582,8 +570,8 @@ defmodule Domain.AccountsTest do
     test "returns error on dns config address in IPv6 sentinel range", %{account: account} do
       attrs = %{
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "fd00:2021:1111:10::"}
+          upstream_do53: [
+            %{address: "fd00:2021:1111:10::"}
           ]
         }
       }
@@ -592,7 +580,7 @@ defmodule Domain.AccountsTest do
 
       assert errors_on(changeset) == %{
                config: %{
-                 clients_upstream_dns: [
+                 upstream_do53: [
                    %{address: ["cannot be in the CIDR fd00:2021:1111::/48"]}
                  ]
                }
@@ -728,9 +716,9 @@ defmodule Domain.AccountsTest do
           }
         },
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8"}
+          upstream_do53: [
+            %{address: "1.1.1.1"},
+            %{address: "8.8.8.8"}
           ]
         }
       }
@@ -754,15 +742,9 @@ defmodule Domain.AccountsTest do
       assert account.metadata.stripe.billing_email ==
                attrs.metadata.stripe.billing_email
 
-      assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+      assert account.config.upstream_do53 == [
+               %Domain.Accounts.Config.UpstreamDo53{address: "1.1.1.1"},
+               %Domain.Accounts.Config.UpstreamDo53{address: "8.8.8.8"}
              ]
     end
 

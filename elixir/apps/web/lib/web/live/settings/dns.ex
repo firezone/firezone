@@ -85,10 +85,10 @@ defmodule Web.Settings.DNS do
 
               <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
                 <div>
-                  <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
+                  <.inputs_for :let={dns} field={config[:upstream_do53]}>
                     <input
                       type="hidden"
-                      name={"#{config.name}[clients_upstream_dns_sort][]"}
+                      name={"#{config.name}[upstream_do53_sort][]"}
                       value={dns.index}
                     />
 
@@ -110,7 +110,7 @@ defmodule Web.Settings.DNS do
                         <div class="pt-7">
                           <button
                             type="button"
-                            name={"#{config.name}[clients_upstream_dns_drop][]"}
+                            name={"#{config.name}[upstream_do53_drop][]"}
                             value={dns.index}
                             phx-click={JS.dispatch("change")}
                           >
@@ -124,12 +124,12 @@ defmodule Web.Settings.DNS do
                     </div>
                   </.inputs_for>
 
-                  <input type="hidden" name={"#{config.name}[clients_upstream_dns_drop][]"} />
+                  <input type="hidden" name={"#{config.name}[upstream_do53_drop][]"} />
                   <.button
                     class="mt-6 w-full"
                     type="button"
                     style="info"
-                    name={"#{config.name}[clients_upstream_dns_sort][]"}
+                    name={"#{config.name}[upstream_do53_sort][]"}
                     value="new"
                     phx-click={JS.dispatch("change")}
                   >
@@ -137,7 +137,7 @@ defmodule Web.Settings.DNS do
                   </.button>
                   <.error
                     :for={error <- dns_config_errors(@form.source.changes)}
-                    data-validation-error-for="clients_upstream_dns"
+                    data-validation-error-for="upstream_do53"
                   >
                     {error}
                   </.error>
@@ -197,25 +197,17 @@ defmodule Web.Settings.DNS do
     upstream_dns_changes =
       Map.get(form.source.changes, :config, %{})
       |> Map.get(:changes, %{})
-      |> Map.get(:clients_upstream_dns, %{})
+      |> Map.get(:upstream_do53, %{})
 
-    Enum.empty?(account.config.clients_upstream_dns) and Enum.empty?(upstream_dns_changes)
+    Enum.empty?(account.config.upstream_do53) and Enum.empty?(upstream_dns_changes)
   end
 
   defp dns_options do
-    supported_dns_protocols = Enum.map(Accounts.Config.supported_dns_protocols(), &to_string/1)
-
     [
       [key: "IP", value: "ip_port"],
-      [key: "DNS over TLS", value: "dns_over_tls"],
-      [key: "DNS over HTTPS", value: "dns_over_https"]
+      [key: "DNS over TLS", value: "dns_over_tls", disabled: true],
+      [key: "DNS over HTTPS", value: "dns_over_https", disabled: true]
     ]
-    |> Enum.map(fn option ->
-      case option[:value] in supported_dns_protocols do
-        true -> option
-        false -> option ++ [disabled: true]
-      end
-    end)
   end
 
   defp dns_config_errors(changes) when changes == %{} do
@@ -223,6 +215,6 @@ defmodule Web.Settings.DNS do
   end
 
   defp dns_config_errors(changes) do
-    translate_errors(changes.config.errors, :clients_upstream_dns)
+    translate_errors(changes.config.errors, :upstream_do53)
   end
 end
