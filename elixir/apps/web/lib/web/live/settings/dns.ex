@@ -203,19 +203,11 @@ defmodule Web.Settings.DNS do
   end
 
   defp dns_options do
-    supported_dns_protocols = Enum.map(Accounts.Config.supported_dns_protocols(), &to_string/1)
-
     [
       [key: "IP", value: "ip_port"],
-      [key: "DNS over TLS", value: "dns_over_tls"],
-      [key: "DNS over HTTPS", value: "dns_over_https"]
+      [key: "DNS over TLS", value: "dns_over_tls", disabled: true],
+      [key: "DNS over HTTPS", value: "dns_over_https", disabled: true]
     ]
-    |> Enum.map(fn option ->
-      case option[:value] in supported_dns_protocols do
-        true -> option
-        false -> option ++ [disabled: true]
-      end
-    end)
   end
 
   defp dns_config_errors(changes) when changes == %{} do

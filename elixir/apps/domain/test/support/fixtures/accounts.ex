@@ -12,9 +12,9 @@ defmodule Domain.Fixtures.Accounts do
       slug: "acc_#{unique_num}",
       config: %{
         clients_upstream_dns: [
-          %{protocol: "ip_port", address: "1.1.1.1"},
-          %{protocol: "ip_port", address: "2606:4700:4700::1111"},
-          %{protocol: "ip_port", address: "9.9.9.9"}
+          %{address: "1.1.1.1"},
+          %{address: "2606:4700:4700::1111"},
+          %{address: "9.9.9.9"}
         ]
       },
       features: %{

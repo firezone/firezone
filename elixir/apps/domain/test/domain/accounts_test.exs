@@ -360,7 +360,7 @@ defmodule Domain.AccountsTest do
           monthly_active_users_count: -1
         },
         config: %{
-          clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
+          clients_upstream_dns: [%{address: "!!!"}]
         }
       }
 
@@ -394,8 +394,8 @@ defmodule Domain.AccountsTest do
         },
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8"}
+            %{address: "1.1.1.1"},
+            %{address: "8.8.8.8"}
           ]
         }
       }
@@ -413,14 +413,8 @@ defmodule Domain.AccountsTest do
       assert is_nil(account.metadata.stripe.customer_id)
 
       assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+               %Domain.Accounts.Config.UpstreamDo53{address: "1.1.1.1"},
+               %Domain.Accounts.Config.UpstreamDo53{address: "8.8.8.8"}
              ]
     end
 
@@ -474,7 +468,7 @@ defmodule Domain.AccountsTest do
           monthly_active_users_count: -1
         },
         config: %{
-          clients_upstream_dns: [%{protocol: "ip_port", address: "!!!"}]
+          clients_upstream_dns: [%{address: "!!!"}]
         }
       }
 
@@ -500,8 +494,8 @@ defmodule Domain.AccountsTest do
       attrs = %{
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "   1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8   "}
+            %{address: "   1.1.1.1"},
+            %{address: "8.8.8.8   "}
           ]
         }
       }
@@ -509,14 +503,8 @@ defmodule Domain.AccountsTest do
       assert {:ok, account} = update_account_by_id(account.id, attrs)
 
       assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+               %Domain.Accounts.Config.UpstreamDo53{address: "1.1.1.1"},
+               %Domain.Accounts.Config.UpstreamDo53{address: "8.8.8.8"}
              ]
     end
 
@@ -524,8 +512,8 @@ defmodule Domain.AccountsTest do
       attrs = %{
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "1.1.1.1   "}
+            %{address: "1.1.1.1"},
+            %{address: "1.1.1.1   "}
           ]
         }
       }
@@ -543,7 +531,7 @@ defmodule Domain.AccountsTest do
       attrs = %{
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1:53"}
+            %{address: "1.1.1.1:53"}
           ]
         }
       }
@@ -563,7 +551,7 @@ defmodule Domain.AccountsTest do
       attrs = %{
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "100.64.10.1"}
+            %{address: "100.64.10.1"}
           ]
         }
       }
@@ -583,7 +571,7 @@ defmodule Domain.AccountsTest do
       attrs = %{
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "fd00:2021:1111:10::"}
+            %{address: "fd00:2021:1111:10::"}
           ]
         }
       }
@@ -729,8 +717,8 @@ defmodule Domain.AccountsTest do
         },
         config: %{
           clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8"}
+            %{address: "1.1.1.1"},
+            %{address: "8.8.8.8"}
           ]
         }
       }
@@ -755,14 +743,8 @@ defmodule Domain.AccountsTest do
                attrs.metadata.stripe.billing_email
 
       assert account.config.clients_upstream_dns == [
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "1.1.1.1"
-               },
-               %Domain.Accounts.Config.ClientsUpstreamDNS{
-                 protocol: :ip_port,
-                 address: "8.8.8.8"
-               }
+               %Domain.Accounts.Config.UpstreamDo53{address: "1.1.1.1"},
+               %Domain.Accounts.Config.UpstreamDo53{address: "8.8.8.8"}
              ]
     end
 

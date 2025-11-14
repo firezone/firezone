@@ -7,10 +7,10 @@ defmodule API.Client.ChannelTest do
     account =
       Fixtures.Accounts.create_account(
         config: %{
-          clients_upstream_dns: [
-            %{protocol: "ip_port", address: "1:2:3:4:5:6:7:8"},
-            %{protocol: "ip_port", address: "1.1.1.1"},
-            %{protocol: "ip_port", address: "8.8.8.8"}
+          upstream_do53: [
+            %{address: "1:2:3:4:5:6:7:8"},
+            %{address: "1.1.1.1"},
+            %{address: "8.8.8.8"}
           ],
           search_domain: "example.com"
         },
