@@ -182,8 +182,16 @@ defmodule Web.Groups do
     changeset = changeset(group, attrs)
 
     case create_group(changeset, socket.assigns.subject) do
-      {:ok, _group} ->
-        {:noreply, handle_success(socket, "Group created successfully")}
+      {:ok, group} ->
+        params = query_params(socket.assigns.uri)
+
+        socket =
+          socket
+          |> put_flash(:info, "Group created successfully")
+          |> reload_live_table!("groups")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/groups/show/#{group.id}?#{params}")
+
+        {:noreply, socket}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
@@ -196,8 +204,16 @@ defmodule Web.Groups do
       changeset = changeset(socket.assigns.group, attrs)
 
       case update_group(changeset, socket.assigns.subject) do
-        {:ok, _group} ->
-          {:noreply, handle_success(socket, "Group updated successfully")}
+        {:ok, group} ->
+          params = query_params(socket.assigns.uri)
+
+          socket =
+            socket
+            |> put_flash(:info, "Group updated successfully")
+            |> reload_live_table!("groups")
+            |> push_patch(to: ~p"/#{socket.assigns.account}/groups/show/#{group.id}?#{params}")
+
+          {:noreply, socket}
 
         {:error, changeset} ->
           {:noreply, assign(socket, form: to_form(changeset))}
@@ -360,6 +376,7 @@ defmodule Web.Groups do
         </div>
       </:title>
       <:body>
+        <.flash_group flash={@flash} />
         <div class="space-y-6">
           <div>
             <div class="flex items-center justify-between mb-3">

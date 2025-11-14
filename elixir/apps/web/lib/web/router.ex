@@ -165,6 +165,15 @@ defmodule Web.Router do
       ] do
       scope "/actors", Actors do
         live "/", Index
+
+        live "/add", Index, :add
+        live "/add_user", Index, :add_user
+        live "/add_service_account", Index, :add_service_account
+        live "/show/:id", Index, :show
+        live "/show/:id/add_token", Index, :add_token
+        live "/edit/:id", Index, :edit
+
+        # Legacy routes - can be removed later
         live "/new", New
         live "/:id", Show
 

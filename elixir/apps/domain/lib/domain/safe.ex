@@ -158,6 +158,8 @@ defmodule Domain.Safe do
 
   def permit(_action, Domain.Actors.Actor, :account_admin_user), do: :ok
   def permit(_action, Domain.Actors.Group, :account_admin_user), do: :ok
+  def permit(_action, Domain.Auth.Identity, :account_admin_user), do: :ok
+  def permit(_action, Domain.Tokens.Token, :account_admin_user), do: :ok
   def permit(_action, Domain.AuthProviders.AuthProvider, :account_admin_user), do: :ok
   def permit(_action, Domain.Entra.AuthProvider, :account_admin_user), do: :ok
   def permit(_action, Domain.Google.AuthProvider, :account_admin_user), do: :ok
