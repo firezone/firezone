@@ -5,7 +5,7 @@ defmodule Domain.Accounts.Config.Changeset do
 
   def changeset(config \\ %Config{}, attrs) do
     config
-    |> cast(attrs, [:search_domain])
+    |> cast(attrs, [:search_domain, :upstream_doh_provider])
     |> cast_embed(:upstream_do53,
       with: &upstream_do53_changeset/2,
       sort_param: :upstream_do53_sort,
@@ -14,6 +14,7 @@ defmodule Domain.Accounts.Config.Changeset do
     |> cast_embed(:notifications, with: &notifications_changeset/2)
     |> validate_search_domain()
     |> validate_unique_upstream_do53()
+    |> validate_dns_resolver_mutual_exclusivity()
   end
 
   def upstream_do53_changeset(upstream_do53 \\ %Config.UpstreamDo53{}, attrs) do
@@ -104,4 +105,25 @@ defmodule Domain.Accounts.Config.Changeset do
   end
 
   defp normalize_dns_address(_), do: nil
+
+  defp validate_dns_resolver_mutual_exclusivity(changeset) do
+    with {_data_or_changes, upstream_do53} <- fetch_field(changeset, :upstream_do53),
+         {_data_or_changes, upstream_doh_provider} <-
+           fetch_field(changeset, :upstream_doh_provider) do
+      has_do53 = upstream_do53 != nil && upstream_do53 != []
+      has_doh = upstream_doh_provider != nil
+
+      cond do
+        has_do53 && has_doh ->
+          changeset
+          |> add_error(:upstream_doh_provider, "cannot be used with Do53 resolvers")
+          |> add_error(:upstream_do53, "cannot be used with DoH provider")
+
+        true ->
+          changeset
+      end
+    else
+      _ -> changeset
+    end
+  end
 end

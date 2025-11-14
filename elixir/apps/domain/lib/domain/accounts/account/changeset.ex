@@ -54,6 +54,10 @@ defmodule Domain.Accounts.Account.Changeset do
     |> cast_embed(:features, with: &Features.Changeset.changeset/2)
     |> cast_embed(:limits, with: &Limits.Changeset.changeset/2)
     |> cast_embed(:metadata, with: &metadata_changeset/2)
+    |> check_constraint(:config,
+      name: :dns_mutual_exclusivity,
+      message: "cannot have both Do53 resolvers and DoH provider configured"
+    )
   end
 
   defp validate_name(changeset) do

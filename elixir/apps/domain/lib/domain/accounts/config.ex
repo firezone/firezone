@@ -11,6 +11,8 @@ defmodule Domain.Accounts.Config do
       field :address, :string
     end
 
+    field :upstream_doh_provider, Ecto.Enum, values: [:google, :quad9, :cloudflare, :opendns]
+
     embeds_one :notifications, Notifications,
       primary_key: false,
       on_replace: :update do

@@ -695,6 +695,102 @@ defmodule Domain.AccountsTest do
              }
     end
 
+    test "accepts DoH provider", %{account: account} do
+      attrs = %{
+        config: %{
+          upstream_doh_provider: :cloudflare
+        }
+      }
+
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert account.config.upstream_doh_provider == :cloudflare
+    end
+
+    test "accepts all valid DoH providers", %{account: account} do
+      for provider <- [:google, :quad9, :cloudflare, :opendns] do
+        attrs = %{
+          config: %{
+            upstream_doh_provider: provider
+          }
+        }
+
+        assert {:ok, account} = update_account_by_id(account.id, attrs)
+        assert account.config.upstream_doh_provider == provider
+      end
+    end
+
+    test "returns error when both Do53 and DoH provider are set", %{account: account} do
+      attrs = %{
+        config: %{
+          upstream_do53: [
+            %{address: "1.1.1.1"}
+          ],
+          upstream_doh_provider: :cloudflare
+        }
+      }
+
+      assert {:error, changeset} = update_account_by_id(account.id, attrs)
+
+      assert errors_on(changeset) == %{
+               config: %{
+                 upstream_doh_provider: ["cannot be used with Do53 resolvers"],
+                 upstream_do53: ["cannot be used with DoH provider"]
+               }
+             }
+    end
+
+    test "allows switching from Do53 to DoH provider", %{account: account} do
+      # First set Do53
+      attrs = %{
+        config: %{
+          upstream_do53: [
+            %{address: "1.1.1.1"}
+          ]
+        }
+      }
+
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert length(account.config.upstream_do53) == 1
+
+      # Now switch to DoH by clearing Do53 and setting provider
+      attrs = %{
+        config: %{
+          upstream_do53: [],
+          upstream_doh_provider: :cloudflare
+        }
+      }
+
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert account.config.upstream_do53 == []
+      assert account.config.upstream_doh_provider == :cloudflare
+    end
+
+    test "allows switching from DoH provider to Do53", %{account: account} do
+      # First set DoH provider
+      attrs = %{
+        config: %{
+          upstream_doh_provider: :cloudflare
+        }
+      }
+
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert account.config.upstream_doh_provider == :cloudflare
+
+      # Now switch to Do53 by clearing provider and setting Do53
+      attrs = %{
+        config: %{
+          upstream_doh_provider: nil,
+          upstream_do53: [
+            %{address: "1.1.1.1"}
+          ]
+        }
+      }
+
+      assert {:ok, account} = update_account_by_id(account.id, attrs)
+      assert account.config.upstream_doh_provider == nil
+      assert length(account.config.upstream_do53) == 1
+    end
+
     test "updates account and broadcasts a message", %{account: account} do
       Bypass.open()
       |> Domain.Mocks.Stripe.mock_update_customer_endpoint(account)
