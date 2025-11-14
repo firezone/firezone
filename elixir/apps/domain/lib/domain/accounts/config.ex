@@ -5,12 +5,13 @@ defmodule Domain.Accounts.Config do
   embedded_schema do
     field :search_domain, :string
 
-    embeds_many :clients_upstream_dns, ClientsUpstreamDNS,
+    embeds_many :upstream_do53, UpstreamDo53,
       primary_key: false,
       on_replace: :delete do
-      field :protocol, Ecto.Enum, values: [:ip_port, :dns_over_tls, :dns_over_http]
       field :address, :string
     end
+
+    field :upstream_doh_provider, Ecto.Enum, values: [:google, :quad9, :cloudflare, :opendns]
 
     embeds_one :notifications, Notifications,
       primary_key: false,
@@ -21,8 +22,6 @@ defmodule Domain.Accounts.Config do
       embeds_one :idp_sync_error, Domain.Accounts.Config.Notifications.Email, on_replace: :update
     end
   end
-
-  def supported_dns_protocols, do: ~w[ip_port]a
 
   @doc """
   Returns a default config with defaults set

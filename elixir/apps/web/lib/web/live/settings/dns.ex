@@ -9,11 +9,14 @@ defmodule Web.Settings.DNS do
         Accounts.change_account(account, %{})
         |> to_form()
 
+      resolver_type = get_resolver_type(account)
+
       socket =
         assign(socket,
           page_title: "DNS",
           account: account,
-          form: form
+          form: form,
+          resolver_type: resolver_type
         )
 
       {:ok, socket}
@@ -74,43 +77,76 @@ defmodule Web.Settings.DNS do
                 system resolvers if none are configured.
               </p>
 
-              <p :if={not upstream_dns_empty?(@account, @form)} class="mb-4 text-neutral-500">
-                Upstream resolvers will be used by Client devices in the order they are listed below.
-              </p>
+              <div class="mb-6">
+                <select
+                  name="resolver_type"
+                  phx-change="change_resolver_type"
+                  class="bg-neutral-50 border border-neutral-300 text-neutral-900 text-sm rounded-lg focus:ring-accent-500 focus:border-accent-500 block w-full p-2.5"
+                >
+                  <option value="system" selected={@resolver_type == :system}>
+                    System Resolvers
+                  </option>
+                  <option value="google" selected={@resolver_type == :google}>
+                    Google (DNS-over-HTTPS)
+                  </option>
+                  <option value="cloudflare" selected={@resolver_type == :cloudflare}>
+                    Cloudflare (DNS-over-HTTPS)
+                  </option>
+                  <option value="quad9" selected={@resolver_type == :quad9}>
+                    Quad9 (DNS-over-HTTPS)
+                  </option>
+                  <option value="opendns" selected={@resolver_type == :opendns}>
+                    OpenDNS (DNS-over-HTTPS)
+                  </option>
+                  <option value="custom_do53" selected={@resolver_type == :custom_do53}>
+                    Custom (UDP/TCP on port 53)
+                  </option>
+                </select>
+                <p class="mt-2 text-sm text-neutral-500">
+                  {resolver_type_description(@resolver_type)}
+                </p>
+              </div>
 
-              <p :if={upstream_dns_empty?(@account, @form)} class="text-neutral-500">
-                No upstream resolvers have been configured. Click <strong>New Resolver</strong>
-                to add one.
-              </p>
+              <input
+                type="hidden"
+                name={"#{config.name}[upstream_doh_provider]"}
+                value={
+                  if @resolver_type in [:google, :cloudflare, :quad9, :opendns],
+                    do: @resolver_type,
+                    else: ""
+                }
+              />
 
-              <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
+              <div
+                :if={@resolver_type == :custom_do53}
+                class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6"
+              >
                 <div>
-                  <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
+                  <p :if={not upstream_dns_empty?(@account, @form)} class="mb-4 text-neutral-500">
+                    Upstream resolvers will be used by Client devices in the order they are listed below.
+                  </p>
+
+                  <p :if={upstream_dns_empty?(@account, @form)} class="mb-4 text-neutral-500">
+                    No upstream resolvers have been configured. Click <strong>New Resolver</strong>
+                    to add one.
+                  </p>
+
+                  <.inputs_for :let={dns} field={config[:upstream_do53]}>
                     <input
                       type="hidden"
-                      name={"#{config.name}[clients_upstream_dns_sort][]"}
+                      name={"#{config.name}[upstream_do53_sort][]"}
                       value={dns.index}
                     />
 
                     <div class="flex gap-4 items-start mb-2">
-                      <div class="w-3/12">
-                        <.input
-                          type="select"
-                          label="Protocol"
-                          field={dns[:protocol]}
-                          placeholder="Protocol"
-                          options={dns_options()}
-                          value={dns[:protocol].value}
-                        />
-                      </div>
                       <div class="flex-grow">
-                        <.input label="Address" field={dns[:address]} placeholder="E.g. 1.1.1.1" />
+                        <.input label="IP Address" field={dns[:address]} placeholder="E.g. 1.1.1.1" />
                       </div>
                       <div class="justify-self-end">
                         <div class="pt-7">
                           <button
                             type="button"
-                            name={"#{config.name}[clients_upstream_dns_drop][]"}
+                            name={"#{config.name}[upstream_do53_drop][]"}
                             value={dns.index}
                             phx-click={JS.dispatch("change")}
                           >
@@ -124,12 +160,12 @@ defmodule Web.Settings.DNS do
                     </div>
                   </.inputs_for>
 
-                  <input type="hidden" name={"#{config.name}[clients_upstream_dns_drop][]"} />
+                  <input type="hidden" name={"#{config.name}[upstream_do53_drop][]"} />
                   <.button
                     class="mt-6 w-full"
                     type="button"
                     style="info"
-                    name={"#{config.name}[clients_upstream_dns_sort][]"}
+                    name={"#{config.name}[upstream_do53_sort][]"}
                     value="new"
                     phx-click={JS.dispatch("change")}
                   >
@@ -137,19 +173,19 @@ defmodule Web.Settings.DNS do
                   </.button>
                   <.error
                     :for={error <- dns_config_errors(@form.source.changes)}
-                    data-validation-error-for="clients_upstream_dns"
+                    data-validation-error-for="upstream_do53"
                   >
                     {error}
                   </.error>
+
+                  <p class="mt-4 text-sm text-neutral-500">
+                    <strong>Note:</strong>
+                    It is highly recommended to specify <strong>both</strong>
+                    IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
+                    or IPv6 connectivity may not be able to resolve DNS queries.
+                  </p>
                 </div>
               </div>
-
-              <p class="text-sm text-neutral-500">
-                <strong>Note:</strong>
-                It is highly recommended to specify <strong>both</strong>
-                IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
-                or IPv6 connectivity may not be able to resolve DNS queries.
-              </p>
             </.inputs_for>
             <div class="mt-16">
               <.submit_button>
@@ -163,25 +199,57 @@ defmodule Web.Settings.DNS do
     """
   end
 
+  def handle_event("change_resolver_type", %{"resolver_type" => type}, socket) do
+    resolver_type = String.to_existing_atom(type)
+
+    attrs =
+      case resolver_type do
+        :system ->
+          %{config: %{upstream_do53: [], upstream_doh_provider: nil}}
+
+        provider when provider in [:google, :cloudflare, :quad9, :opendns] ->
+          %{config: %{upstream_do53: [], upstream_doh_provider: provider}}
+
+        :custom_do53 ->
+          # Keep existing Do53 servers or add an empty one
+          existing = socket.assigns.account.config.upstream_do53 || []
+          servers = if Enum.empty?(existing), do: [%{address: ""}], else: existing
+          %{config: %{upstream_do53: servers, upstream_doh_provider: nil}}
+      end
+
+    form =
+      Accounts.change_account(socket.assigns.account, attrs)
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    {:noreply, assign(socket, form: form, resolver_type: resolver_type)}
+  end
+
   def handle_event("change", %{"account" => attrs}, socket) do
     form =
       Accounts.change_account(socket.assigns.account, attrs)
       |> Map.put(:action, :validate)
       |> to_form()
 
-    {:noreply, assign(socket, form: form)}
+    resolver_type = get_resolver_type_from_attrs(attrs)
+
+    {:noreply, assign(socket, form: form, resolver_type: resolver_type)}
   end
 
   def handle_event("submit", %{"account" => attrs}, socket) do
+    # Clean up attrs based on resolver type to ensure mutual exclusivity
+    cleaned_attrs = clean_dns_attrs(attrs, socket.assigns.resolver_type)
+
     with {:ok, account} <-
-           Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
+           Accounts.update_account(socket.assigns.account, cleaned_attrs, socket.assigns.subject) do
       form =
         Accounts.change_account(account, %{})
         |> to_form()
 
+      resolver_type = get_resolver_type(account)
       socket = put_flash(socket, :success, "Save successful!")
 
-      {:noreply, assign(socket, account: account, form: form)}
+      {:noreply, assign(socket, account: account, form: form, resolver_type: resolver_type)}
     else
       {:error, changeset} ->
         form =
@@ -197,25 +265,86 @@ defmodule Web.Settings.DNS do
     upstream_dns_changes =
       Map.get(form.source.changes, :config, %{})
       |> Map.get(:changes, %{})
-      |> Map.get(:clients_upstream_dns, %{})
+      |> Map.get(:upstream_do53, %{})
 
-    Enum.empty?(account.config.clients_upstream_dns) and Enum.empty?(upstream_dns_changes)
+    Enum.empty?(account.config.upstream_do53) and Enum.empty?(upstream_dns_changes)
   end
 
-  defp dns_options do
-    supported_dns_protocols = Enum.map(Accounts.Config.supported_dns_protocols(), &to_string/1)
+  defp get_resolver_type(account) do
+    config = account.config
 
-    [
-      [key: "IP", value: "ip_port"],
-      [key: "DNS over TLS", value: "dns_over_tls"],
-      [key: "DNS over HTTPS", value: "dns_over_https"]
-    ]
-    |> Enum.map(fn option ->
-      case option[:value] in supported_dns_protocols do
-        true -> option
-        false -> option ++ [disabled: true]
+    cond do
+      config.upstream_doh_provider != nil ->
+        config.upstream_doh_provider
+
+      not Enum.empty?(config.upstream_do53 || []) ->
+        :custom_do53
+
+      true ->
+        :system
+    end
+  end
+
+  defp get_resolver_type_from_attrs(attrs) do
+    config = Map.get(attrs, "config", %{})
+    provider = Map.get(config, "upstream_doh_provider")
+    do53 = Map.get(config, "upstream_do53", [])
+
+    cond do
+      provider != nil and provider != "" ->
+        String.to_existing_atom(provider)
+
+      not Enum.empty?(do53) ->
+        :custom_do53
+
+      true ->
+        :system
+    end
+  end
+
+  defp resolver_type_description(type) do
+    case type do
+      :system ->
+        "Use the operating system's default DNS resolvers. Clients will use their local network's DNS settings."
+
+      :google ->
+        "Use Google Public DNS with DNS-over-HTTPS."
+
+      :cloudflare ->
+        "Use Cloudflare DNS with DNS-over-HTTPS."
+
+      :quad9 ->
+        "Use Quad9 DNS with DNS-over-HTTPS."
+
+      :opendns ->
+        "Use OpenDNS with DNS-over-HTTPS."
+
+      :custom_do53 ->
+        "Configure custom DNS servers. Enter IP addresses of DNS resolvers to use."
+    end
+  end
+
+  defp clean_dns_attrs(attrs, resolver_type) do
+    config = Map.get(attrs, "config", %{})
+
+    cleaned_config =
+      case resolver_type do
+        :system ->
+          # Clear both Do53 and DoH
+          config
+          |> Map.put("upstream_do53", [])
+          |> Map.put("upstream_doh_provider", "")
+
+        provider when provider in [:google, :cloudflare, :quad9, :opendns] ->
+          # Clear Do53, keep DoH
+          Map.put(config, "upstream_do53", [])
+
+        :custom_do53 ->
+          # Clear DoH, keep Do53
+          Map.put(config, "upstream_doh_provider", "")
       end
-    end)
+
+    Map.put(attrs, "config", cleaned_config)
   end
 
   defp dns_config_errors(changes) when changes == %{} do
@@ -223,6 +352,6 @@ defmodule Web.Settings.DNS do
   end
 
   defp dns_config_errors(changes) do
-    translate_errors(changes.config.errors, :clients_upstream_dns)
+    translate_errors(changes.config.errors, :upstream_do53)
   end
 end

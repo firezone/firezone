@@ -3,19 +3,27 @@ defmodule Domain.Accounts.Config.Changeset do
   alias Domain.Types.IPPort
   alias Domain.Accounts.Config
 
-  @default_dns_port 53
-
   def changeset(config \\ %Config{}, attrs) do
     config
-    |> cast(attrs, [:search_domain])
-    |> cast_embed(:clients_upstream_dns,
-      with: &client_upstream_dns_changeset/2,
-      sort_param: :clients_upstream_dns_sort,
-      drop_param: :clients_upstream_dns_drop
+    |> cast(attrs, [:search_domain, :upstream_doh_provider])
+    |> cast_embed(:upstream_do53,
+      with: &upstream_do53_changeset/2,
+      sort_param: :upstream_do53_sort,
+      drop_param: :upstream_do53_drop
     )
     |> cast_embed(:notifications, with: &notifications_changeset/2)
     |> validate_search_domain()
-    |> validate_unique_clients_upstream_dns()
+    |> validate_unique_upstream_do53()
+    |> validate_dns_resolver_mutual_exclusivity()
+  end
+
+  def upstream_do53_changeset(upstream_do53 \\ %Config.UpstreamDo53{}, attrs) do
+    upstream_do53
+    |> cast(attrs, [:address])
+    |> validate_required([:address])
+    |> trim_change(:address)
+    |> validate_ip_address()
+    |> validate_reserved_ip_exclusion()
   end
 
   defp validate_search_domain(changeset) do
@@ -46,48 +54,25 @@ defmodule Domain.Accounts.Config.Changeset do
     end)
   end
 
-  defp validate_unique_clients_upstream_dns(changeset) do
-    with false <- has_errors?(changeset, :clients_upstream_dns),
-         {_data_or_changes, client_upstream_dns} <- fetch_field(changeset, :clients_upstream_dns) do
+  defp validate_unique_upstream_do53(changeset) do
+    with false <- has_errors?(changeset, :upstream_do53),
+         {_data_or_changes, upstream_do53} <- fetch_field(changeset, :upstream_do53) do
       addresses =
-        client_upstream_dns
+        upstream_do53
         |> Enum.map(&normalize_dns_address/1)
         |> Enum.reject(&is_nil/1)
 
       if addresses -- Enum.uniq(addresses) == [] do
         changeset
       else
-        add_error(changeset, :clients_upstream_dns, "all addresses must be unique")
+        add_error(changeset, :upstream_do53, "all addresses must be unique")
       end
     else
       _ -> changeset
     end
   end
 
-  def client_upstream_dns_changeset(client_upstream_dns \\ %Config.ClientsUpstreamDNS{}, attrs) do
-    client_upstream_dns
-    |> cast(attrs, [:protocol, :address])
-    |> validate_required([:protocol, :address])
-    |> trim_change(:address)
-    |> validate_inclusion(:protocol, Config.supported_dns_protocols(),
-      message: "this type of DNS provider is not supported yet"
-    )
-    |> validate_address()
-    |> validate_reserved_ip_exclusion()
-  end
-
-  defp validate_address(changeset) do
-    if has_errors?(changeset, :protocol) do
-      changeset
-    else
-      case fetch_field(changeset, :protocol) do
-        {_changes_or_data, :ip_port} -> validate_ip_port(changeset)
-        :error -> changeset
-      end
-    end
-  end
-
-  defp validate_ip_port(changeset) do
+  defp validate_ip_address(changeset) do
     validate_change(changeset, :address, fn :address, address ->
       case IPPort.cast(address) do
         {:ok, %IPPort{port: nil}} -> []
@@ -115,19 +100,30 @@ defmodule Domain.Accounts.Config.Changeset do
     |> cast_embed(:idp_sync_error, with: &Config.Notifications.Email.Changeset.changeset/2)
   end
 
-  defp normalize_dns_address(%Config.ClientsUpstreamDNS{protocol: :ip_port, address: address}) do
-    case IPPort.cast(address) do
-      {:ok, address} ->
-        address
-        |> IPPort.put_default_port(@default_dns_port)
-        |> to_string()
-
-      _ ->
-        address
-    end
+  defp normalize_dns_address(%Config.UpstreamDo53{address: address}) do
+    address
   end
 
-  defp normalize_dns_address(%Config.ClientsUpstreamDNS{address: address}) do
-    address
+  defp normalize_dns_address(_), do: nil
+
+  defp validate_dns_resolver_mutual_exclusivity(changeset) do
+    with {_data_or_changes, upstream_do53} <- fetch_field(changeset, :upstream_do53),
+         {_data_or_changes, upstream_doh_provider} <-
+           fetch_field(changeset, :upstream_doh_provider) do
+      has_do53 = upstream_do53 != nil && upstream_do53 != []
+      has_doh = upstream_doh_provider != nil
+
+      cond do
+        has_do53 && has_doh ->
+          changeset
+          |> add_error(:upstream_doh_provider, "cannot be used with Do53 resolvers")
+          |> add_error(:upstream_do53, "cannot be used with DoH provider")
+
+        true ->
+          changeset
+      end
+    else
+      _ -> changeset
+    end
   end
 end
