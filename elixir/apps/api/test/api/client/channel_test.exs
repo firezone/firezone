@@ -8,6 +8,7 @@ defmodule API.Client.ChannelTest do
       Fixtures.Accounts.create_account(
         config: %{
           clients_upstream_dns: [
+            %{protocol: "ip_port", address: "1:2:3:4:5:6:7:8"},
             %{protocol: "ip_port", address: "1.1.1.1"},
             %{protocol: "ip_port", address: "8.8.8.8"}
           ],
@@ -348,10 +349,12 @@ defmodule API.Client.ChannelTest do
                ipv4: client.ipv4,
                ipv6: client.ipv6,
                upstream_dns: [
+                 %{address: "[1:2:3:4:5:6:7:8]:53", protocol: :ip_port},
                  %{protocol: :ip_port, address: "1.1.1.1:53"},
                  %{protocol: :ip_port, address: "8.8.8.8:53"}
                ],
                upstream_do53: [
+                 %{ip: "1:2:3:4:5:6:7:8"},
                  %{ip: "1.1.1.1"},
                  %{ip: "8.8.8.8"}
                ],
@@ -912,10 +915,12 @@ defmodule API.Client.ChannelTest do
                  ipv6: client.ipv6,
                  search_domain: "new.example.com",
                  upstream_dns: [
+                   %{address: "[1:2:3:4:5:6:7:8]:53", protocol: :ip_port},
                    %{address: "1.1.1.1:53", protocol: :ip_port},
                    %{address: "8.8.8.8:53", protocol: :ip_port}
                  ],
                  upstream_do53: [
+                   %{ip: "1:2:3:4:5:6:7:8"},
                    %{ip: "1.1.1.1"},
                    %{ip: "8.8.8.8"}
                  ],
