@@ -224,7 +224,7 @@ windows-implement = "0.60.0"
 windows-service = "0.8.0"
 winreg = "0.55.0"
 zbus = "5.11.0"
-zip = { version = "5", default-features = false }
+zip = { version = "6", default-features = false }
 
 [workspace.lints.clippy]
 dbg_macro = "warn"
