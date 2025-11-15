@@ -750,19 +750,26 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders Gravatar img tag.
+  Renders a user avatar from either its identity picture or its gravatar.
   """
-  attr :email, :string, required: true
-  attr :size, :integer, default: 40
+  attr :identity, :any, required: true
+  attr :size, :integer, required: true
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
-  def gravatar(assigns) do
+  # TODO: IDP REFACTOR
+  # Fetch image and re-host it internally via Azure CDN
+
+  def avatar(assigns) do
     ~H"""
-    <img
-      src={"https://www.gravatar.com/avatar/#{Base.encode16(:crypto.hash(:md5, @email), case: :lower)}?s=#{@size}&d=retro"}
-      {@rest}
-    />
+    <img :if={not is_nil(@identity.picture)} src={@identity.picture} {@rest} />
+    <img :if={is_nil(@identity.picture)} src={build_gravatar_url(@identity, @size)} {@rest} />
     """
+  end
+
+  defp build_gravatar_url(identity, size) do
+    email = get_identity_email(identity)
+    hash = Base.encode16(:crypto.hash(:md5, email), case: :lower)
+    "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=retro"
   end
 
   @doc """
@@ -1037,13 +1044,18 @@ defmodule Web.CoreComponents do
   Renders a popover element with title and content.
   """
   attr :placement, :string, default: "top"
+  attr :trigger, :string, default: "hover"
   slot :target, required: true
   slot :content, required: true
 
   def popover(assigns) do
     # Any id will do
     target_id = "popover-#{System.unique_integer([:positive, :monotonic])}"
-    assigns = assign(assigns, :target_id, target_id)
+
+    assigns =
+      assigns
+      |> assign(:target_id, target_id)
+      |> assign_new(:trigger, fn -> "hover" end)
 
     ~H"""
     <span
@@ -1051,6 +1063,7 @@ defmodule Web.CoreComponents do
       id={@target_id <> "-trigger"}
       data-popover-target-id={@target_id}
       data-popover-placement={@placement}
+      data-popover-trigger={@trigger}
     >
       {render_slot(@target)}
     </span>
@@ -1059,7 +1072,7 @@ defmodule Web.CoreComponents do
       absolute z-10 invisible inline-block
       text-sm text-neutral-500 transition-opacity
       duration-50 bg-white border border-neutral-200
-      rounded shadow-sm opacity-0
+      rounded-lg shadow-sm opacity-0
       ]}>
       <div class="px-3 py-2">
         {render_slot(@content)}
@@ -1515,12 +1528,104 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Renders a logo appropriate for the given directory.
+  """
+
+  attr :directory, :map, default: %{}
+  attr :class, :string, default: "inline w-4 h-4 mr-1"
+
+  def directory_icon(%{directory: "google:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="google" class={@class} />
+    """
+  end
+
+  def directory_icon(%{directory: "entra:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="entra" class={@class} />
+    """
+  end
+
+  def directory_icon(%{directory: "okta:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="okta" class={@class} />
+    """
+  end
+
+  def directory_icon(assigns) do
+    ~H"""
+    <.provider_icon type="firezone" class={@class} />
+    """
+  end
+
+  @doc """
   Renders a logo appropriate for the given provider.
 
-  <.provider_icon adapter={:google_workspace} class="w-5 h-5 mr-2" />
+  <.provider_icon type={:google} class="w-5 h-5 mr-2" />
   """
-  attr :adapter, :atom, required: false
+  attr :type, :string, required: false
   attr :rest, :global
+
+  # TODO: IDP REFACTOR
+  # Can be removed after all accounts have migrated
+  attr :adapter, :atom, required: false
+
+  def provider_icon(%{type: "firezone"} = assigns) do
+    ~H"""
+    <img src={~p"/images/logo.svg"} alt="Firezone Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{type: "okta"} = assigns) do
+    ~H"""
+    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{type: "email_otp"} = assigns) do
+    ~H"""
+    <.icon name="hero-envelope" {@rest} />
+    """
+  end
+
+  def provider_icon(%{type: "oidc"} = assigns) do
+    ~H"""
+    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{type: "google"} = assigns) do
+    ~H"""
+    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{type: "entra"} = assigns) do
+    ~H"""
+    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
+    """
+  end
+
+  def provider_icon(%{type: "userpass"} = assigns) do
+    ~H"""
+    <.icon name="hero-key" {@rest} />
+    """
+  end
+
+  # TODO: IDP REFACTOR
+  # These can be removed after all accounts have migrated
+
+  def provider_icon(%{adapter: :userpass} = assigns) do
+    ~H"""
+    <.icon name="hero-key" {@rest} />
+    """
+  end
+
+  def provider_icon(%{adapter: :okta} = assigns) do
+    ~H"""
+    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
+    """
+  end
 
   def provider_icon(%{adapter: :google_workspace} = assigns) do
     ~H"""
@@ -1540,12 +1645,6 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def provider_icon(%{adapter: :okta} = assigns) do
-    ~H"""
-    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
-    """
-  end
-
   def provider_icon(%{adapter: :jumpcloud} = assigns) do
     ~H"""
     <img src={~p"/images/jumpcloud-logo.svg"} alt="JumpCloud Logo" {@rest} />
@@ -1561,12 +1660,6 @@ defmodule Web.CoreComponents do
   def provider_icon(%{adapter: :email} = assigns) do
     ~H"""
     <.icon name="hero-envelope" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :userpass} = assigns) do
-    ~H"""
-    <.icon name="hero-key" {@rest} />
     """
   end
 
@@ -1633,5 +1726,60 @@ defmodule Web.CoreComponents do
       "text-accent-500",
       "hover:underline"
     ]
+  end
+
+  @doc """
+  Renders a Flowbite-style toggle switch.
+
+  ## Examples
+
+      <.toggle
+        id="my-toggle"
+        checked={@is_enabled}
+        phx-click="toggle_enabled"
+        phx-value-id={@id}
+      />
+
+      <.toggle
+        id="my-toggle"
+        checked={@is_enabled}
+        label="Enable feature"
+        phx-click="toggle_enabled"
+      />
+  """
+  attr :id, :string, required: true
+  attr :checked, :boolean, default: false
+  attr :label, :string, default: nil
+  attr :disabled, :boolean, default: false
+  attr :class, :string, default: nil
+  attr :rest, :global
+
+  def toggle(assigns) do
+    ~H"""
+    <label class={["inline-flex items-center cursor-pointer", @class]}>
+      <input
+        type="checkbox"
+        id={@id}
+        checked={@checked}
+        disabled={@disabled}
+        class="sr-only peer"
+        {@rest}
+      />
+      <div class={[
+        "relative w-11 h-6 bg-gray-200 rounded-full peer",
+        "peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-300",
+        "peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full",
+        "peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px]",
+        "after:start-[2px] after:bg-white after:border-gray-300 after:border",
+        "after:rounded-full after:h-5 after:w-5 after:transition-all",
+        "peer-checked:bg-accent-600",
+        @disabled && "opacity-50 cursor-not-allowed"
+      ]}>
+      </div>
+      <span :if={@label} class="ms-3 text-sm font-medium text-gray-900">
+        {@label}
+      </span>
+    </label>
+    """
   end
 end

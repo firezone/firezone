@@ -52,18 +52,6 @@ Hooks.Analytics = {
   },
 };
 
-Hooks.Refocus = {
-  mounted() {
-    this.el.addEventListener("click", (ev) => {
-      ev.preventDefault();
-      let target_id = ev.currentTarget.getAttribute("data-refocus");
-      let el = document.getElementById(target_id);
-      if (document.activeElement === el) return;
-      el.focus();
-    });
-  },
-};
-
 /* The phx-disable-with attribute on submit buttons only applies to liveview forms.
  * However, we need to disable the submit button for regular forms as well to prevent
  * double submissions and cases where the submit handler is slow (e.g. constant-time auth).
@@ -93,6 +81,34 @@ Hooks.AttachDisableSubmit = {
   },
 };
 
+Hooks.Modal = {
+  mounted() {
+    this.el.showModal();
+
+    // Listen for the dialog close event
+    this.el.addEventListener("close", () => {
+      const onClose = this.el.getAttribute("phx-on-close");
+      if (onClose) {
+        this.pushEvent(onClose, {});
+      }
+    });
+  },
+
+  beforeUpdate() {
+    this.focusedElement = document.activeElement
+  },
+
+  // When LiveView re-renders the modal, it closes, so we need to re-open it
+  // and restore the focus state.
+  updated() {
+    if (!this.el.open) this.el.showModal();
+
+    if (this.focusedElement) {
+      this.focusedElement.focus()
+    }
+  }
+};
+
 Hooks.ConfirmDialog = {
   mounted() {
     this.el.addEventListener("click", (ev) => {
@@ -118,14 +134,72 @@ Hooks.Popover = {
       $triggerEl.getAttribute("data-popover-target-id")
     );
 
+    const placement = $triggerEl.getAttribute("data-popover-placement") || "top";
+    const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+
     const options = {
-      placement: "top",
-      triggerType: "hover",
+      placement: placement,
+      triggerType: triggerType,
       offset: 5,
     };
 
-    new Popover($targetEl, $triggerEl, options);
+    // Store the popover instance so it can be cleaned up later
+    this.popover = new Popover($targetEl, $triggerEl, options);
+
+    // For click trigger type, manually handle toggle to ensure it works properly
+    if (triggerType === "click") {
+      this.clickHandler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.popover.toggle();
+      };
+
+      // Find the actual button element inside the trigger
+      const button = $triggerEl.querySelector('button');
+      if (button) {
+        button.addEventListener('click', this.clickHandler);
+      }
+    }
   },
+
+  updated() {
+    // Clean up old event listeners and popover
+    if (this.popover) {
+      const $triggerEl = this.el;
+      const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+
+      if (triggerType === "click" && this.clickHandler) {
+        const button = $triggerEl.querySelector('button');
+        if (button) {
+          button.removeEventListener('click', this.clickHandler);
+        }
+      }
+
+      this.popover.hide();
+      this.popover.destroyAndRemoveInstance();
+    }
+
+    // Recreate the popover with updated DOM
+    this.mounted();
+  },
+
+  destroyed() {
+    // Clean up event listeners and popover instance
+    if (this.popover) {
+      const $triggerEl = this.el;
+      const triggerType = $triggerEl.getAttribute("data-popover-trigger") || "hover";
+
+      if (triggerType === "click" && this.clickHandler) {
+        const button = $triggerEl.querySelector('button');
+        if (button) {
+          button.removeEventListener('click', this.clickHandler);
+        }
+      }
+
+      this.popover.hide();
+      this.popover.destroyAndRemoveInstance();
+    }
+  }
 };
 
 Hooks.CopyClipboard = {
@@ -160,6 +234,36 @@ Hooks.CopyClipboard = {
 
   updated() {
     this.mounted();
+  }
+};
+
+Hooks.OpenURL = {
+  mounted() {
+    this.handleEvent("open_url", ({ url }) => {
+      window.open(url, "_blank");
+    });
+  }
+};
+
+Hooks.FormatJSON = {
+  mounted() {
+    this.formatJSON();
+  },
+
+  updated() {
+    this.formatJSON();
+  },
+
+  formatJSON() {
+    const code = this.el.querySelector('code');
+    if (code && code.textContent.trim()) {
+      try {
+        const json = JSON.parse(code.textContent);
+        code.textContent = JSON.stringify(json, null, 2);
+      } catch (e) {
+        // If parsing fails, leave the content as is
+      }
+    }
   }
 };
 

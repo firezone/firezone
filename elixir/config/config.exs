@@ -56,7 +56,13 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     actor_groups
     actors
     auth_identities
-    auth_providers
+    legacy_auth_providers
+    google_auth_providers
+    entra_auth_providers
+    okta_auth_providers
+    oidc_auth_providers
+    email_otp_auth_providers
+    userpass_auth_providers
     clients
     gateway_groups
     gateways
@@ -127,6 +133,44 @@ config :domain, Domain.Telemetry, metrics_reporter: nil, healthz_port: 4000
 config :domain, Domain.Analytics,
   mixpanel_token: nil,
   hubspot_workspace_id: nil
+
+config :domain, Domain.Entra.APIClient,
+  client_id: System.get_env("ENTRA_SYNC_CLIENT_ID"),
+  client_secret: System.get_env("ENTRA_SYNC_CLIENT_SECRET"),
+  endpoint: "https://graph.microsoft.com",
+  token_base_url: "https://login.microsoftonline.com"
+
+config :domain, Domain.Google.APIClient,
+  endpoint: "https://admin.googleapis.com",
+  service_account_key: System.get_env("GOOGLE_SERVICE_ACCOUNT_KEY"),
+  token_endpoint: "https://oauth2.googleapis.com/token"
+
+config :domain, Domain.Google.AuthProvider,
+  # Should match an external OAuth2 client in Google Cloud Console
+  client_id: System.get_env("GOOGLE_OIDC_CLIENT_ID"),
+  client_secret: System.get_env("GOOGLE_OIDC_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email profile",
+  discovery_document_uri: "https://accounts.google.com/.well-known/openid-configuration"
+
+config :domain, Domain.Okta.AuthProvider,
+  # Should match an external OAuth2 client in Okta
+  response_type: "code",
+  scope: "openid email profile"
+
+config :domain, Domain.Entra.AuthProvider,
+  # Should match an external OAuth2 client in Azure
+  client_id: System.get_env("ENTRA_OIDC_CLIENT_ID"),
+  client_secret: System.get_env("ENTRA_OIDC_CLIENT_SECRET"),
+  response_type: "code",
+  scope: "openid email profile",
+  # Tenant-scoped endpoint for internal OAuth apps
+  discovery_document_uri:
+    "https://login.microsoftonline.com/52e801b2-c10e-42e6-9c36-4cb95f3353d5/v2.0/.well-known/openid-configuration"
+
+config :domain, Domain.OIDC.AuthProvider,
+  response_type: "code",
+  scope: "openid email profile"
 
 config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
   endpoint: "https://admin.googleapis.com",
@@ -243,7 +287,7 @@ config :web,
   external_trusted_proxies: [],
   private_clients: [%{__struct__: Postgrex.INET, address: {172, 28, 0, 0}, netmask: 16}]
 
-config :web, Web.Plugs.SecureHeaders,
+config :web, Web.Plugs.PutCSPHeader,
   csp_policy: [
     "default-src 'self' 'nonce-${nonce}' https://api-js.mixpanel.com",
     "img-src 'self' data: https://www.gravatar.com https://track.hubspot.com",
