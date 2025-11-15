@@ -200,12 +200,12 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
+                let dns = tunnel.state_mut().update_system_resolvers(dns);
+
                 self.portal_cmd_tx
-                    .send(PortalCommand::UpdateDnsServers(dns.clone()))
+                    .send(PortalCommand::UpdateDnsServers(dns))
                     .await
                     .context("Failed to send message to portal")?;
-
-                tunnel.state_mut().update_system_resolvers(dns);
             }
             Command::SetInternetResourceState(active) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {

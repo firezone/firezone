@@ -1006,18 +1006,25 @@ impl ClientState {
         })
     }
 
-    pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) {
+    /// Update our list of known system DNS resolvers.
+    ///
+    /// Returns back the list of resolvers, sanitized from all unusable servers,
+    /// i.e. all servers within the sentinel DNS range.
+    ///
+    /// Note: The returned list is not necessarily the list of DNS resolvers that is active.
+    /// If DNS servers are defined in the portal, those will be preferred over the system defined ones.
+    pub fn update_system_resolvers(&mut self, new_dns: Vec<IpAddr>) -> Vec<IpAddr> {
         let changed = self.dns_config.update_system_resolvers(new_dns);
 
         if !changed {
-            return;
+            return self.dns_config.system_dns_resolvers();
         }
 
         self.dns_cache.flush("DNS servers changed");
 
         let Some(config) = self.tun_config.clone() else {
             tracing::debug!("Unable to update DNS servers without interface configuration");
-            return;
+            return self.dns_config.system_dns_resolvers();
         };
 
         let dns_by_sentinel = self.dns_config.mapping();
@@ -1026,6 +1033,8 @@ impl ClientState {
             dns_by_sentinel,
             ..config
         });
+
+        self.dns_config.system_dns_resolvers()
     }
 
     pub fn update_interface_config(&mut self, config: InterfaceConfig) {
