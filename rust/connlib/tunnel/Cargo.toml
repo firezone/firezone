@@ -29,12 +29,14 @@ futures-bounded = { workspace = true, features = ["tokio"] }
 gat-lending-iterator = { workspace = true }
 glob = { workspace = true }
 hex = { workspace = true }
+http-client = { workspace = true }
 ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
 l3-udp-dns-client = { workspace = true }
 l4-tcp-dns-server = { workspace = true }
+l4-udp-dns-client = { workspace = true }
 l4-udp-dns-server = { workspace = true }
 lru = { workspace = true }
 opentelemetry = { workspace = true, features = ["metrics"] }
