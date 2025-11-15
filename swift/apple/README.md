@@ -22,7 +22,7 @@ and configurations without risking your main machine.
 
    Ensure you've activated the correct toolchain version for your local
    environment with `rustup default <toolchain>` (find this from
-   `/rust/rust-toolchain.toml` file), then run:
+   `/rust/mise.toml` file), then run:
 
    ```
    rustup target add aarch64-apple-ios aarch64-apple-darwin x86_64-apple-darwin

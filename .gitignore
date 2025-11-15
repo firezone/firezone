@@ -32,3 +32,5 @@ gha-creds-*.json
 
 # Ignore build data for sourcekit-lsp (Swift code)
 buildServer.json
+
+mise.local.toml

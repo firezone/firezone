@@ -79,11 +79,6 @@ jobs:
       - run: pnpm vite build
       - name: Build client
         run: cargo build -p firezone-gui-client --all-targets
-      - uses: taiki-e/install-action@d31232495ad76f47aad66e3501e47780b49f0f3e # v2.57.5
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tool: dump_syms
       - name: Run smoke test
         working-directory: ./rust
         run: cargo run -p gui-smoke-test
