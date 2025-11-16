@@ -252,8 +252,8 @@ softbuffer = { git = "https://github.com/rust-windowing/softbuffer" } # Waiting 
 str0m = { git = "https://github.com/algesten/str0m", branch = "main" }
 moka = { git = "https://github.com/moka-rs/moka", branch = "main" } # Waiting for release.
 quinn-udp = { git = "https://github.com/quinn-rs/quinn", branch = "main" } # Waiting for release.
-proptest = { git = "https://github.com/firezone/proptest", branch = "feat/state-machine-closure" }
-proptest-state-machine = { git = "https://github.com/firezone/proptest", branch = "feat/state-machine-closure" }
+proptest = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
+proptest-state-machine = { git = "https://github.com/proptest-rs/proptest", branch = "main" } # Waiting for release.
 
 # Enforce `tracing-macros` to have released `tracing` version.
 [patch.'https://github.com/tokio-rs/tracing']
