@@ -279,3 +279,6 @@ debug = 2
 [profile.dev.package.firezone-gui-client]
 debug = "full"
 split-debuginfo = "packed"
+
+[profile.test]
+opt-level = 2 # Otherwise `tunnel_test` is very slow.
