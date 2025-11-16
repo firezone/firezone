@@ -5761,7 +5761,7 @@ dependencies = [
 [[package]]
 name = "proptest"
 version = "1.9.0"
-source = "git+https://github.com/firezone/proptest?branch=feat%2Fstate-machine-closure#ea2146e4c6116c855571e5a0f717eaaab8821ff0"
+source = "git+https://github.com/proptest-rs/proptest?branch=main#9b103797a9787378c55b1c2a79c9ffed13d26891"
 dependencies = [
  "bit-set",
  "bit-vec",
@@ -5779,7 +5779,7 @@ dependencies = [
 [[package]]
 name = "proptest-state-machine"
 version = "0.6.0"
-source = "git+https://github.com/firezone/proptest?branch=feat%2Fstate-machine-closure#ea2146e4c6116c855571e5a0f717eaaab8821ff0"
+source = "git+https://github.com/proptest-rs/proptest?branch=main#9b103797a9787378c55b1c2a79c9ffed13d26891"
 dependencies = [
  "proptest",
 ]
