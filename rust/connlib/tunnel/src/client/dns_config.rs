@@ -3,8 +3,8 @@ use std::{
     net::{IpAddr, SocketAddr},
 };
 
+use dns_types::DoHUrl;
 use ip_network::IpNetwork;
-use url::Url;
 
 use crate::{
     client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
@@ -22,7 +22,7 @@ pub(crate) struct DnsConfig {
     /// The DoH resolvers configured in the portal.
     ///
     /// Has priority over system-configured DNS servers.
-    upstream_doh: Vec<Url>,
+    upstream_doh: Vec<DoHUrl>,
 
     /// Maps from connlib-assigned IP of a DNS server back to the originally configured system DNS resolver.
     mapping: DnsMapping,
@@ -95,7 +95,7 @@ impl DnsConfig {
     }
 
     #[must_use = "Check if the DNS mapping has changed"]
-    pub(crate) fn update_upstream_doh_resolvers(&mut self, servers: Vec<Url>) -> bool {
+    pub(crate) fn update_upstream_doh_resolvers(&mut self, servers: Vec<DoHUrl>) -> bool {
         tracing::debug!(?servers, "Received upstream-defined DoH servers");
 
         self.upstream_doh = servers;

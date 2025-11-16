@@ -1,6 +1,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use std::{
+    borrow::Cow,
     collections::BTreeSet,
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
@@ -32,12 +33,17 @@ impl UdpDnsClient {
         }
     }
 
-    pub fn resolve(&self, host: String) -> impl Future<Output = Result<Vec<IpAddr>>> + use<> {
+    pub fn resolve<H>(&self, host: H) -> impl Future<Output = Result<Vec<IpAddr>>> + use<H>
+    where
+        H: Into<Cow<'static, str>>,
+    {
         let servers = self.servers.clone();
         let socket_factory = self.socket_factory.clone();
+        let host = host.into();
 
         async move {
-            let host = DomainName::vec_from_str(&host).context("Failed to parse domain name")?;
+            let host =
+                DomainName::vec_from_str(host.as_ref()).context("Failed to parse domain name")?;
 
             let ips = servers
                 .iter()
@@ -119,7 +125,7 @@ mod tests {
             vec![IpAddr::from([1, 1, 1, 1])],
         );
 
-        let ips = client.resolve("example.com".to_owned()).await.unwrap();
+        let ips = client.resolve("example.com").await.unwrap();
 
         assert!(!ips.is_empty())
     }
@@ -134,7 +140,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let ips = client.resolve("example.com".to_owned()).await.unwrap();
+        let ips = client.resolve("example.com").await.unwrap();
 
         assert!(ips.is_empty());
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT)
@@ -150,7 +156,7 @@ mod tests {
 
         let now = Instant::now();
 
-        let ips = client.resolve("example.com".to_owned()).await.unwrap();
+        let ips = client.resolve("example.com").await.unwrap();
 
         assert!(!ips.is_empty());
         assert!(now.elapsed() >= UdpDnsClient::TIMEOUT) // Still need to wait for the unreachable server.
