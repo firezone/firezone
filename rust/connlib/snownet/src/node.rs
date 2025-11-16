@@ -60,7 +60,7 @@ pub struct Server {}
 #[non_exhaustive]
 pub struct Client {}
 
-trait Mode {
+trait Role {
     fn new() -> Self;
     fn is_client(&self) -> bool;
 
@@ -69,7 +69,7 @@ trait Mode {
     }
 }
 
-impl Mode for Server {
+impl Role for Server {
     fn is_client(&self) -> bool {
         false
     }
@@ -79,7 +79,7 @@ impl Mode for Server {
     }
 }
 
-impl Mode for Client {
+impl Role for Client {
     fn is_client(&self) -> bool {
         true
     }
@@ -113,7 +113,7 @@ impl Mode for Client {
 /// 3. Call [`Node::handle_timeout`] once that time is reached
 ///
 /// A [`Node`] is generic over three things:
-/// - `T`: The mode it is operating in, either [`Client`] or [`Server`].
+/// - `T`: The role it is operating in, either [`Client`] or [`Server`].
 /// - `TId`: The type to use for uniquely identifying connections.
 /// - `RId`: The type to use for uniquely identifying relays.
 ///
@@ -138,7 +138,7 @@ pub struct Node<T, TId, RId> {
     stats: NodeStats,
     buffer_pool: BufferPool<Vec<u8>>,
 
-    mode: T,
+    role: T,
     rng: StdRng,
 }
 
@@ -146,12 +146,12 @@ pub struct Node<T, TId, RId> {
 #[error("No TURN servers available")]
 pub struct NoTurnServers {}
 
-#[expect(private_bounds, reason = "We don't want `Mode` to be public API")]
+#[expect(private_bounds, reason = "We don't want `Role` to be public API")]
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
-    T: Mode,
+    T: Role,
 {
     pub fn new(seed: [u8; 32], now: Instant) -> Self {
         let mut rng = StdRng::from_seed(seed);
@@ -164,7 +164,7 @@ where
             session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
-            mode: T::new(),
+            role: T::new(),
             index,
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             buffered_transmits: VecDeque::default(),
@@ -302,7 +302,7 @@ where
 
         let selected_relay = self.sample_relay()?;
 
-        let mut agent = if self.mode.is_client() {
+        let mut agent = if self.role.is_client() {
             new_client_agent()
         } else {
             new_server_agent()
@@ -504,7 +504,7 @@ where
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_established_mut(&cid, now)?;
 
-        if self.mode.is_server() && !conn.state.has_nominated_socket() {
+        if self.role.is_server() && !conn.state.has_nominated_socket() {
             tracing::debug!(
                 ?packet,
                 "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions"
