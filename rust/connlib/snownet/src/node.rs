@@ -302,8 +302,11 @@ where
 
         let selected_relay = self.sample_relay()?;
 
-        let mut agent = new_agent();
-        agent.set_controlling(self.mode.is_client());
+        let mut agent = if self.mode.is_client() {
+            new_client_agent()
+        } else {
+            new_server_agent()
+        };
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -1038,8 +1041,7 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = new_agent();
-        agent.set_controlling(true);
+        let agent = new_client_agent();
 
         let session_key = x25519::StaticSecret::random_from_rng(rand::thread_rng());
         let ice_creds = agent.local_credentials();
@@ -1146,8 +1148,7 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = new_agent();
-        agent.set_controlling(false);
+        let mut agent = new_server_agent();
         agent.set_remote_credentials(IceCreds {
             ufrag: offer.credentials.username,
             pass: offer.credentials.password,
@@ -2380,9 +2381,21 @@ where
     Some(transmit)
 }
 
-fn new_agent() -> IceAgent {
+fn new_client_agent() -> IceAgent {
     let mut agent = IceAgent::new();
+    agent.set_controlling(true);
     agent.set_timing_advance(Duration::ZERO);
+
+    apply_default_stun_timings(&mut agent);
+
+    agent
+}
+
+fn new_server_agent() -> IceAgent {
+    let mut agent = IceAgent::new();
+    agent.set_controlling(false);
+    agent.set_timing_advance(Duration::ZERO);
+
     apply_default_stun_timings(&mut agent);
 
     agent
@@ -2429,8 +2442,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_ice_timeout() {
-        let mut agent = new_agent();
+    fn client_default_ice_timeout() {
+        let mut agent = new_client_agent();
 
         apply_default_stun_timings(&mut agent);
 
@@ -2438,8 +2451,26 @@ mod tests {
     }
 
     #[test]
-    fn idle_ice_timeout() {
-        let mut agent = new_agent();
+    fn client_idle_ice_timeout() {
+        let mut agent = new_client_agent();
+
+        apply_idle_stun_timings(&mut agent);
+
+        assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
+    }
+
+    #[test]
+    fn server_default_ice_timeout() {
+        let mut agent = new_server_agent();
+
+        apply_default_stun_timings(&mut agent);
+
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(15250))
+    }
+
+    #[test]
+    fn server_idle_ice_timeout() {
+        let mut agent = new_server_agent();
 
         apply_idle_stun_timings(&mut agent);
 
