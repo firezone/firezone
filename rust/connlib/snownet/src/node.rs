@@ -2430,7 +2430,7 @@ mod tests {
 
     #[test]
     fn default_ice_timeout() {
-        let mut agent = IceAgent::new();
+        let mut agent = new_agent();
 
         apply_default_stun_timings(&mut agent);
 
@@ -2439,7 +2439,7 @@ mod tests {
 
     #[test]
     fn idle_ice_timeout() {
-        let mut agent = IceAgent::new();
+        let mut agent = new_agent();
 
         apply_idle_stun_timings(&mut agent);
 
