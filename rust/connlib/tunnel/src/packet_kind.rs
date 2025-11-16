@@ -37,14 +37,14 @@ impl From<Kind> for opentelemetry::Value {
 
 pub fn classify(packet: &[u8]) -> Kind {
     match packet {
-        [0..=3, ..] => Kind::Stun,
-        // Channel-data is a 4-byte header so the actual payload starts on the 5th byte
-        [64..=79, _, _, _, 0..=3, ..] => Kind::StunOverTurn,
+        payload if snownet::is_wireguard(payload) => Kind::Wireguard,
         [64..=79, _, _, _, payload @ ..] if snownet::is_wireguard(payload) => {
             Kind::WireguardOverTurn
         }
+        [0..=3, ..] => Kind::Stun,
+        // Channel-data is a 4-byte header so the actual payload starts on the 5th byte
+        [64..=79, _, _, _, 0..=3, ..] => Kind::StunOverTurn,
         [64..=79, _, _, _, ..] => Kind::UnknownOverTurn,
-        payload if snownet::is_wireguard(payload) => Kind::Wireguard,
         _ => Kind::Unknown,
     }
 }
