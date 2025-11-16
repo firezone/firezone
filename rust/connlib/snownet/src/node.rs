@@ -60,32 +60,33 @@ pub struct Server {}
 #[non_exhaustive]
 pub struct Client {}
 
+enum RoleKind {
+    Client,
+    Server,
+}
+
 trait Role {
     fn new() -> Self;
-    fn is_client(&self) -> bool;
-
-    fn is_server(&self) -> bool {
-        !self.is_client()
-    }
+    fn kind(&self) -> RoleKind;
 }
 
 impl Role for Server {
-    fn is_client(&self) -> bool {
-        false
-    }
-
     fn new() -> Self {
         Self {}
+    }
+
+    fn kind(&self) -> RoleKind {
+        RoleKind::Server
     }
 }
 
 impl Role for Client {
-    fn is_client(&self) -> bool {
-        true
-    }
-
     fn new() -> Self {
         Self {}
+    }
+
+    fn kind(&self) -> RoleKind {
+        RoleKind::Client
     }
 }
 
@@ -302,10 +303,9 @@ where
 
         let selected_relay = self.sample_relay()?;
 
-        let mut agent = if self.role.is_client() {
-            new_client_agent()
-        } else {
-            new_server_agent()
+        let mut agent = match self.role.kind() {
+            RoleKind::Client => new_client_agent(),
+            RoleKind::Server => new_server_agent(),
         };
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
@@ -504,7 +504,7 @@ where
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_established_mut(&cid, now)?;
 
-        if self.role.is_server() && !conn.state.has_nominated_socket() {
+        if matches!(self.role.kind(), RoleKind::Server) && !conn.state.has_nominated_socket() {
             tracing::debug!(
                 ?packet,
                 "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions"
