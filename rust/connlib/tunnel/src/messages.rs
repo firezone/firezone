@@ -4,12 +4,11 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use boringtun::x25519;
 use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::RelayId;
-use dns_types::DomainName;
+use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
 use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::fmt;
-use url::Url;
 
 pub mod client;
 pub mod gateway;
@@ -196,7 +195,7 @@ impl Interface {
             .collect()
     }
 
-    pub fn upstream_doh(&self) -> Vec<Url> {
+    pub fn upstream_doh(&self) -> Vec<DoHUrl> {
         self.upstream_doh.iter().map(|u| u.url.clone()).collect()
     }
 }
@@ -208,7 +207,7 @@ pub struct UpstreamDo53 {
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
 pub struct UpstreamDoH {
-    pub url: Url,
+    pub url: DoHUrl,
 }
 
 /// A single relay
