@@ -2422,13 +2422,18 @@ fn new_server_agent() -> IceAgent {
 }
 
 fn apply_default_stun_timings(agent: &mut IceAgent) {
-    agent.set_max_stun_retransmits(12);
-    agent.set_max_stun_rto(Duration::from_millis(1500));
+    let retrans = if agent.controlling() { 12 } else { 45 };
+    let max_stun_rto = if agent.controlling() { 1500 } else { 15_000 };
+
+    agent.set_max_stun_retransmits(retrans);
+    agent.set_max_stun_rto(Duration::from_millis(max_stun_rto));
     agent.set_initial_stun_rto(Duration::from_millis(250))
 }
 
 fn apply_idle_stun_timings(agent: &mut IceAgent) {
-    agent.set_max_stun_retransmits(4);
+    let retrans = if agent.controlling() { 4 } else { 40 };
+
+    agent.set_max_stun_retransmits(retrans);
     agent.set_max_stun_rto(Duration::from_secs(25));
     agent.set_initial_stun_rto(Duration::from_secs(25));
 }
@@ -2485,7 +2490,7 @@ mod tests {
 
         apply_default_stun_timings(&mut agent);
 
-        assert_eq!(agent.ice_timeout(), Duration::from_millis(15250))
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(600_750))
     }
 
     #[test]
@@ -2494,7 +2499,7 @@ mod tests {
 
         apply_idle_stun_timings(&mut agent);
 
-        assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
+        assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
     }
 
     #[test]
