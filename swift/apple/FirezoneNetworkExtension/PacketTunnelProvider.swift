@@ -325,14 +325,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       } catch let error as KeychainError {
         // macOS 13 and below have a bug that raises an error when a root proc (such as our system extension) tries
         // to add an item to the system keychain. We can safely ignore this.
-        if #available(macOS 14.0, *) {
-          Log.error(error)
+        if #unavailable(macOS 14.0), case .appleSecError("SecItemAdd", 100001) = error {
+          // ignore
         } else {
-          if case .appleSecError("SecItemAdd", 100001) = error { // Operation not permitted
-            // ignore
-          } else {
-            Log.error(error)
-          }
+          Log.error(error)
         }
       } catch {
         Log.error(error)
