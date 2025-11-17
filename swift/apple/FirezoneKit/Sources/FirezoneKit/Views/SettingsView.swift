@@ -104,6 +104,7 @@ public struct SettingsView: View {
   @State private var isExportingLogs = false
   @State private var isShowingConfirmationAlert = false
   @State private var confirmationAlertContinueAction: ConfirmationAlertContinueAction = .none
+  @State private var localSelectedSection: SettingsSection = .general
 
   @State private var calculateLogSizeTask: Task<(), Never>?
 
@@ -131,7 +132,8 @@ public struct SettingsView: View {
   public init(store: Store) {
     self.store = store
     self.configuration = store.configuration
-    _viewModel = StateObject(wrappedValue: SettingsViewModel())
+    _viewModel = StateObject(
+      wrappedValue: SettingsViewModel(configuration: store.configuration, store: store))
   }
 
   public var body: some View {
@@ -168,6 +170,15 @@ public struct SettingsView: View {
       }
       .padding()
     }
+    .onDisappear {
+      Task {
+        do {
+          try await viewModel.save()
+        } catch {
+          Log.error(error)
+        }
+      }
+    }
     .alert(
       "Some settings may not have been applied",
       isPresented: $isShowingConfirmationAlert,
@@ -181,19 +192,51 @@ public struct SettingsView: View {
         Text("Some settings require signing out and in again before they take effect.")
       }
     )
+    .alert(
+      "Changing API URL",
+      isPresented: $viewModel.showApiURLChangeConfirmation,
+      actions: {
+        Button("Cancel", role: .cancel) {
+          viewModel.cancelApiURLChange()
+        }
+        Button("OK") {
+          withErrorHandler {
+            try await viewModel.confirmApiURLChange()
+          }
+        }
+      },
+      message: {
+        Text("Changing the API URL will sign you out. Do you want to continue?")
+      }
+    )
   }
 
   @available(macOS 13.0, iOS 17.0, *)
   private var modernSplitView: some View {
     #if os(macOS)
       NavigationSplitView(columnVisibility: .constant(.all)) {
-        List(SettingsSection.allCases, selection: $viewModel.selectedSection) { section in
-          Label(section.rawValue, systemImage: section.icon)
-            .badge(section == .advanced && !viewModel.isValid() ? "!" : nil)
-            .tag(section)
+        List(selection: $localSelectedSection) {
+          ForEach(SettingsSection.allCases) { section in
+            Label(section.rawValue, systemImage: section.icon)
+              .badge(section == .advanced && !viewModel.isValid() ? "!" : nil)
+              .tag(section)
+          }
         }
         .listStyle(.sidebar)
         .navigationTitle("Settings")
+        .onAppear {
+          localSelectedSection = viewModel.selectedSection
+        }
+        .onChange(of: localSelectedSection) { newValue in
+          DispatchQueue.main.async {
+            viewModel.selectedSection = newValue
+          }
+        }
+        .onChange(of: viewModel.selectedSection) { newValue in
+          if localSelectedSection != newValue {
+            localSelectedSection = newValue
+          }
+        }
       } detail: {
         settingsDetailView
       }
@@ -231,7 +274,7 @@ public struct SettingsView: View {
 
   @ViewBuilder
   private var settingsDetailView: some View {
-    switch viewModel.selectedSection {
+    switch localSelectedSection {
     case .general:
       generalTab
     case .advanced:
@@ -413,6 +456,15 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isAccountSlugForced)
               .frame(width: 250)
+              .onSubmit {
+                Task {
+                  do {
+                    try await viewModel.save()
+                  } catch {
+                    Log.error(error)
+                  }
+                }
+              }
             }
             .padding(.bottom, 10)
 
@@ -499,6 +551,15 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isAuthURLForced)
               .frame(width: 250)
+              .onSubmit {
+                Task {
+                  do {
+                    try await viewModel.save()
+                  } catch {
+                    Log.error(error)
+                  }
+                }
+              }
             }
 
             // API URL
@@ -512,6 +573,15 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isApiURLForced)
               .frame(width: 250)
+              .onSubmit {
+                Task {
+                  do {
+                    try await viewModel.save()
+                  } catch {
+                    Log.error(error)
+                  }
+                }
+              }
             }
 
             // Log Filter
@@ -525,6 +595,15 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isLogFilterForced)
               .frame(width: 250)
+              .onSubmit {
+                Task {
+                  do {
+                    try await viewModel.save()
+                  } catch {
+                    Log.error(error)
+                  }
+                }
+              }
             }
           }
           .frame(width: 500)
