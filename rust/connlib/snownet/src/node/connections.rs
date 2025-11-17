@@ -13,7 +13,10 @@ use str0m::ice::IceAgent;
 
 use crate::{
     ConnectionStats, Event,
-    node::{Connection, InitialConnection, add_local_candidate, allocations::Allocations},
+    node::{
+        Connection, ConnectionState, InitialConnection, add_local_candidate,
+        allocations::Allocations,
+    },
 };
 
 pub struct Connections<TId, RId> {
@@ -102,6 +105,7 @@ where
         allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
         rng: &mut impl Rng,
+        now: Instant,
     ) {
         for (_, c) in self.iter_initial_mut() {
             if allocations.contains(&c.relay) {
@@ -136,6 +140,7 @@ where
 
             for candidate in allocation.current_relay_candidates() {
                 add_local_candidate(cid, &mut c.agent, candidate, pending_events);
+                c.state.on_candidate(cid, &mut c.agent, now);
             }
         }
     }
@@ -169,28 +174,33 @@ where
         existing
     }
 
-    pub(crate) fn agent_mut(&mut self, id: TId) -> Option<(&mut IceAgent, RId)> {
-        let maybe_initial_connection = self.initial.get_mut(&id).map(|i| (&mut i.agent, i.relay));
+    pub(crate) fn agent_and_state_mut(
+        &mut self,
+        id: TId,
+    ) -> Option<(&mut IceAgent, Option<&mut ConnectionState>, RId)> {
+        let maybe_initial_connection = self
+            .initial
+            .get_mut(&id)
+            .map(|i| (&mut i.agent, None, i.relay));
         let maybe_established_connection = self
             .established
             .get_mut(&id)
-            .map(|c| (&mut c.agent, c.relay.id));
+            .map(|c| (&mut c.agent, Some(&mut c.state), c.relay.id));
 
         maybe_initial_connection.or(maybe_established_connection)
     }
 
-    pub(crate) fn agents_by_relay_mut(
+    pub(crate) fn agents_and_state_by_relay_mut(
         &mut self,
         id: RId,
-    ) -> impl Iterator<Item = (TId, &mut IceAgent)> + '_ {
+    ) -> impl Iterator<Item = (TId, &mut IceAgent, Option<&mut ConnectionState>)> + '_ {
         let initial_connections = self
             .initial
             .iter_mut()
-            .filter_map(move |(cid, i)| (i.relay == id).then_some((*cid, &mut i.agent)));
-        let established_connections = self
-            .established
-            .iter_mut()
-            .filter_map(move |(cid, c)| (c.relay.id == id).then_some((*cid, &mut c.agent)));
+            .filter_map(move |(cid, i)| (i.relay == id).then_some((*cid, &mut i.agent, None)));
+        let established_connections = self.established.iter_mut().filter_map(move |(cid, c)| {
+            (c.relay.id == id).then_some((*cid, &mut c.agent, Some(&mut c.state)))
+        });
 
         initial_connections.chain(established_connections)
     }

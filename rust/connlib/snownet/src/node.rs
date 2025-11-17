@@ -414,7 +414,7 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        let Some((agent, relay)) = self.connections.agent_mut(cid) else {
+        let Some((agent, maybe_state, relay)) = self.connections.agent_and_state_mut(cid) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
         };
@@ -443,21 +443,21 @@ where
 
         allocation.bind_channel(candidate.addr(), now);
 
-        let Ok(connection) = self.connections.get_established_mut(&cid, now) else {
-            return;
+        if let Some(state) = maybe_state {
+            // Make sure we move out of idle mode when we add new candidates.
+            state.on_candidate(cid, agent, now);
         };
-
-        // Make sure we move out of idle mode when we add new candidates.
-        connection
-            .state
-            .on_candidate(cid, &mut connection.agent, now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn remove_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        if let Some((agent, _)) = self.connections.agent_mut(cid) {
+        if let Some((agent, maybe_state, _)) = self.connections.agent_and_state_mut(cid) {
             agent.invalidate_candidate(&candidate);
             agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+
+            if let Some(state) = maybe_state {
+                state.on_candidate(cid, agent, now);
+            }
         }
     }
 
@@ -584,7 +584,7 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.allocations.handle_timeout(now);
 
-        self.allocations_drain_events();
+        self.allocations_drain_events(now);
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
@@ -611,6 +611,7 @@ where
             &self.allocations,
             &mut self.pending_events,
             &mut self.rng,
+            now,
         );
         self.connections
             .handle_timeout(&mut self.pending_events, now);
@@ -991,14 +992,24 @@ where
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
-    fn allocations_drain_events(&mut self) {
+    fn allocations_drain_events(&mut self, now: Instant) {
         while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
             match event {
                 allocation::Event::New(candidate) => {
-                    for (cid, agent) in self.connections.agents_by_relay_mut(rid) {
-                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    for (cid, agent, maybe_state) in
+                        self.connections.agents_and_state_by_relay_mut(rid)
+                    {
+                        add_local_candidate(
+                            cid,
+                            agent,
+                            candidate.clone(),
+                            &mut self.pending_events,
+                        );
+                        if let Some(state) = maybe_state {
+                            state.on_candidate(cid, agent, now);
+                        }
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1638,7 +1649,7 @@ impl ConnectionState {
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(cid, peer_socket, agent, "new candidate", now);
+        self.transition_to_connected(cid, peer_socket, agent, "candidates changed", now);
     }
 
     fn on_outgoing<TId>(&mut self, cid: TId, agent: &mut IceAgent, packet: &IpPacket, now: Instant)
