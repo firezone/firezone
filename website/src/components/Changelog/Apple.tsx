@@ -25,6 +25,9 @@ export default function Apple() {
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
       <Unreleased>
+        <ChangeItem pull="10986">
+          Fixes a minor race condition that could arise on sign out.
+        </ChangeItem>
         <ChangeItem pull="10855">
           Fixes an issue on macOS where the <code>utun</code> index would
           auto-increment by itself on configuration updates.
