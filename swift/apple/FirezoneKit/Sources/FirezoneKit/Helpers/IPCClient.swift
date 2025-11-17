@@ -73,7 +73,6 @@ enum IPCClient {
     let _ = try await sendProviderMessage(session: session, message: message)
   }
 
-
   // MARK: - Low-level IPC operations
 
   @MainActor
