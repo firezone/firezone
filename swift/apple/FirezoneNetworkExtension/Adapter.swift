@@ -127,29 +127,33 @@ class Adapter: @unchecked Sendable {
   private lazy var pathUpdateHandler: @Sendable (Network.NWPath) -> Void = { [weak self] path in
     guard let self else { return }
 
-    if path.status == .unsatisfied {
-      // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
-      if self.packetTunnelProvider?.reasserting == false {
-        // Tell the UI we're not connected
-        self.packetTunnelProvider?.reasserting = true
-      }
-    } else {
-      if self.packetTunnelProvider?.reasserting == true {
-        self.packetTunnelProvider?.reasserting = false
-      }
+    workQueue.async { [weak self] in
+      guard let self else { return }
 
-      if path.connectivityDifferentFrom(path: lastPath) {
-        // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
-        // meaningfully changed. On darwin, this is needed to send packets
-        // out of a different interface even when 0.0.0.0 is used as the source.
-        // If our primary interface changes, we can be certain the old socket shouldn't be
-        // used anymore.
-        self.sendCommand(.reset("primary network path changed"))
+      if path.status == .unsatisfied {
+        // Check if we need to set reasserting, avoids OS log spam and potentially other side effects
+        if self.packetTunnelProvider?.reasserting == false {
+          // Tell the UI we're not connected
+          self.packetTunnelProvider?.reasserting = true
+        }
+      } else {
+        if self.packetTunnelProvider?.reasserting == true {
+          self.packetTunnelProvider?.reasserting = false
+        }
+
+        if path.connectivityDifferentFrom(path: lastPath) {
+          // Tell connlib to reset network state and DNS resolvers, but only do so if our connectivity has
+          // meaningfully changed. On darwin, this is needed to send packets
+          // out of a different interface even when 0.0.0.0 is used as the source.
+          // If our primary interface changes, we can be certain the old socket shouldn't be
+          // used anymore.
+          self.sendCommand(.reset("primary network path changed"))
+        }
+
+        setSystemDefaultResolvers(path)
+
+        lastPath = path
       }
-
-      setSystemDefaultResolvers(path)
-
-      lastPath = path
     }
   }
 
@@ -189,14 +193,15 @@ class Adapter: @unchecked Sendable {
   deinit {
     Log.log("Adapter.deinit")
 
+    // Cancel network monitor
+    networkMonitor?.cancel()
+    networkMonitor = nil
+
     // Cancel all Tasks - this triggers cooperative cancellation
     // Event loop checks Task.isCancelled in its polling loop
     // Event consumer will exit when eventSender.deinit closes the stream
     eventLoopTask?.cancel()
     eventConsumerTask?.cancel()
-
-    // Cancel network monitor
-    networkMonitor?.cancel()
   }
 
   func start() throws {
