@@ -29,6 +29,7 @@ public enum SettingsSection: String, CaseIterable, Identifiable, Hashable {
 @MainActor
 class SettingsViewModel: ObservableObject {
   private let configuration: Configuration
+  private let store: Store?
   private var cancellables: Set<AnyCancellable> = []
 
   @Published private(set) var shouldDisableApplyButton = false
@@ -41,8 +42,14 @@ class SettingsViewModel: ObservableObject {
   @Published var connectOnStart: Bool
   @Published var startOnLogin: Bool
 
-  init(configuration: Configuration? = nil) {
+  // API URL change confirmation
+  @Published var showApiURLChangeConfirmation: Bool = false
+  private var savedApiURL: String
+  var pendingApiURLChange: String?
+
+  init(configuration: Configuration? = nil, store: Store? = nil) {
     self.configuration = configuration ?? Configuration.shared
+    self.store = store
 
     authURL = self.configuration.authURL
     apiURL = self.configuration.apiURL
@@ -50,6 +57,8 @@ class SettingsViewModel: ObservableObject {
     accountSlug = self.configuration.accountSlug
     connectOnStart = self.configuration.connectOnStart
     startOnLogin = self.configuration.startOnLogin
+
+    savedApiURL = self.configuration.apiURL
 
     Publishers.MergeMany(
       $authURL,
@@ -98,6 +107,25 @@ class SettingsViewModel: ObservableObject {
   }
 
   func save() async throws {
+    Log.log("SettingsViewModel.save() called")
+    Log.log("API URL changed: \(apiURL) != \(savedApiURL) = \(apiURL != savedApiURL)")
+    Log.log("Store exists: \(store != nil)")
+    Log.log("VPN status: \(String(describing: store?.vpnStatus))")
+
+    // Check if API URL changed and user is signed in
+    if apiURL != savedApiURL,
+      let store = store,
+      store.vpnStatus == .connected
+    {
+      Log.log("Showing API URL change confirmation dialog")
+      // Show confirmation dialog instead of saving immediately
+      pendingApiURLChange = apiURL
+      showApiURLChangeConfirmation = true
+      return
+    }
+
+    Log.log("Proceeding with save (no confirmation needed)")
+    // Proceed with save
     configuration.authURL = authURL
     configuration.apiURL = apiURL
     configuration.logFilter = logFilter
@@ -109,7 +137,50 @@ class SettingsViewModel: ObservableObject {
       try await configuration.updateAppService()
     #endif
 
+    // Update saved API URL after successful save
+    savedApiURL = apiURL
+
     updateDerivedState()
+  }
+
+  func confirmApiURLChange() async throws {
+    guard let newApiURL = pendingApiURLChange else {
+      return
+    }
+
+    // Save the new API URL
+    apiURL = newApiURL
+    configuration.authURL = authURL
+    configuration.apiURL = apiURL
+    configuration.logFilter = logFilter
+    configuration.accountSlug = accountSlug
+    configuration.connectOnStart = connectOnStart
+    configuration.startOnLogin = startOnLogin
+
+    #if os(macOS)
+      try await configuration.updateAppService()
+    #endif
+
+    // Update saved API URL
+    savedApiURL = apiURL
+
+    // Sign out the user
+    if let store = store {
+      try await store.signOut()
+    }
+
+    // Clean up
+    pendingApiURLChange = nil
+    showApiURLChangeConfirmation = false
+
+    updateDerivedState()
+  }
+
+  func cancelApiURLChange() {
+    // Revert to saved API URL
+    apiURL = savedApiURL
+    pendingApiURLChange = nil
+    showApiURLChangeConfirmation = false
   }
 
   func isAllForced() -> Bool {
