@@ -86,27 +86,16 @@ defmodule Domain.Auth.Identity.Sync do
 
     delete_percentage = (deletion_length / identities_length * 100) |> round()
 
-    cond do
-      identities_length > 40 and delete_percentage >= 25 ->
-        Logger.error("Refusing to mass delete identities",
-          identities_length: identities_length,
-          deletion_length: deletion_length,
-          provider_id: provider.id
-        )
+    if delete_percentage >= 75 do
+      Logger.error("Refusing to mass delete identities",
+        identities_length: identities_length,
+        deletion_length: deletion_length,
+        provider_id: provider.id
+      )
 
-        {:error, "Sync deletion of identities too large"}
-
-      identities_length <= 40 and delete_percentage >= 50 ->
-        Logger.error("Refusing to mass delete identities",
-          identities_length: identities_length,
-          deletion_length: deletion_length,
-          provider_id: provider.id
-        )
-
-        {:error, "Sync deletion of identities too large"}
-
-      true ->
-        :ok
+      {:error, "Sync deletion of identities too large"}
+    else
+      :ok
     end
   end
 
