@@ -73,10 +73,10 @@ impl DnsResourceNatEntry {
 }
 
 impl GatewayState {
-    pub(crate) fn new(seed: [u8; 32], now: Instant) -> Self {
+    pub(crate) fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         Self {
             peers: Default::default(),
-            node: ServerNode::new(seed, now),
+            node: ServerNode::new(seed, now, unix_ts),
             next_expiry_resources_check: Default::default(),
             buffered_events: VecDeque::default(),
             buffered_transmits: VecDeque::default(),

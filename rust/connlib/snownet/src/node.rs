@@ -141,6 +141,11 @@ pub struct Node<T, TId, RId> {
 
     role: T,
     rng: StdRng,
+
+    /// The number of seconds since the UNIX epoch.
+    unix_ts: Duration,
+    /// The [`Instant`] at the time we read the UNIX epoch above.
+    unix_now: Instant,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -154,7 +159,7 @@ where
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
     T: Role,
 {
-    pub fn new(seed: [u8; 32], now: Instant) -> Self {
+    pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         let mut rng = StdRng::from_seed(seed);
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
@@ -175,6 +180,8 @@ where
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
+            unix_now: now,
+            unix_ts,
         }
     }
 
@@ -729,6 +736,8 @@ where
             Some(self.rate_limiter.clone()),
             self.rng.next_u64(),
             now,
+            self.unix_now,
+            self.unix_ts,
         );
         // By default, boringtun has a rekey attempt time of 90(!) seconds.
         // In case of a state de-sync or other issues, this means we try for

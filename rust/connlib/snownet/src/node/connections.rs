@@ -522,6 +522,8 @@ mod tests {
                 None,
                 0,
                 Instant::now(),
+                Instant::now(),
+                Duration::ZERO,
             ),
             remote_pub_key: PublicKey::from(rand::random::<[u8; 32]>()),
             next_wg_timer_update: Instant::now(),
