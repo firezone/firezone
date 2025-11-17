@@ -16,7 +16,7 @@
     "@mdx-js/loader": "^3.1.1",
     "@mdx-js/react": "^3.1.1",
     "@next/mdx": "~15.5.4",
-    "@next/third-parties": "^15.5.3",
+    "@next/third-parties": "^15.5.6",
     "@types/mdx": "^2.0.13",
     "@types/node": "24.7.2",
     "@types/react": "19.2.2",
