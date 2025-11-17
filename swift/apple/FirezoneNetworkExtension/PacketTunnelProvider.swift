@@ -78,11 +78,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       // If we don't have a token, we can't continue.
       guard let token = loadAndSaveToken(from: options)
       else {
-        throw PacketTunnelProviderError.tokenNotFoundInKeychain
+        return completionHandler(PacketTunnelProviderError.tokenNotFoundInKeychain)
       }
 
       // Try to save the token back to the Keychain but continue if we can't
-      do { try token.save() } catch { Log.error(error) }
+      handleTokenSave(token)
 
       // The firezone id should be initialized by now
       guard let id = UserDefaults.standard.string(forKey: "firezoneId")
@@ -123,7 +123,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       self.adapter = adapter
 
     } catch {
-
       Log.error(error)
       completionHandler(error)
     }
@@ -318,6 +317,30 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // 3. Generate and save new one
     defaults.set(UUID().uuidString, forKey: key)
   }
+
+  #if os(macOS)
+    private func handleTokenSave(_ token: Token) {
+      do {
+        try token.save()
+      } catch let error as KeychainError {
+        // macOS 13 and below have a bug that raises an error when a root proc (such as our system extension) tries
+        // to add an item to the system keychain. We can safely ignore this.
+        if #unavailable(macOS 14.0), case .appleSecError("SecItemAdd", 100001) = error {
+          // ignore
+        } else {
+          Log.error(error)
+        }
+      } catch {
+        Log.error(error)
+      }
+    }
+  #endif
+
+  #if os(iOS)
+    private func handleTokenSave(_ token: Token) {
+      do { try token.save() } catch { Log.error(error) }
+    }
+  #endif
 }
 
 // Increase usefulness of TunnelConfiguration now that we're over the IPC barrier
