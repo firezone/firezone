@@ -62,6 +62,7 @@ pub struct Io {
     tun: Device,
     outbound_packet_buffer: VecDeque<IpPacket>,
     packet_counter: opentelemetry::metrics::Counter<u64>,
+    dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug)]
@@ -178,6 +179,7 @@ impl Io {
                 .u64_counter("system.network.packets")
                 .with_description("The number of packets processed.")
                 .build(),
+            dropped_packets: otel::metrics::network_packet_dropped(),
         }
     }
 
@@ -524,6 +526,10 @@ impl Io {
             .get_mut(&from)
             .ok_or(io::Error::other("No DNS server"))?
             .send_response(to, message)
+    }
+
+    pub(crate) fn inc_dropped_packet(&self, attrs: &[opentelemetry::KeyValue]) {
+        self.dropped_packets.add(1, attrs);
     }
 }
 

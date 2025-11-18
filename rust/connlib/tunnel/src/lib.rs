@@ -71,7 +71,7 @@ pub type ClientTunnel = Tunnel<ClientState>;
 pub use client::ClientState;
 pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, UnroutablePacket};
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
@@ -420,7 +420,20 @@ impl GatewayTunnel {
                             Ok(None) => {
                                 self.role_state.handle_timeout(now, Utc::now());
                             }
-                            Err(e) => error.push(e),
+                            Err(e) => {
+                                let routing_error = e
+                                    .downcast_ref::<gateway::UnroutablePacket>()
+                                    .map(|e| e.reason())
+                                    .unwrap_or(gateway::RoutingError::Other);
+
+                                // TODO: Include more attributes here like IPv4/IPv6?
+                                self.io.inc_dropped_packet(&[
+                                    otel::attr::error_type(routing_error),
+                                    otel::attr::network_io_direction_receive(),
+                                ]);
+
+                                error.push(e);
+                            }
                         }
                     }
 
