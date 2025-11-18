@@ -235,3 +235,86 @@ impl<RId> Default for Allocations<RId> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::net::{Ipv4Addr, SocketAddrV4};
+
+    use boringtun::x25519::PublicKey;
+
+    use super::*;
+
+    #[test]
+    fn manual_remove_remembers_address() {
+        let mut allocations = Allocations::default();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
+            SessionId::new(PublicKey::from([0u8; 32])),
+        );
+
+        allocations.remove_by_id(&1);
+
+        assert!(matches!(
+            allocations.get_mut_by_server(SERVER_V4),
+            MutAllocationRef::Disconnected
+        ));
+    }
+
+    #[test]
+    fn clear_remembers_address() {
+        let mut allocations = Allocations::default();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
+            SessionId::new(PublicKey::from([0u8; 32])),
+        );
+
+        allocations.clear();
+
+        assert!(matches!(
+            allocations.get_mut_by_server(SERVER_V4),
+            MutAllocationRef::Disconnected
+        ));
+    }
+
+    #[test]
+    fn replace_by_address_remembers_address() {
+        let mut allocations = Allocations::default();
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
+            SessionId::new(PublicKey::from([0u8; 32])),
+        );
+
+        allocations.upsert(
+            1,
+            RelaySocket::from(SERVER2_V4),
+            Username::new("test".to_owned()).unwrap(),
+            "password".to_owned(),
+            Realm::new("firezone".to_owned()).unwrap(),
+            Instant::now(),
+            SessionId::new(PublicKey::from([0u8; 32])),
+        );
+
+        assert!(matches!(
+            allocations.get_mut_by_server(SERVER_V4),
+            MutAllocationRef::Disconnected
+        ));
+    }
+
+    const SERVER_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 11111));
+    const SERVER2_V4: SocketAddr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 22222));
+}
