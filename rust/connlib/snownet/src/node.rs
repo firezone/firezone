@@ -792,7 +792,12 @@ where
             // The above check would wrongly classify a STUN request from such a peer as relay traffic and
             // fail to process it because we don't have an `Allocation` for the peer's IP.
             //
-            // Effectively this means that the connection will have to fallback to a relay-relay candidate pair.
+            // At the same time, we may still receive packets on port 3478 for an allocation that we have discarded.
+            //
+            // To correctly handle these packets, we need to handle them differently, depending on whether we
+            // previously had an allocation on a certain relay:
+            // 1. If we previously had an allocation, we need to stop processing the packet.
+            // 2. If we don't recognize the IP, continue processing the packet (as it may be p2p traffic).
             return ControlFlow::Continue((from, packet, None));
         }
 
@@ -804,14 +809,20 @@ where
                     return ControlFlow::Continue((from, packet, None));
                 };
 
-                let Some((_, allocation)) = self.allocations.get_mut_by_server(from) else {
-                    tracing::debug!(
-                        %from,
-                        packet = %hex::encode(packet),
-                        "Packet was a STUN message but we are not connected to this relay"
-                    );
+                let allocation = match self.allocations.get_mut_by_server(from) {
+                    allocations::MutAllocationRef::Connected(_, allocation) => allocation,
+                    allocations::MutAllocationRef::Disconnected => {
+                        tracing::debug!(
+                            %from,
+                            packet = %hex::encode(packet),
+                            "Packet was a STUN message but we are no longer to this relay"
+                        );
 
-                    return ControlFlow::Break(()); // Stop processing the packet.
+                        return ControlFlow::Break(()); // Stop processing the packet.
+                    }
+                    allocations::MutAllocationRef::Unknown => {
+                        return ControlFlow::Continue((from, packet, None));
+                    }
                 };
 
                 if allocation.handle_input(from, local, message, now) {
@@ -830,10 +841,19 @@ where
                     return ControlFlow::Continue((from, packet, None));
                 };
 
-                let Some((_, allocation)) = self.allocations.get_mut_by_server(from) else {
-                    tracing::debug!("Packet was a channel data message for unknown allocation");
+                let allocation = match self.allocations.get_mut_by_server(from) {
+                    allocations::MutAllocationRef::Connected(_, allocation) => allocation,
+                    allocations::MutAllocationRef::Disconnected => {
+                        tracing::debug!(
+                            %from,
+                            "Packet was a channel-data message but we are no longer to this relay"
+                        );
 
-                    return ControlFlow::Break(()); // Stop processing the packet.
+                        return ControlFlow::Break(()); // Stop processing the packet.
+                    }
+                    allocations::MutAllocationRef::Unknown => {
+                        return ControlFlow::Continue((from, packet, None));
+                    }
                 };
 
                 let Some((from, packet, socket)) = allocation.decapsulate(from, cd, now) else {

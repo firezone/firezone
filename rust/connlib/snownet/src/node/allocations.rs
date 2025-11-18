@@ -8,7 +8,7 @@ use std::{
 use bufferpool::BufferPool;
 use itertools::Itertools as _;
 use rand::{Rng, seq::IteratorRandom as _};
-use ringbuffer::AllocRingBuffer;
+use ringbuffer::{AllocRingBuffer, RingBuffer};
 use str0m::Candidate;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
@@ -58,13 +58,17 @@ where
             .find_map(|(id, a)| a.has_socket(addr).then_some((*id, a)))
     }
 
-    pub(crate) fn get_mut_by_server(
-        &mut self,
-        socket: SocketAddr,
-    ) -> Option<(RId, &mut Allocation)> {
+    pub(crate) fn get_mut_by_server(&mut self, socket: SocketAddr) -> MutAllocationRef<'_, RId> {
         self.inner
             .iter_mut()
             .find_map(|(id, a)| a.server().matches(socket).then_some((*id, a)))
+            .map(|(id, a)| MutAllocationRef::Connected(id, a))
+            .or_else(|| {
+                self.previous_relays_by_ip
+                    .contains(&socket.ip())
+                    .then_some(MutAllocationRef::Disconnected)
+            })
+            .unwrap_or(MutAllocationRef::Unknown)
     }
 
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&RId, &mut Allocation)> {
@@ -185,6 +189,12 @@ where
                 None => true,
             });
     }
+}
+
+pub(crate) enum MutAllocationRef<'a, RId> {
+    Unknown,
+    Disconnected,
+    Connected(RId, &'a mut Allocation),
 }
 
 fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
