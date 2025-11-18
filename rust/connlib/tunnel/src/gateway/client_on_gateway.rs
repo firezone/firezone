@@ -16,10 +16,11 @@ use crate::client::{IPV4_RESOURCES, IPV6_RESOURCES};
 use crate::gateway::filter_engine::FilterEngine;
 use crate::gateway::flow_tracker;
 use crate::gateway::nat_table::{NatTable, TranslateIncomingResult};
+use crate::gateway::unroutable_packet::UnroutablePacket;
 use crate::messages::gateway::Filters;
 use crate::messages::gateway::ResourceDescription;
 use crate::utils::network_contains_network;
-use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp, otel};
+use crate::{GatewayEvent, IpConfig, NotAllowedResource, NotClientIp};
 
 /// The state of one client on a gateway.
 pub struct ClientOnGateway {
@@ -37,8 +38,6 @@ pub struct ClientOnGateway {
     permanent_translations: BTreeMap<IpAddr, TranslationState>,
     nat_table: NatTable,
     buffered_events: VecDeque<GatewayEvent>,
-
-    num_dropped_packets: opentelemetry::metrics::Counter<u64>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -66,7 +65,6 @@ impl ClientOnGateway {
             nat_table: Default::default(),
             buffered_events: Default::default(),
             internet_resource_enabled: None,
-            num_dropped_packets: otel::metrics::network_packet_dropped(),
         }
     }
 
@@ -339,46 +337,30 @@ impl ClientOnGateway {
         &mut self,
         packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<IpPacket>> {
+    ) -> anyhow::Result<IpPacket> {
         // Traffic from our own IP is allowed.
         match packet.source() {
-            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(Some(packet)),
-            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(Some(packet)),
+            IpAddr::V4(src) if src == self.gateway_tun.v4 => return Ok(packet),
+            IpAddr::V6(src) if src == self.gateway_tun.v6 => return Ok(packet),
             IpAddr::V4(_) | IpAddr::V6(_) => {}
         }
 
-        let Some(packet) = self.transform_tun_to_network(packet, now)? else {
-            return Ok(None);
-        };
+        let packet = self.transform_tun_to_network(packet, now)?;
 
         self.ensure_client_ip(packet.destination())?;
 
         // Always allow ICMP errors to pass through, even in the presence of filters that don't allow ICMP.
         if packet.icmp_error().is_ok_and(|e| e.is_some()) {
-            return Ok(Some(packet));
+            return Ok(packet);
         }
 
-        match self.classify_resource(packet.source(), packet.source_protocol()) {
-            Ok(rid) => {
-                flow_tracker::inbound_tun::record_resource(rid);
-            }
-            Err(e) => {
-                tracing::debug!(
-                    "Inbound packet is not allowed, perhaps from an old client session? error = {e:#}"
-                );
-                self.num_dropped_packets.add(
-                    1,
-                    &[
-                        otel::attr::network_type_for_packet(&packet),
-                        otel::attr::network_io_direction_receive(),
-                        otel::attr::error_type(e.root_cause().to_string()),
-                    ],
-                );
-                return Ok(None);
-            }
-        }
+        let rid = self
+            .classify_resource(packet.source(), packet.source_protocol())
+            .with_context(|| UnroutablePacket::not_allowed(&packet))?;
 
-        Ok(Some(packet))
+        flow_tracker::inbound_tun::record_resource(rid);
+
+        Ok(packet)
     }
 
     fn transform_network_to_tun(
@@ -442,7 +424,7 @@ impl ClientOnGateway {
         &mut self,
         mut packet: IpPacket,
         now: Instant,
-    ) -> anyhow::Result<Option<IpPacket>> {
+    ) -> anyhow::Result<IpPacket> {
         let (proto, ip) = match self.nat_table.translate_incoming(&packet, now)? {
             TranslateIncomingResult::Ok { proto, src } => (proto, src),
             TranslateIncomingResult::IcmpError(prototype) => {
@@ -452,29 +434,15 @@ impl ClientOnGateway {
                     .into_packet(self.client_tun.v4, self.client_tun.v6)
                     .context("Failed to create ICMP error")?;
 
-                return Ok(Some(icmp_error));
+                return Ok(icmp_error);
             }
             TranslateIncomingResult::ExpiredNatSession => {
-                tracing::debug!(
-                    ?packet,
-                    "Expired NAT session for inbound packet of DNS resource; dropping"
-                );
-
-                self.num_dropped_packets.add(
-                    1,
-                    &[
-                        otel::attr::network_type_for_packet(&packet),
-                        otel::attr::network_io_direction_receive(),
-                        otel::attr::error_type("ExpiredNatSession"),
-                    ],
-                );
-
-                return Ok(None);
+                bail!(UnroutablePacket::expired_nat_session(&packet))
             }
             TranslateIncomingResult::NoNatSession => {
                 // No NAT session means packet is likely for Internet Resource or a CIDR resource.
 
-                return Ok(Some(packet));
+                return Ok(packet);
             }
         };
 
@@ -483,7 +451,7 @@ impl ClientOnGateway {
             .context("Failed to translate packet to new source")?;
         packet.update_checksum();
 
-        Ok(Some(packet))
+        Ok(packet)
     }
 
     pub(crate) fn is_allowed(&self, resource: ResourceId) -> bool {
@@ -740,7 +708,7 @@ mod tests {
     use ip_packet::make::TcpFlags;
 
     use crate::{
-        gateway::nat_table,
+        gateway::{RoutingError, nat_table},
         messages::gateway::{Filter, PortRange, ResourceDescriptionCidr},
     };
 
@@ -866,11 +834,7 @@ mod tests {
             peer.translate_outbound(request, Instant::now()).unwrap(),
             TranslateOutboundResult::Send(_)
         ));
-        assert!(
-            peer.translate_inbound(response, Instant::now())
-                .unwrap()
-                .is_some()
-        );
+        peer.translate_inbound(response, Instant::now()).unwrap();
     }
 
     #[test]
@@ -1046,10 +1010,7 @@ mod tests {
         now += Duration::from_secs(30);
         peer.handle_timeout(now);
 
-        assert!(
-            matches!(peer.translate_inbound(response, now), Ok(Some(_))),
-            "After 30s remote should still be able to send a packet back"
-        );
+        peer.translate_inbound(response, now).unwrap();
 
         let response = ip_packet::make::udp_packet(
             foo_real_ip1(),
@@ -1063,10 +1024,13 @@ mod tests {
         now += nat_table::UDP_TTL;
         peer.handle_timeout(now);
 
-        assert!(
-            matches!(peer.translate_inbound(response, now), Ok(None)),
-            "After 1 minute of inactivity, NAT session should be freed"
-        );
+        let err = peer
+            .translate_inbound(response, now)
+            .unwrap_err()
+            .downcast::<UnroutablePacket>()
+            .unwrap();
+
+        assert_eq!(err.reason(), RoutingError::ExpiredNatSession);
     }
 
     #[test]
@@ -1125,9 +1089,7 @@ mod tests {
             )
             .unwrap();
 
-            let response = peer.translate_inbound(response, now).unwrap();
-
-            assert!(response.is_some());
+            peer.translate_inbound(response, now).unwrap();
         }
 
         {
@@ -1161,9 +1123,7 @@ mod tests {
             )
             .unwrap();
 
-            let response = peer.translate_inbound(response, now).unwrap();
-
-            assert!(response.is_some());
+            peer.translate_inbound(response, now).unwrap();
         }
     }
 

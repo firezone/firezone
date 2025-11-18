@@ -366,7 +366,7 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(cid, peer_socket, goodbye, now, &mut self.allocations) {
+        match connection.encapsulate(cid, peer_socket, &goodbye, now, &mut self.allocations) {
             Ok(Some(transmit)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
 
@@ -496,7 +496,7 @@ where
     pub fn encapsulate(
         &mut self,
         cid: TId,
-        packet: IpPacket,
+        packet: &IpPacket,
         now: Instant,
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_established_mut(&cid, now)?;
@@ -512,7 +512,7 @@ where
 
         let socket = match &mut conn.state {
             ConnectionState::Connecting { ip_buffer, .. } => {
-                ip_buffer.enqueue(packet);
+                ip_buffer.enqueue(packet.clone());
                 let num_buffered = ip_buffer.len();
 
                 tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
@@ -1970,7 +1970,7 @@ where
                             );
                             transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
                                 let transmit = self
-                                    .encapsulate(cid, remote_socket, packet, now, allocations)
+                                    .encapsulate(cid, remote_socket, &packet, now, allocations)
                                     .inspect_err(|e| {
                                         tracing::debug!(
                                             "Failed to encapsulate buffered IP packet: {e:#}"
@@ -2128,14 +2128,14 @@ where
         &mut self,
         cid: TId,
         socket: PeerSocket,
-        packet: IpPacket,
+        packet: &IpPacket,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
     ) -> Result<Option<Transmit>>
     where
         TId: fmt::Display,
     {
-        self.state.on_outgoing(cid, &mut self.agent, &packet, now);
+        self.state.on_outgoing(cid, &mut self.agent, packet, now);
 
         let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 
