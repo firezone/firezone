@@ -368,13 +368,7 @@ impl UdpSocket {
                     match self.state.try_send((&self.inner).into(), &chunk) {
                         Ok(()) => Ok(()),
                         #[cfg(target_os = "macos")]
-                        Err(e)
-                            if e.raw_os_error().is_some_and(|e| e == libc::ENOBUFS)
-                                && firezone_telemetry::feature_flags::map_enobufs_to_would_block() =>
-                        {
-                            firezone_telemetry::analytics::feature_flag_called(
-                                "map-enobufs-to-wouldblock",
-                            );
+                        Err(e) if e.raw_os_error().is_some_and(|e| e == libc::ENOBUFS) => {
                             tracing::debug!("Encountered ENOBUFS, treating as WouldBlock");
 
                             Err(io::Error::from(io::ErrorKind::WouldBlock))

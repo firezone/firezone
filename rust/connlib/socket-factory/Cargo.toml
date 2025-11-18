@@ -24,7 +24,6 @@ libc = { workspace = true }
 libc = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-firezone-telemetry = { workspace = true }
 libc = { workspace = true }
 
 [dev-dependencies]
