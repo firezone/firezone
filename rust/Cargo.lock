@@ -2502,6 +2502,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_variant",
+ "socket-factory",
  "specta",
  "specta-typescript",
  "strum",

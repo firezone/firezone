@@ -39,6 +39,7 @@ keyring = { workspace = true, features = ["crypto-rust", "sync-secret-service", 
 native-dialog = { workspace = true }
 output_vt100 = { workspace = true }
 phoenix-channel = { workspace = true }
+socket-factory = { workspace = true }
 png = { workspace = true } # `png` is mostly free since we already need it for Tauri
 rand = { workspace = true }
 reqwest = { workspace = true, features = ["stream", "rustls-tls"] }
