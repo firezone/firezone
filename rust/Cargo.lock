@@ -7826,6 +7826,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket-factory",
  "thiserror 2.0.17",
  "tokio",
  "tracing",

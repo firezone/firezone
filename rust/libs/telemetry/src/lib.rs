@@ -18,6 +18,7 @@ use sentry::{
     transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
+use socket_factory::{SocketFactory, TcpSocket};
 
 pub mod analytics;
 pub mod feature_flags;
@@ -174,6 +175,10 @@ impl Telemetry {
             inner: None,
             transport: TransportFactory::without_addresses(),
         }
+    }
+
+    pub fn set_tcp_socket_factory(&mut self, sf: Arc<dyn SocketFactory<TcpSocket>>) {
+        self.transport.tcp_socket_factory = sf;
     }
 
     pub async fn start(&mut self, api_url: &str, release: &str, dsn: Dsn, firezone_id: String) {
@@ -431,9 +436,10 @@ fn set_current_user(user: Option<sentry::User>) {
     sentry::Hub::main().configure_scope(|scope| scope.set_user(user));
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TransportFactory {
     ingest_domain_addresses: Vec<SocketAddr>,
+    tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 }
 
 impl TransportFactory {
@@ -447,12 +453,14 @@ impl TransportFactory {
 
         Ok(Self {
             ingest_domain_addresses: resolved_addresses,
+            tcp_socket_factory: Arc::new(socket_factory::tcp),
         })
     }
 
     fn without_addresses() -> Self {
         Self {
             ingest_domain_addresses: Default::default(),
+            tcp_socket_factory: Arc::new(socket_factory::tcp),
         }
     }
 }

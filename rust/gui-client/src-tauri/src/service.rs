@@ -610,6 +610,8 @@ impl<'a> Handler<'a> {
 
                 if !no_telemetry {
                     self.telemetry
+                        .set_tcp_socket_factory(self.tcp_socket_factory.clone());
+                    self.telemetry
                         .start(
                             &environment,
                             &release,
