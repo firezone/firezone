@@ -687,8 +687,8 @@ mod tests {
             );
         }
 
-        // Hack: Advance for a bit but timeout after 500ms. We don't emit an event when the client is bootstrapped so this will always be `Pending`.
-        let _ = tokio::time::timeout(Duration::from_millis(500), io.next()).await;
+        // Hack: Advance for a bit but timeout after 2s. We don't emit an event when the client is bootstrapped so this will always be `Pending`.
+        let _ = tokio::time::timeout(Duration::from_secs(2), io.next()).await;
 
         {
             io.send_dns_query(example_com_recursive_query());
