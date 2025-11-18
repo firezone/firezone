@@ -5,21 +5,24 @@ defmodule Web.Settings.DNS do
   def mount(_params, _session, socket) do
     with {:ok, account} <-
            Accounts.fetch_account_by_id(socket.assigns.account.id, socket.assigns.subject) do
-      form =
-        Accounts.change_account(account, %{})
-        |> to_form()
+      # Ensure config has proper defaults
+      account = %{account | config: Domain.Accounts.Config.ensure_defaults(account.config)}
 
       socket =
-        assign(socket,
-          page_title: "DNS",
-          account: account,
-          form: form
-        )
+        socket
+        |> assign(page_title: "DNS")
+        |> init(account)
 
       {:ok, socket}
     else
       {:error, _reason} -> raise Web.LiveErrors.NotFoundError
     end
+  end
+
+  defp init(socket, account) do
+    changeset = Accounts.change_account(account)
+
+    assign(socket, form: to_form(changeset))
   end
 
   def render(assigns) do
@@ -48,109 +51,213 @@ defmodule Web.Settings.DNS do
           <.form for={@form} phx-submit={:submit} phx-change={:change}>
             <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
 
-            <.inputs_for :let={config} field={@form[:config]}>
-              <h2 class="mb-4 text-xl text-neutral-900">Search Domain</h2>
+            <h2 class="mb-4 text-xl text-neutral-900">Search Domain</h2>
 
-              <p class="mb-4 text-neutral-500">
-                The search domain, or default DNS suffix, will be appended to all single-label DNS queries made by Client devices
-                while connected to Firezone.
-              </p>
+            <p class="mb-4 text-neutral-500">
+              The search domain, or default DNS suffix, will be appended to all single-label DNS queries made by Client devices
+              while connected to Firezone.
+            </p>
 
-              <div class="mb-8">
-                <.input field={config[:search_domain]} placeholder="E.g. example.com" />
+            <div class="mb-8">
+              <.inputs_for :let={config_form} field={@form[:config]}>
+                <.input field={config_form[:search_domain]} placeholder="E.g. example.com" />
                 <p class="mt-2 text-sm text-neutral-500">
                   Enter a valid FQDN to append to single-label DNS queries. The
                   resulting FQDN will be used to match against DNS Resources in
                   your account, or forwarded to the upstream resolvers if no
                   match is found.
                 </p>
-              </div>
+              </.inputs_for>
+            </div>
 
-              <h2 class="mb-4 text-xl text-neutral-900">Upstream Resolvers</h2>
+            <h2 class="mb-4 text-xl text-neutral-900">Upstream Resolvers</h2>
 
-              <p class="mb-4 text-neutral-500">
-                Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
-                All other queries will use the resolvers configured here or the device's
-                system resolvers if none are configured.
-              </p>
+            <p class="mb-4 text-neutral-500">
+              Queries for Resources will <strong>always</strong> use Firezone's internal DNS.
+              All other queries will use the resolvers configured here.
+            </p>
 
-              <p :if={not upstream_dns_empty?(@account, @form)} class="mb-4 text-neutral-500">
-                Upstream resolvers will be used by Client devices in the order they are listed below.
-              </p>
+            <.inputs_for :let={config_form} field={@form[:config]}>
+              <.inputs_for :let={dns_form} field={config_form[:clients_upstream_dns]}>
+                <div class="mb-6">
+                  <ul class="grid w-full gap-6 md:grid-cols-3">
+                    <li>
+                      <.input
+                        id="dns-type--system"
+                        type="radio_button_group"
+                        field={dns_form[:type]}
+                        value="system"
+                        checked={"#{dns_form[:type].value}" == "system"}
+                        required
+                      />
+                      <label for="dns-type--system" class={~w[
+                        inline-flex items-center justify-between w-full
+                        p-5 text-gray-500 bg-white border border-gray-200
+                        rounded cursor-pointer peer-checked:border-accent-500
+                        peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                      ]}>
+                        <div class="block">
+                          <div class="w-full font-semibold mb-3">
+                            <.icon name="hero-computer-desktop" class="w-5 h-5 mr-1" /> System DNS
+                          </div>
+                          <div class="w-full text-sm">
+                            Use the device's default DNS resolvers.
+                          </div>
+                        </div>
+                      </label>
+                    </li>
+                    <li>
+                      <.input
+                        id="dns-type--secure"
+                        type="radio_button_group"
+                        field={dns_form[:type]}
+                        value="secure"
+                        checked={"#{dns_form[:type].value}" == "secure"}
+                        required
+                      />
+                      <label for="dns-type--secure" class={~w[
+                        inline-flex items-center justify-between w-full
+                        p-5 text-gray-500 bg-white border border-gray-200
+                        rounded cursor-pointer peer-checked:border-accent-500
+                        peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                      ]}>
+                        <div class="block">
+                          <div class="w-full font-semibold mb-3">
+                            <.icon name="hero-lock-closed" class="w-5 h-5 mr-1" /> Secure DNS
+                          </div>
+                          <div class="w-full text-sm">
+                            Use DNS-over-HTTPS from trusted providers.
+                          </div>
+                        </div>
+                      </label>
+                    </li>
+                    <li>
+                      <.input
+                        id="dns-type--custom"
+                        type="radio_button_group"
+                        field={dns_form[:type]}
+                        value="custom"
+                        checked={"#{dns_form[:type].value}" == "custom"}
+                        required
+                      />
+                      <label for="dns-type--custom" class={~w[
+                        inline-flex items-center justify-between w-full
+                        p-5 text-gray-500 bg-white border border-gray-200
+                        rounded cursor-pointer peer-checked:border-accent-500
+                        peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
+                      ]}>
+                        <div class="block">
+                          <div class="w-full font-semibold mb-3">
+                            <.icon name="hero-cog-6-tooth" class="w-5 h-5 mr-1" /> Custom DNS
+                          </div>
+                          <div class="w-full text-sm">
+                            Configure your own DNS server addresses.
+                          </div>
+                        </div>
+                      </label>
+                    </li>
+                  </ul>
+                </div>
 
-              <p :if={upstream_dns_empty?(@account, @form)} class="text-neutral-500">
-                No upstream resolvers have been configured. Click <strong>New Resolver</strong>
-                to add one.
-              </p>
+                <div :if={"#{dns_form[:type].value}" == "secure"} class="mb-6">
+                  <label class="block mb-2 text-sm font-medium text-neutral-900">
+                    DNS-over-HTTPS Provider
+                  </label>
+                  <.input
+                    type="select"
+                    field={dns_form[:doh_provider]}
+                    options={[
+                      {"Google Public DNS", :google},
+                      {"Cloudflare DNS", :cloudflare},
+                      {"Quad9 DNS", :quad9},
+                      {"OpenDNS", :opendns}
+                    ]}
+                  />
+                </div>
 
-              <div class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-                <div>
-                  <.inputs_for :let={dns} field={config[:clients_upstream_dns]}>
-                    <input
-                      type="hidden"
-                      name={"#{config.name}[clients_upstream_dns_sort][]"}
-                      value={dns.index}
-                    />
+                <div
+                  :if={"#{dns_form[:type].value}" == "custom"}
+                  class="grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6"
+                >
+                  <div>
+                    <p
+                      :if={not Enum.empty?(dns_form[:addresses].value || [])}
+                      class="mb-4 text-neutral-500"
+                    >
+                      Upstream resolvers will be used by Client devices in the order they are listed below.
+                    </p>
 
-                    <div class="flex gap-4 items-start mb-2">
-                      <div class="w-3/12">
-                        <.input
-                          type="select"
-                          label="Protocol"
-                          field={dns[:protocol]}
-                          placeholder="Protocol"
-                          options={dns_options()}
-                          value={dns[:protocol].value}
-                        />
-                      </div>
-                      <div class="flex-grow">
-                        <.input label="Address" field={dns[:address]} placeholder="E.g. 1.1.1.1" />
-                      </div>
-                      <div class="justify-self-end">
-                        <div class="pt-7">
-                          <button
-                            type="button"
-                            name={"#{config.name}[clients_upstream_dns_drop][]"}
-                            value={dns.index}
-                            phx-click={JS.dispatch("change")}
-                          >
-                            <.icon
-                              name="hero-trash"
-                              class="-ml-1 text-red-500 w-5 h-5 relative top-2"
-                            />
-                          </button>
+                    <p
+                      :if={Enum.empty?(dns_form[:addresses].value || [])}
+                      class="mb-4 text-neutral-500"
+                    >
+                      No upstream resolvers have been configured. Click <strong>New Resolver</strong>
+                      to add one.
+                    </p>
+
+                    <.inputs_for :let={address_form} field={dns_form[:addresses]}>
+                      <input
+                        type="hidden"
+                        name="account[config][clients_upstream_dns][addresses_sort][]"
+                        value={address_form.index}
+                      />
+
+                      <div class="flex gap-4 items-start mb-2">
+                        <div class="flex-grow">
+                          <.input
+                            label="IP Address"
+                            field={address_form[:address]}
+                            placeholder="E.g. 1.1.1.1"
+                          />
+                        </div>
+                        <div class="justify-self-end">
+                          <div class="pt-7">
+                            <button
+                              type="button"
+                              name="account[config][clients_upstream_dns][addresses_drop][]"
+                              value={address_form.index}
+                              phx-click={JS.dispatch("change")}
+                            >
+                              <.icon
+                                name="hero-trash"
+                                class="-ml-1 text-red-500 w-5 h-5 relative top-2"
+                              />
+                            </button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </.inputs_for>
+                    </.inputs_for>
 
-                  <input type="hidden" name={"#{config.name}[clients_upstream_dns_drop][]"} />
-                  <.button
-                    class="mt-6 w-full"
-                    type="button"
-                    style="info"
-                    name={"#{config.name}[clients_upstream_dns_sort][]"}
-                    value="new"
-                    phx-click={JS.dispatch("change")}
-                  >
-                    New Resolver
-                  </.button>
-                  <.error
-                    :for={error <- dns_config_errors(@form.source.changes)}
-                    data-validation-error-for="clients_upstream_dns"
-                  >
-                    {error}
-                  </.error>
+                    <.error :for={{msg, _opts} <- dns_form[:addresses].errors}>
+                      {msg}
+                    </.error>
+
+                    <input
+                      type="hidden"
+                      name="account[config][clients_upstream_dns][addresses_drop][]"
+                    />
+                    <.button
+                      class="mt-6 w-full"
+                      type="button"
+                      style="info"
+                      name="account[config][clients_upstream_dns][addresses_sort][]"
+                      value="new"
+                      phx-click={JS.dispatch("change")}
+                    >
+                      New Resolver
+                    </.button>
+
+                    <p class="mt-4 text-sm text-neutral-500">
+                      <strong>Note:</strong>
+                      It is highly recommended to specify <strong>both</strong>
+                      IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
+                      or IPv6 connectivity may not be able to resolve DNS queries.
+                    </p>
+                  </div>
                 </div>
-              </div>
-
-              <p class="text-sm text-neutral-500">
-                <strong>Note:</strong>
-                It is highly recommended to specify <strong>both</strong>
-                IPv4 and IPv6 addresses when adding upstream resolvers. Otherwise, Clients without IPv4
-                or IPv6 connectivity may not be able to resolve DNS queries.
-              </p>
+              </.inputs_for>
             </.inputs_for>
+
             <div class="mt-16">
               <.submit_button>
                 Save DNS Settings
@@ -163,58 +270,27 @@ defmodule Web.Settings.DNS do
     """
   end
 
-  def handle_event("change", %{"account" => attrs}, socket) do
+  def handle_event("change", %{"account" => params}, socket) do
     form =
-      Accounts.change_account(socket.assigns.account, attrs)
-      |> Map.put(:action, :validate)
-      |> to_form()
+      socket.assigns.form.data
+      |> Accounts.change_account(params)
+      |> to_form(action: :validate)
 
     {:noreply, assign(socket, form: form)}
   end
 
-  def handle_event("submit", %{"account" => attrs}, socket) do
-    with {:ok, account} <-
-           Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
-      form =
-        Accounts.change_account(account, %{})
-        |> to_form()
+  def handle_event("submit", %{"account" => params}, socket) do
+    case Accounts.update_account(socket.assigns.form.data, params, socket.assigns.subject) do
+      {:ok, account} ->
+        socket =
+          socket
+          |> put_flash(:success, "DNS settings saved successfully")
+          |> init(account)
 
-      socket = put_flash(socket, :success, "Save successful!")
+        {:noreply, socket}
 
-      {:noreply, assign(socket, account: account, form: form)}
-    else
       {:error, changeset} ->
-        form =
-          changeset
-          |> Map.put(:action, :validate)
-          |> to_form()
-
-        {:noreply, assign(socket, form: form)}
+        {:noreply, assign(socket, form: to_form(changeset))}
     end
-  end
-
-  defp upstream_dns_empty?(account, form) do
-    upstream_dns_changes =
-      Map.get(form.source.changes, :config, %{})
-      |> Map.get(:changes, %{})
-      |> Map.get(:clients_upstream_dns, %{})
-
-    Enum.empty?(account.config.clients_upstream_dns) and Enum.empty?(upstream_dns_changes)
-  end
-
-  defp dns_options do
-    [
-      [key: "IP", value: "ip_port"],
-      [key: "DNS over TLS", value: "dns_over_tls", disabled: true],
-      [key: "DNS over HTTPS", value: "dns_over_https", disabled: true]
-    ]
-  end
-
-  defp dns_config_errors(changes) when changes == %{} do
-    []
-  end
-
-  defp dns_config_errors(changes) do
-    translate_errors(changes.config.errors, :clients_upstream_dns)
   end
 end

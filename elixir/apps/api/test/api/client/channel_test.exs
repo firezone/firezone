@@ -7,11 +7,14 @@ defmodule API.Client.ChannelTest do
     account =
       Fixtures.Accounts.create_account(
         config: %{
-          upstream_do53: [
-            %{address: "1:2:3:4:5:6:7:8"},
-            %{address: "1.1.1.1"},
-            %{address: "8.8.8.8"}
-          ],
+          clients_upstream_dns: %{
+            type: :custom,
+            addresses: [
+              %{address: "1:2:3:4:5:6:7:8"},
+              %{address: "1.1.1.1"},
+              %{address: "8.8.8.8"}
+            ]
+          },
           search_domain: "example.com"
         },
         features: %{

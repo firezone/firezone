@@ -40,63 +40,68 @@ defmodule Web.Live.Settings.DNSTest do
     assert breadcrumbs =~ "DNS Settings"
   end
 
-  test "renders form with no input fields", %{
+  test "renders form with DNS type options", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    Fixtures.Accounts.update_account(account, %{
+      config: %{clients_upstream_dns: %{type: :system, addresses: []}}
+    })
 
-    {:ok, lv, _html} =
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
-    form = lv |> form("form")
-
-    assert find_inputs(form) == [
-             "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][search_domain]"
-           ]
+    assert html =~ "System DNS"
+    assert html =~ "Secure DNS"
+    assert html =~ "Custom DNS"
   end
 
-  test "renders input field on button click", %{
+  test "shows DoH provider dropdown when secure DNS selected", %{
     account: account,
     identity: identity,
     conn: conn
   } do
-    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    Fixtures.Accounts.update_account(account, %{
+      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :google, addresses: []}}
+    })
 
-    {:ok, lv, _html} =
+    {:ok, _lv, html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
-    attrs = %{
-      "_target" => ["account", "config", "clients_upstream_dns_sort"],
-      "account" => %{
-        "config" => %{
-          "_persistent_id" => "0",
-          "clients_upstream_dns_drop" => [""],
-          "clients_upstream_dns_sort" => ["new"]
+    assert html =~ "DNS-over-HTTPS Provider"
+    assert html =~ "Google Public DNS"
+    assert html =~ "Cloudflare DNS"
+    assert html =~ "Quad9 DNS"
+    assert html =~ "OpenDNS"
+  end
+
+  test "shows custom DNS fields when custom type selected", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    Fixtures.Accounts.update_account(account, %{
+      config: %{
+        clients_upstream_dns: %{
+          type: :custom,
+          addresses: [%{address: "8.8.8.8"}]
         }
       }
-    }
+    })
 
-    lv
-    |> render_click(:change, attrs)
+    {:ok, _lv, html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
 
-    form = lv |> form("form")
-
-    assert find_inputs(form) == [
-             "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns][0][address]",
-             "account[config][clients_upstream_dns][0][protocol]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]",
-             "account[config][search_domain]"
-           ]
+    assert html =~ "IP Address"
+    assert html =~ "8.8.8.8"
+    assert html =~ "New Resolver"
   end
 
   test "saves search domain", %{
@@ -104,7 +109,10 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    account = Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    account =
+      Fixtures.Accounts.update_account(account, %{
+        config: %{clients_upstream_dns: %{type: :system, addresses: []}}
+      })
 
     attrs = %{
       account: %{
@@ -123,16 +131,7 @@ defmodule Web.Live.Settings.DNSTest do
     |> form("form", attrs)
     |> render_submit()
 
-    assert lv
-           |> form("form")
-           |> find_inputs() == [
-             "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][search_domain]"
-           ]
-
     account = Domain.Accounts.fetch_account_by_id!(account.id)
-
     assert account.config.search_domain == "example.com"
   end
 
@@ -141,7 +140,10 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    account = Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
+    account =
+      Fixtures.Accounts.update_account(account, %{
+        config: %{clients_upstream_dns: %{type: :system, addresses: []}}
+      })
 
     attrs = %{
       account: %{
@@ -166,81 +168,37 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
-    Fixtures.Accounts.update_account(account, %{config: %{clients_upstream_dns: []}})
-
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{"0" => %{"address" => "8.8.8.8"}}
-        }
-      }
-    }
-
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/dns")
-
-    lv
-    |> element("form")
-    |> render_change(%{
-      "account" => %{
-        "config" => %{
-          "clients_upstream_dns_drop" => [""],
-          "clients_upstream_dns_sort" => ["new"]
-        }
-      }
+    Fixtures.Accounts.update_account(account, %{
+      config: %{clients_upstream_dns: %{type: :system, addresses: []}}
     })
 
-    lv
-    |> form("form", attrs)
-    |> render_submit()
-
-    assert lv
-           |> form("form")
-           |> find_inputs() == [
-             "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns][0][address]",
-             "account[config][clients_upstream_dns][0][protocol]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][clients_upstream_dns_sort][]",
-             "account[config][search_domain]"
-           ]
-  end
-
-  test "removes blank entries upon save", %{
-    account: account,
-    identity: identity,
-    conn: conn
-  } do
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{"0" => %{"address" => ""}}
-        }
-      }
-    }
-
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
+    attrs = %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "custom",
+            addresses: %{"0" => %{"address" => "8.8.8.8"}}
+          }
+        }
+      }
+    }
+
     lv
     |> form("form", attrs)
     |> render_submit()
 
-    # Empty strings should be removed, so we're back to the default state
-    assert lv
-           |> form("form")
-           |> find_inputs() == [
-             "account[config][_persistent_id]",
-             "account[config][clients_upstream_dns_drop][]",
-             "account[config][search_domain]"
-           ]
+    account = Domain.Accounts.fetch_account_by_id!(account.id)
+    assert account.config.clients_upstream_dns.type == :custom
+    assert length(account.config.clients_upstream_dns.addresses) == 1
+    assert hd(account.config.clients_upstream_dns.addresses).address == "8.8.8.8"
   end
 
-  test "warns when duplicate IPv4 addresses found", %{
+  test "returns error when custom type has no addresses", %{
     account: account,
     identity: identity,
     conn: conn
@@ -250,34 +208,45 @@ defmodule Web.Live.Settings.DNSTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
-    lv
-    |> form("form", %{
+    attrs = %{
       account: %{
-        config: %{clients_upstream_dns: %{"0" => %{"address" => "8.8.8.8"}}}
+        config: %{
+          clients_upstream_dns: %{
+            type: "custom",
+            addresses: []
+          }
+        }
       }
-    })
-    |> render_submit()
+    }
+
+    html =
+      lv
+      |> form("form", attrs)
+      |> render_submit()
+
+    assert html =~ "must have at least one custom resolver"
+  end
+
+  test "validates duplicate addresses", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
 
     assert lv
            |> form("form", %{
              account: %{
                config: %{
                  clients_upstream_dns: %{
-                   "0" => %{"address" => "8.8.8.8"},
-                   "1" => %{"address" => "8.8.8.8"}
-                 }
-               }
-             }
-           })
-           |> render_change() =~ "all addresses must be unique"
-
-    refute lv
-           |> form("form", %{
-             account: %{
-               config: %{
-                 clients_upstream_dns: %{
-                   "0" => %{"address" => "8.8.8.8"},
-                   "1" => %{"address" => "1.1.1.1"}
+                   type: "custom",
+                   addresses: %{
+                     "0" => %{"address" => "8.8.8.8"},
+                     "1" => %{"address" => "8.8.8.8"}
+                   }
                  }
                }
              }
@@ -299,7 +268,10 @@ defmodule Web.Live.Settings.DNSTest do
            |> form("form", %{
              account: %{
                config: %{
-                 clients_upstream_dns: %{"0" => %{"address" => "invalid"}}
+                 clients_upstream_dns: %{
+                   type: "custom",
+                   addresses: %{"0" => %{"address" => "invalid"}}
+                 }
                }
              }
            })
@@ -309,10 +281,279 @@ defmodule Web.Live.Settings.DNSTest do
            |> form("form", %{
              account: %{
                config: %{
-                 clients_upstream_dns: %{"0" => %{"address" => "8.8.8.8"}}
+                 clients_upstream_dns: %{
+                   type: "custom",
+                   addresses: %{"0" => %{"address" => "8.8.8.8"}}
+                 }
                }
              }
            })
            |> render_change() =~ "must be a valid IP address"
+  end
+
+  test "saves secure DNS with DoH provider", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    attrs = %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "secure",
+            doh_provider: "google"
+          }
+        }
+      }
+    }
+
+    lv
+    |> form("form", attrs)
+    |> render_submit()
+
+    account = Domain.Accounts.fetch_account_by_id!(account.id)
+    assert account.config.clients_upstream_dns.type == :secure
+    assert account.config.clients_upstream_dns.doh_provider == :google
+    assert Enum.empty?(account.config.clients_upstream_dns.addresses)
+  end
+
+  test "requires doh_provider when type is secure", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    attrs = %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "secure"
+          }
+        }
+      }
+    }
+
+    html =
+      lv
+      |> form("form", attrs)
+      |> render_submit()
+
+    assert html =~ "must be selected when using secure DNS"
+  end
+
+  test "saves system resolver selection", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    # Start with secure DNS set
+    Fixtures.Accounts.update_account(account, %{
+      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :cloudflare, addresses: []}}
+    })
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    attrs = %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "system"
+          }
+        }
+      }
+    }
+
+    lv
+    |> form("form", attrs)
+    |> render_submit()
+
+    account = Domain.Accounts.fetch_account_by_id!(account.id)
+    assert account.config.clients_upstream_dns.type == :system
+    assert Enum.empty?(account.config.clients_upstream_dns.addresses)
+  end
+
+  test "retains DoH provider when switching from secure to system and back", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    # Start with secure DNS
+    Fixtures.Accounts.update_account(account, %{
+      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :quad9, addresses: []}}
+    })
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    # Switch to system
+    lv
+    |> form("form", %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "system"
+          }
+        }
+      }
+    })
+    |> render_change()
+
+    # Switch back to secure - DoH provider should still be there
+    html =
+      lv
+      |> form("form", %{
+        account: %{
+          config: %{
+            clients_upstream_dns: %{
+              type: "secure",
+              doh_provider: "quad9"
+            }
+          }
+        }
+      })
+      |> render_change()
+
+    assert html =~ "Quad9 DNS"
+  end
+
+  test "retains custom addresses when switching from custom to system and back", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    # Start with custom addresses
+    Fixtures.Accounts.update_account(account, %{
+      config: %{
+        clients_upstream_dns: %{
+          type: :custom,
+          addresses: [%{address: "8.8.8.8"}]
+        }
+      }
+    })
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    # Switch to system
+    lv
+    |> form("form", %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "system"
+          }
+        }
+      }
+    })
+    |> render_change()
+
+    # Switch back to custom - addresses should still be there
+    html =
+      lv
+      |> form("form", %{
+        account: %{
+          config: %{
+            clients_upstream_dns: %{
+              type: "custom",
+              addresses: %{"0" => %{"address" => "8.8.8.8"}}
+            }
+          }
+        }
+      }
+      })
+      |> render_change()
+
+    assert html =~ "8.8.8.8"
+  end
+
+  test "can add multiple custom DNS addresses", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    attrs = %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "custom",
+            addresses: %{
+              "0" => %{"address" => "8.8.8.8"},
+              "1" => %{"address" => "1.1.1.1"},
+              "2" => %{"address" => "2001:4860:4860::8888"}
+            }
+          }
+        }
+      }
+    }
+
+    lv
+    |> form("form", attrs)
+    |> render_submit()
+
+    account = Domain.Accounts.fetch_account_by_id!(account.id)
+    assert account.config.clients_upstream_dns.type == :custom
+    assert length(account.config.clients_upstream_dns.addresses) == 3
+
+    addresses = Enum.map(account.config.clients_upstream_dns.addresses, & &1.address)
+    assert "8.8.8.8" in addresses
+    assert "1.1.1.1" in addresses
+    assert "2001:4860:4860::8888" in addresses
+  end
+
+  test "can change DoH provider", %{
+    account: account,
+    identity: identity,
+    conn: conn
+  } do
+    # Start with Google
+    Fixtures.Accounts.update_account(account, %{
+      config: %{clients_upstream_dns: %{type: :secure, doh_provider: :google, addresses: []}}
+    })
+
+    {:ok, lv, _html} =
+      conn
+      |> authorize_conn(identity)
+      |> live(~p"/#{account}/settings/dns")
+
+    # Change to Cloudflare
+    attrs = %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "secure",
+            doh_provider: "cloudflare"
+          }
+        }
+      }
+    }
+
+    lv
+    |> form("form", attrs)
+    |> render_submit()
+
+    account = Domain.Accounts.fetch_account_by_id!(account.id)
+    assert account.config.clients_upstream_dns.type == :secure
+    assert account.config.clients_upstream_dns.doh_provider == :cloudflare
   end
 end
