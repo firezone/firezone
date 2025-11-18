@@ -708,7 +708,7 @@ mod tests {
     use ip_packet::make::TcpFlags;
 
     use crate::{
-        gateway::nat_table,
+        gateway::{RoutingError, nat_table},
         messages::gateway::{Filter, PortRange, ResourceDescriptionCidr},
     };
 
@@ -1028,10 +1028,9 @@ mod tests {
             .translate_inbound(response, now)
             .unwrap_err()
             .downcast::<UnroutablePacket>()
-            .unwrap()
-            .to_string();
+            .unwrap();
 
-        assert_eq!(err, "");
+        assert_eq!(err.reason(), RoutingError::ExpiredNatSession);
     }
 
     #[test]

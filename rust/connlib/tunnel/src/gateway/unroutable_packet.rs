@@ -126,7 +126,7 @@ impl FiveTuple {
     }
 }
 
-#[derive(Debug, derive_more::Display, Clone, Copy)]
+#[derive(Debug, derive_more::Display, Clone, Copy, PartialEq, Eq)]
 pub enum RoutingError {
     #[display("Not allowed")]
     NotAllowed,
