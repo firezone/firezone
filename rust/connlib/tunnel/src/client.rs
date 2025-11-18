@@ -601,7 +601,7 @@ impl ClientState {
 
         let transmit = self
             .node
-            .encapsulate(gid, packet, now)
+            .encapsulate(gid, &packet, now)
             .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e:#}"))
             .ok()??;
 
@@ -1870,7 +1870,7 @@ fn encapsulate_and_buffer(
     buffered_transmits: &mut VecDeque<Transmit>,
 ) {
     let Some(transmit) = node
-        .encapsulate(gid, packet, now)
+        .encapsulate(gid, &packet, now)
         .inspect_err(|e| tracing::debug!(%gid, "Failed to encapsulate: {e}"))
         .ok()
         .flatten()

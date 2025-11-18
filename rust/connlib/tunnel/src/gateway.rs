@@ -132,7 +132,7 @@ impl GatewayState {
 
         let Some(encrypted_packet) = self
             .node
-            .encapsulate(cid, packet, now)
+            .encapsulate(cid, &packet, now)
             .context("Failed to encapsulate")?
         else {
             return Ok(None);
@@ -719,7 +719,7 @@ fn encrypt_packet(
     now: Instant,
 ) -> Result<Option<Transmit>> {
     let transmit = node
-        .encapsulate(cid, packet, now)
+        .encapsulate(cid, &packet, now)
         .context("Failed to encapsulate")?;
 
     Ok(transmit)
