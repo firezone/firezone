@@ -1,0 +1,189 @@
+use std::{
+    collections::{BTreeMap, btree_map::Entry},
+    fmt,
+    net::SocketAddr,
+    time::Instant,
+};
+
+use bufferpool::BufferPool;
+use itertools::Itertools as _;
+use rand::{Rng, seq::IteratorRandom as _};
+use str0m::Candidate;
+use stun_codec::rfc5389::attributes::{Realm, Username};
+
+use crate::{
+    RelaySocket, Transmit,
+    allocation::{self, Allocation},
+    node::SessionId,
+};
+
+pub(crate) struct Allocations<RId> {
+    inner: BTreeMap<RId, Allocation>,
+    buffer_pool: BufferPool<Vec<u8>>,
+}
+
+impl<RId> Allocations<RId>
+where
+    RId: Ord + fmt::Display + Copy,
+{
+    pub(crate) fn clear(&mut self) {
+        self.inner.clear();
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.inner.is_empty()
+    }
+
+    pub(crate) fn contains(&self, id: &RId) -> bool {
+        self.inner.contains_key(id)
+    }
+
+    pub(crate) fn get_by_id(&self, id: &RId) -> Option<&Allocation> {
+        self.inner.get(id)
+    }
+
+    pub(crate) fn get_mut_by_id(&mut self, id: &RId) -> Option<&mut Allocation> {
+        self.inner.get_mut(id)
+    }
+
+    pub(crate) fn get_mut_by_allocation(
+        &mut self,
+        addr: SocketAddr,
+    ) -> Option<(RId, &mut Allocation)> {
+        self.inner
+            .iter_mut()
+            .find_map(|(id, a)| a.has_socket(addr).then_some((*id, a)))
+    }
+
+    pub(crate) fn get_mut_by_server(
+        &mut self,
+        socket: SocketAddr,
+    ) -> Option<(RId, &mut Allocation)> {
+        self.inner
+            .iter_mut()
+            .find_map(|(id, a)| a.server().matches(socket).then_some((*id, a)))
+    }
+
+    pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&RId, &mut Allocation)> {
+        self.inner.iter_mut()
+    }
+
+    pub(crate) fn remove_by_id(&mut self, id: &RId) -> Option<Allocation> {
+        self.inner.remove(id)
+    }
+
+    pub(crate) fn upsert(
+        &mut self,
+        rid: RId,
+        server: RelaySocket,
+        username: Username,
+        password: String,
+        realm: Realm,
+        now: Instant,
+        session_id: SessionId,
+    ) -> UpsertResult {
+        match self.inner.entry(rid) {
+            Entry::Vacant(v) => {
+                v.insert(Allocation::new(
+                    server,
+                    username,
+                    password,
+                    realm,
+                    now,
+                    session_id,
+                    self.buffer_pool.clone(),
+                ));
+
+                UpsertResult::Added
+            }
+            Entry::Occupied(mut o) => {
+                let allocation = o.get();
+
+                if allocation.matches_credentials(&username, &password)
+                    && allocation.matches_socket(&server)
+                {
+                    return UpsertResult::Skipped;
+                }
+
+                let previous = o.insert(Allocation::new(
+                    server,
+                    username,
+                    password,
+                    realm,
+                    now,
+                    session_id,
+                    self.buffer_pool.clone(),
+                ));
+
+                UpsertResult::Replaced(previous)
+            }
+        }
+    }
+
+    pub(crate) fn sample(&self, rng: &mut impl Rng) -> Option<(RId, &Allocation)> {
+        let (id, a) = self.inner.iter().choose(rng)?;
+
+        Some((*id, a))
+    }
+
+    pub(crate) fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
+        self.inner
+            .values()
+            .flat_map(|allocation| allocation.host_and_server_reflexive_candidates())
+            .unique()
+    }
+
+    pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
+        self.inner
+            .values_mut()
+            .filter_map(|a| a.poll_timeout())
+            .min_by_key(|(t, _)| *t)
+    }
+
+    pub(crate) fn poll_event(&mut self) -> Option<(RId, allocation::Event)> {
+        self.inner
+            .iter_mut()
+            .filter_map(|(id, a)| Some((*id, a.poll_event()?)))
+            .next()
+    }
+
+    pub(crate) fn handle_timeout(&mut self, now: Instant) {
+        for allocation in self.inner.values_mut() {
+            allocation.handle_timeout(now);
+        }
+    }
+
+    pub(crate) fn poll_transmit(&mut self) -> Option<Transmit> {
+        self.inner
+            .values_mut()
+            .filter_map(Allocation::poll_transmit)
+            .next()
+    }
+
+    pub(crate) fn gc(&mut self) {
+        self.inner
+            .retain(|rid, allocation| match allocation.can_be_freed() {
+                Some(e) => {
+                    tracing::info!(%rid, "Disconnecting from relay; {e}");
+
+                    false
+                }
+                None => true,
+            });
+    }
+}
+
+pub(crate) enum UpsertResult {
+    Added,
+    Skipped,
+    Replaced(Allocation),
+}
+
+impl<RId> Default for Allocations<RId> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
+        }
+    }
+}
