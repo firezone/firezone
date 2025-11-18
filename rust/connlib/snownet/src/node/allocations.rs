@@ -30,7 +30,10 @@ where
     RId: Ord + fmt::Display + Copy,
 {
     pub(crate) fn clear(&mut self) {
-        self.inner.clear();
+        for (_, allocation) in std::mem::take(&mut self.inner) {
+            self.previous_relays_by_ip
+                .extend(server_addresses(&allocation));
+        }
     }
 
     pub(crate) fn is_empty(&self) -> bool {
