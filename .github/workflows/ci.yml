@@ -220,6 +220,11 @@ jobs:
       relay_image: ${{ needs.data-plane.outputs.relay_image }}
       http_test_server_image: ${{ needs.data-plane.outputs.http_test_server_image }}
 
+  load-tests:
+    uses: ./.github/workflows/_load_tests.yml
+    needs: build-artifacts
+    secrets: inherit
+
   compatibility-tests:
     strategy:
       fail-fast: ${{ github.event_name == 'merge_group' }}
