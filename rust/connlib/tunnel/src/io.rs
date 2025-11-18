@@ -468,7 +468,10 @@ impl Io {
         self.dns_queries =
             FuturesTupleSet::new(|| futures_bounded::Delay::tokio(DNS_QUERY_TIMEOUT), 1000);
         self.nameservers.evaluate();
-        self.doh_clients.clear();
+
+        for (server, _) in std::mem::take(&mut self.doh_clients) {
+            self.bootstrap_doh_client(server);
+        }
     }
 
     pub fn reset_timeout(&mut self, timeout: Instant, reason: &'static str) {
