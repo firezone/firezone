@@ -4,7 +4,7 @@ use std::{
     borrow::Cow,
     collections::BTreeMap,
     fmt, mem,
-    net::{SocketAddr, ToSocketAddrs as _},
+    net::{IpAddr, ToSocketAddrs as _},
     str::FromStr,
     sync::Arc,
     time::Duration,
@@ -12,10 +12,11 @@ use std::{
 
 use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
+use bytes::{BufMut, BytesMut};
+use http_client::HttpClient;
 use sentry::{
     BeforeCallback, User,
     protocol::{Event, Log, LogAttribute, SessionStatus},
-    transports::ReqwestHttpTransport,
 };
 use sha2::Digest as _;
 
@@ -31,6 +32,7 @@ mod posthog;
 pub use maybe_push_metrics_exporter::MaybePushMetricsExporter;
 pub use noop_push_metrics_exporter::NoopPushMetricsExporter;
 use socket_factory::{SocketFactory, TcpSocket};
+use tokio_util::task::AbortOnDropHandle;
 
 pub struct Dsn {
     public_key: &'static str,
@@ -438,7 +440,7 @@ fn set_current_user(user: Option<sentry::User>) {
 
 #[derive(Clone)]
 pub struct TransportFactory {
-    ingest_domain_addresses: Vec<SocketAddr>,
+    ingest_domain_addresses: Vec<IpAddr>,
     tcp_socket_factory: Arc<dyn SocketFactory<TcpSocket>>,
 }
 
@@ -447,6 +449,7 @@ impl TransportFactory {
         let resolved_addresses = (INGEST_HOST, 443u16)
             .to_socket_addrs()
             .with_context(|| format!("Failed to resolve {INGEST_HOST}"))?
+            .map(|s| s.ip())
             .collect();
 
         tracing::debug!(host = %INGEST_HOST, addresses = ?resolved_addresses, "Resolved ingest host IPs");
@@ -467,22 +470,119 @@ impl TransportFactory {
 
 impl sentry::TransportFactory for TransportFactory {
     fn create_transport(&self, options: &sentry::ClientOptions) -> Arc<dyn sentry::Transport> {
-        let mut builder = reqwest::ClientBuilder::new()
-            .http2_prior_knowledge()
-            .http2_keep_alive_while_idle(true)
-            .http2_keep_alive_timeout(Duration::from_secs(1))
-            .http2_keep_alive_interval(Duration::from_secs(5)); // Ensure we detect broken connections, i.e. when enabling / disabling the Internet Resource.
+        let addresses = self.ingest_domain_addresses.clone();
+        let (sender, mut receiver) = tokio::sync::mpsc::channel(1024);
+        let sf = self.tcp_socket_factory.clone();
 
-        if !self.ingest_domain_addresses.is_empty() {
-            builder = builder.resolve_to_addrs(INGEST_HOST, &self.ingest_domain_addresses);
-        } else {
-            tracing::debug!(host = %INGEST_HOST, "No addresses were pre-resolved for ingest host");
+        let dsn = options.dsn.as_ref().expect("DSN must be set");
+        let user_agent = options.user_agent.clone();
+        let auth = dsn.to_auth(Some(&user_agent)).to_string();
+        let url = dsn.envelope_api_url().to_string();
+
+        let task = tokio::spawn(async move {
+            'outer: loop {
+                let http_client =
+                    HttpClient::new(INGEST_HOST.to_owned(), addresses.clone(), sf.clone()).await;
+
+                let client = match http_client {
+                    Ok(c) => c,
+                    Err(e) => {
+                        tracing::debug!("Failed to create Sentry transport HTTP client: {e:#}");
+                        continue;
+                    }
+                };
+
+                while let Some(msg) = receiver.recv().await {
+                    let envelope = match msg {
+                        TransportMsg::Send(envelope) => envelope,
+                        TransportMsg::Close => {
+                            tracing::debug!("Exiting Sentry HTTP transport ask");
+                            return;
+                        }
+                    };
+
+                    let mut body = BytesMut::new().writer();
+                    envelope
+                        .to_writer(&mut body)
+                        .expect("should always succeed to write envelope to byte buffer");
+
+                    let req = match http::Request::builder()
+                        .uri(url.clone())
+                        .method(http::Method::POST)
+                        .header("X-Sentry-Auth", &auth)
+                        .body(body.into_inner().freeze())
+                    {
+                        Ok(req) => req,
+                        Err(e) => {
+                            tracing::debug!(
+                                "Failed to create HTTP request from Sentry envelope: {e}"
+                            );
+                            continue;
+                        }
+                    };
+
+                    let _response = match client.send_request(req) {
+                        Ok(res) => res.await,
+                        Err(e) if e.is::<http_client::Closed>() => {
+                            tracing::debug!("HTTP connection to Sentry failed");
+                            continue 'outer;
+                        }
+                        Err(e) => {
+                            tracing::debug!("Failed to send envelope to Sentry: {e:#}");
+                            continue;
+                        }
+                    };
+
+                    // TODO: Check response for rate limits etc
+                }
+            }
+        });
+
+        Arc::new(Transport {
+            sender,
+            task: AbortOnDropHandle::new(task),
+        })
+    }
+}
+
+struct Transport {
+    sender: tokio::sync::mpsc::Sender<TransportMsg>,
+    #[expect(dead_code, reason = "We just keep it around so it doesn't stop.")]
+    task: AbortOnDropHandle<()>,
+}
+
+impl sentry::Transport for Transport {
+    fn send_envelope(&self, envelope: sentry::Envelope) {
+        let _ = self.sender.try_send(TransportMsg::Send(envelope));
+    }
+
+    fn flush(&self, timeout: Duration) -> bool {
+        const NUM_STEPS: u32 = 10;
+
+        let step = timeout / NUM_STEPS;
+        let is_drained = || self.sender.capacity() == self.sender.max_capacity();
+
+        for _ in 0..NUM_STEPS {
+            if is_drained() {
+                return true;
+            }
+
+            std::thread::sleep(step);
         }
 
-        let client = builder.build().expect("Failed to build HTTP client");
-
-        Arc::new(ReqwestHttpTransport::with_client(options, client))
+        is_drained()
     }
+
+    fn shutdown(&self, timeout: Duration) -> bool {
+        let _ = self.sender.try_send(TransportMsg::Close);
+
+        self.flush(timeout)
+    }
+}
+
+enum TransportMsg {
+    Send(sentry::Envelope),
+    Close,
 }
 
 #[cfg(test)]
