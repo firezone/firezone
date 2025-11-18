@@ -630,7 +630,7 @@ fn is_max_wg_packet_size(d: &DatagramIn) -> bool {
 #[cfg(test)]
 mod tests {
     use futures::task::noop_waker_ref;
-    use std::{future::poll_fn, ptr::addr_of_mut};
+    use std::{future::poll_fn, net::Ipv4Addr, ptr::addr_of_mut};
 
     use super::*;
 
@@ -666,14 +666,62 @@ mod tests {
         assert!(timeout >= now, "timeout = {timeout:?}, now = {now:?}");
     }
 
+    #[tokio::test]
+    async fn bootstrap_doh() {
+        let _guard = firezone_logging::test("debug");
+
+        let mut io = Io::for_test();
+        io.update_system_resolvers(vec![IpAddr::from([1, 1, 1, 1])]);
+
+        {
+            io.send_dns_query(example_com_recursive_query());
+
+            let input = io.next().await;
+
+            assert_eq!(
+                input.dns_response.unwrap().message.unwrap_err().to_string(),
+                "Bootstrapping DoH client"
+            );
+        }
+
+        // Hack: Advance for a bit but timeout after 500ms. We don't emit an event when the client is bootstrapped so this will always be `Pending`.
+        let _ = tokio::time::timeout(Duration::from_millis(500), io.next()).await;
+
+        {
+            io.send_dns_query(example_com_recursive_query());
+
+            let input = io.next().await;
+
+            assert_eq!(
+                input.dns_response.unwrap().message.unwrap().response_code(),
+                dns_types::ResponseCode::NOERROR
+            );
+        }
+    }
+
+    fn example_com_recursive_query() -> dns::RecursiveQuery {
+        dns::RecursiveQuery {
+            server: dns::Upstream::DoH {
+                server: DoHUrl::cloudflare(),
+            },
+            local: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 11111),
+            remote: SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 22222),
+            message: dns_types::Query::new(
+                "example.com".parse().unwrap(),
+                dns_types::RecordType::A,
+            ),
+            transport: dns::Transport::Udp,
+        }
+    }
+
     static mut DUMMY_BUF: Buffers = Buffers { ip: Vec::new() };
 
     /// Helper functions to make the test more concise.
     impl Io {
         fn for_test() -> Io {
             let mut io = Io::new(
-                Arc::new(|_| Err(io::Error::other("not implemented"))),
-                Arc::new(|_| Err(io::Error::other("not implemented"))),
+                Arc::new(socket_factory::tcp),
+                Arc::new(socket_factory::udp),
                 BTreeSet::new(),
             );
             io.set_tun(Box::new(DummyTun));
