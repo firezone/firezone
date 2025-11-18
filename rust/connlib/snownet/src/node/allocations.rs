@@ -1,13 +1,14 @@
 use std::{
     collections::{BTreeMap, btree_map::Entry},
     fmt,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     time::Instant,
 };
 
 use bufferpool::BufferPool;
 use itertools::Itertools as _;
 use rand::{Rng, seq::IteratorRandom as _};
+use ringbuffer::AllocRingBuffer;
 use str0m::Candidate;
 use stun_codec::rfc5389::attributes::{Realm, Username};
 
@@ -19,6 +20,8 @@ use crate::{
 
 pub(crate) struct Allocations<RId> {
     inner: BTreeMap<RId, Allocation>,
+    previous_relays_by_ip: AllocRingBuffer<IpAddr>,
+
     buffer_pool: BufferPool<Vec<u8>>,
 }
 
@@ -69,7 +72,12 @@ where
     }
 
     pub(crate) fn remove_by_id(&mut self, id: &RId) -> Option<Allocation> {
-        self.inner.remove(id)
+        let allocation = self.inner.remove(id)?;
+
+        self.previous_relays_by_ip
+            .extend(server_addresses(&allocation));
+
+        Some(allocation)
     }
 
     pub(crate) fn upsert(
@@ -114,6 +122,9 @@ where
                     session_id,
                     self.buffer_pool.clone(),
                 ));
+
+                self.previous_relays_by_ip
+                    .extend(server_addresses(&previous));
 
                 UpsertResult::Replaced(previous)
             }
@@ -166,11 +177,34 @@ where
                 Some(e) => {
                     tracing::info!(%rid, "Disconnecting from relay; {e}");
 
+                    self.previous_relays_by_ip
+                        .extend(server_addresses(allocation));
+
                     false
                 }
                 None => true,
             });
     }
+}
+
+fn server_addresses(allocation: &Allocation) -> impl Iterator<Item = IpAddr> {
+    std::iter::empty()
+        .chain(
+            allocation
+                .server()
+                .as_v4()
+                .map(|s| s.ip())
+                .copied()
+                .map(IpAddr::from),
+        )
+        .chain(
+            allocation
+                .server()
+                .as_v6()
+                .map(|s| s.ip())
+                .copied()
+                .map(IpAddr::from),
+        )
 }
 
 pub(crate) enum UpsertResult {
@@ -183,6 +217,7 @@ impl<RId> Default for Allocations<RId> {
     fn default() -> Self {
         Self {
             inner: Default::default(),
+            previous_relays_by_ip: AllocRingBuffer::with_capacity_power_of_2(6), // 64 entries,
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "turn-clients"),
         }
     }
