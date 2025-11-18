@@ -64,6 +64,13 @@ public final class Store: ObservableObject {
       }
     }
 
+    // Forward favourites changes to Store's objectWillChange so SwiftUI views observing Store get notified
+    self.favorites.objectWillChange
+      .sink { [weak self] _ in
+        self?.objectWillChange.send()
+      }
+      .store(in: &cancellables)
+
     // We monitor for any configuration changes and tell the tunnel service about them
     self.configuration.objectWillChange
       .receive(on: DispatchQueue.main)
