@@ -77,27 +77,16 @@ defmodule Domain.Actors.Group.Sync do
 
     delete_percentage = (deletion_length / groups_length * 100) |> round()
 
-    cond do
-      groups_length > 40 and delete_percentage >= 25 ->
-        Logger.error("Refusing to mass delete groups",
-          groups_length: groups_length,
-          deletion_length: deletion_length,
-          provider_id: provider.id
-        )
+    if delete_percentage >= 75 do
+      Logger.error("Refusing to mass delete groups",
+        groups_length: groups_length,
+        deletion_length: deletion_length,
+        provider_id: provider.id
+      )
 
-        {:error, "Sync deletion of groups too large"}
-
-      groups_length <= 40 and delete_percentage >= 50 ->
-        Logger.error("Refusing to mass delete groups",
-          groups_length: groups_length,
-          deletion_length: deletion_length,
-          provider_id: provider.id
-        )
-
-        {:error, "Sync deletion of groups too large"}
-
-      true ->
-        :ok
+      {:error, "Sync deletion of groups too large"}
+    else
+      :ok
     end
   end
 

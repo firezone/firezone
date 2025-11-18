@@ -22,7 +22,7 @@ use futures::{
     task::{Context, Poll},
 };
 use phoenix_channel::{DeviceInfo, LoginUrl, PhoenixChannel, get_user_agent};
-use secrecy::{Secret, SecretString};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
 use std::{
     io::{self, Write},
     mem,
@@ -47,12 +47,13 @@ mod platform;
 
 pub use platform::{elevation_check, install, run};
 
-#[derive(Debug, PartialEq, serde::Deserialize, serde::Serialize)]
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
 pub enum ClientMsg {
     ClearLogs,
     Connect {
         api_url: String,
-        token: String,
+        #[serde(serialize_with = "serialize_token")]
+        token: SecretString,
         is_internet_resource_active: bool,
     },
     Disconnect,
@@ -65,6 +66,13 @@ pub enum ClientMsg {
         release: String,
         account_slug: Option<String>,
     },
+}
+
+fn serialize_token<S>(token: &SecretString, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(token.expose_secret())
 }
 
 /// Messages that end up in the GUI, either forwarded from connlib or from the Tunnel service.
@@ -105,12 +113,13 @@ async fn ipc_listen(
 ) -> Result<()> {
     // Create the device ID and Tunnel service config dir if needed
     // This also gives the GUI a safe place to put the log filter config
-    let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
+    let device_id =
+        device_id::get_or_create_client().context("Failed to read / create device ID")?;
 
     // Fix up the group of the device ID file and directory so the GUI client can access it.
     #[cfg(target_os = "linux")]
-    {
-        let path = device_id::path().context("Failed to access device ID path")?;
+    if device_id.source == device_id::Source::Disk {
+        let path = device_id::client_path().context("Failed to access device ID path")?;
         let group_id = crate::firezone_client_group()
             .context("Failed to get `firezone-client` group")?
             .gid
@@ -487,7 +496,7 @@ impl<'a> Handler<'a> {
 
                 self.tun_device.set_ips(config.ip.v4, config.ip.v6).await?;
                 self.dns_controller
-                    .set_dns(config.dns_sentinel_ips(), config.search_domain)
+                    .set_dns(config.dns_by_sentinel.sentinel_ips(), config.search_domain)
                     .await?;
                 self.tun_device
                     .set_routes(config.ipv4_routes, config.ipv6_routes)
@@ -516,8 +525,6 @@ impl<'a> Handler<'a> {
                 token,
                 is_internet_resource_active,
             } => {
-                let token = SecretString::new(token);
-
                 if !self.session.is_none() {
                     tracing::debug!(session = ?self.session, "Connecting despite existing session");
                 }
@@ -624,7 +631,8 @@ impl<'a> Handler<'a> {
     ) -> Result<Session> {
         let started_at = Instant::now();
 
-        let device_id = device_id::get_or_create().context("Failed to get-or-create device ID")?;
+        let device_id =
+            device_id::get_or_create_client().context("Failed to get-or-create device ID")?;
 
         let url = LoginUrl::client(
             Url::parse(api_url).context("Failed to parse URL")?,
@@ -641,7 +649,7 @@ impl<'a> Handler<'a> {
 
         // Synchronous DNS resolution here
         let portal = PhoenixChannel::disconnected(
-            Secret::new(url),
+            SecretBox::init_with(|| url),
             get_user_agent(None, "gui-client", env!("CARGO_PKG_VERSION")),
             "client",
             (),
@@ -738,7 +746,8 @@ pub fn run_smoke_test() -> Result<()> {
 
     // Couldn't get the loop to work here yet, so SIGHUP is not implemented
     rt.block_on(async {
-        let device_id = device_id::get_or_create().context("Failed to read / create device ID")?;
+        let device_id =
+            device_id::get_or_create_client().context("Failed to read / create device ID")?;
         let mut server = ipc::Server::new(SocketId::Tunnel)?;
         let _ = Handler::new(
             device_id,

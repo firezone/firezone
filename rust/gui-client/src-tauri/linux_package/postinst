@@ -4,10 +4,27 @@ set -euo pipefail
 
 SERVICE_NAME="firezone-client-tunnel"
 
-# Creates the system group `firezone-client`
-sudo systemd-sysusers
+DISPLAY_USER=$(who | awk '{print $1}' | head -n 1)
 
-echo "Starting and enabling Firezone Tunnel service..."
-sudo systemctl daemon-reload
-sudo systemctl enable "$SERVICE_NAME"
-sudo systemctl restart "$SERVICE_NAME"
+if [ -n "${PKEXEC_UID:-}" ]; then
+    INVOKING_USER=$(id -un "$PKEXEC_UID" 2>/dev/null) # Detect user from PolicyKit.
+
+    echo "Detected invoking user from PolicyKit: $INVOKING_USER"
+elif [ -n "${SUDO_USER:-}" ]; then
+    INVOKING_USER="$SUDO_USER" # Detect user from `sudo apt/dnf install`.
+
+    echo "Detected invoking user from SUDO_USER: $INVOKING_USER"
+elif [ -n "${DISPLAY_USER:-}" ]; then
+    INVOKING_USER="$DISPLAY_USER" # Detect user from display session.
+
+    echo "Detected invoking user from display session: $INVOKING_USER"
+fi
+
+sed -i "s/<<USER>>/${INVOKING_USER:-root}/g" "/usr/lib/sysusers.d/firezone-client-tunnel.conf"
+
+# Creates the system group `firezone-client` and adds the group membership.
+systemd-sysusers firezone-client-tunnel.conf
+
+systemctl daemon-reload
+systemctl enable "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME"

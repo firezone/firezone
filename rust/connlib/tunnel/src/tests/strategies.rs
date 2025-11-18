@@ -5,32 +5,35 @@ use crate::client::{
     CidrResource, DNS_SENTINELS_V4, DNS_SENTINELS_V6, DnsResource, IPV4_RESOURCES, IPV6_RESOURCES,
     InternetResource,
 };
-use crate::messages::DnsServer;
+use crate::messages::{UpstreamDo53, UpstreamDoH};
 use crate::{IPV4_TUNNEL, IPV6_TUNNEL, proptest::*};
 use connlib_model::{RelayId, Site};
-use dns_types::{DomainName, OwnedRecordData};
+use dns_types::{DoHUrl, DomainName, OwnedRecordData};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
 use itertools::Itertools;
 use prop::sample;
+use proptest::collection::btree_set;
 use proptest::{collection, prelude::*};
 use std::iter;
 use std::num::NonZeroU16;
+use std::time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     time::Duration,
 };
 
-pub(crate) fn global_dns_records() -> impl Strategy<Value = DnsRecords> {
+pub(crate) fn global_dns_records(at: Instant) -> impl Strategy<Value = DnsRecords> {
     collection::btree_map(
         domain_name(2..4),
-        collection::btree_set(dns_record(), 1..6),
+        collection::btree_set(dns_record(), 1..6)
+            .prop_map(move |records| BTreeMap::from([(at, records)])),
         0..5,
     )
     .prop_map_into()
 }
 
-fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
+pub(crate) fn dns_record() -> impl Strategy<Value = OwnedRecordData> {
     prop_oneof![
         3 => non_reserved_ip().prop_map(dns_types::records::ip),
         1 => collection::vec(txt_record(), 6..=10)
@@ -141,6 +144,7 @@ pub(crate) fn stub_portal() -> impl Strategy<Value = StubPortal> {
 pub(crate) fn tcp_resources(
     dns_records: DnsRecords,
     imcp_error_hosts: IcmpErrorHosts,
+    at: Instant,
 ) -> impl Strategy<Value = BTreeMap<DomainName, BTreeSet<SocketAddr>>> {
     let all_domains = dns_records.domains_iter().collect::<Vec<_>>();
 
@@ -153,7 +157,7 @@ pub(crate) fn tcp_resources(
             .into_iter()
             .filter(|(domain, _)| {
                 dns_records
-                    .domain_ips_iter(domain)
+                    .domain_ips_iter(domain, at)
                     .all(|ip| imcp_error_hosts.icmp_error_for_ip(ip).is_none())
             })
             .map({
@@ -161,7 +165,7 @@ pub(crate) fn tcp_resources(
 
                 move |(domain, port)| {
                     let addresses = dns_records
-                        .domain_ips_iter(&domain)
+                        .domain_ips_iter(&domain, at)
                         .map(|address| SocketAddr::new(address, port.get()))
                         .collect::<BTreeSet<_>>();
 
@@ -186,23 +190,28 @@ pub(crate) fn relays(
     collection::btree_map(id, ref_relay_host(), 1..=2)
 }
 
-/// Sample a list of DNS servers.
+/// Sample a list of Do53 servers.
 ///
 /// We make sure to always have at least 1 IPv4 and 1 IPv6 DNS server.
-pub(crate) fn dns_servers() -> impl Strategy<Value = BTreeSet<SocketAddr>> {
-    let ip4_dns_servers = collection::btree_set(
-        non_reserved_ipv4().prop_map(|ip| SocketAddr::from((ip, 53))),
-        1..4,
-    );
-    let ip6_dns_servers = collection::btree_set(
-        non_reserved_ipv6().prop_map(|ip| SocketAddr::from((ip, 53))),
-        1..4,
-    );
+pub(crate) fn do53_servers() -> impl Strategy<Value = BTreeSet<IpAddr>> {
+    let ip4_dns_servers =
+        collection::btree_set(non_reserved_ipv4().prop_map_into::<IpAddr>(), 1..4);
+    let ip6_dns_servers =
+        collection::btree_set(non_reserved_ipv6().prop_map_into::<IpAddr>(), 1..4);
 
     (ip4_dns_servers, ip6_dns_servers).prop_map(|(mut v4, v6)| {
         v4.extend(v6);
         v4
     })
+}
+
+pub(crate) fn doh_server() -> impl Strategy<Value = DoHUrl> {
+    prop_oneof![
+        Just(DoHUrl::quad9()),
+        Just(DoHUrl::cloudflare()),
+        Just(DoHUrl::google()),
+        Just(DoHUrl::opendns()),
+    ]
 }
 
 pub(crate) fn non_reserved_ip() -> impl Strategy<Value = IpAddr> {
@@ -311,6 +320,7 @@ pub(crate) fn resolved_ips() -> impl Strategy<Value = BTreeSet<OwnedRecordData>>
 pub(crate) fn subdomain_records(
     base: String,
     subdomains: impl Strategy<Value = String>,
+    at: Instant,
 ) -> impl Strategy<Value = DnsRecords> {
     collection::hash_map(subdomains, resolved_ips(), 1..4).prop_map(move |subdomain_ips| {
         subdomain_ips
@@ -318,7 +328,7 @@ pub(crate) fn subdomain_records(
             .map(|(label, ips)| {
                 let domain = format!("{label}.{base}");
 
-                (domain.parse().unwrap(), ips)
+                (domain.parse().unwrap(), BTreeMap::from([(at, ips)]))
             })
             .collect()
     })
@@ -358,19 +368,23 @@ pub(crate) fn documentation_ip6s(subnet: u16) -> impl Strategy<Value = Ipv6Addr>
 }
 
 pub(crate) fn system_dns_servers() -> impl Strategy<Value = Vec<IpAddr>> {
-    dns_servers().prop_flat_map(|dns_servers| {
+    do53_servers().prop_flat_map(|dns_servers| {
         let max = dns_servers.len();
 
         sample::subsequence(Vec::from_iter(dns_servers), ..=max)
-            .prop_map(|seq| seq.into_iter().map(|h| h.ip()).collect())
     })
 }
 
-pub(crate) fn upstream_dns_servers() -> impl Strategy<Value = Vec<DnsServer>> {
-    dns_servers().prop_flat_map(|dns_servers| {
+pub(crate) fn upstream_do53_servers() -> impl Strategy<Value = Vec<UpstreamDo53>> {
+    do53_servers().prop_flat_map(|dns_servers| {
         let max = dns_servers.len();
 
         sample::subsequence(Vec::from_iter(dns_servers), ..=max)
-            .prop_map(|seq| seq.into_iter().map(|h| h.into()).collect())
+            .prop_map(|seq| seq.into_iter().map(|ip| UpstreamDo53 { ip }).collect())
     })
+}
+
+pub(crate) fn upstream_doh_servers() -> impl Strategy<Value = Vec<UpstreamDoH>> {
+    btree_set(doh_server(), 0..2)
+        .prop_map(|servers| servers.into_iter().map(|url| UpstreamDoH { url }).collect())
 }

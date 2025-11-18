@@ -9,6 +9,7 @@ use firezone_tunnel::messages::client::{
 use firezone_tunnel::{
     ClientEvent, ClientTunnel, DnsResourceRecord, IpConfig, TunConfig, TunnelError,
 };
+use l4_udp_dns_client::UdpDnsClient;
 use parking_lot::Mutex;
 use phoenix_channel::{ErrorReply, PhoenixChannel, PublicKeyParam};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
@@ -71,6 +72,7 @@ pub enum Command {
 enum PortalCommand {
     Connect(PublicKeyParam),
     Send(EgressMessages),
+    UpdateDnsServers(Vec<IpAddr>),
 }
 
 /// Unified error type to use across connlib.
@@ -109,7 +111,7 @@ impl Eventloop {
 
         let tunnel = ClientTunnel::new(
             tcp_socket_factory,
-            udp_socket_factory,
+            udp_socket_factory.clone(),
             DNS_RESOURCE_RECORDS_CACHE.lock().clone(),
             is_internet_resource_active,
         );
@@ -120,6 +122,7 @@ impl Eventloop {
             portal,
             portal_event_tx,
             portal_cmd_rx,
+            udp_socket_factory.clone(),
         ));
 
         Self {
@@ -151,6 +154,10 @@ impl Eventloop {
                     return Ok(());
                 }
                 Err(e) => {
+                    if !e.is_authentication_error() {
+                        tracing::error!("Fatal tunnel error: {e:#}");
+                    }
+
                     // Ignore error from shutdown to not obscure the original error.
                     let _ = self.shut_down_tunnel().await;
 
@@ -193,7 +200,12 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
-                tunnel.state_mut().update_system_resolvers(dns);
+                let dns = tunnel.state_mut().update_system_resolvers(dns);
+
+                self.portal_cmd_tx
+                    .send(PortalCommand::UpdateDnsServers(dns))
+                    .await
+                    .context("Failed to send message to portal")?;
             }
             Command::SetInternetResourceState(active) => {
                 let Some(tunnel) = self.tunnel.as_mut() else {
@@ -490,10 +502,13 @@ async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
+    udp_socket_factory: Arc<dyn SocketFactory<UdpSocket>>,
 ) {
     use futures::future::Either;
     use futures::future::select;
     use std::future::poll_fn;
+
+    let mut udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), vec![]);
 
     loop {
         match select(poll_fn(|cx| portal.poll(cx)), pin!(cmd_rx.recv())).await {
@@ -530,11 +545,27 @@ async fn phoenix_channel_event_loop(
                     error,
                 }),
                 _,
-            )) => tracing::info!(
-                ?backoff,
-                ?max_elapsed_time,
-                "Hiccup in portal connection: {error:#}"
-            ),
+            )) => {
+                tracing::info!(
+                    ?backoff,
+                    ?max_elapsed_time,
+                    "Hiccup in portal connection: {error:#}"
+                );
+
+                let ips = match udp_dns_client
+                    .resolve(portal.host())
+                    .await
+                    .context("Failed to lookup portal host")
+                {
+                    Ok(ips) => ips.into_iter().collect(),
+                    Err(e) => {
+                        tracing::debug!(host = %portal.host(), "{e:#}");
+                        continue;
+                    }
+                };
+
+                portal.update_ips(ips);
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 
@@ -545,6 +576,9 @@ async fn phoenix_channel_event_loop(
             }
             Either::Right((Some(PortalCommand::Connect(param)), _)) => {
                 portal.connect(param);
+            }
+            Either::Right((Some(PortalCommand::UpdateDnsServers(servers)), _)) => {
+                udp_dns_client = UdpDnsClient::new(udp_socket_factory.clone(), servers);
             }
             Either::Right((None, _)) => {
                 tracing::debug!("Command channel closed: exiting phoenix-channel event-loop");

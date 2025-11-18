@@ -12,7 +12,7 @@ runs:
         targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
         sccache_azure_connection_string: ${{ inputs.sccache_azure_connection_string }}
 
-    - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+    - uses: gradle/actions/setup-gradle@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
 
     - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
       with:
@@ -25,7 +25,7 @@ runs:
       shell: bash
 
     - name: Validate Gradle wrapper
-      uses: gradle/actions/wrapper-validation@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+      uses: gradle/actions/wrapper-validation@4d9f0ba0025fe599b4ebab900eb7f3a1d93ef4c2 # v5.0.0
 
     - run: touch local.properties
       shell: bash

@@ -1,20 +1,20 @@
 use crate::{
     client::{CidrResource, IPV4_RESOURCES, IPV6_RESOURCES, Resource},
+    messages::{UpstreamDo53, UpstreamDoH},
     proptest::{host_v4, host_v6},
 };
 use connlib_model::{RelayId, ResourceId, Site};
-use dns_types::{DomainName, RecordType};
+use dns_types::{DomainName, OwnedRecordData, RecordType};
 use ip_network::IpNetwork;
 
 use super::{
     reference::PrivateKey,
     sim_net::{Host, any_ip_stack},
 };
-use crate::messages::DnsServer;
 use prop::collection;
 use proptest::{prelude::*, sample};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     num::NonZeroU16,
 };
@@ -66,8 +66,10 @@ pub(crate) enum Transition {
 
     /// The system's DNS servers changed.
     UpdateSystemDnsServers(Vec<IpAddr>),
-    /// The upstream DNS servers changed.
-    UpdateUpstreamDnsServers(Vec<DnsServer>),
+    /// The upstream Do53 servers changed.
+    UpdateUpstreamDo53Servers(Vec<UpstreamDo53>),
+    /// The upstream DoH servers changed.
+    UpdateUpstreamDoHServers(Vec<UpstreamDoH>),
     /// The upstream search domain changed.
     UpdateUpstreamSearchDomain(Option<DomainName>),
 
@@ -102,6 +104,12 @@ pub(crate) enum Transition {
 
     /// De-authorize access to a resource whilst the Gateway is network-partitioned from the portal.
     DeauthorizeWhileGatewayIsPartitioned(ResourceId),
+
+    /// De-authorize access to a resource whilst the Gateway is network-partitioned from the portal.
+    UpdateDnsRecords {
+        domain: DomainName,
+        records: BTreeSet<OwnedRecordData>,
+    },
 }
 
 #[derive(Debug, Clone)]

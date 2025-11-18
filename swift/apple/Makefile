@@ -55,12 +55,21 @@ uniffi-bindings: $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h
 # Info for sourcekit-lsp (LSP server for other IDEs)
 .PHONY: lsp
 lsp:
-	@xcode-build-server config \
-        -project Firezone.xcodeproj \
-        -scheme Firezone
+	@if command -v xcode-build-server >/dev/null 2>&1; then \
+		xcode-build-server config \
+			-project Firezone.xcodeproj \
+			-scheme Firezone; \
+	else \
+		echo "xcode-build-server not installed, skipping LSP configuration"; \
+		echo "   Install with: brew install xcode-build-server"; \
+	fi
 
 .PHONY: build
 build: $(GENERATED_DIR)/connlib.swift $(GENERATED_DIR)/connlibFFI.h
+	@if [ ! -f buildServer.json ]; then \
+		echo "buildServer.json not found, generating LSP configuration..."; \
+		$(MAKE) lsp; \
+	fi
 	@echo "Building Xcode project for ${PLATFORM}, ${ARCH}"
 	@echo "Git SHA: ${GIT_SHA}"
 	@xcodebuild build \

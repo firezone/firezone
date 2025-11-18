@@ -1,7 +1,9 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
-use std::time::Duration;
+use std::{borrow::Cow, fmt, io, str::FromStr, time::Duration};
 
+use base64::{Engine, prelude::BASE64_URL_SAFE_NO_PAD};
+use bytes::Bytes;
 use domain::{
     base::{
         HeaderCounts, Message, MessageBuilder, ParsedName, Question, RecordSection,
@@ -10,6 +12,8 @@ use domain::{
     dep::octseq::OctetsInto,
     rdata::AllRecordData,
 };
+use serde::{Deserialize, Serialize};
+use url::Url;
 
 pub mod prelude {
     // Re-export trait names so other crates can call the functions on them.
@@ -44,6 +48,7 @@ impl std::fmt::Debug for Query {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Query")
             .field("qid", &self.inner.header().id())
+            .field("flags", &self.inner.header().flags())
             .field("type", &self.qtype())
             .field("domain", &self.domain())
             .finish()
@@ -116,6 +121,21 @@ impl Query {
         self.inner.as_slice()
     }
 
+    pub fn try_into_http_request(self, url: &DoHUrl) -> Result<http::Request<Bytes>, http::Error> {
+        let query = self.with_id(0); // In order to be more HTTP-cache friendly, DoH queries should set their ID to 0.
+
+        let url = format!(
+            "{url}?dns={}",
+            BASE64_URL_SAFE_NO_PAD.encode(query.as_bytes())
+        );
+
+        http::Request::builder()
+            .method(http::Method::GET)
+            .uri(url)
+            .header(http::header::ACCEPT, "application/dns-message")
+            .body(Bytes::new())
+    }
+
     fn question(&self) -> Question<ParsedName<&[u8]>> {
         self.inner.sole_question().expect("verified in ctor")
     }
@@ -184,6 +204,25 @@ impl Response {
         Ok(Self {
             inner: message.octets_into(),
         })
+    }
+
+    pub fn try_from_http_response(response: http::Response<Bytes>) -> Result<Self, Error> {
+        if response.status() != http::StatusCode::OK {
+            let status = response.status();
+            let body = String::from_utf8(response.into_body().into()).unwrap_or_default();
+
+            return Err(Error::HttpNotSuccess(status, body));
+        }
+
+        if response
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .is_none_or(|ct| ct != "application/dns-message")
+        {
+            return Err(Error::NotApplicationDnsMessage);
+        }
+
+        Self::parse(response.body())
     }
 
     pub fn id(&self) -> u16 {
@@ -300,8 +339,139 @@ pub enum Error {
     NotAQuery,
     #[error("DNS message is not a response")]
     NotAResponse,
+    #[error("HTTP response is not 200: {0} {1}")]
+    HttpNotSuccess(http::StatusCode, String),
+    #[error("HTTP response Content-Type is not application/dns-message")]
+    NotApplicationDnsMessage,
     #[error(transparent)]
     Parse(#[from] domain::base::wire::ParseError),
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DoHUrl(InnerUrl);
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum InnerUrl {
+    KnownProvider(Provider),
+    Other(Url),
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum Provider {
+    Quad9,
+    Google,
+    Cloudflare,
+    OpenDNS,
+}
+
+impl DoHUrl {
+    const CLOUDFLARE_URL: &str = "https://cloudflare-dns.com/dns-query";
+    const OPEN_DNS_URL: &str = "https://doh.opendns.com/dns-query";
+    const QUAD9_URL: &str = "https://dns.quad9.net/dns-query";
+    const GOOGLE_URL: &str = "https://dns.google/dns-query";
+
+    pub fn quad9() -> Self {
+        Self(InnerUrl::KnownProvider(Provider::Quad9))
+    }
+
+    pub fn google() -> Self {
+        Self(InnerUrl::KnownProvider(Provider::Google))
+    }
+
+    pub fn cloudflare() -> Self {
+        Self(InnerUrl::KnownProvider(Provider::Cloudflare))
+    }
+
+    pub fn opendns() -> Self {
+        Self(InnerUrl::KnownProvider(Provider::OpenDNS))
+    }
+
+    pub fn host(&self) -> Cow<'static, str> {
+        match &self.0 {
+            InnerUrl::KnownProvider(Provider::Cloudflare) => Cow::Borrowed("cloudflare-dns.com"),
+            InnerUrl::KnownProvider(Provider::OpenDNS) => Cow::Borrowed("dns.opendns.com"),
+            InnerUrl::KnownProvider(Provider::Quad9) => Cow::Borrowed("dns.quad9.net"),
+            InnerUrl::KnownProvider(Provider::Google) => Cow::Borrowed("dns.google"),
+            InnerUrl::Other(url) => {
+                Cow::Owned(url.host_str().expect("validated in ctor").to_owned())
+            }
+        }
+    }
+
+    pub fn to_str(&self) -> Cow<'static, str> {
+        match &self.0 {
+            InnerUrl::KnownProvider(Provider::Cloudflare) => Cow::Borrowed(Self::CLOUDFLARE_URL),
+            InnerUrl::KnownProvider(Provider::OpenDNS) => Cow::Borrowed(Self::OPEN_DNS_URL),
+            InnerUrl::KnownProvider(Provider::Quad9) => Cow::Borrowed(Self::QUAD9_URL),
+            InnerUrl::KnownProvider(Provider::Google) => Cow::Borrowed(Self::GOOGLE_URL),
+            InnerUrl::Other(url) => Cow::Owned(url.to_string()),
+        }
+    }
+}
+
+impl fmt::Display for DoHUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+impl fmt::Debug for DoHUrl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.to_str())
+    }
+}
+
+impl FromStr for DoHUrl {
+    type Err = io::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Efficient fast path for known DoH servers.
+        let other = match s {
+            Self::QUAD9_URL => return Ok(Self::quad9()),
+            Self::CLOUDFLARE_URL => return Ok(Self::cloudflare()),
+            Self::OPEN_DNS_URL => return Ok(Self::opendns()),
+            Self::GOOGLE_URL => return Ok(Self::google()),
+            other => other,
+        };
+
+        let url = Url::from_str(other).map_err(io::Error::other)?;
+
+        if url.scheme() != "https" {
+            return Err(io::Error::other("Only https scheme is allowed"));
+        }
+
+        if url.host().is_none() {
+            return Err(io::Error::other("URL without host"));
+        }
+
+        if url.query().is_some() {
+            return Err(io::Error::other("Query parameters are not allowed"));
+        }
+
+        Ok(Self(InnerUrl::Other(url)))
+    }
+}
+
+impl<'de> Deserialize<'de> for DoHUrl {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        String::deserialize(deserializer)?
+            .parse::<Self>()
+            .map_err(D::Error::custom)
+    }
+}
+
+impl Serialize for DoHUrl {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
+    }
 }
 
 pub mod records {
@@ -337,11 +507,25 @@ pub mod records {
     pub fn srv(priority: u16, weight: u16, port: u16, target: DomainName) -> OwnedRecordData {
         OwnedRecordData::Srv(Srv::new(priority, weight, port, target))
     }
+
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "We explicitly only want A and AAAA records."
+    )]
+    pub fn extract_ip(r: Record<'_>) -> Option<IpAddr> {
+        match r.into_data() {
+            RecordData::A(a) => Some(a.addr().into()),
+            RecordData::Aaaa(aaaa) => Some(aaaa.addr().into()),
+            _ => None,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::net::Ipv4Addr;
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    use http::{Method, header};
 
     use super::*;
 
@@ -364,5 +548,74 @@ mod tests {
         assert!(parsed_response.truncated());
         assert_eq!(parsed_response.records().count(), 0);
         assert_eq!(parsed_response.domain(), domain);
+    }
+
+    #[test]
+    fn parse_host_from_known_url() {
+        assert_eq!(DoHUrl::google().host(), "dns.google");
+        assert_eq!(DoHUrl::cloudflare().host(), "cloudflare-dns.com");
+        assert_eq!(DoHUrl::quad9().host(), "dns.quad9.net");
+        assert_eq!(DoHUrl::opendns().host(), "dns.opendns.com");
+    }
+
+    #[test]
+    fn parse_host_from_custom_url() {
+        assert_eq!(
+            "https://dnsserver.example.net/dns-query"
+                .parse::<DoHUrl>()
+                .unwrap()
+                .host(),
+            "dnsserver.example.net"
+        );
+    }
+
+    // Test-vector from https://datatracker.ietf.org/doc/html/rfc8484#section-4.1.1
+    #[test]
+    fn can_encode_query_as_http_request() {
+        let example_com = DomainName::vec_from_str("www.example.com.").unwrap();
+
+        let query = Query::new(example_com, RecordType::A);
+
+        let request = query
+            .try_into_http_request(&"https://dnsserver.example.net/dns-query".parse().unwrap())
+            .unwrap();
+
+        assert_eq!(request.method(), Method::GET);
+        assert_eq!(
+            request.headers().get(header::ACCEPT).unwrap(),
+            "application/dns-message"
+        );
+        assert_eq!(
+            request.uri().query().unwrap(),
+            "dns=AAABAAABAAAAAAAAA3d3dwdleGFtcGxlA2NvbQAAAQAB"
+        );
+        assert_eq!(request.uri().path(), "/dns-query");
+    }
+
+    // Test-vector from https://datatracker.ietf.org/doc/html/rfc8484#section-4.2.2
+    #[test]
+    fn can_decode_http_response_as_response() {
+        let response = http::Response::builder().status(200).header(header::CONTENT_TYPE, "application/dns-message")
+            .header(header::CONTENT_LENGTH, 61)
+            .body(Bytes::from_static(&hex_literal::hex!("00008180000100010000000003777777076578616d706c6503636f6d00001c0001c00c001c000100000e7d001020010db8abcd00120001000200030004")))
+            .unwrap();
+
+        let response = Response::try_from_http_response(response).unwrap();
+
+        let ips = response
+            .records()
+            .filter_map(crate::records::extract_ip)
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            ips,
+            vec![IpAddr::V6(Ipv6Addr::new(
+                0x2001, 0xdb8, 0xabcd, 0x12, 0x1, 0x2, 0x3, 0x4
+            ))]
+        );
+        assert_eq!(
+            response.ttl(RecordType::AAAA).unwrap(),
+            Duration::from_secs(3709)
+        )
     }
 }

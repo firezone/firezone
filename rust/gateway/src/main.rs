@@ -21,8 +21,8 @@ use phoenix_channel::LoginUrl;
 use phoenix_channel::get_user_agent;
 
 use phoenix_channel::PhoenixChannel;
-use secrecy::{Secret, SecretString};
-use std::{collections::BTreeSet, fmt, path::Path};
+use secrecy::{ExposeSecret, SecretBox, SecretString};
+use std::{collections::BTreeSet, fmt};
 use std::{path::PathBuf, process::ExitCode};
 use std::{sync::Arc, time::Duration};
 use tracing_subscriber::layer;
@@ -31,7 +31,6 @@ use url::Url;
 
 mod eventloop;
 
-const ID_PATH: &str = "/var/lib/firezone/gateway_id";
 const RELEASE: &str = concat!("gateway@", env!("CARGO_PKG_VERSION"));
 
 fn main() -> ExitCode {
@@ -124,7 +123,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         };
     }
 
-    let firezone_id = get_firezone_id(cli.firezone_id.clone()).await
+    let firezone_id = get_firezone_id(cli.firezone_id.clone())
         .context("Couldn't read FIREZONE_ID or write it to disk: Please provide it through the env variable or provide rw access to /var/lib/firezone/")?;
 
     let token = match cli.token.clone() {
@@ -196,7 +195,7 @@ async fn try_main(cli: Cli, telemetry: &mut Telemetry) -> Result<()> {
         nameservers,
     );
     let portal = PhoenixChannel::disconnected(
-        Secret::new(login),
+        SecretBox::init_with(|| login),
         get_user_agent(None, "gateway", env!("CARGO_PKG_VERSION")),
         PHOENIX_TOPIC,
         (),
@@ -251,20 +250,14 @@ fn tonic_otlp_exporter(
     Ok(metric_exporter)
 }
 
-async fn get_firezone_id(env_id: Option<String>) -> Result<String> {
+fn get_firezone_id(env_id: Option<String>) -> Result<String> {
     if let Some(id) = env_id
         && !id.is_empty()
     {
         return Ok(id);
     }
 
-    if let Ok(id) = tokio::fs::read_to_string(ID_PATH).await
-        && !id.is_empty()
-    {
-        return Ok(id);
-    }
-
-    let device_id = device_id::get_or_create_at(Path::new(ID_PATH))?;
+    let device_id = device_id::get_or_create_gateway()?;
 
     Ok(device_id.id)
 }
@@ -276,7 +269,13 @@ async fn read_systemd_credential(name: &str) -> Result<SecretString> {
     let path = PathBuf::from(creds_dir).join(name);
     let content = tokio::fs::read_to_string(&path).await?;
 
-    Ok(SecretString::new(content))
+    // Immediately wrap in `SecretString` to ensure it will be zeroized.
+    let untrimmed_token = SecretString::from(content);
+
+    // Create a 2nd `SecretString` that is trimmed.
+    let trimmed_token = SecretString::from(untrimmed_token.expose_secret().trim());
+
+    Ok(trimmed_token)
 }
 
 #[derive(Parser, Debug)]
@@ -447,7 +446,6 @@ impl ValidateChecksumAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use secrecy::ExposeSecret as _;
     use tempfile::TempDir;
 
     #[tokio::test]
@@ -457,7 +455,7 @@ mod tests {
         let cred_path = temp_dir.path().join("FIREZONE_TOKEN");
 
         // Write token to credential file
-        std::fs::write(cred_path, "systemd-token").unwrap();
+        std::fs::write(cred_path, "systemd-token\n").unwrap();
 
         // Set CREDENTIALS_DIRECTORY environment variable
         unsafe {

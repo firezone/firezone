@@ -128,9 +128,9 @@ public struct SettingsView: View {
     )
   }
 
-  public init(store: Store, configuration: Configuration? = nil) {
+  public init(store: Store) {
     self.store = store
-    self.configuration = configuration ?? Configuration.shared
+    self.configuration = store.configuration
     _viewModel = StateObject(wrappedValue: SettingsViewModel())
   }
 
@@ -622,9 +622,12 @@ public struct SettingsView: View {
 
         Task {
           do {
+            guard let session = try store.manager().session() else {
+              throw VPNConfigurationManagerError.managerNotInitialized
+            }
             try await LogExporter.export(
               to: destinationURL,
-              with: store.ipcClient()
+              session: session
             )
 
             window.contentViewController?.presentingViewController?.dismiss(self)
@@ -707,7 +710,10 @@ public struct SettingsView: View {
 
     do {
       #if os(macOS)
-        let providerLogFolderSize = try await store.ipcClient().getLogFolderSize()
+        guard let session = try store.manager().session() else {
+          throw VPNConfigurationManagerError.managerNotInitialized
+        }
+        let providerLogFolderSize = try await IPCClient.getLogFolderSize(session: session)
         let totalSize = logFolderSize + providerLogFolderSize
       #else
         let totalSize = logFolderSize

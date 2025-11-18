@@ -18,6 +18,7 @@ public class Configuration: ObservableObject {
 
   @Published private(set) var publishedInternetResourceEnabled = false
   @Published private(set) var publishedHideAdminPortalMenuItem = false
+  @Published private(set) var publishedHideResourceList = false
 
   var isAuthURLForced: Bool { defaults.objectIsForced(forKey: Keys.authURL) }
   var isApiURLForced: Bool { defaults.objectIsForced(forKey: Keys.apiURL) }
@@ -49,6 +50,11 @@ public class Configuration: ObservableObject {
   var hideAdminPortalMenuItem: Bool {
     get { defaults.bool(forKey: Keys.hideAdminPortalMenuItem) }
     set { defaults.set(newValue, forKey: Keys.hideAdminPortalMenuItem) }
+  }
+
+  var hideResourceList: Bool {
+    get { defaults.bool(forKey: Keys.hideResourceList) }
+    set { defaults.set(newValue, forKey: Keys.hideResourceList) }
   }
 
   var connectOnStart: Bool {
@@ -102,19 +108,25 @@ public class Configuration: ObservableObject {
     static let accountSlug = "accountSlug"
     static let internetResourceEnabled = "internetResourceEnabled"
     static let hideAdminPortalMenuItem = "hideAdminPortalMenuItem"
+    static let hideResourceList = "hideResourceList"
     static let connectOnStart = "connectOnStart"
     static let startOnLogin = "startOnLogin"
     static let disableUpdateCheck = "disableUpdateCheck"
     static let supportURL = "supportURL"
   }
 
-  private var defaults: UserDefaults
+  // nonisolated(unsafe) is required because:
+  // 1. UserDefaults is thread-safe
+  // 2. Used only for NotificationCenter observer registration (in init/deinit)
+  // 3. deinit is nonisolated and needs access to remove the observer
+  private nonisolated(unsafe) var defaults: UserDefaults
 
   init(userDefaults: UserDefaults = UserDefaults.standard) {
     defaults = userDefaults
 
     self.publishedInternetResourceEnabled = internetResourceEnabled
     self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
+    self.publishedHideResourceList = hideResourceList
 
     NotificationCenter.default.addObserver(
       self,
@@ -169,6 +181,7 @@ public class Configuration: ObservableObject {
     // Update published properties
     self.publishedInternetResourceEnabled = internetResourceEnabled
     self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
+    self.publishedHideResourceList = hideResourceList
 
     // Announce we changed
     objectWillChange.send()
@@ -176,7 +189,7 @@ public class Configuration: ObservableObject {
 }
 
 // Configuration does not conform to Decodable, so introduce a simpler type here to encode for IPC
-public struct TunnelConfiguration: Codable {
+public struct TunnelConfiguration: Codable, Sendable {
   public let apiURL: String
   public let accountSlug: String
   public let logFilter: String
@@ -188,5 +201,13 @@ public struct TunnelConfiguration: Codable {
     self.accountSlug = accountSlug
     self.logFilter = logFilter
     self.internetResourceEnabled = internetResourceEnabled
+  }
+}
+
+extension TunnelConfiguration: Equatable {
+  public static func == (lhs: TunnelConfiguration, rhs: TunnelConfiguration) -> Bool {
+    return lhs.apiURL == rhs.apiURL && lhs.accountSlug == rhs.accountSlug
+      && lhs.logFilter == rhs.logFilter
+      && lhs.internetResourceEnabled == rhs.internetResourceEnabled
   }
 }

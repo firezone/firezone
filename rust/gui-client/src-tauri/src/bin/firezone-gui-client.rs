@@ -20,12 +20,6 @@ fn main() -> ExitCode {
     let mut bootstrap_log_guard =
         Some(firezone_logging::setup_bootstrap().expect("Failed to setup bootstrap logger"));
 
-    // Mitigates a bug in Ubuntu 22.04 - Under Wayland, some features of the window decorations like minimizing, closing the windows, etc., doesn't work unless you double-click the titlebar first.
-    // SAFETY: No other thread is running yet
-    unsafe {
-        std::env::set_var("GDK_BACKEND", "x11");
-    }
-
     let cli = Cli::parse();
 
     let mut telemetry = if cli.is_telemetry_allowed() {
@@ -85,7 +79,7 @@ fn try_main(
 
     // Get the device ID before starting Tokio, so that all the worker threads will inherit the correct scope.
     // Technically this means we can fail to get the device ID on a newly-installed system, since the Tunnel service may not have fully started up when the GUI process reaches this point, but in practice it's unlikely.
-    let id = firezone_bin_shared::device_id::get().context("Failed to get device ID")?;
+    let id = firezone_bin_shared::device_id::get_client().context("Failed to get device ID")?;
 
     if cli.is_telemetry_allowed() {
         rt.block_on(telemetry.start(

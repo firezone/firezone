@@ -6,7 +6,6 @@
 #![cfg_attr(test, allow(clippy::unwrap_used))]
 
 use anyhow::{Context as _, Result};
-use bimap::BiMap;
 use chrono::Utc;
 use connlib_model::{ClientId, GatewayId, IceCandidate, PublicKey, ResourceId, ResourceView};
 use dns_types::DomainName;
@@ -19,7 +18,7 @@ use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use std::{
     collections::BTreeSet,
     future, mem,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
     time::{Duration, Instant},
@@ -35,6 +34,7 @@ mod io;
 pub mod messages;
 mod otel;
 mod p2p_control;
+mod packet_kind;
 mod peer_store;
 #[cfg(all(test, feature = "proptest"))]
 mod proptest;
@@ -69,8 +69,9 @@ pub type GatewayTunnel = Tunnel<GatewayState>;
 pub type ClientTunnel = Tunnel<ClientState>;
 
 pub use client::ClientState;
+pub use client::dns_config::DnsMapping;
 pub use dns::DnsResourceRecord;
-pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest};
+pub use gateway::{DnsResourceNatEntry, GatewayState, ResolveDnsRequest, UnroutablePacket};
 pub use sockets::UdpSocketThreadStopped;
 pub use utils::turn;
 
@@ -100,12 +101,8 @@ impl<TRoleState> Tunnel<TRoleState> {
         self.io.set_tun(tun);
     }
 
-    pub fn rebind_dns_ipv4(&mut self, socket: SocketAddrV4) -> Result<()> {
-        self.io.rebind_dns_ipv4(socket)
-    }
-
-    pub fn rebind_dns_ipv6(&mut self, socket: SocketAddrV6) -> Result<()> {
-        self.io.rebind_dns_ipv6(socket)
+    pub fn rebind_dns(&mut self, sockets: Vec<SocketAddr>) -> Result<()> {
+        self.io.rebind_dns(sockets)
     }
 }
 
@@ -206,8 +203,8 @@ impl ClientTunnel {
                 now_utc: _,
                 timeout,
                 dns_response,
-                tcp_dns_query: _,
-                udp_dns_query: _,
+                tcp_dns_queries: _,
+                udp_dns_queries: _,
                 device,
                 network,
                 error,
@@ -366,8 +363,8 @@ impl GatewayTunnel {
                 now_utc,
                 timeout,
                 dns_response,
-                tcp_dns_query,
-                udp_dns_query,
+                tcp_dns_queries,
+                udp_dns_queries,
                 device,
                 network,
                 mut error,
@@ -381,13 +378,21 @@ impl GatewayTunnel {
                     });
 
                     match response.transport {
-                        dns::Transport::Udp { source } => {
-                            if let Err(e) = self.io.send_udp_dns_response(source, message) {
+                        dns::Transport::Udp => {
+                            if let Err(e) = self.io.send_udp_dns_response(
+                                response.remote,
+                                response.local,
+                                message,
+                            ) {
                                 error.push(e);
                             }
                         }
-                        dns::Transport::Tcp { remote, .. } => {
-                            if let Err(e) = self.io.send_tcp_dns_response(remote, message) {
+                        dns::Transport::Tcp => {
+                            if let Err(e) = self.io.send_tcp_dns_response(
+                                response.remote,
+                                response.local,
+                                message,
+                            ) {
                                 error.push(e);
                             }
                         }
@@ -415,7 +420,20 @@ impl GatewayTunnel {
                             Ok(None) => {
                                 self.role_state.handle_timeout(now, Utc::now());
                             }
-                            Err(e) => error.push(e),
+                            Err(e) => {
+                                let routing_error = e
+                                    .downcast_ref::<gateway::UnroutablePacket>()
+                                    .map(|e| e.reason())
+                                    .unwrap_or(gateway::RoutingError::Other);
+
+                                // TODO: Include more attributes here like IPv4/IPv6?
+                                self.io.inc_dropped_packet(&[
+                                    otel::attr::error_type(routing_error),
+                                    otel::attr::network_io_direction_receive(),
+                                ]);
+
+                                error.push(e);
+                            }
                         }
                     }
 
@@ -450,18 +468,21 @@ impl GatewayTunnel {
                     ready = true;
                 }
 
-                if let Some(query) = udp_dns_query {
+                for query in udp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_udp(
-                            query.source,
-                            SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
-                        ));
+                        self.io.send_dns_query(dns::RecursiveQuery {
+                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            local: query.local,
+                            remote: query.remote,
+                            message: query.message,
+                            transport: dns::Transport::Udp,
+                        });
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle UDP DNS query");
 
                         if let Err(e) = self.io.send_udp_dns_response(
-                            query.source,
+                            query.remote,
+                            query.local,
                             dns_types::Response::servfail(&query.message),
                         ) {
                             error.push(e);
@@ -471,19 +492,21 @@ impl GatewayTunnel {
                     ready = true;
                 }
 
-                if let Some(query) = tcp_dns_query {
+                for query in tcp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
-                        self.io.send_dns_query(dns::RecursiveQuery::via_tcp(
-                            query.local,
-                            query.remote,
-                            SocketAddr::new(nameserver, dns::DNS_PORT),
-                            query.message,
-                        ));
+                        self.io.send_dns_query(dns::RecursiveQuery {
+                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            local: query.local,
+                            remote: query.remote,
+                            message: query.message,
+                            transport: dns::Transport::Tcp,
+                        });
                     } else {
                         tracing::warn!(query = ?query.message, "No nameserver available to handle TCP DNS query");
 
                         if let Err(e) = self.io.send_tcp_dns_response(
                             query.remote,
+                            query.local,
                             dns_types::Response::servfail(&query.message),
                         ) {
                             error.push(e);
@@ -550,19 +573,13 @@ pub struct TunConfig {
     /// - The "right" values are the effective DNS servers.
     ///   If upstream DNS servers are configured (in the portal), we will use those.
     ///   Otherwise, we will use the DNS servers configured on the system.
-    pub dns_by_sentinel: BiMap<IpAddr, SocketAddr>,
+    pub dns_by_sentinel: DnsMapping,
     pub search_domain: Option<DomainName>,
 
     #[debug("{}", DisplayBTreeSet(ipv4_routes))]
     pub ipv4_routes: BTreeSet<Ipv4Network>,
     #[debug("{}", DisplayBTreeSet(ipv6_routes))]
     pub ipv6_routes: BTreeSet<Ipv6Network>,
-}
-
-impl TunConfig {
-    pub fn dns_sentinel_ips(&self) -> Vec<IpAddr> {
-        self.dns_by_sentinel.left_values().copied().collect()
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -643,6 +660,10 @@ pub(crate) struct NotClientIp(IpAddr);
 #[derive(Debug, thiserror::Error)]
 #[error("Traffic to/from this resource IP is not allowed: {0}")]
 pub(crate) struct NotAllowedResource(IpAddr);
+
+#[derive(Debug, thiserror::Error)]
+#[error("Failed to decapsulate '{0}' packet")]
+pub(crate) struct FailedToDecapsulate(packet_kind::Kind);
 
 pub fn is_peer(dst: IpAddr) -> bool {
     match dst {

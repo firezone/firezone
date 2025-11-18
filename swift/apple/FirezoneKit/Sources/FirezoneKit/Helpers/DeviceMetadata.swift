@@ -12,13 +12,13 @@ import Foundation
 #endif
 
 public class DeviceMetadata {
+  @MainActor
   public static func getDeviceName() -> String {
     // Returns a generic device name on iOS 16 and higher
     // See https://github.com/firezone/firezone/issues/3034
     #if os(iOS)
       return UIDevice.current.name
     #else
-      // Use hostname
       return ProcessInfo.processInfo.hostName
     #endif
   }
@@ -33,6 +33,7 @@ public class DeviceMetadata {
   }
 
   #if os(iOS)
+    @MainActor
     public static func getIdentifierForVendor() -> String? {
       return UIDevice.current.identifierForVendor?.uuidString
     }

@@ -10,6 +10,7 @@ use super::stub_portal::StubPortal;
 use super::transition::{Destination, DnsQuery};
 use crate::client;
 use crate::dns::is_subdomain;
+use crate::messages::gateway::{Client, Subject};
 use crate::messages::{IceCredentials, Key, SecretKey};
 use crate::tests::assertions::*;
 use crate::tests::flux_capacitor::FluxCapacitor;
@@ -268,13 +269,27 @@ impl TunnelTest {
                     .client
                     .exec_mut(|c| c.sut.update_system_resolvers(servers));
             }
-            Transition::UpdateUpstreamDnsServers(servers) => {
+            Transition::UpdateUpstreamDo53Servers(upstream_do53) => {
                 state.client.exec_mut(|c| {
                     c.sut.update_interface_config(Interface {
                         ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                         ipv6: c.sut.tunnel_ip_config().unwrap().v6,
-                        upstream_dns: servers,
+                        upstream_dns: vec![],
+                        upstream_do53,
                         search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_doh: vec![],
+                    })
+                });
+            }
+            Transition::UpdateUpstreamDoHServers(upstream_doh) => {
+                state.client.exec_mut(|c| {
+                    c.sut.update_interface_config(Interface {
+                        ipv4: c.sut.tunnel_ip_config().unwrap().v4,
+                        ipv6: c.sut.tunnel_ip_config().unwrap().v6,
+                        upstream_dns: vec![],
+                        upstream_do53: ref_state.client.inner().upstream_do53_resolvers(),
+                        search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_doh,
                     })
                 });
             }
@@ -283,7 +298,9 @@ impl TunnelTest {
                     c.sut.update_interface_config(Interface {
                         ipv4: c.sut.tunnel_ip_config().unwrap().v4,
                         ipv6: c.sut.tunnel_ip_config().unwrap().v6,
-                        upstream_dns: ref_state.client.inner().upstream_dns_resolvers(),
+                        upstream_dns: vec![],
+                        upstream_do53: ref_state.client.inner().upstream_do53_resolvers(),
+                        upstream_doh: ref_state.client.inner().upstream_doh_resolvers(),
                         search_domain,
                     })
                 });
@@ -309,7 +326,8 @@ impl TunnelTest {
             Transition::ReconnectPortal => {
                 let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
-                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
+                let upstream_do53 = ref_state.client.inner().upstream_do53_resolvers();
+                let upstream_doh = ref_state.client.inner().upstream_doh_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
 
                 // Simulate receiving `init`.
@@ -317,7 +335,9 @@ impl TunnelTest {
                     c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,
-                        upstream_dns,
+                        upstream_dns: Vec::new(),
+                        upstream_do53,
+                        upstream_doh,
                         search_domain: ref_state.client.inner().search_domain.clone(),
                     });
                     c.update_relays(iter::empty(), state.relays.iter(), now);
@@ -401,7 +421,7 @@ impl TunnelTest {
                 let ipv4 = state.client.inner().sut.tunnel_ip_config().unwrap().v4;
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let system_dns = ref_state.client.inner().system_dns_resolvers();
-                let upstream_dns = ref_state.client.inner().upstream_dns_resolvers();
+                let upstream_do53 = ref_state.client.inner().upstream_do53_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
                 let internet_resource_state = ref_state.client.inner().internet_resource_active;
 
@@ -412,8 +432,10 @@ impl TunnelTest {
                     c.sut.update_interface_config(Interface {
                         ipv4,
                         ipv6,
-                        upstream_dns,
+                        upstream_dns: Vec::new(),
+                        upstream_do53,
                         search_domain: ref_state.client.inner().search_domain.clone(),
+                        upstream_doh: Vec::new(),
                     });
                     c.sut.update_system_resolvers(system_dns);
                     c.sut.set_resources(all_resources, now);
@@ -421,6 +443,7 @@ impl TunnelTest {
                     c.update_relays(iter::empty(), state.relays.iter(), now);
                 })
             }
+            Transition::UpdateDnsRecords { .. } => {}
         };
         state.advance(ref_state, &mut buffered_transmits);
 
@@ -529,7 +552,7 @@ impl TunnelTest {
                 let transport = query.transport;
 
                 let response =
-                    self.on_recursive_dns_query(&query.message, &ref_state.global_dns_records);
+                    self.on_recursive_dns_query(&query.message, &ref_state.global_dns_records, now);
                 self.client.exec_mut(|c| {
                     c.sut.handle_dns_response(
                         dns::RecursiveResponse {
@@ -537,6 +560,8 @@ impl TunnelTest {
                             query: query.message,
                             message: Ok(response), // TODO: Vary this?
                             transport,
+                            local: query.local,
+                            remote: query.remote,
                         },
                         now,
                     )
@@ -642,10 +667,13 @@ impl TunnelTest {
             while let Some(result) = c.tcp_dns_client.poll_query_result() {
                 match result.result {
                     Ok(message) => {
-                        let upstream = c.dns_mapping().get_by_left(&result.server.ip()).unwrap();
+                        let upstream = c
+                            .dns_mapping()
+                            .upstream_by_sentinel(result.server.ip())
+                            .unwrap();
 
                         c.received_tcp_dns_responses
-                            .insert((*upstream, result.query.id()));
+                            .insert((upstream, result.query.id()));
                         c.handle_dns_response(&message)
                     }
                     Err(e) => {
@@ -823,12 +851,28 @@ impl TunnelTest {
                 gateway
                     .exec_mut(|g| {
                         g.sut.authorize_flow(
-                            src,
-                            client_key,
-                            preshared_key.clone(),
+                            Client {
+                                id: src,
+                                public_key: client_key.into(),
+                                preshared_key: preshared_key.clone(),
+                                ipv4: self.client.inner().sut.tunnel_ip_config().unwrap().v4,
+                                ipv6: self.client.inner().sut.tunnel_ip_config().unwrap().v6,
+                                device_os_name: None,
+                                device_serial: None,
+                                device_uuid: None,
+                                identifier_for_vendor: None,
+                                firebase_installation_id: None,
+                                version: None,
+                                device_os_version: None,
+                            },
+                            Subject {
+                                identity_name: None,
+                                actor_email: None,
+                                identity_id: None,
+                                actor_id: None,
+                            },
                             client_ice.clone(),
                             gateway_ice.clone(),
-                            self.client.inner().sut.tunnel_ip_config().unwrap(),
                             None,
                             resource,
                             now,
@@ -881,10 +925,7 @@ impl TunnelTest {
 
                 for gateway in self.gateways.values_mut() {
                     gateway.exec_mut(|g| {
-                        g.deploy_new_dns_servers(
-                            config.dns_by_sentinel.right_values().copied(),
-                            now,
-                        )
+                        g.deploy_new_dns_servers(config.dns_by_sentinel.upstream_sockets(), now)
                     })
                 }
 
@@ -913,6 +954,7 @@ impl TunnelTest {
         &self,
         query: &dns_types::Query,
         global_dns_records: &DnsRecords,
+        now: Instant,
     ) -> dns_types::Response {
         const TTL: u32 = 1; // We deliberately chose a short TTL so we don't have to model the DNS cache in these tests.
 
@@ -922,7 +964,7 @@ impl TunnelTest {
         let response = dns_types::ResponseBuilder::for_query(query, ResponseCode::NOERROR)
             .with_records(
                 global_dns_records
-                    .domain_records_iter(&domain)
+                    .domain_records_iter(&domain, now)
                     .filter(|record| qtype == record.rtype())
                     .map(|rdata| (domain.clone(), TTL, rdata)),
             )
@@ -992,7 +1034,8 @@ fn make_preshared_key_and_ice(
     client_key: PublicKey,
     gateway_key: PublicKey,
 ) -> (SecretKey, IceCredentials, IceCredentials) {
-    let secret_key = SecretKey::new(Key(hkdf("SECRET_KEY_DOMAIN_SEP", client_key, gateway_key)));
+    let secret_key =
+        SecretKey::init_with(|| Key(hkdf("SECRET_KEY_DOMAIN_SEP", client_key, gateway_key)));
     let client_ice = ice_creds("CLIENT_ICE_DOMAIN_SEP", client_key, gateway_key);
     let gateway_ice = ice_creds("GATEWAY_ICE_DOMAIN_SEP", client_key, gateway_key);
 
@@ -1037,9 +1080,15 @@ fn on_gateway_event(
             }
         }),
         GatewayEvent::ResolveDns(r) => {
-            let resolved_ips = global_dns_records.domain_ips_iter(r.domain()).collect();
+            let resolved_ips = global_dns_records
+                .domain_ips_iter(r.domain(), now)
+                .collect();
 
             gateway.exec_mut(|g| {
+                g.dns_query_timestamps
+                    .entry(r.domain().clone())
+                    .or_default()
+                    .push(now);
                 g.sut
                     .handle_domain_resolved(r, Ok(resolved_ips), now)
                     .unwrap()

@@ -5,11 +5,12 @@ use super::{
     sim_net::Host,
     strategies::{resolved_ips, site_specific_dns_record, subdomain_records},
 };
-use crate::{client, proptest::*};
 use crate::{
-    client::DnsResource,
-    messages::{DnsServer, gateway},
+    client,
+    messages::{UpstreamDo53, UpstreamDoH},
+    proptest::*,
 };
+use crate::{client::DnsResource, messages::gateway};
 use connlib_model::{GatewayId, Site};
 use connlib_model::{ResourceId, SiteId};
 use dns_types::DomainName;
@@ -24,6 +25,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
     net::{IpAddr, Ipv4Addr, Ipv6Addr},
+    time::Instant,
 };
 
 /// Stub implementation of the portal.
@@ -261,6 +263,7 @@ impl StubPortal {
 
     pub(crate) fn gateways(
         &self,
+        at: Instant,
     ) -> impl Strategy<Value = BTreeMap<GatewayId, Host<RefGateway>>> + use<> {
         let dns_resources = self.dns_resources.clone();
 
@@ -273,7 +276,7 @@ impl StubPortal {
                         ref_gateway_host(
                             Just(*ipv4_addr),
                             Just(*ipv6_addr),
-                            site_specific_dns_records(dns_resources.clone(), *site_id),
+                            site_specific_dns_records(dns_resources.clone(), *site_id, at),
                         ),
                     )
                 })
@@ -282,20 +285,23 @@ impl StubPortal {
             .prop_map(BTreeMap::from_iter)
     }
 
-    pub(crate) fn client<S1, S2>(
+    pub(crate) fn client<S1, S2, S3>(
         &self,
         system_dns: S1,
-        upstream_dns: S2,
-    ) -> impl Strategy<Value = Host<RefClient>> + use<S1, S2>
+        upstream_do53: S2,
+        upstream_doh: S3,
+    ) -> impl Strategy<Value = Host<RefClient>> + use<S1, S2, S3>
     where
         S1: Strategy<Value = Vec<IpAddr>>,
-        S2: Strategy<Value = Vec<DnsServer>>,
+        S2: Strategy<Value = Vec<UpstreamDo53>>,
+        S3: Strategy<Value = Vec<UpstreamDoH>>,
     {
         ref_client_host(
             Just(self.client_tunnel_ipv4),
             Just(self.client_tunnel_ipv6),
             system_dns,
-            upstream_dns,
+            upstream_do53,
+            upstream_doh,
             self.search_domain(),
         )
     }
@@ -318,8 +324,11 @@ impl StubPortal {
         proptest::option::of(sample::select(possible_search_domains))
     }
 
-    pub(crate) fn dns_resource_records(&self) -> impl Strategy<Value = DnsRecords> + use<> {
-        dns_resource_records(self.dns_resources.clone().into_values())
+    pub(crate) fn dns_resource_records(
+        &self,
+        at: Instant,
+    ) -> impl Strategy<Value = DnsRecords> + use<> {
+        dns_resource_records(self.dns_resources.clone().into_values(), at)
     }
 }
 
@@ -327,18 +336,20 @@ impl StubPortal {
 fn site_specific_dns_records(
     dns_resources: BTreeMap<ResourceId, client::DnsResource>,
     site: SiteId,
+    at: Instant,
 ) -> impl Strategy<Value = DnsRecords> {
     let dns_resources_in_site = dns_resources
         .into_values()
         .filter(move |resource| resource.sites.iter().any(|s| s.id == site));
 
-    dns_resource_records(dns_resources_in_site).prop_flat_map(|records| {
+    dns_resource_records(dns_resources_in_site, at).prop_flat_map(move |records| {
         if records.is_empty() {
             Just(DnsRecords::default()).boxed()
         } else {
             collection::btree_map(
                 sample::select(records.domains_iter().collect::<Vec<_>>()),
-                collection::btree_set(site_specific_dns_record(), 1..6),
+                collection::btree_set(site_specific_dns_record(), 1..6)
+                    .prop_map(move |records| BTreeMap::from([(at, records)])),
                 0..5,
             )
             .prop_map_into()
@@ -349,6 +360,7 @@ fn site_specific_dns_records(
 
 fn dns_resource_records(
     dns_resources: impl Iterator<Item = DnsResource>,
+    at: Instant,
 ) -> impl Strategy<Value = DnsRecords> {
     dns_resources
         .map(|resource| {
@@ -360,11 +372,14 @@ fn dns_resource_records(
             // For example, `*.example.com` and `app.example.com`.
             match address.split_once('.') {
                 Some(("*" | "**", base)) => {
-                    subdomain_records(base.to_owned(), domain_label()).boxed()
+                    subdomain_records(base.to_owned(), domain_label(), at).boxed()
                 }
                 _ => resolved_ips()
                     .prop_map(move |resolved_ips| {
-                        DnsRecords::from([(address.parse().unwrap(), resolved_ips)])
+                        DnsRecords::from([(
+                            address.parse().unwrap(),
+                            BTreeMap::from([(at, resolved_ips)]),
+                        )])
                     })
                     .boxed(),
             }

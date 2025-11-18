@@ -20,7 +20,7 @@ use tracing::{Subscriber, subscriber::DefaultGuard};
 use tracing_log::LogTracer;
 use tracing_subscriber::{
     EnvFilter, Layer, Registry,
-    filter::{FilterExt, ParseError},
+    filter::{FilterExt, ParseError, Targets},
     fmt,
     layer::SubscriberExt as _,
     registry::LookupSpan,
@@ -46,7 +46,7 @@ where
         tracing::debug!("Failed to init terminal colors: {error}");
     }
 
-    let directives = std::env::var("RUST_LOG").unwrap_or_default();
+    let directives = std::env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
 
     let (filter1, reload_handle1) =
         try_filter(&directives).context("Failed to parse directives")?;
@@ -124,7 +124,7 @@ fn parse_filter(directives: &str) -> Result<EnvFilter, ParseError> {
     ///
     /// By prepending this directive to the active log filter, a simple directive like `debug` actually produces useful logs.
     /// If necessary, you can still activate logs from these crates by restating them in your directive with a lower filter, i.e. `netlink_proto=debug`.
-    const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn,opentelemetry_sdk=info,opentelemetry=info,hyper_util=info,h2=info,hickory_proto=info";
+    const IRRELEVANT_CRATES: &str = "netlink_proto=warn,os_info=warn,rustls=warn,opentelemetry_sdk=info,opentelemetry=info,hyper_util=info,h2=info,hickory_proto=info,hickory_resolver=info";
 
     let env_filter = if directives.is_empty() {
         EnvFilter::try_new(IRRELEVANT_CRATES)?
@@ -217,6 +217,8 @@ where
 {
     use tracing::Level;
 
+    let wire_api_target = Targets::new().with_target("wire::api", tracing::Level::TRACE);
+
     sentry_tracing::layer()
         .event_filter(move |md| {
             let mut event_filter = match *md.level() {
@@ -224,6 +226,10 @@ where
                 Level::INFO | Level::DEBUG => EventFilter::Breadcrumb,
                 Level::TRACE => EventFilter::Ignore,
             };
+
+            if wire_api_target.would_enable(md.target(), md.level()) {
+                event_filter |= EventFilter::Breadcrumb;
+            }
 
             if feature_flags::stream_logs(md) {
                 event_filter |= EventFilter::Log

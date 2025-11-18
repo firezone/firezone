@@ -24,7 +24,26 @@ export default function Apple() {
   return (
     <Entries downloadLinks={downloadLinks} title="macOS / iOS">
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        <ChangeItem pull="10986">
+          Fixes a minor race condition that could arise on sign out.
+        </ChangeItem>
+        <ChangeItem pull="10855">
+          Fixes an issue on macOS where the <code>utun</code> index would
+          auto-increment by itself on configuration updates.
+        </ChangeItem>
+        <ChangeItem pull="10752">
+          Fixes an issue where the reported client version was out of date.
+        </ChangeItem>
+        <ChangeItem pull="10773">
+          Fixes an issue where the order of upstream / system DNS resolvers was
+          not respected.
+        </ChangeItem>
+        <ChangeItem pull="10824">
+          Adds support for <code>hideResourceList</code> managed configuration
+          key to hide the Resource List in the macOS and iOS apps.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-10-20")}>
         <ChangeItem pull="10603">
           Fixes an issue on macOS where DNS resources might fail to be routed

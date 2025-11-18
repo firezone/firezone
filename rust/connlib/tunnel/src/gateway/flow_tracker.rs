@@ -7,6 +7,7 @@ use std::{
 
 use chrono::{DateTime, TimeDelta, Utc};
 use connlib_model::{ClientId, ResourceId};
+use dns_types::DomainName;
 use ip_packet::{IcmpError, IpPacket, Protocol, UnsupportedProtocol};
 use std::time::Instant;
 
@@ -30,6 +31,22 @@ pub struct FlowTracker {
 
     created_at: Instant,
     created_at_utc: DateTime<Utc>,
+}
+
+/// Additional properties we track for a client.
+#[derive(Debug, Clone, Default)]
+pub struct ClientProperties {
+    pub version: Option<String>,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_os_name: Option<String>,
+    pub device_os_version: Option<String>,
+    pub identifier_for_vendor: Option<String>,
+    pub firebase_installation_id: Option<String>,
+    pub identity_id: Option<String>,
+    pub identity_name: Option<String>,
+    pub actor_id: Option<String>,
+    pub actor_email: Option<String>,
 }
 
 impl FlowTracker {
@@ -91,6 +108,7 @@ impl FlowTracker {
             client: None,
             resource: None,
             icmp_error: None,
+            domain: None,
         })));
         debug_assert!(
             current.is_none(),
@@ -161,6 +179,7 @@ impl FlowTracker {
                 }),
             client: Some(client),
             resource: Some(resource),
+            domain,
             icmp_error: _, // TODO: What to do with ICMP errors?
         } = flow
         else {
@@ -179,8 +198,8 @@ impl FlowTracker {
         match (src_proto, dst_proto) {
             (Protocol::Tcp(src_port), Protocol::Tcp(dst_port)) => {
                 let key = TcpFlowKey {
-                    client,
-                    resource,
+                    client: client.id,
+                    resource: resource.id,
                     src_ip,
                     dst_ip,
                     src_port,
@@ -203,6 +222,20 @@ impl FlowTracker {
                             context,
                             fin_tx: false,
                             fin_rx: false,
+                            domain,
+                            resource_name: resource.name,
+                            resource_address: resource.address,
+                            client_version: client.version,
+                            device_os_name: client.device_os_name,
+                            device_os_version: client.device_os_version,
+                            device_serial: client.device_serial,
+                            device_uuid: client.device_uuid,
+                            identifier_for_vendor: client.identifier_for_vendor,
+                            firebase_installation_id: client.firebase_installation_id,
+                            actor_id: client.actor_id,
+                            actor_email: client.actor_email,
+                            identity_id: client.identity_id,
+                            identity_name: client.identity_name,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
@@ -228,6 +261,20 @@ impl FlowTracker {
                                 context,
                                 fin_tx: false,
                                 fin_rx: false,
+                                domain,
+                                resource_name: resource.name,
+                                resource_address: resource.address,
+                                client_version: client.version,
+                                device_os_name: client.device_os_name,
+                                device_os_version: client.device_os_version,
+                                device_serial: client.device_serial,
+                                device_uuid: client.device_uuid,
+                                identifier_for_vendor: client.identifier_for_vendor,
+                                firebase_installation_id: client.firebase_installation_id,
+                                actor_id: client.actor_id,
+                                actor_email: client.actor_email,
+                                identity_id: client.identity_id,
+                                identity_name: client.identity_name,
                             },
                         );
                     }
@@ -249,6 +296,20 @@ impl FlowTracker {
                                 context,
                                 fin_tx: false,
                                 fin_rx: false,
+                                domain,
+                                resource_name: resource.name,
+                                resource_address: resource.address,
+                                client_version: client.version,
+                                device_os_name: client.device_os_name,
+                                device_os_version: client.device_os_version,
+                                device_serial: client.device_serial,
+                                device_uuid: client.device_uuid,
+                                identifier_for_vendor: client.identifier_for_vendor,
+                                firebase_installation_id: client.firebase_installation_id,
+                                actor_id: client.actor_id,
+                                actor_email: client.actor_email,
+                                identity_id: client.identity_id,
+                                identity_name: client.identity_name,
                             },
                         );
                     }
@@ -274,8 +335,8 @@ impl FlowTracker {
             }
             (Protocol::Udp(src_port), Protocol::Udp(dst_port)) => {
                 let key = UdpFlowKey {
-                    client,
-                    resource,
+                    client: client.id,
+                    resource: resource.id,
                     src_ip,
                     dst_ip,
                     src_port,
@@ -291,13 +352,27 @@ impl FlowTracker {
                             last_packet: now_utc,
                             stats: FlowStats::default().with_tx(payload_len as u64),
                             context,
+                            domain,
+                            resource_name: resource.name,
+                            resource_address: resource.address,
+                            client_version: client.version,
+                            device_os_name: client.device_os_name,
+                            device_os_version: client.device_os_version,
+                            device_serial: client.device_serial,
+                            device_uuid: client.device_uuid,
+                            identifier_for_vendor: client.identifier_for_vendor,
+                            firebase_installation_id: client.firebase_installation_id,
+                            actor_id: client.actor_id,
+                            actor_email: client.actor_email,
+                            identity_id: client.identity_id,
+                            identity_name: client.identity_name,
                         });
                     }
                     hash_map::Entry::Occupied(occupied) if occupied.get().context != context => {
                         let (key, value) = occupied.remove_entry();
                         let context_diff = FlowContextDiff::new(value.context, context);
 
-                        let flow = CompletedUdpFlow::new(key, value, now_utc);
+                        let flow = CompletedUdpFlow::new(key, value.clone(), now_utc);
 
                         tracing::debug!(
                             ?key,
@@ -314,6 +389,20 @@ impl FlowTracker {
                                 last_packet: now_utc,
                                 stats: FlowStats::default().with_tx(payload_len as u64),
                                 context,
+                                domain,
+                                resource_name: value.resource_name,
+                                resource_address: value.resource_address,
+                                client_version: client.version,
+                                device_os_name: client.device_os_name,
+                                device_os_version: client.device_os_version,
+                                device_serial: client.device_serial,
+                                device_uuid: client.device_uuid,
+                                identifier_for_vendor: client.identifier_for_vendor,
+                                firebase_installation_id: client.firebase_installation_id,
+                                actor_id: client.actor_id,
+                                actor_email: client.actor_email,
+                                identity_id: client.identity_id,
+                                identity_name: client.identity_name,
                             },
                         );
                     }
@@ -439,8 +528,25 @@ pub enum CompletedFlow {
 
 #[derive(Debug)]
 pub struct CompletedTcpFlow {
-    pub client: ClientId,
-    pub resource: ResourceId,
+    pub client_id: ClientId,
+    pub client_version: Option<String>,
+
+    pub device_os_name: Option<String>,
+    pub device_os_version: Option<String>,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_identifier_for_vendor: Option<String>,
+    pub device_firebase_installation_id: Option<String>,
+
+    pub identity_id: Option<String>,
+    pub identity_name: Option<String>,
+    pub actor_id: Option<String>,
+    pub actor_email: Option<String>,
+
+    pub resource_id: ResourceId,
+    pub resource_name: String,
+    pub resource_address: String,
+
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
     pub last_packet: DateTime<Utc>,
@@ -449,6 +555,7 @@ pub struct CompletedTcpFlow {
     pub inner_dst_ip: IpAddr,
     pub inner_src_port: u16,
     pub inner_dst_port: u16,
+    pub inner_domain: Option<DomainName>,
 
     pub outer_src_ip: IpAddr,
     pub outer_dst_ip: IpAddr,
@@ -463,8 +570,25 @@ pub struct CompletedTcpFlow {
 
 #[derive(Debug)]
 pub struct CompletedUdpFlow {
-    pub client: ClientId,
-    pub resource: ResourceId,
+    pub client_id: ClientId,
+    pub client_version: Option<String>,
+
+    pub device_os_name: Option<String>,
+    pub device_os_version: Option<String>,
+    pub device_serial: Option<String>,
+    pub device_uuid: Option<String>,
+    pub device_identifier_for_vendor: Option<String>,
+    pub device_firebase_installation_id: Option<String>,
+
+    pub identity_id: Option<String>,
+    pub identity_name: Option<String>,
+    pub actor_id: Option<String>,
+    pub actor_email: Option<String>,
+
+    pub resource_id: ResourceId,
+    pub resource_name: String,
+    pub resource_address: String,
+
     pub start: DateTime<Utc>,
     pub end: DateTime<Utc>,
     pub last_packet: DateTime<Utc>,
@@ -473,6 +597,7 @@ pub struct CompletedUdpFlow {
     pub inner_dst_ip: IpAddr,
     pub inner_src_port: u16,
     pub inner_dst_port: u16,
+    pub inner_domain: Option<DomainName>,
 
     pub outer_src_ip: IpAddr,
     pub outer_dst_ip: IpAddr,
@@ -488,8 +613,21 @@ pub struct CompletedUdpFlow {
 impl CompletedTcpFlow {
     fn new(key: TcpFlowKey, value: TcpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
-            client: key.client,
-            resource: key.resource,
+            client_id: key.client,
+            client_version: value.client_version,
+            device_os_name: value.device_os_name,
+            device_os_version: value.device_os_version,
+            device_serial: value.device_serial,
+            device_uuid: value.device_uuid,
+            device_identifier_for_vendor: value.identifier_for_vendor,
+            device_firebase_installation_id: value.firebase_installation_id,
+            actor_id: value.actor_id,
+            actor_email: value.actor_email,
+            identity_id: value.identity_id,
+            identity_name: value.identity_name,
+            resource_id: key.resource,
+            resource_name: value.resource_name,
+            resource_address: value.resource_address,
             start: value.start,
             end,
             last_packet: value.last_packet,
@@ -497,6 +635,7 @@ impl CompletedTcpFlow {
             inner_dst_ip: key.dst_ip,
             inner_src_port: key.src_port,
             inner_dst_port: key.dst_port,
+            inner_domain: value.domain,
             outer_src_ip: value.context.src_ip,
             outer_dst_ip: value.context.dst_ip,
             outer_src_port: value.context.src_port,
@@ -512,8 +651,21 @@ impl CompletedTcpFlow {
 impl CompletedUdpFlow {
     fn new(key: UdpFlowKey, value: UdpFlowValue, end: DateTime<Utc>) -> Self {
         Self {
-            client: key.client,
-            resource: key.resource,
+            client_id: key.client,
+            client_version: value.client_version,
+            device_os_name: value.device_os_name,
+            device_os_version: value.device_os_version,
+            device_serial: value.device_serial,
+            device_uuid: value.device_uuid,
+            device_identifier_for_vendor: value.identifier_for_vendor,
+            device_firebase_installation_id: value.firebase_installation_id,
+            actor_id: value.actor_id,
+            actor_email: value.actor_email,
+            identity_id: value.identity_id,
+            identity_name: value.identity_name,
+            resource_id: key.resource,
+            resource_name: value.resource_name,
+            resource_address: value.resource_address,
             start: value.start,
             end,
             last_packet: value.last_packet,
@@ -521,6 +673,7 @@ impl CompletedUdpFlow {
             inner_dst_ip: key.dst_ip,
             inner_src_port: key.src_port,
             inner_dst_port: key.dst_port,
+            inner_domain: value.domain,
             outer_src_ip: value.context.src_ip,
             outer_dst_ip: value.context.dst_ip,
             outer_src_port: value.context.src_port,
@@ -560,19 +713,55 @@ struct TcpFlowValue {
     stats: FlowStats,
     context: FlowContext,
 
+    domain: Option<DomainName>,
+
+    resource_name: String,
+    resource_address: String,
+
+    client_version: Option<String>,
+    device_serial: Option<String>,
+    device_uuid: Option<String>,
+    device_os_name: Option<String>,
+    device_os_version: Option<String>,
+    identifier_for_vendor: Option<String>,
+    firebase_installation_id: Option<String>,
+
+    identity_id: Option<String>,
+    identity_name: Option<String>,
+    actor_id: Option<String>,
+    actor_email: Option<String>,
+
     fin_tx: bool,
     fin_rx: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct UdpFlowValue {
     start: DateTime<Utc>,
     last_packet: DateTime<Utc>,
     stats: FlowStats,
     context: FlowContext,
+
+    domain: Option<DomainName>,
+
+    resource_name: String,
+    resource_address: String,
+
+    client_version: Option<String>,
+    device_serial: Option<String>,
+    device_uuid: Option<String>,
+    device_os_name: Option<String>,
+    device_os_version: Option<String>,
+    identifier_for_vendor: Option<String>,
+    firebase_installation_id: Option<String>,
+
+    identity_id: Option<String>,
+    identity_name: Option<String>,
+    actor_id: Option<String>,
+    actor_email: Option<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Copy)]
 struct FlowStats {
     rx_packets: u64,
     tx_packets: u64,
@@ -660,14 +849,37 @@ impl std::fmt::Debug for FlowContextDiff {
 }
 
 pub mod inbound_wg {
+    use dns_types::DomainName;
+
     use super::*;
 
-    pub fn record_client(cid: ClientId) {
-        update_current_flow_inbound_wireguard(|wg| wg.client.replace(cid));
+    pub fn record_client(cid: ClientId, props: ClientProperties) {
+        update_current_flow_inbound_wireguard(|wg| {
+            wg.client.replace(Client {
+                id: cid,
+                version: props.version,
+                device_os_name: props.device_os_name,
+                device_os_version: props.device_os_version,
+                device_serial: props.device_serial,
+                actor_id: props.actor_id,
+                actor_email: props.actor_email,
+                identity_id: props.identity_id,
+                identity_name: props.identity_name,
+                device_uuid: props.device_uuid,
+                identifier_for_vendor: props.identifier_for_vendor,
+                firebase_installation_id: props.firebase_installation_id,
+            })
+        });
     }
 
-    pub fn record_resource(rid: ResourceId) {
-        update_current_flow_inbound_wireguard(|wg| wg.resource.replace(rid));
+    pub fn record_resource(id: ResourceId, name: String, address: String) {
+        update_current_flow_inbound_wireguard(|wg| {
+            wg.resource.replace(Resource { id, name, address })
+        });
+    }
+
+    pub fn record_domain(name: DomainName) {
+        update_current_flow_inbound_wireguard(|wg| wg.domain.replace(name));
     }
 
     pub fn record_decrypted_packet(packet: &IpPacket) {
@@ -702,8 +914,8 @@ pub mod inbound_tun {
         update_current_flow_inbound_tun(|tun| tun.client.replace(cid));
     }
 
-    pub fn record_resource(rid: ResourceId) {
-        update_current_flow_inbound_tun(|tun| tun.resource.replace(rid));
+    pub fn record_resource(id: ResourceId) {
+        update_current_flow_inbound_tun(|wg| wg.resource.replace(id));
     }
 
     pub fn record_wireguard_packet(local: Option<SocketAddr>, remote: SocketAddr) {
@@ -760,8 +972,10 @@ enum FlowData {
 struct InboundWireGuard {
     outer: OuterFlow<SocketAddr>,
     inner: Option<InnerFlow>,
-    client: Option<ClientId>,
-    resource: Option<ResourceId>,
+    client: Option<Client>,
+    resource: Option<Resource>,
+    /// The domain name in case this packet is for a DNS resource.
+    domain: Option<DomainName>,
     icmp_error: Option<IcmpError>,
 }
 
@@ -791,6 +1005,33 @@ struct InnerFlow {
     tcp_rst: bool,
 
     payload_len: usize,
+}
+
+#[derive(Debug)]
+struct Client {
+    id: ClientId,
+
+    version: Option<String>,
+
+    device_serial: Option<String>,
+    device_uuid: Option<String>,
+    device_os_name: Option<String>,
+    device_os_version: Option<String>,
+
+    identifier_for_vendor: Option<String>,
+    firebase_installation_id: Option<String>,
+
+    identity_id: Option<String>,
+    identity_name: Option<String>,
+    actor_id: Option<String>,
+    actor_email: Option<String>,
+}
+
+#[derive(Debug)]
+struct Resource {
+    id: ResourceId,
+    name: String,
+    address: String,
 }
 
 impl From<&IpPacket> for InnerFlow {

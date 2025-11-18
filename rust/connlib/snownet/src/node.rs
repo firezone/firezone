@@ -12,7 +12,7 @@ use boringtun::noise::errors::WireGuardError;
 use boringtun::noise::{
     HandshakeResponse, Index, Packet, PacketCookieReply, PacketData, Tunn, TunnResult,
 };
-use boringtun::x25519::PublicKey;
+use boringtun::x25519::{self, PublicKey};
 use boringtun::{noise::rate_limiter::RateLimiter, x25519::StaticSecret};
 use bufferpool::{Buffer, BufferPool};
 use core::fmt;
@@ -21,9 +21,8 @@ use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
 use rand::seq::IteratorRandom;
-use rand::{RngCore, SeedableRng, random};
+use rand::{RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
-use secrecy::{ExposeSecret, Secret};
 use sha2::Digest;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
@@ -233,7 +232,7 @@ where
         &mut self,
         cid: TId,
         remote: PublicKey,
-        session_key: Secret<[u8; 32]>,
+        preshared_key: x25519::StaticSecret,
         local_creds: Credentials,
         remote_creds: Credentials,
         now: Instant,
@@ -248,8 +247,6 @@ where
             );
             return Ok(());
         }
-
-        let preshared_key = *session_key.expose_secret();
 
         // Check if we already have a connection with the exact same parameters.
         // In order for the connection to be same, we need to compare:
@@ -267,9 +264,7 @@ where
                 .remote_credentials()
                 .is_some_and(|c| c == &remote_creds)
             && c.tunnel.remote_static_public() == remote
-            && c.tunnel
-                .preshared_key()
-                .is_some_and(|key| key == preshared_key)
+            && c.tunnel.preshared_key().as_bytes() == preshared_key.as_bytes()
         {
             tracing::info!(local = ?local_creds, "Reusing existing connection");
 
@@ -371,7 +366,7 @@ where
 
         self.pending_events.push_back(Event::ConnectionClosed(cid));
 
-        match connection.encapsulate(cid, peer_socket, goodbye, now, &mut self.allocations) {
+        match connection.encapsulate(cid, peer_socket, &goodbye, now, &mut self.allocations) {
             Ok(Some(transmit)) => {
                 tracing::info!("Connection closed proactively (sent goodbye)");
 
@@ -501,7 +496,7 @@ where
     pub fn encapsulate(
         &mut self,
         cid: TId,
-        packet: IpPacket,
+        packet: &IpPacket,
         now: Instant,
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_established_mut(&cid, now)?;
@@ -517,7 +512,7 @@ where
 
         let socket = match &mut conn.state {
             ConnectionState::Connecting { ip_buffer, .. } => {
-                ip_buffer.enqueue(packet);
+                ip_buffer.enqueue(packet.clone());
                 let num_buffered = ip_buffer.len();
 
                 tracing::debug!(%num_buffered, %cid, "ICE is still in progress, buffering IP packet");
@@ -747,7 +742,7 @@ where
         cid: TId,
         mut agent: IceAgent,
         remote: PublicKey,
-        key: [u8; 32],
+        key: x25519::StaticSecret,
         relay: RId,
         index: Index,
         intent_sent_at: Instant,
@@ -1077,7 +1072,7 @@ where
         let mut agent = new_agent();
         agent.set_controlling(true);
 
-        let session_key = Secret::new(random());
+        let session_key = x25519::StaticSecret::random_from_rng(rand::thread_rng());
         let ice_creds = agent.local_credentials();
 
         let params = Offer {
@@ -1137,7 +1132,7 @@ where
             cid,
             agent,
             remote,
-            *initial.session_key.expose_secret(),
+            initial.session_key,
             selected_relay,
             index,
             initial.intent_sent_at,
@@ -1210,7 +1205,7 @@ where
             cid,
             agent,
             remote,
-            *offer.session_key.expose_secret(),
+            offer.session_key,
             selected_relay,
             index,
             now, // Technically, this isn't fully correct because gateways don't send intents so we just use the current time.
@@ -1395,7 +1390,7 @@ fn remove_local_candidate<TId>(
 #[deprecated]
 pub struct Offer {
     /// The Wireguard session key for a connection.
-    pub session_key: Secret<[u8; 32]>,
+    pub session_key: x25519::StaticSecret,
     pub credentials: Credentials,
 }
 
@@ -1485,7 +1480,7 @@ impl fmt::Debug for Transmit {
 
 struct InitialConnection<RId> {
     agent: IceAgent,
-    session_key: Secret<[u8; 32]>,
+    session_key: x25519::StaticSecret,
 
     /// The fallback relay we sampled for this potential connection.
     relay: RId,
@@ -1731,6 +1726,19 @@ impl ConnectionState {
     }
 }
 
+impl fmt::Display for ConnectionState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionState::Connecting { .. } => write!(f, "Connecting"),
+            ConnectionState::Connected { peer_socket, .. } => {
+                write!(f, "Connected({})", peer_socket.kind())
+            }
+            ConnectionState::Idle { peer_socket } => write!(f, "Idle({})", peer_socket.kind()),
+            ConnectionState::Failed => write!(f, "Failed"),
+        }
+    }
+}
+
 fn idle_at(last_activity: Instant) -> Instant {
     const MAX_IDLE: Duration = Duration::from_secs(20); // Must be longer than the ICE timeout otherwise we might not detect a failed connection early enough.
 
@@ -1761,7 +1769,6 @@ impl PeerSocket {
         matches!(self, Self::RelayToPeer { .. } | Self::RelayToRelay { .. })
     }
 
-    // TODO: Return `Arguments` here once we hit 1.89
     fn fmt<RId>(&self, relay: RId) -> String
     where
         RId: fmt::Display,
@@ -1779,6 +1786,15 @@ impl PeerSocket {
             PeerSocket::RelayToRelay { dest } => {
                 format!("RelayToRelay {{ relay: {relay}, dest: {dest} }}")
             }
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            PeerSocket::PeerToPeer { .. } => "PeerToPeer",
+            PeerSocket::PeerToRelay { .. } => "PeerToRelay",
+            PeerSocket::RelayToPeer { .. } => "RelayToPeer",
+            PeerSocket::RelayToRelay { .. } => "RelayToRelay",
         }
     }
 }
@@ -1845,7 +1861,7 @@ where
             .candidate_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!("Connection failed (no candidates received)");
+            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (no candidates received)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -1854,7 +1870,7 @@ where
             .disconnect_timeout()
             .is_some_and(|timeout| now >= timeout)
         {
-            tracing::info!("Connection failed (ICE timeout)");
+            tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (ICE timeout)");
             self.state = ConnectionState::Failed;
             return;
         }
@@ -1954,7 +1970,7 @@ where
                             );
                             transmits.extend(ip_buffer.into_iter().flat_map(|packet| {
                                 let transmit = self
-                                    .encapsulate(cid, remote_socket, packet, now, allocations)
+                                    .encapsulate(cid, remote_socket, &packet, now, allocations)
                                     .inspect_err(|e| {
                                         tracing::debug!(
                                             "Failed to encapsulate buffered IP packet: {e:#}"
@@ -2086,7 +2102,7 @@ where
         match self.tunnel.update_timers_at(&mut buf, now) {
             TunnResult::Done => {}
             TunnResult::Err(WireGuardError::ConnectionExpired) => {
-                tracing::info!("Connection failed (wireguard tunnel expired)");
+                tracing::info!(state = %self.state, index = %self.index.global(), "Connection failed (wireguard tunnel expired)");
                 self.state = ConnectionState::Failed;
             }
             TunnResult::Err(e) => {
@@ -2112,14 +2128,14 @@ where
         &mut self,
         cid: TId,
         socket: PeerSocket,
-        packet: IpPacket,
+        packet: &IpPacket,
         now: Instant,
         allocations: &mut BTreeMap<RId, Allocation>,
     ) -> Result<Option<Transmit>>
     where
         TId: fmt::Display,
     {
-        self.state.on_outgoing(cid, &mut self.agent, &packet, now);
+        self.state.on_outgoing(cid, &mut self.agent, packet, now);
 
         let packet_start = if socket.send_from_relay() { 4 } else { 0 };
 

@@ -8,13 +8,13 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::{Context as _, Result, anyhow};
 use backoff::ExponentialBackoffBuilder;
 use firezone_logging::sentry_layer;
 use firezone_telemetry::{Telemetry, analytics};
 use phoenix_channel::{LoginUrl, PhoenixChannel, get_user_agent};
 use platform::RELEASE;
-use secrecy::{Secret, SecretString};
+use secrecy::{SecretBox, SecretString};
 use socket_factory::{SocketFactory, TcpSocket, UdpSocket};
 use tokio::sync::Mutex;
 use tracing_subscriber::{Layer, layer::SubscriberExt as _};
@@ -379,9 +379,10 @@ impl Session {
     pub async fn next_event(&self) -> Option<Event> {
         match self.events.lock().await.next().await? {
             client_shared::Event::TunInterfaceUpdated(config) => {
-                let dns: Vec<String> = config
+                let dns = config
                     .dns_by_sentinel
-                    .left_values()
+                    .sentinel_ips()
+                    .into_iter()
                     .map(|ip| ip.to_string())
                     .collect();
 
@@ -495,7 +496,7 @@ fn connect(
     let _guard = runtime.enter(); // Constructing `PhoenixChannel` requires a runtime context.
 
     let portal = PhoenixChannel::disconnected(
-        Secret::new(url),
+        SecretBox::init_with(|| url),
         get_user_agent(os_version, platform::COMPONENT, platform::VERSION),
         "client",
         (),
@@ -563,7 +564,7 @@ fn init_logging(log_dir: &Path, log_filter: String) -> Result<()> {
 
     LOGGER_STATE
         .set((handle, reload_handle))
-        .expect("Logging guard should never be initialized twice");
+        .map_err(|_| anyhow!("Logging guard should never be initialized twice"))?;
 
     Ok(())
 }

@@ -19,7 +19,7 @@ use futures::future::BoxFuture;
 use futures::{FutureExt, SinkExt, StreamExt};
 use itertools::Itertools as _;
 use rand_core::{OsRng, RngCore};
-use secrecy::{ExposeSecret, Secret};
+use secrecy::{ExposeSecret, SecretBox};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use socket_factory::{SocketFactory, TcpSocket, TcpStream};
 use std::task::{Context, Poll, Waker};
@@ -51,7 +51,7 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
     pending_join_requests: BTreeMap<OutboundRequestId, Instant>,
 
     // Stored here to allow re-connecting.
-    url_prototype: Secret<LoginUrl<TFinish>>,
+    url_prototype: SecretBox<LoginUrl<TFinish>>,
     last_url: Option<Url>,
     user_agent: String,
     make_reconnect_backoff: Box<dyn Fn() -> ExponentialBackoff + Send>,
@@ -64,6 +64,9 @@ pub struct PhoenixChannel<TInitReq, TInboundMsg, TFinish> {
 }
 
 enum State {
+    Reconnect {
+        backoff: Duration,
+    },
     Connected(WebSocketStream<MaybeTlsStream<TcpStream>>),
     Connecting(
         BoxFuture<'static, Result<WebSocketStream<MaybeTlsStream<TcpStream>>, InternalError>>,
@@ -259,7 +262,7 @@ where
     /// The provided URL must contain a host.
     /// Additionally, you must already provide any query parameters required for authentication.
     pub fn disconnected(
-        url: Secret<LoginUrl<TFinish>>,
+        url: SecretBox<LoginUrl<TFinish>>,
         user_agent: String,
         login: &'static str,
         init_req: TInitReq,
@@ -357,6 +360,20 @@ where
         self.url_prototype.expose_secret().base_url()
     }
 
+    pub fn host(&self) -> String {
+        self.url_prototype
+            .expose_secret()
+            .host_and_port()
+            .0
+            .to_owned()
+    }
+
+    pub fn update_ips(&mut self, ips: Vec<IpAddr>) {
+        tracing::debug!(host = %self.host(), current = ?self.resolved_addresses, new = ?ips, "Updating resolved IPs");
+
+        self.resolved_addresses = ips;
+    }
+
     /// Initiate a graceful close of the connection.
     pub fn close(&mut self) -> Result<(), Connecting> {
         tracing::info!("Closing connection to portal");
@@ -366,7 +383,7 @@ where
             State::Closing(stream) | State::Connected(stream) => {
                 self.state = State::Closing(stream);
             }
-            State::Closed => {}
+            State::Closed | State::Reconnect { .. } => {}
         }
 
         Ok(())
@@ -393,6 +410,33 @@ where
                     Poll::Pending => return Poll::Pending,
                 },
                 State::Connected(stream) => stream,
+                State::Reconnect { backoff } => {
+                    let backoff = *backoff;
+                    let socket_addresses = self.socket_addresses();
+                    let host = self.host();
+
+                    let secret_url = self
+                        .last_url
+                        .as_ref()
+                        .expect("should have last URL if we receive connection error")
+                        .clone();
+                    let user_agent = self.user_agent.clone();
+                    let socket_factory = self.socket_factory.clone();
+
+                    self.state = State::Connecting(Box::pin(async move {
+                        tokio::time::sleep(backoff).await;
+                        create_and_connect_websocket(
+                            secret_url,
+                            socket_addresses,
+                            host,
+                            user_agent,
+                            socket_factory,
+                        )
+                        .await
+                    }));
+
+                    continue;
+                }
                 State::Connecting(future) => match future.poll_unpin(cx) {
                     Poll::Ready(Ok(stream)) => {
                         self.reconnect_backoff = None;
@@ -423,9 +467,6 @@ where
                         return Poll::Ready(Err(Error::FatalIo(io)));
                     }
                     Poll::Ready(Err(e)) => {
-                        let socket_addresses = self.socket_addresses();
-                        let host = self.host();
-
                         let backoff = match self.reconnect_backoff.as_mut() {
                             Some(reconnect_backoff) => reconnect_backoff
                                 .next_backoff()
@@ -439,25 +480,7 @@ where
                             }
                         };
 
-                        let secret_url = self
-                            .last_url
-                            .as_ref()
-                            .expect("should have last URL if we receive connection error")
-                            .clone();
-                        let user_agent = self.user_agent.clone();
-                        let socket_factory = self.socket_factory.clone();
-
-                        self.state = State::Connecting(Box::pin(async move {
-                            tokio::time::sleep(backoff).await;
-                            create_and_connect_websocket(
-                                secret_url,
-                                socket_addresses,
-                                host,
-                                user_agent,
-                                socket_factory,
-                            )
-                            .await
-                        }));
+                        self.state = State::Reconnect { backoff };
 
                         return Poll::Ready(Ok(Event::Hiccup {
                             backoff,
@@ -693,14 +716,6 @@ where
             .iter()
             .map(|ip| SocketAddr::new(*ip, port))
             .collect()
-    }
-
-    fn host(&self) -> String {
-        self.url_prototype
-            .expose_secret()
-            .host_and_port()
-            .0
-            .to_owned()
     }
 }
 

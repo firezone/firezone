@@ -97,13 +97,13 @@ pub(crate) fn parse_auth_callback(url: &Url) -> Result<auth::Response> {
                 if fragment.is_some() {
                     bail!("`fragment` should appear exactly once");
                 }
-                fragment = Some(SecretString::new(value.to_string()));
+                fragment = Some(SecretString::from(value.as_ref()));
             }
             "state" => {
                 if state.is_some() {
                     bail!("`state` should appear exactly once");
                 }
-                state = Some(SecretString::new(value.to_string()));
+                state = Some(SecretString::from(value.as_ref()));
             }
             _ => {}
         }

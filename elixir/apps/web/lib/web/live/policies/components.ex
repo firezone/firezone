@@ -650,11 +650,10 @@ defmodule Web.Policies.Components do
         <p class="text-sm text-neutral-500 mb-4">
           Allow access when the Client is manually verified by the administrator.
         </p>
-        <div class="space-y-2">
+        <div class="space-y-2" phx-update="ignore" id="conditions-client-verified-values">
           <.input
             type="checkbox"
             label="Require client verification"
-            field={condition_form[:values]}
             name="policy[conditions][client_verified][values][]"
             id="policy_conditions_client_verified_value"
             disabled={@disabled}

@@ -9,7 +9,6 @@ use firezone_logging::err_with_src;
 use itertools::Itertools;
 use pattern::{Candidate, Pattern};
 use std::collections::{BTreeSet, VecDeque};
-use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::{
     collections::{BTreeMap, HashMap},
@@ -54,57 +53,50 @@ struct Resource {
 /// A query that needs to be forwarded to an upstream DNS server for resolution.
 #[derive(Debug)]
 pub(crate) struct RecursiveQuery {
+    /// The server we want to send the query to.
     pub server: SocketAddr,
+
+    /// The local address we received the query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and should forward).
     pub message: dns_types::Query,
+
+    /// The transport we received the query on.
     pub transport: Transport,
 }
 
 /// A response to a [`RecursiveQuery`].
 #[derive(Debug)]
 pub(crate) struct RecursiveResponse {
+    /// The server we sent the query to.
     pub server: SocketAddr,
+
+    /// The local address we received the original query on.
+    pub local: SocketAddr,
+
+    /// The client that sent us the original query.
+    pub remote: SocketAddr,
+
+    /// The query we received from the client (and forwarded).
     pub query: dns_types::Query,
-    pub message: io::Result<dns_types::Response>,
+
+    /// The result of forwarding the DNS query.
+    pub message: Result<dns_types::Response>,
+
+    /// The transport we used.
     pub transport: Transport,
 }
 
-impl RecursiveQuery {
-    pub(crate) fn via_udp(
-        source: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
-        Self {
-            server,
-            message,
-            transport: Transport::Udp { source },
-        }
-    }
-
-    pub(crate) fn via_tcp(
-        local: SocketAddr,
-        remote: SocketAddr,
-        server: SocketAddr,
-        message: dns_types::Query,
-    ) -> Self {
-        Self {
-            server,
-            message,
-            transport: Transport::Tcp { local, remote },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, derive_more::Display)]
 pub(crate) enum Transport {
-    Udp {
-        /// The original source we received the DNS query on.
-        source: SocketAddr,
-    },
-    Tcp {
-        local: SocketAddr,
-        remote: SocketAddr,
-    },
+    #[display("UDP")]
+    Udp,
+    #[display("TCP")]
+    Tcp,
 }
 
 /// Tells the Client how to reply to a single DNS query

@@ -66,12 +66,14 @@ impl Request {
             url.set_path(account_slug);
         }
 
-        url.query_pairs_mut()
-            .append_pair("as", "client")
-            .append_pair("nonce", self.nonce.expose_secret())
-            .append_pair("state", self.state.expose_secret());
+        // Avoid further usage of `Url` here so we don't need to zeroize it.
+        let base = url.to_string();
 
-        SecretString::new(url.to_string())
+        SecretString::from(format!(
+            "{base}?as=client&nonce={}&state={}",
+            self.nonce.expose_secret(),
+            self.state.expose_secret()
+        ))
     }
 }
 

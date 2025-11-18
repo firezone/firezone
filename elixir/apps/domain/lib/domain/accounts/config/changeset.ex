@@ -64,22 +64,6 @@ defmodule Domain.Accounts.Config.Changeset do
     end
   end
 
-  def normalize_dns_address(%Config.ClientsUpstreamDNS{protocol: :ip_port, address: address}) do
-    case IPPort.cast(address) do
-      {:ok, address} ->
-        address
-        |> IPPort.put_default_port(@default_dns_port)
-        |> to_string()
-
-      _ ->
-        address
-    end
-  end
-
-  def normalize_dns_address(%Config.ClientsUpstreamDNS{address: address}) do
-    address
-  end
-
   def client_upstream_dns_changeset(client_upstream_dns \\ %Config.ClientsUpstreamDNS{}, attrs) do
     client_upstream_dns
     |> cast(attrs, [:protocol, :address])
@@ -106,7 +90,8 @@ defmodule Domain.Accounts.Config.Changeset do
   defp validate_ip_port(changeset) do
     validate_change(changeset, :address, fn :address, address ->
       case IPPort.cast(address) do
-        {:ok, _ip} -> []
+        {:ok, %IPPort{port: nil}} -> []
+        {:ok, %IPPort{}} -> [address: "must not include a port"]
         _ -> [address: "must be a valid IP address"]
       end
     end)
@@ -128,5 +113,21 @@ defmodule Domain.Accounts.Config.Changeset do
     |> cast(attrs, [])
     |> cast_embed(:outdated_gateway, with: &Config.Notifications.Email.Changeset.changeset/2)
     |> cast_embed(:idp_sync_error, with: &Config.Notifications.Email.Changeset.changeset/2)
+  end
+
+  defp normalize_dns_address(%Config.ClientsUpstreamDNS{protocol: :ip_port, address: address}) do
+    case IPPort.cast(address) do
+      {:ok, address} ->
+        address
+        |> IPPort.put_default_port(@default_dns_port)
+        |> to_string()
+
+      _ ->
+        address
+    end
+  end
+
+  defp normalize_dns_address(%Config.ClientsUpstreamDNS{address: address}) do
+    address
   end
 end

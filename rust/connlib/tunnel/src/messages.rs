@@ -1,11 +1,12 @@
 //! Message types that are used by both the gateway and client.
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 
+use boringtun::x25519;
 use chrono::{DateTime, Utc, serde::ts_seconds};
 use connlib_model::RelayId;
-use dns_types::DomainName;
+use dns_types::{DoHUrl, DomainName};
 use ip_network::IpNetwork;
-use secrecy::{ExposeSecret as _, Secret};
+use secrecy::ExposeSecret as _;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -78,9 +79,9 @@ pub struct Offer {
 #[expect(deprecated)]
 impl Offer {
     // Not a very clean API but it is deprecated anyway.
-    pub fn into_snownet_offer(self, key: Secret<Key>) -> snownet::Offer {
+    pub fn into_snownet_offer(self, key: SecretKey) -> snownet::Offer {
         snownet::Offer {
-            session_key: Secret::new(key.expose_secret().0),
+            session_key: x25519::StaticSecret::from(key.expose_secret().0),
             credentials: snownet::Credentials {
                 username: self.username,
                 password: self.password,
@@ -168,9 +169,45 @@ pub struct Interface {
     /// DNS that will be used to query for DNS that aren't within our resource list.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     #[serde(default)]
-    pub upstream_dns: Vec<DnsServer>,
+    pub upstream_dns: Vec<DnsServer>, // TODO: Remove once portal with `upstream_do53` support has been deployed.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub upstream_do53: Vec<UpstreamDo53>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub upstream_doh: Vec<UpstreamDoH>,
     #[serde(default)]
     pub search_domain: Option<DomainName>,
+}
+
+impl Interface {
+    pub fn upstream_do53(&self) -> Vec<IpAddr> {
+        if !self.upstream_do53.is_empty() {
+            return self.upstream_do53.iter().map(|u| u.ip).collect();
+        }
+
+        // Fallback whilst the portal does not send `upstream_do53`.
+        self.upstream_dns
+            .iter()
+            .map(|u| match u {
+                DnsServer::IpPort(ip_dns_server) => ip_dns_server.address.ip(),
+            })
+            .collect()
+    }
+
+    pub fn upstream_doh(&self) -> Vec<DoHUrl> {
+        self.upstream_doh.iter().map(|u| u.url.clone()).collect()
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct UpstreamDo53 {
+    pub ip: IpAddr,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq)]
+pub struct UpstreamDoH {
+    pub url: DoHUrl,
 }
 
 /// A single relay

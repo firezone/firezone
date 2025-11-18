@@ -53,7 +53,7 @@ class NetworkSettings {
     self.matchDomains.append(contentsOf: self.searchDomains)
   }
 
-  func apply(completionHandler: (() -> Void)? = nil) {
+  func apply(completionHandler: (@Sendable () -> Void)? = nil) {
     // We don't really know the connlib gateway IP address at this point, but just using 127.0.0.1 is okay
     // because the OS doesn't really need this IP address.
     // NEPacketTunnelNetworkSettings taking in tunnelRemoteAddress is probably a bad abstraction caused by

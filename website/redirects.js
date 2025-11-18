@@ -29,7 +29,7 @@ module.exports = [
     source: "/dl/firezone-client-android/latest",
     destination:
       // mark:current-android-version
-      "https://www.github.com/firezone/firezone/releases/download/android-client-1.5.5/firezone-android-client-1.5.5.apk",
+      "https://www.github.com/firezone/firezone/releases/download/android-client-1.5.6/firezone-android-client-1.5.6.apk",
     permanent: false,
   },
   /*
@@ -105,21 +105,21 @@ module.exports = [
     source: "/dl/firezone-gateway/latest/x86_64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.17/firezone-gateway_1.4.17_x86_64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.18/firezone-gateway_1.4.18_x86_64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/aarch64",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.17/firezone-gateway_1.4.17_aarch64",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.18/firezone-gateway_1.4.18_aarch64",
     permanent: false,
   },
   {
     source: "/dl/firezone-gateway/latest/armv7",
     destination:
       // mark:current-gateway-version
-      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.17/firezone-gateway_1.4.17_armv7",
+      "https://www.github.com/firezone/firezone/releases/download/gateway-1.4.18/firezone-gateway_1.4.18_armv7",
     permanent: false,
   },
   /*

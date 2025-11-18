@@ -1,3 +1,5 @@
+#![cfg_attr(test, allow(clippy::unwrap_used))]
+
 //! Main connlib library for clients.
 pub use connlib_model::StaticSecret;
 pub use eventloop::DisconnectError;

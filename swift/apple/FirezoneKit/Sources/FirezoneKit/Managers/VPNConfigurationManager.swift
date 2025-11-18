@@ -21,7 +21,9 @@ enum VPNConfigurationManagerError: Error {
   }
 }
 
-public class VPNConfigurationManager {
+/// Thread-safe: Immutable wrapper around NETunnelProviderManager.
+/// Only contains a 'let' property. NETunnelProviderManager handles its own synchronisation.
+public class VPNConfigurationManager: @unchecked Sendable {
   // Persists our tunnel settings
   let manager: NETunnelProviderManager
 
@@ -99,7 +101,6 @@ public class VPNConfigurationManager {
     }
 
     let configuration = Configuration.shared
-    let ipcClient = IPCClient(session: session)
 
     if let actorName = legacyConfiguration["actorName"] {
       UserDefaults.standard.set(actorName, forKey: "actorName")
@@ -129,7 +130,7 @@ public class VPNConfigurationManager {
       configuration.internetResourceEnabled = internetResourceEnabled == "true"
     }
 
-    try await ipcClient.setConfiguration(configuration)
+    try await IPCClient.setConfiguration(session: session, configuration.toTunnelConfiguration())
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
     if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol {

@@ -9,7 +9,18 @@ export default function Headless({ os }: { os: OS }) {
   return (
     <Entries downloadLinks={downloadLinks(os)} title={title(os)}>
       {/* When you cut a release, remove any solved issues from the "known issues" lists over in `client-apps`. This must not be done when the issue's PR merges. */}
-      <Unreleased></Unreleased>
+      <Unreleased>
+        {os == OS.Linux && (
+          <ChangeItem pull="10742">
+            Fixes an issue where CIDR/IP resources whose routes conflict with
+            the local network were not routable.
+          </ChangeItem>
+        )}
+        <ChangeItem pull="10773">
+          Fixes an issue where the order of upstream / system DNS resolvers was
+          not respected.
+        </ChangeItem>
+      </Unreleased>
       <Entry version="1.5.4" date={new Date("2025-10-16")}>
         <ChangeItem pull="10533">
           Improves reliability by caching DNS responses as per their TTL.

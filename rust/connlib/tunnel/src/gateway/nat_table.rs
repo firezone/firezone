@@ -45,11 +45,6 @@ impl NatTable {
         }
     }
 
-    /// Returns true if the NAT table has any entries with the given "inside" IP address.
-    pub(crate) fn has_entry_for_inside(&self, ip: IpAddr) -> bool {
-        self.table.left_values().any(|(_, c)| c == &ip)
-    }
-
     pub(crate) fn translate_outgoing(
         &mut self,
         packet: &IpPacket,
@@ -62,25 +57,21 @@ impl NatTable {
         let inside = (src, dst);
 
         if let Some(outside) = self.table.get_by_left(&inside).copied() {
-            if outside.1 == outside_dst {
-                tracing::trace!(?inside, ?outside, "Translating outgoing packet");
+            tracing::trace!(?inside, ?outside, "Translating outgoing packet");
 
-                if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
-                    tracing::debug!(
-                        ?inside,
-                        ?outside,
-                        "Witnessed outgoing TCP RST, removing NAT session"
-                    );
+            if packet.as_tcp().is_some_and(|tcp| tcp.rst()) {
+                tracing::debug!(
+                    ?inside,
+                    ?outside,
+                    "Witnessed outgoing TCP RST, removing NAT session"
+                );
 
-                    self.table.remove_by_left(&inside);
-                    self.expired.insert(outside);
-                }
-
-                self.last_seen.insert(outside, now);
-                return Ok(outside);
+                self.table.remove_by_left(&inside);
+                self.expired.insert(outside);
             }
 
-            tracing::trace!(?inside, ?outside, "Outgoing packet for expired translation");
+            self.last_seen.insert(outside, now);
+            return Ok(outside);
         }
 
         // Find the first available public port, starting from the port of the to-be-mapped packet.

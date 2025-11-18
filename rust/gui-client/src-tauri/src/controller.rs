@@ -115,9 +115,10 @@ pub enum Failure {
     Panic,
 }
 
-#[derive(derive_more::Debug)]
+#[derive(derive_more::Debug, Default)]
 pub enum Status {
     /// Firezone is disconnected.
+    #[default]
     Disconnected,
     Quitting, // The user asked to quit and we're waiting for the tunnel daemon to gracefully disconnect so we can flush telemetry.
     /// Firezone is ready to use.
@@ -129,12 +130,6 @@ pub enum Status {
     WaitingForPortal,
     /// Firezone has connected to the Portal and is raising the tunnel.
     WaitingForTunnel,
-}
-
-impl Default for Status {
-    fn default() -> Self {
-        Self::Disconnected
-    }
 }
 
 impl Status {
@@ -331,7 +326,7 @@ impl<I: GuiIntegration> Controller<I> {
 
         self.send_ipc(&service::ClientMsg::Connect {
             api_url: api_url.to_string(),
-            token: token.expose_secret().clone(),
+            token,
             is_internet_resource_active: self.general_settings.internet_resource_enabled(),
         })
         .await?;

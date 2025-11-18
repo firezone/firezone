@@ -47,20 +47,17 @@ jobs:
             exit 0;
           fi
 
+          # For merge group, run all jobs
+          if [ "${{ github.event_name }}" = "merge_group" ]; then
+            echo "jobs_to_run=$jobs" >> "$GITHUB_OUTPUT"
+
+            exit 0;
+          fi
+
           # Fetch base ref for PRs
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             git fetch origin ${{ github.base_ref }} --depth=1
             git diff --name-only origin/${{ github.base_ref }} ${{ github.sha }} > changed_files.txt
-
-            echo "Changed files:"
-            cat changed_files.txt
-          fi
-
-          # Fetch base ref for merge_group
-          if [ "${{ github.event_name }}" = "merge_group" ]; then
-            # Base ref could be a few commits away, so fetch a few commits in case the queue is long
-            git fetch origin ${{ github.event.merge_group.base_ref }} --depth=20
-            git diff --name-only ${{ github.event.merge_group.base_sha }} ${{ github.sha }} > changed_files.txt
 
             echo "Changed files:"
             cat changed_files.txt
@@ -115,40 +112,39 @@ jobs:
 
   required-check:
     name: required-check
-    needs: planner
+    needs:
+      [
+        kotlin,
+        swift,
+        elixir,
+        rust,
+        tauri,
+        static-analysis,
+        codeql,
+        control-plane,
+        data-plane,
+        data-plane-perf,
+        integration-tests,
+        compatibility-tests,
+        perf-tests,
+      ]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Wait for all jobs to complete
-        timeout-minutes: 60
+      - name: Check if all jobs are successful
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -e
 
-          while true; do
-            jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not)))')
+          jobs_json=$(gh run view ${{ github.run_id }} --json jobs --jq '.jobs | map(select((.name | contains("required-check") | not) and (.name | contains("upload-bencher") | not)))')
+          failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
 
-            total_jobs=$(echo "$jobs_json" | jq 'length')
-            failed_jobs=$(echo "$jobs_json" | jq -r '[.[] | select(.conclusion == "failure")] | length')
-            completed_jobs=$(echo "$jobs_json" | jq '[.[] | select(.status == "completed")] | length')
-
-            if [ "$failed_jobs" -gt 0 ]; then
-              echo "At least one job has failed."
-              exit 1
-            fi
-
-            echo "Completed: $completed_jobs/$total_jobs"
-
-            if [ "$completed_jobs" -eq "$total_jobs" ]; then
-              break
-            fi
-
-            echo "Jobs not yet completed:"
-            echo "$jobs_json" | jq -r '.[] | select(.status != "completed") | "- " + .name + " (Status: " + .status + ")" '
-
-            sleep 60
-          done
+          if [ "$failed_jobs" -gt 0 ]; then
+            echo "At least one job has failed."
+            exit 1
+          fi
 
   kotlin:
     needs: planner
@@ -226,7 +222,7 @@ jobs:
 
   compatibility-tests:
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         client:
           - image: "ghcr.io/firezone/client"
@@ -275,7 +271,7 @@ jobs:
       RELAY_TAG: ${{ github.sha }}
       FIREZONE_INC_BUF: true
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'merge_group' }}
       matrix:
         test:
           - tcp-client2server
@@ -290,8 +286,7 @@ jobs:
       - uses: ./.github/actions/ghcr-docker-login
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-      # We need at least Docker v28.1 which is not yet available on GitHub actions runners
-      - uses: docker/setup-docker-action@b60f85385d03ac8acfca6d9996982511d8620a19 # v4.3.0
+      - uses: ./.github/actions/setup-docker
       - name: Seed database
         run: docker compose run elixir /bin/sh -c 'cd apps/domain && mix ecto.migrate --migrations-path priv/repo/migrations --migrations-path priv/repo/manual_migrations && mix ecto.seed'
       - name: Increase max UDP buffer sizes

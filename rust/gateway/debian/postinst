@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+
+set -e
+
+systemd-sysusers firezone-gateway.conf
+
+#DEBHELPER#
+
+# Generate a deterministic ID based of `/etc/machine-id`
+FIREZONE_ID=$(systemd-id128 --app-specific=753b38f9f96947ef8083802d5909a372 machine-id)
+
+# We fully overwrite the `gateway-present-env` file on every run.
+# Maintainer scripts need to be deterministic and that seems to be the easiest way.
+printf "# This file is managed by maintainer scripts. Do not touch!\n# Use \`etc/firezone/gateway-env\` for custom configuration.\n" >/etc/firezone/gateway-preset-env
+printf "FIREZONE_ID=%s\n" "${FIREZONE_ID}" >>/etc/firezone/gateway-preset-env

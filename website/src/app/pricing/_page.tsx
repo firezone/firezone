@@ -274,7 +274,7 @@ export default function Page() {
               <li className="flex space-x-2.5">
                 <FaCheck className="mt-0.5 flex-shrink-0 text-primary-450 w-4 h-4" />
                 <span className="leading-tight">
-                  Directory sync for Google, Entra ID, Okta, and JumpCloud
+                  Directory sync for Google, Entra ID, and Okta
                 </span>
               </li>
               <li className="flex space-x-2.5">

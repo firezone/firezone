@@ -21,7 +21,7 @@ use hickory_resolver::TokioResolver;
 use phoenix_channel::{PhoenixChannel, PublicKeyParam};
 use std::collections::{BTreeMap, BTreeSet};
 use std::future::{self, Future, poll_fn};
-use std::net::{IpAddr, SocketAddrV4, SocketAddrV6};
+use std::net::{IpAddr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::ops::ControlFlow;
 use std::pin::pin;
 use std::sync::Arc;
@@ -93,6 +93,7 @@ impl Eventloop {
             portal,
             portal_event_tx,
             portal_cmd_rx,
+            resolver.clone(),
         ));
 
         Ok(Self {
@@ -323,10 +324,8 @@ impl Eventloop {
                 continue;
             }
 
-            if e.downcast_ref::<snownet::UnknownConnection>()
-                .is_some_and(|e| e.recently_disconnected())
-            {
-                tracing::debug!("{e:#}");
+            if let Some(e) = e.downcast_ref::<firezone_tunnel::UnroutablePacket>() {
+                tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
                 continue;
             }
 
@@ -352,15 +351,10 @@ impl Eventloop {
         match msg {
             IngressMessages::AuthorizeFlow(msg) => {
                 if let Err(snownet::NoTurnServers {}) = tunnel.state_mut().authorize_flow(
-                    msg.client.id,
-                    PublicKey::from(msg.client.public_key.0),
-                    msg.client.preshared_key,
+                    msg.client,
+                    msg.subject,
                     msg.client_ice_credentials,
                     msg.gateway_ice_credentials,
-                    IpConfig {
-                        v4: msg.client.ipv4,
-                        v6: msg.client.ipv6,
-                    },
                     msg.expires_at,
                     msg.resource,
                     Instant::now(),
@@ -506,20 +500,13 @@ impl Eventloop {
                     .await
                     .context("Failed to set TUN routes")?;
 
-                let ipv4_socket = SocketAddrV4::new(interface.ipv4, 53535);
-                let ipv6_socket = SocketAddrV6::new(interface.ipv6, 53535, 0, 0);
+                let ipv4_socket = SocketAddr::V4(SocketAddrV4::new(interface.ipv4, 53535));
+                let ipv6_socket = SocketAddr::V6(SocketAddrV6::new(interface.ipv6, 53535, 0, 0));
 
-                let ipv4_result = tunnel
-                    .rebind_dns_ipv4(ipv4_socket)
-                    .with_context(|| format!("Failed to bind DNS server at {ipv4_socket}"))
-                    .inspect_err(|e| tracing::debug!("{e:#}"));
-
-                let ipv6_result = tunnel
-                    .rebind_dns_ipv6(ipv6_socket)
-                    .with_context(|| format!("Failed to bind DNS server at {ipv6_socket}"))
-                    .inspect_err(|e| tracing::debug!("{e:#}"));
-
-                ipv4_result.or(ipv6_result)?;
+                tunnel
+                    .rebind_dns(vec![ipv4_socket, ipv6_socket])
+                    .context("Failed to bind DNS server")
+                    .inspect_err(|e| tracing::debug!("{e:#}"))?;
             }
             IngressMessages::ResourceUpdated(resource_description) => {
                 tunnel.state_mut().update_resource(resource_description);
@@ -535,7 +522,7 @@ impl Eventloop {
                     .state_mut()
                     .update_access_authorization_expiry(cid, rid, expires_at)
                 {
-                    tracing::warn!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
+                    tracing::debug!(%cid, %rid, "Failed to update expiry of access authorization: {e:#}")
                 };
             }
         }
@@ -593,6 +580,7 @@ impl Eventloop {
                 v4: req.client.peer.ipv4,
                 v6: req.client.peer.ipv6,
             },
+            Default::default(), // Additional client properties are not supported for 1.3.x Clients and will just be empty.
             req.expires_at,
             req.resource,
             req.client
@@ -648,6 +636,7 @@ impl Eventloop {
                 v4: req.client_ipv4,
                 v6: req.client_ipv6,
             },
+            Default::default(), // Additional client properties are not supported for 1.3.x Clients and will just be empty.
             req.expires_at,
             req.resource,
             req.payload.map(|r| DnsResourceNatEntry::new(r, addresses)),
@@ -706,6 +695,7 @@ async fn phoenix_channel_event_loop(
     mut portal: PhoenixChannel<(), IngressMessages, PublicKeyParam>,
     event_tx: mpsc::Sender<Result<IngressMessages, phoenix_channel::Error>>,
     mut cmd_rx: mpsc::Receiver<PortalCommand>,
+    resolver: TokioResolver,
 ) {
     use futures::future::Either;
     use futures::future::select;
@@ -750,11 +740,27 @@ async fn phoenix_channel_event_loop(
                     error,
                 }),
                 _,
-            )) => tracing::info!(
-                ?backoff,
-                ?max_elapsed_time,
-                "Hiccup in portal connection: {error:#}"
-            ),
+            )) => {
+                tracing::info!(
+                    ?backoff,
+                    ?max_elapsed_time,
+                    "Hiccup in portal connection: {error:#}"
+                );
+
+                let ips = match resolver
+                    .lookup_ip(portal.host())
+                    .await
+                    .context("Failed to lookup portal host")
+                {
+                    Ok(ips) => ips.into_iter().collect(),
+                    Err(e) => {
+                        tracing::debug!(host = %portal.host(), "{e:#}");
+                        continue;
+                    }
+                };
+
+                portal.update_ips(ips);
+            }
             Either::Left((Err(e), _)) => {
                 let _ = event_tx.send(Err(e)).await; // We don't care about the result because we are exiting anyway.
 

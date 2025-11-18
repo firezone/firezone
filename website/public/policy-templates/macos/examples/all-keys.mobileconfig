@@ -58,6 +58,10 @@
 		      <true/>
 
 		      <!-- Whether to show or hide the admin portal link in the main menu. -->
+		      <key>hideResourceList</key>
+		      <true/>
+
+		      <!-- Whether to show or hide the resource list in the main menu. -->
 		      <key>logFilter</key>
 		      <string>info</string>
 

@@ -2,22 +2,26 @@ mod client_on_gateway;
 mod filter_engine;
 mod flow_tracker;
 mod nat_table;
+mod unroutable_packet;
+
+pub use crate::gateway::unroutable_packet::UnroutablePacket;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
+pub(crate) use crate::gateway::unroutable_packet::RoutingError;
 
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::gateway::flow_tracker::FlowTracker;
-use crate::messages::gateway::ResourceDescription;
-use crate::messages::{Answer, IceCredentials, ResolveRequest, SecretKey};
+use crate::messages::gateway::{Client, ResourceDescription, Subject};
+use crate::messages::{Answer, IceCredentials, ResolveRequest};
 use crate::peer_store::PeerStore;
-use crate::{GatewayEvent, IpConfig, p2p_control};
+use crate::{FailedToDecapsulate, GatewayEvent, IpConfig, p2p_control, packet_kind};
 use anyhow::{Context, Result};
-use boringtun::x25519::PublicKey;
+use boringtun::x25519::{self, PublicKey};
 use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, IceCandidate, RelayId, ResourceId};
 use dns_types::DomainName;
 use ip_packet::{FzP2pControlSlice, IpPacket};
-use secrecy::{ExposeSecret as _, Secret};
+use secrecy::ExposeSecret as _;
 use snownet::{Credentials, NoTurnServers, RelaySocket, ServerNode, Transmit};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::iter;
@@ -111,31 +115,28 @@ impl GatewayState {
 
         let dst = packet.destination();
 
-        if !crate::is_peer(dst) {
-            return Ok(None);
-        }
+        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
 
-        let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            tracing::debug!(%dst, "Unknown client, perhaps already disconnected?");
-            return Ok(None);
-        };
+        let peer = self
+            .peers
+            .peer_by_ip_mut(dst)
+            .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
+
         let cid = peer.id();
 
         flow_tracker::inbound_tun::record_client(cid);
 
-        let Some(packet) = peer
+        let packet = peer
             .translate_inbound(packet, now)
-            .context("Failed to translate inbound packet")?
-        else {
-            return Ok(None);
-        };
+            .context("Failed to translate inbound packet")?;
 
-        let Some(encrypted_packet) = self
-            .node
-            .encapsulate(cid, packet, now)
-            .context("Failed to encapsulate")?
-        else {
-            return Ok(None);
+        let encrypted_packet = match self.node.encapsulate(cid, &packet, now) {
+            Ok(Some(encrypted_packet)) => encrypted_packet,
+            Ok(None) => return Ok(None),
+            Err(e) if e.is::<snownet::UnknownConnection>() => {
+                return Err(e.context(UnroutablePacket::not_connected(&packet)));
+            }
+            Err(e) => return Err(e),
         };
 
         flow_tracker::inbound_tun::record_wireguard_packet(
@@ -164,18 +165,19 @@ impl GatewayState {
         let Some((cid, packet)) = self
             .node
             .decapsulate(local, from, packet, now)
-            .context("Failed to decapsulate")?
+            .context(FailedToDecapsulate(packet_kind::classify(packet)))?
         else {
             return Ok(None);
         };
 
-        flow_tracker::inbound_wg::record_client(cid);
         flow_tracker::inbound_wg::record_decrypted_packet(&packet);
 
         let peer = self
             .peers
             .get_mut(&cid)
             .with_context(|| format!("No peer for connection {cid}"))?;
+
+        flow_tracker::inbound_wg::record_client(cid, peer.client_flow_properties());
 
         if let Some(fz_p2p_control) = packet.as_fz_p2p_control() {
             let immediate_response = match fz_p2p_control.event_type() {
@@ -301,23 +303,21 @@ impl GatewayState {
         })
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%cid))]
+    #[tracing::instrument(level = "debug", skip_all, fields(cid = %client.id))]
     pub fn authorize_flow(
         &mut self,
-        cid: ClientId,
-        client_key: PublicKey,
-        preshared_key: SecretKey,
+        client: Client,
+        subject: Subject,
         client_ice: IceCredentials,
         gateway_ice: IceCredentials,
-        client_tun: IpConfig,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         now: Instant,
     ) -> Result<(), NoTurnServers> {
         self.node.upsert_connection(
-            cid,
-            client_key,
-            Secret::new(preshared_key.expose_secret().0),
+            client.id,
+            client.public_key.into(),
+            x25519::StaticSecret::from(client.preshared_key.expose_secret().0),
             Credentials {
                 username: gateway_ice.username,
                 password: gateway_ice.password,
@@ -329,7 +329,29 @@ impl GatewayState {
             now,
         )?;
 
-        let result = self.allow_access(cid, client_tun, expires_at, resource, None);
+        let result = self.allow_access(
+            client.id,
+            IpConfig {
+                v4: client.ipv4,
+                v6: client.ipv6,
+            },
+            flow_tracker::ClientProperties {
+                version: client.version,
+                device_os_name: client.device_os_name,
+                device_os_version: client.device_os_version,
+                device_serial: client.device_serial,
+                device_uuid: client.device_uuid,
+                identifier_for_vendor: client.identifier_for_vendor,
+                firebase_installation_id: client.firebase_installation_id,
+                identity_id: subject.identity_id,
+                identity_name: subject.identity_name,
+                actor_id: subject.actor_id,
+                actor_email: subject.actor_email,
+            },
+            expires_at,
+            resource,
+            None,
+        );
         debug_assert!(
             result.is_ok(),
             "`allow_access` should never fail without a `DnsResourceEntry`"
@@ -342,6 +364,7 @@ impl GatewayState {
         &mut self,
         client: ClientId,
         client_tun: IpConfig,
+        client_props: flow_tracker::ClientProperties,
         expires_at: Option<DateTime<Utc>>,
         resource: ResourceDescription,
         dns_resource_nat: Option<DnsResourceNatEntry>,
@@ -351,7 +374,7 @@ impl GatewayState {
         let peer = self
             .peers
             .entry(client)
-            .or_insert_with(|| ClientOnGateway::new(client, client_tun, gateway_tun));
+            .or_insert_with(|| ClientOnGateway::new(client, client_tun, gateway_tun, client_props));
 
         peer.add_resource(resource.clone(), expires_at);
 
@@ -465,8 +488,24 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::tcp",
 
-                        client = %flow.client,
-                        resource = %flow.resource,
+                        client_id = %flow.client_id,
+                        client_version = flow.client_version.map(tracing::field::display),
+
+                        device_os_name = flow.device_os_name.map(tracing::field::display),
+                        device_os_version = flow.device_os_version.map(tracing::field::display),
+                        device_serial = flow.device_serial.map(tracing::field::display),
+                        device_uuid = flow.device_uuid.map(tracing::field::display),
+                        device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
+                        device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
+
+                        identity_id = flow.identity_id.map(tracing::field::display),
+                        identity_name = flow.identity_name.map(tracing::field::display),
+                        actor_id = flow.actor_id.map(tracing::field::display),
+                        actor_email = flow.actor_email.map(tracing::field::display),
+
+                        resource_id = %flow.resource_id,
+                        resource_name = %flow.resource_name,
+                        resource_address = %flow.resource_address,
                         start = ?flow.start,
                         end = ?flow.end,
                         last_packet = ?flow.last_packet,
@@ -475,6 +514,7 @@ impl GatewayState {
                         inner_dst_ip = %flow.inner_dst_ip,
                         inner_src_port = %flow.inner_src_port,
                         inner_dst_port = %flow.inner_dst_port,
+                        inner_domain = flow.inner_domain.map(tracing::field::display),
 
                         outer_src_ip = %flow.outer_src_ip,
                         outer_dst_ip = %flow.outer_dst_ip,
@@ -492,8 +532,24 @@ impl GatewayState {
                     tracing::trace!(
                         target: "flow_logs::udp",
 
-                        client = %flow.client,
-                        resource = %flow.resource,
+                        client_id = %flow.client_id,
+                        client_version = flow.client_version.map(tracing::field::display),
+
+                        device_os_name = flow.device_os_name.map(tracing::field::display),
+                        device_os_version = flow.device_os_version.map(tracing::field::display),
+                        device_serial = flow.device_serial.map(tracing::field::display),
+                        device_uuid = flow.device_uuid.map(tracing::field::display),
+                        device_identifier_for_vendor = flow.device_identifier_for_vendor.map(tracing::field::display),
+                        device_firebase_installation_id = flow.device_firebase_installation_id.map(tracing::field::display),
+
+                        identity_id = flow.identity_id.map(tracing::field::display),
+                        identity_name = flow.identity_name.map(tracing::field::display),
+                        actor_id = flow.actor_id.map(tracing::field::display),
+                        actor_email = flow.actor_email.map(tracing::field::display),
+
+                        resource_id = %flow.resource_id,
+                        resource_name = %flow.resource_name,
+                        resource_address = %flow.resource_address,
                         start = ?flow.start,
                         end = ?flow.end,
                         last_packet = ?flow.last_packet,
@@ -502,6 +558,7 @@ impl GatewayState {
                         inner_dst_ip = %flow.inner_dst_ip,
                         inner_src_port = %flow.inner_src_port,
                         inner_dst_port = %flow.inner_dst_port,
+                        inner_domain = flow.inner_domain.map(tracing::field::display),
 
                         outer_src_ip = %flow.outer_src_ip,
                         outer_dst_ip = %flow.outer_dst_ip,
@@ -631,7 +688,7 @@ fn handle_assigned_ips_event(
     };
 
     if !peer.is_allowed(req.resource) {
-        tracing::warn!(cid = %peer.id(), rid = %req.resource, "Received `AssignedIpsEvent` for resource that is not allowed");
+        tracing::warn!(cid = %peer.id(), rid = %req.resource, domain = %req.domain, "Received `AssignedIpsEvent` for resource that is not allowed");
 
         let packet = dns_resource_nat::domain_status(
             req.resource,
@@ -663,7 +720,7 @@ fn encrypt_packet(
     now: Instant,
 ) -> Result<Option<Transmit>> {
     let transmit = node
-        .encapsulate(cid, packet, now)
+        .encapsulate(cid, &packet, now)
         .context("Failed to encapsulate")?;
 
     Ok(transmit)
@@ -681,5 +738,9 @@ pub struct ResolveDnsRequest {
 impl ResolveDnsRequest {
     pub fn domain(&self) -> &DomainName {
         &self.domain
+    }
+
+    pub fn client(&self) -> ClientId {
+        self.client
     }
 }

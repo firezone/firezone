@@ -17,7 +17,7 @@ bufferpool = { workspace = true }
 bytes = { workspace = true, features = ["std"] }
 chrono = { workspace = true }
 connlib-model = { workspace = true }
-derive_more = { workspace = true, features = ["debug", "from"] }
+derive_more = { workspace = true, features = ["debug", "from", "display"] }
 divan = { workspace = true, optional = true }
 dns-over-tcp = { workspace = true }
 dns-types = { workspace = true }
@@ -33,6 +33,7 @@ ip-packet = { workspace = true }
 ip_network = { workspace = true }
 ip_network_table = { workspace = true }
 itertools = { workspace = true, features = ["use_std"] }
+l3-udp-dns-client = { workspace = true }
 l4-tcp-dns-server = { workspace = true }
 l4-udp-dns-server = { workspace = true }
 lru = { workspace = true }
@@ -53,6 +54,7 @@ tokio = { workspace = true }
 tokio-util = { workspace = true }
 tracing = { workspace = true, features = ["attributes"] }
 tun = { workspace = true }
+url = { workspace = true, features = ["serde"] }
 uuid = { workspace = true, features = ["std", "v4"] }
 
 [dev-dependencies]

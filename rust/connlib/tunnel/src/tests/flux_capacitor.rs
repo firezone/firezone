@@ -20,19 +20,14 @@ impl FormatTime for FluxCapacitor {
     }
 }
 
-impl Default for FluxCapacitor {
-    fn default() -> Self {
-        let start = Instant::now();
-        let utc_start = Utc::now();
-
+impl FluxCapacitor {
+    pub(crate) fn new(start: Instant, utc_start: DateTime<Utc>) -> Self {
         Self {
             start,
             now: Arc::new(Mutex::new((start, utc_start))),
         }
     }
-}
 
-impl FluxCapacitor {
     const SMALL_TICK: Duration = Duration::from_millis(10);
     const LARGE_TICK: Duration = Duration::from_millis(100);
 

@@ -11,7 +11,7 @@ interface OverviewPageProps {
 
 export default function Overview(props: OverviewPageProps) {
   return (
-    <div className="flex flex-col items-center justify-center gap-4 min-h-screen">
+    <div className="flex flex-col items-center justify-center gap-4">
       <img src={logo} alt="Firezone Logo" className="w-40 h-40" />
 
       <h1 className="text-6xl font-bold">Firezone</h1>

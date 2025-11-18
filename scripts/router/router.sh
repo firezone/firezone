@@ -72,6 +72,9 @@ if [ -n "${NETWORK_LATENCY_MS:-}" ]; then
     tc qdisc add dev internal root netem delay "${LATENCY}ms"
 fi
 
+ip link set dev internal txqueuelen 100000
+ip link set dev internet txqueuelen 100000
+
 echo "-----------------------------------------------------------------------------------------------"
 cat "$CONFIG_FILE"
 echo "-----------------------------------------------------------------------------------------------"
