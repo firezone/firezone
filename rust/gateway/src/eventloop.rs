@@ -324,10 +324,8 @@ impl Eventloop {
                 continue;
             }
 
-            if e.downcast_ref::<snownet::UnknownConnection>()
-                .is_some_and(|e| e.recently_disconnected())
-            {
-                tracing::debug!("{e:#}");
+            if let Some(e) = e.downcast_ref::<firezone_tunnel::UnroutablePacket>() {
+                tracing::debug!(src = %e.source(), dst = %e.destination(), proto = %e.proto(), "{e:#}");
                 continue;
             }
 

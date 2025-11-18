@@ -2,8 +2,12 @@ mod client_on_gateway;
 mod filter_engine;
 mod flow_tracker;
 mod nat_table;
+mod unroutable_packet;
+
+pub use crate::gateway::unroutable_packet::UnroutablePacket;
 
 pub(crate) use crate::gateway::client_on_gateway::ClientOnGateway;
+pub(crate) use crate::gateway::unroutable_packet::RoutingError;
 
 use crate::gateway::client_on_gateway::TranslateOutboundResult;
 use crate::gateway::flow_tracker::FlowTracker;
@@ -111,31 +115,28 @@ impl GatewayState {
 
         let dst = packet.destination();
 
-        if !crate::is_peer(dst) {
-            return Ok(None);
-        }
+        anyhow::ensure!(crate::is_peer(dst), UnroutablePacket::not_a_peer(&packet));
 
-        let Some(peer) = self.peers.peer_by_ip_mut(dst) else {
-            tracing::debug!(%dst, "Unknown client, perhaps already disconnected?");
-            return Ok(None);
-        };
+        let peer = self
+            .peers
+            .peer_by_ip_mut(dst)
+            .with_context(|| UnroutablePacket::no_peer_state(&packet))?;
+
         let cid = peer.id();
 
         flow_tracker::inbound_tun::record_client(cid);
 
-        let Some(packet) = peer
+        let packet = peer
             .translate_inbound(packet, now)
-            .context("Failed to translate inbound packet")?
-        else {
-            return Ok(None);
-        };
+            .context("Failed to translate inbound packet")?;
 
-        let Some(encrypted_packet) = self
-            .node
-            .encapsulate(cid, packet, now)
-            .context("Failed to encapsulate")?
-        else {
-            return Ok(None);
+        let encrypted_packet = match self.node.encapsulate(cid, &packet, now) {
+            Ok(Some(encrypted_packet)) => encrypted_packet,
+            Ok(None) => return Ok(None),
+            Err(e) if e.is::<snownet::UnknownConnection>() => {
+                return Err(e.context(UnroutablePacket::not_connected(&packet)));
+            }
+            Err(e) => return Err(e),
         };
 
         flow_tracker::inbound_tun::record_wireguard_packet(
@@ -719,7 +720,7 @@ fn encrypt_packet(
     now: Instant,
 ) -> Result<Option<Transmit>> {
     let transmit = node
-        .encapsulate(cid, packet, now)
+        .encapsulate(cid, &packet, now)
         .context("Failed to encapsulate")?;
 
     Ok(transmit)
