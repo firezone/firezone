@@ -815,7 +815,7 @@ where
                         tracing::debug!(
                             %from,
                             packet = %hex::encode(packet),
-                            "Packet was a STUN message but we are no longer to this relay"
+                            "Packet was a STUN message but we are no longer connected to this relay"
                         );
 
                         return ControlFlow::Break(()); // Stop processing the packet.
@@ -846,7 +846,7 @@ where
                     allocations::MutAllocationRef::Disconnected => {
                         tracing::debug!(
                             %from,
-                            "Packet was a channel-data message but we are no longer to this relay"
+                            "Packet was a channel-data message but we are no longer connected to this relay"
                         );
 
                         return ControlFlow::Break(()); // Stop processing the packet.
