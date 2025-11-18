@@ -28,6 +28,7 @@ defmodule Domain.Safe do
   @doc """
   Returns the Repo module for unscoped operations without authorization or filtering.
   """
+  @spec unscoped() :: Domain.Repo
   def unscoped do
     Repo
   end
@@ -44,6 +45,7 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec one(Domain.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
   def one(repo, queryable) when repo == Repo, do: Repo.one(queryable)
 
   @spec one!(Scoped.t(), Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
@@ -57,6 +59,7 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec one!(Domain.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
   def one!(repo, queryable) when repo == Repo, do: Repo.one!(queryable)
 
   @spec all(Scoped.t(), Ecto.Queryable.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
@@ -70,6 +73,7 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec all(Domain.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
   def all(repo, queryable) when repo == Repo, do: Repo.all(queryable)
 
   @spec exists?(Scoped.t(), Ecto.Queryable.t()) :: boolean() | {:error, :unauthorized}
@@ -83,7 +87,26 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec exists?(Domain.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo, do: Repo.exists?(queryable)
+
+  @spec stream(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: Enum.t()
+  def stream(repo, queryable, opts \\ []) when repo == Repo, do: Repo.stream(queryable, opts)
+
+  @spec transact((... -> any()), Keyword.t()) :: {:ok, any()} | {:error, any()}
+  def transact(fun, opts \\ []) when is_function(fun), do: Repo.transaction(fun, opts)
+
+  @spec query(Domain.Repo, String.t(), list()) ::
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+  def query(repo, sql, params) when repo == Repo and is_binary(sql) and is_list(params) do
+    Repo.query(sql, params)
+  end
+
+  @spec insert_all(Domain.Repo, atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
+          {integer(), nil | [term()]}
+  def insert_all(repo, schema_or_source, entries, opts \\ []) when repo == Repo do
+    Repo.insert_all(schema_or_source, entries, opts)
+  end
 
   # Mutation operations
   @spec insert(Scoped.t(), Ecto.Changeset.t()) ::
@@ -100,6 +123,8 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec insert(Domain.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo,
     do: Repo.insert(changeset_or_struct, opts)
 
@@ -114,6 +139,10 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec update(Domain.Repo, Ecto.Changeset.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
+  @spec update(Domain.Repo, Ecto.Changeset.t(), Keyword.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def update(repo, changeset, opts \\ []) when repo == Repo, do: Repo.update(changeset, opts)
 
   @spec delete(Scoped.t(), Ecto.Changeset.t() | Ecto.Schema.t()) ::
@@ -142,8 +171,14 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec delete(Domain.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
+          {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def delete(repo, struct_or_changeset, opts \\ []) when repo == Repo,
     do: Repo.delete(struct_or_changeset, opts)
+
+  @spec delete_all(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: {integer(), nil | [term()]}
+  def delete_all(repo, queryable, opts \\ []) when repo == Repo,
+    do: Repo.delete_all(queryable, opts)
 
   # Helper functions
   def get_schema_module(%Ecto.Query{from: %{source: {_table, schema}}}), do: schema

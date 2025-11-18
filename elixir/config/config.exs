@@ -63,6 +63,9 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     oidc_auth_providers
     email_otp_auth_providers
     userpass_auth_providers
+    entra_directories
+    okta_directories
+    google_directories
     clients
     gateway_groups
     gateways
@@ -113,6 +116,15 @@ config :domain, Domain.Changes.ReplicationConnection,
     resource_connections
     resources
     tokens
+    google_auth_providers
+    entra_auth_providers
+    okta_auth_providers
+    oidc_auth_providers
+    email_otp_auth_providers
+    userpass_auth_providers
+    entra_directories
+    okta_directories
+    google_directories
   ],
   # Allow up to 60 seconds of lag before alerting
   warning_threshold: :timer.seconds(60),

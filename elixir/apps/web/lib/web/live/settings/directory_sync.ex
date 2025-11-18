@@ -6,7 +6,9 @@ defmodule Web.Settings.DirectorySync do
     Entra,
     Google,
     Okta,
-    Safe
+    Safe,
+    PubSub,
+    Repo
   }
 
   import Ecto.Changeset
@@ -21,7 +23,7 @@ defmodule Web.Settings.DirectorySync do
 
   @types Map.keys(@modules)
 
-  @common_fields ~w[name is_verified]a
+  @common_fields ~w[name is_verified current_job_id error]a
 
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id]a,
@@ -30,10 +32,15 @@ defmodule Web.Settings.DirectorySync do
   }
 
   def mount(_params, _session, socket) do
-    {:ok, init(socket)}
+    if connected?(socket) do
+      :ok = PubSub.Account.subscribe(socket.assigns.subject.account.id)
+    end
+
+    {:ok, init(socket, new: true)}
   end
 
-  defp init(socket) do
+  defp init(socket, opts \\ []) do
+    new = Keyword.get(opts, :new, false)
     subject = socket.assigns.subject
 
     directories =
@@ -44,7 +51,13 @@ defmodule Web.Settings.DirectorySync do
       ]
       |> List.flatten()
 
-    assign(socket, directories: directories, verification_error: nil)
+    if new do
+      socket
+      |> assign_new(:directories, fn -> directories end)
+      |> assign_new(:verification_error, fn -> nil end)
+    else
+      assign(socket, directories: directories, verification_error: nil)
+    end
   end
 
   # New Directory
@@ -224,11 +237,36 @@ defmodule Web.Settings.DirectorySync do
     end
   end
 
-  def handle_event("sync_directory", %{"id" => _id, "type" => _type}, socket) do
-    # TODO: Implement directory sync functionality
-    # Use the type to determine which directory module to use (entra, google, okta)
-    # Use the id to find the specific directory
-    {:noreply, put_flash(socket, :info, "Directory sync functionality coming soon.")}
+  def handle_event("sync_directory", %{"id" => id, "type" => "entra"}, socket) do
+    directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end) |> Repo.reload()
+
+    if is_nil(directory) do
+      {:noreply, socket |> init()}
+    else
+      if directory.current_job_id do
+        {:noreply, socket}
+      else
+        with {:ok, job} <- Entra.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
+             {:ok, _directory} <-
+               Safe.scoped(socket.assigns.subject)
+               |> Safe.update(changeset(directory, %{current_job_id: job.id, error: nil})) do
+          {:noreply, socket |> init()}
+        else
+          {:error, reason} ->
+            Logger.error("Failed to schedule directory sync",
+              directory: directory,
+              reason: reason
+            )
+
+            error_changeset = changeset(directory, %{error: "Failed to schedule directory sync."})
+
+            case Safe.scoped(socket.assigns.subject) |> Safe.update(error_changeset) do
+              {:ok, _directory} -> {:noreply, socket |> init()}
+              {:error, _} -> {:noreply, socket |> init()}
+            end
+        end
+      end
+    end
   end
 
   def handle_info(:do_verification, socket) do
@@ -285,6 +323,12 @@ defmodule Web.Settings.DirectorySync do
       {:noreply, assign(socket, verification_error: error)}
     end
   end
+
+  def handle_info(:directories_changed, socket) do
+    {:noreply, init(socket)}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   def render(assigns) do
     ~H"""
@@ -527,48 +571,65 @@ defmodule Web.Settings.DirectorySync do
           </span>
         </div>
 
-        <%= if @directory.synced_at do %>
-          <div class="flex items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" title="Last Synced" />
-              <span class="font-medium">
-                synced <.relative_datetime datetime={@directory.synced_at} />
-              </span>
-            </div>
-            <.button
-              size="xs"
-              style="primary"
-              phx-click="sync_directory"
-              phx-value-id={@directory.id}
-              phx-value-type={@type}
-              disabled={@directory.is_disabled}
-            >
-              Sync Now
-            </.button>
-          </div>
-        <% else %>
+        <%= if @directory.current_job_id do %>
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <.icon
                 name="hero-arrow-path"
-                class="w-5 h-5 flex-shrink-0 text-neutral-400"
-                title="Never Synced"
+                class="w-5 h-5 flex-shrink-0 text-accent-600 animate-spin"
+                title="Sync in Progress"
               />
-              <span class="font-medium text-neutral-400">
-                Never synced
+              <span class="font-medium text-accent-600">
+                Sync in progress...
               </span>
             </div>
-            <.button
-              size="xs"
-              style="primary"
-              phx-click="sync_directory"
-              phx-value-id={@directory.id}
-              phx-value-type={@type}
-              disabled={@directory.is_disabled}
-            >
-              Sync Now
-            </.button>
+            <%!-- Invisible spacer to match button height and prevent vertical jump --%>
+            <div class="h-6"></div>
           </div>
+        <% else %>
+          <%= if @directory.synced_at do %>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <.icon name="hero-arrow-path" class="w-5 h-5 flex-shrink-0" title="Last Synced" />
+                <span class="font-medium">
+                  synced <.relative_datetime datetime={@directory.synced_at} />
+                </span>
+              </div>
+              <.button
+                size="xs"
+                style="primary"
+                phx-click="sync_directory"
+                phx-value-id={@directory.id}
+                phx-value-type={@type}
+                disabled={@directory.is_disabled}
+              >
+                Sync Now
+              </.button>
+            </div>
+          <% else %>
+            <div class="flex items-center justify-between gap-2">
+              <div class="flex items-center gap-2">
+                <.icon
+                  name="hero-arrow-path"
+                  class="w-5 h-5 flex-shrink-0 text-neutral-400"
+                  title="Never Synced"
+                />
+                <span class="font-medium text-neutral-400">
+                  Never synced
+                </span>
+              </div>
+              <.button
+                size="xs"
+                style="primary"
+                phx-click="sync_directory"
+                phx-value-id={@directory.id}
+                phx-value-type={@type}
+                disabled={@directory.is_disabled}
+              >
+                Sync Now
+              </.button>
+            </div>
+          <% end %>
         <% end %>
 
         <%= if @directory.error do %>
@@ -961,6 +1022,10 @@ defmodule Web.Settings.DirectorySync do
     # "Consent on behalf of your organization" and grants application permissions:
     # - Directory.Read.All: Read users, groups, and directory data
     # - Application.Read.All: Read service principal and app role assignments (for group assignment)
+    #
+    # IMPORTANT: Use the .default scope to request all application permissions
+    # configured in the app registration. This is the correct way to request
+    # application permissions (not delegated) via the admin consent endpoint.
 
     token = Domain.Crypto.random_token(32)
     state = "entra-admin-consent:#{token}"
@@ -969,18 +1034,14 @@ defmodule Web.Settings.DirectorySync do
     client_id = config[:client_id]
 
     # Build admin consent URL
-    # Note: We use "organizations" which works for any organizational tenant
     redirect_uri = url(~p"/verification")
 
-    # Admin consent endpoint requires scope parameter with the permissions we're requesting
-    scope =
-      "https://graph.microsoft.com/Directory.Read.All https://graph.microsoft.com/Application.Read.All"
-
+    # Use .default scope to request all configured application permissions
     params = %{
       client_id: client_id,
       state: state,
       redirect_uri: redirect_uri,
-      scope: scope
+      scope: "https://graph.microsoft.com/.default"
     }
 
     query_string = URI.encode_query(params)
@@ -1106,14 +1167,6 @@ defmodule Web.Settings.DirectorySync do
   defp parse_okta_verification_error({:error, %Req.Response{status: status}})
        when status >= 500 do
     "Okta service is currently unavailable (HTTP #{status}). Please try again later."
-  end
-
-  defp parse_okta_verification_error({:error, %Req.TransportError{reason: :econnrefused}}) do
-    "Unable to connect to Okta.  Please try again later."
-  end
-
-  defp parse_okta_verification_error({:error, %Req.TransportError{reason: :timeout}}) do
-    "Timeout while connecting to Okta.  Please try again later."
   end
 
   defp parse_okta_verification_error(error) do

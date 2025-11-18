@@ -41,10 +41,17 @@ config :domain, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        # Delete expired flows every minute
-       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
+
+       # Schedule Entra directory sync every minute for development
+       {"* * * * *", Domain.Entra.Scheduler}
      ]}
   ],
-  queues: [default: 10],
+  queues: [
+    default: 10,
+    entra_scheduler: 1,
+    entra_sync: 5
+  ],
   engine: Oban.Engines.Basic,
   repo: Domain.Repo
 
@@ -59,7 +66,9 @@ config :web, dev_routes: true
 
 config :web, Web.Endpoint,
   url: [scheme: "https", host: "localhost", port: 13443],
-  http: [port: 13_000],
+  # TODO: IDP REFACTOR
+  # This can / should be removed since all built URLs will use https due to the `url` config above.
+  # http: [port: 13_000],
   https: [
     port: 13_443,
     cipher_suite: :strong,

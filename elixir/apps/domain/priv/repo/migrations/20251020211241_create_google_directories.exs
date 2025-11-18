@@ -13,6 +13,7 @@ defmodule Domain.Repo.Migrations.CreateGoogleDirectories do
       add(:impersonation_email, :string, null: false)
       add(:error_count, :integer, null: false, default: 0)
       add(:synced_at, :utc_datetime_usec)
+      add(:current_job_id, :integer)
       add(:is_disabled, :boolean, default: false, null: false)
       add(:disabled_reason, :string)
       add(:error, :text)

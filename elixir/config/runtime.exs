@@ -92,7 +92,7 @@ if config_env() == :prod do
 
   config :domain, Domain.Entra.APIClient,
     client_id: env_var_to_config!(:entra_sync_client_id),
-    client_secret: env_var_to_config!(:entra_sync_client_secret),
+    client_secret: env_var_to_config!(:entra__client_secret),
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
@@ -197,10 +197,21 @@ if config_env() == :prod do
       {Oban.Plugins.Cron,
        crontab: [
          # Delete expired flows every minute
-         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
+
+         # Schedule Entra directory sync every 2 hours
+         {"0 */2 * * *", Domain.Entra.Scheduler}
        ]}
     ],
-    queues: if(env_var_to_config!(:background_jobs_enabled), do: [default: 10], else: []),
+    queues:
+      if(env_var_to_config!(:background_jobs_enabled),
+        do: [
+          default: 10,
+          entra_scheduler: 1,
+          entra_sync: 5
+        ],
+        else: []
+      ),
     engine: Oban.Engines.Basic,
     repo: Domain.Repo
 

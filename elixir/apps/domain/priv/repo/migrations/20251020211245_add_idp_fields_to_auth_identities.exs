@@ -6,6 +6,7 @@ defmodule Domain.Repo.Migrations.AddIdpFieldsToAuthIdentities do
       add(:issuer, :text)
       add(:idp_id, :text)
       add(:password_hash, :text)
+      add(:last_synced_at, :utc_datetime_usec)
     end
 
     create(

@@ -269,10 +269,10 @@ defmodule Web.Actors do
       {:ok, _actor} ->
         {:noreply, handle_success(socket, "Actor deleted successfully")}
 
-      {:error, :cant_delete_the_last_admin} ->
-        {:noreply, put_flash(socket, :error, "Cannot delete the last admin")}
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
 
-      {:error, _} ->
+      {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to delete actor")}
     end
   end
@@ -285,10 +285,10 @@ defmodule Web.Actors do
         socket = reload_live_table!(socket, "actors")
         {:noreply, put_flash(socket, :info, "Actor disabled successfully")}
 
-      {:error, :cant_disable_the_last_admin} ->
-        {:noreply, put_flash(socket, :error, "Cannot disable the last admin")}
+      {:error, :unauthorized} ->
+        {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
 
-      {:error, _} ->
+      {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to disable actor")}
     end
   end
@@ -377,7 +377,7 @@ defmodule Web.Actors do
   end
 
   def handle_actors_update!(socket, list_opts) do
-    with {:ok, actors, metadata} <- Actors.list_actors(socket.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- Query.list_actors(socket.assigns.subject, list_opts) do
       {:ok, assign(socket, actors: actors, actors_metadata: metadata)}
     end
   end
@@ -1171,7 +1171,35 @@ defmodule Web.Actors do
 
   defmodule Query do
     import Ecto.Query
-    alias Domain.{Actors, Safe, Auth, Tokens}
+    alias Domain.{Actors, Safe, Auth, Tokens, Repo}
+
+    def list_actors(subject, opts \\ []) do
+      with :ok <-
+             Auth.ensure_has_permissions(subject, Actors.Authorizer.manage_actors_permission()) do
+        all()
+        |> Actors.Authorizer.for_subject(subject)
+        |> Repo.list(__MODULE__, opts)
+      end
+    end
+
+    def all do
+      from(actors in Actors.Actor, as: :actors)
+      |> select_merge([actors: actors], %{
+        email:
+          fragment(
+            "COALESCE(?, (SELECT email FROM auth_identities WHERE actor_id = ? AND email IS NOT NULL ORDER BY inserted_at DESC LIMIT 1))",
+            actors.email,
+            actors.id
+          )
+      })
+    end
+
+    def cursor_fields do
+      [
+        {:actors, :asc, :inserted_at},
+        {:actors, :asc, :id}
+      ]
+    end
 
     def get_actor!(id, subject) do
       query =
