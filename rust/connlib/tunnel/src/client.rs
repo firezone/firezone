@@ -1202,7 +1202,7 @@ impl ClientState {
                 let Some((local, remote)) =
                     known_sockets.remove(&(dns::Transport::Udp, server, qid))
                 else {
-                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
+                    tracing::debug!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
 
                     continue;
                 };
@@ -1230,7 +1230,7 @@ impl ClientState {
                 let Some((local, remote)) =
                     known_sockets.remove(&(dns::Transport::Tcp, server, qid))
                 else {
-                    tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
+                    tracing::debug!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
 
                     continue;
                 };
