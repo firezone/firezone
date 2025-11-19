@@ -41,9 +41,6 @@ defmodule Domain.Actors.Actor.Query do
     )
   end
 
-  def not_synced_at(queryable, synced_at) do
-    where(queryable, [actors: actors], actors.last_synced_at != ^synced_at)
-  end
 
   def by_type(queryable, {:in, types}) do
     where(queryable, [actors: actors], actors.type in ^types)

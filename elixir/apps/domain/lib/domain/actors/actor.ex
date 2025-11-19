@@ -23,8 +23,10 @@ defmodule Domain.Actors.Actor do
     belongs_to :account, Domain.Accounts.Account
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
-    field :last_synced_at, :utc_datetime_usec
     field :disabled_at, :utc_datetime_usec
+
+    # Intentionally not a foreign key because it can point to different directory tables
+    field :created_by_directory_id, :binary_id
 
     subject_trail(~w[actor identity provider system]a)
     timestamps()

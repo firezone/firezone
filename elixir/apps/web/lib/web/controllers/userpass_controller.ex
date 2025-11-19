@@ -1,6 +1,6 @@
 defmodule Web.UserpassController do
   @moduledoc """
-  Controller for handling user/password authentication for migrated accounts.
+  Controller for handling user/password authentication.
   """
   use Web, :controller
 

@@ -70,7 +70,7 @@ defmodule Web.Groups do
       {:noreply,
        socket
        |> put_flash(:error, "This group cannot be edited")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/show/#{id}?#{query_params(uri)}")}
+       |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{id}?#{query_params(uri)}")}
     end
   end
 
@@ -189,7 +189,7 @@ defmodule Web.Groups do
           socket
           |> put_flash(:info, "Group created successfully")
           |> reload_live_table!("groups")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/groups/show/#{group.id}?#{params}")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{params}")
 
         {:noreply, socket}
 
@@ -211,7 +211,7 @@ defmodule Web.Groups do
             socket
             |> put_flash(:info, "Group updated successfully")
             |> reload_live_table!("groups")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/groups/show/#{group.id}?#{params}")
+            |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{params}")
 
           {:noreply, socket}
 
@@ -393,7 +393,7 @@ defmodule Web.Groups do
                 <:content>
                   <div class="py-1">
                     <.link
-                      navigate={~p"/#{@account}/groups/edit/#{@group.id}?#{query_params(@uri)}"}
+                      navigate={~p"/#{@account}/groups/#{@group.id}/edit?#{query_params(@uri)}"}
                       class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
@@ -754,7 +754,7 @@ defmodule Web.Groups do
 
   defp row_patch_path(group, uri) do
     params = query_params(uri)
-    ~p"/#{group.account_id}/groups/show/#{group.id}?#{params}"
+    ~p"/#{group.account_id}/groups/#{group.id}?#{params}"
   end
 
   defp close_modal(socket) do

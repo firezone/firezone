@@ -47,9 +47,6 @@ defmodule Web.Endpoint do
     json_decoder: Phoenix.json_library()
 
   plug Web.Plugs.FetchUserAgent
-  # TODO: IDP REFACTOR
-  # This can be removed once all accounts are migrated
-  plug Web.Session
   plug Web.Router
   plug Sentry.PlugContext
 
@@ -61,10 +58,7 @@ defmodule Web.Endpoint do
         :peer_data,
         :x_headers,
         :uri,
-
-        # TODO: IDP REFACTOR
-        # This can be removed once all accounts are migrated since we're passing token via query param
-        session: {Web.Session, :options, []}
+        session: {__MODULE__, :live_view_session_options, []}
       ]
     ],
     longpoll: false
@@ -85,5 +79,22 @@ defmodule Web.Endpoint do
   def clients do
     Domain.Config.fetch_env!(:web, :private_clients)
     |> Enum.map(&to_string/1)
+  end
+
+  # Configures the LiveView session cookie options.
+  # This is a function so that the Live Socket configuration above can call it at runtime for prod.
+  def live_view_session_options do
+    [
+      store: :cookie,
+      key: "_lv_session",
+      same_site: "Strict",
+      # 4 hours
+      max_age: 4 * 60 * 60,
+      sign: true,
+      encrypt: true,
+      secure: Domain.Config.fetch_env!(:web, :cookie_secure),
+      signing_salt: Domain.Config.fetch_env!(:web, :cookie_signing_salt),
+      encryption_salt: Domain.Config.fetch_env!(:web, :cookie_encryption_salt)
+    ]
   end
 end

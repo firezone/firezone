@@ -1593,7 +1593,6 @@ defmodule Domain.AuthTest do
         assert identity.provider_id == provider.id
         assert identity.provider_identifier in provider_identifiers
         assert identity.actor.name in actor_names
-        assert identity.actor.last_synced_at
         assert identity.created_by_subject == %{"email" => nil, "name" => "Provider"}
 
         assert Map.get(actor_ids_by_provider_identifier, identity.provider_identifier) ==

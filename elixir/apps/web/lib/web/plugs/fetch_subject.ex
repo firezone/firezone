@@ -23,7 +23,7 @@ defmodule Web.Plugs.FetchSubject do
       |> assign(:subject, subject)
     else
       {:error, :unauthorized} ->
-        delete_session(conn, account, migrated: Domain.Migrator.migrated?(account))
+        delete_account_session(conn, account)
 
       _ ->
         conn
@@ -33,28 +33,17 @@ defmodule Web.Plugs.FetchSubject do
   def call(conn, _opts), do: conn
 
   defp fetch_token(conn, account) do
-    if Domain.Migrator.migrated?(account) do
-      case Web.Session.Cookie.fetch_account_cookie(conn, account.id) do
-        {:ok, token} -> {:ok, token}
-        _ -> {:error, :unauthorized}
-      end
-    else
-      sessions = get_session(conn, :sessions, [])
-      Web.Auth.fetch_token(sessions, account.id)
+    case Web.Session.Cookie.fetch_account_cookie(conn, account.id) do
+      {:ok, token} -> {:ok, token}
+      _ -> {:error, :unauthorized}
     end
   end
 
-  defp delete_session(conn, %Account{} = account, migrated: true) do
+  defp delete_account_session(conn, %Account{} = account) do
     conn
     |> delete_session(:live_socket_id)
     |> delete_session(:token)
     |> Web.Session.Cookie.delete_account_cookie(account.id)
-  end
-
-  # TODO: IDP REFACTOR
-  # can be removed once all accounts are migrated
-  defp delete_session(conn, %Account{} = account, migrated: false) do
-    Web.Auth.delete_account_session(conn, account.id)
   end
 
   defp context_type(%{"as" => "client"}), do: :client

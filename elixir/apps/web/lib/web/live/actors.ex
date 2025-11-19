@@ -112,21 +112,13 @@ defmodule Web.Actors do
   def handle_params(%{"id" => id} = params, uri, %{assigns: %{live_action: :edit}} = socket) do
     actor = Query.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
+    changeset = actor_changeset(actor, %{})
 
-    if is_editable_actor?(actor) do
-      changeset = actor_changeset(actor, %{})
-
-      {:noreply,
-       assign(socket,
-         actor: actor,
-         form: to_form(changeset)
-       )}
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, "This actor cannot be edited")
-       |> push_patch(to: ~p"/#{socket.assigns.account}/actors/show/#{id}?#{query_params(uri)}")}
-    end
+    {:noreply,
+     assign(socket,
+       actor: actor,
+       form: to_form(changeset)
+     )}
   end
 
   # Default handler
@@ -183,7 +175,7 @@ defmodule Web.Actors do
           socket
           |> put_flash(:info, "User created successfully")
           |> reload_live_table!("actors")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/show/#{actor.id}?#{params}")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
         {:noreply, socket}
 
@@ -214,7 +206,7 @@ defmodule Web.Actors do
           socket
           |> put_flash(:info, "Service account created successfully")
           |> reload_live_table!("actors")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/show/#{actor.id}?#{params}")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
         {:noreply, socket}
 
@@ -226,7 +218,7 @@ defmodule Web.Actors do
           |> put_flash(:info, "Service account created successfully")
           |> reload_live_table!("actors")
           |> assign(created_token: encoded_token)
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/show/#{actor.id}?#{params}")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
         {:noreply, socket}
 
@@ -236,29 +228,22 @@ defmodule Web.Actors do
   end
 
   def handle_event("save", %{"actor" => attrs}, socket) do
-    if is_editable_actor?(socket.assigns.actor) do
-      changeset = actor_changeset(socket.assigns.actor, attrs)
+    changeset = actor_changeset(socket.assigns.actor, attrs)
 
-      case update_actor(changeset, socket.assigns.subject) do
-        {:ok, actor} ->
-          params = query_params(socket.assigns.uri)
+    case update_actor(changeset, socket.assigns.subject) do
+      {:ok, actor} ->
+        params = query_params(socket.assigns.uri)
 
-          socket =
-            socket
-            |> put_flash(:info, "Actor updated successfully")
-            |> reload_live_table!("actors")
-            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/show/#{actor.id}?#{params}")
+        socket =
+          socket
+          |> put_flash(:info, "Actor updated successfully")
+          |> reload_live_table!("actors")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
-          {:noreply, socket}
+        {:noreply, socket}
 
-        {:error, changeset} ->
-          {:noreply, assign(socket, form: to_form(changeset))}
-      end
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, "This actor cannot be edited")
-       |> close_modal()}
+      {:error, changeset} ->
+        {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
 
@@ -327,7 +312,7 @@ defmodule Web.Actors do
         socket =
           socket
           |> assign(created_token: encoded_token)
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/show/#{actor.id}?#{params}")
+          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
         {:noreply, socket}
 
@@ -373,6 +358,50 @@ defmodule Web.Actors do
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Identity not found")}
+    end
+  end
+
+  def handle_event("send_welcome_email", %{"id" => actor_id}, socket) do
+    actor = socket.assigns.actor
+
+    if actor.id == actor_id and actor.email do
+      Domain.Mailer.AuthEmail.new_user_email(
+        socket.assigns.account,
+        actor,
+        socket.assigns.subject
+      )
+      |> Domain.Mailer.deliver_with_rate_limit(
+        rate_limit: 3,
+        rate_limit_key: {:welcome_email, actor.id},
+        rate_limit_interval: :timer.minutes(3)
+      )
+      |> case do
+        {:ok, _} ->
+          socket =
+            socket
+            |> put_flash(:info, "Welcome email sent to #{actor.email}")
+
+          {:noreply, socket}
+
+        {:error, :rate_limited} ->
+          socket =
+            socket
+            |> put_flash(
+              :error,
+              "You sent too many welcome emails to this address. Please try again later."
+            )
+
+          {:noreply, socket}
+
+        {:error, _} ->
+          socket =
+            socket
+            |> put_flash(:error, "Failed to send welcome email")
+
+          {:noreply, socket}
+      end
+    else
+      {:noreply, put_flash(socket, :error, "Cannot send welcome email to this actor")}
     end
   end
 
@@ -652,15 +681,34 @@ defmodule Web.Actors do
         <div class="space-y-6">
           <!-- Actor Details -->
           <div>
-            <div class="flex items-center justify-between mb-3">
-              <div class="text-sm text-neutral-600">
-                Last synced: <.relative_datetime datetime={@actor.last_synced_at} />
+            <div class="flex items-start justify-between mb-4">
+              <div class="grid grid-cols-2 gap-4 text-sm flex-1">
+                <div>
+                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Actor ID</p>
+                  <p class="text-sm text-neutral-900 font-mono break-all">{@actor.id}</p>
+                </div>
+                <div :if={@actor.email}>
+                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Email</p>
+                  <p class="text-sm text-neutral-900 break-all">{@actor.email}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Created</p>
+                  <p class="text-sm text-neutral-900">
+                    <.relative_datetime datetime={@actor.inserted_at} />
+                  </p>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-neutral-500 uppercase mb-1">Updated</p>
+                  <p class="text-sm text-neutral-900">
+                    <.relative_datetime datetime={@actor.updated_at} />
+                  </p>
+                </div>
               </div>
               <.popover placement="bottom-end" trigger="click">
                 <:target>
                   <button
                     type="button"
-                    class="text-neutral-500 hover:text-neutral-700 focus:outline-none"
+                    class="text-neutral-500 hover:text-neutral-700 focus:outline-none ml-4"
                   >
                     <.icon name="hero-ellipsis-horizontal" class="w-6 h-6" />
                   </button>
@@ -668,11 +716,20 @@ defmodule Web.Actors do
                 <:content>
                   <div class="py-1">
                     <.link
-                      navigate={~p"/#{@account}/actors/edit/#{@actor.id}?#{query_params(@uri)}"}
+                      navigate={~p"/#{@account}/actors/#{@actor.id}/edit?#{query_params(@uri)}"}
                       class="px-3 py-2 text-sm text-neutral-800 rounded-lg hover:bg-neutral-100 flex items-center gap-2 whitespace-nowrap"
                     >
                       <.icon name="hero-pencil" class="w-4 h-4" /> Edit
                     </.link>
+                    <button
+                      :if={@actor.type in [:account_user, :account_admin_user] and @actor.email}
+                      type="button"
+                      phx-click="send_welcome_email"
+                      phx-value-id={@actor.id}
+                      class="w-full px-3 py-2 text-sm text-blue-600 rounded-lg hover:bg-neutral-100 flex items-center gap-2 border-0 bg-transparent whitespace-nowrap"
+                    >
+                      <.icon name="hero-envelope" class="w-4 h-4" /> Send Welcome Email
+                    </button>
                     <button
                       :if={not Actors.actor_disabled?(@actor)}
                       type="button"
@@ -787,7 +844,7 @@ defmodule Web.Actors do
                 <div class="flex justify-between items-center mb-4">
                   <h3 class="text-sm font-semibold text-neutral-900">Tokens</h3>
                   <.add_button navigate={
-                    ~p"/#{@account}/actors/show/#{@actor.id}/add_token?#{query_params(@uri)}"
+                    ~p"/#{@account}/actors/#{@actor.id}/add_token?#{query_params(@uri)}"
                   }>
                     Add Token
                   </.add_button>
@@ -863,6 +920,10 @@ defmodule Web.Actors do
     >
       <:title>Edit {@actor.name}</:title>
       <:body>
+        <.flash :if={@actor.created_by_directory_id} kind={:warning} style="wide">
+          This actor was created by directory sync. Manual changes may be overwritten during the next sync.
+        </.flash>
+
         <.form id="actor-form" for={@form} phx-change="validate" phx-submit="save">
           <div class="space-y-6">
             <.input
@@ -970,9 +1031,6 @@ defmodule Web.Actors do
   defp actor_display_type(%{type: :account_user}), do: "User"
   defp actor_display_type(_), do: "User"
 
-  defp is_editable_actor?(%{last_synced_at: nil}), do: true
-  defp is_editable_actor?(_), do: false
-
   # Utility helpers
   defp handle_success(socket, message) do
     socket
@@ -989,7 +1047,7 @@ defmodule Web.Actors do
 
   defp row_patch_path(actor, uri) do
     params = query_params(uri)
-    ~p"/#{actor.account_id}/actors/show/#{actor.id}?#{params}"
+    ~p"/#{actor.account_id}/actors/#{actor.id}?#{params}"
   end
 
   defp close_modal(socket) do

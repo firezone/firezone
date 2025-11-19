@@ -131,7 +131,6 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
                ]
 
         assert identity.actor.name in ["John Doe", "Jane Smith"]
-        assert identity.actor.last_synced_at
       end
 
       memberships = Actors.Membership |> Repo.all()
@@ -203,7 +202,6 @@ defmodule Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectoryTest do
              }
 
       assert updated_identity.actor.name == "John Doe"
-      assert updated_identity.actor.last_synced_at
     end
 
     test "updates existing groups and memberships", %{account: account, provider: provider} do

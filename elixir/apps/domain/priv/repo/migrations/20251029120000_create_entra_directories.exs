@@ -16,6 +16,7 @@ defmodule Domain.Repo.Migrations.CreateEntraDirectories do
       add(:disabled_reason, :string)
       add(:error, :text)
       add(:error_emailed_at, :utc_datetime_usec)
+      add(:sync_all_groups, :boolean, default: false, null: false)
 
       subject_trail()
       timestamps()

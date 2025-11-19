@@ -29,11 +29,6 @@ defmodule Domain.Auth.Identity do
     # For hosting the picture internally
     field :firezone_avatar_url, :string
 
-    # TODO: IdP sync
-    # Remove these field after all customers have migrated to the new sync
-    field :provider_state, :map, redact: true
-    field :provider_virtual_state, :map, virtual: true, redact: true
-
     field :last_synced_at, :utc_datetime_usec
 
     field :last_seen_user_agent, :string

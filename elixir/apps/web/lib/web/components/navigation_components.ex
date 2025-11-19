@@ -83,12 +83,14 @@ defmodule Web.NavigationComponents do
     </ul>
     <ul class="py-1 text-neutral-700" aria-labelledby="user-menu-dropdown">
       <li>
-        <a
-          href={~p"/#{@subject.account}/sign_out"}
-          class="block py-2 px-4 text-sm hover:bg-neutral-100"
-        >
-          Sign out
-        </a>
+        <form action={~p"/#{@subject.account}/sign_out"} method="post">
+          <button
+            type="submit"
+            class="block w-full text-left py-2 px-4 text-sm hover:bg-neutral-100"
+          >
+            Sign out
+          </button>
+        </form>
       </li>
     </ul>
     """

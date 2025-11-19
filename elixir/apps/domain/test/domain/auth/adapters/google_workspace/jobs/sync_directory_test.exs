@@ -339,7 +339,6 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
                ]
 
         assert identity.actor.name in ["Brian Manifold", "Jamil Bou Kheir"]
-        assert identity.actor.last_synced_at
       end
 
       memberships = Actors.Membership |> Repo.all()
@@ -424,7 +423,6 @@ defmodule Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectoryTest do
 
       assert updated_identity.provider_state == %{"userinfo" => %{"email" => "b@firez.xxx"}}
       assert updated_identity.actor.name == "Brian Manifold"
-      assert updated_identity.actor.last_synced_at
     end
 
     test "updates existing groups and memberships", %{account: account, provider: provider} do

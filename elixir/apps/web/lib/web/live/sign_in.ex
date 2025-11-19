@@ -17,21 +17,16 @@ defmodule Web.SignIn do
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug) do
-      if Domain.Migrator.migrated?(account) do
-        mount_migrated_account(account, params, socket)
-      else
-        mount_legacy_account(account, params, socket)
-      end
+      mount_account(account, params, socket)
     else
       _other ->
         raise Web.LiveErrors.NotFoundError, skip_sentry: true
     end
   end
 
-  defp mount_migrated_account(account, params, socket) do
+  defp mount_account(account, params, socket) do
     socket =
       assign(socket,
-        migrated?: true,
         page_title: "Sign In",
         account: account,
         params: Web.Auth.take_sign_in_params(params),
@@ -46,30 +41,6 @@ defmodule Web.SignIn do
     {:ok, socket}
   end
 
-  def mount_legacy_account(account, params, socket) do
-    with [_ | _] = providers <- Auth.all_active_providers_for_account!(account) do
-      providers_by_adapter =
-        providers
-        |> group_providers_by_root_adapter()
-        |> Map.take(@root_adapters_whitelist)
-
-      params = Web.Auth.take_sign_in_params(params)
-
-      socket =
-        assign(socket,
-          params: params,
-          account: account,
-          providers_by_adapter: providers_by_adapter,
-          page_title: "Sign In"
-        )
-
-      {:ok, socket}
-    else
-      _other ->
-        raise Web.LiveErrors.NotFoundError, skip_sentry: true
-    end
-  end
-
   defp group_providers_by_root_adapter(providers) do
     providers
     |> Enum.group_by(fn provider ->
@@ -82,7 +53,7 @@ defmodule Web.SignIn do
     end)
   end
 
-  def render(%{migrated?: true} = assigns) do
+  def render(assigns) do
     ~H"""
     <section>
       <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
@@ -189,7 +160,7 @@ defmodule Web.SignIn do
                   Sign in with email
                 </h2>
 
-                <.migrated_email_form
+                <.email_form
                   provider={@email_otp_auth_provider}
                   account={@account}
                   flash={@flash}
@@ -202,97 +173,8 @@ defmodule Web.SignIn do
                   Sign in with username and password
                 </h2>
 
-                <.migrated_userpass_form
+                <.userpass_form
                   provider={@userpass_auth_provider}
-                  account={@account}
-                  flash={@flash}
-                  params={@params}
-                />
-              </:item>
-            </.intersperse_blocks>
-          </div>
-        </div>
-        <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
-          <p class="py-2">
-            Meant to sign in from a client instead?
-            <.website_link path="/kb/client-apps">Read the docs.</.website_link>
-          </p>
-          <p class="py-2">
-            Looking for a different account?
-            <.link href={~p"/"} class={[link_style()]}>
-              See recently used accounts.
-            </.link>
-          </p>
-        </div>
-      </div>
-    </section>
-    """
-  end
-
-  def render(assigns) do
-    ~H"""
-    <section>
-      <div class="flex flex-col items-center justify-center px-6 py-8 mx-auto lg:py-0">
-        <.hero_logo text={@account.name} />
-
-        <div class="w-full col-span-6 mx-auto bg-white rounded shadow md:mt-0 sm:max-w-lg xl:p-0">
-          <div class="p-6 space-y-4 lg:space-y-6 sm:p-8">
-            <.flash flash={@flash} kind={:error} />
-            <.flash flash={@flash} kind={:info} />
-
-            <.flash :if={not Accounts.account_active?(@account)} kind={:error} style="wide">
-              This account has been disabled. Please contact your administrator to re-enable it.
-            </.flash>
-
-            <%= if trial_ends_at = get_in(@account.metadata.stripe.trial_ends_at) do %>
-              <% trial_ends_in_days = trial_ends_at |> DateTime.diff(DateTime.utc_now(), :day) %>
-
-              <.flash :if={trial_ends_in_days <= 0} kind={:error}>
-                Your Enterprise pilot needs to be renewed.
-                Contact your system administrator to ensure uninterrupted service.
-              </.flash>
-            <% end %>
-
-            <.intersperse_blocks :if={not disabled?(@account, @params)}>
-              <:separator>
-                <.separator />
-              </:separator>
-
-              <:item :if={adapter_enabled?(@providers_by_adapter, :openid_connect)}>
-                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with a configured provider
-                </h2>
-
-                <.providers_group_form
-                  adapter="openid_connect"
-                  providers={@providers_by_adapter[:openid_connect]}
-                  account={@account}
-                  params={@params}
-                />
-              </:item>
-
-              <:item :if={adapter_enabled?(@providers_by_adapter, :userpass)}>
-                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with username and password
-                </h2>
-
-                <.providers_group_form
-                  adapter="userpass"
-                  provider={List.first(@providers_by_adapter[:userpass])}
-                  account={@account}
-                  flash={@flash}
-                  params={@params}
-                />
-              </:item>
-
-              <:item :if={adapter_enabled?(@providers_by_adapter, :email)}>
-                <h2 class="text-lg sm:text-xl leading-tight tracking-tight text-neutral-900">
-                  Sign in with email
-                </h2>
-
-                <.providers_group_form
-                  adapter="email"
-                  provider={List.first(@providers_by_adapter[:email])}
                   account={@account}
                   flash={@flash}
                   params={@params}
@@ -451,8 +333,7 @@ defmodule Web.SignIn do
     """
   end
 
-  # Migrated account forms
-  def migrated_userpass_form(assigns) do
+  def userpass_form(assigns) do
     idp_id = Phoenix.Flash.get(assigns.flash, :userpass_idp_id)
     form = to_form(%{"idp_id" => idp_id}, as: "userpass")
     assigns = Map.put(assigns, :userpass_form, form)
@@ -494,7 +375,7 @@ defmodule Web.SignIn do
     """
   end
 
-  def migrated_email_form(assigns) do
+  def email_form(assigns) do
     idp_id = Phoenix.Flash.get(assigns.flash, :email_idp_id)
     form = to_form(%{"idp_id" => idp_id}, as: "email")
     assigns = Map.put(assigns, :email_form, form)

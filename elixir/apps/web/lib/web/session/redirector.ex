@@ -85,7 +85,7 @@ defmodule Web.Session.Redirector do
   """
 
   # TODO: IDP REFACTOR
-  # Old system code path can be removed once all accounts are migrated
+  # This should be a POST request to avoid CSRF issues
 
   def signed_out(
         %Plug.Conn{assigns: %{subject: %Domain.Auth.Subject{} = subject, account: account}} =
@@ -95,13 +95,7 @@ defmodule Web.Session.Redirector do
     post_sign_out_url = url(~p"/#{account_or_slug}")
     {:ok, _num_deleted} = Tokens.delete_token_for(subject)
 
-    conn =
-      if Domain.Migrator.migrated?(account) do
-        delete_session(conn, account.id)
-      else
-        {:ok, _identity, _redirect_url} = Domain.Auth.sign_out(subject, post_sign_out_url)
-        Web.Auth.renew_session(conn)
-      end
+    conn = delete_session(conn, account.id)
 
     Phoenix.Controller.redirect(conn, external: post_sign_out_url)
   end

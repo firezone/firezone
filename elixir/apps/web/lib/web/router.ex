@@ -104,13 +104,6 @@ defmodule Web.Router do
         Web.LiveHooks.RedirectIfAuthenticated
       ] do
       live "/", SignIn
-
-      # Adapter-specific routes
-      ## Email
-      # TODO: IDP REFACTOR
-      # Remove this route once all accounts have migrated
-      live "/sign_in/providers/email/:provider_id", SignIn.Email
-      live "/sign_in/email_otp/:auth_provider_id", SignIn.Email
     end
 
     # OIDC auth entry point (placed after LiveView routes to avoid conflicts)
@@ -128,20 +121,7 @@ defmodule Web.Router do
     get "/sign_in/client_redirect", SignInController, :client_redirect
     get "/sign_in/client_auth_error", SignInController, :client_auth_error
 
-    scope "/sign_in/providers/:provider_id" do
-      # UserPass
-      post "/verify_credentials", AuthController, :verify_credentials
-
-      # Email
-      post "/request_email_otp", AuthController, :request_email_otp
-      get "/verify_sign_in_token", AuthController, :verify_sign_in_token
-
-      # IdP
-      get "/redirect", AuthController, :redirect_to_idp
-      get "/handle_callback", AuthController, :handle_idp_callback
-    end
-
-    get "/sign_out", AuthController, :sign_out
+    post "/sign_out", SignOutController, :sign_out
   end
 
   # Authenticated admin routes
@@ -163,48 +143,20 @@ defmodule Web.Router do
         Web.LiveHooks.EnsureAdmin,
         Web.LiveHooks.SetActiveSidebarItem
       ] do
-      scope "/actors", Actors do
-        live "/", Index
+      # Actors
+      live "/actors", Actors
+      live "/actors/:id", Actors, :show
+      live "/actors/:id/edit", Actors, :edit
+      live "/actors/add", Actors, :add
+      live "/actors/add_user", Actors, :add_user
+      live "/actors/add_service_account", Actors, :add_service_account
+      live "/actors/:id/add_token", Actors, :add_token
 
-        live "/add", Index, :add
-        live "/add_user", Index, :add_user
-        live "/add_service_account", Index, :add_service_account
-        live "/show/:id", Index, :show
-        live "/show/:id/add_token", Index, :add_token
-        live "/edit/:id", Index, :edit
-
-        # Legacy routes - can be removed later
-        live "/new", New
-        live "/:id", Show
-
-        scope "/users", Users do
-          live "/new", New
-          live "/:id/new_identity", NewIdentity
-        end
-
-        scope "/service_accounts", ServiceAccounts do
-          live "/new", New
-          live "/:id/new_identity", NewIdentity
-        end
-
-        live "/:id/edit", Edit
-        live "/:id/edit_groups", EditGroups
-      end
-
-      scope "/groups", Groups do
-        live "/", Index
-
-        live "/add", Index, :add
-        live "/show/:id", Index, :show
-        live "/edit/:id", Index, :edit
-
-        # TODO: IDP REFACTOR
-        # Remove the below routes after all accounts have migrated
-        live "/new", New
-        live "/:id/edit", Edit
-        live "/:id/edit_actors", EditActors
-        live "/:id", Show
-      end
+      # Groups
+      live "/groups", Groups
+      live "/groups/:id", Groups, :show
+      live "/groups/:id/edit", Groups, :edit
+      live "/groups/add", Groups, :add
 
       scope "/clients", Clients do
         live "/", Index

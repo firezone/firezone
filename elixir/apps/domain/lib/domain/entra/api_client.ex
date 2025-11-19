@@ -171,6 +171,13 @@ defmodule Domain.Entra.APIClient do
     get("/v1.0/users", query, access_token)
   end
 
+  @doc """
+  Fetches subscribed SKUs (licenses) for the organization.
+  """
+  def get_subscribed_skus(access_token) do
+    get("/v1.0/subscribedSkus", "", access_token)
+  end
+
   defp get(path, query, access_token) do
     config = Domain.Config.fetch_env!(:domain, __MODULE__)
     endpoint = config[:endpoint] || "https://graph.microsoft.com"

@@ -12,7 +12,7 @@ defmodule Web.LiveHooks.FetchSubject do
         context = Domain.Auth.Context.build(real_ip, user_agent, x_headers, context_type)
 
         with {:ok, fragment} <-
-               fetch_token(session, account, migrated: Domain.Migrator.migrated?(account)),
+               fetch_token(session, account),
              {:ok, subject} <- Domain.Auth.authenticate(fragment, context) do
           subject
         else
@@ -30,17 +30,10 @@ defmodule Web.LiveHooks.FetchSubject do
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :browser
 
-  defp fetch_token(session, _account, migrated: true) do
+  defp fetch_token(session, _account) do
     case session["token"] do
       nil -> {:error, :unauthorized}
       token -> {:ok, token}
     end
-  end
-
-  # TODO: IDP REFACTOR
-  # Can be removed once all accounts are migrated
-  defp fetch_token(session, account, migrated: false) do
-    sessions = session["sessions"] || []
-    Web.Auth.fetch_token(sessions, account.id)
   end
 end

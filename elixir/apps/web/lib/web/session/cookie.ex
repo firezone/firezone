@@ -1,9 +1,6 @@
 defmodule Web.Session.Cookie do
   @moduledoc """
-  Handles per-account session cookies for the new auth system.
-
-  For migrated accounts, this module manages individual session cookies
-  named `_sess_<account_id>` that store the session token and logout URI.
+  This module manages individual session cookies named `_sess_<account_id>` that store the session token.
   """
 
   # Full work day - 8 hours
@@ -83,7 +80,7 @@ defmodule Web.Session.Cookie do
   end
 
   @doc """
-  Mounts the subject for LiveView sockets (migrated accounts only).
+  Mounts the subject for LiveView sockets
   Reads the per-account cookie from connect_info and authenticates.
   """
   def mount_subject(socket, params, _session) do
@@ -121,7 +118,6 @@ defmodule Web.Session.Cookie do
 
   @doc """
   Fetches the session token from the per-account cookie and assigns the subject to the connection.
-  This is for the new auth system (migrated accounts only).
 
   Note: We do NOT store live_socket_id in Plug.Session for the new system.
   The LiveView socket connection will need to derive the socket_id from the token_id directly.

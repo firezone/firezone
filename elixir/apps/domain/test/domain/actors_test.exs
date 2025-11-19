@@ -2542,14 +2542,6 @@ defmodule Domain.ActorsTest do
       assert {:ok, %{name: "ABC"}} = update_actor(actor, %{name: "   ABC   "}, subject)
     end
 
-    test "does not allow changing name of a synced actor", %{account: account, subject: subject} do
-      actor =
-        Fixtures.Actors.create_actor(name: "ABC", account: account)
-        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
-
-      assert {:ok, %{name: "ABC"}} = update_actor(actor, %{name: "DEF"}, subject)
-    end
-
     test "allows admin to change other actors type", %{account: account, subject: subject} do
       actor = Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
       assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
@@ -2559,21 +2551,6 @@ defmodule Domain.ActorsTest do
 
       actor = Fixtures.Actors.create_actor(type: :account_user, account: account)
       assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
-
-      assert {:ok, %{type: :account_admin_user}} =
-               update_actor(actor, %{type: :account_admin_user}, subject)
-    end
-
-    test "allows admin to change synced actors type", %{account: account, subject: subject} do
-      actor =
-        Fixtures.Actors.create_actor(type: :account_admin_user, account: account)
-        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
-
-      assert {:ok, %{type: :account_user}} = update_actor(actor, %{type: :account_user}, subject)
-
-      actor =
-        Fixtures.Actors.create_actor(type: :account_user, account: account)
-        |> Fixtures.Actors.update(last_synced_at: DateTime.utc_now())
 
       assert {:ok, %{type: :account_admin_user}} =
                update_actor(actor, %{type: :account_admin_user}, subject)
@@ -3009,22 +2986,6 @@ defmodule Domain.ActorsTest do
     end
   end
 
-  describe "actor_synced?/1" do
-    test "returns true when actor is synced" do
-      actor = Fixtures.Actors.create_actor()
-      actor = Fixtures.Actors.update(actor, last_synced_at: DateTime.utc_now())
-
-      assert actor_synced?(actor) == true
-    end
-
-    test "returns false when actor is not synced" do
-      actor = Fixtures.Actors.create_actor()
-      actor = Fixtures.Actors.update(actor, last_synced_at: nil)
-
-      assert actor_synced?(actor) == false
-    end
-  end
-
   describe "actor_disabled?/1" do
     test "returns true when actor is disabled" do
       actor =
@@ -3062,14 +3023,13 @@ defmodule Domain.ActorsTest do
         Fixtures.Auth.create_identity(
           account: account,
           provider: provider,
-          actor: [last_synced_at: now, type: :account_admin_user]
+          actor: [type: :account_admin_user]
         )
 
       identity2 =
         Fixtures.Auth.create_identity(
           account: account,
-          provider: provider,
-          actor: [last_synced_at: yesterday]
+          provider: provider
         )
 
       # Identity for another provider should not be deleted

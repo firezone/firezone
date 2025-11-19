@@ -1,6 +1,5 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
-  import Web.Actors.Components
   import Web.Clients.Components
   alias Domain.{Clients, ComponentVersions}
 

@@ -143,12 +143,6 @@ defmodule Domain.Migrator do
     # Step 3: Set actor.email from identity.email where actor.email is null
     errors = errors ++ populate_actor_emails_from_identities(subject.account)
 
-    # Step 4: Set service account emails
-    errors = errors ++ populate_service_account_emails(subject.account)
-
-    # Step 5: Set api client emails
-    errors = errors ++ populate_api_client_emails(subject.account)
-
     errors
   end
 
@@ -924,48 +918,6 @@ defmodule Domain.Migrator do
     end)
   end
 
-  defp populate_service_account_emails(account) do
-    from(a in Domain.Actors.Actor,
-      where: a.account_id == ^account.id and a.type == :service_account and is_nil(a.email),
-      select: {a.id, a.name}
-    )
-    |> Repo.all()
-    |> Enum.flat_map(fn {actor_id, name} ->
-      email = normalize_name_for_email(name) <> "@service-account.firezone.dev"
-
-      case update_actor_email(actor_id, email) do
-        :ok -> []
-        {:error, error} -> [error]
-      end
-    end)
-  end
-
-  defp populate_api_client_emails(account) do
-    from(a in Domain.Actors.Actor,
-      where: a.account_id == ^account.id and a.type == :api_client and is_nil(a.email),
-      select: {a.id, a.name}
-    )
-    |> Repo.all()
-    |> Enum.flat_map(fn {actor_id, name} ->
-      email = normalize_name_for_email(name) <> "@api-client.firezone.dev"
-
-      case update_actor_email(actor_id, email) do
-        :ok -> []
-        {:error, error} -> [error]
-      end
-    end)
-  end
-
-  defp normalize_name_for_email(name) when is_binary(name) do
-    name
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9-]/, "-")
-    |> String.replace(~r/-+/, "-")
-    |> String.trim("-")
-  end
-
-  defp normalize_name_for_email(nil), do: "unnamed"
-
   defp extract_email_from_identity(%{identity_email: email}) when not is_nil(email), do: email
 
   defp extract_email_from_identity(%{provider_identifier: identifier} = identity)
@@ -1411,13 +1363,5 @@ defmodule Domain.Migrator do
       where: p.account_id == ^subject.account.id
     )
     |> Repo.delete_all()
-  end
-
-  def down(%Accounts.Account{} = _account) do
-  end
-
-  def migrated?(%Accounts.Account{} = account) do
-    from(p in EmailOTP.AuthProvider, where: p.account_id == ^account.id)
-    |> Repo.exists?()
   end
 end

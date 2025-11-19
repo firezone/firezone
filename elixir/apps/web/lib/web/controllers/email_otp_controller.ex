@@ -1,6 +1,6 @@
 defmodule Web.EmailOTPController do
   @moduledoc """
-  Controller for handling email OTP authentication for migrated accounts.
+  Controller for handling email OTP authentication.
   """
   use Web, :controller
 

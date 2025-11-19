@@ -417,27 +417,13 @@ defmodule Domain.Auth do
     Identity.Sync.sync_provider_identities(provider, attrs_list)
   end
 
-  # TODO: IDP REFACTOR
-  # This function becomes obsolete after migrating all accounts
   def get_identity_email(%Identity{} = identity) do
-    identity = Repo.preload(identity, [:account, :actor])
-
-    if Domain.Migrator.migrated?(identity.account) do
-      identity.actor.email
-    else
-      provider_email(identity) || identity.provider_identifier
-    end
+    identity = Repo.preload(identity, :actor)
+    identity.actor.email
   end
 
-  def identity_has_email?(%Identity{} = identity) do
-    identity = Repo.preload(identity, [:account])
-
-    if Domain.Migrator.migrated?(identity.account) do
-      true
-    else
-      not is_nil(provider_email(identity)) or identity.provider.adapter == :email or
-        identity.provider_identifier =~ "@"
-    end
+  def identity_has_email?(%Identity{} = _identity) do
+    true
   end
 
   defp provider_email(%Identity{} = identity) do
@@ -626,17 +612,6 @@ defmodule Domain.Auth do
 
     max_expires_at = DateTime.utc_now() |> DateTime.add(max_session_duration_hours, :hour)
     Enum.min([expires_at, max_expires_at], DateTime)
-  end
-
-  @doc """
-  Revokes the Firezone token used by the given subject.
-  TODO: IDP REFACTOR
-  Can be removed after all accounts are migrated.
-  """
-  def sign_out(%Subject{} = subject, redirect_url) do
-    {:ok, _num_deleted} = Tokens.delete_token_for(subject)
-    identity = Repo.preload(subject.identity, :provider)
-    Adapters.sign_out(identity.provider, identity, redirect_url)
   end
 
   # Tokens

@@ -1566,10 +1566,6 @@ defmodule Web.CoreComponents do
   attr :type, :string, required: false
   attr :rest, :global
 
-  # TODO: IDP REFACTOR
-  # Can be removed after all accounts have migrated
-  attr :adapter, :atom, required: false
-
   def provider_icon(%{type: "firezone"} = assigns) do
     ~H"""
     <img src={~p"/images/logo.svg"} alt="Firezone Logo" {@rest} />
@@ -1609,57 +1605,6 @@ defmodule Web.CoreComponents do
   def provider_icon(%{type: "userpass"} = assigns) do
     ~H"""
     <.icon name="hero-key" {@rest} />
-    """
-  end
-
-  # TODO: IDP REFACTOR
-  # These can be removed after all accounts have migrated
-
-  def provider_icon(%{adapter: :userpass} = assigns) do
-    ~H"""
-    <.icon name="hero-key" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :okta} = assigns) do
-    ~H"""
-    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :google_workspace} = assigns) do
-    ~H"""
-    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :openid_connect} = assigns) do
-    ~H"""
-    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :microsoft_entra} = assigns) do
-    ~H"""
-    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :jumpcloud} = assigns) do
-    ~H"""
-    <img src={~p"/images/jumpcloud-logo.svg"} alt="JumpCloud Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :mock} = assigns) do
-    ~H"""
-    <.icon name="hero-command-line" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :email} = assigns) do
-    ~H"""
-    <.icon name="hero-envelope" {@rest} />
     """
   end
 

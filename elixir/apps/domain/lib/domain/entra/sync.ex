@@ -64,6 +64,7 @@ defmodule Domain.Entra.Sync do
     case Entra.APIClient.get_access_token(directory.tenant_id) do
       {:ok, %{body: %{"access_token" => access_token}}} ->
         Logger.debug("Successfully obtained access token", entra_directory_id: directory.id)
+
         access_token
 
       {:ok, response} ->
@@ -303,8 +304,9 @@ defmodule Domain.Entra.Sync do
   defp batch_upsert_identities(directory, synced_at, identities) do
     account_id = directory.account_id
     issuer = issuer(directory)
+    directory_id = directory.id
 
-    case Query.batch_upsert_identities(account_id, issuer, synced_at, identities) do
+    case Query.batch_upsert_identities(account_id, issuer, directory_id, synced_at, identities) do
       {:ok, %{upserted_identities: count}} ->
         Logger.debug("Upserted #{count} identities", entra_directory_id: directory.id)
         :ok
@@ -383,8 +385,8 @@ defmodule Domain.Entra.Sync do
       count: deleted_memberships_count
     )
 
-    # Delete actors that no longer have any identities
-    {deleted_actors_count, _} = Query.delete_actors_without_identities(account_id)
+    # Delete actors that no longer have any identities and were created by this directory
+    {deleted_actors_count, _} = Query.delete_actors_without_identities(account_id, directory.id)
 
     Logger.debug("Deleted actors without identities",
       entra_directory_id: directory.id,
@@ -425,12 +427,12 @@ defmodule Domain.Entra.Sync do
       |> where([directories: d], d.is_disabled == false)
     end
 
-    def batch_upsert_identities(_account_id, _issuer, _last_synced_at, []),
+    def batch_upsert_identities(_account_id, _issuer, _directory_id, _last_synced_at, []),
       do: {:ok, %{upserted_identities: 0}}
 
-    def batch_upsert_identities(account_id, issuer, last_synced_at, identity_attrs) do
+    def batch_upsert_identities(account_id, issuer, directory_id, last_synced_at, identity_attrs) do
       query = build_identity_upsert_query(length(identity_attrs))
-      params = build_identity_upsert_params(account_id, issuer, last_synced_at, identity_attrs)
+      params = build_identity_upsert_params(account_id, issuer, directory_id, last_synced_at, identity_attrs)
 
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{rows: rows}} -> {:ok, %{upserted_identities: length(rows)}}
@@ -449,7 +451,8 @@ defmodule Domain.Entra.Sync do
       offset = count * 6
       account_id = offset + 1
       issuer = offset + 2
-      last_synced_at = offset + 3
+      directory_id = offset + 3
+      last_synced_at = offset + 4
 
       """
       WITH input_data AS (
@@ -463,26 +466,32 @@ defmodule Domain.Entra.Sync do
           AND ai.issuer = $#{issuer}
           AND ai.idp_id IN (SELECT idp_id FROM input_data)
       ),
+      existing_actors_by_email AS (
+        SELECT DISTINCT ON (id.idp_id) a.id AS actor_id, id.idp_id
+        FROM input_data id
+        JOIN actors a ON a.email = id.email AND a.account_id = $#{account_id}
+        WHERE id.idp_id NOT IN (SELECT idp_id FROM existing_identities)
+          AND id.email IS NOT NULL
+        ORDER BY id.idp_id, a.inserted_at ASC
+      ),
       actors_to_create AS (
         SELECT
           uuid_generate_v4() AS new_actor_id,
           id.idp_id,
           id.name
         FROM input_data id
-        WHERE id.idp_id NOT IN (
-          SELECT idp_id FROM existing_identities
-        )
+        WHERE id.idp_id NOT IN (SELECT idp_id FROM existing_identities)
+          AND id.idp_id NOT IN (SELECT idp_id FROM existing_actors_by_email)
       ),
       new_actors AS (
-        INSERT INTO actors (id, type, account_id, name, last_synced_at, created_by, created_by_subject, inserted_at, updated_at)
+        INSERT INTO actors (id, type, account_id, name, created_by, created_by_directory_id, inserted_at, updated_at)
         SELECT
           new_actor_id,
           'account_user',
           $#{account_id},
           name,
-          $#{last_synced_at},
           'system',
-          jsonb_build_object('name', 'System', 'email', null),
+          $#{directory_id},
           $#{last_synced_at},
           $#{last_synced_at}
         FROM actors_to_create
@@ -490,7 +499,9 @@ defmodule Domain.Entra.Sync do
       ),
       updated_actors AS (
         UPDATE actors
-        SET name = id.name, last_synced_at = $#{last_synced_at}, updated_at = $#{last_synced_at}
+        SET
+          email = id.email,
+          updated_at = $#{last_synced_at}
         FROM input_data id
         JOIN existing_identities ei ON ei.idp_id = id.idp_id
         WHERE actors.id = ei.actor_id
@@ -504,10 +515,14 @@ defmodule Domain.Entra.Sync do
         SELECT ei.actor_id, ei.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username
         FROM existing_identities ei
         JOIN input_data id ON id.idp_id = ei.idp_id
+        UNION ALL
+        SELECT eabe.actor_id, eabe.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username
+        FROM existing_actors_by_email eabe
+        JOIN input_data id ON id.idp_id = eabe.idp_id
       )
       INSERT INTO auth_identities (
         id, actor_id, issuer, idp_id, email, name, given_name, family_name, preferred_username,
-        last_synced_at, account_id, created_by, inserted_at, created_by_subject
+        last_synced_at, account_id, created_by, inserted_at
       )
       SELECT
         COALESCE(ei.id, uuid_generate_v4()),
@@ -523,7 +538,6 @@ defmodule Domain.Entra.Sync do
         $#{account_id},
         'system',
         $#{last_synced_at},
-        jsonb_build_object('name', 'System', 'email', null)
       FROM all_actor_mappings aam
       LEFT JOIN existing_identities ei ON ei.idp_id = aam.idp_id
       ON CONFLICT (account_id, issuer, idp_id) WHERE (issuer IS NOT NULL OR idp_id IS NOT NULL)
@@ -538,7 +552,7 @@ defmodule Domain.Entra.Sync do
       """
     end
 
-    defp build_identity_upsert_params(account_id, issuer, last_synced_at, attrs) do
+    defp build_identity_upsert_params(account_id, issuer, directory_id, last_synced_at, attrs) do
       params =
         Enum.flat_map(attrs, fn a ->
           [
@@ -551,7 +565,7 @@ defmodule Domain.Entra.Sync do
           ]
         end)
 
-      params ++ [Ecto.UUID.dump!(account_id), issuer, last_synced_at]
+      params ++ [Ecto.UUID.dump!(account_id), issuer, Ecto.UUID.dump!(directory_id), last_synced_at]
     end
 
     def batch_upsert_groups(_account_id, _last_synced_at, _tenant_id, []),
@@ -572,7 +586,6 @@ defmodule Domain.Entra.Sync do
             updated_at: last_synced_at,
             created_by: :system,
             type: :static,
-            created_by_subject: %{"name" => "System", "email" => nil},
             last_synced_at: last_synced_at
           }
         end)
@@ -703,23 +716,14 @@ defmodule Domain.Entra.Sync do
       Safe.delete_all(Safe.unscoped(), query)
     end
 
-    def delete_actors_without_identities(account_id) do
+    def delete_actors_without_identities(account_id, directory_id) do
       # Delete actors that no longer have any identities
       # This cleans up actors whose identities were deleted in the previous step
-      # Only delete actors created by the system (directory sync), not user-created actors
-      # Check for created_by_subject with name='System' and email=null
-      # Note: PostgreSQL doesn't support LEFT JOIN in DELETE, so we use a subquery
+      # Only delete actors created by this specific directory
       query =
         from(a in Domain.Actors.Actor,
           where: a.account_id == ^account_id,
-          where: a.type == :account_user,
-          where: a.created_by == :system,
-          where:
-            fragment(
-              "? = ?",
-              a.created_by_subject,
-              ^%{"name" => "System", "email" => nil}
-            ),
+          where: a.created_by_directory_id == ^directory_id,
           where:
             fragment(
               "NOT EXISTS (SELECT 1 FROM auth_identities WHERE actor_id = ?)",

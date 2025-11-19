@@ -9,8 +9,7 @@ defmodule Domain.Actors.Actor.Changeset do
   @fields ~w[name type]a
 
   def allowed_updates, do: %{fields: @fields}
-  def allowed_updates(%Actor{last_synced_at: nil}), do: allowed_updates()
-  def allowed_updates(%Actor{}), do: %{fields: ~w[type last_synced_at]a}
+  def allowed_updates(%Actor{}), do: allowed_updates()
 
   def create(account_id, attrs, %Auth.Subject{} = subject) do
     create(account_id, attrs)
@@ -29,7 +28,7 @@ defmodule Domain.Actors.Actor.Changeset do
     %{fields: fields} = allowed_updates()
 
     %Actors.Actor{memberships: []}
-    |> cast(attrs, fields ++ [:last_synced_at])
+    |> cast(attrs, fields)
     |> validate_required(fields)
     |> changeset()
   end
@@ -68,7 +67,6 @@ defmodule Domain.Actors.Actor.Changeset do
     |> cast(attrs, ~w[name]a)
     |> validate_required(~w[name]a)
     |> changeset()
-    |> put_change(:last_synced_at, DateTime.utc_now())
   end
 
   def changeset(changeset) do

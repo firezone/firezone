@@ -500,14 +500,11 @@ defmodule Domain.RepoTest do
       fixed_datetime = ~U[2000-01-01 00:00:00.000000Z]
 
       actors =
-        for i <- 1..10 do
-          last_synced_at = DateTime.add(fixed_datetime, i, :second)
-
+        for _i <- 1..10 do
           Fixtures.Actors.create_actor(account: account)
-          |> Fixtures.Actors.update(last_synced_at: last_synced_at)
         end
 
-      actors = actors |> Enum.sort_by(&{&1.last_synced_at, &1.id}) |> Enum.reverse()
+      actors = actors |> Enum.sort_by(&{&1.inserted_at, &1.id}) |> Enum.reverse()
 
       ids = Enum.map(actors, & &1.id)
       {first_page_ids, rest_ids} = Enum.split(ids, 4)
@@ -517,7 +514,7 @@ defmodule Domain.RepoTest do
       # load first page with 4 entries
       assert {:ok, actors1, metadata1} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4]
                )
 
@@ -529,7 +526,7 @@ defmodule Domain.RepoTest do
       # load next page with 4 more entries
       assert {:ok, actors2, metadata2} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata1.next_page_cursor]
                )
 
@@ -541,7 +538,7 @@ defmodule Domain.RepoTest do
       # load next page with 2 more entries
       assert {:ok, actors3, metadata3} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata2.next_page_cursor]
                )
 
@@ -553,7 +550,7 @@ defmodule Domain.RepoTest do
       # go back to 2nd page
       assert {:ok, actors4, metadata4} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata3.previous_page_cursor]
                )
 
@@ -565,7 +562,7 @@ defmodule Domain.RepoTest do
       # go back to first page
       assert {:ok, actors4, metadata4} =
                list(queryable, query_module,
-                 order_by: [{:actors, :desc, :last_synced_at}],
+                 order_by: [{:actors, :desc, :inserted_at}],
                  page: [limit: 4, cursor: metadata4.previous_page_cursor]
                )
 
