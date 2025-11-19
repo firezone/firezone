@@ -351,7 +351,7 @@ pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_clie
     for (dns_server, query_id) in ref_client.expected_udp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "udp_dns", %query_id, %dns_server).entered();
-        let key = &(*dns_server, *query_id);
+        let key = &(dns_server.clone(), *query_id);
 
         let queries = &sim_client.sent_udp_dns_queries;
         let responses = &sim_client.received_udp_dns_responses;
@@ -374,7 +374,7 @@ pub(crate) fn assert_tcp_dns(ref_client: &RefClient, sim_client: &SimClient) {
     for (dns_server, query_id) in ref_client.expected_tcp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "tcp_dns", %query_id, %dns_server).entered();
-        let key = &(*dns_server, *query_id);
+        let key = &(dns_server.clone(), *query_id);
 
         let queries = &sim_client.sent_tcp_dns_queries;
         let responses = &sim_client.received_tcp_dns_responses;
