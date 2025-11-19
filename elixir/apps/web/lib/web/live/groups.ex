@@ -429,6 +429,14 @@ defmodule Web.Groups do
                   {get_directory_type(@group.directory)}
                 </p>
               </div>
+              <div :if={!is_firezone_directory?(@group.directory)}>
+                <p class="text-xs font-medium text-neutral-500 uppercase">
+                  {get_directory_identifier_label(@group.directory)}
+                </p>
+                <p class="text-sm text-neutral-900 font-mono break-all">
+                  {get_directory_identifier(@group.directory)}
+                </p>
+              </div>
               <div>
                 <p class="text-xs font-medium text-neutral-500 uppercase">
                   {if is_firezone_directory?(@group.directory),
@@ -684,6 +692,19 @@ defmodule Web.Groups do
       [provider, _idp_id] -> provider
       _ -> directory
     end
+  end
+
+  defp get_directory_identifier_label(directory) do
+    case get_directory_type(directory) do
+      "entra" -> "Tenant ID"
+      "google" -> "Customer Domain"
+      "okta" -> "Okta Domain"
+      _ -> "Identifier"
+    end
+  end
+
+  defp get_directory_identifier(directory) do
+    get_idp_id(directory)
   end
 
   defp get_idp_id(nil), do: nil

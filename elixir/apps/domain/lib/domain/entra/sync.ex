@@ -582,8 +582,7 @@ defmodule Domain.Entra.Sync do
         |> Safe.insert_all(Domain.Actors.Group, values,
           on_conflict: {:replace, [:name, :last_synced_at, :updated_at]},
           conflict_target:
-            {:unsafe_fragment,
-             ~s/(account_id, directory, idp_id) WHERE directory IS NOT NULL and idp_id IS NOT NULL/},
+            {:unsafe_fragment, ~s/(account_id, directory, idp_id) WHERE directory <> 'firezone'/},
           returning: false
         )
 

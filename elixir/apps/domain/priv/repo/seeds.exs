@@ -844,18 +844,64 @@ defmodule Domain.Repo.Seeds do
       Repo.insert_all(Domain.Actors.Membership, chunk)
     end)
 
-    {:ok, eng_group} = Actors.create_group(%{name: "Engineering", type: :static}, admin_subject)
-    {:ok, finance_group} = Actors.create_group(%{name: "Finance", type: :static}, admin_subject)
+    now = DateTime.utc_now()
 
-    {:ok, synced_group} =
-      Actors.create_group(
-        %{name: "Group:Synced Group with long name", type: :static},
-        admin_subject
-      )
+    admin_subject_data = %{
+      "ip" => to_string(:inet.ntoa(admin_subject.context.remote_ip)),
+      "user_agent" => admin_subject.context.user_agent,
+      "email" => admin_subject.actor.email,
+      "id" => admin_subject.actor.id
+    }
 
-    for group <- [eng_group, finance_group, synced_group] do
+    group_values = [
+      %{
+        id: Ecto.UUID.generate(),
+        name: "Engineering",
+        type: :static,
+        directory: "firezone",
+        account_id: account.id,
+        inserted_at: now,
+        updated_at: now,
+        created_by: :actor,
+        created_by_subject: admin_subject_data
+      },
+      %{
+        id: Ecto.UUID.generate(),
+        name: "Finance",
+        type: :static,
+        directory: "firezone",
+        account_id: account.id,
+        inserted_at: now,
+        updated_at: now,
+        created_by: :actor,
+        created_by_subject: admin_subject_data
+      },
+      %{
+        id: Ecto.UUID.generate(),
+        name: "Group:Synced Group with long name",
+        type: :static,
+        directory: "firezone",
+        account_id: account.id,
+        inserted_at: now,
+        updated_at: now,
+        created_by: :actor,
+        created_by_subject: admin_subject_data
+      }
+    ]
+
+    {3, group_results} =
+      Repo.insert_all(Domain.Actors.Group, group_values, returning: [:id, :name])
+
+    for group <- group_results do
       IO.puts("  Name: #{group.name}  ID: #{group.id}")
     end
+
+    # Reload as structs for further use
+    [eng_group_id, finance_group_id, synced_group_id] = Enum.map(group_results, & &1.id)
+
+    eng_group = Repo.get!(Domain.Actors.Group, eng_group_id)
+    finance_group = Repo.get!(Domain.Actors.Group, finance_group_id)
+    synced_group = Repo.get!(Domain.Actors.Group, synced_group_id)
 
     eng_group
     |> Repo.preload(:memberships)
@@ -901,16 +947,36 @@ defmodule Domain.Repo.Seeds do
       |> Repo.update!()
     end
 
-    for name <- [
-          "Group:gcp-logging-viewers",
-          "Group:gcp-security-admins",
-          "Group:gcp-organization-admins",
-          "OU:Admins",
-          "OU:Product",
-          "Group:Engineering",
-          "Group:gcp-developers"
-        ] do
-      {:ok, group} = Actors.create_group(%{name: name, type: :static}, admin_subject)
+    extra_group_names = [
+      "Group:gcp-logging-viewers",
+      "Group:gcp-security-admins",
+      "Group:gcp-organization-admins",
+      "OU:Admins",
+      "OU:Product",
+      "Group:Engineering",
+      "Group:gcp-developers"
+    ]
+
+    extra_group_values =
+      Enum.map(extra_group_names, fn name ->
+        %{
+          id: Ecto.UUID.generate(),
+          name: name,
+          type: :static,
+          directory: "firezone",
+          account_id: account.id,
+          inserted_at: now,
+          updated_at: now,
+          created_by: :actor,
+          created_by_subject: admin_subject_data
+        }
+      end)
+
+    {_count, extra_group_results} =
+      Repo.insert_all(Domain.Actors.Group, extra_group_values, returning: [:id])
+
+    for %{id: group_id} <- extra_group_results do
+      group = Repo.get!(Domain.Actors.Group, group_id)
 
       group
       |> Repo.preload(:memberships)
