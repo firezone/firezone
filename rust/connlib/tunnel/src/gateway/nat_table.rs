@@ -376,7 +376,7 @@ mod tests {
             .unwrap();
 
         // Simulate another packet after _response_delay_
-        table.handle_timeout(sent_at + response_delay);
+        table.handle_timeout(sent_at + Duration::from_secs(1) + response_delay);
         let translate_incoming = table
             .translate_incoming(&response, sent_at + response_delay)
             .unwrap();
