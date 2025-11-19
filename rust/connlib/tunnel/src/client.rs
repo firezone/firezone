@@ -188,6 +188,7 @@ impl ClientState {
         records: BTreeSet<DnsResourceRecord>,
         is_internet_resource_active: bool,
         now: Instant,
+        unix_ts: Duration,
     ) -> Self {
         Self {
             resources_gateways: Default::default(),
@@ -198,7 +199,7 @@ impl ClientState {
             buffered_events: Default::default(),
             tun_config: Default::default(),
             buffered_packets: Default::default(),
-            node: ClientNode::new(seed, now),
+            node: ClientNode::new(seed, now, unix_ts),
             sites_status: Default::default(),
             gateways_site: Default::default(),
             stub_resolver: StubResolver::new(records),
@@ -2033,7 +2034,13 @@ mod tests {
 
     impl ClientState {
         pub fn for_test() -> ClientState {
-            ClientState::new(rand::random(), Default::default(), false, Instant::now())
+            ClientState::new(
+                rand::random(),
+                Default::default(),
+                false,
+                Instant::now(),
+                Duration::ZERO,
+            )
         }
     }
 

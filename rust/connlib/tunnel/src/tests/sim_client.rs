@@ -16,6 +16,7 @@ use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::Interface,
 };
+use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -110,6 +111,7 @@ impl SimClient {
         key: PrivateKey,
         is_internet_resource_active: bool,
         now: Instant,
+        utc_now: DateTime<Utc>,
     ) {
         let dns_resource_records = self.dns_resource_record_cache.clone();
 
@@ -123,6 +125,10 @@ impl SimClient {
             dns_resource_records,
             is_internet_resource_active,
             now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
         );
 
         self.search_domain = None;
@@ -497,12 +503,16 @@ impl RefClient {
     /// Initialize the [`ClientState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self, now: Instant) -> SimClient {
+    pub(crate) fn init(self, now: Instant, utc_now: DateTime<Utc>) -> SimClient {
         let mut client_state = ClientState::new(
             self.key.0,
             Default::default(),
             self.internet_resource_active,
             now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
         ); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,

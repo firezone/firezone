@@ -55,7 +55,7 @@ impl TunnelTest {
     pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state.client.map(
-            |ref_client, _, _| ref_client.init(flux_capacitor.now()),
+            |ref_client, _, _| ref_client.init(flux_capacitor.now(), flux_capacitor.now()),
             debug_span!("client"),
         );
 
@@ -73,6 +73,7 @@ impl TunnelTest {
                                 .flatten()
                                 .copied()
                                 .collect(),
+                            flux_capacitor.now(),
                             flux_capacitor.now(),
                         )
                     },
@@ -124,6 +125,7 @@ impl TunnelTest {
     ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
+        let utc_now = state.flux_capacitor.now();
 
         // Act: Apply the transition
         match transition {
@@ -426,7 +428,7 @@ impl TunnelTest {
                 let internet_resource_state = ref_state.client.inner().internet_resource_active;
 
                 state.client.exec_mut(|c| {
-                    c.restart(key, internet_resource_state, now);
+                    c.restart(key, internet_resource_state, now, utc_now);
 
                     // Apply to new instance.
                     c.sut.update_interface_config(Interface {
