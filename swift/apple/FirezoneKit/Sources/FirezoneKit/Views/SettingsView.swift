@@ -167,17 +167,18 @@ public struct SettingsView: View {
         }
         .disabled(viewModel.shouldDisableResetButton)
         Spacer()
+        Button("Apply") {
+          let action = ConfirmationAlertContinueAction.saveSettings
+          if [.connected, .connecting, .reasserting].contains(store.vpnStatus) {
+            self.confirmationAlertContinueAction = action
+            self.isShowingConfirmationAlert = true
+          } else {
+            withErrorHandler { try await action.performAction(on: self) }
+          }
+        }
+        .disabled(viewModel.shouldDisableApplyButton)
       }
       .padding()
-    }
-    .onDisappear {
-      Task {
-        do {
-          try await viewModel.save()
-        } catch {
-          Log.error(error)
-        }
-      }
     }
     .alert(
       "Some settings may not have been applied",
@@ -252,16 +253,22 @@ public struct SettingsView: View {
           }
         }
         .navigationTitle("Settings")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-          ToolbarItem(placement: .navigationBarLeading) {
-            Button {
-              dismiss()
-            } label: {
-              Image(systemName: "xmark.circle.fill")
-                .font(.title3)
-                .foregroundColor(.secondary)
+          ToolbarItem(placement: .navigationBarTrailing) {
+            Button("Save") {
+              let action = ConfirmationAlertContinueAction.saveAllSettingsAndDismiss
+              if case .connected = store.vpnStatus {
+                self.confirmationAlertContinueAction = action
+                self.isShowingConfirmationAlert = true
+              } else {
+                withErrorHandler { try await action.performAction(on: self) }
+              }
             }
+            .disabled(viewModel.shouldDisableApplyButton)
+          }
+          ToolbarItem(placement: .navigationBarLeading) {
+            Button("Cancel") { dismiss() }
           }
         }
         .navigationDestination(for: SettingsSection.self) { section in
@@ -456,15 +463,6 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isAccountSlugForced)
               .frame(width: 250)
-              .onSubmit {
-                Task {
-                  do {
-                    try await viewModel.save()
-                  } catch {
-                    Log.error(error)
-                  }
-                }
-              }
             }
             .padding(.bottom, 10)
 
@@ -551,15 +549,6 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isAuthURLForced)
               .frame(width: 250)
-              .onSubmit {
-                Task {
-                  do {
-                    try await viewModel.save()
-                  } catch {
-                    Log.error(error)
-                  }
-                }
-              }
             }
 
             // API URL
@@ -573,15 +562,6 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isApiURLForced)
               .frame(width: 250)
-              .onSubmit {
-                Task {
-                  do {
-                    try await viewModel.save()
-                  } catch {
-                    Log.error(error)
-                  }
-                }
-              }
             }
 
             // Log Filter
@@ -595,15 +575,6 @@ public struct SettingsView: View {
               )
               .disabled(configuration.isLogFilterForced)
               .frame(width: 250)
-              .onSubmit {
-                Task {
-                  do {
-                    try await viewModel.save()
-                  } catch {
-                    Log.error(error)
-                  }
-                }
-              }
             }
           }
           .frame(width: 500)
