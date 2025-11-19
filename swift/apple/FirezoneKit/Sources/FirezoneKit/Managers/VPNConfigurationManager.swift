@@ -130,7 +130,7 @@ public class VPNConfigurationManager: @unchecked Sendable {
       configuration.internetResourceEnabled = internetResourceEnabled == "true"
     }
 
-    try await IPCClient.setConfiguration(session: session, configuration.toTunnelConfiguration())
+    try await IPCClient.setConfiguration(session: session, configuration)
 
     // Remove fields to prevent confusion if the user sees these in System Settings and wonders why they're stale.
     if let protocolConfiguration = manager.protocolConfiguration as? NETunnelProviderProtocol {

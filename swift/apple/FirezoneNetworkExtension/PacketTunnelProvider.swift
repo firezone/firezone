@@ -13,6 +13,7 @@ enum PacketTunnelProviderError: Error {
   case tunnelConfigurationIsInvalid
   case firezoneIdIsInvalid
   case tokenNotFoundInKeychain
+  case dryStartStopCycle
 }
 
 class PacketTunnelProvider: NEPacketTunnelProvider {
@@ -55,10 +56,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     options: [String: NSObject]?,
     completionHandler: @escaping @Sendable (Error?) -> Void
   ) {
-    // Dummy start to attach a utun for cleanup later
-    if options?["cycleStart"] as? Bool == true {
-      Log.info("Cycle start requested - extension awakened and temporarily starting tunnel")
-      return completionHandler(nil)
+    // Dummy start to get the extension running on macOS after upgrade
+    if options?["dryRun"] as? Bool == true {
+      Log.info("Dry run startup requested - extension awakened but not starting tunnel")
+      return completionHandler(PacketTunnelProviderError.dryStartStopCycle)
     }
 
     // Log version on actual tunnel start
@@ -66,6 +67,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
       Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
     let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
     Log.info("Starting tunnel - Version: \(version), Build: \(build)")
+
+    // Try to load configuration from options first (passed from client at startup)
+    if let configData = options?["configuration"] as? Data {
+      do {
+        let decoder = PropertyListDecoder()
+        let configFromOptions = try decoder.decode(TunnelConfiguration.self, from: configData)
+        Log.info("Loaded configuration from startTunnel options")
+        // Save it for future fallback (e.g., system-initiated restarts)
+        configFromOptions.save()
+        self.tunnelConfiguration = configFromOptions
+      } catch {
+        Log.error(error)
+      }
+    }
 
     // If the tunnel starts up before the GUI after an upgrade crossing the 1.4.15 version boundary,
     // the old system settings-based config will still be present and the new configuration will be empty.
