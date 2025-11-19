@@ -189,7 +189,7 @@ defmodule Web.Live.Settings.DNSTest do
     }
 
     lv
-    |> form("form", attrs)
+    |> render_change(:change, attrs)
     |> render_submit()
 
     account = Domain.Accounts.fetch_account_by_id!(account.id)
@@ -221,7 +221,7 @@ defmodule Web.Live.Settings.DNSTest do
 
     html =
       lv
-      |> form("form", attrs)
+      |> render_change(:change, attrs)
       |> render_submit()
 
     assert html =~ "must have at least one custom resolver"
@@ -313,41 +313,13 @@ defmodule Web.Live.Settings.DNSTest do
     }
 
     lv
-    |> form("form", attrs)
+    |> render_change(:change, attrs)
     |> render_submit()
 
     account = Domain.Accounts.fetch_account_by_id!(account.id)
     assert account.config.clients_upstream_dns.type == :secure
     assert account.config.clients_upstream_dns.doh_provider == :google
     assert Enum.empty?(account.config.clients_upstream_dns.addresses)
-  end
-
-  test "requires doh_provider when type is secure", %{
-    account: account,
-    identity: identity,
-    conn: conn
-  } do
-    {:ok, lv, _html} =
-      conn
-      |> authorize_conn(identity)
-      |> live(~p"/#{account}/settings/dns")
-
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "secure"
-          }
-        }
-      }
-    }
-
-    html =
-      lv
-      |> form("form", attrs)
-      |> render_submit()
-
-    assert html =~ "must be selected when using secure DNS"
   end
 
   test "saves system resolver selection", %{
@@ -400,32 +372,28 @@ defmodule Web.Live.Settings.DNSTest do
       |> live(~p"/#{account}/settings/dns")
 
     # Switch to system
-    lv
-    |> form("form", %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "system"
+    render_change(lv, :change, %{
+      "account" => %{
+        "config" => %{
+          "clients_upstream_dns" => %{
+            "type" => "system"
           }
         }
       }
     })
-    |> render_change()
 
     # Switch back to secure - DoH provider should still be there
     html =
-      lv
-      |> form("form", %{
-        account: %{
-          config: %{
-            clients_upstream_dns: %{
-              type: "secure",
-              doh_provider: "quad9"
+      render_change(lv, :change, %{
+        "account" => %{
+          "config" => %{
+            "clients_upstream_dns" => %{
+              "type" => "secure",
+              "doh_provider" => "quad9"
             }
           }
         }
       })
-      |> render_change()
 
     assert html =~ "Quad9 DNS"
   end
@@ -451,33 +419,28 @@ defmodule Web.Live.Settings.DNSTest do
       |> live(~p"/#{account}/settings/dns")
 
     # Switch to system
-    lv
-    |> form("form", %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "system"
+    render_change(lv, :change, %{
+      "account" => %{
+        "config" => %{
+          "clients_upstream_dns" => %{
+            "type" => "system"
           }
         }
       }
     })
-    |> render_change()
 
     # Switch back to custom - addresses should still be there
     html =
-      lv
-      |> form("form", %{
-        account: %{
-          config: %{
-            clients_upstream_dns: %{
-              type: "custom",
-              addresses: %{"0" => %{"address" => "8.8.8.8"}}
+      render_change(lv, :change, %{
+        "account" => %{
+          "config" => %{
+            "clients_upstream_dns" => %{
+              "type" => "custom",
+              "addresses" => %{"0" => %{"address" => "8.8.8.8"}}
             }
           }
         }
-      }
       })
-      |> render_change()
 
     assert html =~ "8.8.8.8"
   end

@@ -756,71 +756,25 @@ defmodule Domain.AccountsTest do
              }
     end
 
-    test "accepts DoH provider", %{account: account} do
-      attrs = %{
-        config: %{
-          clients_upstream_dns: %{
-            type: :cloudflare,
-            addresses: []
-          }
-        }
-      }
-
-      assert {:ok, account} = update_account_by_id(account.id, attrs)
-      assert account.config.clients_upstream_dns.type == :cloudflare
-    end
-
     test "accepts all valid DoH providers", %{account: account} do
       for provider <- [:google, :quad9, :cloudflare, :opendns] do
         attrs = %{
           config: %{
             clients_upstream_dns: %{
-              type: provider,
+              type: :secure,
+              doh_provider: provider,
               addresses: []
             }
           }
         }
 
         assert {:ok, account} = update_account_by_id(account.id, attrs)
-        assert account.config.clients_upstream_dns.type == provider
+        assert account.config.clients_upstream_dns.doh_provider == provider
+        assert account.config.clients_upstream_dns.type == :secure
       end
     end
 
-    test "returns error when both Do53 and DoH provider are set", %{account: account} do
-      attrs = %{
-        config: %{
-          clients_upstream_dns: %{
-            type: :custom,
-            addresses: [
-              %{address: "1.1.1.1"}
-            ]
-          }
-        }
-      }
-
-      # Try to update with a different type without clearing addresses
-      # This should fail validation
-      attrs2 = %{
-        config: %{
-          clients_upstream_dns: %{
-            type: :cloudflare,
-            addresses: [%{address: "1.1.1.1"}]
-          }
-        }
-      }
-
-      assert {:error, changeset} = update_account_by_id(account.id, attrs)
-
-      assert errors_on(changeset) == %{
-               config: %{
-                 clients_upstream_dns: %{
-                   addresses: ["should be empty for this resolver type"]
-                 }
-               }
-             }
-    end
-
-    test "allows switching from Do53 to DoH provider", %{account: account} do
+    test "retains addresses when switching to secure DNS", %{account: account} do
       # First set custom DNS
       attrs = %{
         config: %{
@@ -841,36 +795,8 @@ defmodule Domain.AccountsTest do
       attrs = %{
         config: %{
           clients_upstream_dns: %{
-            type: :cloudflare,
-            addresses: []
-          }
-        }
-      }
-
-      assert {:ok, account} = update_account_by_id(account.id, attrs)
-      assert account.config.clients_upstream_dns.type == :cloudflare
-      assert account.config.clients_upstream_dns.addresses == []
-    end
-
-    test "allows switching from DoH provider to Do53", %{account: account} do
-      # First set DoH provider
-      attrs = %{
-        config: %{
-          clients_upstream_dns: %{
-            type: :cloudflare,
-            addresses: []
-          }
-        }
-      }
-
-      assert {:ok, account} = update_account_by_id(account.id, attrs)
-      assert account.config.clients_upstream_dns.type == :cloudflare
-
-      # Now switch to custom DNS
-      attrs = %{
-        config: %{
-          clients_upstream_dns: %{
-            type: :custom,
+            type: :secure,
+            doh_provider: :cloudflare,
             addresses: [
               %{address: "1.1.1.1"}
             ]
@@ -879,7 +805,8 @@ defmodule Domain.AccountsTest do
       }
 
       assert {:ok, account} = update_account_by_id(account.id, attrs)
-      assert account.config.clients_upstream_dns.type == :custom
+      assert account.config.clients_upstream_dns.type == :secure
+      assert account.config.clients_upstream_dns.doh_provider == :cloudflare
       assert length(account.config.clients_upstream_dns.addresses) == 1
     end
 

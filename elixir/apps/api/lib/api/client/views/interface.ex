@@ -19,7 +19,7 @@ defmodule API.Client.Views.Interface do
           legacy_dns =
             Enum.map(addresses, fn %{address: address} ->
               ip = if String.contains?(address, ":"), do: "[#{address}]", else: address
-              %{protocol: "ip_port", address: "#{ip}:53"}
+              %{protocol: :ip_port, address: "#{ip}:53"}
             end)
 
           {do53, [], legacy_dns}
