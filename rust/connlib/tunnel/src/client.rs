@@ -129,8 +129,8 @@ pub struct ClientState {
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
     /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the ID of the recursive DNS query we issued.
-    dns_streams_by_upstream_and_query_id:
-        HashMap<(dns::Transport, SocketAddr, u16), (SocketAddr, SocketAddr)>,
+    dns_streams_by_local_upstream_and_query_id:
+        HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
     /// Stores the gateways we recently connected to.
     ///
@@ -211,7 +211,7 @@ impl ClientState {
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
-            dns_streams_by_upstream_and_query_id: Default::default(),
+            dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
             pending_tun_update: Default::default(),
@@ -1177,10 +1177,10 @@ impl ClientState {
             if let Some(query_result) = self.udp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_upstream_and_query_id;
+                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
                 let Some((local, remote)) =
-                    known_sockets.remove(&(dns::Transport::Udp, server, qid))
+                    known_sockets.remove(&(dns::Transport::Udp, query_result.local, server, qid))
                 else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
 
@@ -1205,10 +1205,10 @@ impl ClientState {
             if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_upstream_and_query_id;
+                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
                 let Some((local, remote)) =
-                    known_sockets.remove(&(dns::Transport::Tcp, server, qid))
+                    known_sockets.remove(&(dns::Transport::Tcp, query_result.local, server, qid))
                 else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
 
@@ -1424,8 +1424,8 @@ impl ClientState {
             dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query),
         };
 
-        match result {
-            Ok(()) => {}
+        let local_socket = match result {
+            Ok(local_socket) => local_socket,
             Err(e) => {
                 tracing::warn!(
                     "Failed to send recursive {transport} DNS query to upstream resolver: {e:#}"
@@ -1434,11 +1434,11 @@ impl ClientState {
             }
         };
 
-        tracing::trace!(%server, %local, %query_id, "Forwarding {transport} DNS query via tunnel");
+        tracing::trace!(%local_socket, %server, %local, %query_id, "Forwarding {transport} DNS query via tunnel");
 
         let existing = self
-            .dns_streams_by_upstream_and_query_id
-            .insert((transport, server, query_id), (local, remote));
+            .dns_streams_by_local_upstream_and_query_id
+            .insert((transport, local_socket, server, query_id), (local, remote));
 
         if let Some((existing_local, existing_remote)) = existing
             && (existing_local != local || existing_remote != remote)
