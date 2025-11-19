@@ -648,12 +648,13 @@ impl RefClient {
         }
 
         // TCP connections will automatically re-create connections to Gateways.
-        for r in self
+        for ((_, dst, _, _), r) in self
             .expected_tcp_connections
-            .values()
-            .copied()
+            .clone()
+            .into_iter()
             .collect::<Vec<_>>()
         {
+            self.connect_to_resource(r, dst);
             self.set_resource_online(r);
         }
     }
