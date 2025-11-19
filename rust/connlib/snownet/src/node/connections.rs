@@ -8,13 +8,12 @@ use std::{
 
 use anyhow::{Context as _, Result};
 use boringtun::noise::Index;
-use rand::{Rng, seq::IteratorRandom as _};
+use rand::Rng;
 use str0m::ice::IceAgent;
 
 use crate::{
     ConnectionStats, Event,
-    allocation::Allocation,
-    node::{Connection, InitialConnection, add_local_candidate},
+    node::{Connection, InitialConnection, add_local_candidate, allocations::Allocations},
 };
 
 pub struct Connections<TId, RId> {
@@ -100,16 +99,16 @@ where
 
     pub(crate) fn check_relays_available(
         &mut self,
-        allocations: &BTreeMap<RId, Allocation>,
+        allocations: &Allocations<RId>,
         pending_events: &mut VecDeque<Event<TId>>,
         rng: &mut impl Rng,
     ) {
         for (_, c) in self.iter_initial_mut() {
-            if allocations.contains_key(&c.relay) {
+            if allocations.contains(&c.relay) {
                 continue;
             }
 
-            let Some(new_rid) = allocations.keys().copied().choose(rng) else {
+            let Some((new_rid, _)) = allocations.sample(rng) else {
                 continue;
             };
 
@@ -118,11 +117,11 @@ where
         }
 
         for (cid, c) in self.iter_established_mut() {
-            if allocations.contains_key(&c.relay.id) {
+            if allocations.contains(&c.relay.id) {
                 continue; // Our relay is still there, no problems.
             }
 
-            let Some((rid, allocation)) = allocations.iter().choose(rng) else {
+            let Some((rid, allocation)) = allocations.sample(rng) else {
                 if !c.relay.logged_sample_failure {
                     tracing::debug!(%cid, "Failed to sample new relay for connection");
                 }
@@ -133,7 +132,7 @@ where
 
             tracing::info!(%cid, old = %c.relay.id, new = %rid, "Attempting to migrate connection to new relay");
 
-            c.relay.id = *rid;
+            c.relay.id = rid;
 
             for candidate in allocation.current_relay_candidates() {
                 add_local_candidate(cid, &mut c.agent, candidate, pending_events);

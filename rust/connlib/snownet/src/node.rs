@@ -1,9 +1,11 @@
+mod allocations;
 mod connections;
 
 pub use connections::UnknownConnection;
 
 use crate::allocation::{self, Allocation, RelaySocket, Socket};
 use crate::index::IndexLfsr;
+use crate::node::allocations::Allocations;
 use crate::node::connections::Connections;
 use crate::stats::{ConnectionStats, NodeStats};
 use crate::utils::channel_data_packet_buffer;
@@ -20,12 +22,10 @@ use hex_display::HexDisplayExt;
 use ip_packet::{Ecn, IpPacket, IpPacketBuf};
 use itertools::Itertools;
 use rand::rngs::StdRng;
-use rand::seq::IteratorRandom;
 use rand::{RngCore, SeedableRng};
 use ringbuffer::{AllocRingBuffer, RingBuffer as _};
 use sha2::Digest;
-use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::hash::Hash;
 use std::net::IpAddr;
 use std::ops::ControlFlow;
@@ -130,7 +130,7 @@ pub struct Node<T, TId, RId> {
 
     next_rate_limiter_reset: Option<Instant>,
 
-    allocations: BTreeMap<RId, Allocation>,
+    allocations: Allocations<RId>,
 
     connections: Connections<TId, RId>,
     pending_events: VecDeque<Event<TId>>,
@@ -426,7 +426,7 @@ where
             | CandidateKind::PeerReflexive => {}
         }
 
-        let Some(allocation) = self.allocations.get_mut(&relay) else {
+        let Some(allocation) = self.allocations.get_mut_by_id(&relay) else {
             tracing::debug!(rid = %relay, "Unknown relay");
             return;
         };
@@ -547,11 +547,7 @@ where
     pub fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         iter::empty()
             .chain(self.connections.poll_timeout())
-            .chain(
-                self.allocations
-                    .values_mut()
-                    .filter_map(|a| a.poll_timeout()),
-            )
+            .chain(self.allocations.poll_timeout())
             .chain(
                 self.next_rate_limiter_reset
                     .map(|instant| (instant, "rate limiter reset")),
@@ -576,9 +572,7 @@ where
     ///
     /// As such, it ends up being cleaner to "drain" all lower-level components of their events, transmits etc within this function.
     pub fn handle_timeout(&mut self, now: Instant) {
-        for allocation in self.allocations.values_mut() {
-            allocation.handle_timeout(now);
-        }
+        self.allocations.handle_timeout(now);
 
         self.allocations_drain_events();
 
@@ -602,15 +596,7 @@ where
             }
         }
 
-        self.allocations
-            .retain(|rid, allocation| match allocation.can_be_freed() {
-                Some(e) => {
-                    tracing::info!(%rid, "Disconnecting from relay; {e}");
-
-                    false
-                }
-                None => true,
-            });
+        self.allocations.gc();
         self.connections.check_relays_available(
             &self.allocations,
             &mut self.pending_events,
@@ -623,12 +609,7 @@ where
     /// Returns buffered data that needs to be sent on the socket.
     #[must_use]
     pub fn poll_transmit(&mut self) -> Option<Transmit> {
-        let allocation_transmits = &mut self
-            .allocations
-            .values_mut()
-            .flat_map(Allocation::poll_transmit);
-
-        if let Some(transmit) = allocation_transmits.next() {
+        if let Some(transmit) = self.allocations.poll_transmit() {
             self.stats.stun_bytes_to_relays += transmit.payload.len();
             tracing::trace!(?transmit);
 
@@ -650,7 +631,7 @@ where
     ) {
         // First, invalidate all candidates from relays that we should stop using.
         for rid in &to_remove {
-            let Some(allocation) = self.allocations.remove(rid) else {
+            let Some(allocation) = self.allocations.remove_by_id(rid) else {
                 tracing::debug!(%rid, "Cannot delete unknown allocation");
 
                 continue;
@@ -676,47 +657,29 @@ where
                 continue;
             };
 
-            match self.allocations.entry(*rid) {
-                Entry::Vacant(v) => {
-                    v.insert(Allocation::new(
-                        *server,
-                        username,
-                        password.clone(),
-                        realm,
-                        now,
-                        self.session_id.clone(),
-                        self.buffer_pool.clone(),
-                    ));
-
-                    tracing::info!(%rid, address = ?server, "Added new TURN server");
+            match self.allocations.upsert(
+                *rid,
+                *server,
+                username,
+                password.clone(),
+                realm,
+                now,
+                self.session_id.clone(),
+            ) {
+                allocations::UpsertResult::Added => {
+                    tracing::info!(%rid, address = ?server, "Added new TURN server")
                 }
-                Entry::Occupied(mut o) => {
-                    let allocation = o.get();
-
-                    if allocation.matches_credentials(&username, password)
-                        && allocation.matches_socket(server)
-                    {
-                        tracing::info!(%rid, address = ?server, "Skipping known TURN server");
-                        continue;
-                    }
-
+                allocations::UpsertResult::Skipped => {
+                    tracing::info!(%rid, address = ?server, "Skipping known TURN server")
+                }
+                allocations::UpsertResult::Replaced(previous) => {
                     invalidate_allocation_candidates(
                         &mut self.connections,
-                        allocation,
+                        &previous,
                         &mut self.pending_events,
                     );
 
-                    o.insert(Allocation::new(
-                        *server,
-                        username,
-                        password.clone(),
-                        realm,
-                        now,
-                        self.session_id.clone(),
-                        self.buffer_pool.clone(),
-                    ));
-
-                    tracing::info!(%rid, address = ?server, "Replaced TURN server");
+                    tracing::info!(%rid, address = ?server, "Replaced TURN server")
                 }
             }
         }
@@ -829,7 +792,12 @@ where
             // The above check would wrongly classify a STUN request from such a peer as relay traffic and
             // fail to process it because we don't have an `Allocation` for the peer's IP.
             //
-            // Effectively this means that the connection will have to fallback to a relay-relay candidate pair.
+            // At the same time, we may still receive packets on port 3478 for an allocation that we have discarded.
+            //
+            // To correctly handle these packets, we need to handle them differently, depending on whether we
+            // previously had an allocation on a certain relay:
+            // 1. If we previously had an allocation, we need to stop processing the packet.
+            // 2. If we don't recognize the IP, continue processing the packet (as it may be p2p traffic).
             return ControlFlow::Continue((from, packet, None));
         }
 
@@ -841,18 +809,20 @@ where
                     return ControlFlow::Continue((from, packet, None));
                 };
 
-                let Some(allocation) = self
-                    .allocations
-                    .values_mut()
-                    .find(|a| a.server().matches(from))
-                else {
-                    tracing::debug!(
-                        %from,
-                        packet = %hex::encode(packet),
-                        "Packet was a STUN message but we are not connected to this relay"
-                    );
+                let allocation = match self.allocations.get_mut_by_server(from) {
+                    allocations::MutAllocationRef::Connected(_, allocation) => allocation,
+                    allocations::MutAllocationRef::Disconnected => {
+                        tracing::debug!(
+                            %from,
+                            packet = %hex::encode(packet),
+                            "Packet was a STUN message but we are no longer connected to this relay"
+                        );
 
-                    return ControlFlow::Break(()); // Stop processing the packet.
+                        return ControlFlow::Break(()); // Stop processing the packet.
+                    }
+                    allocations::MutAllocationRef::Unknown => {
+                        return ControlFlow::Continue((from, packet, None));
+                    }
                 };
 
                 if allocation.handle_input(from, local, message, now) {
@@ -871,14 +841,19 @@ where
                     return ControlFlow::Continue((from, packet, None));
                 };
 
-                let Some(allocation) = self
-                    .allocations
-                    .values_mut()
-                    .find(|a| a.server().matches(from))
-                else {
-                    tracing::debug!("Packet was a channel data message for unknown allocation");
+                let allocation = match self.allocations.get_mut_by_server(from) {
+                    allocations::MutAllocationRef::Connected(_, allocation) => allocation,
+                    allocations::MutAllocationRef::Disconnected => {
+                        tracing::debug!(
+                            %from,
+                            "Packet was a channel-data message but we are no longer connected to this relay"
+                        );
 
-                    return ControlFlow::Break(()); // Stop processing the packet.
+                        return ControlFlow::Break(()); // Stop processing the packet.
+                    }
+                    allocations::MutAllocationRef::Unknown => {
+                        return ControlFlow::Continue((from, packet, None));
+                    }
                 };
 
                 let Some((from, packet, socket)) = allocation.decapsulate(from, cd, now) else {
@@ -1005,11 +980,7 @@ where
     }
 
     fn allocations_drain_events(&mut self) {
-        let allocation_events = self.allocations.iter_mut().flat_map(|(rid, allocation)| {
-            std::iter::from_fn(|| allocation.poll_event()).map(|e| (*rid, e))
-        });
-
-        for (rid, event) in allocation_events {
+        while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
             match event {
@@ -1029,11 +1000,9 @@ where
 
     /// Sample a relay to use for a new connection.
     fn sample_relay(&mut self) -> Result<RId, NoTurnServers> {
-        let rid = self
+        let (rid, _) = self
             .allocations
-            .keys()
-            .copied()
-            .choose(&mut self.rng)
+            .sample(&mut self.rng)
             .ok_or(NoTurnServers {})?;
 
         tracing::debug!(%rid, "Sampled relay");
@@ -1225,18 +1194,15 @@ fn seed_agent_with_local_candidates<TId, RId>(
     connection: TId,
     selected_relay: RId,
     agent: &mut IceAgent,
-    allocations: &BTreeMap<RId, Allocation>,
+    allocations: &Allocations<RId>,
     pending_events: &mut VecDeque<Event<TId>>,
 ) where
-    RId: Ord,
+    RId: Ord + fmt::Display + Copy,
     TId: fmt::Display + Copy,
 {
-    let shared_candidates = allocations
-        .values()
-        .flat_map(|allocation| allocation.host_and_server_reflexive_candidates())
-        .unique();
+    let shared_candidates = allocations.shared_candidates();
     let relay_candidates = allocations
-        .get(&selected_relay)
+        .get_by_id(&selected_relay)
         .into_iter()
         .flat_map(|allocation| allocation.current_relay_candidates());
 
@@ -1846,7 +1812,7 @@ where
         &mut self,
         cid: TId,
         now: Instant,
-        allocations: &mut BTreeMap<RId, Allocation>,
+        allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
     ) where
         TId: Copy + Ord + fmt::Display,
@@ -1913,9 +1879,7 @@ where
                     source,
                     ..
                 } => {
-                    let source_relay = allocations.iter().find_map(|(relay, allocation)| {
-                        allocation.has_socket(source).then_some(*relay)
-                    });
+                    let source_relay = allocations.get_mut_by_allocation(source).map(|(r, _)| r);
 
                     if source_relay.is_some_and(|r| self.relay.id != r) {
                         tracing::warn!(
@@ -2042,11 +2006,7 @@ where
             let stun_packet = transmit.contents;
 
             // Check if `str0m` wants us to send from a "remote" socket, i.e. one that we allocated with a relay.
-            let allocation = allocations
-                .iter_mut()
-                .find(|(_, allocation)| allocation.has_socket(source));
-
-            let Some((relay, allocation)) = allocation else {
+            let Some((relay, allocation)) = allocations.get_mut_by_allocation(source) else {
                 self.stats.stun_bytes_to_peer_direct += stun_packet.len();
 
                 // `source` did not match any of our allocated sockets, must be a local one then!
@@ -2084,7 +2044,7 @@ where
     fn handle_tunnel_timeout(
         &mut self,
         now: Instant,
-        allocations: &mut BTreeMap<RId, Allocation>,
+        allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
     ) {
         // Don't update wireguard timers until we are connected.
@@ -2130,7 +2090,7 @@ where
         socket: PeerSocket,
         packet: &IpPacket,
         now: Instant,
-        allocations: &mut BTreeMap<RId, Allocation>,
+        allocations: &mut Allocations<RId>,
     ) -> Result<Option<Transmit>>
     where
         TId: fmt::Display,
@@ -2173,7 +2133,7 @@ where
                 ecn: packet.ecn(),
             })),
             PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-                let Some(allocation) = allocations.get_mut(&self.relay.id) else {
+                let Some(allocation) = allocations.get_mut_by_id(&self.relay.id) else {
                     tracing::warn!(relay = %self.relay.id, "No allocation");
                     return Ok(None);
                 };
@@ -2200,7 +2160,7 @@ where
         cid: TId,
         src: IpAddr,
         packet: &[u8],
-        allocations: &mut BTreeMap<RId, Allocation>,
+        allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) -> ControlFlow<Result<()>, IpPacket>
@@ -2307,7 +2267,7 @@ where
 
     fn initiate_wg_session(
         &mut self,
-        allocations: &mut BTreeMap<RId, Allocation>,
+        allocations: &mut Allocations<RId>,
         transmits: &mut VecDeque<Transmit>,
         now: Instant,
     ) where
@@ -2382,11 +2342,11 @@ fn make_owned_transmit<RId>(
     socket: PeerSocket,
     message: &[u8],
     buffer_pool: &BufferPool<Vec<u8>>,
-    allocations: &mut BTreeMap<RId, Allocation>,
+    allocations: &mut Allocations<RId>,
     now: Instant,
 ) -> Option<Transmit>
 where
-    RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug,
+    RId: Ord + fmt::Display + Copy,
 {
     let transmit = match socket {
         PeerSocket::PeerToPeer {
@@ -2403,7 +2363,7 @@ where
             ecn: Ecn::NonEct,
         },
         PeerSocket::RelayToPeer { dest: peer } | PeerSocket::RelayToRelay { dest: peer } => {
-            let allocation = allocations.get_mut(&relay)?;
+            let allocation = allocations.get_mut_by_id(&relay)?;
 
             let mut channel_data = channel_data_packet_buffer(message);
             let encode_ok = allocation.encode_channel_data_header(peer, &mut channel_data, now)?;
