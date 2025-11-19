@@ -349,7 +349,7 @@ mod tests {
     ) {
         proptest::prop_assume!(packet.destination().is_ipv4() == outside_dst.is_ipv4()); // Required for our test to simulate a response.
 
-        let sent_at = Instant::now();
+        let mut now = Instant::now();
         let mut table = NatTable::default();
         let response_delay = Duration::from_secs(response_delay);
 
@@ -358,9 +358,8 @@ mod tests {
         let dst = packet.destination();
 
         // Translate out
-        let (new_source_protocol, new_dst_ip) = table
-            .translate_outgoing(&packet, outside_dst, sent_at)
-            .unwrap();
+        let (new_source_protocol, new_dst_ip) =
+            table.translate_outgoing(&packet, outside_dst, now).unwrap();
 
         // Pretend we are getting a response.
         let mut response = packet.clone();
@@ -368,18 +367,16 @@ mod tests {
         response.set_src(new_dst_ip).unwrap();
 
         // Update time.
-        table.handle_timeout(sent_at + Duration::from_secs(1));
+        now += Duration::from_secs(1);
+        table.handle_timeout(now);
 
         // Confirm mapping
-        table
-            .translate_incoming(&response.clone(), sent_at + Duration::from_secs(1))
-            .unwrap();
+        table.translate_incoming(&response.clone(), now).unwrap();
 
         // Simulate another packet after _response_delay_
-        table.handle_timeout(sent_at + Duration::from_secs(1) + response_delay);
-        let translate_incoming = table
-            .translate_incoming(&response, sent_at + Duration::from_secs(1) + response_delay)
-            .unwrap();
+        now += response_delay;
+        table.handle_timeout(now);
+        let translate_incoming = table.translate_incoming(&response, now).unwrap();
 
         let ttl = match src {
             Protocol::Tcp(_) => 7200,
