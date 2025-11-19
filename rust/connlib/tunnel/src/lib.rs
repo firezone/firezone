@@ -21,7 +21,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
 
@@ -124,6 +124,9 @@ impl ClientTunnel {
                 records,
                 is_internet_resource_active,
                 Instant::now(),
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Should be able to compute UNIX timestamp"),
             ),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
@@ -300,7 +303,13 @@ impl GatewayTunnel {
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
-            role_state: GatewayState::new(rand::random(), Instant::now()),
+            role_state: GatewayState::new(
+                rand::random(),
+                Instant::now(),
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Should be able to compute UNIX timestamp"),
+            ),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
                 .u64_counter("system.network.packets")

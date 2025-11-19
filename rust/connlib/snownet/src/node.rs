@@ -60,32 +60,33 @@ pub struct Server {}
 #[non_exhaustive]
 pub struct Client {}
 
-trait Mode {
+enum RoleKind {
+    Client,
+    Server,
+}
+
+trait Role {
     fn new() -> Self;
-    fn is_client(&self) -> bool;
-
-    fn is_server(&self) -> bool {
-        !self.is_client()
-    }
+    fn kind(&self) -> RoleKind;
 }
 
-impl Mode for Server {
-    fn is_client(&self) -> bool {
-        false
-    }
-
+impl Role for Server {
     fn new() -> Self {
         Self {}
     }
+
+    fn kind(&self) -> RoleKind {
+        RoleKind::Server
+    }
 }
 
-impl Mode for Client {
-    fn is_client(&self) -> bool {
-        true
-    }
-
+impl Role for Client {
     fn new() -> Self {
         Self {}
+    }
+
+    fn kind(&self) -> RoleKind {
+        RoleKind::Client
     }
 }
 
@@ -113,7 +114,7 @@ impl Mode for Client {
 /// 3. Call [`Node::handle_timeout`] once that time is reached
 ///
 /// A [`Node`] is generic over three things:
-/// - `T`: The mode it is operating in, either [`Client`] or [`Server`].
+/// - `T`: The role it is operating in, either [`Client`] or [`Server`].
 /// - `TId`: The type to use for uniquely identifying connections.
 /// - `RId`: The type to use for uniquely identifying relays.
 ///
@@ -138,22 +139,27 @@ pub struct Node<T, TId, RId> {
     stats: NodeStats,
     buffer_pool: BufferPool<Vec<u8>>,
 
-    mode: T,
+    role: T,
     rng: StdRng,
+
+    /// The number of seconds since the UNIX epoch.
+    unix_ts: Duration,
+    /// The [`Instant`] at the time we read the UNIX epoch above.
+    unix_now: Instant,
 }
 
 #[derive(thiserror::Error, Debug)]
 #[error("No TURN servers available")]
 pub struct NoTurnServers {}
 
-#[expect(private_bounds, reason = "We don't want `Mode` to be public API")]
+#[expect(private_bounds, reason = "We don't want `Role` to be public API")]
 impl<T, TId, RId> Node<T, TId, RId>
 where
     TId: Eq + Hash + Copy + Ord + fmt::Display,
     RId: Copy + Eq + Hash + PartialEq + Ord + fmt::Debug + fmt::Display,
-    T: Mode,
+    T: Role,
 {
-    pub fn new(seed: [u8; 32], now: Instant) -> Self {
+    pub fn new(seed: [u8; 32], now: Instant, unix_ts: Duration) -> Self {
         let mut rng = StdRng::from_seed(seed);
         let private_key = StaticSecret::random_from_rng(&mut rng);
         let public_key = &(&private_key).into();
@@ -164,7 +170,7 @@ where
             session_id: SessionId::new(*public_key),
             private_key,
             public_key: *public_key,
-            mode: T::new(),
+            role: T::new(),
             index,
             rate_limiter: Arc::new(RateLimiter::new_at(public_key, HANDSHAKE_RATE_LIMIT, now)),
             buffered_transmits: VecDeque::default(),
@@ -174,6 +180,8 @@ where
             connections: Default::default(),
             stats: Default::default(),
             buffer_pool: BufferPool::new(ip_packet::MAX_FZ_PAYLOAD, "snownet"),
+            unix_now: now,
+            unix_ts,
         }
     }
 
@@ -302,8 +310,10 @@ where
 
         let selected_relay = self.sample_relay()?;
 
-        let mut agent = new_agent();
-        agent.set_controlling(self.mode.is_client());
+        let mut agent = match self.role.kind() {
+            RoleKind::Client => new_client_agent(),
+            RoleKind::Server => new_server_agent(),
+        };
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
@@ -404,7 +414,7 @@ where
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn add_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        let Some((agent, relay)) = self.connections.agent_mut(cid) else {
+        let Some((agent, maybe_state, relay)) = self.connections.agent_and_state_mut(cid) else {
             tracing::debug!(ignored_candidate = %candidate, "Unknown connection");
             return;
         };
@@ -433,21 +443,21 @@ where
 
         allocation.bind_channel(candidate.addr(), now);
 
-        let Ok(connection) = self.connections.get_established_mut(&cid, now) else {
-            return;
+        if let Some(state) = maybe_state {
+            // Make sure we move out of idle mode when we add new candidates.
+            state.on_candidate(cid, agent, now);
         };
-
-        // Make sure we move out of idle mode when we add new candidates.
-        connection
-            .state
-            .on_candidate(cid, &mut connection.agent, now);
     }
 
     #[tracing::instrument(level = "info", skip_all, fields(%cid))]
     pub fn remove_remote_candidate(&mut self, cid: TId, candidate: Candidate, now: Instant) {
-        if let Some((agent, _)) = self.connections.agent_mut(cid) {
+        if let Some((agent, maybe_state, _)) = self.connections.agent_and_state_mut(cid) {
             agent.invalidate_candidate(&candidate);
             agent.handle_timeout(now); // We may have invalidated the last candidate, ensure we check our nomination state.
+
+            if let Some(state) = maybe_state {
+                state.on_candidate(cid, agent, now);
+            }
         }
     }
 
@@ -501,7 +511,7 @@ where
     ) -> Result<Option<Transmit>> {
         let conn = self.connections.get_established_mut(&cid, now)?;
 
-        if self.mode.is_server() && !conn.state.has_nominated_socket() {
+        if matches!(self.role.kind(), RoleKind::Server) && !conn.state.has_nominated_socket() {
             tracing::debug!(
                 ?packet,
                 "ICE is still in progress; dropping packet because server should not initiate WireGuard sessions"
@@ -574,7 +584,7 @@ where
     pub fn handle_timeout(&mut self, now: Instant) {
         self.allocations.handle_timeout(now);
 
-        self.allocations_drain_events();
+        self.allocations_drain_events(now);
 
         for (id, connection) in self.connections.iter_established_mut() {
             connection.handle_timeout(id, now, &mut self.allocations, &mut self.buffered_transmits);
@@ -601,6 +611,7 @@ where
             &self.allocations,
             &mut self.pending_events,
             &mut self.rng,
+            now,
         );
         self.connections
             .handle_timeout(&mut self.pending_events, now);
@@ -726,6 +737,8 @@ where
             Some(self.rate_limiter.clone()),
             self.rng.next_u64(),
             now,
+            self.unix_now,
+            self.unix_ts,
         );
         // By default, boringtun has a rekey attempt time of 90(!) seconds.
         // In case of a state de-sync or other issues, this means we try for
@@ -979,14 +992,24 @@ where
             .map_break(|b| b.with_context(|| format!("cid={cid} length={}", packet.len())))
     }
 
-    fn allocations_drain_events(&mut self) {
+    fn allocations_drain_events(&mut self, now: Instant) {
         while let Some((rid, event)) = self.allocations.poll_event() {
             tracing::trace!(%rid, ?event);
 
             match event {
                 allocation::Event::New(candidate) => {
-                    for (cid, agent) in self.connections.agents_by_relay_mut(rid) {
-                        add_local_candidate(cid, agent, candidate.clone(), &mut self.pending_events)
+                    for (cid, agent, maybe_state) in
+                        self.connections.agents_and_state_by_relay_mut(rid)
+                    {
+                        add_local_candidate(
+                            cid,
+                            agent,
+                            candidate.clone(),
+                            &mut self.pending_events,
+                        );
+                        if let Some(state) = maybe_state {
+                            state.on_candidate(cid, agent, now);
+                        }
                     }
                 }
                 allocation::Event::Invalid(candidate) => {
@@ -1038,8 +1061,7 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = new_agent();
-        agent.set_controlling(true);
+        let agent = new_client_agent();
 
         let session_key = x25519::StaticSecret::random_from_rng(rand::thread_rng());
         let ice_creds = agent.local_credentials();
@@ -1146,8 +1168,7 @@ where
             tracing::info!("Replacing existing established connection");
         };
 
-        let mut agent = new_agent();
-        agent.set_controlling(false);
+        let mut agent = new_server_agent();
         agent.set_remote_credentials(IceCreds {
             ufrag: offer.credentials.username,
             pass: offer.credentials.password,
@@ -1628,7 +1649,7 @@ impl ConnectionState {
             Self::Failed | Self::Connecting { .. } => return,
         };
 
-        self.transition_to_connected(cid, peer_socket, agent, "new candidate", now);
+        self.transition_to_connected(cid, peer_socket, agent, "candidates changed", now);
     }
 
     fn on_outgoing<TId>(&mut self, cid: TId, agent: &mut IceAgent, packet: &IpPacket, now: Instant)
@@ -2380,22 +2401,39 @@ where
     Some(transmit)
 }
 
-fn new_agent() -> IceAgent {
+fn new_client_agent() -> IceAgent {
     let mut agent = IceAgent::new();
+    agent.set_controlling(true);
     agent.set_timing_advance(Duration::ZERO);
+
+    apply_default_stun_timings(&mut agent);
+
+    agent
+}
+
+fn new_server_agent() -> IceAgent {
+    let mut agent = IceAgent::new();
+    agent.set_controlling(false);
+    agent.set_timing_advance(Duration::ZERO);
+
     apply_default_stun_timings(&mut agent);
 
     agent
 }
 
 fn apply_default_stun_timings(agent: &mut IceAgent) {
-    agent.set_max_stun_retransmits(12);
-    agent.set_max_stun_rto(Duration::from_millis(1500));
+    let retrans = if agent.controlling() { 12 } else { 45 };
+    let max_stun_rto = if agent.controlling() { 1500 } else { 15_000 };
+
+    agent.set_max_stun_retransmits(retrans);
+    agent.set_max_stun_rto(Duration::from_millis(max_stun_rto));
     agent.set_initial_stun_rto(Duration::from_millis(250))
 }
 
 fn apply_idle_stun_timings(agent: &mut IceAgent) {
-    agent.set_max_stun_retransmits(4);
+    let retrans = if agent.controlling() { 4 } else { 40 };
+
+    agent.set_max_stun_retransmits(retrans);
     agent.set_max_stun_rto(Duration::from_secs(25));
     agent.set_initial_stun_rto(Duration::from_secs(25));
 }
@@ -2429,8 +2467,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn default_ice_timeout() {
-        let mut agent = IceAgent::new();
+    fn client_default_ice_timeout() {
+        let mut agent = new_client_agent();
 
         apply_default_stun_timings(&mut agent);
 
@@ -2438,12 +2476,30 @@ mod tests {
     }
 
     #[test]
-    fn idle_ice_timeout() {
-        let mut agent = IceAgent::new();
+    fn client_idle_ice_timeout() {
+        let mut agent = new_client_agent();
 
         apply_idle_stun_timings(&mut agent);
 
         assert_eq!(agent.ice_timeout(), Duration::from_secs(100))
+    }
+
+    #[test]
+    fn server_default_ice_timeout() {
+        let mut agent = new_server_agent();
+
+        apply_default_stun_timings(&mut agent);
+
+        assert_eq!(agent.ice_timeout(), Duration::from_millis(600_750))
+    }
+
+    #[test]
+    fn server_idle_ice_timeout() {
+        let mut agent = new_server_agent();
+
+        apply_idle_stun_timings(&mut agent);
+
+        assert_eq!(agent.ice_timeout(), Duration::from_secs(1000))
     }
 
     #[test]
