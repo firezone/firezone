@@ -208,7 +208,7 @@ impl ClientState {
             is_internet_resource_active,
             recently_connected_gateways: LruCache::new(MAX_REMEMBERED_GATEWAYS),
             buffered_dns_queries: Default::default(),
-            udp_dns_client: l3_udp_dns_client::Client::new(now, seed),
+            udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
             dns_streams_by_upstream_and_query_id: Default::default(),
