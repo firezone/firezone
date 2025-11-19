@@ -44,6 +44,7 @@ public final class Store: ObservableObject {
   private var resourcesTimer: Timer?
   private var resourceUpdateTask: Task<Void, Never>?
   public let configuration: Configuration
+  private var lastSavedConfiguration: TunnelConfiguration?
   private var vpnConfigurationManager: VPNConfigurationManager?
   private var cancellables: Set<AnyCancellable> = []
 
@@ -76,15 +77,26 @@ public final class Store: ObservableObject {
       .debounce(for: .seconds(0.3), scheduler: DispatchQueue.main)  // These happen quite frequently
       .sink(receiveValue: { [weak self] _ in
         guard let self = self else { return }
+        let current = self.configuration.toTunnelConfiguration()
 
-        if self.vpnConfigurationManager != nil {
-          Task {
-            do {
-              guard let session = try self.manager().session() else { return }
-              try await IPCClient.setConfiguration(session: session, self.configuration)
-            } catch {
-              Log.error(error)
-            }
+        if self.vpnConfigurationManager == nil {
+          // No manager yet, nothing to update
+          return
+        }
+
+        if self.lastSavedConfiguration == current {
+          // No changes
+          return
+        }
+
+        self.lastSavedConfiguration = current
+
+        Task {
+          do {
+            guard let session = try self.manager().session() else { return }
+            try await IPCClient.setConfiguration(session: session, current)
+          } catch {
+            Log.error(error)
           }
         }
       })
@@ -133,7 +145,7 @@ public final class Store: ObservableObject {
 
     IPCClient.subscribeToVPNStatusUpdates(session: session, handler: vpnStatusChangeHandler)
 
-    let initialStatus = IPCClient.sessionStatus(session: session)
+    let initialStatus = session.status
 
     // Handle initial status to ensure resources start loading if already connected
     try await handleVPNStatusChange(newVPNStatus: initialStatus)
@@ -217,7 +229,7 @@ public final class Store: ObservableObject {
       guard let session = try manager().session() else {
         throw VPNConfigurationManagerError.managerNotInitialized
       }
-      try IPCClient.start(session: session, configuration: configuration)
+      try IPCClient.start(session: session)
     }
   }
   func installVPNConfiguration() async throws {
@@ -245,17 +257,7 @@ public final class Store: ObservableObject {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
 
-    #if os(macOS)
-      // On macOS, the system removes the utun interface on stop ONLY if the VPN is in a connected state.
-      // So we need to do a dry run start-then-stop if we're not connected, to ensure the interface is removed.
-      if vpnStatus == .connected || vpnStatus == .connecting || vpnStatus == .reasserting {
-        try IPCClient.stop(session: session)
-      } else {
-        try IPCClient.dryStartStopCycle(session: session, configuration: configuration)
-      }
-    #else
-      try IPCClient.stop(session: session)
-    #endif
+    session.stopTunnel()
   }
 
   func signIn(authResponse: AuthResponse) async throws {
@@ -279,7 +281,7 @@ public final class Store: ObservableObject {
     guard let session = try manager().session() else {
       throw VPNConfigurationManagerError.managerNotInitialized
     }
-    try IPCClient.start(session: session, token: authResponse.token, configuration: configuration)
+    try IPCClient.start(session: session, token: authResponse.token)
   }
 
   func signOut() async throws {
@@ -369,26 +371,9 @@ public final class Store: ObservableObject {
     // Capture current hash before IPC call
     let currentHash = resourceListHash
 
-    // Get data from the provider - if hash matches, provider returns nil
-    let data = try await withCheckedThrowingContinuation {
-      (continuation: CheckedContinuation<Data?, Error>) in
-      do {
-        guard session.status == .connected else {
-          throw IPCClient.Error.invalidStatus(session.status)
-        }
-
-        try session.sendProviderMessage(
-          IPCClient.encoder.encode(ProviderMessage.getResourceList(currentHash))
-        ) { data in
-          continuation.resume(returning: data)
-        }
-      } catch {
-        continuation.resume(throwing: error)
-      }
-    }
-
     // If no data returned, resources haven't changed - no update needed
-    guard let data = data else {
+    guard let data = try await IPCClient.fetchResources(session: session, currentHash: currentHash)
+    else {
       return
     }
 

@@ -28,6 +28,10 @@ export default function Apple() {
         <ChangeItem pull="10986">
           Fixes a minor race condition that could arise on sign out.
         </ChangeItem>
+        <ChangeItem pull="10855">
+          Fixes an issue on macOS where the <code>utun</code> index would
+          auto-increment by itself on configuration updates.
+        </ChangeItem>
         <ChangeItem pull="10752">
           Fixes an issue where the reported client version was out of date.
         </ChangeItem>
