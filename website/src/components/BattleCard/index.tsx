@@ -20,7 +20,7 @@ export default function BattleCard2() {
         </p>
 
         <div className="max-w-screen-lg w-full px-0 sm:px-4">
-          <div className="flex w-full items-end justify-start lg:justify-center overflow-x-auto flex-shrink-0">
+          <div className="flex w-full items-end justify-start lg:justify-center overflow-x-auto shrink-0">
             <ul
               role="list"
               className="text-sm md:text-base min-w-[180px] md:min-w-[300px]"
@@ -44,7 +44,7 @@ export default function BattleCard2() {
             </ul>
             <ul
               role="list"
-              className={`flex flex-col items-center border-[1px] border-primary-450 bg-primary-100 rounded-xl  min-w-[200px]`}
+              className={`flex flex-col items-center border border-primary-450 bg-primary-100 rounded-xl  min-w-[200px]`}
             >
               <li className="h-[72px] flex justify-center items-center px-6 ">
                 <Image
@@ -82,7 +82,7 @@ export default function BattleCard2() {
             </ul>
             <ul
               role="list"
-              className={`flex flex-col items-center mb-[1px]  min-w-[160px] md:min-w-[200px]`}
+              className={`flex flex-col items-center mb-px  min-w-[160px] md:min-w-[200px]`}
             >
               <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
                 Tailscale
@@ -106,7 +106,7 @@ export default function BattleCard2() {
             </ul>
             <ul
               role="list"
-              className={`flex flex-col items-center mb-[1px] min-w-[160px] md:min-w-[200px]`}
+              className={`flex flex-col items-center mb-px min-w-[160px] md:min-w-[200px]`}
             >
               <li className="h-[72px] px-8 flex justify-center items-center font-bold tracking-tight text-slate-600">
                 Twingate
