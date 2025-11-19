@@ -378,7 +378,7 @@ mod tests {
         // Simulate another packet after _response_delay_
         table.handle_timeout(sent_at + Duration::from_secs(1) + response_delay);
         let translate_incoming = table
-            .translate_incoming(&response, sent_at + response_delay)
+            .translate_incoming(&response, sent_at + Duration::from_secs(1) + response_delay)
             .unwrap();
 
         let ttl = match src {
