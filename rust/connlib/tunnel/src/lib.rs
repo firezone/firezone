@@ -145,6 +145,13 @@ impl ClientTunnel {
         self.io.reset();
     }
 
+    pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
+        let resolvers = self.role_state.update_system_resolvers(resolvers);
+        self.io.update_system_resolvers(resolvers.clone()); // IO needs the system resolvers to bootstrap DoH upstream.
+
+        resolvers
+    }
+
     /// Shut down the Client tunnel.
     pub fn shut_down(mut self) -> BoxFuture<'static, Result<()>> {
         // Initiate shutdown.
@@ -178,6 +185,16 @@ impl ClientTunnel {
 
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
+                if let ClientEvent::TunInterfaceUpdated(config) = &event {
+                    for url in &config.dns_by_sentinel.upstream_servers() {
+                        let dns::Upstream::DoH { server } = url else {
+                            continue;
+                        };
+
+                        self.io.bootstrap_doh_client(server.clone());
+                    }
+                }
+
                 return Poll::Ready(event);
             }
 
@@ -480,7 +497,9 @@ impl GatewayTunnel {
                 for query in udp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
                         self.io.send_dns_query(dns::RecursiveQuery {
-                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            server: dns::Upstream::Do53 {
+                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            },
                             local: query.local,
                             remote: query.remote,
                             message: query.message,
@@ -504,7 +523,9 @@ impl GatewayTunnel {
                 for query in tcp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
                         self.io.send_dns_query(dns::RecursiveQuery {
-                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            server: dns::Upstream::Do53 {
+                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            },
                             local: query.local,
                             remote: query.remote,
                             message: query.message,

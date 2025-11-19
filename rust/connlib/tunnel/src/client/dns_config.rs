@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, SocketAddr},
 };
 
 use dns_types::DoHUrl;
@@ -8,7 +8,7 @@ use ip_network::IpNetwork;
 
 use crate::{
     client::{DNS_SENTINELS_V4, DNS_SENTINELS_V6, IpProvider},
-    dns::DNS_PORT,
+    dns::{self, DNS_PORT},
 };
 
 #[derive(Debug, Default)]
@@ -18,6 +18,7 @@ pub(crate) struct DnsConfig {
     /// The Do53 resolvers configured in the portal.
     ///
     /// Has priority over system-configured DNS servers.
+    /// Has priority over DoH resolvers.
     upstream_do53: Vec<IpAddr>,
     /// The DoH resolvers configured in the portal.
     ///
@@ -30,7 +31,7 @@ pub(crate) struct DnsConfig {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct DnsMapping {
-    inner: Vec<(IpAddr, SocketAddr)>,
+    inner: Vec<(IpAddr, dns::Upstream)>,
 }
 
 impl DnsMapping {
@@ -38,11 +39,11 @@ impl DnsMapping {
         self.inner.iter().map(|(ip, _)| ip).copied().collect()
     }
 
-    pub fn upstream_sockets(&self) -> Vec<SocketAddr> {
+    pub fn upstream_servers(&self) -> Vec<dns::Upstream> {
         self.inner
             .iter()
-            .map(|(_, socket)| socket)
-            .copied()
+            .map(|(_, upstream)| upstream)
+            .cloned()
             .collect()
     }
 
@@ -54,16 +55,16 @@ impl DnsMapping {
     // Most importantly, it is much easier for us to retain the ordering of the DNS servers if we don't use a map.
 
     #[cfg(test)]
-    pub(crate) fn sentinel_by_upstream(&self, upstream: SocketAddr) -> Option<IpAddr> {
+    pub(crate) fn sentinel_by_upstream(&self, upstream: &dns::Upstream) -> Option<IpAddr> {
         self.inner
             .iter()
-            .find_map(|(sentinel, candidate)| (candidate == &upstream).then_some(*sentinel))
+            .find_map(|(sentinel, candidate)| (candidate == upstream).then_some(*sentinel))
     }
 
-    pub(crate) fn upstream_by_sentinel(&self, sentinel: IpAddr) -> Option<SocketAddr> {
+    pub(crate) fn upstream_by_sentinel(&self, sentinel: IpAddr) -> Option<dns::Upstream> {
         self.inner
             .iter()
-            .find_map(|(candidate, upstream)| (candidate == &sentinel).then_some(*upstream))
+            .find_map(|(candidate, upstream)| (candidate == &sentinel).then_some(upstream.clone()))
     }
 }
 
@@ -104,7 +105,7 @@ impl DnsConfig {
     }
 
     pub(crate) fn has_custom_upstream(&self) -> bool {
-        !self.upstream_do53.is_empty()
+        !self.upstream_do53.is_empty() || !self.upstream_doh.is_empty()
     }
 
     pub(crate) fn mapping(&mut self) -> DnsMapping {
@@ -116,11 +117,14 @@ impl DnsConfig {
     }
 
     fn update_dns_mapping(&mut self) -> bool {
-        let effective_dns_servers =
-            effective_dns_servers(self.upstream_do53.clone(), self.system_resolvers.clone());
+        let effective_dns_servers = effective_dns_servers(
+            self.upstream_do53.clone(),
+            self.upstream_doh.clone(),
+            self.system_resolvers.clone(),
+        );
 
-        if HashSet::<SocketAddr>::from_iter(effective_dns_servers.clone())
-            == HashSet::from_iter(self.mapping.upstream_sockets())
+        if HashSet::<dns::Upstream>::from_iter(effective_dns_servers.clone())
+            == HashSet::from_iter(self.mapping.upstream_servers())
         {
             tracing::debug!(servers = ?effective_dns_servers, "Effective DNS servers are unchanged");
 
@@ -135,12 +139,22 @@ impl DnsConfig {
 
 fn effective_dns_servers(
     upstream_do53: Vec<IpAddr>,
+    upstream_doh: Vec<DoHUrl>,
     default_resolvers: Vec<IpAddr>,
-) -> Vec<SocketAddr> {
+) -> Vec<dns::Upstream> {
     if !upstream_do53.is_empty() {
         return upstream_do53
             .into_iter()
-            .map(|ip| SocketAddr::new(ip, DNS_PORT))
+            .map(|ip| dns::Upstream::Do53 {
+                server: SocketAddr::new(ip, DNS_PORT),
+            })
+            .collect();
+    }
+
+    if !upstream_doh.is_empty() {
+        return upstream_doh
+            .into_iter()
+            .map(|server| dns::Upstream::DoH { server })
             .collect();
     }
 
@@ -153,22 +167,28 @@ fn effective_dns_servers(
 
     default_resolvers
         .into_iter()
-        .map(|ip| SocketAddr::new(ip, DNS_PORT))
+        .map(|ip| dns::Upstream::Do53 {
+            server: SocketAddr::new(ip, DNS_PORT),
+        })
         .collect()
 }
 
-fn sentinel_dns_mapping(dns: &[SocketAddr], old_sentinels: Vec<IpAddr>) -> DnsMapping {
+fn sentinel_dns_mapping(dns: &[dns::Upstream], old_sentinels: Vec<IpAddr>) -> DnsMapping {
     let mut ip_provider = IpProvider::for_stub_dns_servers(old_sentinels);
 
     let mapping = dns
         .iter()
-        .copied()
-        .map(|i| {
+        .map(|u| {
+            let ip_addr = match u {
+                dns::Upstream::Do53 { server } => server.ip(),
+                dns::Upstream::DoH { .. } => IpAddr::V4(Ipv4Addr::UNSPECIFIED), // DoH servers are always mapped to IPv4 servers.
+            };
+
             (
                 ip_provider
-                    .get_proxy_ip_for(&i.ip())
+                    .get_proxy_ip_for(&ip_addr)
                     .expect("We only support up to 256 IPv4 DNS servers and 256 IPv6 DNS servers"),
-                i,
+                u.clone(),
             )
         })
         .collect();
@@ -204,11 +224,11 @@ mod tests {
 
         assert_eq!(config.mapping().sentinel_ips().len(), 3);
         assert_eq!(
-            config.mapping().upstream_sockets(),
+            config.mapping().upstream_servers(),
             vec![
-                socket("1.1.1.1:53"),
-                socket("1.0.0.1:53"),
-                socket("[2606:4700:4700::1111]:53"),
+                do53("1.1.1.1:53"),
+                do53("1.0.0.1:53"),
+                do53("[2606:4700:4700::1111]:53"),
             ]
         );
     }
@@ -224,8 +244,8 @@ mod tests {
 
         assert_eq!(config.mapping().sentinel_ips().len(), 1);
         assert_eq!(
-            config.mapping().upstream_sockets(),
-            vec![socket("1.0.0.1:53"),]
+            config.mapping().upstream_servers(),
+            vec![do53("1.0.0.1:53"),]
         );
     }
 
@@ -238,8 +258,8 @@ mod tests {
 
         assert_eq!(config.mapping().sentinel_ips().len(), 1);
         assert_eq!(
-            config.mapping().upstream_sockets(),
-            vec![socket("1.1.1.1:53"),]
+            config.mapping().upstream_servers(),
+            vec![do53("1.1.1.1:53"),]
         );
     }
 
@@ -253,8 +273,8 @@ mod tests {
 
         assert_eq!(config.mapping().sentinel_ips().len(), 1);
         assert_eq!(
-            config.mapping().upstream_sockets(),
-            vec![socket("1.1.1.1:53"),]
+            config.mapping().upstream_servers(),
+            vec![do53("1.1.1.1:53"),]
         );
     }
 
@@ -262,7 +282,9 @@ mod tests {
         address.parse().unwrap()
     }
 
-    fn socket(socket: &str) -> SocketAddr {
-        socket.parse().unwrap()
+    fn do53(socket: &str) -> dns::Upstream {
+        dns::Upstream::Do53 {
+            server: socket.parse().unwrap(),
+        }
     }
 }

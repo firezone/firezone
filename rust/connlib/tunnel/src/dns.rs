@@ -2,8 +2,8 @@ use crate::client::IpProvider;
 use anyhow::Result;
 use connlib_model::{IpStack, ResourceId};
 use dns_types::{
-    DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response, ResponseBuilder,
-    ResponseCode,
+    DoHUrl, DomainName, DomainNameRef, OwnedRecordData, Query, RecordType, Response,
+    ResponseBuilder, ResponseCode,
 };
 use firezone_logging::err_with_src;
 use itertools::Itertools;
@@ -54,7 +54,7 @@ struct Resource {
 #[derive(Debug)]
 pub(crate) struct RecursiveQuery {
     /// The server we want to send the query to.
-    pub server: SocketAddr,
+    pub server: Upstream,
 
     /// The local address we received the query on.
     pub local: SocketAddr,
@@ -73,7 +73,7 @@ pub(crate) struct RecursiveQuery {
 #[derive(Debug)]
 pub(crate) struct RecursiveResponse {
     /// The server we sent the query to.
-    pub server: SocketAddr,
+    pub server: Upstream,
 
     /// The local address we received the original query on.
     pub local: SocketAddr,
@@ -97,6 +97,14 @@ pub(crate) enum Transport {
     Udp,
     #[display("TCP")]
     Tcp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, derive_more::Display)]
+pub enum Upstream {
+    #[display("Do53({server})")]
+    Do53 { server: SocketAddr },
+    #[display("DoH({server})")]
+    DoH { server: DoHUrl },
 }
 
 /// Tells the Client how to reply to a single DNS query
