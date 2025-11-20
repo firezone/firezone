@@ -286,6 +286,10 @@ where
                 &mut self.pending_events,
             );
 
+            for candidate in c.agent.local_candidates() {
+                signal_candidate_to_remote(cid, candidate, &mut self.pending_events);
+            }
+
             // Initiate a new WG session.
             //
             // We can have up to 8 concurrent WireGuard sessions in boringtun before the oldest one gets overwritten.
@@ -1221,18 +1225,7 @@ fn seed_agent_with_local_candidates<TId, RId>(
     RId: Ord + fmt::Display + Copy,
     TId: fmt::Display + Copy,
 {
-    let shared_candidates = allocations.shared_candidates();
-    let relay_candidates = allocations
-        .get_by_id(&selected_relay)
-        .into_iter()
-        .flat_map(|allocation| allocation.current_relay_candidates());
-
-    // Candidates with a higher priority are better, therefore: Reverse the ordering by priority.
-    for candidate in shared_candidates
-        .chain(relay_candidates)
-        .sorted_by_key(|c| c.prio())
-        .rev()
-    {
+    for candidate in allocations.candidates_for_relay(&selected_relay) {
         add_local_candidate(connection, agent, candidate, pending_events);
     }
 }
