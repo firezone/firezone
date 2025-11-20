@@ -124,9 +124,9 @@ pub(crate) struct DnsQuery {
     pub(crate) transport: DnsTransport,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum DnsTransport {
-    Udp,
+    Udp { local_port: u16 },
     Tcp,
 }
 
@@ -355,8 +355,8 @@ pub(crate) fn dns_queries(
     domain: impl Strategy<Value = (DomainName, Vec<RecordType>)>,
     dns_server: impl Strategy<Value = dns::Upstream>,
 ) -> impl Strategy<Value = Vec<DnsQuery>> {
-    // Queries can be uniquely identified by the tuple of DNS server and query ID.
-    let unique_queries = collection::btree_set((dns_server, any::<u16>()), 1..5);
+    // Queries can be uniquely identified by the tuple of DNS server, transport and query ID.
+    let unique_queries = collection::btree_set((dns_server, dns_transport(), dns_query_id()), 1..5);
 
     let domains = collection::btree_set(domain, 1..5);
 
@@ -368,39 +368,41 @@ pub(crate) fn dns_queries(
         let zipped = unique_queries.zip(domains);
 
         zipped
-            .map(move |((dns_server, query_id), (domain, existing_rtypes))| {
-                (
-                    Just(domain),
-                    Just(dns_server),
-                    maybe_available_response_rtypes(existing_rtypes),
-                    Just(query_id),
-                    ptr_query_ip(),
-                    dns_transport(),
-                )
-                    .prop_map(
-                        |(
-                            mut domain,
-                            dns_server,
-                            r_type,
-                            query_id,
-                            maybe_reverse_record,
-                            transport,
-                        )| {
-                            if matches!(r_type, RecordType::PTR) {
-                                domain =
-                                    DomainName::reverse_from_addr(maybe_reverse_record).unwrap();
-                            }
-
-                            DnsQuery {
-                                domain,
+            .map(
+                move |((dns_server, transport, query_id), (domain, existing_rtypes))| {
+                    (
+                        Just(domain),
+                        Just(dns_server),
+                        maybe_available_response_rtypes(existing_rtypes),
+                        Just(query_id),
+                        ptr_query_ip(),
+                        Just(transport),
+                    )
+                        .prop_map(
+                            |(
+                                mut domain,
+                                dns_server,
                                 r_type,
                                 query_id,
-                                dns_server,
+                                maybe_reverse_record,
                                 transport,
-                            }
-                        },
-                    )
-            })
+                            )| {
+                                if matches!(r_type, RecordType::PTR) {
+                                    domain = DomainName::reverse_from_addr(maybe_reverse_record)
+                                        .unwrap();
+                                }
+
+                                DnsQuery {
+                                    domain,
+                                    r_type,
+                                    query_id,
+                                    dns_server,
+                                    transport,
+                                }
+                            },
+                        )
+                },
+            )
             .collect::<Vec<_>>()
     })
 }
@@ -414,7 +416,17 @@ fn ptr_query_ip() -> impl Strategy<Value = IpAddr> {
 }
 
 fn dns_transport() -> impl Strategy<Value = DnsTransport> {
-    prop_oneof![Just(DnsTransport::Udp), Just(DnsTransport::Tcp),]
+    prop_oneof![
+        any::<u16>().prop_map(|local_port| DnsTransport::Udp { local_port }),
+        Just(DnsTransport::Tcp),
+    ]
+}
+
+fn dns_query_id() -> impl Strategy<Value = u16> {
+    prop_oneof![
+        any::<u16>(), // Ensure we test all possible query IDs
+        Just(33333)   // Static ID to also test reuse of IDs
+    ]
 }
 
 /// To make it more likely that sent queries have any response from the server we try to only querty for IP records
