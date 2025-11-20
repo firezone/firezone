@@ -643,17 +643,6 @@ impl RefClient {
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
         }
-
-        // TCP connections will automatically re-create connections to Gateways.
-        for ((_, dst, _, _), r) in self
-            .expected_tcp_connections
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>()
-        {
-            self.connect_to_resource(r, dst);
-            self.set_resource_online(r);
-        }
     }
 
     pub(crate) fn add_internet_resource(&mut self, resource: InternetResource) {
