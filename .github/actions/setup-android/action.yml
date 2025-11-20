@@ -7,6 +7,10 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+      with:
+        path: kotlin/android/.tool-versions
+
     - uses: ./.github/actions/setup-rust
       with:
         targets: armv7-linux-androideabi aarch64-linux-android x86_64-linux-android i686-linux-android
