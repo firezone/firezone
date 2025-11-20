@@ -100,26 +100,40 @@ jobs:
           cargo test --all-features ${{ steps.setup-rust.outputs.test-packages }} -- --include-ignored --nocapture
 
           # Poor man's test coverage testing: Grep the generated logs for specific patterns / lines.
-          rg --count --no-ignore SendIcmpPacket "$TESTCASES_DIR"
-          rg --count --no-ignore SendUdpPacket "$TESTCASES_DIR"
-          rg --count --no-ignore ConnectTcp "$TESTCASES_DIR"
-          rg --count --no-ignore SendDnsQueries "$TESTCASES_DIR"
-          rg --count --no-ignore "Packet for DNS resource" "$TESTCASES_DIR"
-          rg --count --no-ignore "Packet for CIDR resource" "$TESTCASES_DIR"
-          rg --count --no-ignore "Packet for Internet resource" "$TESTCASES_DIR"
-          rg --count --no-ignore "Truncating DNS response" "$TESTCASES_DIR"
-          rg --count --no-ignore "ICMP Error error=V4Unreachable" "$TESTCASES_DIR"
-          rg --count --no-ignore "ICMP Error error=V6Unreachable" "$TESTCASES_DIR"
-          rg --count --no-ignore "ICMP Error error=V4TimeExceeded" "$TESTCASES_DIR"
-          rg --count --no-ignore "ICMP Error error=V6TimeExceeded" "$TESTCASES_DIR"
-          rg --count --no-ignore "Forwarding query for DNS resource to corresponding site" "$TESTCASES_DIR"
-          rg --count --no-ignore "Revoking resource authorization" "$TESTCASES_DIR"
-          rg --count --no-ignore "Re-seeding records for DNS resources" "$TESTCASES_DIR"
-          rg --count --no-ignore "Resource is known but its addressability changed" "$TESTCASES_DIR"
-          rg --count --no-ignore "No A / AAAA records for domain" "$TESTCASES_DIR"
+          patterns=(
+            "SendIcmpPacket"
+            "SendUdpPacket"
+            "ConnectTcp"
+            "SendDnsQueries"
+            "Packet for DNS resource"
+            "Packet for CIDR resource"
+            "Packet for Internet resource"
+            "Truncating DNS response"
+            "ICMP Error error=V4Unreachable"
+            "ICMP Error error=V6Unreachable"
+            "ICMP Error error=V4TimeExceeded"
+            "ICMP Error error=V6TimeExceeded"
+            "Forwarding query for DNS resource to corresponding site"
+            "Revoking resource authorization"
+            "Re-seeding records for DNS resources"
+            "Resource is known but its addressability changed"
+            "No A / AAAA records for domain"
+            "State change \(got new possible\): Disconnected -> Checking"
+          )
 
-          # Make sure we are recovering from ICE disconnect
-          rg --count --no-ignore "State change \(got new possible\): Disconnected -> Checking" "$TESTCASES_DIR"
+          missing_patterns=$(
+            for pattern in "${patterns[@]}"; do
+              if ! rg --quiet --no-ignore "$pattern" "$TESTCASES_DIR"; then
+                echo "$pattern"
+              fi
+            done
+          )
+
+          if [ -n "$missing_patterns" ]; then
+            echo "Error: Some required patterns were not found in test logs:"
+            echo "$missing_patterns"
+            exit 1
+          fi
 
         env:
           # <https://github.com/rust-lang/cargo/issues/5999>
