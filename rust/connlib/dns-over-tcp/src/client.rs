@@ -100,10 +100,18 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         {
             let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
 
-            self.pending_queries_by_remote_and_local
+            let pending_queries = self
+                .pending_queries_by_remote_and_local
                 .entry((server, local_endpoint))
-                .or_default()
-                .push_back(message);
+                .or_default();
+
+            let id = message.id();
+
+            if pending_queries.iter().any(|q| q.id() == id) {
+                bail!("A query with ID {id} is already pending")
+            }
+
+            pending_queries.push_back(message);
 
             return Ok(local_endpoint);
         };

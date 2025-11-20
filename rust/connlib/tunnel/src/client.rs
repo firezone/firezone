@@ -1420,8 +1420,8 @@ impl ClientState {
         let query_id = query.id();
 
         let result = match transport {
-            dns::Transport::Udp => self.udp_dns_client.send_query(server, query, now),
-            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query),
+            dns::Transport::Udp => self.udp_dns_client.send_query(server, query.clone(), now),
+            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query.clone()),
         };
 
         let local_socket = match result {
@@ -1430,11 +1430,31 @@ impl ClientState {
                 tracing::warn!(
                     "Failed to send recursive {transport} DNS query to upstream resolver: {e:#}"
                 );
+
+                let response = dns_types::ResponseBuilder::for_query(
+                    &query,
+                    dns_types::ResponseCode::SERVFAIL,
+                )
+                .build();
+
+                match transport {
+                    dns::Transport::Udp => {
+                        self.buffered_packets
+                            .extend(into_udp_dns_packet(local, remote, response));
+                    }
+                    dns::Transport::Tcp => {
+                        unwrap_or_warn!(
+                            self.tcp_dns_server.send_message(local, remote, response),
+                            "Failed to send TCP DNS response: {}"
+                        );
+                    }
+                }
+
                 return;
             }
         };
 
-        tracing::trace!(%local_socket, %server, %local, %query_id, "Forwarding {transport} DNS query via tunnel");
+        tracing::trace!(%local_socket, %server, %local, %query_id, "Forwarded {transport} DNS query via tunnel");
 
         let existing = self
             .dns_streams_by_local_upstream_and_query_id
