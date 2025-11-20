@@ -31,7 +31,6 @@ defmodule Web.SignIn.Email do
         assign(socket,
           form: form,
           idp_id: idp_id,
-          provider_identifier: nil,
           account_id_or_slug: account_id_or_slug,
           account: account,
           provider_id: provider_id,

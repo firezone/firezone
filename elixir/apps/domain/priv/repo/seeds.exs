@@ -161,165 +161,120 @@ defmodule Domain.Repo.Seeds do
         name: "Everyone"
       })
 
-    # TODO: IDP REFACTOR
-    # This conditional can be removed once all accounts are migrated
-    new_auth? = System.get_env("LEGACY_AUTH") != "true"
+    # Create auth providers for main account
+    system_subject = %Auth.Subject{
+      account: account,
+      actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
+      identity: nil,
+      token_id: nil,
+      expires_at: nil,
+      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
+      permissions:
+        MapSet.new([
+          %Domain.Auth.Permission{resource: Domain.EmailOTP.AuthProvider, action: :manage},
+          %Domain.Auth.Permission{resource: Domain.Userpass.AuthProvider, action: :manage},
+          %Domain.Auth.Permission{resource: Domain.OIDC.AuthProvider, action: :manage},
+          %Domain.Auth.Permission{resource: Domain.Google.AuthProvider, action: :manage},
+          %Domain.Auth.Permission{resource: Domain.Entra.AuthProvider, action: :manage}
+        ])
+    }
 
-    {email_provider, oidc_provider, userpass_provider, _google_provider, _entra_provider} =
-      if new_auth? do
-        # New auth system - create proper auth providers
-        system_subject = %Auth.Subject{
-          account: account,
-          actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
-          identity: nil,
-          token_id: nil,
-          expires_at: nil,
-          context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
-          permissions:
-            MapSet.new([
-              %Domain.Auth.Permission{resource: Domain.EmailOTP.AuthProvider, action: :manage},
-              %Domain.Auth.Permission{resource: Domain.Userpass.AuthProvider, action: :manage},
-              %Domain.Auth.Permission{resource: Domain.OIDC.AuthProvider, action: :manage},
-              %Domain.Auth.Permission{resource: Domain.Google.AuthProvider, action: :manage},
-              %Domain.Auth.Permission{resource: Domain.Entra.AuthProvider, action: :manage}
-            ])
-        }
+    {:ok, _email_provider} =
+      create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, system_subject)
 
-        {:ok, email_otp} =
-          create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, system_subject)
+    {:ok, _userpass_provider} =
+      create_auth_provider(
+        Userpass.AuthProvider,
+        %{name: "Username & Password"},
+        system_subject
+      )
 
-        {:ok, userpass} =
-          create_auth_provider(
-            Userpass.AuthProvider,
-            %{name: "Username & Password"},
-            system_subject
-          )
+    {:ok, _oidc_provider} =
+      create_auth_provider(
+        OIDC.AuthProvider,
+        %{
+          is_verified: true,
+          name: "OIDC",
+          issuer: "https://common.auth0.com",
+          client_id: "CLIENT_ID",
+          client_secret: "CLIENT_SECRET",
+          discovery_document_uri: "https://common.auth0.com/.well-known/openid-configuration",
+          scope: "openid email profile groups"
+        },
+        system_subject
+      )
 
-        {:ok, oidc} =
-          create_auth_provider(
-            OIDC.AuthProvider,
-            %{
-              is_verified: true,
-              name: "OIDC",
-              issuer: "https://common.auth0.com",
-              client_id: "CLIENT_ID",
-              client_secret: "CLIENT_SECRET",
-              discovery_document_uri: "https://common.auth0.com/.well-known/openid-configuration",
-              scope: "openid email profile groups"
-            },
-            system_subject
-          )
+    {:ok, _google_provider} =
+      create_auth_provider(
+        Google.AuthProvider,
+        %{
+          is_verified: true,
+          name: "Google",
+          issuer: "https://accounts.google.com",
+          domain: "firezone.dev"
+        },
+        system_subject
+      )
 
-        {:ok, google} =
-          create_auth_provider(
-            Google.AuthProvider,
-            %{
-              is_verified: true,
-              name: "Google",
-              issuer: "https://accounts.google.com",
-              domain: "firezone.dev"
-            },
-            system_subject
-          )
+    {:ok, _entra_provider} =
+      create_auth_provider(
+        Entra.AuthProvider,
+        %{
+          is_verified: true,
+          name: "Entra",
+          issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
+          tenant_id: entra_tenant_id()
+        },
+        system_subject
+      )
 
-        {:ok, entra} =
-          create_auth_provider(
-            Entra.AuthProvider,
-            %{
-              is_verified: true,
-              name: "Entra",
-              issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
-              tenant_id: entra_tenant_id()
-            },
-            system_subject
-          )
-
-        {email_otp, oidc, userpass, google, entra}
-      else
-        # Legacy auth system
-        {:ok, email} =
-          Auth.create_provider(account, %{
-            name: "Email",
-            adapter: :email,
-            adapter_config: %{}
-          })
-
-        {:ok, oidc} =
-          Auth.create_provider(account, %{
-            name: "OIDC",
-            adapter: :openid_connect,
-            adapter_config: %{
-              "client_id" => "CLIENT_ID",
-              "client_secret" => "CLIENT_SECRET",
-              "response_type" => "code",
-              "scope" => "openid email name groups",
-              "discovery_document_uri" =>
-                "https://common.auth0.com/.well-known/openid-configuration"
-            }
-          })
-
-        {:ok, userpass} =
-          Auth.create_provider(account, %{
-            name: "UserPass",
-            adapter: :userpass,
-            adapter_config: %{}
-          })
-
-        {email, oidc, userpass, nil, nil}
-      end
+    # Create auth providers for other_account
+    other_system_subject = %Auth.Subject{
+      account: other_account,
+      actor: %Actors.Actor{type: :system, id: Ecto.UUID.generate(), name: "System"},
+      identity: nil,
+      token_id: nil,
+      expires_at: nil,
+      context: %Auth.Context{type: :browser, remote_ip: {127, 0, 0, 1}, user_agent: "seeds/1"},
+      permissions:
+        MapSet.new([
+          %Domain.Auth.Permission{resource: Domain.EmailOTP.AuthProvider, action: :manage},
+          %Domain.Auth.Permission{resource: Domain.Userpass.AuthProvider, action: :manage}
+        ])
+    }
 
     {:ok, _other_email_provider} =
-      Auth.create_provider(other_account, %{
-        name: "email",
-        adapter: :email,
-        adapter_config: %{}
-      })
+      create_auth_provider(EmailOTP.AuthProvider, %{name: "Email OTP"}, other_system_subject)
 
-    {:ok, other_userpass_provider} =
-      Auth.create_provider(other_account, %{
-        name: "UserPass",
-        adapter: :userpass,
-        adapter_config: %{}
-      })
+    {:ok, _other_userpass_provider} =
+      create_auth_provider(
+        Userpass.AuthProvider,
+        %{name: "Username & Password"},
+        other_system_subject
+      )
 
     unprivileged_actor_email = "firezone-unprivileged-1@localhost.local"
     admin_actor_email = "firezone@localhost.local"
 
     {:ok, unprivileged_actor} =
-      Actors.create_actor(account, %{
+      Repo.insert(%Actors.Actor{
+        account_id: account.id,
         type: :account_user,
-        name: "Firezone Unprivileged"
+        name: "Firezone Unprivileged",
+        email: unprivileged_actor_email
       })
-
-    unprivileged_actor =
-      if new_auth? do
-        # In NEW_AUTH, actors must have emails
-        unprivileged_actor
-        |> Ecto.Changeset.change(email: unprivileged_actor_email)
-        |> Repo.update!()
-      else
-        unprivileged_actor
-      end
 
     other_actors_with_emails =
       for i <- 1..10 do
         email = "user-#{i}@localhost.local"
 
         {:ok, actor} =
-          Actors.create_actor(account, %{
+          Repo.insert(%Actors.Actor{
+            account_id: account.id,
             type: :account_user,
-            name: "Firezone Unprivileged #{i}"
+            name: "Firezone Unprivileged #{i}",
+            email: email
           })
-
-        actor =
-          if new_auth? do
-            # In NEW_AUTH, actors must have emails
-            actor
-            |> Ecto.Changeset.change(email: email)
-            |> Repo.update!()
-          else
-            actor
-          end
 
         {actor, email}
       end
@@ -327,189 +282,99 @@ defmodule Domain.Repo.Seeds do
     other_actors = Enum.map(other_actors_with_emails, fn {actor, _email} -> actor end)
 
     {:ok, admin_actor} =
-      Actors.create_actor(account, %{
+      Repo.insert(%Actors.Actor{
+        account_id: account.id,
         type: :account_admin_user,
-        name: "Firezone Admin"
+        name: "Firezone Admin",
+        email: admin_actor_email
       })
-
-    admin_actor =
-      if new_auth? do
-        # In NEW_AUTH, actors must have emails
-        admin_actor
-        |> Ecto.Changeset.change(email: admin_actor_email)
-        |> Repo.update!()
-      else
-        admin_actor
-      end
 
     {:ok, service_account_actor} =
-      Actors.create_actor(account, %{
-        "type" => :service_account,
-        "name" => "Backup Manager"
+      Repo.insert(%Actors.Actor{
+        account_id: account.id,
+        type: :service_account,
+        name: "Backup Manager"
       })
 
-    {unprivileged_actor_email_identity, unprivileged_actor_userpass_identity} =
-      if new_auth? do
-        # New auth system: create ONE identity for local auth (works with both EmailOTP and Userpass)
-        password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
+    # Create ONE identity for local auth (works with both EmailOTP and Userpass)
+    password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
 
-        {:ok, identity} =
-          Repo.insert(%Auth.Identity{
-            actor_id: unprivileged_actor.id,
-            account_id: account.id,
-            issuer: "firezone",
-            idp_id: unprivileged_actor_email,
-            name: "Firezone Unprivileged",
-            password_hash: password_hash,
-            created_by: :system
-          })
+    {:ok, unprivileged_actor_identity} =
+      Repo.insert(%Auth.Identity{
+        actor_id: unprivileged_actor.id,
+        account_id: account.id,
+        issuer: "firezone",
+        idp_id: unprivileged_actor_email,
+        name: "Firezone Unprivileged",
+        password_hash: password_hash,
+        created_by: :system
+      })
 
-        # Return the same identity for both email and userpass (same user, different auth methods)
-        {identity, identity}
-      else
-        # Legacy auth system uses Auth module
-        {:ok, email_identity} =
-          Auth.create_identity(unprivileged_actor, email_provider, %{
-            provider_identifier: unprivileged_actor_email,
-            provider_identifier_confirmation: unprivileged_actor_email
-          })
-
-        {:ok, userpass_identity} =
-          Auth.create_identity(unprivileged_actor, userpass_provider, %{
-            provider_identifier: unprivileged_actor_email,
-            provider_virtual_state: %{
-              "password" => "Firezone1234",
-              "password_confirmation" => "Firezone1234"
-            }
-          })
-
-        {email_identity, userpass_identity}
-      end
+    unprivileged_actor_email_identity = unprivileged_actor_identity
+    unprivileged_actor_userpass_identity = unprivileged_actor_identity
 
     _unprivileged_actor_userpass_identity =
       maybe_repo_update.(unprivileged_actor_userpass_identity,
         id: "7da7d1cd-111c-44a7-b5ac-4027b9d230e5"
       )
 
-    {admin_actor_email_identity, _admin_actor_userpass_identity, admin_actor_oidc_identity} =
-      if new_auth? do
-        # New auth system: create ONE identity for local auth (EmailOTP + Userpass)
-        password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
+    # Create ONE identity for local auth (EmailOTP + Userpass)
+    password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
 
-        {:ok, local_identity} =
-          Repo.insert(%Auth.Identity{
-            actor_id: admin_actor.id,
-            account_id: account.id,
-            issuer: "firezone",
-            idp_id: admin_actor_email,
-            name: "Firezone Admin",
-            password_hash: password_hash,
-            created_by: :system
-          })
+    {:ok, local_identity} =
+      Repo.insert(%Auth.Identity{
+        actor_id: admin_actor.id,
+        account_id: account.id,
+        issuer: "firezone",
+        idp_id: admin_actor_email,
+        name: "Firezone Admin",
+        password_hash: password_hash,
+        created_by: :system
+      })
 
-        # Create separate OIDC identity (different issuer)
-        {:ok, oidc_identity} =
-          Repo.insert(%Auth.Identity{
-            actor_id: admin_actor.id,
-            account_id: account.id,
-            issuer: "https://common.auth0.com",
-            idp_id: admin_actor_email,
-            name: "Firezone Admin",
-            created_by: :system
-          })
+    admin_actor_email_identity = local_identity
 
-        {:ok, _google_identity} =
-          Repo.insert(%Auth.Identity{
-            actor_id: admin_actor.id,
-            account_id: account.id,
-            issuer: "https://accounts.google.com",
-            idp_id: google_idp_id(),
-            name: "Firezone Admin",
-            created_by: :system
-          })
+    # Create separate OIDC identity (different issuer)
+    {:ok, _admin_actor_oidc_identity} =
+      Repo.insert(%Auth.Identity{
+        actor_id: admin_actor.id,
+        account_id: account.id,
+        issuer: "https://common.auth0.com",
+        idp_id: admin_actor_email,
+        name: "Firezone Admin",
+        created_by: :system
+      })
 
-        {:ok, _entra_identity} =
-          Repo.insert(%Auth.Identity{
-            actor_id: admin_actor.id,
-            account_id: account.id,
-            issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
-            idp_id: entra_idp_id(),
-            name: "Firezone Admin",
-            created_by: :system
-          })
+    {:ok, _google_identity} =
+      Repo.insert(%Auth.Identity{
+        actor_id: admin_actor.id,
+        account_id: account.id,
+        issuer: "https://accounts.google.com",
+        idp_id: google_idp_id(),
+        name: "Firezone Admin",
+        created_by: :system
+      })
 
-        {local_identity, local_identity, oidc_identity}
-      else
-        # Legacy auth system
-        {:ok, email_identity} =
-          Auth.create_identity(admin_actor, email_provider, %{
-            provider_identifier: admin_actor_email,
-            provider_identifier_confirmation: admin_actor_email
-          })
-
-        {:ok, userpass_identity} =
-          Auth.create_identity(admin_actor, userpass_provider, %{
-            provider_identifier: admin_actor_email,
-            provider_virtual_state: %{
-              "password" => "Firezone1234",
-              "password_confirmation" => "Firezone1234"
-            }
-          })
-
-        {:ok, oidc_identity} =
-          Auth.create_identity(admin_actor, oidc_provider, %{
-            provider_identifier: admin_actor_email,
-            provider_identifier_confirmation: admin_actor_email
-          })
-
-        {email_identity, userpass_identity, oidc_identity}
-      end
-
-    unless new_auth? do
-      # Legacy system: update OIDC identity with provider-specific fields
-      admin_actor_oidc_identity
-      |> Ecto.Changeset.change(
-        created_by: :provider,
-        provider_id: oidc_provider.id,
-        provider_identifier: admin_actor_email,
-        provider_state: %{"claims" => %{"email" => admin_actor_email, "group" => "users"}}
-      )
-      |> Repo.update!()
-    end
+    {:ok, _entra_identity} =
+      Repo.insert(%Auth.Identity{
+        actor_id: admin_actor.id,
+        account_id: account.id,
+        issuer: "https://login.microsoftonline.com/#{entra_tenant_id()}/v2.0",
+        idp_id: entra_idp_id(),
+        name: "Firezone Admin",
+        created_by: :system
+      })
 
     for {actor, email} <- other_actors_with_emails do
       {:ok, identity} =
-        if new_auth? do
-          Repo.insert(%Auth.Identity{
-            actor_id: actor.id,
-            account_id: account.id,
-            issuer: "https://common.auth0.com",
-            idp_id: email,
-            name: actor.name,
-            created_by: :system
-          })
-        else
-          Auth.create_identity(actor, oidc_provider, %{
-            provider_identifier: email,
-            provider_identifier_confirmation: email
-          })
-        end
-
-      identity =
-        unless new_auth? do
-          # Legacy system: update identity with provider-specific fields
-          identity
-          |> Ecto.Changeset.change(
-            created_by: :provider,
-            provider_id: oidc_provider.id,
-            provider_identifier: email,
-            provider_state: %{"claims" => %{"email" => email, "group" => "users"}}
-          )
-          |> Repo.update!()
-        else
-          # New auth system: identity is already created with all necessary fields
-          identity
-        end
+        Repo.insert(%Auth.Identity{
+          actor_id: actor.id,
+          account_id: account.id,
+          issuer: "https://common.auth0.com",
+          idp_id: email,
+          name: actor.name,
+          created_by: :system
+        })
 
       context = %Auth.Context{
         type: :browser,
@@ -522,7 +387,18 @@ defmodule Domain.Repo.Seeds do
       }
 
       {:ok, token} =
-        Auth.create_token(identity, context, "n", nil)
+        Repo.insert(%Tokens.Token{
+          type: :browser,
+          account_id: account.id,
+          identity_id: identity.id,
+          actor_id: identity.actor_id,
+          expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
+          secret_nonce: "n",
+          secret_fragment: Domain.Crypto.random_token(32),
+          secret_salt: Domain.Crypto.random_token(16),
+          secret_hash: "placeholder",
+          created_by: :identity
+        })
 
       {:ok, subject} = Auth.build_subject(token, context)
 
@@ -560,33 +436,44 @@ defmodule Domain.Repo.Seeds do
     other_admin_actor_email = "other@localhost.local"
 
     {:ok, other_unprivileged_actor} =
-      Actors.create_actor(other_account, %{
+      Repo.insert(%Actors.Actor{
+        account_id: other_account.id,
         type: :account_user,
-        name: "Other Unprivileged"
+        name: "Other Unprivileged",
+        email: other_unprivileged_actor_email
       })
 
     {:ok, other_admin_actor} =
-      Actors.create_actor(other_account, %{
+      Repo.insert(%Actors.Actor{
+        account_id: other_account.id,
         type: :account_admin_user,
-        name: "Other Admin"
+        name: "Other Admin",
+        email: other_admin_actor_email
       })
 
-    {:ok, _other_unprivileged_actor_userpass_identity} =
-      Auth.create_identity(other_unprivileged_actor, other_userpass_provider, %{
-        provider_identifier: other_unprivileged_actor_email,
-        provider_virtual_state: %{
-          "password" => "Firezone1234",
-          "password_confirmation" => "Firezone1234"
-        }
+    # Create identities for other_account actors
+    password_hash = Domain.Crypto.hash(:argon2, "Firezone1234")
+
+    {:ok, _other_unprivileged_actor_identity} =
+      Repo.insert(%Auth.Identity{
+        actor_id: other_unprivileged_actor.id,
+        account_id: other_account.id,
+        issuer: "firezone",
+        idp_id: other_unprivileged_actor_email,
+        name: "Other Unprivileged",
+        password_hash: password_hash,
+        created_by: :system
       })
 
-    {:ok, _other_admin_actor_userpass_identity} =
-      Auth.create_identity(other_admin_actor, other_userpass_provider, %{
-        provider_identifier: other_admin_actor_email,
-        provider_virtual_state: %{
-          "password" => "Firezone1234",
-          "password_confirmation" => "Firezone1234"
-        }
+    {:ok, _other_admin_actor_identity} =
+      Repo.insert(%Auth.Identity{
+        actor_id: other_admin_actor.id,
+        account_id: other_account.id,
+        issuer: "firezone",
+        idp_id: other_admin_actor_email,
+        name: "Other Admin",
+        password_hash: password_hash,
+        created_by: :system
       })
 
     unprivileged_actor_context = %Auth.Context{
@@ -602,7 +489,18 @@ defmodule Domain.Repo.Seeds do
     nonce = "n"
 
     {:ok, unprivileged_actor_token} =
-      Auth.create_token(unprivileged_actor_email_identity, unprivileged_actor_context, nonce, nil)
+      Repo.insert(%Tokens.Token{
+        type: :browser,
+        account_id: account.id,
+        identity_id: unprivileged_actor_email_identity.id,
+        actor_id: unprivileged_actor_email_identity.actor_id,
+        expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
+        secret_nonce: nonce,
+        secret_fragment: Domain.Crypto.random_token(32),
+        secret_salt: Domain.Crypto.random_token(16),
+        secret_hash: "placeholder",
+        created_by: :identity
+      })
 
     {:ok, unprivileged_subject} =
       Auth.build_subject(unprivileged_actor_token, unprivileged_actor_context)
@@ -618,7 +516,18 @@ defmodule Domain.Repo.Seeds do
     }
 
     {:ok, admin_actor_token} =
-      Auth.create_token(admin_actor_email_identity, admin_actor_context, nonce, nil)
+      Repo.insert(%Tokens.Token{
+        type: :browser,
+        account_id: account.id,
+        identity_id: admin_actor_email_identity.id,
+        actor_id: admin_actor_email_identity.actor_id,
+        expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
+        secret_nonce: nonce,
+        secret_fragment: Domain.Crypto.random_token(32),
+        secret_salt: Domain.Crypto.random_token(16),
+        secret_hash: "placeholder",
+        created_by: :identity
+      })
 
     {:ok, admin_subject} =
       Auth.build_subject(admin_actor_token, admin_actor_context)
@@ -633,34 +542,9 @@ defmodule Domain.Repo.Seeds do
         admin_subject
       )
 
-    {unprivileged_actor_email_token, admin_actor_email_token} =
-      if new_auth? do
-        # New auth system: email tokens are generated during sign-in flow, not pre-generated
-        {"<generated during sign-in>", "<generated during sign-in>"}
-      else
-        # Legacy system: pre-generate email tokens
-        {:ok, unprivileged_identity_with_token} =
-          Domain.Auth.Adapters.Email.request_sign_in_token(
-            unprivileged_actor_email_identity,
-            unprivileged_actor_context
-          )
-
-        unprivileged_token =
-          unprivileged_identity_with_token.provider_virtual_state.nonce <>
-            unprivileged_identity_with_token.provider_virtual_state.fragment
-
-        {:ok, admin_identity_with_token} =
-          Domain.Auth.Adapters.Email.request_sign_in_token(
-            admin_actor_email_identity,
-            admin_actor_context
-          )
-
-        admin_token =
-          admin_identity_with_token.provider_virtual_state.nonce <>
-            admin_identity_with_token.provider_virtual_state.fragment
-
-        {unprivileged_token, admin_token}
-      end
+    # Email tokens are generated during sign-in flow, not pre-generated
+    unprivileged_actor_email_token = "<generated during sign-in>"
+    admin_actor_email_token = "<generated during sign-in>"
 
     IO.puts("Created users: ")
 
@@ -778,7 +662,7 @@ defmodule Domain.Repo.Seeds do
       |> Enum.flat_map(fn chunk ->
         group_attrs =
           Enum.map(chunk, fn i ->
-            base_attrs = %{
+            %{
               name: "#{Domain.Accounts.generate_unique_slug()}-#{i}",
               directory: "firezone",
               type: :static,
@@ -788,16 +672,6 @@ defmodule Domain.Repo.Seeds do
               inserted_at: DateTime.utc_now(),
               updated_at: DateTime.utc_now()
             }
-
-            # In legacy mode, link groups to providers; in NEW_AUTH, groups are provider-agnostic
-            if new_auth? do
-              base_attrs
-            else
-              Map.merge(base_attrs, %{
-                provider_id: oidc_provider.id,
-                provider_identifier: Ecto.UUID.generate()
-              })
-            end
           end)
 
         {_, inserted_groups} =
@@ -928,24 +802,6 @@ defmodule Domain.Repo.Seeds do
       },
       admin_subject
     )
-
-    unless new_auth? do
-      # Legacy system: link group to provider
-      synced_group
-      |> Ecto.Changeset.change(
-        created_by: :provider,
-        provider_id: oidc_provider.id,
-        provider_identifier: "dummy_oidc_group_id"
-      )
-      |> Repo.update!()
-    end
-
-    unless new_auth? do
-      # Legacy system: update provider last_synced_at
-      oidc_provider
-      |> Ecto.Changeset.change(last_synced_at: DateTime.utc_now())
-      |> Repo.update!()
-    end
 
     extra_group_names = [
       "Group:gcp-logging-viewers",
@@ -1505,12 +1361,18 @@ defmodule Domain.Repo.Seeds do
     IO.puts("")
 
     {:ok, unprivileged_subject_client_token} =
-      Auth.create_token(
-        unprivileged_actor_email_identity,
-        %{unprivileged_actor_context | type: :client},
-        nonce,
-        nil
-      )
+      Repo.insert(%Tokens.Token{
+        type: :client,
+        account_id: account.id,
+        identity_id: unprivileged_actor_email_identity.id,
+        actor_id: unprivileged_actor_email_identity.actor_id,
+        expires_at: DateTime.utc_now() |> DateTime.add(90, :day),
+        secret_nonce: nonce,
+        secret_fragment: Domain.Crypto.random_token(32),
+        secret_salt: Domain.Crypto.random_token(16),
+        secret_hash: "placeholder",
+        created_by: :identity
+      })
 
     unprivileged_subject_client_token =
       maybe_repo_update.(unprivileged_subject_client_token,

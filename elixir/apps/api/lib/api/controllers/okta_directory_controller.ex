@@ -11,8 +11,7 @@ defmodule API.OktaDirectoryController do
   operation :index,
     summary: "List Okta Directories",
     responses: [
-      ok:
-        {"Okta Directory Response", "application/json", API.Schemas.OktaDirectory.ListResponse}
+      ok: {"Okta Directory Response", "application/json", API.Schemas.OktaDirectory.ListResponse}
     ]
 
   def index(conn, _params) do
@@ -35,8 +34,7 @@ defmodule API.OktaDirectoryController do
       ]
     ],
     responses: [
-      ok:
-        {"Okta Directory Response", "application/json", API.Schemas.OktaDirectory.Response}
+      ok: {"Okta Directory Response", "application/json", API.Schemas.OktaDirectory.Response}
     ]
 
   def show(conn, %{"id" => id}) do

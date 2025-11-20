@@ -1,7 +1,7 @@
 defmodule Domain.Auth.Identity.Changeset do
   use Domain, :changeset
   alias Domain.Actors
-  alias Domain.Auth.{Subject, Identity}
+  alias Domain.Auth.Identity
 
   @idp_create_fields ~w[
     issuer
@@ -43,41 +43,12 @@ defmodule Domain.Auth.Identity.Changeset do
     |> changeset()
   end
 
-  # def create_identity(
-  #       %Actors.Actor{} = actor,
-  #       %Provider{} = provider,
-  #       attrs,
-  #       %Subject{} = subject
-  #     ) do
-  #   actor
-  #   |> create_identity(provider, attrs)
-  #   |> reset_created_by()
-  #   |> put_subject_trail(:created_by, subject)
-  # end
-  #
-  # def create_identity(
-  #       %Actors.Actor{account_id: account_id} = actor,
-  #       %Provider{account_id: account_id} = provider,
-  #       attrs
-  #     ) do
-  #   %Identity{}
-  #   |> cast(attrs, ~w[email provider_identifier provider_virtual_state]a)
-  #   |> validate_required(~w[provider_identifier]a)
-  #   |> maybe_put_email_from_identifier()
-  #   |> put_change(:actor_id, actor.id)
-  #   |> put_change(:provider_id, provider.id)
-  #   |> put_change(:account_id, account_id)
-  #   |> put_subject_trail(:created_by, :system)
-  #   |> changeset()
-  # end
-
   def create_identity(
         %Actors.Actor{account_id: account_id} = actor,
         attrs
       ) do
     %Identity{}
-    |> cast(attrs, ~w[email provider_identifier]a)
-    |> validate_required(~w[provider_identifier]a)
+    |> cast(attrs, ~w[email]a)
     |> put_change(:actor_id, actor.id)
     |> put_change(:account_id, account_id)
     |> put_subject_trail(:created_by, :system)

@@ -15,6 +15,8 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
     Safe
   }
 
+  alias __MODULE__.Query
+
   @impl true
   def init(opts), do: opts
 
@@ -23,9 +25,9 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
         %{params: %{"as" => "client", "account_id_or_slug" => account_id_or_slug}} = conn,
         _opts
       ) do
-    with %Account{} = account <- get_account_by_id_or_slug(account_id_or_slug),
-         provider when is_struct(provider) <- get_default_provider_for_account(account) do
-      redirect_path = ~p"/#{account}/sign_in/providers/#{provider}/redirect"
+    with %Account{} = account <- Query.get_account_by_id_or_slug(account_id_or_slug),
+         provider when is_struct(provider) <- Query.get_default_provider_for_account(account) do
+      redirect_path = redirect_path(account, provider)
 
       # Append original query params
       full_redirect_path =
@@ -46,18 +48,6 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
   # Non-client sign in
   def call(conn, _opts) do
     conn
-  end
-
-  defp get_account_by_id_or_slug(id_or_slug) do
-    Query.by_id_or_slug(id_or_slug)
-    |> Safe.unscoped()
-    |> Safe.one()
-  end
-
-  defp get_default_provider_for_account(account) do
-    Query.default_provider_for_account_id(account.id)
-    |> Safe.unscoped()
-    |> Safe.one()
   end
 
   defp redirect_path(account, %OIDC.AuthProvider{} = provider) do
@@ -87,7 +77,7 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
       Entra
     }
 
-    def by_id_or_slug(id_or_slug) do
+    def get_account_by_id_or_slug(id_or_slug) do
       case Ecto.UUID.cast(id_or_slug) do
         {:ok, _uuid} ->
           where(Account, [a], a.id == ^id_or_slug)
@@ -95,9 +85,13 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
         :error ->
           where(Account, [a], a.slug == ^id_or_slug)
       end
+      |> Safe.unscoped()
+      |> Safe.one()
     end
 
-    def default_provider_for_account_id(account_id) do
+    def get_default_provider_for_account(account) do
+      account_id = account.id
+
       # Check each provider type for is_default = true
       # OIDC providers
       oidc_query =
@@ -133,6 +127,8 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
       |> union(^from(q in subquery(entra_query), select: q))
       |> union(^from(q in subquery(okta_query), select: q))
       |> limit(1)
+      |> Safe.unscoped()
+      |> Safe.one()
     end
   end
 end

@@ -29,7 +29,7 @@ defmodule Domain.Accounts.Account do
     has_many :actor_group_memberships, Domain.Actors.Membership
     has_many :actor_groups, Domain.Actors.Group
 
-    has_many :legacy_auth_providers, Domain.Auth.Provider
+    has_many :auth_providers, Domain.AuthProviders.AuthProvider
     has_many :auth_identities, Domain.Auth.Identity
 
     has_many :network_addresses, Domain.Network.Address
@@ -54,7 +54,6 @@ defmodule Domain.Accounts.Account do
     has_many :google_directories, Domain.Google.Directory
     has_many :google_auth_providers, Domain.Google.AuthProvider
     has_many :okta_directories, Domain.Okta.Directory
-    has_many :auth_providers, Domain.AuthProviders.AuthProvider
     has_many :okta_auth_providers, Domain.Okta.AuthProvider
     has_many :entra_directories, Domain.Entra.Directory
     has_many :entra_auth_providers, Domain.Entra.AuthProvider

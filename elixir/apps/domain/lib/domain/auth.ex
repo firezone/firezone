@@ -1,41 +1,10 @@
 defmodule Domain.Auth do
-  use Supervisor
   require Ecto.Query
   alias Domain.Repo
   alias Domain.{Accounts, Actors, Tokens}
   alias Domain.Auth.{Authorizer, Subject, Context, Permission, Roles, Role}
-  alias Domain.Auth.{Adapters, Provider}
   alias Domain.Auth.Identity
   require Logger
-
-  # This session duration is used when IdP doesn't return the token expiration date,
-  # or no IdP is used (eg. sign in via email or userpass).
-  @default_session_duration_hours [
-    browser: [
-      account_admin_user: 10,
-      account_user: 10
-    ],
-    client: [
-      account_admin_user: 24 * 7,
-      account_user: 24 * 7
-    ]
-  ]
-
-  # We don't want to allow extremely long-lived sessions for clients and browsers
-  # even if IdP returns them.
-  @max_session_duration_hours @default_session_duration_hours
-
-  def start_link(opts) do
-    Supervisor.start_link(__MODULE__, opts, name: __MODULE__)
-  end
-
-  def init(_opts) do
-    children = [
-      Adapters
-    ]
-
-    Supervisor.init(children, strategy: :one_for_one)
-  end
 
   # Tokens
 
@@ -170,8 +139,12 @@ defmodule Domain.Auth do
       ]
     )
     |> case do
-      {1, [identity]} -> {:ok, %{subject | identity: identity}}
-      {0, []} -> {:error, :not_found}
+      {1, [identity]} ->
+        identity = Repo.preload(identity, :actor)
+        {:ok, %{subject | identity: identity}}
+
+      {0, []} ->
+        {:error, :not_found}
     end
   end
 

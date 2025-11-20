@@ -21,7 +21,11 @@ defmodule API.Schemas.GoogleDirectory do
         synced_at: %Schema{type: :string, format: :datetime, description: "Last sync timestamp"},
         current_job_id: %Schema{type: :integer, description: "Current job ID"},
         error: %Schema{type: :string, description: "Last error message"},
-        error_emailed_at: %Schema{type: :string, format: :datetime, description: "Error email timestamp"},
+        error_emailed_at: %Schema{
+          type: :string,
+          format: :datetime,
+          description: "Error email timestamp"
+        },
         created_by: %Schema{type: :string, description: "Created by type"},
         created_by_subject: %Schema{type: :object, description: "Created by subject details"},
         inserted_at: %Schema{type: :string, format: :datetime, description: "Creation timestamp"},

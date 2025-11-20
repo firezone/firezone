@@ -341,8 +341,11 @@ defmodule Web.Actors do
   end
 
   def handle_event("delete_identity", %{"id" => identity_id}, socket) do
-    case Query.fetch_identity_by_id(identity_id, socket.assigns.subject) do
-      {:ok, identity} ->
+    case Query.get_identity_by_id(identity_id, socket.assigns.subject) do
+      nil ->
+        {:noreply, put_flash(socket, :error, "Identity not found")}
+
+      identity ->
         case Query.delete_identity(identity, socket.assigns.subject) do
           {:ok, _} ->
             # Reload identities for the actor
@@ -355,9 +358,6 @@ defmodule Web.Actors do
           {:error, _} ->
             {:noreply, put_flash(socket, :error, "Failed to delete identity")}
         end
-
-      {:error, _} ->
-        {:noreply, put_flash(socket, :error, "Identity not found")}
     end
   end
 
@@ -814,10 +814,10 @@ defmodule Web.Actors do
                       <div class="flex items-center gap-2">
                         <.icon name="hero-user-circle" class="w-5 h-5 text-neutral-400" />
                         <div>
-                          <div class="font-medium text-sm text-neutral-900">
+                          <div class="font-medium text-sm text-neutral-900" title="Issuer">
                             {identity.issuer}
                           </div>
-                          <div class="text-xs text-neutral-500">
+                          <div class="text-xs text-neutral-500" title="IDP ID">
                             {identity.idp_id}
                           </div>
                         </div>
@@ -1285,11 +1285,11 @@ defmodule Web.Actors do
       |> Safe.all()
     end
 
-    def fetch_identity_by_id(identity_id, subject) do
+    def get_identity_by_id(identity_id, subject) do
       from(i in Auth.Identity, as: :identities)
       |> where([identities: i], i.id == ^identity_id)
       |> Safe.scoped(subject)
-      |> Safe.fetch()
+      |> Safe.one()
     end
 
     def delete_identity(identity, subject) do

@@ -43,4 +43,15 @@ defmodule Domain.Auth.Identity do
     subject_trail(~w[system provider identity]a)
     timestamps(updated_at: false)
   end
+
+  def changeset(changeset) do
+    changeset
+    |> assoc_constraint(:actor)
+    |> assoc_constraint(:account)
+    |> unique_constraint(:account_id,
+      name: :auth_identities_account_idp_fields_index,
+      message: "An identity with this issuer and IDP ID already exists for this account."
+    )
+    |> check_constraint(:issuer, name: :issuer_idp_id_integrity)
+  end
 end

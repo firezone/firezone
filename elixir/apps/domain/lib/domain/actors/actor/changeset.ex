@@ -4,9 +4,7 @@ defmodule Domain.Actors.Actor.Changeset do
   alias Domain.Actors
   alias Domain.Actors.Actor
 
-  # TODO: IdP Sync
-  # Refactor create / updated allowed fields
-  @fields ~w[name type]a
+  @fields ~w[name type email]a
 
   def allowed_updates, do: %{fields: @fields}
   def allowed_updates(%Actor{}), do: allowed_updates()

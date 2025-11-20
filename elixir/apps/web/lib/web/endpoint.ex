@@ -46,6 +46,17 @@ defmodule Web.Endpoint do
     pass: ["*/*"],
     json_decoder: Phoenix.json_library()
 
+  plug Plug.Session,
+    store: :cookie,
+    key: "_firezone_key",
+    same_site: "Lax",
+    max_age: 4 * 60 * 60,
+    sign: true,
+    encrypt: true,
+    secure: {__MODULE__, :cookie_secure, []},
+    signing_salt: {__MODULE__, :cookie_signing_salt, []},
+    encryption_salt: {__MODULE__, :cookie_encryption_salt, []}
+
   plug Web.Plugs.FetchUserAgent
   plug Web.Router
   plug Sentry.PlugContext
@@ -81,20 +92,31 @@ defmodule Web.Endpoint do
     |> Enum.map(&to_string/1)
   end
 
+  def cookie_secure do
+    Domain.Config.fetch_env!(:web, :cookie_secure)
+  end
+
+  def cookie_signing_salt do
+    Domain.Config.fetch_env!(:web, :cookie_signing_salt)
+  end
+
+  def cookie_encryption_salt do
+    Domain.Config.fetch_env!(:web, :cookie_encryption_salt)
+  end
+
   # Configures the LiveView session cookie options.
-  # This is a function so that the Live Socket configuration above can call it at runtime for prod.
+  # IMPORTANT: Must use the same key as Plug.Session so they share session data
   def live_view_session_options do
     [
       store: :cookie,
-      key: "_lv_session",
-      same_site: "Strict",
-      # 4 hours
+      key: "_firezone_key",
+      same_site: "Lax",
       max_age: 4 * 60 * 60,
       sign: true,
       encrypt: true,
-      secure: Domain.Config.fetch_env!(:web, :cookie_secure),
-      signing_salt: Domain.Config.fetch_env!(:web, :cookie_signing_salt),
-      encryption_salt: Domain.Config.fetch_env!(:web, :cookie_encryption_salt)
+      secure: cookie_secure(),
+      signing_salt: cookie_signing_salt(),
+      encryption_salt: cookie_encryption_salt()
     ]
   end
 end

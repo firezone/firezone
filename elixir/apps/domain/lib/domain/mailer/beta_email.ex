@@ -21,5 +21,5 @@ defmodule Domain.Mailer.BetaEmail do
 
   defp identity_to_reply_to(nil), do: "notifications@firezone.dev"
 
-  defp identity_to_reply_to(%Domain.Auth.Identity{} = identity), do: identity.provider_identifier
+  defp identity_to_reply_to(%Domain.Auth.Identity{} = identity), do: identity.actor.email
 end

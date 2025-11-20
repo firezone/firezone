@@ -175,7 +175,6 @@ defmodule Web.OIDCController do
       preferred_username
       profile
       picture
-      email
     ]a
 
     %Auth.Identity{}
@@ -350,8 +349,9 @@ defmodule Web.OIDCController do
   defp context_type(_), do: :browser
 
   defp handle_error(conn, {:error, :not_admin}, params) do
+    account_id = get_in(conn.cookies, [cookie_key(params["state"]), "account_id"]) || ""
     error = "This action requires admin privileges."
-    path = ~p"/#{params["account_id_or_slug"]}"
+    path = ~p"/#{account_id}?#{sanitize(params)}"
 
     redirect_for_error(conn, error, path)
   end

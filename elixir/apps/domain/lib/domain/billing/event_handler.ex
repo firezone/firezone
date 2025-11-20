@@ -7,6 +7,7 @@ defmodule Domain.Billing.EventHandler do
   alias Domain.Accounts
   alias Domain.Billing
   alias Domain.Billing.Stripe.ProcessedEvents
+  alias __MODULE__.DB
   require Logger
 
   @subscription_events ["created", "resumed"]
@@ -406,6 +407,8 @@ defmodule Domain.Billing.EventHandler do
     end
   end
 
+  # TODO: BILLING OVERHAUL
+  # The DB operations should be wrapped in a transaction to ensure atomicity
   defp create_account_with_defaults(attrs, metadata, account_email) do
     with {:ok, account} <- Domain.Accounts.create_account(attrs),
          {:ok, account} <- Billing.update_stripe_customer(account),
@@ -417,35 +420,23 @@ defmodule Domain.Billing.EventHandler do
 
   defp setup_account_defaults(account, metadata, account_email) do
     # Create default groups and resources
-    # TODO: IDP Sync - Use special case everyone group instead of storing in DB
+    # TODO: IDP REFACTOR
+    # Use special case everyone group instead of storing in DB
     {:ok, _everyone_group} = Domain.Actors.create_managed_group(account, %{name: "Everyone"})
     {:ok, _gateway_group} = Domain.Gateways.create_group(account, %{name: "Default Site"})
     {:ok, internet_gateway_group} = Domain.Gateways.create_internet_group(account)
     {:ok, _resource} = Domain.Resources.create_internet_resource(account, internet_gateway_group)
 
     # Create email provider
-    {:ok, email_provider} =
-      Domain.Auth.create_provider(account, %{
-        name: "Email (OTP)",
-        adapter: :email,
-        adapter_config: %{}
-      })
+    {:ok, _email_provider} = DB.create_email_provider(account)
 
     # Create admin user
-    admin_name = "#{metadata["account_owner_first_name"]} #{metadata["account_owner_last_name"]}"
-    admin_email = metadata["account_admin_email"] || account_email
-
-    {:ok, actor} =
-      Domain.Actors.create_actor(account, %{
-        type: :account_admin_user,
-        name: admin_name
-      })
-
-    {:ok, _identity} =
-      Domain.Auth.upsert_identity(actor, email_provider, %{
-        provider_identifier: admin_email,
-        provider_identifier_confirmation: admin_email
-      })
+    email = metadata["account_admin_email"] || account_email
+    given_name = metadata["account_owner_first_name"]
+    family_name = metadata["account_owner_last_name"]
+    name = "#{given_name} #{family_name}"
+    {:ok, actor} = DB.create_admin(account, email, name)
+    {:ok, _identity} = DB.create_identity(actor, given_name, family_name)
 
     :ok
   end
@@ -517,4 +508,57 @@ defmodule Domain.Billing.EventHandler do
 
   defp put_if_not_nil(map, _key, nil), do: map
   defp put_if_not_nil(map, key, value), do: Map.put(map, key, value)
+
+  defmodule DB do
+    import Ecto.Changeset
+
+    alias Domain.{
+      Actors.Actor,
+      Auth.Identity,
+      AuthProviders,
+      EmailOTP,
+      Safe
+    }
+
+    def create_email_provider(account) do
+      id = Ecto.UUID.generate()
+      attrs = %{account_id: account.id, id: id}
+      parent_changeset = cast(%AuthProviders.AuthProvider{}, attrs, ~w[id account_id]a)
+      attrs = %{id: id, name: "Email (OTP)"}
+
+      changeset =
+        cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
+        |> EmailOTP.AuthProvider.changeset()
+
+      with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
+           {:ok, email_provider} <- Safe.unscoped(changeset) |> Safe.insert() do
+        {:ok, email_provider}
+      end
+    end
+
+    def create_admin(account, email, name) do
+      attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
+
+      cast(%Actor{}, attrs, ~w[account_id email name type]a)
+      |> Actor.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def create_identity(actor, given_name, family_name) do
+      attrs = %{
+        account_id: actor.account_id,
+        actor_id: actor.id,
+        issuer: "firezone",
+        given_name: given_name,
+        family_name: family_name,
+        name: actor.name
+      }
+
+      cast(%Identity{}, attrs, ~w[account_id actor_id given_name family_name name]a)
+      |> Identity.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+  end
 end

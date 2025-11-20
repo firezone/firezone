@@ -7,4 +7,4 @@ Account Slug: <%= @account.slug %>
 Account Name: <%= @account.name %>
 Actor ID:     <%= @subject.actor.id %>
 Actor Name:   <%= @subject.actor.name %>
-Identifier:   <%= @subject.identity.provider_identifier %>
+Actor Email:   <%= @subject.identity.actor.email %>

@@ -123,7 +123,10 @@ defmodule Domain.Safe do
   def all(repo, queryable) when repo == Repo, do: Repo.all(queryable)
 
   @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
-  def exists?(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
+  def exists?(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: queryable
+      }) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -139,11 +142,36 @@ defmodule Domain.Safe do
   @spec exists?(Domain.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo, do: Repo.exists?(queryable)
 
+  @spec list(Scoped.t(), module(), Keyword.t()) ::
+          {:ok, [Ecto.Schema.t()], map()} | {:error, :unauthorized}
+  def list(
+        %Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable},
+        query_module,
+        opts \\ []
+      ) do
+    schema = get_schema_module(queryable)
+
+    with :ok <- permit(:read, schema, subject) do
+      queryable
+      |> where(account_id: ^account_id)
+      |> Repo.list(query_module, opts)
+    end
+  end
+
+  @spec stream(Unscoped.t(), Keyword.t()) :: Enum.t()
+  def stream(%Unscoped{queryable: queryable}, opts \\ []), do: Repo.stream(queryable, opts)
+
   @spec stream(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: Enum.t()
-  def stream(repo, queryable, opts \\ []) when repo == Repo, do: Repo.stream(queryable, opts)
+  def stream(repo, queryable, opts) when repo == Repo, do: Repo.stream(queryable, opts)
 
   @spec transact((... -> any()), Keyword.t()) :: {:ok, any()} | {:error, any()}
   def transact(fun, opts \\ []) when is_function(fun), do: Repo.transaction(fun, opts)
+
+  @spec query(Unscoped.t(), String.t(), list()) ::
+          {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
+  def query(%Unscoped{}, sql, params) when is_binary(sql) and is_list(params) do
+    Repo.query(sql, params)
+  end
 
   @spec query(Domain.Repo, String.t(), list()) ::
           {:ok, Postgrex.Result.t()} | {:error, Postgrex.Error.t()}
@@ -151,9 +179,17 @@ defmodule Domain.Safe do
     Repo.query(sql, params)
   end
 
+  def insert_all(first_arg, schema_or_source, entries, opts \\ [])
+
+  @spec insert_all(Unscoped.t(), atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
+          {integer(), nil | [term()]}
+  def insert_all(%Unscoped{}, schema_or_source, entries, opts) do
+    Repo.insert_all(schema_or_source, entries, opts)
+  end
+
   @spec insert_all(Domain.Repo, atom() | Ecto.Schema.t(), [map() | Keyword.t()], Keyword.t()) ::
           {integer(), nil | [term()]}
-  def insert_all(repo, schema_or_source, entries, opts \\ []) when repo == Repo do
+  def insert_all(repo, schema_or_source, entries, opts) when repo == Repo do
     Repo.insert_all(schema_or_source, entries, opts)
   end
 
@@ -172,6 +208,11 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec insert(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
+  def insert(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
+    Repo.insert(changeset)
+  end
+
   @spec insert(Domain.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo,
@@ -188,6 +229,11 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec update(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
+  def update(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
+    Repo.update(changeset)
+  end
+
   @spec update(Domain.Repo, Ecto.Changeset.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   @spec update(Domain.Repo, Ecto.Changeset.t(), Keyword.t()) ::
@@ -196,12 +242,10 @@ defmodule Domain.Safe do
 
   @spec delete(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
-  def delete(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
-        }
-      ) do
+  def delete(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
+      }) do
     changeset = %{changeset | action: :delete}
     schema = get_schema_module(changeset.data)
 
@@ -210,12 +254,10 @@ defmodule Domain.Safe do
     end
   end
 
-  def delete(
-        %Scoped{
-          subject: %Subject{account: %{id: account_id}} = subject,
-          queryable: %{account_id: account_id} = struct
-        }
-      )
+  def delete(%Scoped{
+        subject: %Subject{account: %{id: account_id}} = subject,
+        queryable: %{account_id: account_id} = struct
+      })
       when is_struct(struct) do
     schema = get_schema_module(struct)
 
@@ -224,13 +266,30 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec delete(Unscoped.t()) :: {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
+  def delete(%Unscoped{queryable: %Ecto.Changeset{} = changeset}) do
+    Repo.delete(changeset)
+  end
+
+  def delete(%Unscoped{queryable: struct}) when is_struct(struct) do
+    Repo.delete(struct)
+  end
+
   @spec delete(Domain.Repo, Ecto.Schema.t() | Ecto.Changeset.t(), Keyword.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def delete(repo, struct_or_changeset, opts \\ []) when repo == Repo,
     do: Repo.delete(struct_or_changeset, opts)
 
+  def delete_all(first_arg, queryable, opts \\ [])
+
+  @spec delete_all(Unscoped.t(), Ecto.Queryable.t(), Keyword.t()) ::
+          {integer(), nil | [term()]}
+  def delete_all(%Unscoped{queryable: nil}, queryable, opts) do
+    Repo.delete_all(queryable, opts)
+  end
+
   @spec delete_all(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) :: {integer(), nil | [term()]}
-  def delete_all(repo, queryable, opts \\ []) when repo == Repo,
+  def delete_all(repo, queryable, opts) when repo == Repo,
     do: Repo.delete_all(queryable, opts)
 
   # Helper functions
@@ -271,8 +330,8 @@ defmodule Domain.Safe do
       "ip_lat" => subject.context.remote_ip_location_lat,
       "ip_lon" => subject.context.remote_ip_location_lon,
       "user_agent" => subject.context.user_agent,
-      "email" => subject.actor.email,
-      "id" => subject.actor.id
+      "actor_email" => subject.actor.email,
+      "actor_id" => subject.actor.id
     })
   end
 end

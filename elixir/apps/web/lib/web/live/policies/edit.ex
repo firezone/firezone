@@ -9,7 +9,8 @@ defmodule Web.Policies.Edit do
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource]
            ) do
-      providers = Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
+      providers =
+        Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
       form =
         policy

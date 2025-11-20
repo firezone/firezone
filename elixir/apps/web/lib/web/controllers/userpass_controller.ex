@@ -49,7 +49,6 @@ defmodule Web.UserpassController do
   end
 
   defp verify_password(identity, password, _conn) do
-    # Inlined from Domain.Auth.Adapters.UserPass.verify_secret
     password_hash = identity.password_hash
 
     cond do
@@ -127,7 +126,7 @@ defmodule Web.UserpassController do
     Redirector.client_signed_in(
       conn,
       identity.actor.name,
-      identity.provider_identifier,
+      identity.actor.email,
       token,
       params["state"]
     )

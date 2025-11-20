@@ -114,7 +114,8 @@ defmodule Web.EmailOTPController do
         fn ->
           with %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
                {:ok, identity, fragment, nonce} <- request_sign_in_token(identity, context),
-               {:ok, fragment} <- send_email_otp(conn, identity, fragment, nonce, auth_provider_id, params) do
+               {:ok, fragment} <-
+                 send_email_otp(conn, identity, fragment, nonce, auth_provider_id, params) do
             {fragment, nil}
           else
             {:error, :rate_limited} ->
@@ -226,7 +227,6 @@ defmodule Web.EmailOTPController do
   end
 
   defp send_email_otp(conn, identity, fragment, nonce, auth_provider_id, params) do
-
     Domain.Mailer.AuthEmail.sign_in_link_email(
       identity,
       DateTime.utc_now(),
@@ -248,7 +248,6 @@ defmodule Web.EmailOTPController do
   end
 
   defp verify_secret(identity, encoded_token, conn) do
-    # Inlined from Domain.Auth.Adapters.Email.verify_secret
     context = auth_context(conn, :browser)
 
     with {:ok, token} <- Tokens.use_token(encoded_token, %{context | type: :email}),
@@ -323,7 +322,7 @@ defmodule Web.EmailOTPController do
     Redirector.client_signed_in(
       conn,
       identity.actor.name,
-      identity.provider_identifier,
+      identity.actor.email,
       token,
       params["state"]
     )

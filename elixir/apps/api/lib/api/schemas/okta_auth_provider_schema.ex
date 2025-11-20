@@ -14,9 +14,19 @@ defmodule API.Schemas.OktaAuthProvider do
         account_id: %Schema{type: :string, description: "Account ID"},
         name: %Schema{type: :string, description: "Provider name"},
         issuer: %Schema{type: :string, description: "Issuer"},
-        context: %Schema{type: :string, description: "Context", enum: ["clients_and_portal", "clients_only", "portal_only"]},
-        client_session_lifetime_secs: %Schema{type: :integer, description: "Client session lifetime in seconds"},
-        portal_session_lifetime_secs: %Schema{type: :integer, description: "Portal session lifetime in seconds"},
+        context: %Schema{
+          type: :string,
+          description: "Context",
+          enum: ["clients_and_portal", "clients_only", "portal_only"]
+        },
+        client_session_lifetime_secs: %Schema{
+          type: :integer,
+          description: "Client session lifetime in seconds"
+        },
+        portal_session_lifetime_secs: %Schema{
+          type: :integer,
+          description: "Portal session lifetime in seconds"
+        },
         is_disabled: %Schema{type: :boolean, description: "Whether provider is disabled"},
         is_default: %Schema{type: :boolean, description: "Whether provider is default"},
         client_id: %Schema{type: :string, description: "Client ID"},

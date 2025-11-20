@@ -86,7 +86,7 @@ defmodule Web.Session.Cookie do
   def mount_subject(socket, params, _session) do
     Phoenix.Component.assign_new(socket, :subject, fn ->
       params = Web.Auth.take_sign_in_params(params)
-      context_type = Web.Auth.fetch_auth_context_type!(params)
+      context_type = context_type(params)
       user_agent = Phoenix.LiveView.get_connect_info(socket, :user_agent)
       real_ip = Web.Auth.real_ip(socket)
       x_headers = Phoenix.LiveView.get_connect_info(socket, :x_headers) || []
@@ -124,7 +124,7 @@ defmodule Web.Session.Cookie do
   """
   def fetch_subject(%Plug.Conn{} = conn, _opts) do
     params = Web.Auth.take_sign_in_params(conn.params)
-    context_type = Web.Auth.fetch_auth_context_type!(params)
+    context_type = context_type(params)
     user_agent = conn.assigns[:user_agent]
     remote_ip = conn.remote_ip
     context = Domain.Auth.Context.build(remote_ip, user_agent, conn.req_headers, context_type)
@@ -147,4 +147,7 @@ defmodule Web.Session.Cookie do
       conn
     end
   end
+
+  defp context_type(%{"as" => "client"}), do: :client
+  defp context_type(_), do: :browser
 end

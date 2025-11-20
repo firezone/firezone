@@ -56,7 +56,6 @@ config :domain, Domain.ChangeLogs.ReplicationConnection,
     actor_groups
     actors
     auth_identities
-    legacy_auth_providers
     google_auth_providers
     entra_auth_providers
     okta_auth_providers
@@ -183,17 +182,6 @@ config :domain, Domain.Entra.AuthProvider,
 config :domain, Domain.OIDC.AuthProvider,
   response_type: "code",
   scope: "openid email profile"
-
-config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
-  endpoint: "https://admin.googleapis.com",
-  token_endpoint: "https://oauth2.googleapis.com",
-  finch_transport_opts: []
-
-config :domain, Domain.Auth.Adapters.MicrosoftEntra.APIClient,
-  endpoint: "https://graph.microsoft.com",
-  finch_transport_opts: []
-
-config :domain, Domain.Auth.Adapters.Okta.APIClient, finch_transport_opts: []
 
 config :domain, Domain.Billing.Stripe.APIClient,
   endpoint: "https://api.stripe.com",

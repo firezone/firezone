@@ -12,17 +12,29 @@ defmodule API.Schemas.Identity do
       properties: %{
         id: %Schema{type: :string, description: "Identity ID"},
         actor_id: %Schema{type: :string, description: "Actor ID"},
-        provider_id: %Schema{type: :string, description: "Identity Provider ID"},
-        provider_identifier: %Schema{type: :string, description: "Identifier from Provider"},
-        email: %Schema{type: :string, description: "Email"}
+        issuer: %Schema{
+          type: :string,
+          description: "Identity issuer (e.g., 'firezone', 'google', 'okta')"
+        },
+        idp_id: %Schema{type: :string, description: "IDP-specific identifier for this identity"},
+        name: %Schema{type: :string, description: "Full name"},
+        given_name: %Schema{type: :string, description: "Given name"},
+        family_name: %Schema{type: :string, description: "Family name"},
+        picture: %Schema{type: :string, description: "Profile picture URL"},
+        last_seen_at: %Schema{
+          type: :string,
+          format: :datetime,
+          description: "Last seen timestamp"
+        }
       },
-      required: [:id, :actor_id, :provider_id, :provider_identifier, :email],
+      required: [:id, :actor_id, :issuer, :idp_id],
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "actor_id" => "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-        "provider_id" => "989f9e96-e348-47ec-ba85-869fcd7adb19",
-        "provider_identifier" => "2551705710219359",
-        "email" => "foo@bar.com"
+        "issuer" => "google",
+        "idp_id" => "2551705710219359",
+        "name" => "John Doe",
+        "picture" => "https://example.com/avatar.jpg"
       }
     })
   end
@@ -42,7 +54,7 @@ defmodule API.Schemas.Identity do
       required: [:identity],
       example: %{
         "identity" => %{
-          "provider_identifier" => "2551705710219359 or foo@bar.com"
+          "idp_id" => "2551705710219359 or foo@bar.com"
         }
       }
     })
@@ -64,9 +76,10 @@ defmodule API.Schemas.Identity do
         "data" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "actor_id" => "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-          "provider_id" => "989f9e96-e348-47ec-ba85-869fcd7adb19",
-          "provider_identifier" => "2551705710219359",
-          "email" => "foo@bar.com"
+          "issuer" => "google",
+          "idp_id" => "2551705710219359",
+          "name" => "John Doe",
+          "picture" => "https://example.com/avatar.jpg"
         }
       }
     })
@@ -90,16 +103,18 @@ defmodule API.Schemas.Identity do
           %{
             "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "actor_id" => "8f44a02b-b8eb-406f-8202-4274bf60ebd0",
-            "provider_id" => "6472d898-5b98-4c3b-b4b9-d3158c1891be",
-            "provider_identifier" => "2551705710219359",
-            "email" => "foo@bar.com"
+            "issuer" => "google",
+            "idp_id" => "2551705710219359",
+            "name" => "John Doe",
+            "picture" => "https://example.com/avatar1.jpg"
           },
           %{
             "id" => "8a70eb96-e74b-4cdc-91b8-48c05ef74d4c",
             "actor_id" => "38c92cda-1ddb-45b3-9d1a-7efc375e00c1",
-            "provider_id" => "04f13eed-4845-47c3-833e-fdd869fab96f",
-            "provider_identifier" => "2638957392736483",
-            "email" => "baz@bar.com"
+            "issuer" => "okta",
+            "idp_id" => "2638957392736483",
+            "name" => "Jane Smith",
+            "picture" => "https://example.com/avatar2.jpg"
           }
         ],
         "metadata" => %{

@@ -2,9 +2,8 @@ defmodule Web.SignIn do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
 
   alias Domain.{
-    Auth,
     Accounts,
-    Repo,
+    Safe,
     Google,
     EmailOTP,
     Entra,
@@ -12,8 +11,6 @@ defmodule Web.SignIn do
     OIDC,
     Userpass
   }
-
-  @root_adapters_whitelist [:email, :userpass, :openid_connect]
 
   def mount(%{"account_id_or_slug" => account_id_or_slug} = params, _session, socket) do
     with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug) do
@@ -39,18 +36,6 @@ defmodule Web.SignIn do
       )
 
     {:ok, socket}
-  end
-
-  defp group_providers_by_root_adapter(providers) do
-    providers
-    |> Enum.group_by(fn provider ->
-      parent_adapter =
-        provider
-        |> Auth.fetch_provider_capabilities!()
-        |> Keyword.get(:parent_adapter)
-
-      parent_adapter || provider.adapter
-    end)
   end
 
   def render(assigns) do
@@ -183,7 +168,7 @@ defmodule Web.SignIn do
             </.intersperse_blocks>
           </div>
         </div>
-        <div :if={Web.Auth.fetch_auth_context_type!(@params) == :browser} class="mx-auto p-6 sm:p-8">
+        <div :if={@params["as"] != "client"} class="mx-auto p-6 sm:p-8">
           <p class="py-2">
             Meant to sign in from a client instead?
             <.website_link path="/kb/client-apps">Read the docs.</.website_link>
@@ -200,13 +185,9 @@ defmodule Web.SignIn do
     """
   end
 
-  def disabled?(account, params) do
-    # We allow to sign in to Web UI even for disabled accounts
-    case Web.Auth.fetch_auth_context_type!(params) do
-      :client -> not Accounts.account_active?(account)
-      :browser -> false
-    end
-  end
+  # We allow signing in to Web UI even for disabled accounts
+  def disabled?(account, %{"as" => "client"}), do: not Accounts.account_active?(account)
+  def disabled?(_account, _params), do: false
 
   def separator(assigns) do
     ~H"""
@@ -215,104 +196,6 @@ defmodule Web.SignIn do
       <div class="px-5 text-center text-neutral-500">or</div>
       <div class="w-full h-0.5 bg-neutral-200"></div>
     </div>
-    """
-  end
-
-  def providers_group_form(%{adapter: "openid_connect"} = assigns) do
-    ~H"""
-    <div class="space-y-3 items-center">
-      <.openid_connect_button
-        :for={provider <- @providers}
-        provider={provider}
-        account={@account}
-        params={@params}
-      />
-    </div>
-    """
-  end
-
-  def providers_group_form(%{adapter: "userpass"} = assigns) do
-    provider_identifier = Phoenix.Flash.get(assigns.flash, :userpass_provider_identifier)
-    form = to_form(%{"provider_identifier" => provider_identifier}, as: "userpass")
-    assigns = Map.put(assigns, :userpass_form, form)
-
-    ~H"""
-    <.form
-      for={@userpass_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/verify_credentials"}
-      class="space-y-4 lg:space-y-6"
-      id="userpass_form"
-      phx-update="ignore"
-      phx-hook="AttachDisableSubmit"
-      phx-submit={JS.dispatch("form:disable_and_submit", to: "#userpass_form")}
-    >
-      <div class="bg-white grid gap-4 mb-4 sm:grid-cols-1 sm:gap-6 sm:mb-6">
-        <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
-
-        <.input
-          field={@userpass_form[:provider_identifier]}
-          type="text"
-          label="Username"
-          placeholder="Enter your username"
-          required
-        />
-
-        <.input
-          field={@userpass_form[:secret]}
-          type="password"
-          label="Password"
-          placeholder="Enter your password"
-          required
-        />
-      </div>
-
-      <.submit_button class="w-full" style="info" icon="hero-key">
-        Sign in
-      </.submit_button>
-    </.form>
-    """
-  end
-
-  def providers_group_form(%{adapter: "email"} = assigns) do
-    provider_identifier = Phoenix.Flash.get(assigns.flash, :email_provider_identifier)
-    form = to_form(%{"provider_identifier" => provider_identifier}, as: "email")
-    assigns = Map.put(assigns, :email_form, form)
-
-    ~H"""
-    <.form
-      for={@email_form}
-      action={~p"/#{@account}/sign_in/providers/#{@provider.id}/request_email_otp"}
-      class="space-y-4 lg:space-y-6"
-      id="email_form"
-      phx-update="ignore"
-      phx-hook="AttachDisableSubmit"
-      phx-submit={JS.dispatch("form:disable_and_submit", to: "#email_form")}
-    >
-      <.input :for={{key, value} <- @params} type="hidden" name={key} value={value} />
-
-      <.input
-        field={@email_form[:provider_identifier]}
-        type="email"
-        label="Email"
-        placeholder="Enter your email"
-        required
-      />
-      <.submit_button class="w-full" style="info" icon="hero-envelope">
-        Request sign in token
-      </.submit_button>
-    </.form>
-    """
-  end
-
-  def openid_connect_button(assigns) do
-    ~H"""
-    <a
-      class={[button_style("info"), button_size("md"), "w-full space-x-1"]}
-      href={~p"/#{@account}/sign_in/providers/#{@provider}/redirect?#{@params}"}
-    >
-      <.provider_icon adapter={@provider.adapter} class="w-5 h-5 mr-2" /> Sign in with
-      <strong>{@provider.name}</strong>
-    </a>
     """
   end
 
@@ -416,9 +299,9 @@ defmodule Web.SignIn do
     queryable = from(ap in module, where: ap.account_id == ^account.id and not ap.is_disabled)
 
     if module in [EmailOTP.AuthProvider, Userpass.AuthProvider] do
-      Repo.one(queryable)
+      queryable |> Safe.unscoped() |> Safe.one()
     else
-      Repo.all(queryable)
+      queryable |> Safe.unscoped() |> Safe.all()
     end
   end
 end

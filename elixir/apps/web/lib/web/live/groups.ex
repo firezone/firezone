@@ -227,7 +227,7 @@ defmodule Web.Groups do
   end
 
   def handle_groups_update!(socket, list_opts) do
-    with {:ok, groups, metadata} <- Actors.list_groups(socket.assigns.subject, list_opts) do
+    with {:ok, groups, metadata} <- Query.list_groups(socket.assigns.subject, list_opts) do
       groups = Query.preload_member_count(groups)
 
       {:ok,
@@ -878,6 +878,21 @@ defmodule Web.Groups do
 
   defmodule Query do
     import Ecto.Query
+    alias Domain.{Actors, Safe}
+
+    # Inlined from Domain.Actors.list_groups
+    def list_groups(subject, opts \\ []) do
+      from(g in Actors.Group, as: :groups)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:groups, :asc, :inserted_at},
+        {:groups, :asc, :id}
+      ]
+    end
 
     def get_group!(id, subject) do
       from(g in Actors.Group, as: :groups)
@@ -919,7 +934,7 @@ defmodule Web.Groups do
         |> join(:left, [memberships: m], a in assoc(m, :actor), as: :actors)
         |> preload([memberships: m, actors: a], memberships: m, actors: a)
 
-      Safe.scoped(subject) |> Safe.one!(query)
+      query |> Safe.scoped(subject) |> Safe.one!()
     end
 
     def preloads do

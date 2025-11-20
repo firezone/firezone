@@ -5,7 +5,8 @@ defmodule Web.Policies.New do
   alias Web.Policies.Components.Query
 
   def mount(params, _session, socket) do
-    providers = Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
+    providers =
+      Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
     form =
       Policies.new_policy(%{}, socket.assigns.subject)

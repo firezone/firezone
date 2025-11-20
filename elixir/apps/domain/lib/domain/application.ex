@@ -29,7 +29,6 @@ defmodule Domain.Application do
 
       # Application
       Domain.Tokens,
-      Domain.Auth,
       Domain.Relays,
       Domain.Gateways,
       Domain.Clients,

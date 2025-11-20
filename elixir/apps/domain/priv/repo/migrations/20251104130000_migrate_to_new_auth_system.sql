@@ -252,8 +252,7 @@ BEGIN
       AND (
         i.provider_state->'claims'->>'oid' IS NOT NULL OR
         i.provider_state->'claims'->>'sub' IS NOT NULL
-      )
-    ON CONFLICT DO NOTHING;
+      );
 
     -- ============================================================================
     -- STEP 4: MIGRATE GOOGLE WORKSPACE IDENTITIES
@@ -271,8 +270,7 @@ BEGIN
     WHERE i.actor_id = a.id
       AND i.provider_id = p.id
       AND p.account_id = v_account_id
-      AND p.adapter = 'google_workspace'
-    ON CONFLICT DO NOTHING;
+      AND p.adapter = 'google_workspace';
 
     -- ============================================================================
     -- STEP 5: MIGRATE MICROSOFT ENTRA IDENTITIES
@@ -294,8 +292,7 @@ BEGIN
       AND i.provider_id = p.id
       AND p.account_id = v_account_id
       AND p.adapter = 'microsoft_entra'
-      AND p.adapter_state->'claims'->>'iss' IS NOT NULL
-    ON CONFLICT DO NOTHING;
+      AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
 
     -- ============================================================================
     -- STEP 6: MIGRATE OKTA IDENTITIES
@@ -314,8 +311,7 @@ BEGIN
       AND i.provider_id = p.id
       AND p.account_id = v_account_id
       AND p.adapter = 'okta'
-      AND p.adapter_state->'claims'->>'iss' IS NOT NULL
-    ON CONFLICT DO NOTHING;
+      AND p.adapter_state->'claims'->>'iss' IS NOT NULL;
 
     -- ============================================================================
     -- STEP 7: MIGRATE ACTOR GROUPS

@@ -1,7 +1,8 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Auth, Accounts, Actors, Config}
+  alias Domain.{Accounts, Actors, Config}
   alias Web.Registration
+  alias __MODULE__.DB
 
   defmodule Registration do
     use Domain, :schema
@@ -174,13 +175,13 @@ defmodule Web.SignUp do
           id="resend-email"
           as={:email}
           class="inline"
-          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_email_otp"}
+          action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
           method="post"
         >
           <.input
             type="hidden"
-            name="email[provider_identifier]"
-            value={@identity.provider_identifier}
+            name="email"
+            value={@identity.actor.email}
           />
 
           <.button type="submit" class="w-full">
@@ -382,29 +383,19 @@ defmodule Web.SignUp do
     |> Ecto.Multi.run(
       :provider,
       fn _repo, %{account: account} ->
-        Auth.create_provider(account, %{
-          name: "Email",
-          adapter: :email,
-          adapter_config: %{}
-        })
+        DB.create_email_provider(account)
       end
     )
     |> Ecto.Multi.run(
       :actor,
       fn _repo, %{account: account} ->
-        Actors.create_actor(account, %{
-          type: :account_admin_user,
-          name: registration.actor.name
-        })
+        DB.create_admin(account, registration.email, registration.actor.name)
       end
     )
     |> Ecto.Multi.run(
       :identity,
-      fn _repo, %{actor: actor, provider: provider} ->
-        Auth.create_identity(actor, provider, %{
-          provider_identifier: registration.email,
-          provider_identifier_confirmation: registration.email
-        })
+      fn _repo, %{actor: actor} ->
+        DB.create_identity(actor)
       end
     )
     |> Ecto.Multi.run(
@@ -442,5 +433,60 @@ defmodule Web.SignUp do
       end
     )
     |> Domain.Repo.transaction()
+  end
+
+  defmodule DB do
+    import Ecto.Changeset
+
+    alias Domain.{
+      Actors.Actor,
+      Auth.Identity,
+      AuthProviders,
+      EmailOTP,
+      Safe
+    }
+
+    def create_email_provider(account) do
+      id = Ecto.UUID.generate()
+      attrs = %{account_id: account.id, id: id}
+      parent_changeset = cast(%AuthProviders.AuthProvider{}, attrs, ~w[id account_id]a)
+      attrs = %{id: id, name: "Email (OTP)"}
+
+      changeset =
+        cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
+        |> EmailOTP.AuthProvider.changeset()
+
+      with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
+           {:ok, email_provider} <- Safe.unscoped(changeset) |> Safe.insert() do
+        {:ok, email_provider}
+      end
+    end
+
+    def create_admin(account, email, name) do
+      attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
+
+      cast(%Actor{}, attrs, ~w[account_id email name type]a)
+      |> Actor.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
+
+    def create_identity(actor) do
+      attrs = %{
+        account_id: actor.account_id,
+        actor_id: actor.id,
+        issuer: "firezone",
+        name: actor.name,
+        # TODO: IDP REFACTOR
+        # Consider accepting given_name and family_name separately during sign-up
+        given_name: actor.name |> String.split(" ", parts: 2) |> List.first(),
+        family_name: actor.name |> String.split(" ", parts: 2) |> List.last()
+      }
+
+      cast(%Identity{}, attrs, ~w[account_id actor_id name given_name family_name]a)
+      |> Identity.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
   end
 end

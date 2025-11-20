@@ -18,7 +18,7 @@ defmodule Domain.Entra.Sync do
       timestamp: DateTime.utc_now()
     )
 
-    case Safe.unscoped() |> Safe.one(Query.get_directory(directory_id)) do
+    case Query.get_directory(directory_id) |> Safe.unscoped() |> Safe.one() do
       nil ->
         Logger.info("Entra directory deleted or sync disabled, skipping",
           entra_directory_id: directory_id
@@ -40,7 +40,7 @@ defmodule Domain.Entra.Sync do
 
   defp update(directory, attrs) do
     changeset = Ecto.Changeset.cast(directory, attrs, [:current_job_id, :synced_at])
-    {:ok, _directory} = Safe.update(Safe.unscoped(), changeset)
+    {:ok, _directory} = changeset |> Safe.unscoped() |> Safe.update()
   end
 
   defp sync(%Entra.Directory{} = directory) do
@@ -95,11 +95,12 @@ defmodule Domain.Entra.Sync do
   end
 
   defp fetch_and_sync_all(directory, access_token, synced_at) do
-    # Get the service principal ID for this app
-    config = Domain.Config.fetch_env!(:domain, Entra.APIClient)
+    # Get the service principal ID for the Entra Auth Provider app (not the Directory Sync app)
+    # We use app role assignments from the auth app to determine group memberships
+    config = Domain.Config.fetch_env!(:domain, Domain.Entra.AuthProvider)
     client_id = config[:client_id]
 
-    Logger.debug("Getting service principal",
+    Logger.debug("Getting service principal for Entra Auth Provider",
       entra_directory_id: directory.id,
       client_id: client_id
     )
@@ -432,7 +433,15 @@ defmodule Domain.Entra.Sync do
 
     def batch_upsert_identities(account_id, issuer, directory_id, last_synced_at, identity_attrs) do
       query = build_identity_upsert_query(length(identity_attrs))
-      params = build_identity_upsert_params(account_id, issuer, directory_id, last_synced_at, identity_attrs)
+
+      params =
+        build_identity_upsert_params(
+          account_id,
+          issuer,
+          directory_id,
+          last_synced_at,
+          identity_attrs
+        )
 
       case Safe.unscoped() |> Safe.query(query, params) do
         {:ok, %Postgrex.Result{rows: rows}} -> {:ok, %{upserted_identities: length(rows)}}
@@ -478,34 +487,26 @@ defmodule Domain.Entra.Sync do
         SELECT
           uuid_generate_v4() AS new_actor_id,
           id.idp_id,
-          id.name
+          id.name,
+          id.email
         FROM input_data id
         WHERE id.idp_id NOT IN (SELECT idp_id FROM existing_identities)
           AND id.idp_id NOT IN (SELECT idp_id FROM existing_actors_by_email)
       ),
       new_actors AS (
-        INSERT INTO actors (id, type, account_id, name, created_by, created_by_directory_id, inserted_at, updated_at)
+        INSERT INTO actors (id, type, account_id, name, email, created_by, created_by_directory_id, inserted_at, updated_at)
         SELECT
           new_actor_id,
           'account_user',
           $#{account_id},
           name,
+          email,
           'system',
           $#{directory_id},
           $#{last_synced_at},
           $#{last_synced_at}
         FROM actors_to_create
         RETURNING id, name
-      ),
-      updated_actors AS (
-        UPDATE actors
-        SET
-          email = id.email,
-          updated_at = $#{last_synced_at}
-        FROM input_data id
-        JOIN existing_identities ei ON ei.idp_id = id.idp_id
-        WHERE actors.id = ei.actor_id
-        RETURNING actors.id
       ),
       all_actor_mappings AS (
         SELECT atc.new_actor_id AS actor_id, atc.idp_id, id.email, id.name, id.given_name, id.family_name, id.preferred_username
@@ -521,7 +522,7 @@ defmodule Domain.Entra.Sync do
         JOIN input_data id ON id.idp_id = eabe.idp_id
       )
       INSERT INTO auth_identities (
-        id, actor_id, issuer, idp_id, email, name, given_name, family_name, preferred_username,
+        id, actor_id, issuer, idp_id, name, given_name, family_name, preferred_username,
         last_synced_at, account_id, created_by, inserted_at
       )
       SELECT
@@ -529,7 +530,6 @@ defmodule Domain.Entra.Sync do
         aam.actor_id,
         $#{issuer},
         aam.idp_id,
-        aam.email,
         aam.name,
         aam.given_name,
         aam.family_name,
@@ -537,12 +537,11 @@ defmodule Domain.Entra.Sync do
         $#{last_synced_at},
         $#{account_id},
         'system',
-        $#{last_synced_at},
+        $#{last_synced_at}
       FROM all_actor_mappings aam
       LEFT JOIN existing_identities ei ON ei.idp_id = aam.idp_id
       ON CONFLICT (account_id, issuer, idp_id) WHERE (issuer IS NOT NULL OR idp_id IS NOT NULL)
       DO UPDATE SET
-        email = EXCLUDED.email,
         name = EXCLUDED.name,
         given_name = EXCLUDED.given_name,
         family_name = EXCLUDED.family_name,
@@ -565,7 +564,8 @@ defmodule Domain.Entra.Sync do
           ]
         end)
 
-      params ++ [Ecto.UUID.dump!(account_id), issuer, Ecto.UUID.dump!(directory_id), last_synced_at]
+      params ++
+        [Ecto.UUID.dump!(account_id), issuer, Ecto.UUID.dump!(directory_id), last_synced_at]
     end
 
     def batch_upsert_groups(_account_id, _last_synced_at, _tenant_id, []),

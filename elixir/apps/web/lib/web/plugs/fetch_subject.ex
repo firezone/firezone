@@ -19,6 +19,7 @@ defmodule Web.Plugs.FetchSubject do
          {:ok, subject} <- Domain.Auth.authenticate(fragment, context) do
       conn
       |> put_session(:live_socket_id, Tokens.socket_id(subject.token_id))
+      # Token is used by LiveView
       |> put_session(:token, fragment)
       |> assign(:subject, subject)
     else

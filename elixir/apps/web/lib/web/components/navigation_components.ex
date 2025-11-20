@@ -69,7 +69,7 @@ defmodule Web.NavigationComponents do
         {@subject.actor.name}
       </span>
       <span class="block text-sm text-neutral-900 truncate">
-        {@subject.identity.provider_identifier}
+        {@subject.identity.actor.email}
       </span>
     </div>
     <ul class="py-1 text-neutral-700" aria-labelledby="user-menu-dropdown">
@@ -84,6 +84,7 @@ defmodule Web.NavigationComponents do
     <ul class="py-1 text-neutral-700" aria-labelledby="user-menu-dropdown">
       <li>
         <form action={~p"/#{@subject.account}/sign_out"} method="post">
+          <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
           <button
             type="submit"
             class="block w-full text-left py-2 px-4 text-sm hover:bg-neutral-100"

@@ -65,15 +65,15 @@ defmodule Domain.Mailer.AuthEmail do
 
   def new_user_email(
         %Domain.Accounts.Account{} = account,
-        %Domain.Auth.Identity{} = identity,
+        %Domain.Actors.Actor{} = actor,
         %Domain.Auth.Subject{} = subject
       ) do
     default_email()
     |> subject("Welcome to Firezone")
-    |> to(identity.actor.email)
+    |> to(actor.email)
     |> render_body(__MODULE__, :new_user,
       account: account,
-      identity: identity,
+      actor: actor,
       subject: subject
     )
   end

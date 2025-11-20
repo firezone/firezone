@@ -3,6 +3,7 @@ defmodule API.ActorGroupController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
+  alias __MODULE__.Query
 
   action_fallback API.FallbackController
 
@@ -22,7 +23,7 @@ defmodule API.ActorGroupController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actor_groups, metadata} <- Actors.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, actor_groups, metadata} <- Query.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, actor_groups: actor_groups, metadata: metadata)
     end
   end
@@ -126,6 +127,25 @@ defmodule API.ActorGroupController do
     with {:ok, actor_group} <- Actors.fetch_group_by_id(id, subject),
          {:ok, actor_group} <- Actors.delete_group(actor_group, subject) do
       render(conn, :show, actor_group: actor_group)
+    end
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Actors, Safe}
+
+    # Inlined from Domain.Actors.list_groups
+    def list_groups(subject, opts \\ []) do
+      from(g in Actors.Group, as: :groups)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:groups, :asc, :inserted_at},
+        {:groups, :asc, :id}
+      ]
     end
   end
 end

@@ -35,8 +35,7 @@ defmodule API.EntraDirectoryController do
       ]
     ],
     responses: [
-      ok:
-        {"Entra Directory Response", "application/json", API.Schemas.EntraDirectory.Response}
+      ok: {"Entra Directory Response", "application/json", API.Schemas.EntraDirectory.Response}
     ]
 
   def show(conn, %{"id" => id}) do

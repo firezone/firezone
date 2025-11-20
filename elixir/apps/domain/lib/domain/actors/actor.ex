@@ -36,29 +36,10 @@ defmodule Domain.Actors.Actor do
     changeset
     |> validate_required(~w[name type]a)
     |> trim_change(~w[name email]a)
-    |> maybe_populate_email_from_name()
     |> validate_length(:name, max: 512)
     |> normalize_email(:email)
     |> validate_email(:email)
     |> assoc_constraint(:account)
     |> unique_constraint(:email, name: :actors_account_id_email_index)
-  end
-
-  defp maybe_populate_email_from_name(changeset) do
-    type = get_field(changeset, :type)
-    email = get_field(changeset, :email)
-    name = get_field(changeset, :name)
-
-    if type == :service_account and (is_nil(email) or email == "") and not is_nil(name) do
-      normalized_name =
-        name
-        |> String.downcase()
-        |> String.replace(~r/[^a-z0-9]+/, "-")
-        |> String.trim("-")
-
-      put_change(changeset, :email, "#{normalized_name}@service-account.local")
-    else
-      changeset
-    end
   end
 end

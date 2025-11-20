@@ -1,6 +1,5 @@
 defmodule Domain.Auth.Identity.Query do
   use Domain, :query
-  alias Domain.Repo
 
   def all do
     from(identities in Domain.Auth.Identity, as: :identities)

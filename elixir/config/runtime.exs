@@ -96,9 +96,6 @@ if config_env() == :prod do
     token_base_url: "https://login.microsoftonline.com",
     endpoint: "https://graph.microsoft.com"
 
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
-    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
-
   config :domain, Domain.Billing.Stripe.APIClient,
     endpoint: "https://api.stripe.com",
     finch_transport_opts: []
@@ -151,33 +148,6 @@ if config_env() == :prod do
 
   config :domain, Domain.Billing.Jobs.CheckAccountLimits,
     enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  # Enable the mock sync directory job in staging
-  config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory,
-    enabled:
-      env_var_to_config!(:background_jobs_enabled) and
-        Enum.member?(env_var_to_config!(:auth_provider_adapters), :mock)
 
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
