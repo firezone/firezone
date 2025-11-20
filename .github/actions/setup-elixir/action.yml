@@ -17,6 +17,8 @@ runs:
     - name: Tool Versions
       id: versions
       uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
+      with:
+        path: elixir/.tool-versions
     - uses: erlef/setup-beam@e6d7c94229049569db56a7ad5a540c051a010af9 # v1.20.4
       id: setup-beam
       with:
