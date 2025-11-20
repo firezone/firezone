@@ -74,7 +74,10 @@ where
             .unwrap_or(MutAllocationRef::Unknown)
     }
 
-    pub(crate) fn candidates_for_relay(&self, id: &RId) -> impl Iterator<Item = Candidate> {
+    pub(crate) fn candidates_for_relay(
+        &self,
+        id: &RId,
+    ) -> impl Iterator<Item = Candidate> + use<RId> {
         let shared_candidates = self.shared_candidates();
         let relay_candidates = self
             .get_by_id(id)

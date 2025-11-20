@@ -278,17 +278,20 @@ where
 
             c.state.on_upsert(cid, &mut c.agent, now);
 
-            seed_agent_with_local_candidates(
-                cid,
-                c.relay.id,
-                &mut c.agent,
-                &self.allocations,
-                &mut self.pending_events,
-            );
+            // Take all current candidates.
+            let current_candidates = c.agent.local_candidates().to_vec();
 
-            for candidate in c.agent.local_candidates() {
-                signal_candidate_to_remote(cid, candidate, &mut self.pending_events);
-            }
+            // Re-seed connection with all candidates.
+            let new_candidates =
+                seed_agent_with_local_candidates(c.relay.id, &mut c.agent, &self.allocations);
+
+            // Tell the remote about all of them.
+            self.pending_events.extend(
+                std::iter::empty()
+                    .chain(current_candidates)
+                    .chain(new_candidates)
+                    .map(|candidate| new_ice_candidate_event(cid, candidate)),
+            );
 
             // Initiate a new WG session.
             //
@@ -321,12 +324,13 @@ where
         agent.set_local_credentials(local_creds);
         agent.set_remote_credentials(remote_creds);
 
-        seed_agent_with_local_candidates(
-            cid,
-            selected_relay,
-            &mut agent,
-            &self.allocations,
-            &mut self.pending_events,
+        self.pending_events.extend(
+            self.allocations
+                .candidates_for_relay(&selected_relay)
+                .filter_map(|candidate| {
+                    add_local_candidate(&mut agent, candidate)
+                        .map(|c| new_ice_candidate_event(cid, c))
+                }),
         );
 
         let connection = self.init_connection(
@@ -1005,12 +1009,11 @@ where
                     for (cid, agent, maybe_state) in
                         self.connections.agents_and_state_by_relay_mut(rid)
                     {
-                        add_local_candidate(
-                            cid,
-                            agent,
-                            candidate.clone(),
-                            &mut self.pending_events,
-                        );
+                        if let Some(candidate) = add_local_candidate(agent, candidate.clone()) {
+                            self.pending_events
+                                .push_back(new_ice_candidate_event(cid, candidate));
+                        }
+
                         if let Some(state) = maybe_state {
                             state.on_candidate(cid, agent, now);
                         }
@@ -1114,13 +1117,12 @@ where
 
         let selected_relay = initial.relay;
 
-        seed_agent_with_local_candidates(
-            cid,
-            selected_relay,
-            &mut agent,
-            &self.allocations,
-            &mut self.pending_events,
-        );
+        for candidate in
+            seed_agent_with_local_candidates(selected_relay, &mut agent, &self.allocations)
+        {
+            self.pending_events
+                .push_back(new_ice_candidate_event(cid, candidate));
+        }
 
         let index = self.index.next();
         let connection = self.init_connection(
@@ -1186,13 +1188,13 @@ where
         };
 
         let selected_relay = self.sample_relay()?;
-        seed_agent_with_local_candidates(
-            cid,
-            selected_relay,
-            &mut agent,
-            &self.allocations,
-            &mut self.pending_events,
-        );
+
+        for candidate in
+            seed_agent_with_local_candidates(selected_relay, &mut agent, &self.allocations)
+        {
+            self.pending_events
+                .push_back(new_ice_candidate_event(cid, candidate));
+        }
 
         let index = self.index.next();
         let connection = self.init_connection(
@@ -1215,19 +1217,18 @@ where
     }
 }
 
-fn seed_agent_with_local_candidates<TId, RId>(
-    connection: TId,
+/// Seeds the agent with all local candidates, returning an iterator of all candidates that should be signalled to the remote.
+fn seed_agent_with_local_candidates<'a, RId>(
     selected_relay: RId,
-    agent: &mut IceAgent,
+    agent: &'a mut IceAgent,
     allocations: &Allocations<RId>,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
+) -> impl Iterator<Item = Candidate> + use<'a, RId>
+where
     RId: Ord + fmt::Display + Copy,
-    TId: fmt::Display + Copy,
 {
-    for candidate in allocations.candidates_for_relay(&selected_relay) {
-        add_local_candidate(connection, agent, candidate, pending_events);
-    }
+    allocations
+        .candidates_for_relay(&selected_relay)
+        .filter_map(move |c| add_local_candidate(agent, c))
 }
 
 /// Generate optimistic candidates based on the ones we have already received.
@@ -1292,38 +1293,25 @@ fn generate_optimistic_candidates(agent: &mut IceAgent) {
     }
 }
 
-fn add_local_candidate<TId>(
-    id: TId,
-    agent: &mut IceAgent,
-    candidate: Candidate,
-    pending_events: &mut VecDeque<Event<TId>>,
-) where
-    TId: fmt::Display,
-{
+/// Attempts to add the candidate to the agent, returning back the candidate if it should be signalled to the remote.
+fn add_local_candidate(agent: &mut IceAgent, candidate: Candidate) -> Option<Candidate> {
     // srflx candidates don't need to be added to the local agent because we always send from the `base` anyway.
     if candidate.kind() == CandidateKind::ServerReflexive {
-        signal_candidate_to_remote(id, &candidate, pending_events);
-        return;
+        return Some(candidate);
     }
 
-    let Some(candidate) = agent.add_local_candidate(candidate) else {
-        return;
-    };
+    let candidate = agent.add_local_candidate(candidate)?;
 
-    signal_candidate_to_remote(id, candidate, pending_events);
+    Some(candidate.clone())
 }
 
-fn signal_candidate_to_remote<TId>(
-    id: TId,
-    candidate: &Candidate,
-    pending_events: &mut VecDeque<Event<TId>>,
-) {
+fn new_ice_candidate_event<TId>(id: TId, candidate: Candidate) -> Event<TId> {
     tracing::debug!(?candidate, "Signalling candidate to remote");
 
-    pending_events.push_back(Event::NewIceCandidate {
+    Event::NewIceCandidate {
         connection: id,
-        candidate: candidate.clone(),
-    })
+        candidate,
+    }
 }
 
 fn invalidate_allocation_candidates<TId, RId>(
