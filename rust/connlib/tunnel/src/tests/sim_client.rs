@@ -8,7 +8,7 @@ use super::{
     transition::{DPort, Destination, DnsQuery, DnsTransport, Identifier, SPort, Seq},
 };
 use crate::{
-    ClientState, DnsMapping, DnsResourceRecord,
+    ClientState, DnsMapping, DnsResourceRecord, dns,
     messages::{UpstreamDo53, UpstreamDoH},
     proptest::*,
 };
@@ -16,6 +16,7 @@ use crate::{
     client::{CidrResource, DnsResource, InternetResource, Resource},
     messages::Interface,
 };
+use chrono::{DateTime, Utc};
 use connlib_model::{ClientId, GatewayId, RelayId, ResourceId, ResourceStatus, Site, SiteId};
 use dns_types::{DomainName, Query, RecordData, RecordType};
 use ip_network::{IpNetwork, Ipv4Network, Ipv6Network};
@@ -60,11 +61,11 @@ pub(crate) struct SimClient {
 
     pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
 
-    pub(crate) sent_udp_dns_queries: HashMap<(SocketAddr, QueryId), IpPacket>,
-    pub(crate) received_udp_dns_responses: BTreeMap<(SocketAddr, QueryId), IpPacket>,
+    pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId), IpPacket>,
+    pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId), IpPacket>,
 
-    pub(crate) sent_tcp_dns_queries: HashSet<(SocketAddr, QueryId)>,
-    pub(crate) received_tcp_dns_responses: BTreeSet<(SocketAddr, QueryId)>,
+    pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
+    pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
 
     pub(crate) sent_icmp_requests: HashMap<(Seq, Identifier), IpPacket>,
     pub(crate) received_icmp_replies: BTreeMap<(Seq, Identifier), IpPacket>,
@@ -110,6 +111,7 @@ impl SimClient {
         key: PrivateKey,
         is_internet_resource_active: bool,
         now: Instant,
+        utc_now: DateTime<Utc>,
     ) {
         let dns_resource_records = self.dns_resource_record_cache.clone();
 
@@ -123,6 +125,10 @@ impl SimClient {
             dns_resource_records,
             is_internet_resource_active,
             now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
         );
 
         self.search_domain = None;
@@ -132,8 +138,8 @@ impl SimClient {
     }
 
     /// Returns the _effective_ DNS servers that connlib is using.
-    pub(crate) fn effective_dns_servers(&self) -> Vec<SocketAddr> {
-        self.dns_by_sentinel.upstream_sockets()
+    pub(crate) fn effective_dns_servers(&self) -> Vec<dns::Upstream> {
+        self.dns_by_sentinel.upstream_servers()
     }
 
     pub(crate) fn effective_search_domain(&self) -> Option<DomainName> {
@@ -154,11 +160,11 @@ impl SimClient {
         domain: DomainName,
         r_type: RecordType,
         query_id: u16,
-        upstream: SocketAddr,
+        upstream: dns::Upstream,
         dns_transport: DnsTransport,
         now: Instant,
     ) -> Option<Transmit> {
-        let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(upstream) else {
+        let Some(sentinel) = self.dns_by_sentinel.sentinel_by_upstream(&upstream) else {
             tracing::error!(%upstream, "Unknown DNS server");
             return None;
         };
@@ -487,22 +493,26 @@ pub struct RefClient {
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
-    pub(crate) expected_udp_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
+    pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
-    pub(crate) expected_tcp_dns_handshakes: VecDeque<(SocketAddr, QueryId)>,
+    pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
 }
 
 impl RefClient {
     /// Initialize the [`ClientState`].
     ///
     /// This simulates receiving the `init` message from the portal.
-    pub(crate) fn init(self, now: Instant) -> SimClient {
+    pub(crate) fn init(self, now: Instant, utc_now: DateTime<Utc>) -> SimClient {
         let mut client_state = ClientState::new(
             self.key.0,
             Default::default(),
             self.internet_resource_active,
             now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
         ); // Cheating a bit here by reusing the key as seed.
         client_state.update_interface_config(Interface {
             ipv4: self.tunnel_ip4,
@@ -638,12 +648,13 @@ impl RefClient {
         }
 
         // TCP connections will automatically re-create connections to Gateways.
-        for r in self
+        for ((_, dst, _, _), r) in self
             .expected_tcp_connections
-            .values()
-            .copied()
+            .clone()
+            .into_iter()
             .collect::<Vec<_>>()
         {
+            self.connect_to_resource(r, dst);
             self.set_resource_online(r);
         }
     }
@@ -916,11 +927,11 @@ impl RefClient {
         match query.transport {
             DnsTransport::Udp => {
                 self.expected_udp_dns_handshakes
-                    .push_back((query.dns_server, query.query_id));
+                    .push_back((query.dns_server.clone(), query.query_id));
             }
             DnsTransport::Tcp => {
                 self.expected_tcp_dns_handshakes
-                    .push_back((query.dns_server, query.query_id));
+                    .push_back((query.dns_server.clone(), query.query_id));
             }
         }
 
@@ -1066,22 +1077,37 @@ impl RefClient {
 
     /// Returns the DNS servers that we expect connlib to use.
     ///
-    /// If there are upstream DNS servers configured in the portal, it should use those.
+    /// If there are upstream Do53 servers configured in the portal, it should use those.
+    /// If there are no custom servers defined, it should use the DoH servers specified in the portal.
     /// Otherwise it should use whatever was configured on the system prior to connlib starting.
     ///
     /// This purposely returns a `Vec` so we also assert the order!
-    pub(crate) fn expected_dns_servers(&self) -> Vec<SocketAddr> {
+    pub(crate) fn expected_dns_servers(&self) -> Vec<dns::Upstream> {
         if !self.upstream_do53_resolvers.is_empty() {
             return self
                 .upstream_do53_resolvers
                 .iter()
-                .map(|u| SocketAddr::new(u.ip, 53))
+                .map(|u| dns::Upstream::Do53 {
+                    server: SocketAddr::new(u.ip, 53),
+                })
+                .collect();
+        }
+
+        if !self.upstream_doh_resolvers.is_empty() {
+            return self
+                .upstream_doh_resolvers
+                .iter()
+                .map(|u| dns::Upstream::DoH {
+                    server: u.url.clone(),
+                })
                 .collect();
         }
 
         self.system_dns_resolvers
             .iter()
-            .map(|ip| SocketAddr::new(*ip, 53))
+            .map(|ip| dns::Upstream::Do53 {
+                server: SocketAddr::new(*ip, 53),
+            })
             .collect()
     }
 
@@ -1175,7 +1201,12 @@ impl RefClient {
             return None;
         }
 
-        let maybe_active_cidr_resource = self.cidr_resource_by_ip(query.dns_server.ip());
+        let server = match query.dns_server {
+            dns::Upstream::Do53 { server } => server,
+            dns::Upstream::DoH { .. } => return None,
+        };
+
+        let maybe_active_cidr_resource = self.cidr_resource_by_ip(server.ip());
         let maybe_active_internet_resource = self.active_internet_resource();
 
         maybe_active_cidr_resource.or(maybe_active_internet_resource)

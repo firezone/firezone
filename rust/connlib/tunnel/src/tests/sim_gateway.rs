@@ -315,8 +315,16 @@ impl RefGateway {
         id: GatewayId,
         tcp_resources: BTreeSet<SocketAddr>,
         now: Instant,
+        utc_now: DateTime<Utc>,
     ) -> SimGateway {
-        let mut sut = GatewayState::new(self.key.0, now); // Cheating a bit here by reusing the key as seed.
+        let mut sut = GatewayState::new(
+            self.key.0,
+            now,
+            utc_now
+                .signed_duration_since(DateTime::UNIX_EPOCH)
+                .to_std()
+                .unwrap(),
+        ); // Cheating a bit here by reusing the key as seed.
         sut.update_tun_device(IpConfig {
             v4: self.tunnel_ip4,
             v6: self.tunnel_ip6,

@@ -200,7 +200,7 @@ impl Eventloop {
                     return Ok(ControlFlow::Continue(()));
                 };
 
-                let dns = tunnel.state_mut().update_system_resolvers(dns);
+                let dns = tunnel.update_system_resolvers(dns);
 
                 self.portal_cmd_tx
                     .send(PortalCommand::UpdateDnsServers(dns))

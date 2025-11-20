@@ -4,8 +4,8 @@ use super::{
     composite_strategy::CompositeStrategy, sim_client::*, sim_gateway::*, sim_net::*,
     strategies::*, stub_portal::StubPortal, transition::*,
 };
-use crate::client;
 use crate::proptest::domain_label;
+use crate::{client, dns};
 use crate::{dns::is_subdomain, proptest::relay_id};
 use connlib_model::{GatewayId, RelayId, Site, StaticSecret};
 use dns_types::{DomainName, RecordType};
@@ -624,7 +624,7 @@ impl ReferenceState {
             }
             Transition::Idle => {}
             Transition::PartitionRelaysFromPortal => {
-                if state.drop_direct_client_traffic || state.client.port == 3478 {
+                if state.drop_direct_client_traffic {
                     state.client.exec_mut(|client| client.reset_connections());
                 }
             }
@@ -756,10 +756,12 @@ impl ReferenceState {
             Transition::UpdateUpstreamDoHServers(_) => true,
             Transition::UpdateUpstreamSearchDomain(_) => true,
             Transition::SendDnsQueries(queries) => queries.iter().all(|query| {
-                let has_socket_for_server = state
-                    .client
-                    .sending_socket_for(query.dns_server.ip())
-                    .is_some();
+                let has_socket_for_server = match query.dns_server {
+                    crate::dns::Upstream::Do53 { server } => {
+                        state.client.sending_socket_for(server.ip()).is_some()
+                    }
+                    crate::dns::Upstream::DoH { .. } => true,
+                };
 
                 let has_dns_server = state
                     .client
@@ -919,14 +921,19 @@ impl ReferenceState {
         Vec::from_iter(unique_domains)
     }
 
-    fn reachable_dns_servers(&self) -> Vec<SocketAddr> {
+    fn reachable_dns_servers(&self) -> Vec<dns::Upstream> {
         self.client
             .inner()
             .expected_dns_servers()
             .into_iter()
             .filter(|s| match s {
-                SocketAddr::V4(_) => self.client.ip4.is_some(),
-                SocketAddr::V6(_) => self.client.ip6.is_some(),
+                crate::dns::Upstream::Do53 {
+                    server: SocketAddr::V4(_),
+                } => self.client.ip4.is_some(),
+                crate::dns::Upstream::Do53 {
+                    server: SocketAddr::V6(_),
+                } => self.client.ip6.is_some(),
+                crate::dns::Upstream::DoH { .. } => true,
             })
             .collect()
     }

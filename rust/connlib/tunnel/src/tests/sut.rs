@@ -55,7 +55,7 @@ impl TunnelTest {
     pub(crate) fn init_test(ref_state: &ReferenceState, flux_capacitor: FluxCapacitor) -> Self {
         // Construct client, gateway and relay from the initial state.
         let mut client = ref_state.client.map(
-            |ref_client, _, _| ref_client.init(flux_capacitor.now()),
+            |ref_client, _, _| ref_client.init(flux_capacitor.now(), flux_capacitor.now()),
             debug_span!("client"),
         );
 
@@ -73,6 +73,7 @@ impl TunnelTest {
                                 .flatten()
                                 .copied()
                                 .collect(),
+                            flux_capacitor.now(),
                             flux_capacitor.now(),
                         )
                     },
@@ -124,6 +125,7 @@ impl TunnelTest {
     ) -> Self {
         let mut buffered_transmits = BufferedTransmits::default();
         let now = state.flux_capacitor.now();
+        let utc_now = state.flux_capacitor.now();
 
         // Act: Apply the transition
         match transition {
@@ -277,7 +279,7 @@ impl TunnelTest {
                         upstream_dns: vec![],
                         upstream_do53,
                         search_domain: ref_state.client.inner().search_domain.clone(),
-                        upstream_doh: vec![],
+                        upstream_doh: ref_state.client.inner().upstream_doh_resolvers(),
                     })
                 });
             }
@@ -422,11 +424,12 @@ impl TunnelTest {
                 let ipv6 = state.client.inner().sut.tunnel_ip_config().unwrap().v6;
                 let system_dns = ref_state.client.inner().system_dns_resolvers();
                 let upstream_do53 = ref_state.client.inner().upstream_do53_resolvers();
+                let upstream_doh = ref_state.client.inner().upstream_doh_resolvers();
                 let all_resources = ref_state.client.inner().all_resources();
                 let internet_resource_state = ref_state.client.inner().internet_resource_active;
 
                 state.client.exec_mut(|c| {
-                    c.restart(key, internet_resource_state, now);
+                    c.restart(key, internet_resource_state, now, utc_now);
 
                     // Apply to new instance.
                     c.sut.update_interface_config(Interface {
@@ -434,8 +437,8 @@ impl TunnelTest {
                         ipv6,
                         upstream_dns: Vec::new(),
                         upstream_do53,
+                        upstream_doh,
                         search_domain: ref_state.client.inner().search_domain.clone(),
-                        upstream_doh: Vec::new(),
                     });
                     c.sut.update_system_resolvers(system_dns);
                     c.sut.set_resources(all_resources, now);
@@ -925,7 +928,18 @@ impl TunnelTest {
 
                 for gateway in self.gateways.values_mut() {
                     gateway.exec_mut(|g| {
-                        g.deploy_new_dns_servers(config.dns_by_sentinel.upstream_sockets(), now)
+                        // If DoH servers are configured, we never route them through the tunnel.
+                        // Therefore, we also don't need to "deploy" any DNS servers here.
+                        let upstream_do53_servers = config
+                            .dns_by_sentinel
+                            .upstream_servers()
+                            .into_iter()
+                            .filter_map(|u| match u {
+                                dns::Upstream::Do53 { server } => Some(server),
+                                dns::Upstream::DoH { .. } => None,
+                            });
+
+                        g.deploy_new_dns_servers(upstream_do53_servers, now)
                     })
                 }
 

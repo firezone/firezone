@@ -21,7 +21,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     sync::Arc,
     task::{Context, Poll, ready},
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 use tun::Tun;
 
@@ -124,6 +124,9 @@ impl ClientTunnel {
                 records,
                 is_internet_resource_active,
                 Instant::now(),
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Should be able to compute UNIX timestamp"),
             ),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
@@ -140,6 +143,13 @@ impl ClientTunnel {
     pub fn reset(&mut self, reason: &str) {
         self.role_state.reset(Instant::now(), reason);
         self.io.reset();
+    }
+
+    pub fn update_system_resolvers(&mut self, resolvers: Vec<IpAddr>) -> Vec<IpAddr> {
+        let resolvers = self.role_state.update_system_resolvers(resolvers);
+        self.io.update_system_resolvers(resolvers.clone()); // IO needs the system resolvers to bootstrap DoH upstream.
+
+        resolvers
     }
 
     /// Shut down the Client tunnel.
@@ -175,6 +185,16 @@ impl ClientTunnel {
 
             // Pass up existing events.
             if let Some(event) = self.role_state.poll_event() {
+                if let ClientEvent::TunInterfaceUpdated(config) = &event {
+                    for url in &config.dns_by_sentinel.upstream_servers() {
+                        let dns::Upstream::DoH { server } = url else {
+                            continue;
+                        };
+
+                        self.io.bootstrap_doh_client(server.clone());
+                    }
+                }
+
                 return Poll::Ready(event);
             }
 
@@ -300,7 +320,13 @@ impl GatewayTunnel {
     ) -> Self {
         Self {
             io: Io::new(tcp_socket_factory, udp_socket_factory.clone(), nameservers),
-            role_state: GatewayState::new(rand::random(), Instant::now()),
+            role_state: GatewayState::new(
+                rand::random(),
+                Instant::now(),
+                SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .expect("Should be able to compute UNIX timestamp"),
+            ),
             buffers: Buffers::default(),
             packet_counter: opentelemetry::global::meter("connlib")
                 .u64_counter("system.network.packets")
@@ -471,7 +497,9 @@ impl GatewayTunnel {
                 for query in udp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
                         self.io.send_dns_query(dns::RecursiveQuery {
-                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            server: dns::Upstream::Do53 {
+                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            },
                             local: query.local,
                             remote: query.remote,
                             message: query.message,
@@ -495,7 +523,9 @@ impl GatewayTunnel {
                 for query in tcp_dns_queries {
                     if let Some(nameserver) = self.io.fastest_nameserver() {
                         self.io.send_dns_query(dns::RecursiveQuery {
-                            server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            server: dns::Upstream::Do53 {
+                                server: SocketAddr::new(nameserver, dns::DNS_PORT),
+                            },
                             local: query.local,
                             remote: query.remote,
                             message: query.message,
