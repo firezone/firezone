@@ -28,6 +28,10 @@ export default function Android() {
           Fixes an issue where the order of upstream / system DNS resolvers was
           not respected.
         </ChangeItem>
+        <ChangeItem pull="10914">
+          Fixes an issue where concurrent DNS queries with the same ID would be
+          dropped.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.6" date={new Date("2025-10-28")}>
         <ChangeItem pull="10667">
