@@ -145,7 +145,7 @@ config :wallaby,
   js_logger: false,
   hackney_options: [timeout: 10_000, recv_timeout: 10_000],
   chromedriver: [
-    binary: System.find_executable("chrome"),
+    binary: System.find_executable("chrome")
   ]
 
 ex_unit_config =
