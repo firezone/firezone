@@ -4,22 +4,23 @@ defmodule Domain.Repo.Migrations.SimplifyAccountClientDNS do
   def up do
     execute("""
     UPDATE accounts
-    SET config = config - 'clients_upstream_dns' || jsonb_build_object(
-      'clients_upstream_dns',
+    SET config = jsonb_set(
+      config,
+      '{clients_upstream_dns}',
       COALESCE(
         (
           SELECT jsonb_agg(
             jsonb_build_object(
               'address',
               CASE
+                -- Strip port from IPv4 address (e.g., "1.1.1.1:53" -> "1.1.1.1")
                 WHEN dns->>'address' ~ '^[0-9.]+:[0-9]+$' THEN
-                  -- IPv4 with port: strip the port
                   substring(dns->>'address' from '^([0-9.]+):[0-9]+$')
+                -- Strip port from IPv6 address (e.g., "[::1]:53" -> "::1")
                 WHEN dns->>'address' ~ '^\\\[.*\\\]:[0-9]+$' THEN
-                  -- IPv6 with port in brackets: strip brackets and port
                   substring(dns->>'address' from '^\\\[(.+)\\\]:[0-9]+$')
+                -- Address without port, use as-is
                 ELSE
-                  -- No port or already just IP: use as-is
                   dns->>'address'
               END
             )
@@ -31,28 +32,10 @@ defmodule Domain.Repo.Migrations.SimplifyAccountClientDNS do
       )
     )
     WHERE config->'clients_upstream_dns' IS NOT NULL
+    AND jsonb_typeof(config->'clients_upstream_dns') = 'array'
     """)
   end
 
   def down do
-    execute("""
-    UPDATE accounts
-    SET config = config - 'clients_upstream_dns' || jsonb_build_object(
-      'clients_upstream_dns',
-      COALESCE(
-        (
-          SELECT jsonb_agg(
-            jsonb_build_object(
-              'protocol', 'ip_port',
-              'address', dns->>'address'
-            )
-          )
-          FROM jsonb_array_elements(config->'clients_upstream_dns') AS dns
-        ),
-        '[]'::jsonb
-      )
-    )
-    WHERE config->'clients_upstream_dns' IS NOT NULL
-    """)
   end
 end
