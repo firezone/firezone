@@ -5,6 +5,7 @@
 //
 //  A thin wrapper around UserDefaults for user and admin managed app configuration.
 
+import Combine
 import Foundation
 import Sentry
 
@@ -15,6 +16,7 @@ import Sentry
 @MainActor
 public class Configuration: ObservableObject {
   static let shared = Configuration()
+  private var cancellables = Set<AnyCancellable>()
 
   @Published private(set) var publishedInternetResourceEnabled = false
   @Published private(set) var publishedHideAdminPortalMenuItem = false
@@ -115,11 +117,7 @@ public class Configuration: ObservableObject {
     static let supportURL = "supportURL"
   }
 
-  // nonisolated(unsafe) is required because:
-  // 1. UserDefaults is thread-safe
-  // 2. Used only for NotificationCenter observer registration (in init/deinit)
-  // 3. deinit is nonisolated and needs access to remove the observer
-  private nonisolated(unsafe) var defaults: UserDefaults
+  private var defaults: UserDefaults
 
   init(userDefaults: UserDefaults = UserDefaults.standard) {
     defaults = userDefaults
@@ -128,17 +126,12 @@ public class Configuration: ObservableObject {
     self.publishedHideAdminPortalMenuItem = hideAdminPortalMenuItem
     self.publishedHideResourceList = hideResourceList
 
-    NotificationCenter.default.addObserver(
-      self,
-      selector: #selector(handleUserDefaultsChanged),
-      name: UserDefaults.didChangeNotification,
-      object: defaults
-    )
-  }
-
-  deinit {
-    NotificationCenter.default.removeObserver(
-      self, name: UserDefaults.didChangeNotification, object: defaults)
+    NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification, object: defaults)
+      .receive(on: DispatchQueue.main)
+      .sink { [weak self] _ in
+        self?.handleUserDefaultsChanged()
+      }
+      .store(in: &cancellables)
   }
 
   func toTunnelConfiguration() -> TunnelConfiguration {
@@ -172,7 +165,7 @@ public class Configuration: ObservableObject {
     }
   #endif
 
-  @objc private func handleUserDefaultsChanged(_ notification: Notification) {
+  private func handleUserDefaultsChanged() {
     #if os(macOS)
       // This is idempotent
       Task { do { try await updateAppService() } }
