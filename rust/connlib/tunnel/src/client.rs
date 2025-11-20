@@ -1428,6 +1428,7 @@ impl ClientState {
             Ok(local_socket) => local_socket,
             Err(e) => {
                 tracing::warn!(
+                    ?query,
                     "Failed to send recursive {transport} DNS query to upstream resolver: {e:#}"
                 );
 
