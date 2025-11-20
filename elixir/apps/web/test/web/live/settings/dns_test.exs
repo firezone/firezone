@@ -189,7 +189,7 @@ defmodule Web.Live.Settings.DNSTest do
     }
 
     lv
-    |> render_change(:change, attrs)
+    |> form("form", attrs)
     |> render_submit()
 
     account = Domain.Accounts.fetch_account_by_id!(account.id)
@@ -221,7 +221,7 @@ defmodule Web.Live.Settings.DNSTest do
 
     html =
       lv
-      |> render_change(:change, attrs)
+      |> form("form", attrs)
       |> render_submit()
 
     assert html =~ "must have at least one custom resolver"
@@ -313,10 +313,10 @@ defmodule Web.Live.Settings.DNSTest do
     }
 
     lv
-    |> render_change(:change, attrs)
+    |> form("form", attrs)
     |> render_submit()
 
-    account = Domain.Accounts.fetch_account_by_id!(account.id)
+    account = Repo.reload!(account)
     assert account.config.clients_upstream_dns.type == :secure
     assert account.config.clients_upstream_dns.doh_provider == :google
     assert Enum.empty?(account.config.clients_upstream_dns.addresses)
