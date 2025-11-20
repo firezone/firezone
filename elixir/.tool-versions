@@ -4,3 +4,4 @@ nodejs       22.20.0
 elixir       1.18.4-otp-27
 erlang       27.3.4.1
 chromedriver 144.0.7534.0
+chrome       144.0.7534.0 # https://github.com/weizhliu/asdf-chrome.git
