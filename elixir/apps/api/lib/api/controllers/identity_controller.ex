@@ -19,13 +19,14 @@ defmodule API.IdentityController do
 
   # List Identities
   def index(conn, %{"actor_id" => actor_id}) do
-    query =
+    identities =
       from(i in Auth.Identity,
         where: i.actor_id == ^actor_id,
         order_by: [desc: i.inserted_at]
       )
+      |> Safe.scoped(conn.assigns.subject)
+      |> Safe.all()
 
-    identities = Safe.scoped(conn.assigns.subject) |> Safe.all(query)
     render(conn, :index, identities: identities)
   end
 
@@ -51,8 +52,11 @@ defmodule API.IdentityController do
 
   # Show a specific Identity
   def show(conn, %{"id" => id}) do
-    query = from(i in Auth.Identity, where: i.id == ^id)
-    identity = Safe.scoped(conn.assigns.subject) |> Safe.one!(query)
+    identity =
+      from(i in Auth.Identity, where: i.id == ^id)
+      |> Safe.scoped(conn.assigns.subject)
+      |> Safe.one!()
+
     render(conn, :show, identity: identity)
   end
 
@@ -78,10 +82,12 @@ defmodule API.IdentityController do
 
   # Delete an Identity
   def delete(conn, %{"id" => id}) do
-    query = from(i in Auth.Identity, where: i.id == ^id)
-    identity = Safe.scoped(conn.assigns.subject) |> Safe.one!(query)
+    identity =
+      from(i in Auth.Identity, where: i.id == ^id)
+      |> Safe.scoped(conn.assigns.subject)
+      |> Safe.one!()
 
-    {:ok, deleted_identity} = Safe.scoped(conn.assigns.subject) |> Safe.delete(identity)
+    {:ok, deleted_identity} = identity |> Safe.scoped(conn.assigns.subject) |> Safe.delete()
     render(conn, :show, identity: deleted_identity)
   end
 end

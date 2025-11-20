@@ -1199,32 +1199,35 @@ defmodule Web.Actors do
 
   # Database operations using Safe
   defp create_actor(changeset, subject) do
-    Safe.scoped(subject)
-    |> Safe.insert(changeset)
+    changeset
+    |> Safe.scoped(subject)
+    |> Safe.insert()
   end
 
   defp update_actor(changeset, subject) do
-    Safe.scoped(subject)
-    |> Safe.update(changeset)
+    changeset
+    |> Safe.scoped(subject)
+    |> Safe.update()
   end
 
   defp delete_actor(actor, subject) do
-    Safe.scoped(subject)
-    |> Safe.delete(actor)
+    actor
+    |> Safe.scoped(subject)
+    |> Safe.delete()
   end
 
   defp disable_actor(actor, subject) do
-    changeset = Actors.Actor.Changeset.disable_actor(actor)
-
-    Safe.scoped(subject)
-    |> Safe.update(changeset)
+    actor
+    |> Actors.Actor.Changeset.disable_actor()
+    |> Safe.scoped(subject)
+    |> Safe.update()
   end
 
   defp enable_actor(actor, subject) do
-    changeset = Actors.Actor.Changeset.enable_actor(actor)
-
-    Safe.scoped(subject)
-    |> Safe.update(changeset)
+    actor
+    |> Actors.Actor.Changeset.enable_actor()
+    |> Safe.scoped(subject)
+    |> Safe.update()
   end
 
   defmodule Query do
@@ -1260,41 +1263,39 @@ defmodule Web.Actors do
     end
 
     def get_actor!(id, subject) do
-      query =
-        from(a in Actors.Actor, as: :actors)
-        |> where([actors: a], a.id == ^id)
-
-      Safe.scoped(subject) |> Safe.one!(query)
+      from(a in Actors.Actor, as: :actors)
+      |> where([actors: a], a.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def get_identities_for_actor(actor_id, subject) do
-      query =
-        from(i in Auth.Identity, as: :identities)
-        |> where([identities: i], i.actor_id == ^actor_id)
-        |> order_by([identities: i], desc: i.inserted_at)
-
-      Safe.scoped(subject) |> Safe.all(query)
+      from(i in Auth.Identity, as: :identities)
+      |> where([identities: i], i.actor_id == ^actor_id)
+      |> order_by([identities: i], desc: i.inserted_at)
+      |> Safe.scoped(subject)
+      |> Safe.all()
     end
 
     def get_tokens_for_actor(actor_id, subject) do
-      query =
-        from(t in Tokens.Token, as: :tokens)
-        |> where([tokens: t], t.actor_id == ^actor_id)
-        |> order_by([tokens: t], desc: t.inserted_at)
-
-      Safe.scoped(subject) |> Safe.all(query)
+      from(t in Tokens.Token, as: :tokens)
+      |> where([tokens: t], t.actor_id == ^actor_id)
+      |> order_by([tokens: t], desc: t.inserted_at)
+      |> Safe.scoped(subject)
+      |> Safe.all()
     end
 
     def fetch_identity_by_id(identity_id, subject) do
-      query =
-        from(i in Auth.Identity, as: :identities)
-        |> where([identities: i], i.id == ^identity_id)
-
-      Safe.scoped(subject) |> Safe.fetch(query)
+      from(i in Auth.Identity, as: :identities)
+      |> where([identities: i], i.id == ^identity_id)
+      |> Safe.scoped(subject)
+      |> Safe.fetch()
     end
 
     def delete_identity(identity, subject) do
-      Safe.scoped(subject) |> Safe.delete(identity)
+      identity
+      |> Safe.scoped(subject)
+      |> Safe.delete()
     end
   end
 end

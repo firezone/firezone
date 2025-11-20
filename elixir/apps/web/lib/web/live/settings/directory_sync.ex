@@ -45,9 +45,9 @@ defmodule Web.Settings.DirectorySync do
 
     directories =
       [
-        Safe.scoped(subject) |> Safe.all(Entra.Directory),
-        Safe.scoped(subject) |> Safe.all(Google.Directory),
-        Safe.scoped(subject) |> Safe.all(Okta.Directory)
+        Entra.Directory |> Safe.scoped(subject) |> Safe.all(),
+        Google.Directory |> Safe.scoped(subject) |> Safe.all(),
+        Okta.Directory |> Safe.scoped(subject) |> Safe.all()
       ]
       |> List.flatten()
 
@@ -221,7 +221,7 @@ defmodule Web.Settings.DirectorySync do
           disabled_reason: disabled_reason
         )
 
-      case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+      case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
         {:ok, _directory} ->
           action = if new_disabled_state, do: "disabled", else: "enabled"
 
@@ -248,8 +248,9 @@ defmodule Web.Settings.DirectorySync do
       else
         with {:ok, job} <- Entra.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
              {:ok, _directory} <-
-               Safe.scoped(socket.assigns.subject)
-               |> Safe.update(changeset(directory, %{current_job_id: job.id, error: nil})) do
+               changeset(directory, %{current_job_id: job.id, error: nil})
+               |> Safe.scoped(socket.assigns.subject)
+               |> Safe.update() do
           {:noreply, socket |> init()}
         else
           {:error, reason} ->
@@ -258,9 +259,9 @@ defmodule Web.Settings.DirectorySync do
               reason: reason
             )
 
-            error_changeset = changeset(directory, %{error: "Failed to schedule directory sync."})
-
-            case Safe.scoped(socket.assigns.subject) |> Safe.update(error_changeset) do
+            case changeset(directory, %{error: "Failed to schedule directory sync."})
+                 |> Safe.scoped(socket.assigns.subject)
+                 |> Safe.update() do
               {:ok, _directory} -> {:noreply, socket |> init()}
               {:error, _} -> {:noreply, socket |> init()}
             end
@@ -948,14 +949,16 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp submit_directory(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
-    Safe.scoped(socket.assigns.subject)
-    |> Safe.insert(changeset)
+    changeset
+    |> Safe.scoped(socket.assigns.subject)
+    |> Safe.insert()
     |> handle_submit(socket)
   end
 
   defp submit_directory(%{assigns: %{live_action: :edit, form: %{source: changeset}}} = socket) do
-    Safe.scoped(socket.assigns.subject)
-    |> Safe.update(changeset)
+    changeset
+    |> Safe.scoped(socket.assigns.subject)
+    |> Safe.update()
     |> handle_submit(socket)
   end
 
@@ -982,7 +985,7 @@ defmodule Web.Settings.DirectorySync do
   end
 
   defp delete_directory(directory, subject) do
-    Safe.scoped(subject) |> Safe.delete(directory)
+    directory |> Safe.scoped(subject) |> Safe.delete()
   end
 
   defp get_directory!(schema, id, subject) do

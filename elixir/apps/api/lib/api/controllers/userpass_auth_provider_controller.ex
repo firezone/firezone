@@ -17,8 +17,11 @@ defmodule API.UserpassAuthProviderController do
     ]
 
   def index(conn, _params) do
-    query = from(p in Userpass.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])
-    providers = Safe.scoped(conn.assigns.subject) |> Safe.all(query)
+    providers =
+      from(p in Userpass.AuthProvider, as: :providers, order_by: [desc: p.inserted_at])
+      |> Safe.scoped(conn.assigns.subject)
+      |> Safe.all()
+
     render(conn, :index, providers: providers)
   end
 
@@ -39,8 +42,11 @@ defmodule API.UserpassAuthProviderController do
     ]
 
   def show(conn, %{"id" => id}) do
-    query = from(p in Userpass.AuthProvider, where: p.id == ^id)
-    provider = Safe.scoped(conn.assigns.subject) |> Safe.one!(query)
+    provider =
+      from(p in Userpass.AuthProvider, where: p.id == ^id)
+      |> Safe.scoped(conn.assigns.subject)
+      |> Safe.one!()
+
     render(conn, :show, provider: provider)
   end
 end

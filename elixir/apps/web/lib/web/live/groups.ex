@@ -859,53 +859,53 @@ defmodule Web.Groups do
 
   # Database operations
   defp create_group(changeset, subject) do
-    Safe.scoped(subject)
-    |> Safe.insert(changeset)
+    changeset
+    |> Safe.scoped(subject)
+    |> Safe.insert()
   end
 
   defp update_group(changeset, subject) do
-    Safe.scoped(subject)
-    |> Safe.update(changeset)
+    changeset
+    |> Safe.scoped(subject)
+    |> Safe.update()
   end
 
   defp delete_group(group, subject) do
-    Safe.scoped(subject)
-    |> Safe.delete(group)
+    group
+    |> Safe.scoped(subject)
+    |> Safe.delete()
   end
 
   defmodule Query do
     import Ecto.Query
 
     def get_group!(id, subject) do
-      query =
-        from(g in Actors.Group, as: :groups)
-        |> where([groups: groups], groups.id == ^id)
-
-      Safe.scoped(subject) |> Safe.one!(query)
+      from(g in Actors.Group, as: :groups)
+      |> where([groups: groups], groups.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def get_actor!(id, subject) do
-      query =
-        from(a in Actors.Actor, as: :actors)
-        |> where([actors: a], a.id == ^id)
-
-      Safe.scoped(subject) |> Safe.one!(query)
+      from(a in Actors.Actor, as: :actors)
+      |> where([actors: a], a.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
     end
 
     def search_actors(search_term, subject, exclude_actors) do
       exclude_ids = Enum.map(exclude_actors, & &1.id)
       search_pattern = "%#{search_term}%"
 
-      query =
-        from(a in Actors.Actor, as: :actors)
-        |> where(
-          [actors: a],
-          (ilike(a.name, ^search_pattern) or ilike(a.email, ^search_pattern)) and
-            a.id not in ^exclude_ids
-        )
-        |> limit(10)
-
-      case Safe.scoped(subject) |> Safe.all(query) do
+      case from(a in Actors.Actor, as: :actors)
+           |> where(
+             [actors: a],
+             (ilike(a.name, ^search_pattern) or ilike(a.email, ^search_pattern)) and
+               a.id not in ^exclude_ids
+           )
+           |> limit(10)
+           |> Safe.scoped(subject)
+           |> Safe.all() do
         actors when is_list(actors) -> actors
         {:error, _} -> []
       end

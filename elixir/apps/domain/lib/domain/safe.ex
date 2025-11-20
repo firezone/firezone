@@ -71,8 +71,8 @@ defmodule Domain.Safe do
   end
 
   # Query operations
-  @spec one(Scoped.t(), Ecto.Queryable.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
-  def one(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
+  @spec one(Scoped.t()) :: Ecto.Schema.t() | nil | {:error, :unauthorized}
+  def one(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -82,11 +82,14 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec one(Unscoped.t()) :: Ecto.Schema.t() | nil
+  def one(%Unscoped{queryable: queryable}), do: Repo.one(queryable)
+
   @spec one(Domain.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | nil
   def one(repo, queryable) when repo == Repo, do: Repo.one(queryable)
 
-  @spec one!(Scoped.t(), Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
-  def one!(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
+  @spec one!(Scoped.t()) :: Ecto.Schema.t() | no_return()
+  def one!(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -96,11 +99,14 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec one!(Unscoped.t()) :: Ecto.Schema.t() | no_return()
+  def one!(%Unscoped{queryable: queryable}), do: Repo.one!(queryable)
+
   @spec one!(Domain.Repo, Ecto.Queryable.t()) :: Ecto.Schema.t() | no_return()
   def one!(repo, queryable) when repo == Repo, do: Repo.one!(queryable)
 
-  @spec all(Scoped.t(), Ecto.Queryable.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
-  def all(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
+  @spec all(Scoped.t()) :: [Ecto.Schema.t()] | {:error, :unauthorized}
+  def all(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -110,11 +116,14 @@ defmodule Domain.Safe do
     end
   end
 
+  @spec all(Unscoped.t()) :: [Ecto.Schema.t()]
+  def all(%Unscoped{queryable: queryable}), do: Repo.all(queryable)
+
   @spec all(Domain.Repo, Ecto.Queryable.t()) :: [Ecto.Schema.t()]
   def all(repo, queryable) when repo == Repo, do: Repo.all(queryable)
 
-  @spec exists?(Scoped.t(), Ecto.Queryable.t()) :: boolean() | {:error, :unauthorized}
-  def exists?(%Scoped{subject: %Subject{account: %{id: account_id}} = subject}, queryable) do
+  @spec exists?(Scoped.t()) :: boolean() | {:error, :unauthorized}
+  def exists?(%Scoped{subject: %Subject{account: %{id: account_id}} = subject, queryable: queryable}) do
     schema = get_schema_module(queryable)
 
     with :ok <- permit(:read, schema, subject) do
@@ -123,6 +132,9 @@ defmodule Domain.Safe do
       |> Repo.exists?()
     end
   end
+
+  @spec exists?(Unscoped.t()) :: boolean()
+  def exists?(%Unscoped{queryable: queryable}), do: Repo.exists?(queryable)
 
   @spec exists?(Domain.Repo, Ecto.Queryable.t()) :: boolean()
   def exists?(repo, queryable) when repo == Repo, do: Repo.exists?(queryable)
@@ -146,9 +158,9 @@ defmodule Domain.Safe do
   end
 
   # Mutation operations
-  @spec insert(Scoped.t(), Ecto.Changeset.t()) ::
+  @spec insert(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
-  def insert(%Scoped{subject: subject}, %Ecto.Changeset{} = changeset) do
+  def insert(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}) do
     changeset = %{changeset | action: :insert}
     schema = get_schema_module(changeset.data)
 
@@ -165,9 +177,9 @@ defmodule Domain.Safe do
   def insert(repo, changeset_or_struct, opts \\ []) when repo == Repo,
     do: Repo.insert(changeset_or_struct, opts)
 
-  @spec update(Scoped.t(), Ecto.Changeset.t()) ::
+  @spec update(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
-  def update(%Scoped{subject: subject}, %Ecto.Changeset{} = changeset) do
+  def update(%Scoped{subject: subject, queryable: %Ecto.Changeset{} = changeset}) do
     changeset = %{changeset | action: :update}
     schema = get_schema_module(changeset.data)
 
@@ -182,11 +194,13 @@ defmodule Domain.Safe do
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def update(repo, changeset, opts \\ []) when repo == Repo, do: Repo.update(changeset, opts)
 
-  @spec delete(Scoped.t(), Ecto.Changeset.t() | Ecto.Schema.t()) ::
+  @spec delete(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def delete(
-        %Scoped{subject: %Subject{account: %{id: account_id}} = subject},
-        %Ecto.Changeset{data: %{account_id: account_id}} = changeset
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: %Ecto.Changeset{data: %{account_id: account_id}} = changeset
+        }
       ) do
     changeset = %{changeset | action: :delete}
     schema = get_schema_module(changeset.data)
@@ -197,8 +211,10 @@ defmodule Domain.Safe do
   end
 
   def delete(
-        %Scoped{subject: %Subject{account: %{id: account_id}} = subject},
-        %{account_id: account_id} = struct
+        %Scoped{
+          subject: %Subject{account: %{id: account_id}} = subject,
+          queryable: %{account_id: account_id} = struct
+        }
       )
       when is_struct(struct) do
     schema = get_schema_module(struct)

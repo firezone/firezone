@@ -855,18 +855,21 @@ defmodule Web.Policies.Components do
         )
 
       # Combine all providers from different tables using Safe
-      (Safe.scoped(subject) |> Safe.all(userpass_query)) ++
-        (Safe.scoped(subject) |> Safe.all(email_otp_query)) ++
-        (Safe.scoped(subject) |> Safe.all(oidc_query)) ++
-        (Safe.scoped(subject) |> Safe.all(google_query)) ++
-        (Safe.scoped(subject) |> Safe.all(entra_query)) ++
-        (Safe.scoped(subject) |> Safe.all(okta_query))
+      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject) |> Safe.all())
     end
 
     # Inlined from Web.Groups.Components
     def fetch_group_option(id, subject) do
-      query = from(g in Actors.Group, where: g.id == ^id)
-      group = Safe.scoped(subject) |> Safe.one!(query)
+      group =
+        from(g in Actors.Group, where: g.id == ^id)
+        |> Safe.scoped(subject)
+        |> Safe.one!()
+
       {:ok, group_option(group)}
     end
 
@@ -884,7 +887,7 @@ defmodule Web.Policies.Components do
           query
         end
 
-      groups = Safe.scoped(subject) |> Safe.all(query)
+      groups = query |> Safe.scoped(subject) |> Safe.all()
 
       # For metadata, we'll return a simple count
       metadata = %{limit: 25, count: length(groups)}

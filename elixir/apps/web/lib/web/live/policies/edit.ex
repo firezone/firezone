@@ -264,12 +264,12 @@ defmodule Web.Policies.Edit do
         )
 
       # Combine all providers from different tables using Safe
-      Safe.scoped(subject) |> Safe.all(userpass_query) ++
-        Safe.scoped(subject) |> Safe.all(email_otp_query) ++
-        Safe.scoped(subject) |> Safe.all(oidc_query) ++
-        Safe.scoped(subject) |> Safe.all(google_query) ++
-        Safe.scoped(subject) |> Safe.all(entra_query) ++
-        Safe.scoped(subject) |> Safe.all(okta_query)
+      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject) |> Safe.all())
     end
   end
 end

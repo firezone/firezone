@@ -49,13 +49,15 @@ defmodule Web.Plugs.AutoRedirectDefaultProvider do
   end
 
   defp get_account_by_id_or_slug(id_or_slug) do
-    query = Query.by_id_or_slug(id_or_slug)
-    Safe.unscoped() |> Safe.one(query)
+    Query.by_id_or_slug(id_or_slug)
+    |> Safe.unscoped()
+    |> Safe.one()
   end
 
   defp get_default_provider_for_account(account) do
-    query = Query.default_provider_for_account_id(account.id)
-    Safe.unscoped() |> Safe.one(query)
+    Query.default_provider_for_account_id(account.id)
+    |> Safe.unscoped()
+    |> Safe.one()
   end
 
   defp redirect_path(account, %OIDC.AuthProvider{} = provider) do

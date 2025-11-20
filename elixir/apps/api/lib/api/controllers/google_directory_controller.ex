@@ -17,8 +17,11 @@ defmodule API.GoogleDirectoryController do
     ]
 
   def index(conn, _params) do
-    query = from(d in Google.Directory, as: :directories, order_by: [desc: d.inserted_at])
-    directories = Safe.scoped(conn.assigns.subject) |> Safe.all(query)
+    directories =
+      from(d in Google.Directory, as: :directories, order_by: [desc: d.inserted_at])
+      |> Safe.scoped(conn.assigns.subject)
+      |> Safe.all()
+
     render(conn, :index, directories: directories)
   end
 
@@ -38,8 +41,11 @@ defmodule API.GoogleDirectoryController do
     ]
 
   def show(conn, %{"id" => id}) do
-    query = from(d in Google.Directory, where: d.id == ^id)
-    directory = Safe.scoped(conn.assigns.subject) |> Safe.one!(query)
+    directory =
+      from(d in Google.Directory, where: d.id == ^id)
+      |> Safe.scoped(conn.assigns.subject)
+      |> Safe.one!()
+
     render(conn, :show, directory: directory)
   end
 end

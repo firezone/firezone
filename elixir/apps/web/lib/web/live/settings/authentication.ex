@@ -208,7 +208,7 @@ defmodule Web.Settings.Authentication do
         |> add_error(:is_disabled, "Cannot disable the last active authentication provider")
       end
 
-    case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+    case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
       {:ok, _provider} ->
         action = if new_disabled_state, do: "disabled", else: "enabled"
 
@@ -337,12 +337,12 @@ defmodule Web.Settings.Authentication do
 
     providers =
       [
-        Safe.scoped(subject) |> Safe.all(EmailOTP.AuthProvider),
-        Safe.scoped(subject) |> Safe.all(Userpass.AuthProvider),
-        Safe.scoped(subject) |> Safe.all(Google.AuthProvider),
-        Safe.scoped(subject) |> Safe.all(Entra.AuthProvider),
-        Safe.scoped(subject) |> Safe.all(Okta.AuthProvider),
-        Safe.scoped(subject) |> Safe.all(OIDC.AuthProvider)
+        EmailOTP.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Userpass.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Google.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Entra.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        Okta.AuthProvider |> Safe.scoped(subject) |> Safe.all(),
+        OIDC.AuthProvider |> Safe.scoped(subject) |> Safe.all()
       ]
       |> List.flatten()
 
@@ -930,14 +930,16 @@ defmodule Web.Settings.Authentication do
   end
 
   defp submit_provider(%{assigns: %{live_action: :new, form: %{source: changeset}}} = socket) do
-    Safe.scoped(socket.assigns.subject)
-    |> Safe.insert(changeset)
+    changeset
+    |> Safe.scoped(socket.assigns.subject)
+    |> Safe.insert()
     |> handle_submit(socket)
   end
 
   defp submit_provider(%{assigns: %{live_action: :edit, form: %{source: changeset}}} = socket) do
-    Safe.scoped(socket.assigns.subject)
-    |> Safe.update(changeset)
+    changeset
+    |> Safe.scoped(socket.assigns.subject)
+    |> Safe.update()
     |> handle_submit(socket)
   end
 
@@ -1037,9 +1039,12 @@ defmodule Web.Settings.Authentication do
     # Delete the parent auth_provider, which will CASCADE delete the child and tokens
     import Ecto.Query
 
-    query = from(p in AuthProviders.AuthProvider, where: p.id == ^provider.id)
-    parent = Safe.scoped(subject) |> Safe.one!(query)
-    Safe.scoped(subject) |> Safe.delete(parent)
+    parent =
+      from(p in AuthProviders.AuthProvider, where: p.id == ^provider.id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+
+    parent |> Safe.scoped(subject) |> Safe.delete()
   end
 
   defp verified?(form) do
@@ -1125,7 +1130,7 @@ defmodule Web.Settings.Authentication do
                if Map.has_key?(p, :is_default) && p.is_default do
                  changeset = change(p, is_default: false)
 
-                 case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+                 case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
                    {:ok, _} -> :ok
                    {:error, reason} -> Domain.Repo.rollback(reason)
                  end
@@ -1135,7 +1140,7 @@ defmodule Web.Settings.Authentication do
              # Then set is_default on the selected provider
              changeset = change(provider, is_default: true)
 
-             case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+             case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
                {:ok, updated} -> updated
                {:error, reason} -> Domain.Repo.rollback(reason)
              end
@@ -1178,7 +1183,7 @@ defmodule Web.Settings.Authentication do
                if Map.has_key?(p, :is_default) && p.is_default do
                  changeset = change(p, is_default: false)
 
-                 case Safe.scoped(socket.assigns.subject) |> Safe.update(changeset) do
+                 case changeset |> Safe.scoped(socket.assigns.subject) |> Safe.update() do
                    {:ok, _} -> :ok
                    {:error, reason} -> Domain.Repo.rollback(reason)
                  end
