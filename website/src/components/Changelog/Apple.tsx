@@ -43,6 +43,10 @@ export default function Apple() {
           Adds support for <code>hideResourceList</code> managed configuration
           key to hide the Resource List in the macOS and iOS apps.
         </ChangeItem>
+        <ChangeItem pull="10914">
+          Fixes an issue where concurrent DNS queries with the same ID would be
+          dropped.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.9" date={new Date("2025-10-20")}>
         <ChangeItem pull="10603">

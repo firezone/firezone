@@ -26,6 +26,10 @@ export default function GUI({ os }: { os: OS }) {
             Fixes some rendering issues on Wayland-only systems.
           </ChangeItem>
         )}
+        <ChangeItem pull="10914">
+          Fixes an issue where concurrent DNS queries with the same ID would be
+          dropped.
+        </ChangeItem>
       </Unreleased>
       <Entry version="1.5.8" date={new Date("2025-10-16")}>
         <ChangeItem pull="10509">
