@@ -137,11 +137,13 @@ environment setup. If you have not read the Docker Setup instructions we
 recommend following the directions listed there to get your Docker environment
 setup properly.
 
-### asdf-vm Setup
+### Developer tools
 
-We use [asdf-vm](https://asdf-vm.com) to manage language versions for Firezone.
-Install the language runtimes defined in the [.tool-versions](../.tool-versions)
-file by running `asdf install` from the project root.
+The versions for most tools and SDKs required for working on Firezone are managed
+via `.tool-versions` files in the respective directories, i.e. Elixir tools in
+[elixir/.tool-versions](elixir/.tool-versions) etc.
+
+You can use any `.tool-versions` compatible version manager for installing them.
 
 - Note: For a fresh install of `asdf` you will need to install some
   [asdf-plugins](https://asdf-vm.com/manage/plugins.html). e.g. `asdf plugin add nodejs && asdf install nodejs` to set up the NodeJS plugin and package.
