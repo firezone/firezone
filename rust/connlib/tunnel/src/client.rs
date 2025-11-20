@@ -532,10 +532,11 @@ impl ClientState {
                         dns_types::Response::servfail(&response.query)
                     });
 
-                unwrap_or_warn!(
-                    self.try_queue_udp_dns_response(response.local, response.remote, message),
-                    "Failed to queue UDP DNS response: {}"
-                );
+                self.buffered_packets.extend(into_udp_dns_packet(
+                    response.local,
+                    response.remote,
+                    message,
+                ));
             }
             (dns::Transport::Tcp, result) => {
                 let message = result
@@ -607,27 +608,6 @@ impl ClientState {
             .ok()??;
 
         Some(transmit)
-    }
-
-    fn try_queue_udp_dns_response(
-        &mut self,
-        from: SocketAddr,
-        dst: SocketAddr,
-        message: dns_types::Response,
-    ) -> anyhow::Result<()> {
-        debug_assert_eq!(from.port(), DNS_PORT);
-
-        let ip_packet = ip_packet::make::udp_packet(
-            from.ip(),
-            dst.ip(),
-            from.port(),
-            dst.port(),
-            message.into_bytes(MAX_UDP_PAYLOAD),
-        )?;
-
-        self.buffered_packets.push_back(ip_packet);
-
-        Ok(())
     }
 
     pub fn add_ice_candidate(
@@ -1296,10 +1276,8 @@ impl ClientState {
         if let Some(response) =
             self.handle_dns_query(message, local, remote, upstream, dns::Transport::Udp, now)
         {
-            unwrap_or_warn!(
-                self.try_queue_udp_dns_response(local, remote, response),
-                "Failed to queue UDP DNS response: {}"
-            );
+            self.buffered_packets
+                .extend(into_udp_dns_packet(local, remote, response));
         };
     }
 
@@ -1925,6 +1903,22 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     }
 
     false
+}
+
+fn into_udp_dns_packet(
+    from: SocketAddr,
+    dst: SocketAddr,
+    message: dns_types::Response,
+) -> Option<IpPacket> {
+    ip_packet::make::udp_packet(
+        from.ip(),
+        dst.ip(),
+        from.port(),
+        dst.port(),
+        message.into_bytes(MAX_UDP_PAYLOAD),
+    )
+    .inspect_err(|e| tracing::warn!("Failed to create IP packet for DNS response: {e:#}"))
+    .ok()
 }
 
 /// What triggered us to establish a connection to a Gateway.
