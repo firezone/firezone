@@ -141,7 +141,7 @@ setup properly.
 
 The versions for most tools and SDKs required for working on Firezone are managed
 via `.tool-versions` files in the respective directories, i.e. Elixir tools in
-[elixir/.tool-versions](elixir/.tool-versions) etc.
+[elixir/.tool-versions](../elixir/.tool-versions) etc.
 
 You can use any `.tool-versions`-compatible version manager for installing them.
 
