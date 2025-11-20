@@ -341,17 +341,17 @@ pub(crate) fn assert_udp_dns_packets_properties(ref_client: &RefClient, sim_clie
     let unexpected_dns_replies = find_unexpected_entries(
         &ref_client.expected_udp_dns_handshakes,
         &sim_client.received_udp_dns_responses,
-        |(_, id_a), (_, id_b)| id_a == id_b,
+        |(_, id_a, _), (_, id_b, _)| id_a == id_b,
     );
 
     if !unexpected_dns_replies.is_empty() {
         tracing::error!(target: "assertions", ?unexpected_dns_replies, "❌ Unexpected UDP DNS replies on client");
     }
 
-    for (dns_server, query_id) in ref_client.expected_udp_dns_handshakes.iter() {
+    for (dns_server, query_id, local_port) in ref_client.expected_udp_dns_handshakes.iter() {
         let _guard =
             tracing::info_span!(target: "assertions", "udp_dns", %query_id, %dns_server).entered();
-        let key = &(dns_server.clone(), *query_id);
+        let key = &(dns_server.clone(), *query_id, *local_port);
 
         let queries = &sim_client.sent_udp_dns_queries;
         let responses = &sim_client.received_udp_dns_responses;
