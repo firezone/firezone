@@ -32,7 +32,6 @@ defmodule Domain.Auth.Authorizer do
     %Auth.Permission{resource: resource, action: action}
   end
 
-  def manage_providers_permission, do: build(Auth.Provider, :manage)
   def manage_identities_permission, do: build(Auth.Identity, :manage)
   def manage_service_accounts_permission, do: build(Auth, :manage_service_accounts)
   def manage_api_clients_permission, do: build(Auth, :manage_api_clients)
@@ -40,7 +39,6 @@ defmodule Domain.Auth.Authorizer do
 
   def list_permissions_for_role(:account_admin_user) do
     [
-      manage_providers_permission(),
       manage_service_accounts_permission(),
       manage_api_clients_permission(),
       manage_own_identities_permission(),
@@ -56,7 +54,6 @@ defmodule Domain.Auth.Authorizer do
 
   def list_permissions_for_role(:api_client) do
     [
-      manage_providers_permission(),
       manage_service_accounts_permission(),
       manage_own_identities_permission(),
       manage_identities_permission()
@@ -83,14 +80,6 @@ defmodule Domain.Auth.Authorizer do
     end
   end
 
-  def ensure_has_access_to(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    if subject.account.id == provider.account_id do
-      Auth.ensure_has_permissions(subject, manage_providers_permission())
-    else
-      {:error, :unauthorized}
-    end
-  end
-
   def for_subject(queryable, Auth.Identity, %Auth.Subject{} = subject) do
     cond do
       Auth.has_permission?(subject, manage_identities_permission()) ->
@@ -100,13 +89,6 @@ defmodule Domain.Auth.Authorizer do
         queryable
         |> Auth.Identity.Query.by_account_id(subject.account.id)
         |> Auth.Identity.Query.by_actor_id(subject.actor.id)
-    end
-  end
-
-  def for_subject(queryable, Auth.Provider, %Auth.Subject{} = subject) do
-    cond do
-      Auth.has_permission?(subject, manage_providers_permission()) ->
-        Auth.Provider.Query.by_account_id(queryable, subject.account.id)
     end
   end
 

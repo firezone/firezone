@@ -12,7 +12,6 @@ defmodule Web.CoreComponents do
   use Phoenix.Component
   use Web, :verified_routes
   alias Phoenix.LiveView.JS
-  alias Domain.Actors
 
   attr :text, :string, default: "Welcome to Firezone."
 
@@ -767,7 +766,7 @@ defmodule Web.CoreComponents do
   end
 
   defp build_gravatar_url(identity, size) do
-    email = get_identity_email(identity)
+    email = identity.actor.email
     hash = Base.encode16(:crypto.hash(:md5, email), case: :lower)
     "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=retro"
   end
@@ -1242,78 +1241,13 @@ defmodule Web.CoreComponents do
   end
 
   attr :account, :any, required: true
-  attr :identity, :any, required: true
-
-  def identity_identifier(assigns) do
-    ~H"""
-    <span class="flex items-center" data-identity-id={@identity.id}>
-      <.link
-        navigate={
-          Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
-        }
-        data-provider-id={@identity.provider.id}
-        title={"View identity provider \"#{@identity.provider.adapter}\""}
-        class={~w[
-          text-xs
-          rounded-l
-          py-0.5 px-1.5
-          text-neutral-800
-          bg-neutral-100
-          border-neutral-100
-          border
-        ]}
-      >
-        <.provider_icon adapter={@identity.provider.adapter} class="h-3.5 w-3.5" />
-      </.link>
-      <span class={~w[
-        text-xs
-        min-w-0
-        rounded-r
-        mr-2 py-0.5 pl-1.5 pr-2.5
-        text-neutral-900
-        bg-neutral-50
-      ]}>
-        <span class="block truncate" title={get_identity_email(@identity)}>
-          {get_identity_email(@identity)}
-        </span>
-      </span>
-    </span>
-    """
-  end
-
-  def get_identity_email(identity) do
-    Domain.Auth.get_identity_email(identity)
-  end
-
-  def identity_has_email?(identity) do
-    Domain.Auth.identity_has_email?(identity)
-  end
-
-  attr :account, :any, required: true
   attr :group, :any, required: true
   attr :class, :string, default: nil
 
   def group(assigns) do
     ~H"""
     <span class={["flex items-center", @class]} data-group-id={@group.id}>
-      <.link
-        :if={Actors.group_synced?(@group)}
-        navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
-        data-provider-id={@group.provider_id}
-        title={"View identity provider \"#{@group.provider.adapter}\""}
-        class={~w[
-          rounded-l
-          py-0.5 px-1.5
-          text-neutral-800
-          bg-neutral-100
-          border-neutral-100
-          border
-        ]}
-      >
-        <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
-      </.link>
-      <div :if={not Actors.group_synced?(@group)} title="Manually managed in Firezone" class={~w[
-          inline-flex
+      <div class={~w[
           rounded-l
           py-0.5 px-1.5
           text-neutral-800
@@ -1321,7 +1255,7 @@ defmodule Web.CoreComponents do
           border-neutral-100
           border
         ]}>
-        <.icon name="firezone" class="h-3.5 w-3.5" />
+        <.directory_icon directory={@group.directory} class="h-3.5 w-3.5" />
       </div>
       <.link
         title={"View Group \"#{@group.name}\""}

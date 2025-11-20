@@ -215,18 +215,6 @@ defmodule Domain.Tokens do
     end
   end
 
-  def delete_tokens_for(%Auth.Provider{} = provider, %Auth.Subject{} = subject) do
-    with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
-      {num_deleted, _} =
-        Token.Query.all()
-        |> Token.Query.by_provider_id(provider.id)
-        |> Authorizer.for_subject(subject)
-        |> Repo.delete_all()
-
-      {:ok, num_deleted}
-    end
-  end
-
   def delete_tokens_for(%Relays.Group{} = group, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_tokens_permission()) do
       {num_deleted, _} =

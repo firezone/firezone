@@ -1,7 +1,5 @@
 defmodule Web.Auth do
   use Web, :verified_routes
-  alias Domain.Auth
-  alias Web.Session.Redirector
   require Logger
 
   # This cookie is used for client login.
@@ -26,13 +24,6 @@ defmodule Web.Auth do
   ]
   @remember_last_account_ids 5
 
-  # Session is stored as a list in a cookie so we want to limit numbers
-  # of items in the list to avoid hitting cookie size limit.
-  #
-  # Max cookie size is 4kb. One session is ~460 bytes.
-  # We also leave space for other cookies.
-  @remember_last_sessions 6
-
   ###########################
   ## Controller Helpers
   ###########################
@@ -47,11 +38,13 @@ defmodule Web.Auth do
     end
   end
 
-  defp prepend_recent_account_ids(conn, account_id) do
-    update_recent_account_ids(conn, fn recent_account_ids ->
-      [account_id] ++ recent_account_ids
-    end)
-  end
+  # TODO: IDP REFACTOR
+  # Restore this functionality
+  # defp prepend_recent_account_ids(conn, account_id) do
+  #   update_recent_account_ids(conn, fn recent_account_ids ->
+  #     [account_id] ++ recent_account_ids
+  #   end)
+  # end
 
   def update_recent_account_ids(conn, callback) when is_function(callback, 1) do
     {:ok, recent_account_ids, conn} = all_recent_account_ids(conn)
@@ -137,5 +130,14 @@ defmodule Web.Auth do
         remaining_time: remaining_time
       )
     end
+  end
+
+  @doc """
+  Returns non-empty parameters that should be persisted during sign in flow.
+  """
+  def take_sign_in_params(params) do
+    params
+    |> Map.take(["as", "state", "nonce", "redirect_to"])
+    |> Map.reject(fn {_key, value} -> value in ["", nil] end)
   end
 end

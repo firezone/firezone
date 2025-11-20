@@ -113,9 +113,8 @@ defmodule Web.EmailOTPController do
       Web.Auth.execute_with_constant_time(
         fn ->
           with %Auth.Identity{} = identity <- fetch_identity(account, issuer, idp_id),
-               {:ok, identity} <-
-                 Domain.Auth.Adapters.Email.request_sign_in_token(identity, context),
-               {:ok, fragment} <- send_email_otp(conn, identity, params) do
+               {:ok, identity, fragment, nonce} <- request_sign_in_token(identity, context),
+               {:ok, fragment} <- send_email_otp(conn, identity, fragment, nonce, auth_provider_id, params) do
             {fragment, nil}
           else
             {:error, :rate_limited} ->
@@ -195,12 +194,43 @@ defmodule Web.EmailOTPController do
     |> Repo.one()
   end
 
-  defp send_email_otp(conn, identity, params) do
-    nonce = identity.provider_virtual_state.nonce
-    fragment = identity.provider_virtual_state.fragment
+  defp request_sign_in_token(identity, context) do
+    # Token expiration: 30 minutes
+    sign_in_token_expiration_seconds = 30 * 60
+    # Max attempts: 3
+    sign_in_token_max_attempts = 3
+
+    nonce = String.downcase(Domain.Crypto.random_token(5, encoder: :user_friendly))
+    expires_at = DateTime.utc_now() |> DateTime.add(sign_in_token_expiration_seconds, :second)
+
+    # Delete all existing email tokens for this identity
+    {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
+
+    {:ok, token} =
+      Tokens.create_token(%{
+        type: :email,
+        secret_fragment: Domain.Crypto.random_token(27),
+        secret_nonce: nonce,
+        account_id: identity.account_id,
+        actor_id: identity.actor_id,
+        identity_id: identity.id,
+        remaining_attempts: sign_in_token_max_attempts,
+        expires_at: expires_at,
+        created_by_user_agent: context.user_agent,
+        created_by_remote_ip: context.remote_ip
+      })
+
+    fragment = Tokens.encode_fragment!(token)
+
+    {:ok, identity, fragment, nonce}
+  end
+
+  defp send_email_otp(conn, identity, fragment, nonce, auth_provider_id, params) do
 
     Domain.Mailer.AuthEmail.sign_in_link_email(
       identity,
+      DateTime.utc_now(),
+      auth_provider_id,
       nonce,
       conn.assigns.user_agent,
       conn.remote_ip,
@@ -218,8 +248,17 @@ defmodule Web.EmailOTPController do
   end
 
   defp verify_secret(identity, encoded_token, conn) do
+    # Inlined from Domain.Auth.Adapters.Email.verify_secret
     context = auth_context(conn, :browser)
-    Domain.Auth.Adapters.Email.verify_secret(identity, context, encoded_token)
+
+    with {:ok, token} <- Tokens.use_token(encoded_token, %{context | type: :email}),
+         true <- token.identity_id == identity.id do
+      {:ok, _count} = Tokens.delete_all_tokens_by_type_and_assoc(:email, identity)
+      {:ok, identity, nil}
+    else
+      {:error, :invalid_or_expired_token} -> {:error, :invalid_secret}
+      false -> {:error, :invalid_secret}
+    end
   end
 
   defp check_admin(

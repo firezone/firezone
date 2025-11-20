@@ -8,10 +8,6 @@ defmodule Domain.Actors.Group do
     field :directory, :string
     field :idp_id, :string
 
-    # Those fields will be set for groups we synced from IdP's
-    belongs_to :provider, Domain.Auth.Provider
-    field :provider_identifier, :string
-
     field :last_synced_at, :utc_datetime_usec
 
     has_many :policies, Domain.Policies.Policy, foreign_key: :actor_group_id
@@ -30,13 +26,10 @@ defmodule Domain.Actors.Group do
   def changeset(changeset) do
     changeset
     |> validate_required(~w[name type]a)
-    |> trim_change(~w[name directory idp_id provider_identifier]a)
+    |> trim_change(~w[name directory idp_id]a)
     |> validate_length(:name, min: 1, max: 255)
     |> unique_constraint(:name, name: :actor_groups_account_id_name_index)
     |> unique_constraint(:base, name: :actor_groups_account_idp_fields_index)
-    |> unique_constraint(:base, name: :provider_fields_not_null)
-    |> unique_constraint(:base,
-      name: :actor_groups_account_id_provider_id_provider_identifier_index
-    )
+    |> check_constraint(:base, name: :directory_must_be_firezone_or_idp_id_present)
   end
 end

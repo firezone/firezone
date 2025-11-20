@@ -162,24 +162,6 @@ defmodule Domain.Actors do
     end
   end
 
-  def sync_provider_groups(%Auth.Provider{} = provider, attrs_list) do
-    Group.Sync.sync_provider_groups(provider, attrs_list)
-  end
-
-  def sync_provider_memberships(
-        actor_ids_by_provider_identifier,
-        group_ids_by_provider_identifier,
-        %Auth.Provider{} = provider,
-        tuples
-      ) do
-    Membership.Sync.sync_provider_memberships(
-      actor_ids_by_provider_identifier,
-      group_ids_by_provider_identifier,
-      provider,
-      tuples
-    )
-  end
-
   def new_group(attrs \\ %{}) do
     change_group(%Group{}, attrs)
   end
@@ -210,7 +192,7 @@ defmodule Domain.Actors do
     raise ArgumentError, "can't change managed groups"
   end
 
-  def change_group(%Group{provider_id: nil} = group, attrs) do
+  def change_group(%Group{directory: "firezone"} = group, attrs) do
     Group.Changeset.update(group, attrs)
   end
 
@@ -222,7 +204,7 @@ defmodule Domain.Actors do
     {:error, :managed_group}
   end
 
-  def update_group(%Group{provider_id: nil} = group, attrs, %Auth.Subject{} = subject) do
+  def update_group(%Group{directory: "firezone"} = group, attrs, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_actors_permission()) do
       Group.Query.all()
       |> Group.Query.by_id(group.id)
@@ -246,7 +228,7 @@ defmodule Domain.Actors do
     |> Repo.transaction()
   end
 
-  def delete_group(%Group{provider_id: nil} = group, %Auth.Subject{} = subject) do
+  def delete_group(%Group{directory: "firezone"} = group, %Auth.Subject{} = subject) do
     with :ok <- Group.Authorizer.ensure_has_access_to(group, subject) do
       Repo.delete(group)
     end
@@ -256,7 +238,7 @@ defmodule Domain.Actors do
     {:error, :synced_group}
   end
 
-  def group_synced?(%Group{provider_id: nil}), do: false
+  def group_synced?(%Group{directory: "firezone"}), do: false
   def group_synced?(%Group{}), do: true
 
   def group_managed?(%Group{type: :managed}), do: true
@@ -322,15 +304,6 @@ defmodule Domain.Actors do
     Membership.Query.by_actor_id(actor.id)
     |> Membership.Query.select_distinct_group_ids()
     |> Repo.all()
-  end
-
-  def preload_last_seen_at(actors) do
-    actor_ids = Enum.map(actors, & &1.id)
-    last_seen_at = Auth.max_last_seen_at_by_actor_ids(actor_ids)
-
-    Enum.map(actors, fn actor ->
-      %{actor | last_seen_at: Map.get(last_seen_at, actor.id)}
-    end)
   end
 
   def all_admins_for_account!(%Accounts.Account{} = account, opts \\ []) do

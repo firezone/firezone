@@ -48,9 +48,20 @@ defmodule Web.UserpassController do
     handle_error(conn, :invalid_params, params)
   end
 
-  defp verify_password(identity, password, conn) do
-    context = auth_context(conn, :browser)
-    Domain.Auth.Adapters.UserPass.verify_secret(identity, context, password)
+  defp verify_password(identity, password, _conn) do
+    # Inlined from Domain.Auth.Adapters.UserPass.verify_secret
+    password_hash = identity.password_hash
+
+    cond do
+      is_nil(password_hash) ->
+        {:error, :invalid_secret}
+
+      not Domain.Crypto.equal?(:argon2, password, password_hash) ->
+        {:error, :invalid_secret}
+
+      true ->
+        {:ok, identity, nil}
+    end
   end
 
   defp check_admin(
@@ -187,12 +198,4 @@ defmodule Web.UserpassController do
 
   defp context_type(%{"as" => "client"}), do: :client
   defp context_type(_), do: :browser
-
-  defp auth_context(conn, context_type) do
-    remote_ip = conn.remote_ip
-    user_agent = conn.assigns[:user_agent]
-    headers = conn.req_headers
-
-    Domain.Auth.Context.build(remote_ip, user_agent, headers, context_type)
-  end
 end

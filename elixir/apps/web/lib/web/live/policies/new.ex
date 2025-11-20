@@ -1,10 +1,11 @@
 defmodule Web.Policies.New do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policies, Auth}
+  alias Domain.Policies
+  alias Web.Policies.Components.Query
 
   def mount(params, _session, socket) do
-    providers = Auth.all_active_providers_for_account!(socket.assigns.account)
+    providers = Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
     form =
       Policies.new_policy(%{}, socket.assigns.subject)
@@ -48,8 +49,8 @@ defmodule Web.Policies.New do
                   label="Group"
                   placeholder="Select Actor Group"
                   field={@form[:actor_group_id]}
-                  fetch_option_callback={&Web.Groups.Components.fetch_group_option(&1, @subject)}
-                  list_options_callback={&Web.Groups.Components.list_group_options(&1, @subject)}
+                  fetch_option_callback={&Query.fetch_group_option(&1, @subject)}
+                  list_options_callback={&Query.list_group_options(&1, @subject)}
                   value={@enforced_actor_group_id || @form[:actor_group_id].value}
                   disabled={not is_nil(@enforced_actor_group_id)}
                   required

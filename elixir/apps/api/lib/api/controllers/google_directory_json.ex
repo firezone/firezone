@@ -1,0 +1,32 @@
+defmodule API.GoogleDirectoryJSON do
+  alias Domain.Google
+
+  def index(%{directories: directories}) do
+    %{data: Enum.map(directories, &data/1)}
+  end
+
+  def show(%{directory: directory}) do
+    %{data: data(directory)}
+  end
+
+  defp data(%Google.Directory{} = directory) do
+    %{
+      id: directory.id,
+      account_id: directory.account_id,
+      name: directory.name,
+      domain: directory.domain,
+      impersonation_email: directory.impersonation_email,
+      error_count: directory.error_count,
+      is_disabled: directory.is_disabled,
+      disabled_reason: directory.disabled_reason,
+      synced_at: directory.synced_at,
+      current_job_id: directory.current_job_id,
+      error: directory.error,
+      error_emailed_at: directory.error_emailed_at,
+      created_by: directory.created_by,
+      created_by_subject: directory.created_by_subject,
+      inserted_at: directory.inserted_at,
+      updated_at: directory.updated_at
+    }
+  end
+end

@@ -3,11 +3,6 @@ defmodule Domain.Auth.Identity do
 
   schema "auth_identities" do
     belongs_to :actor, Domain.Actors.Actor, on_replace: :update
-    belongs_to :provider, Domain.Auth.Provider
-
-    # Unique identifiers
-    field :email, :string
-    field :provider_identifier, :string
 
     # Identity Provider fields
     field :issuer

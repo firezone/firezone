@@ -58,8 +58,7 @@ defmodule API.Router do
     end
 
     resources "/actors", ActorController, except: [:new, :edit] do
-      resources "/identities", IdentityController, except: [:new, :edit, :create, :update]
-      post "/providers/:provider_id/identities/", IdentityController, :create
+      resources "/identities", IdentityController, only: [:index, :show, :delete]
     end
 
     resources "/actor_groups", ActorGroupController, except: [:new, :edit] do
@@ -68,7 +67,15 @@ defmodule API.Router do
       patch "/memberships", ActorGroupMembershipController, :update_patch
     end
 
-    resources "/identity_providers", IdentityProviderController, only: [:index, :show, :delete]
+    resources "/userpass_auth_providers", UserpassAuthProviderController, only: [:index, :show]
+    resources "/email_otp_auth_providers", EmailOTPAuthProviderController, only: [:index, :show]
+    resources "/oidc_auth_providers", OIDCAuthProviderController, only: [:index, :show]
+    resources "/google_auth_providers", GoogleAuthProviderController, only: [:index, :show]
+    resources "/entra_auth_providers", EntraAuthProviderController, only: [:index, :show]
+    resources "/okta_auth_providers", OktaAuthProviderController, only: [:index, :show]
+    resources "/google_directories", GoogleDirectoryController, only: [:index, :show]
+    resources "/entra_directories", EntraDirectoryController, only: [:index, :show]
+    resources "/okta_directories", OktaDirectoryController, only: [:index, :show]
   end
 
   scope "/integrations", API.Integrations do

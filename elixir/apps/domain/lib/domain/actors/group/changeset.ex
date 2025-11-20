@@ -36,16 +36,16 @@ defmodule Domain.Actors.Group.Changeset do
     |> put_subject_trail(:created_by, :system)
   end
 
-  def create(%Auth.Provider{} = provider, attrs) do
-    %Actors.Group{memberships: []}
-    |> cast(attrs, ~w[name provider_identifier last_synced_at]a)
-    |> validate_required(~w[name provider_identifier]a)
-    |> put_change(:type, :static)
-    |> changeset()
-    |> put_change(:provider_id, provider.id)
-    |> put_change(:account_id, provider.account_id)
-    |> put_subject_trail(:created_by, :provider)
-  end
+  # def create(%Auth.Provider{} = provider, attrs) do
+  #   %Actors.Group{memberships: []}
+  #   |> cast(attrs, ~w[name provider_identifier last_synced_at]a)
+  #   |> validate_required(~w[name provider_identifier]a)
+  #   |> put_change(:type, :static)
+  #   |> changeset()
+  #   |> put_change(:provider_id, provider.id)
+  #   |> put_change(:account_id, provider.account_id)
+  #   |> put_subject_trail(:created_by, :provider)
+  # end
 
   def update(%Actors.Group{} = group, attrs) do
     group

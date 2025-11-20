@@ -10,27 +10,64 @@ defmodule Domain.Safe do
 
   defmodule Scoped do
     @moduledoc """
-    Scoped context that carries authorization information.
+    Scoped context that carries authorization information and optional queryable.
     """
-    @type t :: %__MODULE__{subject: Subject.t()}
+    @type t :: %__MODULE__{subject: Subject.t(), queryable: Ecto.Queryable.t() | nil}
 
-    defstruct [:subject]
+    defstruct [:subject, :queryable]
+  end
+
+  defmodule Unscoped do
+    @moduledoc """
+    Unscoped context for operations without authorization.
+    """
+    @type t :: %__MODULE__{queryable: Ecto.Queryable.t() | nil}
+
+    defstruct [:queryable]
   end
 
   @doc """
   Returns a scoped context for operations with authorization and account filtering.
+  Can optionally accept a queryable to enable chaining.
+
+  ## Examples
+
+      # Traditional style
+      Safe.scoped(subject) |> Safe.one(query)
+
+      # Chainable style
+      query |> Safe.scoped(subject) |> Safe.one()
   """
   @spec scoped(Subject.t()) :: Scoped.t()
   def scoped(%Subject{} = subject) do
-    %Scoped{subject: subject}
+    %Scoped{subject: subject, queryable: nil}
+  end
+
+  @spec scoped(Ecto.Queryable.t() | Ecto.Changeset.t(), Subject.t()) :: Scoped.t()
+  def scoped(queryable, %Subject{} = subject) do
+    %Scoped{subject: subject, queryable: queryable}
   end
 
   @doc """
-  Returns the Repo module for unscoped operations without authorization or filtering.
+  Returns an unscoped context for operations without authorization or filtering.
+  Can optionally accept a queryable to enable chaining.
+
+  ## Examples
+
+      # Traditional style
+      Safe.unscoped() |> Safe.one(query)
+
+      # Chainable style
+      query |> Safe.unscoped() |> Safe.one()
   """
-  @spec unscoped() :: Domain.Repo
+  @spec unscoped() :: Unscoped.t()
   def unscoped do
-    Repo
+    %Unscoped{queryable: nil}
+  end
+
+  @spec unscoped(Ecto.Queryable.t()) :: Unscoped.t()
+  def unscoped(queryable) do
+    %Unscoped{queryable: queryable}
   end
 
   # Query operations

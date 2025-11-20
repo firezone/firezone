@@ -1,0 +1,32 @@
+defmodule API.EntraDirectoryJSON do
+  alias Domain.Entra
+
+  def index(%{directories: directories}) do
+    %{data: Enum.map(directories, &data/1)}
+  end
+
+  def show(%{directory: directory}) do
+    %{data: data(directory)}
+  end
+
+  defp data(%Entra.Directory{} = directory) do
+    %{
+      id: directory.id,
+      account_id: directory.account_id,
+      name: directory.name,
+      tenant_id: directory.tenant_id,
+      error_count: directory.error_count,
+      is_disabled: directory.is_disabled,
+      disabled_reason: directory.disabled_reason,
+      synced_at: directory.synced_at,
+      current_job_id: directory.current_job_id,
+      error: directory.error,
+      error_emailed_at: directory.error_emailed_at,
+      sync_all_groups: directory.sync_all_groups,
+      created_by: directory.created_by,
+      created_by_subject: directory.created_by_subject,
+      inserted_at: directory.inserted_at,
+      updated_at: directory.updated_at
+    }
+  end
+end

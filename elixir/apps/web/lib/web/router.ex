@@ -91,7 +91,7 @@ defmodule Web.Router do
 
     # Email auth entry point
     post "/sign_in/email_otp/:auth_provider_id", EmailOTPController, :sign_in
-    post "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
+    get "/sign_in/email_otp/:auth_provider_id/verify", EmailOTPController, :verify
 
     # Userpass auth entry point
     post "/sign_in/userpass/:auth_provider_id", UserpassController, :sign_in
@@ -239,71 +239,6 @@ defmodule Web.Router do
           live "/select_type", DirectorySync, :select_type
           live "/:type/new", DirectorySync, :new
           live "/:type/:id/edit", DirectorySync, :edit
-        end
-
-        scope "/identity_providers", IdentityProviders do
-          live "/", Index
-          live "/new", New
-
-          scope "/openid_connect", OpenIDConnect do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/google_workspace", GoogleWorkspace do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/microsoft_entra", MicrosoftEntra do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/okta", Okta do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/jumpcloud", JumpCloud do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-
-            # OpenID Connection
-            get "/:provider_id/redirect", Connect, :redirect_to_idp
-            get "/:provider_id/handle_callback", Connect, :handle_idp_callback
-          end
-
-          scope "/mock", Mock do
-            live "/new", New
-            live "/:provider_id", Show
-            live "/:provider_id/edit", Edit
-          end
-
-          scope "/system", System do
-            live "/:provider_id", Show
-          end
         end
 
         live "/dns", DNS

@@ -817,4 +817,127 @@ defmodule Web.Policies.Components do
     </.intersperse>
     """
   end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Actors}
+
+    def all_active_providers_for_account(account, subject) do
+      # Query all auth provider types that are not disabled
+      userpass_query =
+        from(p in Userpass.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      email_otp_query =
+        from(p in EmailOTP.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      oidc_query =
+        from(p in OIDC.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      google_query =
+        from(p in Google.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      entra_query =
+        from(p in Entra.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      okta_query =
+        from(p in Okta.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      # Combine all providers from different tables using Safe
+      (Safe.scoped(subject) |> Safe.all(userpass_query)) ++
+        (Safe.scoped(subject) |> Safe.all(email_otp_query)) ++
+        (Safe.scoped(subject) |> Safe.all(oidc_query)) ++
+        (Safe.scoped(subject) |> Safe.all(google_query)) ++
+        (Safe.scoped(subject) |> Safe.all(entra_query)) ++
+        (Safe.scoped(subject) |> Safe.all(okta_query))
+    end
+
+    # Inlined from Web.Groups.Components
+    def fetch_group_option(id, subject) do
+      query = from(g in Actors.Group, where: g.id == ^id)
+      group = Safe.scoped(subject) |> Safe.one!(query)
+      {:ok, group_option(group)}
+    end
+
+    def list_group_options(search_query_or_nil, subject) do
+      query =
+        from(g in Actors.Group,
+          order_by: [asc: g.name],
+          limit: 25
+        )
+
+      query =
+        if search_query_or_nil != "" and search_query_or_nil != nil do
+          from(g in query, where: ilike(g.name, ^"%#{search_query_or_nil}%"))
+        else
+          query
+        end
+
+      groups = Safe.scoped(subject) |> Safe.all(query)
+
+      # For metadata, we'll return a simple count
+      metadata = %{limit: 25, count: length(groups)}
+
+      {:ok, grouped_select_options(groups), metadata}
+    end
+
+    defp grouped_select_options(groups) do
+      groups
+      |> Enum.group_by(&option_groups_index_and_label/1)
+      |> Enum.sort_by(fn {{options_group_index, options_group_label}, _groups} ->
+        {options_group_index, options_group_label}
+      end)
+      |> Enum.map(fn {{_options_group_index, options_group_label}, groups} ->
+        {options_group_label, groups |> Enum.sort_by(& &1.name) |> Enum.map(&group_option/1)}
+      end)
+    end
+
+    defp option_groups_index_and_label(group) do
+      index =
+        cond do
+          group_synced?(group) -> 9
+          group_managed?(group) -> 1
+          true -> 2
+        end
+
+      label =
+        cond do
+          group_synced?(group) ->
+            provider_name =
+              group.directory
+              |> String.split(":")
+              |> List.first()
+              |> String.capitalize()
+
+            "Synced from #{provider_name}"
+
+          group_managed?(group) ->
+            "Managed by Firezone"
+
+          true ->
+            "Manually managed"
+        end
+
+      {index, label}
+    end
+
+    defp group_option(group) do
+      {group.id, group.name, group}
+    end
+
+    # Inlined from Domain.Actors helpers
+    defp group_synced?(group), do: group.directory != "firezone"
+    defp group_managed?(group), do: group.type == :managed
+  end
 end

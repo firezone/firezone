@@ -341,9 +341,9 @@ defmodule Web.Actors do
   end
 
   def handle_event("delete_identity", %{"id" => identity_id}, socket) do
-    case Domain.Auth.fetch_identity_by_id(identity_id, socket.assigns.subject) do
+    case Query.fetch_identity_by_id(identity_id, socket.assigns.subject) do
       {:ok, identity} ->
-        case Domain.Auth.delete_identity(identity, socket.assigns.subject) do
+        case Query.delete_identity(identity, socket.assigns.subject) do
           {:ok, _} ->
             # Reload identities for the actor
             identities =
@@ -1283,6 +1283,18 @@ defmodule Web.Actors do
         |> order_by([tokens: t], desc: t.inserted_at)
 
       Safe.scoped(subject) |> Safe.all(query)
+    end
+
+    def fetch_identity_by_id(identity_id, subject) do
+      query =
+        from(i in Auth.Identity, as: :identities)
+        |> where([identities: i], i.id == ^identity_id)
+
+      Safe.scoped(subject) |> Safe.fetch(query)
+    end
+
+    def delete_identity(identity, subject) do
+      Safe.scoped(subject) |> Safe.delete(identity)
     end
   end
 end

@@ -16,7 +16,7 @@ defmodule Domain.Mailer.AuthEmail do
 
     default_email()
     |> subject("Welcome to Firezone")
-    |> to(identity.provider_identifier)
+    |> to(identity.actor.email)
     |> render_body(__MODULE__, :sign_up_link,
       account: account,
       sign_in_form_url: sign_in_form_url,
@@ -27,6 +27,8 @@ defmodule Domain.Mailer.AuthEmail do
 
   def sign_in_link_email(
         %Domain.Auth.Identity{} = identity,
+        token_created_at,
+        auth_provider_id,
         secret,
         user_agent,
         remote_ip,
@@ -40,22 +42,20 @@ defmodule Domain.Mailer.AuthEmail do
 
     sign_in_url =
       url(
-        "/#{identity.account.slug}/sign_in/providers/#{identity.provider_id}/verify_sign_in_token",
+        "/#{identity.account.slug}/sign_in/email_otp/#{auth_provider_id}/verify",
         params
       )
 
-    sign_in_token_created_at =
-      Cldr.DateTime.to_string!(identity.provider_state["token_created_at"], Domain.CLDR,
-        format: :short
-      ) <> " UTC"
+    token_created_at =
+      Cldr.DateTime.to_string!(token_created_at, Domain.CLDR, format: :short) <> " UTC"
 
     default_email()
     |> subject("Firezone sign in token")
-    |> to(identity.provider_identifier)
+    |> to(identity.actor.email)
     |> render_body(__MODULE__, :sign_in_link,
       account: identity.account,
       client_platform: params["client_platform"],
-      sign_in_token_created_at: sign_in_token_created_at,
+      token_created_at: token_created_at,
       secret: secret,
       sign_in_url: sign_in_url,
       user_agent: user_agent,
@@ -70,7 +70,7 @@ defmodule Domain.Mailer.AuthEmail do
       ) do
     default_email()
     |> subject("Welcome to Firezone")
-    |> to(Domain.Auth.get_identity_email(identity))
+    |> to(identity.actor.email)
     |> render_body(__MODULE__, :new_user,
       account: account,
       identity: identity,

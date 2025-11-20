@@ -13,6 +13,8 @@ defmodule Domain.Changes.Hooks.AuthProviders do
         %{"is_disabled" => true}
       ) do
     delete_tokens_for_provider(provider_id)
+
+    :ok
   end
 
   def on_update(
@@ -30,6 +32,8 @@ defmodule Domain.Changes.Hooks.AuthProviders do
       when old_client_lifetime != new_client_lifetime or
              old_portal_lifetime != new_portal_lifetime do
     delete_tokens_for_provider(provider_id)
+
+    :ok
   end
 
   def on_update(_lsn, _old_data, _new_data), do: :ok
@@ -47,7 +51,5 @@ defmodule Domain.Changes.Hooks.AuthProviders do
       where: t.auth_provider_id == ^provider_id
     )
     |> Repo.delete_all()
-
-    :ok
   end
 end
