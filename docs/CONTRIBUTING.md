@@ -143,7 +143,7 @@ The versions for most tools and SDKs required for working on Firezone are manage
 via `.tool-versions` files in the respective directories, i.e. Elixir tools in
 [elixir/.tool-versions](elixir/.tool-versions) etc.
 
-You can use any `.tool-versions` compatible version manager for installing them.
+You can use any `.tool-versions`-compatible version manager for installing them.
 
 - Note: For a fresh install of `asdf` you will need to install some
   [asdf-plugins](https://asdf-vm.com/manage/plugins.html). e.g. `asdf plugin add nodejs && asdf install nodejs` to set up the NodeJS plugin and package.
