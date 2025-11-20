@@ -67,7 +67,6 @@ jobs:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
         with:
           fetch-tags: true # Otherwise we cannot embed the correct version into the build.
-      - uses: marocchino/tool-versions-action@18a164fa2b0db1cc1edf7305fcb17ace36d1c306 # v1.2.0
       - uses: ./.github/actions/setup-android
         with:
           sccache_azure_connection_string: ${{ secrets.SCCACHE_AZURE_CONNECTION_STRING }}
