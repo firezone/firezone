@@ -3,6 +3,7 @@ defmodule API.GatewayGroupController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.{Gateways, Tokens}
+  alias __MODULE__.Query
 
   action_fallback API.FallbackController
 
@@ -27,7 +28,7 @@ defmodule API.GatewayGroupController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, gateway_groups, metadata} <- Gateways.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, gateway_groups, metadata} <- Query.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, gateway_groups: gateway_groups, metadata: metadata)
     end
   end
@@ -48,9 +49,8 @@ defmodule API.GatewayGroupController do
 
   # Show a specific Gateway Group / Site
   def show(conn, %{"id" => id}) do
-    with {:ok, gateway_group} <- Gateways.fetch_group_by_id(id, conn.assigns.subject) do
-      render(conn, :show, gateway_group: gateway_group)
-    end
+    gateway_group = Query.fetch_group(conn.assigns.subject, id)
+    render(conn, :show, gateway_group: gateway_group)
   end
 
   operation :create,
@@ -97,9 +97,9 @@ defmodule API.GatewayGroupController do
   # Update a Gateway Group / Site
   def update(conn, %{"id" => id, "gateway_group" => params}) do
     subject = conn.assigns.subject
+    gateway_group = Query.fetch_group(subject, id)
 
-    with {:ok, gateway_group} <- Gateways.fetch_group_by_id(id, subject),
-         {:ok, gateway_group} <- Gateways.update_group(gateway_group, params, subject) do
+    with {:ok, gateway_group} <- Query.update_group(gateway_group, params, subject) do
       render(conn, :show, gateway_group: gateway_group)
     end
   end
@@ -125,9 +125,9 @@ defmodule API.GatewayGroupController do
   # Delete a Gateway Group / Site
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
+    gateway_group = Query.fetch_group(subject, id)
 
-    with {:ok, gateway_group} <- Gateways.fetch_group_by_id(id, subject),
-         {:ok, gateway_group} <- Gateways.delete_group(gateway_group, subject) do
+    with {:ok, gateway_group} <- Query.delete_group(gateway_group, subject) do
       render(conn, :show, gateway_group: gateway_group)
     end
   end
@@ -214,6 +214,48 @@ defmodule API.GatewayGroupController do
     with {:ok, gateway_group} <- Gateways.fetch_group_by_id(gateway_group_id, subject),
          {:ok, deleted_count} <- Tokens.delete_tokens_for(gateway_group, subject) do
       render(conn, :deleted_tokens, %{count: deleted_count})
+    end
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Gateways, Safe, Repo}
+
+    def list_groups(subject, opts \\ []) do
+      from(g in Gateways.Group, as: :groups)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_group(subject, id) do
+      from(g in Gateways.Group, where: g.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_group(group, attrs, subject) do
+      group
+      |> Repo.preload(:account)
+      |> changeset(attrs, subject)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete_group(group, subject) do
+      group
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    defp changeset(group, attrs, subject) do
+      Gateways.Group.Changeset.update(group, attrs, subject)
+    end
+
+    def cursor_fields do
+      [
+        {:groups, :asc, :inserted_at},
+        {:groups, :asc, :id}
+      ]
     end
   end
 end

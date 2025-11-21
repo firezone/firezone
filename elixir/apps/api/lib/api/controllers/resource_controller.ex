@@ -3,6 +3,7 @@ defmodule API.ResourceController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Resources
+  alias __MODULE__.Query
 
   action_fallback API.FallbackController
 
@@ -22,7 +23,7 @@ defmodule API.ResourceController do
     list_opts = Pagination.params_to_list_opts(params)
 
     with {:ok, resources, metadata} <-
-           Resources.list_resources(conn.assigns.subject, list_opts) do
+           Query.list_resources(conn.assigns.subject, list_opts) do
       render(conn, :index, resources: resources, metadata: metadata)
     end
   end
@@ -42,10 +43,8 @@ defmodule API.ResourceController do
     ]
 
   def show(conn, %{"id" => id}) do
-    with {:ok, resource} <-
-           Resources.fetch_resource_by_id(id, conn.assigns.subject) do
-      render(conn, :show, resource: resource)
-    end
+    resource = Query.fetch_resource(conn.assigns.subject, id)
+    render(conn, :show, resource: resource)
   end
 
   operation :create,
@@ -91,15 +90,10 @@ defmodule API.ResourceController do
   def update(conn, %{"id" => id, "resource" => params}) do
     subject = conn.assigns.subject
     attrs = set_param_defaults(params)
+    resource = Query.fetch_resource(subject, id)
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, subject) do
-      case Resources.update_resource(resource, attrs, subject) do
-        {:ok, updated_resource} ->
-          render(conn, :show, resource: updated_resource)
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    with {:ok, updated_resource} <- Query.update_resource(resource, attrs, subject) do
+      render(conn, :show, resource: updated_resource)
     end
   end
 
@@ -123,14 +117,55 @@ defmodule API.ResourceController do
 
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
+    resource = Query.fetch_resource(subject, id)
 
-    with {:ok, resource} <- Resources.fetch_resource_by_id(id, subject),
-         {:ok, resource} <- Resources.delete_resource(resource, subject) do
+    with {:ok, resource} <- Query.delete_resource(resource, subject) do
       render(conn, :show, resource: resource)
     end
   end
 
   defp set_param_defaults(params) do
     Map.put_new(params, "filters", %{})
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Resources, Safe}
+
+    def list_resources(subject, opts \\ []) do
+      from(r in Resources.Resource, as: :resources)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_resource(subject, id) do
+      from(r in Resources.Resource, where: r.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_resource(resource, attrs, subject) do
+      resource
+      |> changeset(attrs, subject)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete_resource(resource, subject) do
+      resource
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    defp changeset(resource, attrs, subject) do
+      Resources.Resource.Changeset.update(resource, attrs, subject)
+    end
+
+    def cursor_fields do
+      [
+        {:resources, :asc, :inserted_at},
+        {:resources, :asc, :id}
+      ]
+    end
   end
 end

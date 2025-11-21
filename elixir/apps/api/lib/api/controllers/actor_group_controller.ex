@@ -44,9 +44,8 @@ defmodule API.ActorGroupController do
 
   # Show a specific Actor Group
   def show(conn, %{"id" => id}) do
-    with {:ok, actor_group} <- Actors.fetch_group_by_id(id, conn.assigns.subject) do
-      render(conn, :show, actor_group: actor_group)
-    end
+    actor_group = Query.fetch_group(conn.assigns.subject, id)
+    render(conn, :show, actor_group: actor_group)
   end
 
   operation :create,
@@ -95,9 +94,9 @@ defmodule API.ActorGroupController do
   # Update an Actor Group
   def update(conn, %{"id" => id, "actor_group" => params}) do
     subject = conn.assigns.subject
+    actor_group = Query.fetch_group(subject, id)
 
-    with {:ok, actor_group} <- Actors.fetch_group_by_id(id, subject),
-         {:ok, actor_group} <- Actors.update_group(actor_group, params, subject) do
+    with {:ok, actor_group} <- Query.update_group(actor_group, params, subject) do
       render(conn, :show, actor_group: actor_group)
     end
   end
@@ -123,22 +122,57 @@ defmodule API.ActorGroupController do
   # Delete an Actor Group
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
+    actor_group = Query.fetch_group(subject, id)
 
-    with {:ok, actor_group} <- Actors.fetch_group_by_id(id, subject),
-         {:ok, actor_group} <- Actors.delete_group(actor_group, subject) do
+    with {:ok, actor_group} <- Query.delete_group(actor_group, subject) do
       render(conn, :show, actor_group: actor_group)
     end
   end
 
   defmodule Query do
     import Ecto.Query
-    alias Domain.{Actors, Safe}
+    alias Domain.{Actors, Safe, Repo}
 
-    # Inlined from Domain.Actors.list_groups
     def list_groups(subject, opts \\ []) do
       from(g in Actors.Group, as: :groups)
       |> Safe.scoped(subject)
       |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_group(subject, id) do
+      from(g in Actors.Group, where: g.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_group(%Actors.Group{type: :managed}, _attrs, _subject) do
+      {:error, :managed_group}
+    end
+
+    def update_group(%Actors.Group{directory: "firezone"} = group, attrs, subject) do
+      group
+      |> Repo.preload(:memberships)
+      |> changeset(attrs)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def update_group(%Actors.Group{}, _attrs, _subject) do
+      {:error, :synced_group}
+    end
+
+    def delete_group(%Actors.Group{directory: "firezone"} = group, subject) do
+      group
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    def delete_group(%Actors.Group{}, _subject) do
+      {:error, :synced_group}
+    end
+
+    defp changeset(group, attrs) do
+      Actors.Group.Changeset.update(group, attrs)
     end
 
     def cursor_fields do

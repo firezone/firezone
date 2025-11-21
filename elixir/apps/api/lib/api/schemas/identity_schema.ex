@@ -14,8 +14,10 @@ defmodule API.Schemas.Identity do
         actor_id: %Schema{type: :string, description: "Actor ID"},
         issuer: %Schema{
           type: :string,
-          description: "Identity issuer (e.g., 'firezone', 'google', 'okta')"
+          description:
+            "Identity issuer URL (e.g., 'https://accounts.google.com', 'https://company.okta.com')"
         },
+        directory: %Schema{type: :string, description: "Directory name or identifier"},
         idp_id: %Schema{type: :string, description: "IDP-specific identifier for this identity"},
         name: %Schema{type: :string, description: "Full name"},
         given_name: %Schema{type: :string, description: "Given name"},
@@ -31,7 +33,8 @@ defmodule API.Schemas.Identity do
       example: %{
         "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
         "actor_id" => "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-        "issuer" => "google",
+        "issuer" => "https://accounts.google.com",
+        "directory" => "example.com",
         "idp_id" => "2551705710219359",
         "name" => "John Doe",
         "picture" => "https://example.com/avatar.jpg"
@@ -76,7 +79,8 @@ defmodule API.Schemas.Identity do
         "data" => %{
           "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
           "actor_id" => "cdfa97e6-cca1-41db-8fc7-864daedb46df",
-          "issuer" => "google",
+          "issuer" => "https://accounts.google.com",
+          "directory" => "example.com",
           "idp_id" => "2551705710219359",
           "name" => "John Doe",
           "picture" => "https://example.com/avatar.jpg"
@@ -103,7 +107,8 @@ defmodule API.Schemas.Identity do
           %{
             "id" => "42a7f82f-831a-4a9d-8f17-c66c2bb6e205",
             "actor_id" => "8f44a02b-b8eb-406f-8202-4274bf60ebd0",
-            "issuer" => "google",
+            "issuer" => "https://accounts.google.com",
+            "directory" => "example.com",
             "idp_id" => "2551705710219359",
             "name" => "John Doe",
             "picture" => "https://example.com/avatar1.jpg"
@@ -111,7 +116,8 @@ defmodule API.Schemas.Identity do
           %{
             "id" => "8a70eb96-e74b-4cdc-91b8-48c05ef74d4c",
             "actor_id" => "38c92cda-1ddb-45b3-9d1a-7efc375e00c1",
-            "issuer" => "okta",
+            "issuer" => "https://company.okta.com",
+            "directory" => "company.okta.com",
             "idp_id" => "2638957392736483",
             "name" => "Jane Smith",
             "picture" => "https://example.com/avatar2.jpg"

@@ -21,6 +21,7 @@ defmodule API.IdentityJSON do
       actor_id: identity.actor_id,
       account_id: identity.account_id,
       issuer: identity.issuer,
+      directory: identity.directory,
       idp_id: identity.idp_id,
       name: identity.name,
       given_name: identity.given_name,

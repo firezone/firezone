@@ -2,6 +2,7 @@ defmodule API.OktaDirectoryController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias Domain.{Okta, Safe}
+  alias __MODULE__.Query
   import Ecto.Query
 
   action_fallback API.FallbackController
@@ -15,11 +16,7 @@ defmodule API.OktaDirectoryController do
     ]
 
   def index(conn, _params) do
-    directories =
-      from(d in Okta.Directory, as: :directories, order_by: [desc: d.inserted_at])
-      |> Safe.scoped(conn.assigns.subject)
-      |> Safe.all()
-
+    directories = Query.list_directories(conn.assigns.subject)
     render(conn, :index, directories: directories)
   end
 
@@ -38,11 +35,24 @@ defmodule API.OktaDirectoryController do
     ]
 
   def show(conn, %{"id" => id}) do
-    directory =
-      from(d in Okta.Directory, where: d.id == ^id)
-      |> Safe.scoped(conn.assigns.subject)
-      |> Safe.one!()
-
+    directory = Query.fetch_directory(conn.assigns.subject, id)
     render(conn, :show, directory: directory)
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Okta, Safe}
+
+    def list_directories(subject) do
+      from(d in Okta.Directory, as: :directories, order_by: [desc: d.inserted_at])
+      |> Safe.scoped(subject)
+      |> Safe.all()
+    end
+
+    def fetch_directory(subject, id) do
+      from(d in Okta.Directory, where: d.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
   end
 end
