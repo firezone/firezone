@@ -4,6 +4,7 @@ members = [
     "cli",
     "client-ffi",
     "client-shared",
+    "circuit-breaker",
     "connlib/bufferpool",
     "connlib/dns-over-tcp",
     "connlib/dns-types",
@@ -78,6 +79,7 @@ dns-lookup = "3.0"
 dns-over-tcp = { path = "connlib/dns-over-tcp" }
 dns-types = { path = "connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
+circuit-breaker = { path = "circuit-breaker" }
 either = "1"
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "connlib/etherparse-ext" }
