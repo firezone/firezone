@@ -183,6 +183,10 @@ defmodule Web.Settings.DNS do
                       {"OpenDNS", :opendns}
                     ]}
                   />
+                  <p class="mt-4 text-sm text-neutral-500">
+                    <strong>Note:</strong>
+                    Secure DNS is only supported on very recent Clients. Ensure your users are using the latest version to benefit from Secure DNS.
+                  </p>
                 </div>
 
                 <div
