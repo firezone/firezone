@@ -82,8 +82,7 @@ fn try_main(
     let id = bin_shared::device_id::get_client().context("Failed to get device ID")?;
 
     if cli.is_telemetry_allowed() {
-        telemetry
-            .set_tcp_socket_factory(Arc::new(firezone_bin_shared::platform::tcp_socket_factory));
+        telemetry.set_tcp_socket_factory(Arc::new(bin_shared::platform::tcp_socket_factory));
 
         rt.block_on(telemetry.start(
             &api_url,

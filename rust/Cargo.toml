@@ -9,6 +9,7 @@ members = [
     "libs/anyhow-ext",
     "libs/bin-shared",
     "libs/client-shared",
+    "libs/circuit-breaker",
     "libs/connlib/bufferpool",
     "libs/connlib/dns-over-tcp",
     "libs/connlib/dns-types",
@@ -80,6 +81,7 @@ dns-lookup = "3.0"
 dns-over-tcp = { path = "libs/connlib/dns-over-tcp" }
 dns-types = { path = "libs/connlib/dns-types" }
 ebpf-shared = { path = "relay/ebpf-shared" }
+circuit-breaker = { path = "circuit-breaker" }
 either = "1"
 etherparse = { version = "0.19", default-features = false }
 etherparse-ext = { path = "libs/connlib/etherparse-ext" }
