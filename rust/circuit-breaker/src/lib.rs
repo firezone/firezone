@@ -15,6 +15,15 @@ pub struct Token<'a> {
 }
 
 impl<'a> Token<'a> {
+    pub fn result<T, E>(self, result: Result<T, E>, now: Instant) -> Result<T, E> {
+        match &result {
+            Ok(_) => self.success(now),
+            Err(_) => self.failure(now),
+        }
+
+        result
+    }
+
     pub fn success(self, now: Instant) {
         self.cb.handle_success(now);
     }

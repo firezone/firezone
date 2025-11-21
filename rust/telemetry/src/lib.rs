@@ -7,12 +7,13 @@ use std::{
     net::{IpAddr, ToSocketAddrs as _},
     str::FromStr,
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, anyhow, bail};
 use api_url::ApiUrl;
 use bytes::{BufMut, BytesMut};
+use circuit_breaker::CircuitBreaker;
 use http_client::HttpClient;
 use sentry::{
     BeforeCallback, User,
@@ -480,11 +481,22 @@ impl sentry::TransportFactory for TransportFactory {
         let url = dsn.envelope_api_url().to_string();
 
         let task = tokio::spawn(async move {
+            let mut cb =
+                CircuitBreaker::new("Sentry HTTP transport", 5, 2, Duration::from_secs(10));
+
             'outer: loop {
+                let token = match cb.request_token(Instant::now()) {
+                    Ok(t) => t,
+                    Err(e) => {
+                        tokio::time::sleep(e.retry_after).await;
+                        continue;
+                    }
+                };
+
                 let http_client =
                     HttpClient::new(INGEST_HOST.to_owned(), addresses.clone(), sf.clone()).await;
 
-                let client = match http_client {
+                let client = match token.result(http_client, Instant::now()) {
                     Ok(c) => c,
                     Err(e) => {
                         tracing::debug!("Failed to create Sentry transport HTTP client: {e:#}");
@@ -521,7 +533,14 @@ impl sentry::TransportFactory for TransportFactory {
                         }
                     };
 
-                    let _response = match client.send_request(req) {
+                    let token = loop {
+                        match cb.request_token(Instant::now()) {
+                            Ok(t) => break t,
+                            Err(e) => tokio::time::sleep(e.retry_after).await,
+                        }
+                    };
+
+                    let _response = match token.result(client.send_request(req), Instant::now()) {
                         Ok(res) => res.await,
                         Err(e) if e.is::<http_client::Closed>() => {
                             tracing::debug!("HTTP connection to Sentry failed");
