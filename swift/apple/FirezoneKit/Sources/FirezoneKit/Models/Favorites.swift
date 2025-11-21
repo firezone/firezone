@@ -8,29 +8,29 @@ public final class Favorites: ObservableObject {
     ids = Favorites.load()
   }
 
-  func contains(_ id: String) -> Bool {
+  public func contains(_ id: String) -> Bool {
     return ids.contains(id)
   }
 
-  func reset() {
+  public func reset() {
     objectWillChange.send()
     ids = Set()
     save()
   }
 
-  func add(_ id: String) {
+  public func add(_ id: String) {
     objectWillChange.send()
     ids.insert(id)
     save()
   }
 
-  func remove(_ id: String) {
+  public func remove(_ id: String) {
     objectWillChange.send()
     ids.remove(id)
     save()
   }
 
-  func isEmpty() -> Bool {
+  public func isEmpty() -> Bool {
     return ids.isEmpty
   }
 
