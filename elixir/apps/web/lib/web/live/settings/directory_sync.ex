@@ -384,9 +384,6 @@ defmodule Web.Settings.DirectorySync do
         Directories sync users and groups from an external source.
       </:help>
       <:content>
-        <.flash_group flash={@flash} />
-      </:content>
-      <:content>
         <div class="flex flex-wrap gap-4">
           <%= for directory <- @directories do %>
             <.directory_card

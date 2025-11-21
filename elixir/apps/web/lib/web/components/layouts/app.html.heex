@@ -102,6 +102,22 @@
 </.sidebar>
 
 <main class="lg:ml-64 h-auto pt-14">
+  <.flash id="success-toast" kind={:success} title="Success!" style="toast" flash={@flash} />
+  <.flash id="info-toast" kind={:info} title="Information!" style="toast" flash={@flash} />
+  <.flash id="warning-toast" kind={:warning} title="Warning!" style="toast" flash={@flash} />
+  <.flash id="error-toast" kind={:error} title="Error!" style="toast" flash={@flash} />
+  <.flash
+    id="disconnected-toast"
+    kind={:error}
+    title="We can't find the internet"
+    style="toast"
+    phx-disconnected={JS.dispatch("toast:show", to: "#disconnected-toast")}
+    phx-connected={JS.dispatch("toast:hide", to: "#disconnected-toast")}
+    autoshow={false}
+  >
+    Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
+  </.flash>
+
   <.flash :if={@account.warning} kind={:warning} class="m-1">
     {@account.warning}.
     <span :if={Domain.Billing.account_provisioned?(@account)}>

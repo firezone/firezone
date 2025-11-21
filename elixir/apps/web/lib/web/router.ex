@@ -143,18 +143,18 @@ defmodule Web.Router do
       ] do
       # Actors
       live "/actors", Actors
-      live "/actors/:id", Actors, :show
-      live "/actors/:id/edit", Actors, :edit
       live "/actors/add", Actors, :add
       live "/actors/add_user", Actors, :add_user
       live "/actors/add_service_account", Actors, :add_service_account
+      live "/actors/:id/edit", Actors, :edit
       live "/actors/:id/add_token", Actors, :add_token
+      live "/actors/:id", Actors, :show
 
       # Groups
       live "/groups", Groups
-      live "/groups/:id", Groups, :show
-      live "/groups/:id/edit", Groups, :edit
       live "/groups/add", Groups, :add
+      live "/groups/:id/edit", Groups, :edit
+      live "/groups/:id", Groups, :show
 
       scope "/clients", Clients do
         live "/", Index

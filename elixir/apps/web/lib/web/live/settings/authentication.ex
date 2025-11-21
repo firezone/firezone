@@ -372,8 +372,6 @@ defmodule Web.Settings.Authentication do
         Authentication providers authenticate your users with an external source.
       </:help>
       <:content>
-        <.flash_group flash={@flash} />
-
         <div class="pb-8 px-1">
           <div class="text-lg text-neutral-600 mb-4">
             Default Authentication Provider

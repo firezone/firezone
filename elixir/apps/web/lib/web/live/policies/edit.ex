@@ -221,7 +221,12 @@ defmodule Web.Policies.Edit do
 
     case Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:ok, policy} ->
-        {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+        socket =
+          socket
+          |> put_flash(:success, "Policy updated successfully")
+          |> push_navigate(to: ~p"/#{socket.assigns.account}/policies/#{policy}")
+
+        {:noreply, socket}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

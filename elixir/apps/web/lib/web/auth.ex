@@ -38,13 +38,11 @@ defmodule Web.Auth do
     end
   end
 
-  # TODO: IDP REFACTOR
-  # Restore this functionality
-  # defp prepend_recent_account_ids(conn, account_id) do
-  #   update_recent_account_ids(conn, fn recent_account_ids ->
-  #     [account_id] ++ recent_account_ids
-  #   end)
-  # end
+  def prepend_recent_account_ids(conn, account_id) do
+    update_recent_account_ids(conn, fn recent_account_ids ->
+      [account_id | recent_account_ids]
+    end)
+  end
 
   def update_recent_account_ids(conn, callback) when is_function(callback, 1) do
     {:ok, recent_account_ids, conn} = all_recent_account_ids(conn)

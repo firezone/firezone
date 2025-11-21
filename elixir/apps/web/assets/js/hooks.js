@@ -267,4 +267,84 @@ Hooks.FormatJSON = {
   }
 };
 
+Hooks.Toast = {
+  mounted() {
+    const autoshow = this.el.dataset.autoshow !== "false";
+
+    // Position the toast in the top-right corner with equal margins
+    this.el.style.position = 'fixed';
+    this.el.style.top = '1rem';
+    this.el.style.right = '1rem';
+    this.el.style.left = 'auto';
+    this.el.style.margin = '0';
+    this.el.style.maxWidth = '400px';
+    this.el.style.minWidth = '300px';
+    this.el.style.zIndex = '2147483647'; // Maximum z-index value to appear above everything
+
+    // Add transition styles
+    this.el.style.transition = 'transform 0.3s ease-out, opacity 0.3s ease-out';
+    this.el.style.transform = 'translateX(calc(100% + 1rem))';
+    this.el.style.opacity = '0';
+
+    // Create and add progress bar
+    const progressBar = document.createElement('div');
+    progressBar.className = 'toast-progress';
+    progressBar.style.position = 'absolute';
+    progressBar.style.bottom = '0';
+    progressBar.style.left = '0';
+    progressBar.style.height = '3px';
+    progressBar.style.width = '100%';
+    progressBar.style.backgroundColor = 'currentColor';
+    progressBar.style.opacity = '0.3';
+    progressBar.style.transformOrigin = 'left';
+    progressBar.style.transition = 'transform 5s linear';
+    progressBar.style.transform = 'scaleX(1)';
+    this.el.style.position = 'relative';
+    this.el.appendChild(progressBar);
+    this.progressBar = progressBar;
+
+    if (autoshow) {
+      // Auto-show the toast popover when mounted
+      try {
+        this.el.showPopover();
+
+        // Slide in after a tiny delay to trigger the transition
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            this.el.style.transform = 'translateX(0)';
+            this.el.style.opacity = '1';
+
+            // Start progress bar animation
+            requestAnimationFrame(() => {
+              this.progressBar.style.transform = 'scaleX(0)';
+            });
+          });
+        });
+      } catch (error) {
+        console.error("showPopover error:", error);
+      }
+
+      // Auto-hide after 5 seconds
+      this.timeout = setTimeout(() => {
+        if (this.el.matches(':popover-open')) {
+          // Slide out before hiding
+          this.el.style.transform = 'translateX(calc(100% + 1rem))';
+          this.el.style.opacity = '0';
+
+          setTimeout(() => {
+            this.el.hidePopover();
+          }, 300); // Wait for transition to complete
+        }
+      }, 5000);
+    }
+  },
+
+  destroyed() {
+    // Clear timeout on cleanup
+    if (this.timeout) {
+      clearTimeout(this.timeout);
+    }
+  }
+};
+
 export default Hooks;

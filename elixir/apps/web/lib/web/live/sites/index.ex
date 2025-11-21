@@ -99,7 +99,6 @@ defmodule Web.Sites.Index do
       </:help>
 
       <:content>
-        <.flash_group flash={@flash} />
         <.live_table
           id="groups"
           rows={@groups}

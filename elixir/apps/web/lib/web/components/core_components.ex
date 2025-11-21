@@ -310,48 +310,98 @@ defmodule Web.CoreComponents do
   @doc """
   Renders flash notices.
 
+  Can be displayed inline (default) or as a toast notification.
+
   ## Examples
 
       <.flash kind={:info} flash={@flash} />
-      <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
+      <.flash kind={:info} style="toast" flash={@flash} />
+      <.flash kind={:error}>Something went wrong!</.flash>
   """
   attr :id, :string, default: nil, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
 
   attr :kind, :atom,
-    values: [:success, :info, :warning, :error],
+    values: [
+      :success,
+      :info,
+      :warning,
+      :error,
+      :success_inline,
+      :info_inline,
+      :warning_inline,
+      :error_inline
+    ],
     doc: "used for styling and flash lookup"
 
   attr :class, :any, default: nil
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
-  attr :style, :string, default: "pill"
+
+  attr :style, :string,
+    default: "inline",
+    values: ["inline", "toast", "wide"],
+    doc: "inline for regular flash, toast for floating popover"
+
+  attr :autoshow, :boolean, default: true, doc: "whether to automatically show and hide the toast"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
   def flash(assigns) do
+    # Normalize kind for styling (map _inline variants to base types)
+    base_kind =
+      case assigns.kind do
+        :success_inline -> :success
+        :info_inline -> :info
+        :warning_inline -> :warning
+        :error_inline -> :error
+        other -> other
+      end
+
+    assigns = assign(assigns, :base_kind, base_kind)
+
     ~H"""
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
+      popover={if @style == "toast", do: "manual", else: nil}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @kind == :success && "text-green-800 bg-green-100",
-        @kind == :info && "text-blue-800 bg-blue-100",
-        @kind == :warning && "text-yellow-800 bg-yellow-100",
-        @kind == :error && "text-red-800 bg-red-100",
-        @style != "wide" && "mb-4 rounded",
+        @base_kind == :success && "text-green-800 bg-green-100 border-green-300",
+        @base_kind == :info && "text-blue-800 bg-blue-100 border-blue-300",
+        @base_kind == :warning && "text-yellow-800 bg-yellow-100 border-yellow-300",
+        @base_kind == :error && "text-red-800 bg-red-100 border-red-300",
+        @style == "toast" && "m-0 border rounded shadow-lg",
+        @style == "inline" && "mb-4 rounded border",
         @class
       ]}
       role="alert"
+      phx-hook={if @style == "toast", do: "Toast", else: nil}
+      data-autoshow={if @style == "toast", do: @autoshow, else: nil}
       {@rest}
     >
-      <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6">
-        <.icon :if={@kind == :info} name="hero-information-circle-mini" class="h-4 w-4" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle-mini" class="h-4 w-4" />
-        {@title}
-      </p>
-      {maybe_render_changeset_as_flash(msg)}
+      <div class={[@style == "toast" && "flex items-start gap-3"]}>
+        <div class="flex-1">
+          <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6 mb-1">
+            <.icon :if={@base_kind == :info} name="hero-information-circle" class="h-4 w-4" />
+            <.icon :if={@base_kind == :success} name="hero-check-circle" class="h-4 w-4" />
+            <.icon :if={@base_kind == :warning} name="hero-exclamation-triangle" class="h-4 w-4" />
+            <.icon :if={@base_kind == :error} name="hero-exclamation-circle" class="h-4 w-4" />
+            {@title}
+          </p>
+          {maybe_render_changeset_as_flash(msg)}
+        </div>
+        <button
+          :if={@style == "toast"}
+          type="button"
+          class="text-current opacity-50 hover:opacity-100 flex-shrink-0"
+          popovertarget={@id}
+          popovertargetaction="hide"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="h-4 w-4" />
+        </button>
+      </div>
     </div>
     """
   end
@@ -371,36 +421,6 @@ defmodule Web.CoreComponents do
 
   def maybe_render_changeset_as_flash(other) do
     other
-  end
-
-  @doc """
-  Shows the flash group with standard titles and content.
-
-  ## Examples
-
-      <.flash_group flash={@flash} />
-  """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-  attr :id, :string, default: nil
-
-  def flash_group(assigns) do
-    id = assigns[:id] || "flash-group-#{System.unique_integer([:positive])}"
-    assigns = Map.put(assigns, :id, id)
-
-    ~H"""
-    <.flash kind={:info} title="Success!" flash={@flash} />
-    <.flash kind={:error} title="Error!" flash={@flash} />
-    <.flash
-      id={"disconnected-#{@id}"}
-      kind={:error}
-      title="We can't find the internet"
-      phx-disconnected={show("#disconnected-#{@id}")}
-      phx-connected={hide("#disconnected-#{@id}")}
-      hidden
-    >
-      Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
-    </.flash>
-    """
   end
 
   @doc """

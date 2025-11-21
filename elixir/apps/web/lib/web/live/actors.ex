@@ -254,7 +254,7 @@ defmodule Web.Actors do
 
           socket =
             socket
-            |> put_flash(:info, "Actor updated successfully")
+            |> put_flash(:success_inline, "Actor updated successfully")
             |> reload_live_table!("actors")
             |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
 
@@ -484,7 +484,6 @@ defmodule Web.Actors do
       </:help>
 
       <:content>
-        <.flash_group flash={@flash} />
         <.live_table
           id="actors"
           rows={@actors}
@@ -694,8 +693,7 @@ defmodule Web.Actors do
         </div>
       </:title>
       <:body>
-        <.flash_group flash={@flash} />
-
+        <.flash id="actor-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
         <%= if @created_token do %>
           <div
             id="created-token-display"
@@ -983,6 +981,7 @@ defmodule Web.Actors do
     >
       <:title>Edit {@actor.name}</:title>
       <:body>
+        <.flash id="actor-success-inline" kind={:success_inline} style="inline" flash={@flash} />
         <.flash :if={@actor.created_by_directory_id} kind={:warning} style="wide">
           This actor was created by directory sync. Manual changes may be overwritten during the next sync.
         </.flash>

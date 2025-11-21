@@ -58,7 +58,11 @@ defmodule Web.Sites.Edit do
   def handle_event("submit", %{"group" => attrs}, socket) do
     with {:ok, group} <-
            Gateways.update_group(socket.assigns.group, attrs, socket.assigns.subject) do
-      socket = push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")
+      socket =
+        socket
+        |> put_flash(:success, "Site #{group.name} updated successfully")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{group}")
+
       {:noreply, socket}
     else
       {:error, changeset} ->

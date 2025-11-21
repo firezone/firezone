@@ -209,7 +209,7 @@ defmodule Web.Groups do
 
           socket =
             socket
-            |> put_flash(:info, "Group updated successfully")
+            |> put_flash(:success_inline, "Group updated successfully")
             |> reload_live_table!("groups")
             |> push_patch(to: ~p"/#{socket.assigns.account}/groups/#{group.id}?#{params}")
 
@@ -264,7 +264,6 @@ defmodule Web.Groups do
       </:help>
 
       <:content>
-        <.flash_group flash={@flash} />
         <.live_table
           id="groups"
           rows={@groups}
@@ -376,7 +375,7 @@ defmodule Web.Groups do
         </div>
       </:title>
       <:body>
-        <.flash_group flash={@flash} />
+        <.flash id="group-success-inline-show" kind={:success_inline} style="inline" flash={@flash} />
         <div class="space-y-6">
           <div>
             <div class="flex items-center justify-between mb-3">
@@ -504,6 +503,7 @@ defmodule Web.Groups do
         </div>
       </:title>
       <:body>
+        <.flash id="group-success-inline" kind={:success_inline} style="inline" flash={@flash} />
         <.form id="group-form" for={@form} phx-change="validate" phx-submit="save">
           <div class="space-y-6">
             <.input

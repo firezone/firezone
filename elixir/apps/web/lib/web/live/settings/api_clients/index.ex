@@ -2,6 +2,25 @@ defmodule Web.Settings.ApiClients.Index do
   use Web, :live_view
   alias Domain.Actors
 
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Actors, Safe}
+
+    def list_actors(subject, opts \\ []) do
+      from(a in Actors.Actor, as: :actors)
+      |> where([actors: a], a.type == :api_client)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:actors, :asc, :inserted_at},
+        {:actors, :asc, :id}
+      ]
+    end
+  end
+
   def mount(_params, _session, socket) do
     if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
       socket =
@@ -9,16 +28,10 @@ defmodule Web.Settings.ApiClients.Index do
         |> assign(page_title: "API Clients")
         |> assign(api_url: Domain.Config.get_env(:web, :api_external_url))
         |> assign_live_table("actors",
-          query_module: Actors.Actor.Query,
+          query_module: Query,
           sortable_fields: [
             {:actors, :name},
             {:actors, :status}
-          ],
-          enforce_filters: [
-            {:type, "api_client"}
-          ],
-          hide_filters: [
-            :provider_id
           ],
           callback: &handle_api_clients_update!/2
         )
@@ -36,7 +49,7 @@ defmodule Web.Settings.ApiClients.Index do
 
   def handle_api_clients_update!(socket, list_opts) do
     with {:ok, actors, actors_metadata} <-
-           Actors.list_actors(socket.assigns.subject, list_opts) do
+           Query.list_actors(socket.assigns.subject, list_opts) do
       socket =
         assign(socket,
           actors: actors,

@@ -49,7 +49,10 @@ defmodule Web.Session.Redirector do
 
   def portal_signed_in(%Plug.Conn{} = conn, %Account{} = account, params) do
     redirect_to = sanitize_redirect_to(account, params["redirect_to"])
-    Phoenix.Controller.redirect(conn, to: redirect_to)
+
+    conn
+    |> Web.Auth.prepend_recent_account_ids(account.id)
+    |> Phoenix.Controller.redirect(to: redirect_to)
   end
 
   @doc """

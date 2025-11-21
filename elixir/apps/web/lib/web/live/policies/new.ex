@@ -213,6 +213,8 @@ defmodule Web.Policies.New do
       |> maybe_drop_unsupported_conditions(socket)
 
     with {:ok, _policy} <- Policies.create_policy(params, socket.assigns.subject) do
+      socket = put_flash(socket, :success, "Policy created successfully")
+
       cond do
         site_id = socket.assigns.params["site_id"] ->
           # Created from Add Resource from Site
@@ -231,10 +233,7 @@ defmodule Web.Policies.New do
 
         true ->
           # Created from Add Policy from Policies
-          {:noreply,
-           socket
-           |> put_flash(:info, "Policy created successfully.")
-           |> push_navigate(to: ~p"/#{socket.assigns.account}/policies")}
+          {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies")}
       end
     else
       {:error, %Ecto.Changeset{} = changeset} ->
