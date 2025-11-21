@@ -3,6 +3,7 @@ defmodule API.ActorGroupController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Actors
+  alias OpenApiSpex.Reference
 
   action_fallback API.FallbackController
 
@@ -15,14 +16,14 @@ defmodule API.ActorGroupController do
       page_cursor: [in: :query, description: "Next/Prev page cursor", type: :string]
     ],
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.ListResponse}
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.ListResponse},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # List Actor Groups
   def index(conn, params) do
-    list_opts = Pagination.params_to_list_opts(params)
-
-    with {:ok, actor_groups, metadata} <- Actors.list_groups(conn.assigns.subject, list_opts) do
+    with {:ok, list_opts} <- Pagination.params_to_list_opts(params),
+         {:ok, actor_groups, metadata} <- Actors.list_groups(conn.assigns.subject, list_opts) do
       render(conn, :index, actor_groups: actor_groups, metadata: metadata)
     end
   end
@@ -38,7 +39,9 @@ defmodule API.ActorGroupController do
       ]
     ],
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Show a specific Actor Group
@@ -55,7 +58,8 @@ defmodule API.ActorGroupController do
       {"Actor Group Attributes", "application/json", API.Schemas.ActorGroup.Request,
        required: true},
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      created: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Create a new Actor Group
@@ -88,7 +92,9 @@ defmodule API.ActorGroupController do
       {"Actor Group Attributes", "application/json", API.Schemas.ActorGroup.Request,
        required: true},
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Update an Actor Group
@@ -116,7 +122,9 @@ defmodule API.ActorGroupController do
       ]
     ],
     responses: [
-      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response}
+      ok: {"Actor Group Response", "application/json", API.Schemas.ActorGroup.Response},
+      unauthorized: %Reference{"$ref": "#/components/responses/JSONError"},
+      not_found: %Reference{"$ref": "#/components/responses/JSONError"}
     ]
 
   # Delete an Actor Group
