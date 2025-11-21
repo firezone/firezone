@@ -26,7 +26,7 @@ defmodule Web.Settings.DirectorySync do
   @common_fields ~w[name is_verified current_job_id error]a
 
   @fields %{
-    Entra.Directory => @common_fields ++ ~w[tenant_id]a,
+    Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups]a,
     Google.Directory => @common_fields ++ ~w[domain impersonation_email]a,
     Okta.Directory => @common_fields ++ ~w[okta_domain client_id private_key_jwk kid]a
   }
@@ -572,6 +572,19 @@ defmodule Web.Settings.DirectorySync do
           </span>
         </div>
 
+        <%= if @type == "entra" do %>
+          <div class="flex items-center gap-2">
+            <.icon name="hero-user-group" class="w-5 h-5 flex-shrink-0" title="Group Sync Mode" />
+            <span class="font-medium">
+              <%= if @directory.sync_all_groups do %>
+                All groups
+              <% else %>
+                Assigned groups only
+              <% end %>
+            </span>
+          </div>
+        <% end %>
+
         <%= if @directory.current_job_id do %>
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2">
@@ -686,6 +699,64 @@ defmodule Web.Settings.DirectorySync do
           <p class="mt-1 text-xs text-neutral-600">
             Enter a name to identify this directory.
           </p>
+        </div>
+
+        <div :if={@type == "entra"}>
+          <label class="block text-sm font-medium text-neutral-700 mb-3">
+            Group sync mode
+          </label>
+          <div class="grid gap-4 md:grid-cols-2">
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all",
+              if(@form[:sync_all_groups].value == false,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <div class="flex items-center mb-2">
+                <input
+                  type="radio"
+                  name={@form[:sync_all_groups].name}
+                  value="false"
+                  checked={@form[:sync_all_groups].value == false}
+                  class="w-4 h-4 text-accent-600 border-neutral-300 focus:ring-accent-500"
+                />
+                <span class="ml-2 text-base font-semibold text-neutral-900">
+                  Assigned groups only
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600 ml-6">
+                Only groups assigned to the
+                <code class="text-xs"><strong>Firezone Authentication</strong></code>
+                managed application will be synced. Requires Entra ID P1/P2 or higher.
+                <strong class="block mt-1">Recommended for most users.</strong>
+              </span>
+            </label>
+
+            <label class={[
+              "flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-all",
+              if(@form[:sync_all_groups].value == true,
+                do: "border-accent-500 bg-accent-50",
+                else: "border-neutral-200 hover:border-neutral-300"
+              )
+            ]}>
+              <div class="flex items-center mb-2">
+                <input
+                  type="radio"
+                  name={@form[:sync_all_groups].name}
+                  value="true"
+                  checked={@form[:sync_all_groups].value == true}
+                  class="w-4 h-4 text-accent-600 border-neutral-300 focus:ring-accent-500"
+                />
+                <span class="ml-2 text-base font-semibold text-neutral-900">
+                  All groups
+                </span>
+              </div>
+              <span class="text-sm text-neutral-600 ml-6">
+                All groups from your directory will be synced. Use this for Entra ID Free or to sync all groups without managing assignments.
+              </span>
+            </label>
+          </div>
         </div>
 
         <div :if={@type == "google"}>
@@ -991,8 +1062,9 @@ defmodule Web.Settings.DirectorySync do
   defp get_directory!(schema, id, subject) do
     import Ecto.Query
 
-    query = from(d in schema, where: d.id == ^id)
-    Safe.scoped(subject) |> Safe.one!(query)
+    from(d in schema, where: d.id == ^id)
+    |> Safe.scoped(subject)
+    |> Safe.one!()
   end
 
   defp start_verification(%{assigns: %{type: "google"}} = socket) do

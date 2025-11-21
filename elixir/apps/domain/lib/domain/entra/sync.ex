@@ -95,6 +95,16 @@ defmodule Domain.Entra.Sync do
   end
 
   defp fetch_and_sync_all(directory, access_token, synced_at) do
+    if directory.sync_all_groups do
+      # Sync all groups from the directory
+      sync_all_groups(directory, access_token, synced_at)
+    else
+      # Sync only assigned groups (via app role assignments)
+      sync_assigned_groups(directory, access_token, synced_at)
+    end
+  end
+
+  defp sync_assigned_groups(directory, access_token, synced_at) do
     # Get the service principal ID for the Entra Auth Provider app (not the Directory Sync app)
     # We use app role assignments from the auth app to determine group memberships
     config = Domain.Config.fetch_env!(:domain, Domain.Entra.AuthProvider)
@@ -248,6 +258,106 @@ defmodule Domain.Entra.Sync do
         Enum.each(group_assignments, fn assignment ->
           group_id = assignment["principalId"]
           group_name = assignment["principalDisplayName"]
+
+          Logger.debug("Streaming transitive members for group",
+            entra_directory_id: directory.id,
+            group_id: group_id,
+            group_name: group_name
+          )
+
+          Entra.APIClient.stream_group_transitive_members(access_token, group_id)
+          |> Stream.each(fn
+            {:error, reason} ->
+              Logger.debug("Failed to fetch transitive members for group",
+                group_id: group_id,
+                reason: inspect(reason),
+                entra_directory_id: directory.id
+              )
+
+            members when is_list(members) ->
+              Logger.debug("Received transitive members page",
+                entra_directory_id: directory.id,
+                group_id: group_id,
+                count: length(members)
+              )
+
+              # Filter only users
+              user_members =
+                Enum.filter(members, fn member ->
+                  member["@odata.type"] == "#microsoft.graph.user"
+                end)
+
+              # Build identities for these members
+              identities = Enum.map(user_members, &map_user_to_identity/1)
+
+              # Build memberships (group_idp_id, user_idp_id)
+              memberships =
+                Enum.map(user_members, fn member ->
+                  {group_id, member["id"]}
+                end)
+
+              unless Enum.empty?(identities) do
+                batch_upsert_identities(directory, synced_at, identities)
+              end
+
+              unless Enum.empty?(memberships) do
+                batch_upsert_memberships(directory, synced_at, memberships)
+              end
+          end)
+          |> Stream.run()
+        end)
+    end)
+    |> Stream.run()
+
+    :ok
+  end
+
+  defp sync_all_groups(directory, access_token, synced_at) do
+    # Stream all groups from the directory
+    Logger.debug("Streaming all groups from directory", entra_directory_id: directory.id)
+
+    Entra.APIClient.stream_groups(access_token)
+    |> Stream.each(fn
+      {:error, error} ->
+        Logger.debug("Failed to stream groups",
+          entra_directory_id: directory.id,
+          error: inspect(error)
+        )
+
+        raise Entra.SyncError,
+          reason: "Failed to stream groups",
+          cause: error,
+          directory_id: directory.id,
+          step: :stream_groups
+
+      groups when is_list(groups) ->
+        Logger.debug("Received groups page",
+          entra_directory_id: directory.id,
+          count: length(groups)
+        )
+
+        # Build and sync groups
+        group_attrs =
+          Enum.map(groups, fn group ->
+            %{
+              idp_id: group["id"],
+              name: group["displayName"]
+            }
+          end)
+
+        unless Enum.empty?(group_attrs) do
+          Logger.debug("Upserting groups",
+            entra_directory_id: directory.id,
+            count: length(group_attrs)
+          )
+
+          batch_upsert_groups(directory, synced_at, group_attrs)
+        end
+
+        # For each group, stream and sync transitive members
+        Enum.each(groups, fn group ->
+          group_id = group["id"]
+          group_name = group["displayName"]
 
           Logger.debug("Streaming transitive members for group",
             entra_directory_id: directory.id,

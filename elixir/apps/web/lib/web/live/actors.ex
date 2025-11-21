@@ -113,11 +113,13 @@ defmodule Web.Actors do
     actor = Query.get_actor!(id, socket.assigns.subject)
     socket = handle_live_tables_params(socket, params, uri)
     changeset = actor_changeset(actor, %{})
+    is_last_admin = actor.type == :account_admin_user and not other_enabled_admins_exist?(actor)
 
     {:noreply,
      assign(socket,
        actor: actor,
-       form: to_form(changeset)
+       form: to_form(changeset),
+       is_last_admin: is_last_admin
      )}
   end
 
@@ -228,53 +230,79 @@ defmodule Web.Actors do
   end
 
   def handle_event("save", %{"actor" => attrs}, socket) do
-    changeset = actor_changeset(socket.assigns.actor, attrs)
+    actor = socket.assigns.actor
+    changeset = actor_changeset(actor, attrs)
 
-    case update_actor(changeset, socket.assigns.subject) do
-      {:ok, actor} ->
-        params = query_params(socket.assigns.uri)
+    # Prevent changing the last admin to account_user
+    new_type = get_change(changeset, :type)
 
-        socket =
-          socket
-          |> put_flash(:info, "Actor updated successfully")
-          |> reload_live_table!("actors")
-          |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+    if actor.type == :account_admin_user and new_type == :account_user and
+         not other_enabled_admins_exist?(actor) do
+      changeset =
+        add_error(
+          changeset,
+          :type,
+          "Cannot change role. At least one admin must remain in the account."
+        )
 
-        {:noreply, socket}
+      {:noreply, assign(socket, form: to_form(changeset))}
+    else
+      case update_actor(changeset, socket.assigns.subject) do
+        {:ok, actor} ->
+          params = query_params(socket.assigns.uri)
 
-      {:error, changeset} ->
-        {:noreply, assign(socket, form: to_form(changeset))}
+          socket =
+            socket
+            |> put_flash(:info, "Actor updated successfully")
+            |> reload_live_table!("actors")
+            |> push_patch(to: ~p"/#{socket.assigns.account}/actors/#{actor.id}?#{params}")
+
+          {:noreply, socket}
+
+        {:error, changeset} ->
+          {:noreply, assign(socket, form: to_form(changeset))}
+      end
     end
   end
 
   def handle_event("delete", %{"id" => id}, socket) do
     actor = Query.get_actor!(id, socket.assigns.subject)
 
-    case delete_actor(actor, socket.assigns.subject) do
-      {:ok, _actor} ->
-        {:noreply, handle_success(socket, "Actor deleted successfully")}
+    # Prevent users from deleting themselves
+    if actor.id == socket.assigns.subject.actor.id do
+      {:noreply, put_flash(socket, :error, "You cannot delete yourself")}
+    else
+      case delete_actor(actor, socket.assigns.subject) do
+        {:ok, _actor} ->
+          {:noreply, handle_success(socket, "Actor deleted successfully")}
 
-      {:error, :unauthorized} ->
-        {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
+        {:error, :unauthorized} ->
+          {:noreply, put_flash(socket, :error, "You are not authorized to delete this actor")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete actor")}
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to delete actor")}
+      end
     end
   end
 
   def handle_event("disable", %{"id" => id}, socket) do
     actor = Query.get_actor!(id, socket.assigns.subject)
 
-    case disable_actor(actor, socket.assigns.subject) do
-      {:ok, _actor} ->
-        socket = reload_live_table!(socket, "actors")
-        {:noreply, put_flash(socket, :info, "Actor disabled successfully")}
+    # Prevent users from disabling themselves
+    if actor.id == socket.assigns.subject.actor.id do
+      {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
+    else
+      case disable_actor(actor, socket.assigns.subject) do
+        {:ok, _actor} ->
+          socket = reload_live_table!(socket, "actors")
+          {:noreply, put_flash(socket, :info, "Actor disabled successfully")}
 
-      {:error, :unauthorized} ->
-        {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
+        {:error, :unauthorized} ->
+          {:noreply, put_flash(socket, :error, "You are not authorized to disable this actor")}
 
-      {:error, _changeset} ->
-        {:noreply, put_flash(socket, :error, "Failed to disable actor")}
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to disable actor")}
+      end
     end
   end
 
@@ -731,7 +759,7 @@ defmodule Web.Actors do
                       <.icon name="hero-envelope" class="w-4 h-4" /> Send Welcome Email
                     </button>
                     <button
-                      :if={not Actors.actor_disabled?(@actor)}
+                      :if={not Actors.actor_disabled?(@actor) and @actor.id != @subject.actor.id}
                       type="button"
                       phx-click="disable"
                       phx-value-id={@actor.id}
@@ -749,6 +777,7 @@ defmodule Web.Actors do
                       <.icon name="hero-lock-open" class="w-4 h-4" /> Enable
                     </button>
                     <button
+                      :if={@actor.id != @subject.actor.id}
                       type="button"
                       phx-click="delete"
                       phx-value-id={@actor.id}
@@ -947,17 +976,22 @@ defmodule Web.Actors do
               required
             />
 
-            <.input
-              :if={@actor.type != :service_account}
-              field={@form[:type]}
-              label="Role"
-              type="select"
-              options={[
-                {"User", :account_user},
-                {"Admin", :account_admin_user}
-              ]}
-              required
-            />
+            <div :if={@actor.type != :service_account}>
+              <.input
+                field={@form[:type]}
+                label="Role"
+                type="select"
+                options={[
+                  {"User", :account_user},
+                  {"Admin", :account_admin_user}
+                ]}
+                disabled={@is_last_admin}
+                required
+              />
+              <p :if={@is_last_admin} class="mt-1 text-xs text-orange-600">
+                Cannot change role. At least one admin must remain in the account.
+              </p>
+            </div>
           </div>
         </.form>
       </:body>
@@ -1223,6 +1257,16 @@ defmodule Web.Actors do
     |> Safe.update()
   end
 
+  defp other_enabled_admins_exist?(actor) do
+    case actor do
+      %{type: :account_admin_user, account_id: account_id, id: id} ->
+        Query.other_enabled_admins_exist?(account_id, id)
+
+      _ ->
+        false
+    end
+  end
+
   defp enable_actor(actor, subject) do
     actor
     |> Actors.Actor.Changeset.enable_actor()
@@ -1275,6 +1319,16 @@ defmodule Web.Actors do
       |> order_by([identities: i], desc: i.inserted_at)
       |> Safe.scoped(subject)
       |> Safe.all()
+    end
+
+    def other_enabled_admins_exist?(account_id, actor_id) do
+      from(a in Actors.Actor,
+        where: a.account_id == ^account_id,
+        where: a.type == :account_admin_user,
+        where: a.id != ^actor_id,
+        where: is_nil(a.disabled_at)
+      )
+      |> Repo.exists?()
     end
 
     def get_tokens_for_actor(actor_id, subject) do

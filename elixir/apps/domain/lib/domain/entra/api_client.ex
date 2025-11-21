@@ -76,6 +76,21 @@ defmodule Domain.Entra.APIClient do
   end
 
   @doc """
+  Streams all groups from the directory.
+  Returns a stream that yields pages of groups.
+  """
+  def stream_groups(access_token) do
+    query =
+      URI.encode_query(%{
+        "$top" => "999",
+        "$select" => "id,displayName"
+      })
+
+    path = "/v1.0/groups"
+    stream_pages(path, query, access_token)
+  end
+
+  @doc """
   Streams transitive members of a group.
   Returns a stream that yields pages of members (users, groups, service principals).
   Fetches user profile fields that map to our identity schema.
