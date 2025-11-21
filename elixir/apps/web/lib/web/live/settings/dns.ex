@@ -126,8 +126,10 @@ defmodule Web.Settings.DNS do
                           "p-5 text-gray-500 bg-white border border-gray-200",
                           "rounded cursor-pointer peer-checked:border-accent-500",
                           "peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100",
-                          @doh_disabled && "opacity-50 cursor-not-allowed"
+                          @doh_disabled && "opacity-50 cursor-not-allowed",
+                          "relative group"
                         ]}
+                        title={@doh_disabled && "Coming soon"}
                       >
                         <div class="block">
                           <div class="w-full font-semibold mb-3">
@@ -135,9 +137,6 @@ defmodule Web.Settings.DNS do
                           </div>
                           <div class="w-full text-sm">
                             Use DNS-over-HTTPS from trusted providers.
-                          </div>
-                          <div :if={@doh_disabled} class="w-full text-xs text-gray-400 mt-2">
-                            Coming soon
                           </div>
                         </div>
                       </label>
