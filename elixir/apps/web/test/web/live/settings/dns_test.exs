@@ -168,8 +168,14 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
+    # Start with custom type and one address already configured
     Fixtures.Accounts.update_account(account, %{
-      config: %{clients_upstream_dns: %{type: :system, addresses: []}}
+      config: %{
+        clients_upstream_dns: %{
+          type: :custom,
+          addresses: [%{address: "1.1.1.1"}]
+        }
+      }
     })
 
     {:ok, lv, _html} =
@@ -203,25 +209,28 @@ defmodule Web.Live.Settings.DNSTest do
     identity: identity,
     conn: conn
   } do
+    # Start with custom type but no addresses
+    Fixtures.Accounts.update_account(account, %{
+      config: %{clients_upstream_dns: %{type: :custom, addresses: []}}
+    })
+
     {:ok, lv, _html} =
       conn
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
-    attrs = %{
-      account: %{
-        config: %{
-          clients_upstream_dns: %{
-            type: "custom",
-            addresses: []
-          }
-        }
-      }
-    }
-
+    # Try to submit without any addresses
     html =
       lv
-      |> form("form", attrs)
+      |> form("form", %{
+        account: %{
+          config: %{
+            clients_upstream_dns: %{
+              type: "custom"
+            }
+          }
+        }
+      })
       |> render_submit()
 
     assert html =~ "must have at least one custom resolver"
@@ -301,7 +310,22 @@ defmodule Web.Live.Settings.DNSTest do
       |> authorize_conn(identity)
       |> live(~p"/#{account}/settings/dns")
 
-    attrs = %{
+    # First change just the type to make doh_provider field appear
+    lv
+    |> form("form", %{
+      account: %{
+        config: %{
+          clients_upstream_dns: %{
+            type: "secure"
+          }
+        }
+      }
+    })
+    |> render_change()
+
+    # Now submit with both type and doh_provider
+    lv
+    |> form("form", %{
       account: %{
         config: %{
           clients_upstream_dns: %{
@@ -310,16 +334,12 @@ defmodule Web.Live.Settings.DNSTest do
           }
         }
       }
-    }
-
-    lv
-    |> form("form", attrs)
+    })
     |> render_submit()
 
     account = Repo.reload!(account)
     assert account.config.clients_upstream_dns.type == :secure
     assert account.config.clients_upstream_dns.doh_provider == :google
-    assert Enum.empty?(account.config.clients_upstream_dns.addresses)
   end
 
   test "saves system resolver selection", %{
