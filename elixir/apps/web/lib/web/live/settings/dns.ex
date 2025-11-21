@@ -8,9 +8,12 @@ defmodule Web.Settings.DNS do
       # Ensure config has proper defaults
       account = %{account | config: Domain.Accounts.Config.ensure_defaults(account.config)}
 
+      doh_disabled = System.get_env("DISABLE_DOH_RESOLVERS") == "true"
+
       socket =
         socket
         |> assign(page_title: "DNS")
+        |> assign(doh_disabled: doh_disabled)
         |> init(account)
 
       {:ok, socket}
@@ -113,20 +116,28 @@ defmodule Web.Settings.DNS do
                         field={dns_form[:type]}
                         value="secure"
                         checked={"#{dns_form[:type].value}" == "secure"}
+                        disabled={@doh_disabled}
                         required
                       />
-                      <label for="dns-type--secure" class={~w[
-                        inline-flex items-center justify-between w-full
-                        p-5 text-gray-500 bg-white border border-gray-200
-                        rounded cursor-pointer peer-checked:border-accent-500
-                        peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100
-                      ]}>
+                      <label
+                        for="dns-type--secure"
+                        class={[
+                          "inline-flex items-center justify-between w-full",
+                          "p-5 text-gray-500 bg-white border border-gray-200",
+                          "rounded cursor-pointer peer-checked:border-accent-500",
+                          "peer-checked:text-accent-500 hover:text-gray-600 hover:bg-gray-100",
+                          @doh_disabled && "opacity-50 cursor-not-allowed"
+                        ]}
+                      >
                         <div class="block">
                           <div class="w-full font-semibold mb-3">
                             <.icon name="hero-lock-closed" class="w-5 h-5 mr-1" /> Secure DNS
                           </div>
                           <div class="w-full text-sm">
                             Use DNS-over-HTTPS from trusted providers.
+                          </div>
+                          <div :if={@doh_disabled} class="w-full text-xs text-gray-400 mt-2">
+                            Coming soon
                           </div>
                         </div>
                       </label>
