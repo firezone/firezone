@@ -1249,6 +1249,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "circuit-breaker"
+version = "0.1.0"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
 name = "clap"
 version = "4.5.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2502,6 +2509,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_variant",
+ "socket-factory",
  "specta",
  "specta-typescript",
  "strum",
@@ -2645,9 +2653,13 @@ name = "firezone-telemetry"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytes",
+ "circuit-breaker",
  "flume",
  "futures",
  "hex",
+ "http 1.3.1",
+ "http-client",
  "ip-packet",
  "moka",
  "opentelemetry",
@@ -2658,8 +2670,10 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "socket-factory",
  "thiserror 2.0.17",
  "tokio",
+ "tokio-util",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -4758,7 +4772,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7104,7 +7118,6 @@ dependencies = [
  "bufferpool",
  "bytes",
  "derive_more 2.0.1",
- "firezone-telemetry",
  "gat-lending-iterator",
  "ip-packet",
  "libc",

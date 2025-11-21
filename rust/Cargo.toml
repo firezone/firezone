@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "bin-shared",
+    "circuit-breaker",
     "cli",
     "client-ffi",
     "client-shared",
@@ -65,6 +66,7 @@ bytecodec = "0.5.0"
 bytes = { version = "1.9.0", default-features = false }
 caps = "0.5.5"
 chrono = { version = "0.4", default-features = false, features = ["std", "clock", "oldtime", "serde"] }
+circuit-breaker = { path = "circuit-breaker" }
 clap = "4.5.47"
 client-shared = { path = "client-shared" }
 connlib-model = { path = "connlib/model" }
