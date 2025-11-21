@@ -10,7 +10,6 @@ defmodule Domain.Entra.Directory do
     field :is_disabled, :boolean, default: false, read_after_writes: true
     field :disabled_reason, :string
     field :synced_at, :utc_datetime_usec
-    field :current_job_id, :integer
     field :error, :string
     field :error_emailed_at, :utc_datetime_usec
     field :sync_all_groups, :boolean, default: false, read_after_writes: true

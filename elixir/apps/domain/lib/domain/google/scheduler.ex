@@ -1,9 +1,9 @@
-defmodule Domain.Entra.Scheduler do
+defmodule Domain.Google.Scheduler do
   @moduledoc """
   Oban worker for scheduling the sync job.
   """
 
-  use Oban.Worker, queue: :entra_scheduler, max_attempts: 1
+  use Oban.Worker, queue: :google_scheduler, max_attempts: 1
   alias Domain.Safe
   alias __MODULE__.Query
   require Logger
@@ -19,7 +19,7 @@ defmodule Domain.Entra.Scheduler do
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    Logger.debug("Scheduling Entra directory sync jobs")
+    Logger.debug("Scheduling Google directory sync jobs")
 
     Safe.transact(fn ->
       Query.directories_to_sync()
@@ -34,14 +34,14 @@ defmodule Domain.Entra.Scheduler do
 
   defp queue_sync_job(directory) do
     args = %{directory_id: directory.id}
-    {:ok, _job} = Domain.Entra.Sync.new(args, @sync_job_opts) |> Oban.insert()
+    {:ok, _job} = Domain.Google.Sync.new(args, @sync_job_opts) |> Oban.insert()
   end
 
   defmodule Query do
     import Ecto.Query
 
     def directories_to_sync do
-      from(d in Domain.Entra.Directory,
+      from(d in Domain.Google.Directory,
         as: :directories,
         where: d.is_disabled == false
       )

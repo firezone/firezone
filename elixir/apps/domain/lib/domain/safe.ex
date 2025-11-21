@@ -240,6 +240,17 @@ defmodule Domain.Safe do
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t()}
   def update(repo, changeset, opts \\ []) when repo == Repo, do: Repo.update(changeset, opts)
 
+  @spec update_all(Unscoped.t(), Keyword.t()) :: {non_neg_integer(), nil | [term()]}
+  def update_all(%Unscoped{queryable: queryable}, updates) do
+    Repo.update_all(queryable, updates)
+  end
+
+  @spec update_all(Domain.Repo, Ecto.Queryable.t(), Keyword.t()) ::
+          {non_neg_integer(), nil | [term()]}
+  def update_all(repo, queryable, updates) when repo == Repo do
+    Repo.update_all(queryable, updates)
+  end
+
   @spec delete(Scoped.t()) ::
           {:ok, Ecto.Schema.t()} | {:error, Ecto.Changeset.t() | :unauthorized}
   def delete(%Scoped{

@@ -44,13 +44,18 @@ config :domain, Oban,
        {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
 
        # Schedule Entra directory sync every minute for development
-       {"* * * * *", Domain.Entra.Scheduler}
+       {"* * * * *", Domain.Entra.Scheduler},
+
+       # Schedule Google directory sync every minute for development
+       {"* * * * *", Domain.Google.Scheduler}
      ]}
   ],
   queues: [
     default: 10,
     entra_scheduler: 1,
-    entra_sync: 5
+    entra_sync: 5,
+    google_scheduler: 1,
+    google_sync: 5
   ],
   engine: Oban.Engines.Basic,
   repo: Domain.Repo

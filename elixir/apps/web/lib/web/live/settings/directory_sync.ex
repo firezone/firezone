@@ -23,7 +23,7 @@ defmodule Web.Settings.DirectorySync do
 
   @types Map.keys(@modules)
 
-  @common_fields ~w[name is_verified current_job_id error]a
+  @common_fields ~w[name is_verified error]a
 
   @fields %{
     Entra.Directory => @common_fields ++ ~w[tenant_id sync_all_groups]a,
@@ -50,6 +50,7 @@ defmodule Web.Settings.DirectorySync do
         Okta.Directory |> Safe.scoped(subject) |> Safe.all()
       ]
       |> List.flatten()
+      |> enrich_with_job_status()
 
     if new do
       socket
@@ -243,29 +244,54 @@ defmodule Web.Settings.DirectorySync do
     if is_nil(directory) do
       {:noreply, socket |> init()}
     else
-      if directory.current_job_id do
-        {:noreply, socket}
+      with {:ok, _job} <- Entra.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
+           {:ok, _directory} <-
+             changeset(directory, %{error: nil})
+             |> Safe.scoped(socket.assigns.subject)
+             |> Safe.update() do
+        {:noreply, socket |> init()}
       else
-        with {:ok, job} <- Entra.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
-             {:ok, _directory} <-
-               changeset(directory, %{current_job_id: job.id, error: nil})
+        {:error, reason} ->
+          Logger.error("Failed to schedule directory sync",
+            directory: directory,
+            reason: reason
+          )
+
+          case changeset(directory, %{error: "Failed to schedule directory sync."})
                |> Safe.scoped(socket.assigns.subject)
                |> Safe.update() do
-          {:noreply, socket |> init()}
-        else
-          {:error, reason} ->
-            Logger.error("Failed to schedule directory sync",
-              directory: directory,
-              reason: reason
-            )
+            {:ok, _directory} -> {:noreply, socket |> init()}
+            {:error, _} -> {:noreply, socket |> init()}
+          end
+      end
+    end
+  end
 
-            case changeset(directory, %{error: "Failed to schedule directory sync."})
-                 |> Safe.scoped(socket.assigns.subject)
-                 |> Safe.update() do
-              {:ok, _directory} -> {:noreply, socket |> init()}
-              {:error, _} -> {:noreply, socket |> init()}
-            end
-        end
+  def handle_event("sync_directory", %{"id" => id, "type" => "google"}, socket) do
+    directory = socket.assigns.directories |> Enum.find(fn d -> d.id == id end) |> Repo.reload()
+
+    if is_nil(directory) do
+      {:noreply, socket |> init()}
+    else
+      with {:ok, _job} <- Google.Sync.new(%{directory_id: directory.id}) |> Oban.insert(),
+           {:ok, _directory} <-
+             changeset(directory, %{error: nil})
+             |> Safe.scoped(socket.assigns.subject)
+             |> Safe.update() do
+        {:noreply, socket |> init()}
+      else
+        {:error, reason} ->
+          Logger.error("Failed to schedule directory sync",
+            directory: directory,
+            reason: reason
+          )
+
+          case changeset(directory, %{error: "Failed to schedule directory sync."})
+               |> Safe.scoped(socket.assigns.subject)
+               |> Safe.update() do
+            {:ok, _directory} -> {:noreply, socket |> init()}
+            {:error, _} -> {:noreply, socket |> init()}
+          end
       end
     end
   end
@@ -585,7 +611,7 @@ defmodule Web.Settings.DirectorySync do
           </div>
         <% end %>
 
-        <%= if @directory.current_job_id do %>
+        <%= if @directory.has_active_job do %>
           <div class="flex items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <.icon
@@ -1260,5 +1286,31 @@ defmodule Web.Settings.DirectorySync do
 
   defp directory_identifier("okta", directory) do
     directory.okta_domain
+  end
+
+  defp enrich_with_job_status(directories) do
+    import Ecto.Query
+
+    # Get all directory IDs
+    directory_ids = Enum.map(directories, & &1.id)
+
+    # Query for active sync jobs for all directory types
+    active_jobs =
+      from(j in Oban.Job,
+        where: j.worker in ["Domain.Entra.Sync", "Domain.Google.Sync", "Domain.Okta.Sync"],
+        where: j.state in ["available", "executing", "scheduled"],
+        where: fragment("?->>'directory_id'", j.args) in ^directory_ids
+      )
+      |> Repo.all()
+      |> Enum.map(fn job ->
+        directory_id = job.args["directory_id"]
+        {directory_id, job.id}
+      end)
+      |> Map.new()
+
+    # Add has_active_job field to each directory
+    Enum.map(directories, fn dir ->
+      Map.put(dir, :has_active_job, Map.has_key?(active_jobs, dir.id))
+    end)
   end
 end

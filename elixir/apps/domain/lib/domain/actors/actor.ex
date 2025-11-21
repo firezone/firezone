@@ -23,6 +23,7 @@ defmodule Domain.Actors.Actor do
     belongs_to :account, Domain.Accounts.Account
 
     field :last_seen_at, :utc_datetime_usec, virtual: true
+    field :identity_count, :integer, virtual: true
     field :disabled_at, :utc_datetime_usec
 
     # Intentionally not a foreign key because it can point to different directory tables

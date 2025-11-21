@@ -153,7 +153,6 @@ defmodule Domain.Resources do
 
       group_by_ids =
         Enum.flat_map(peek, fn {_id, %{items: items}} -> items end)
-        |> Repo.preload(:provider)
         |> Enum.map(&{&1.id, &1})
         |> Enum.into(%{})
 

@@ -669,7 +669,7 @@ defmodule Web.Settings.Authentication do
           <.icon name="hero-device-phone-mobile" class="w-5 h-5" title="Client Session Lifetime" />
           <span class="font-medium">
             <%= if @provider.context in [:clients_and_portal, :clients_only] do %>
-              Client: {format_duration(
+              Clients: {format_duration(
                 Map.get(@provider, :client_session_lifetime_secs) ||
                   @provider.__struct__.default_client_session_lifetime_secs()
               )}
@@ -1031,8 +1031,9 @@ defmodule Web.Settings.Authentication do
   defp get_provider!(schema, id, subject) do
     import Ecto.Query
 
-    query = from(p in schema, where: p.id == ^id)
-    Safe.scoped(subject) |> Safe.one!(query)
+    from(p in schema, where: p.id == ^id)
+    |> Safe.scoped(subject)
+    |> Safe.one!()
   end
 
   defp delete_provider!(provider, subject) do

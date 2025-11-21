@@ -9,7 +9,6 @@
 -- 7. Migrate actor groups to use directory + idp_id instead of provider_id + provider_identifier
 -- 8. Create new auth providers for each legacy provider (email, userpass, OIDC, Google, Entra, Okta)
 -- 9. Delete legacy auth_providers
-
 DO $$
 DECLARE
   v_account_id UUID;
@@ -157,6 +156,7 @@ BEGIN
       name = a.name,
       idp_id = i.provider_identifier,
       issuer = 'firezone',
+      directory = 'firezone',
       password_hash = (i.provider_state->>'password_hash'),
       provider_id = NULL,
       provider_state = '{}'::jsonb
@@ -206,6 +206,7 @@ BEGIN
       name = a.name,
       idp_id = i.provider_identifier,
       issuer = 'firezone',
+      directory = 'firezone',
       provider_id = NULL,
       provider_state = '{}'::jsonb
     FROM actors a, legacy_auth_providers p
@@ -241,6 +242,7 @@ BEGIN
         i.provider_state->'claims'->>'oid',
         i.provider_state->'claims'->>'sub'
       ),
+      directory = 'firezone',
       issuer = i.provider_state->'claims'->>'iss',
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
@@ -265,6 +267,7 @@ BEGIN
       name = a.name,
       idp_id = i.provider_identifier,
       issuer = 'https://accounts.google.com',
+      directory = 'google:' || (p.adapter_state->'claims'->>'hd'),
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id
@@ -285,6 +288,7 @@ BEGIN
         i.provider_state->'claims'->>'oid',
         i.provider_identifier
       ),
+      directory = 'entra:' || (p.adapter_state->'claims'->>'tid'),
       issuer = p.adapter_state->'claims'->>'iss',
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
@@ -305,6 +309,7 @@ BEGIN
       name = a.name,
       idp_id = i.provider_identifier,
       issuer = p.adapter_state->'claims'->>'iss',
+  directory = 'okta:' || REGEXP_REPLACE(p.adapter_state->'claims'->>'iss', '^https://', ''),
       provider_id = NULL
     FROM actors a, legacy_auth_providers p
     WHERE i.actor_id = a.id

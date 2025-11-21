@@ -80,7 +80,9 @@ if config_env() == :prod do
     salt: env_var_to_config!(:tokens_salt)
 
   config :domain, Domain.Google.APIClient,
-    service_account_key: env_var_to_config!(:google_service_account_key)
+    service_account_key: env_var_to_config!(:google_service_account_key),
+    token_endpoint: "https://oauth2.googleapis.com/token",
+    endpoint: "https://www.googleapis.com"
 
   config :domain, Domain.Google.AuthProvider,
     client_id: env_var_to_config!(:google_oidc_client_id),
@@ -170,7 +172,10 @@ if config_env() == :prod do
          {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
 
          # Schedule Entra directory sync every 2 hours
-         {"0 */2 * * *", Domain.Entra.Scheduler}
+         {"0 */2 * * *", Domain.Entra.Scheduler},
+
+         # Schedule Google directory sync every 2 hours
+         {"0 */2 * * *", Domain.Google.Scheduler}
        ]}
     ],
     queues:
@@ -178,7 +183,9 @@ if config_env() == :prod do
         do: [
           default: 10,
           entra_scheduler: 1,
-          entra_sync: 5
+          entra_sync: 5,
+          google_scheduler: 1,
+          google_sync: 5
         ],
         else: []
       ),

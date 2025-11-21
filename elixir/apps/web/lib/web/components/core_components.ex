@@ -381,17 +381,21 @@ defmodule Web.CoreComponents do
       <.flash_group flash={@flash} />
   """
   attr :flash, :map, required: true, doc: "the map of flash messages"
+  attr :id, :string, default: nil
 
   def flash_group(assigns) do
+    id = assigns[:id] || "flash-group-#{System.unique_integer([:positive])}"
+    assigns = Map.put(assigns, :id, id)
+
     ~H"""
     <.flash kind={:info} title="Success!" flash={@flash} />
     <.flash kind={:error} title="Error!" flash={@flash} />
     <.flash
-      id="disconnected"
+      id={"disconnected-#{@id}"}
       kind={:error}
       title="We can't find the internet"
-      phx-disconnected={show("#disconnected")}
-      phx-connected={hide("#disconnected")}
+      phx-disconnected={show("#disconnected-#{@id}")}
+      phx-connected={hide("#disconnected-#{@id}")}
       hidden
     >
       Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
@@ -757,11 +761,11 @@ defmodule Web.CoreComponents do
 
   # TODO: IDP REFACTOR
   # Fetch image and re-host it internally via Azure CDN
+  # For now, we disable loading pictures from identity providers due to CSP restrictions
 
   def avatar(assigns) do
     ~H"""
-    <img :if={not is_nil(@identity.picture)} src={@identity.picture} {@rest} />
-    <img :if={is_nil(@identity.picture)} src={build_gravatar_url(@identity, @size)} {@rest} />
+    <img src={build_gravatar_url(@identity, @size)} {@rest} />
     """
   end
 

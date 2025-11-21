@@ -19,7 +19,6 @@ defmodule API.EntraDirectoryJSON do
       is_disabled: directory.is_disabled,
       disabled_reason: directory.disabled_reason,
       synced_at: directory.synced_at,
-      current_job_id: directory.current_job_id,
       error: directory.error,
       error_emailed_at: directory.error_emailed_at,
       sync_all_groups: directory.sync_all_groups,

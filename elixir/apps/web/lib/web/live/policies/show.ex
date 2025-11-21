@@ -8,7 +8,7 @@ defmodule Web.Policies.Show do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [
-               actor_group: [:provider],
+               actor_group: [],
                resource: []
              ]
            ) do
@@ -259,7 +259,7 @@ defmodule Web.Policies.Show do
         socket.assigns.policy.id,
         socket.assigns.subject,
         preload: [
-          actor_group: [:provider],
+          actor_group: [],
           resource: []
         ]
       )

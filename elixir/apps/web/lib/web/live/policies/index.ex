@@ -32,7 +32,7 @@ defmodule Web.Policies.Index do
   end
 
   def handle_policies_update!(socket, list_opts) do
-    list_opts = Keyword.put(list_opts, :preload, actor_group: [:provider], resource: [])
+    list_opts = Keyword.put(list_opts, :preload, actor_group: [], resource: [])
 
     with {:ok, policies, metadata} <- Policies.list_policies(socket.assigns.subject, list_opts) do
       {:ok,

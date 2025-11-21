@@ -50,10 +50,113 @@ defmodule Domain.Google.APIClient do
     |> get(access_token)
   end
 
+  @doc """
+  Streams users from the Google Workspace directory.
+  Returns a stream that yields pages of users.
+  """
+  def stream_users(access_token, domain) do
+    query =
+      URI.encode_query(%{
+        "customer" => "my_customer",
+        "domain" => domain,
+        "maxResults" => "500",
+        "projection" => "full"
+      })
+
+    path = "/admin/directory/v1/users"
+    stream_pages(path, query, access_token, "users")
+  end
+
+  @doc """
+  Streams groups from the Google Workspace directory.
+  Returns a stream that yields pages of groups.
+  """
+  def stream_groups(access_token, domain) do
+    query =
+      URI.encode_query(%{
+        "customer" => "my_customer",
+        "domain" => domain,
+        "maxResults" => "200"
+      })
+
+    path = "/admin/directory/v1/groups"
+    stream_pages(path, query, access_token, "groups")
+  end
+
+  @doc """
+  Streams members of a specific group.
+  Returns a stream that yields pages of members.
+  """
+  def stream_group_members(access_token, group_key) do
+    query =
+      URI.encode_query(%{
+        "maxResults" => "200"
+      })
+
+    path = "/admin/directory/v1/groups/#{group_key}/members"
+    stream_pages(path, query, access_token, "members")
+  end
+
   defp get(path, access_token) do
     config = Domain.Config.fetch_env!(:domain, __MODULE__)
 
     (config[:endpoint] <> path)
     |> Req.get(headers: [Authorization: "Bearer #{access_token}"])
+  end
+
+  defp stream_pages(path, query, access_token, result_key) do
+    Stream.resource(
+      fn -> {path, query} end,
+      fn
+        nil ->
+          {:halt, nil}
+
+        {:error, _reason} = error ->
+          {[error], nil}
+
+        {current_path, current_query} ->
+          config = Domain.Config.fetch_env!(:domain, __MODULE__)
+          url = "#{config[:endpoint]}#{current_path}?#{current_query}"
+
+          case Req.get(url, headers: [Authorization: "Bearer #{access_token}"]) do
+            {:ok, %Req.Response{status: 200, body: body}} ->
+              # Use Map.fetch to ensure the key exists
+              # If the key is missing, it's an error condition (malformed response)
+              case Map.fetch(body, result_key) do
+                {:ok, list} when is_list(list) ->
+                  next_state =
+                    case Map.get(body, "nextPageToken") do
+                      nil ->
+                        nil
+
+                      next_token ->
+                        query_map = URI.decode_query(current_query)
+                        updated_query = Map.put(query_map, "pageToken", next_token)
+                        next_query = URI.encode_query(updated_query)
+                        {current_path, next_query}
+                    end
+
+                  {[list], next_state}
+
+                {:ok, _non_list} ->
+                  # Key exists but value is not a list - malformed response
+                  error = {:error, {:invalid_response, "#{result_key} is not a list", body}}
+                  {[error], nil}
+
+                :error ->
+                  # Key is missing - this means no results for this page, which is valid
+                  # Empty page means we're done
+                  {[[]], nil}
+              end
+
+            {:ok, %Req.Response{} = response} ->
+              {[{:error, response}], nil}
+
+            {:error, _reason} = error ->
+              {[error], nil}
+          end
+      end,
+      fn _ -> :ok end
+    )
   end
 end

@@ -19,7 +19,8 @@ defmodule Web.Actors do
         query_module: Query,
         sortable_fields: [
           {:actors, :name},
-          {:actors, :email}
+          {:actors, :email},
+          {:actors, :updated_at}
         ],
         callback: &handle_actors_update!/2
       )
@@ -293,8 +294,17 @@ defmodule Web.Actors do
       {:noreply, put_flash(socket, :error, "You cannot disable yourself")}
     else
       case disable_actor(actor, socket.assigns.subject) do
-        {:ok, _actor} ->
+        {:ok, updated_actor} ->
           socket = reload_live_table!(socket, "actors")
+
+          # If the modal is open for this actor, update it
+          socket =
+            if Map.get(socket.assigns, :actor) && socket.assigns.actor.id == id do
+              assign(socket, actor: updated_actor)
+            else
+              socket
+            end
+
           {:noreply, put_flash(socket, :info, "Actor disabled successfully")}
 
         {:error, :unauthorized} ->
@@ -310,8 +320,17 @@ defmodule Web.Actors do
     actor = Query.get_actor!(id, socket.assigns.subject)
 
     case enable_actor(actor, socket.assigns.subject) do
-      {:ok, _actor} ->
+      {:ok, updated_actor} ->
         socket = reload_live_table!(socket, "actors")
+
+        # If the modal is open for this actor, update it
+        socket =
+          if Map.get(socket.assigns, :actor) && socket.assigns.actor.id == id do
+            assign(socket, actor: updated_actor)
+          else
+            socket
+          end
+
         {:noreply, put_flash(socket, :info, "Actor enabled successfully")}
 
       {:error, _} ->
@@ -476,19 +495,30 @@ defmodule Web.Actors do
           ordered_by={@order_by_table_id["actors"]}
           metadata={@actors_metadata}
         >
-          <:col :let={actor} class="w-8">
-            <.actor_type_icon actor={actor} />
+          <:col :let={actor} class="w-12">
+            <.actor_type_icon_with_badge actor={actor} />
           </:col>
           <:col :let={actor} field={{:actors, :name}} label="name" class="w-3/12">
             {actor.name}
           </:col>
-          <:col :let={actor} field={{:actors, :email}} label="email" class="w-3/12">
+          <:col :let={actor} field={{:actors, :email}} label="email">
             <span class="block truncate" title={actor.email}>
               {actor.email || "-"}
             </span>
           </:col>
-          <:col :let={actor} label="type" class="w-2/12">
-            <.actor_type_badge actor={actor} />
+          <:col :let={actor} label="status" class="w-1/12">
+            <%= if actor.disabled_at do %>
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                Disabled
+              </span>
+            <% else %>
+              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                Active
+              </span>
+            <% end %>
+          </:col>
+          <:col :let={actor} field={{:actors, :updated_at}} label="last updated" class="w-2/12">
+            <.relative_datetime datetime={actor.updated_at} />
           </:col>
           <:empty>
             <div class="flex justify-center text-center text-neutral-500 p-4">
@@ -652,10 +682,14 @@ defmodule Web.Actors do
           <.actor_type_icon actor={@actor} class="w-8 h-8" />
           <div>
             <div class="flex items-center gap-2">
-              <span>{actor_display_type(@actor)}: {@actor.name}</span>
+              <span>{@actor.name}</span>
               <.actor_type_badge actor={@actor} />
+              <%= if @actor.disabled_at do %>
+                <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-800">
+                  Disabled
+                </span>
+              <% end %>
             </div>
-            <div class="text-sm font-normal text-neutral-600">{@actor.email}</div>
           </div>
         </div>
       </:title>
@@ -841,7 +875,7 @@ defmodule Web.Actors do
                   >
                     <div class="flex-1">
                       <div class="flex items-center gap-2">
-                        <.icon name="hero-user-circle" class="w-5 h-5 text-neutral-400" />
+                        <.directory_icon directory={identity.directory} class="w-5 h-5" />
                         <div>
                           <div class="font-medium text-sm text-neutral-900" title="Issuer">
                             {identity.issuer}
@@ -966,6 +1000,7 @@ defmodule Web.Actors do
             />
 
             <.input
+              :if={@actor.type != :service_account}
               field={@form[:email]}
               label="Email"
               type="email"
@@ -1045,6 +1080,35 @@ defmodule Web.Actors do
     """
   end
 
+  defp actor_type_icon_with_badge(assigns) do
+    ~H"""
+    <div class="relative inline-flex">
+      <div class={[
+        "inline-flex items-center justify-center w-8 h-8 rounded-full",
+        actor_type_icon_bg_color(@actor.type)
+      ]}>
+        <%= case @actor.type do %>
+          <% :service_account -> %>
+            <.icon name="hero-server" class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
+          <% :account_admin_user -> %>
+            <.icon
+              name="hero-shield-check"
+              class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"}
+            />
+          <% _ -> %>
+            <.icon name="hero-user" class={"w-5 h-5 #{actor_type_icon_text_color(@actor.type)}"} />
+        <% end %>
+      </div>
+      <span
+        :if={@actor.identity_count > 0}
+        class="absolute -top-0.5 -right-0.5 inline-flex items-center justify-center w-4 h-4 text-[10px] font-medium text-white bg-neutral-800 rounded-full border-2 border-neutral-50"
+      >
+        {@actor.identity_count}
+      </span>
+    </div>
+    """
+  end
+
   defp actor_type_badge(assigns) do
     ~H"""
     <span class={[
@@ -1055,6 +1119,14 @@ defmodule Web.Actors do
     </span>
     """
   end
+
+  defp actor_type_icon_bg_color(:service_account), do: "bg-blue-100"
+  defp actor_type_icon_bg_color(:account_admin_user), do: "bg-purple-100"
+  defp actor_type_icon_bg_color(_), do: "bg-neutral-100"
+
+  defp actor_type_icon_text_color(:service_account), do: "text-blue-800"
+  defp actor_type_icon_text_color(:account_admin_user), do: "text-purple-800"
+  defp actor_type_icon_text_color(_), do: "text-neutral-800"
 
   defp actor_type_badge_color(:service_account), do: "bg-blue-100 text-blue-800"
   defp actor_type_badge_color(:account_admin_user), do: "bg-purple-100 text-purple-800"
@@ -1294,6 +1366,11 @@ defmodule Web.Actors do
           fragment(
             "COALESCE(?, (SELECT email FROM auth_identities WHERE actor_id = ? AND email IS NOT NULL ORDER BY inserted_at DESC LIMIT 1))",
             actors.email,
+            actors.id
+          ),
+        identity_count:
+          fragment(
+            "(SELECT COUNT(*) FROM auth_identities WHERE actor_id = ?)",
             actors.id
           )
       })

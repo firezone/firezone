@@ -6,6 +6,7 @@ defmodule Domain.Auth.Identity do
 
     # Identity Provider fields
     field :issuer
+    field :directory
     field :idp_id, :string
 
     # For Userpass

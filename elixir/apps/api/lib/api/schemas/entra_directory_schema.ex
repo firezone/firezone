@@ -18,7 +18,6 @@ defmodule API.Schemas.EntraDirectory do
         is_disabled: %Schema{type: :boolean, description: "Whether directory is disabled"},
         disabled_reason: %Schema{type: :string, description: "Reason for disabling"},
         synced_at: %Schema{type: :string, format: :datetime, description: "Last sync timestamp"},
-        current_job_id: %Schema{type: :integer, description: "Current job ID"},
         error: %Schema{type: :string, description: "Last error message"},
         error_emailed_at: %Schema{
           type: :string,
