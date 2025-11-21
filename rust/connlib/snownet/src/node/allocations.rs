@@ -74,6 +74,23 @@ where
             .unwrap_or(MutAllocationRef::Unknown)
     }
 
+    pub(crate) fn candidates_for_relay(
+        &self,
+        id: &RId,
+    ) -> impl Iterator<Item = Candidate> + use<RId> {
+        let shared_candidates = self.shared_candidates();
+        let relay_candidates = self
+            .get_by_id(id)
+            .into_iter()
+            .flat_map(|allocation| allocation.current_relay_candidates());
+
+        // Candidates with a higher priority are better, therefore: Reverse the ordering by priority.
+        shared_candidates
+            .chain(relay_candidates)
+            .sorted_by_key(|c| c.prio())
+            .rev()
+    }
+
     pub(crate) fn iter_mut(&mut self) -> impl Iterator<Item = (&RId, &mut Allocation)> {
         self.inner.iter_mut()
     }
@@ -144,13 +161,6 @@ where
         Some((*id, a))
     }
 
-    pub(crate) fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
-        self.inner
-            .values()
-            .flat_map(|allocation| allocation.host_and_server_reflexive_candidates())
-            .unique()
-    }
-
     pub(crate) fn poll_timeout(&mut self) -> Option<(Instant, &'static str)> {
         self.inner
             .values_mut()
@@ -191,6 +201,13 @@ where
                 }
                 None => true,
             });
+    }
+
+    fn shared_candidates(&self) -> impl Iterator<Item = Candidate> {
+        self.inner
+            .values()
+            .flat_map(|allocation| allocation.host_and_server_reflexive_candidates())
+            .unique()
     }
 }
 

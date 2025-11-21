@@ -31,9 +31,11 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
     sockets_by_remote: BTreeMap<SocketAddr, l3_tcp::SocketHandle>,
     local_ports_by_socket: BTreeMap<l3_tcp::SocketHandle, u16>,
     /// Queries we should send to a DNS resolver.
-    pending_queries_by_remote: HashMap<SocketAddr, VecDeque<dns_types::Query>>,
+    pending_queries_by_remote_and_local:
+        HashMap<(SocketAddr, SocketAddr), VecDeque<dns_types::Query>>,
     /// Queries we have sent to a DNS resolver and are waiting for a reply.
-    sent_queries_by_remote: HashMap<SocketAddr, HashMap<u16, dns_types::Query>>,
+    sent_queries_by_remote_and_local:
+        HashMap<(SocketAddr, SocketAddr), HashMap<u16, dns_types::Query>>,
 
     query_results: VecDeque<QueryResult>,
 
@@ -46,6 +48,7 @@ pub struct Client<const MIN_PORT: u16 = 49152, const MAX_PORT: u16 = 65535> {
 #[derive(Debug)]
 pub struct QueryResult {
     pub query: dns_types::Query,
+    pub local: SocketAddr,
     pub server: SocketAddr,
     pub result: Result<dns_types::Response>,
 }
@@ -64,12 +67,12 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             interface,
             sockets: SocketSet::new(Vec::default()),
             source_ips: None,
-            sent_queries_by_remote: Default::default(),
+            sent_queries_by_remote_and_local: Default::default(),
             query_results: Default::default(),
             rng: StdRng::from_seed(seed),
             sockets_by_remote: Default::default(),
             local_ports_by_socket: Default::default(),
-            pending_queries_by_remote: Default::default(),
+            pending_queries_by_remote_and_local: Default::default(),
             created_at: now,
             last_now: now,
         }
@@ -83,34 +86,50 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     /// Send the given DNS query to the target server.
     ///
     /// This only queues the message. You need to call [`Client::handle_timeout`] to actually send them.
-    pub fn send_query(&mut self, server: SocketAddr, message: dns_types::Query) -> Result<()> {
-        self.pending_queries_by_remote
-            .entry(server)
-            .or_default()
-            .push_back(message);
-
-        if self.sockets_by_remote.contains_key(&server) {
-            return Ok(());
-        };
-
-        let local_port = self.sample_new_unique_port()?;
-
+    pub fn send_query(
+        &mut self,
+        server: SocketAddr,
+        message: dns_types::Query,
+    ) -> Result<SocketAddr> {
         let (ipv4_source, ipv6_source) = self
             .source_ips
             .ok_or_else(|| anyhow!("No source interface set"))?;
 
-        let local_endpoint = match server {
-            SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), local_port),
-            SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), local_port),
+        if let Some(s) = self.sockets_by_remote.get(&server)
+            && let Some(local_port) = self.local_ports_by_socket.get(s).copied()
+        {
+            let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
+
+            let pending_queries = self
+                .pending_queries_by_remote_and_local
+                .entry((server, local_endpoint))
+                .or_default();
+
+            let id = message.id();
+
+            if pending_queries.iter().any(|q| q.id() == id) {
+                bail!("A query with ID {id} is already pending")
+            }
+
+            pending_queries.push_back(message);
+
+            return Ok(local_endpoint);
         };
+
+        let local_port = self.sample_new_unique_port()?;
+        let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
+
+        self.pending_queries_by_remote_and_local
+            .entry((server, local_endpoint))
+            .or_default()
+            .push_back(message);
 
         let handle = self.sockets.add(create_tcp_socket());
 
         self.sockets_by_remote.insert(server, handle);
-        self.local_ports_by_socket
-            .insert(handle, local_endpoint.port());
+        self.local_ports_by_socket.insert(handle, local_port);
 
-        Ok(())
+        Ok(local_endpoint)
     }
 
     /// Checks whether this client can handle the given packet.
@@ -187,7 +206,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             &mut self.sockets,
         );
 
-        if result == PollResult::None && self.pending_queries_by_remote.is_empty() {
+        if result == PollResult::None && self.pending_queries_by_remote_and_local.is_empty() {
             return;
         }
 
@@ -196,14 +215,26 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
             let socket = self.sockets.get_mut::<l3_tcp::Socket>(*handle);
             let server = *remote;
+            let local_port = *self
+                .local_ports_by_socket
+                .get(handle)
+                .expect("must always have a port for each socket");
+            let local_endpoint = local_endpoint(server, ipv4_source, ipv6_source, local_port);
 
-            let pending_queries = self.pending_queries_by_remote.entry(server).or_default();
-            let sent_queries = self.sent_queries_by_remote.entry(server).or_default();
+            let pending_queries = self
+                .pending_queries_by_remote_and_local
+                .entry((server, local_endpoint))
+                .or_default();
+            let sent_queries = self
+                .sent_queries_by_remote_and_local
+                .entry((server, local_endpoint))
+                .or_default();
 
             // First, attempt to send all pending queries on this socket.
             send_pending_queries(
                 socket,
                 server,
+                local_endpoint,
                 pending_queries,
                 sent_queries,
                 &mut self.query_results,
@@ -213,6 +244,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             recv_responses(
                 socket,
                 server,
+                local_endpoint,
                 pending_queries,
                 sent_queries,
                 &mut self.query_results,
@@ -220,15 +252,6 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
             // Third, if the socket got closed, reconnect it.
             if matches!(socket.state(), l3_tcp::State::Closed) && !pending_queries.is_empty() {
-                let local_port = self
-                    .local_ports_by_socket
-                    .get(handle)
-                    .expect("must always have a port for each socket");
-                let local_endpoint = match server {
-                    SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), *local_port),
-                    SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), *local_port),
-                };
-
                 if let Err(error) = socket
                     .connect(self.interface.context(), server, local_endpoint)
                     .context("Failed to connect to upstream resolver")
@@ -236,6 +259,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                     self.query_results.extend(fail_all_queries(
                         &error,
                         server,
+                        local_endpoint,
                         pending_queries,
                         sent_queries,
                     ));
@@ -258,17 +282,16 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     pub fn reset(&mut self) {
         tracing::debug!("Resetting state");
 
-        let aborted_pending_queries =
-            self.pending_queries_by_remote
-                .drain()
-                .flat_map(|(server, queries)| {
-                    into_failed_results(server, queries, || anyhow!("Aborted"))
-                });
+        let aborted_pending_queries = self.pending_queries_by_remote_and_local.drain().flat_map(
+            |((server, local), queries)| {
+                into_failed_results(server, local, queries, || anyhow!("Aborted"))
+            },
+        );
         let aborted_sent_queries =
-            self.sent_queries_by_remote
+            self.sent_queries_by_remote_and_local
                 .drain()
-                .flat_map(|(server, queries)| {
-                    into_failed_results(server, queries.into_values(), || anyhow!("Aborted"))
+                .flat_map(|((server, local), queries)| {
+                    into_failed_results(server, local, queries.into_values(), || anyhow!("Aborted"))
                 });
 
         self.query_results
@@ -302,9 +325,22 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
     }
 }
 
+fn local_endpoint(
+    server: SocketAddr,
+    ipv4_source: Ipv4Addr,
+    ipv6_source: Ipv6Addr,
+    local_port: u16,
+) -> SocketAddr {
+    match server {
+        SocketAddr::V4(_) => SocketAddr::new(ipv4_source.into(), local_port),
+        SocketAddr::V6(_) => SocketAddr::new(ipv6_source.into(), local_port),
+    }
+}
+
 fn send_pending_queries(
     socket: &mut l3_tcp::Socket,
     server: SocketAddr,
+    local: SocketAddr,
     pending_queries: &mut VecDeque<dns_types::Query>,
     sent_queries: &mut HashMap<u16, dns_types::Query>,
     query_results: &mut VecDeque<QueryResult>,
@@ -327,10 +363,17 @@ fn send_pending_queries(
                 // We failed to send the query, declare the socket as failed.
                 socket.abort();
 
-                query_results.extend(fail_all_queries(&e, server, pending_queries, sent_queries));
+                query_results.extend(fail_all_queries(
+                    &e,
+                    server,
+                    local,
+                    pending_queries,
+                    sent_queries,
+                ));
                 query_results.push_back(QueryResult {
                     query,
                     server,
+                    local,
                     result: Err(e),
                 });
             }
@@ -341,6 +384,7 @@ fn send_pending_queries(
 fn recv_responses(
     socket: &mut l3_tcp::Socket,
     server: SocketAddr,
+    local: SocketAddr,
     pending_queries: &mut VecDeque<dns_types::Query>,
     sent_queries: &mut HashMap<u16, dns_types::Query>,
     query_results: &mut VecDeque<QueryResult>,
@@ -361,13 +405,14 @@ fn recv_responses(
             Ok(vec![QueryResult {
                 query,
                 server,
+                local,
                 result: Ok(response),
             }])
         })
         .unwrap_or_else(|e| {
             socket.abort();
 
-            fail_all_queries(&e, server, pending_queries, sent_queries).collect()
+            fail_all_queries(&e, server, local, pending_queries, sent_queries).collect()
         });
 
     query_results.extend(new_results);
@@ -376,6 +421,7 @@ fn recv_responses(
 fn fail_all_queries<'a>(
     error: &'a anyhow::Error,
     server: SocketAddr,
+    local: SocketAddr,
     pending_queries: &'a mut VecDeque<dns_types::Query>,
     sent_queries: &'a mut HashMap<u16, dns_types::Query>,
 ) -> impl Iterator<Item = QueryResult> + 'a {
@@ -383,17 +429,19 @@ fn fail_all_queries<'a>(
     let sent_queries = sent_queries.drain().map(|(_, query)| query);
     let queries = pending_queries.chain(sent_queries);
 
-    into_failed_results(server, queries, move || anyhow!("{error:#}"))
+    into_failed_results(server, local, queries, move || anyhow!("{error:#}"))
 }
 
 fn into_failed_results(
     server: SocketAddr,
+    local: SocketAddr,
     iter: impl IntoIterator<Item = dns_types::Query>,
     make_error: impl Fn() -> anyhow::Error,
 ) -> impl Iterator<Item = QueryResult> {
     iter.into_iter().map(move |query| QueryResult {
         query,
         server,
+        local,
         result: Err(make_error()),
     })
 }

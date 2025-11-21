@@ -61,8 +61,8 @@ pub(crate) struct SimClient {
 
     pub(crate) resource_status: BTreeMap<ResourceId, ResourceStatus>,
 
-    pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId), IpPacket>,
-    pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId), IpPacket>,
+    pub(crate) sent_udp_dns_queries: HashMap<(dns::Upstream, QueryId, u16), IpPacket>,
+    pub(crate) received_udp_dns_responses: BTreeMap<(dns::Upstream, QueryId, u16), IpPacket>,
 
     pub(crate) sent_tcp_dns_queries: HashSet<(dns::Upstream, QueryId)>,
     pub(crate) received_tcp_dns_responses: BTreeSet<(dns::Upstream, QueryId)>,
@@ -179,18 +179,13 @@ impl SimClient {
         let query = Query::new(domain, r_type).with_id(query_id);
 
         match dns_transport {
-            DnsTransport::Udp => {
-                let packet = ip_packet::make::udp_packet(
-                    src,
-                    sentinel,
-                    9999, // An application would pick a free source port.
-                    53,
-                    query.into_bytes(),
-                )
-                .unwrap();
+            DnsTransport::Udp { local_port } => {
+                let packet =
+                    ip_packet::make::udp_packet(src, sentinel, local_port, 53, query.into_bytes())
+                        .unwrap();
 
                 self.sent_udp_dns_queries
-                    .insert((upstream, query_id), packet.clone());
+                    .insert((upstream, query_id, local_port), packet.clone());
                 self.encapsulate(packet, now)
             }
             DnsTransport::Tcp => {
@@ -324,8 +319,10 @@ impl SimClient {
                     return;
                 };
 
-                self.received_udp_dns_responses
-                    .insert((upstream, response.id()), packet.clone());
+                self.received_udp_dns_responses.insert(
+                    (upstream, response.id(), udp.destination_port()),
+                    packet.clone(),
+                );
 
                 if !response.truncated() {
                     self.handle_dns_response(&response);
@@ -493,7 +490,7 @@ pub struct RefClient {
 
     /// The expected UDP DNS handshakes.
     #[debug(skip)]
-    pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
+    pub(crate) expected_udp_dns_handshakes: VecDeque<(dns::Upstream, QueryId, u16)>,
     /// The expected TCP DNS handshakes.
     #[debug(skip)]
     pub(crate) expected_tcp_dns_handshakes: VecDeque<(dns::Upstream, QueryId)>,
@@ -645,17 +642,6 @@ impl RefClient {
 
         for status in self.site_status.values_mut() {
             *status = ResourceStatus::Unknown;
-        }
-
-        // TCP connections will automatically re-create connections to Gateways.
-        for ((_, dst, _, _), r) in self
-            .expected_tcp_connections
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>()
-        {
-            self.connect_to_resource(r, dst);
-            self.set_resource_online(r);
         }
     }
 
@@ -925,9 +911,12 @@ impl RefClient {
             .insert(query.r_type);
 
         match query.transport {
-            DnsTransport::Udp => {
-                self.expected_udp_dns_handshakes
-                    .push_back((query.dns_server.clone(), query.query_id));
+            DnsTransport::Udp { local_port } => {
+                self.expected_udp_dns_handshakes.push_back((
+                    query.dns_server.clone(),
+                    query.query_id,
+                    local_port,
+                ));
             }
             DnsTransport::Tcp => {
                 self.expected_tcp_dns_handshakes

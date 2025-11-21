@@ -15,7 +15,7 @@ use crate::{
     ConnectionStats, Event,
     node::{
         Connection, ConnectionState, InitialConnection, add_local_candidate,
-        allocations::Allocations,
+        allocations::Allocations, new_ice_candidate_event,
     },
 };
 
@@ -138,10 +138,14 @@ where
 
             c.relay.id = rid;
 
-            for candidate in allocation.current_relay_candidates() {
-                add_local_candidate(cid, &mut c.agent, candidate, pending_events);
-                c.state.on_candidate(cid, &mut c.agent, now);
+            for candidate in allocation
+                .current_relay_candidates()
+                .filter_map(|candidate| add_local_candidate(&mut c.agent, candidate))
+            {
+                pending_events.push_back(new_ice_candidate_event(cid, candidate));
             }
+
+            c.state.on_candidate(cid, &mut c.agent, now);
         }
     }
 

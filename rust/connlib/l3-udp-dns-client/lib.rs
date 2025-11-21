@@ -28,11 +28,13 @@ struct PendingQuery {
     message: dns_types::Query,
     expires_at: Instant,
     server: SocketAddr,
+    local: SocketAddr,
 }
 
 #[derive(Debug)]
 pub struct QueryResult {
     pub query: dns_types::Query,
+    pub local: SocketAddr,
     pub server: SocketAddr,
     pub result: Result<dns_types::Response>,
 }
@@ -66,7 +68,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         server: SocketAddr,
         message: dns_types::Query,
         now: Instant,
-    ) -> Result<()> {
+    ) -> Result<SocketAddr> {
         let local_port = self.sample_new_unique_port()?;
 
         let (ipv4_source, ipv6_source) = self
@@ -77,6 +79,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
             SocketAddr::V4(_) => IpAddr::V4(ipv4_source),
             SocketAddr::V6(_) => IpAddr::V6(ipv6_source),
         };
+        let local_socket = SocketAddr::new(local_ip, local_port);
 
         self.pending_queries_by_local_port.insert(
             local_port,
@@ -84,6 +87,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                 message: message.clone(),
                 expires_at: now + TIMEOUT,
                 server,
+                local: local_socket,
             },
         );
 
@@ -95,7 +99,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         self.scheduled_queries.push_back(ip_packet);
 
-        Ok(())
+        Ok(local_socket)
     }
 
     /// Checks whether this client can handle the given packet.
@@ -151,7 +155,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         }
 
         let Some(PendingQuery {
-            message, server, ..
+            message,
+            server,
+            local,
+            ..
         }) = self
             .pending_queries_by_local_port
             .remove(&udp.destination_port())
@@ -161,6 +168,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
 
         self.query_results.push_back(QueryResult {
             query: message,
+            local,
             server,
             result,
         });
@@ -180,7 +188,10 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         for (
             _,
             PendingQuery {
-                message, server, ..
+                message,
+                server,
+                local,
+                ..
             },
         ) in self
             .pending_queries_by_local_port
@@ -188,6 +199,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
         {
             self.query_results.push_back(QueryResult {
                 query: message,
+                local,
                 server,
                 result: Err(anyhow!("Timeout")),
             });
@@ -213,6 +225,7 @@ impl<const MIN_PORT: u16, const MAX_PORT: u16> Client<MIN_PORT, MAX_PORT> {
                 .drain()
                 .map(|(_, pending_query)| QueryResult {
                     query: pending_query.message,
+                    local: pending_query.local,
                     server: pending_query.server,
                     result: Err(anyhow!("Timeout")),
                 });

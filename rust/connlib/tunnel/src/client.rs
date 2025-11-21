@@ -129,8 +129,8 @@ pub struct ClientState {
     tcp_dns_client: dns_over_tcp::Client,
     tcp_dns_server: dns_over_tcp::Server,
     /// Tracks the UDP/TCP stream (i.e. socket-pair) on which we received a DNS query by the ID of the recursive DNS query we issued.
-    dns_streams_by_upstream_and_query_id:
-        HashMap<(dns::Transport, SocketAddr, u16), (SocketAddr, SocketAddr)>,
+    dns_streams_by_local_upstream_and_query_id:
+        HashMap<(dns::Transport, SocketAddr, SocketAddr, u16), (SocketAddr, SocketAddr)>,
 
     /// Stores the gateways we recently connected to.
     ///
@@ -211,7 +211,7 @@ impl ClientState {
             udp_dns_client: l3_udp_dns_client::Client::new(seed),
             tcp_dns_client: dns_over_tcp::Client::new(now, seed),
             tcp_dns_server: dns_over_tcp::Server::new(now),
-            dns_streams_by_upstream_and_query_id: Default::default(),
+            dns_streams_by_local_upstream_and_query_id: Default::default(),
             pending_flows: Default::default(),
             dns_resource_nat: Default::default(),
             pending_tun_update: Default::default(),
@@ -532,10 +532,11 @@ impl ClientState {
                         dns_types::Response::servfail(&response.query)
                     });
 
-                unwrap_or_warn!(
-                    self.try_queue_udp_dns_response(response.local, response.remote, message),
-                    "Failed to queue UDP DNS response: {}"
-                );
+                self.buffered_packets.extend(into_udp_dns_packet(
+                    response.local,
+                    response.remote,
+                    message,
+                ));
             }
             (dns::Transport::Tcp, result) => {
                 let message = result
@@ -607,27 +608,6 @@ impl ClientState {
             .ok()??;
 
         Some(transmit)
-    }
-
-    fn try_queue_udp_dns_response(
-        &mut self,
-        from: SocketAddr,
-        dst: SocketAddr,
-        message: dns_types::Response,
-    ) -> anyhow::Result<()> {
-        debug_assert_eq!(from.port(), DNS_PORT);
-
-        let ip_packet = ip_packet::make::udp_packet(
-            from.ip(),
-            dst.ip(),
-            from.port(),
-            dst.port(),
-            message.into_bytes(MAX_UDP_PAYLOAD),
-        )?;
-
-        self.buffered_packets.push_back(ip_packet);
-
-        Ok(())
     }
 
     pub fn add_ice_candidate(
@@ -1197,10 +1177,10 @@ impl ClientState {
             if let Some(query_result) = self.udp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_upstream_and_query_id;
+                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
                 let Some((local, remote)) =
-                    known_sockets.remove(&(dns::Transport::Udp, server, qid))
+                    known_sockets.remove(&(dns::Transport::Udp, query_result.local, server, qid))
                 else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find UDP socket handle for query result");
 
@@ -1225,10 +1205,10 @@ impl ClientState {
             if let Some(query_result) = self.tcp_dns_client.poll_query_result() {
                 let server = query_result.server;
                 let qid = query_result.query.id();
-                let known_sockets = &mut self.dns_streams_by_upstream_and_query_id;
+                let known_sockets = &mut self.dns_streams_by_local_upstream_and_query_id;
 
                 let Some((local, remote)) =
-                    known_sockets.remove(&(dns::Transport::Tcp, server, qid))
+                    known_sockets.remove(&(dns::Transport::Tcp, query_result.local, server, qid))
                 else {
                     tracing::warn!(?known_sockets, %server, %qid, "Failed to find TCP socket handle for query result");
 
@@ -1296,10 +1276,8 @@ impl ClientState {
         if let Some(response) =
             self.handle_dns_query(message, local, remote, upstream, dns::Transport::Udp, now)
         {
-            unwrap_or_warn!(
-                self.try_queue_udp_dns_response(local, remote, response),
-                "Failed to queue UDP DNS response: {}"
-            );
+            self.buffered_packets
+                .extend(into_udp_dns_packet(local, remote, response));
         };
     }
 
@@ -1442,25 +1420,46 @@ impl ClientState {
         let query_id = query.id();
 
         let result = match transport {
-            dns::Transport::Udp => self.udp_dns_client.send_query(server, query, now),
-            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query),
+            dns::Transport::Udp => self.udp_dns_client.send_query(server, query.clone(), now),
+            dns::Transport::Tcp => self.tcp_dns_client.send_query(server, query.clone()),
         };
 
-        match result {
-            Ok(()) => {}
+        let local_socket = match result {
+            Ok(local_socket) => local_socket,
             Err(e) => {
                 tracing::warn!(
+                    ?query,
                     "Failed to send recursive {transport} DNS query to upstream resolver: {e:#}"
                 );
+
+                let response = dns_types::ResponseBuilder::for_query(
+                    &query,
+                    dns_types::ResponseCode::SERVFAIL,
+                )
+                .build();
+
+                match transport {
+                    dns::Transport::Udp => {
+                        self.buffered_packets
+                            .extend(into_udp_dns_packet(local, remote, response));
+                    }
+                    dns::Transport::Tcp => {
+                        unwrap_or_warn!(
+                            self.tcp_dns_server.send_message(local, remote, response),
+                            "Failed to send TCP DNS response: {}"
+                        );
+                    }
+                }
+
                 return;
             }
         };
 
-        tracing::trace!(%server, %local, %query_id, "Forwarding {transport} DNS query via tunnel");
+        tracing::trace!(%local_socket, %server, %local, %query_id, "Forwarded {transport} DNS query via tunnel");
 
         let existing = self
-            .dns_streams_by_upstream_and_query_id
-            .insert((transport, server, query_id), (local, remote));
+            .dns_streams_by_local_upstream_and_query_id
+            .insert((transport, local_socket, server, query_id), (local, remote));
 
         if let Some((existing_local, existing_remote)) = existing
             && (existing_local != local || existing_remote != remote)
@@ -1925,6 +1924,22 @@ fn is_definitely_not_a_resource(ip: IpAddr) -> bool {
     }
 
     false
+}
+
+fn into_udp_dns_packet(
+    from: SocketAddr,
+    dst: SocketAddr,
+    message: dns_types::Response,
+) -> Option<IpPacket> {
+    ip_packet::make::udp_packet(
+        from.ip(),
+        dst.ip(),
+        from.port(),
+        dst.port(),
+        message.into_bytes(MAX_UDP_PAYLOAD),
+    )
+    .inspect_err(|e| tracing::warn!("Failed to create IP packet for DNS response: {e:#}"))
+    .ok()
 }
 
 /// What triggered us to establish a connection to a Gateway.
