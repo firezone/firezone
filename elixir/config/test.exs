@@ -143,7 +143,10 @@ config :wallaby,
   # TODO: Contribute to Wallaby to make this configurable on the per-process level,
   # along with buffer to write logs only on process failure
   js_logger: false,
-  hackney_options: [timeout: 10_000, recv_timeout: 10_000]
+  hackney_options: [timeout: 10_000, recv_timeout: 10_000],
+  chromedriver: [
+    binary: System.find_executable("chrome")
+  ]
 
 ex_unit_config =
   [
