@@ -83,11 +83,11 @@ defmodule API.Schemas.Client do
         verified_by: %Schema{
           type: :string,
           description: "Client verification method",
-          enum: [:system, :actor, :identity]
+          enum: [:system, :actor]
         },
         verified_by_subject: %Schema{
           type: :object,
-          description: "Actor Name and/or Identity email who verified the client"
+          description: "Actor who verified the client"
         },
         created_at: %Schema{
           type: :string,

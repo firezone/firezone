@@ -48,13 +48,7 @@ defmodule Web.HomeHTML do
               </.button>
             </.form>
 
-            <p
-              :if={
-                Domain.Config.sign_up_enabled?() and
-                  Web.Auth.fetch_auth_context_type!(@params) == :browser
-              }
-              class="py-2 text-center"
-            >
+            <p :if={@params["as"] != "client"} class="py-2 text-center">
               Don't have an account?
               <a href={~p"/sign_up"} class={[link_style()]}>
                 Sign up here.

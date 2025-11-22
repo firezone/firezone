@@ -32,7 +32,7 @@ defmodule Web.AcceptanceCase.Auth do
     end
   end
 
-  def authenticate(session, %Domain.Auth.Identity{} = identity) do
+  def authenticate(session, %Domain.ExternalIdentity{} = identity) do
     user_agent = fetch_session_user_agent!(session)
     remote_ip = {127, 0, 0, 1}
 

@@ -55,18 +55,6 @@ defmodule Domain.Flows.Flow.Query do
     |> where([gateway_group: gateway_group], gateway_group.id == ^gateway_group_id)
   end
 
-  def by_identity_id(queryable, identity_id) do
-    queryable
-    |> with_joined_client()
-    |> where([client: client], client.identity_id == ^identity_id)
-  end
-
-  def by_identity_provider_id(queryable, provider_id) do
-    queryable
-    |> with_joined_client_identity()
-    |> where([identity: identity], identity.provider_id == ^provider_id)
-  end
-
   def by_resource_id(queryable, resource_id) do
     where(queryable, [flows: flows], flows.resource_id == ^resource_id)
   end
@@ -98,14 +86,6 @@ defmodule Domain.Flows.Flow.Query do
   def with_joined_client(queryable) do
     with_named_binding(queryable, :client, fn queryable, binding ->
       join(queryable, :inner, [flows: flows], client in assoc(flows, ^binding), as: ^binding)
-    end)
-  end
-
-  def with_joined_client_identity(queryable) do
-    queryable
-    |> with_joined_client()
-    |> with_named_binding(:identity, fn queryable, binding ->
-      join(queryable, :inner, [client: client], identity in assoc(client, ^binding), as: ^binding)
     end)
   end
 

@@ -74,7 +74,8 @@ defmodule Domain.Flows do
   # This will be much smoother once https://github.com/firezone/firezone/issues/10074 is implemented,
   # since we won't need to be so careful about reject_access messages to the gateway.
   def reauthorize_flow(%Flow{} = flow) do
-    with {:ok, client} <- Clients.fetch_client_by_id(flow.client_id, preload: :identity),
+    with {:ok, client} <- Clients.fetch_client_by_id!(flow.client_id),
+         {:ok, token} <- Domain.Tokens.fetch_token_by_id(flow.token_id),
          {:ok, gateway} <- Gateways.fetch_gateway_by_id(flow.gateway_id),
          # We only want to reauthorize the resource for this gateway if the resource is still connected to its
          # gateway_group.
@@ -86,7 +87,7 @@ defmodule Domain.Flows do
              client.actor_id
            ),
          {:ok, policy, expires_at} <-
-           Policies.longest_conforming_policy_for_client(policies, client, flow.expires_at),
+           Policies.longest_conforming_policy_for_client(policies, client, token, flow.expires_at),
          {:ok, membership} <-
            Actors.fetch_membership_by_actor_id_and_group_id(
              client.actor_id,

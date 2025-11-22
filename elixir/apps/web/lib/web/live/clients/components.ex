@@ -2,6 +2,38 @@ defmodule Web.Clients.Components do
   use Web, :component_library
   import Web.CoreComponents
 
+  def actor_show_url(account, %Domain.Actors.Actor{type: :api_client} = actor) do
+    ~p"/#{account}/settings/api_clients/#{actor}"
+  end
+
+  def actor_show_url(account, actor) do
+    ~p"/#{account}/actors/#{actor}"
+  end
+
+  attr :account, :any, required: true
+  attr :actor, :any, required: true
+  attr :class, :string, default: ""
+
+  def actor_name_and_role(assigns) do
+    ~H"""
+    <.link
+      navigate={actor_show_url(@account, @actor)}
+      class={["text-accent-500 hover:underline", @class]}
+    >
+      {@actor.name}
+    </.link>
+    <span :if={@actor.type == :account_admin_user} class={["text-xs", @class]}>
+      (admin)
+    </span>
+    <span :if={@actor.type == :service_account} class={["text-xs", @class]}>
+      (service account)
+    </span>
+    <span :if={@actor.type == :api_client} class={["text-xs", @class]}>
+      (api client)
+    </span>
+    """
+  end
+
   def client_os(assigns) do
     ~H"""
     <div class="flex items-center">

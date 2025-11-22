@@ -7,8 +7,7 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   require Logger
   require OpenTelemetry.Tracer
 
-  alias Domain.Actors
-  alias Domain.{Accounts, Clients, Gateways, Mailer}
+  alias Domain.{Actors, Accounts, Clients, Gateways, Mailer}
 
   @impl true
   if Mix.env() == :prod do
@@ -51,11 +50,10 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
   end
 
   defp send_notifications(gateways, account, incompatible_client_count) do
-    Domain.Actors.all_admins_for_account!(account, preload: :identities)
-    |> Enum.flat_map(&list_emails_for_actor/1)
-    |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1))
+    Actors.all_admins_for_account!(account)
+    |> Enum.each(&send_email(account, gateways, incompatible_client_count, &1.email))
 
-    Domain.Accounts.update_account(account, %{
+    Accounts.update_account(account, %{
       config: %{
         notifications: %{
           outdated_gateway: %{
@@ -64,12 +62,6 @@ defmodule Domain.Notifications.Jobs.OutdatedGateways do
         }
       }
     })
-  end
-
-  defp list_emails_for_actor(%Actors.Actor{} = actor) do
-    actor.identities
-    |> Enum.map(&Domain.Auth.get_identity_email/1)
-    |> Enum.uniq()
   end
 
   defp send_email(account, gateways, incompatible_client_count, email) do

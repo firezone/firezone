@@ -1,7 +1,7 @@
-defmodule Domain.Auth.Identity.QueryTest do
+defmodule Domain.ExternalIdentity.QueryTest do
   use Domain.DataCase, async: true
   alias Domain.{Actors, Repo}
-  alias Domain.Auth.Identity
+  alias Domain.ExternalIdentity
 
   describe "batch_upsert/4" do
     setup do
@@ -68,8 +68,7 @@ defmodule Domain.Auth.Identity.QueryTest do
         assert identity.provider_identifier in ["user-001", "user-002"]
         assert identity.email in ["user1@example.com", "user2@example.com"]
         assert identity.actor.name in ["User 1", "User 2"]
-        assert identity.actor.last_synced_at == now
-        assert identity.created_by == :provider
+        assert identity.created_by == :system
       end
 
       # Verify correct counts
@@ -126,7 +125,6 @@ defmodule Domain.Auth.Identity.QueryTest do
       assert updated_identity.email == "new@example.com"
       assert updated_identity.actor_id == existing_actor.id
       assert updated_identity.actor.name == "New Name"
-      assert updated_identity.actor.last_synced_at == now2
 
       # Verify new identity was created
       new_identity =

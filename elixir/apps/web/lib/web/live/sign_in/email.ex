@@ -1,11 +1,12 @@
 defmodule Web.SignIn.Email do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
+  alias Domain.Accounts
 
   def mount(
         %{
           "account_id_or_slug" => account_id_or_slug,
-          "provider_id" => provider_id,
-          "signed_provider_identifier" => signed_provider_identifier
+          "auth_provider_id" => provider_id,
+          "signed_email" => signed_email
         } = params,
         _session,
         socket
@@ -13,23 +14,30 @@ defmodule Web.SignIn.Email do
     redirect_params = Web.Auth.take_sign_in_params(params)
     secret_key_base = socket.endpoint.config(:secret_key_base)
 
-    with {:ok, provider_identifier} <-
+    with {:ok, account} <- Accounts.fetch_account_by_id_or_slug(account_id_or_slug),
+         {:ok, email} <-
            Plug.Crypto.verify(
              secret_key_base,
-             "signed_provider_identifier",
-             signed_provider_identifier,
+             "signed_email",
+             signed_email,
              max_age: 3600
            ) do
       form = to_form(%{"secret" => nil})
 
+      verify_action = ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}/verify"
+      resend_action = ~p"/#{account_id_or_slug}/sign_in/email_otp/#{provider_id}?resend=true"
+
       socket =
         assign(socket,
           form: form,
-          provider_identifier: provider_identifier,
+          email: email,
           account_id_or_slug: account_id_or_slug,
+          account: account,
           provider_id: provider_id,
           resent: params["resent"],
           redirect_params: redirect_params,
+          verify_action: verify_action,
+          resend_action: resend_action,
           page_title: "Sign In"
         )
 
@@ -65,26 +73,23 @@ defmodule Web.SignIn.Email do
 
             <div>
               <p>
-                If <strong>{@provider_identifier}</strong>
-                is registered, a sign-in token has been sent.
+                If <strong>{@email}</strong> is registered, a sign-in token has been sent.
               </p>
               <form
                 id="verify-sign-in-token"
-                action={
-                  ~p"/#{@account_id_or_slug}/sign_in/providers/#{@provider_id}/verify_sign_in_token"
-                }
-                method="get"
+                action={@verify_action}
+                method="post"
                 class="my-4 flex"
                 phx-hook="AttachDisableSubmit"
                 phx-submit={JS.dispatch("form:disable_and_submit", to: "#verify-sign-in-token")}
               >
+                <input type="hidden" name="_csrf_token" value={Plug.CSRFProtection.get_csrf_token()} />
                 <.input
                   :for={{key, value} <- @redirect_params}
                   type="hidden"
                   name={key}
                   value={value}
                 />
-                <.input type="hidden" name="identity_id" value={@provider_identifier} />
 
                 <input
                   type="text"
@@ -113,9 +118,8 @@ defmodule Web.SignIn.Email do
                 </button>
               </form>
               <.resend
-                account_id_or_slug={@account_id_or_slug}
-                provider_id={@provider_id}
-                provider_identifier={@provider_identifier}
+                resend_action={@resend_action}
+                email={@email}
                 redirect_params={@redirect_params}
               /> or
               <.link navigate={~p"/#{@account_id_or_slug}?#{@redirect_params}"} class={link_style()}>
@@ -156,12 +160,10 @@ defmodule Web.SignIn.Email do
       id="resend-email"
       as={:email}
       class="inline"
-      action={
-        ~p"/#{@account_id_or_slug}/sign_in/providers/#{@provider_id}/request_email_otp?resend=true"
-      }
+      action={@resend_action}
       method="post"
     >
-      <.input type="hidden" name="email[provider_identifier]" value={@provider_identifier} />
+      <.input type="hidden" name="email[email]" value={@email} />
       <.input :for={{key, value} <- @redirect_params} type="hidden" name={key} value={value} />
       <span>
         Did not receive it?

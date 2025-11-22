@@ -64,7 +64,7 @@ defmodule Web.Live.SignUpTest do
     assert actor.account_id == account.id
     assert actor.name == "John Doe"
 
-    identity = Repo.one(Domain.Auth.Identity)
+    identity = Repo.one(Domain.ExternalIdentity)
     assert identity.account_id == account.id
     assert identity.provider_identifier == email
 
@@ -158,7 +158,7 @@ defmodule Web.Live.SignUpTest do
     assert account.metadata.stripe.customer_id
     assert account.metadata.stripe.billing_email == email
 
-    identity = Repo.one(Domain.Auth.Identity)
+    identity = Repo.one(Domain.ExternalIdentity)
     assert identity.account_id == account.id
     assert identity.provider_identifier == email
   end

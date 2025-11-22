@@ -105,10 +105,12 @@ defmodule Web.Settings.Account.Notifications.Edit do
   def handle_event("submit", %{"account" => attrs}, socket) do
     with {:ok, account} <-
            Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
-      {:noreply,
-       push_navigate(socket,
-         to: ~p"/#{account}/settings/account"
-       )}
+      socket =
+        socket
+        |> put_flash(:success, "Notification settings updated successfully")
+        |> push_navigate(to: ~p"/#{account}/settings/account")
+
+      {:noreply, socket}
     else
       {:error, changeset} ->
         changeset = changeset |> Map.put(:action, :validate)

@@ -14,7 +14,7 @@ defmodule Domain.Policies.Condition.Changeset do
 
   def valid_operators_for_property(:remote_ip_location_region), do: [:is_in, :is_not_in]
   def valid_operators_for_property(:remote_ip), do: [:is_in_cidr, :is_not_in_cidr]
-  def valid_operators_for_property(:provider_id), do: [:is_in, :is_not_in]
+  def valid_operators_for_property(:auth_provider_id), do: [:is_in, :is_not_in]
   def valid_operators_for_property(:current_utc_datetime), do: [:is_in_day_of_week_time_ranges]
   def valid_operators_for_property(:client_verified), do: [:is]
 
@@ -32,10 +32,10 @@ defmodule Domain.Policies.Condition.Changeset do
         |> validate_inclusion(:operator, valid_operators_for_property(:remote_ip))
         |> validate_list(:values, Domain.Types.INET)
 
-      {_data_or_changes, :provider_id} ->
+      {_data_or_changes, :auth_provider_id} ->
         changeset
         |> validate_required(:operator)
-        |> validate_inclusion(:operator, valid_operators_for_property(:provider_id))
+        |> validate_inclusion(:operator, valid_operators_for_property(:auth_provider_id))
         |> validate_list(:values, Ecto.UUID)
 
       {_data_or_changes, :current_utc_datetime} ->

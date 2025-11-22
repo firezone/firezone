@@ -12,7 +12,6 @@ defmodule Web.CoreComponents do
   use Phoenix.Component
   use Web, :verified_routes
   alias Phoenix.LiveView.JS
-  alias Domain.Actors
 
   attr :text, :string, default: "Welcome to Firezone."
 
@@ -311,48 +310,98 @@ defmodule Web.CoreComponents do
   @doc """
   Renders flash notices.
 
+  Can be displayed inline (default) or as a toast notification.
+
   ## Examples
 
       <.flash kind={:info} flash={@flash} />
-      <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
+      <.flash kind={:info} style="toast" flash={@flash} />
+      <.flash kind={:error}>Something went wrong!</.flash>
   """
   attr :id, :string, default: nil, doc: "the optional id of flash container"
   attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
   attr :title, :string, default: nil
 
   attr :kind, :atom,
-    values: [:success, :info, :warning, :error],
+    values: [
+      :success,
+      :info,
+      :warning,
+      :error,
+      :success_inline,
+      :info_inline,
+      :warning_inline,
+      :error_inline
+    ],
     doc: "used for styling and flash lookup"
 
   attr :class, :any, default: nil
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
-  attr :style, :string, default: "pill"
+
+  attr :style, :string,
+    default: "inline",
+    values: ["inline", "toast", "wide"],
+    doc: "inline for regular flash, toast for floating popover"
+
+  attr :autoshow, :boolean, default: true, doc: "whether to automatically show and hide the toast"
 
   slot :inner_block, doc: "the optional inner block that renders the flash message"
 
   def flash(assigns) do
+    # Normalize kind for styling (map _inline variants to base types)
+    base_kind =
+      case assigns.kind do
+        :success_inline -> :success
+        :info_inline -> :info
+        :warning_inline -> :warning
+        :error_inline -> :error
+        other -> other
+      end
+
+    assigns = assign(assigns, :base_kind, base_kind)
+
     ~H"""
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
+      popover={if @style == "toast", do: "manual", else: nil}
       class={[
         "p-4 text-sm flash-#{@kind}",
-        @kind == :success && "text-green-800 bg-green-100",
-        @kind == :info && "text-blue-800 bg-blue-100",
-        @kind == :warning && "text-yellow-800 bg-yellow-100",
-        @kind == :error && "text-red-800 bg-red-100",
-        @style != "wide" && "mb-4 rounded",
+        @base_kind == :success && "text-green-800 bg-green-100 border-green-300",
+        @base_kind == :info && "text-blue-800 bg-blue-100 border-blue-300",
+        @base_kind == :warning && "text-yellow-800 bg-yellow-100 border-yellow-300",
+        @base_kind == :error && "text-red-800 bg-red-100 border-red-300",
+        @style == "toast" && "m-0 border rounded shadow-lg",
+        @style == "inline" && "mb-4 rounded border",
         @class
       ]}
       role="alert"
+      phx-hook={if @style == "toast", do: "Toast", else: nil}
+      data-autoshow={if @style == "toast", do: @autoshow, else: nil}
       {@rest}
     >
-      <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6">
-        <.icon :if={@kind == :info} name="hero-information-circle-mini" class="h-4 w-4" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle-mini" class="h-4 w-4" />
-        {@title}
-      </p>
-      {maybe_render_changeset_as_flash(msg)}
+      <div class={[@style == "toast" && "flex items-start gap-3"]}>
+        <div class="flex-1">
+          <p :if={@title} class="flex items-center gap-1.5 text-sm font-semibold leading-6 mb-1">
+            <.icon :if={@base_kind == :info} name="hero-information-circle" class="h-4 w-4" />
+            <.icon :if={@base_kind == :success} name="hero-check-circle" class="h-4 w-4" />
+            <.icon :if={@base_kind == :warning} name="hero-exclamation-triangle" class="h-4 w-4" />
+            <.icon :if={@base_kind == :error} name="hero-exclamation-circle" class="h-4 w-4" />
+            {@title}
+          </p>
+          {maybe_render_changeset_as_flash(msg)}
+        </div>
+        <button
+          :if={@style == "toast"}
+          type="button"
+          class="text-current opacity-50 hover:opacity-100 flex-shrink-0"
+          popovertarget={@id}
+          popovertargetaction="hide"
+          aria-label="Close"
+        >
+          <.icon name="hero-x-mark" class="h-4 w-4" />
+        </button>
+      </div>
     </div>
     """
   end
@@ -372,32 +421,6 @@ defmodule Web.CoreComponents do
 
   def maybe_render_changeset_as_flash(other) do
     other
-  end
-
-  @doc """
-  Shows the flash group with standard titles and content.
-
-  ## Examples
-
-      <.flash_group flash={@flash} />
-  """
-  attr :flash, :map, required: true, doc: "the map of flash messages"
-
-  def flash_group(assigns) do
-    ~H"""
-    <.flash kind={:info} title="Success!" flash={@flash} />
-    <.flash kind={:error} title="Error!" flash={@flash} />
-    <.flash
-      id="disconnected"
-      kind={:error}
-      title="We can't find the internet"
-      phx-disconnected={show("#disconnected")}
-      phx-connected={hide("#disconnected")}
-      hidden
-    >
-      Attempting to reconnect <.icon name="hero-arrow-path" class="ml-1 h-3 w-3 animate-spin" />
-    </.flash>
-    """
   end
 
   @doc """
@@ -750,19 +773,26 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
-  Renders Gravatar img tag.
+  Renders a user avatar from either its identity picture or its gravatar.
   """
-  attr :email, :string, required: true
-  attr :size, :integer, default: 40
+  attr :actor, :any, required: true
+  attr :size, :integer, required: true
   attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
 
-  def gravatar(assigns) do
+  # TODO: IDP REFACTOR
+  # Fetch image and re-host it internally via Azure CDN
+  # For now, we disable loading pictures from identity providers due to CSP restrictions
+
+  def avatar(assigns) do
     ~H"""
-    <img
-      src={"https://www.gravatar.com/avatar/#{Base.encode16(:crypto.hash(:md5, @email), case: :lower)}?s=#{@size}&d=retro"}
-      {@rest}
-    />
+    <img src={build_gravatar_url(@actor, @size)} {@rest} />
     """
+  end
+
+  defp build_gravatar_url(actor, size) do
+    email = actor.email
+    hash = Base.encode16(:crypto.hash(:md5, email), case: :lower)
+    "https://www.gravatar.com/avatar/#{hash}?s=#{size}&d=retro"
   end
 
   @doc """
@@ -1037,13 +1067,18 @@ defmodule Web.CoreComponents do
   Renders a popover element with title and content.
   """
   attr :placement, :string, default: "top"
+  attr :trigger, :string, default: "hover"
   slot :target, required: true
   slot :content, required: true
 
   def popover(assigns) do
     # Any id will do
     target_id = "popover-#{System.unique_integer([:positive, :monotonic])}"
-    assigns = assign(assigns, :target_id, target_id)
+
+    assigns =
+      assigns
+      |> assign(:target_id, target_id)
+      |> assign_new(:trigger, fn -> "hover" end)
 
     ~H"""
     <span
@@ -1051,6 +1086,7 @@ defmodule Web.CoreComponents do
       id={@target_id <> "-trigger"}
       data-popover-target-id={@target_id}
       data-popover-placement={@placement}
+      data-popover-trigger={@trigger}
     >
       {render_slot(@target)}
     </span>
@@ -1059,7 +1095,7 @@ defmodule Web.CoreComponents do
       absolute z-10 invisible inline-block
       text-sm text-neutral-500 transition-opacity
       duration-50 bg-white border border-neutral-200
-      rounded shadow-sm opacity-0
+      rounded-lg shadow-sm opacity-0
       ]}>
       <div class="px-3 py-2">
         {render_slot(@content)}
@@ -1153,19 +1189,7 @@ defmodule Web.CoreComponents do
     """
   end
 
-  def created_by(%{schema: %{created_by: :provider}} = assigns) do
-    ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by Directory Sync
-    """
-  end
-
   def created_by(%{schema: %{created_by: :actor}} = assigns) do
-    ~H"""
-    <.relative_datetime datetime={@schema.inserted_at} /> by {@schema.created_by_subject["name"]}
-    """
-  end
-
-  def created_by(%{schema: %{created_by: :identity}} = assigns) do
     ~H"""
     <.relative_datetime datetime={@schema.inserted_at} /> by {@schema.created_by_subject["name"]}
     """
@@ -1229,78 +1253,13 @@ defmodule Web.CoreComponents do
   end
 
   attr :account, :any, required: true
-  attr :identity, :any, required: true
-
-  def identity_identifier(assigns) do
-    ~H"""
-    <span class="flex items-center" data-identity-id={@identity.id}>
-      <.link
-        navigate={
-          Web.Settings.IdentityProviders.Components.view_provider(@account, @identity.provider)
-        }
-        data-provider-id={@identity.provider.id}
-        title={"View identity provider \"#{@identity.provider.adapter}\""}
-        class={~w[
-          text-xs
-          rounded-l
-          py-0.5 px-1.5
-          text-neutral-800
-          bg-neutral-100
-          border-neutral-100
-          border
-        ]}
-      >
-        <.provider_icon adapter={@identity.provider.adapter} class="h-3.5 w-3.5" />
-      </.link>
-      <span class={~w[
-        text-xs
-        min-w-0
-        rounded-r
-        mr-2 py-0.5 pl-1.5 pr-2.5
-        text-neutral-900
-        bg-neutral-50
-      ]}>
-        <span class="block truncate" title={get_identity_email(@identity)}>
-          {get_identity_email(@identity)}
-        </span>
-      </span>
-    </span>
-    """
-  end
-
-  def get_identity_email(identity) do
-    Domain.Auth.get_identity_email(identity)
-  end
-
-  def identity_has_email?(identity) do
-    Domain.Auth.identity_has_email?(identity)
-  end
-
-  attr :account, :any, required: true
   attr :group, :any, required: true
   attr :class, :string, default: nil
 
   def group(assigns) do
     ~H"""
     <span class={["flex items-center", @class]} data-group-id={@group.id}>
-      <.link
-        :if={Actors.group_synced?(@group)}
-        navigate={Web.Settings.IdentityProviders.Components.view_provider(@account, @group.provider)}
-        data-provider-id={@group.provider_id}
-        title={"View identity provider \"#{@group.provider.adapter}\""}
-        class={~w[
-          rounded-l
-          py-0.5 px-1.5
-          text-neutral-800
-          bg-neutral-100
-          border-neutral-100
-          border
-        ]}
-      >
-        <.provider_icon adapter={@group.provider.adapter} class="h-3.5 w-3.5" />
-      </.link>
-      <div :if={not Actors.group_synced?(@group)} title="Manually managed in Firezone" class={~w[
-          inline-flex
+      <div class={~w[
           rounded-l
           py-0.5 px-1.5
           text-neutral-800
@@ -1308,7 +1267,7 @@ defmodule Web.CoreComponents do
           border-neutral-100
           border
         ]}>
-        <.icon name="firezone" class="h-3.5 w-3.5" />
+        <.directory_icon idp_id={@group.idp_id} class="h-3.5 w-3.5" />
       </div>
       <.link
         title={"View Group \"#{@group.name}\""}
@@ -1515,56 +1474,97 @@ defmodule Web.CoreComponents do
   end
 
   @doc """
+  Renders a logo appropriate for the given directory.
+  """
+
+  attr :idp_id, :string, default: nil
+  attr :class, :string, default: "inline w-4 h-4 mr-1"
+
+  def directory_icon(%{idp_id: "google:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="google" class={@class} />
+    """
+  end
+
+  def directory_icon(%{idp_id: "entra:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="entra" class={@class} />
+    """
+  end
+
+  def directory_icon(%{idp_id: "okta:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="okta" class={@class} />
+    """
+  end
+
+  def directory_icon(%{idp_id: "oidc:" <> _rest} = assigns) do
+    ~H"""
+    <.provider_icon type="oidc" class={@class} />
+    """
+  end
+
+  def directory_icon(assigns) do
+    ~H"""
+    <.provider_icon type="firezone" class={@class} />
+    """
+  end
+
+  @doc """
   Renders a logo appropriate for the given provider.
 
-  <.provider_icon adapter={:google_workspace} class="w-5 h-5 mr-2" />
+  <.provider_icon type={:google} class="w-5 h-5 mr-2" />
   """
-  attr :adapter, :atom, required: false
+  attr :type, :string, required: false
   attr :rest, :global
 
-  def provider_icon(%{adapter: :google_workspace} = assigns) do
+  def provider_icon(%{type: "firezone"} = assigns) do
     ~H"""
-    <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" {@rest} />
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1 border border-neutral-200 rounded-full">
+      <img src={~p"/images/logo.svg"} alt="Firezone Logo" class="w-full h-full" />
+    </div>
     """
   end
 
-  def provider_icon(%{adapter: :openid_connect} = assigns) do
+  def provider_icon(%{type: "okta"} = assigns) do
     ~H"""
-    <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" {@rest} />
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" class="w-full h-full" />
+    </div>
     """
   end
 
-  def provider_icon(%{adapter: :microsoft_entra} = assigns) do
-    ~H"""
-    <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :okta} = assigns) do
-    ~H"""
-    <img src={~p"/images/okta-logo.svg"} alt="Okta Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :jumpcloud} = assigns) do
-    ~H"""
-    <img src={~p"/images/jumpcloud-logo.svg"} alt="JumpCloud Logo" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :mock} = assigns) do
-    ~H"""
-    <.icon name="hero-command-line" {@rest} />
-    """
-  end
-
-  def provider_icon(%{adapter: :email} = assigns) do
+  def provider_icon(%{type: "email_otp"} = assigns) do
     ~H"""
     <.icon name="hero-envelope" {@rest} />
     """
   end
 
-  def provider_icon(%{adapter: :userpass} = assigns) do
+  def provider_icon(%{type: "oidc"} = assigns) do
+    ~H"""
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/openid-logo.svg"} alt="OpenID Connect Logo" class="w-full h-full" />
+    </div>
+    """
+  end
+
+  def provider_icon(%{type: "google"} = assigns) do
+    ~H"""
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/google-logo.svg"} alt="Google Workspace Logo" class="w-full h-full" />
+    </div>
+    """
+  end
+
+  def provider_icon(%{type: "entra"} = assigns) do
+    ~H"""
+    <div class="inline-flex items-center justify-center w-8 h-8 p-1">
+      <img src={~p"/images/entra-logo.svg"} alt="Microsoft Entra Logo" class="w-full h-full" />
+    </div>
+    """
+  end
+
+  def provider_icon(%{type: "userpass"} = assigns) do
     ~H"""
     <.icon name="hero-key" {@rest} />
     """
@@ -1633,5 +1633,60 @@ defmodule Web.CoreComponents do
       "text-accent-500",
       "hover:underline"
     ]
+  end
+
+  @doc """
+  Renders a Flowbite-style toggle switch.
+
+  ## Examples
+
+      <.toggle
+        id="my-toggle"
+        checked={@is_enabled}
+        phx-click="toggle_enabled"
+        phx-value-id={@id}
+      />
+
+      <.toggle
+        id="my-toggle"
+        checked={@is_enabled}
+        label="Enable feature"
+        phx-click="toggle_enabled"
+      />
+  """
+  attr :id, :string, required: true
+  attr :checked, :boolean, default: false
+  attr :label, :string, default: nil
+  attr :disabled, :boolean, default: false
+  attr :class, :string, default: nil
+  attr :rest, :global
+
+  def toggle(assigns) do
+    ~H"""
+    <label class={["inline-flex items-center cursor-pointer", @class]}>
+      <input
+        type="checkbox"
+        id={@id}
+        checked={@checked}
+        disabled={@disabled}
+        class="sr-only peer"
+        {@rest}
+      />
+      <div class={[
+        "relative w-11 h-6 bg-gray-200 rounded-full peer",
+        "peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-accent-300",
+        "peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full",
+        "peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px]",
+        "after:start-[2px] after:bg-white after:border-gray-300 after:border",
+        "after:rounded-full after:h-5 after:w-5 after:transition-all",
+        "peer-checked:bg-accent-600",
+        @disabled && "opacity-50 cursor-not-allowed"
+      ]}>
+      </div>
+      <span :if={@label} class="ms-3 text-sm font-medium text-gray-900">
+        {@label}
+      </span>
+    </label>
+    """
   end
 end

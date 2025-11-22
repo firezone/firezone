@@ -530,7 +530,7 @@ defmodule Domain.BillingTest do
       assert actor = Repo.get_by(Domain.Actors.Actor, account_id: account.id)
       assert actor.name == "John Smith"
 
-      assert identity = Repo.get_by(Domain.Auth.Identity, actor_id: actor.id)
+      assert identity = Repo.get_by(Domain.ExternalIdentity, actor_id: actor.id)
       assert identity.provider_identifier == "iown@bigcompany.com"
 
       assert_receive {:bypass_request,
@@ -695,7 +695,7 @@ defmodule Domain.BillingTest do
       assert actor = Repo.get_by(Domain.Actors.Actor, account_id: account.id)
       assert actor.name == "John Smith"
 
-      assert identity = Repo.get_by(Domain.Auth.Identity, actor_id: actor.id)
+      assert identity = Repo.get_by(Domain.ExternalIdentity, actor_id: actor.id)
       assert identity.provider_identifier == "iown@bigcompany.com"
 
       assert_receive {:bypass_request,

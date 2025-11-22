@@ -11,7 +11,7 @@ defmodule Domain.Auth.Adapters.OpenIDConnectTest do
       {provider, bypass} =
         Fixtures.Auth.start_and_create_openid_connect_provider(account: account)
 
-      changeset = %Auth.Identity{} |> Ecto.Changeset.change()
+      changeset = %ExternalIdentity{} |> Ecto.Changeset.change()
 
       %{
         bypass: bypass,

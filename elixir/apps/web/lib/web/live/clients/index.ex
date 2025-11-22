@@ -1,6 +1,5 @@
 defmodule Web.Clients.Index do
   use Web, :live_view
-  import Web.Actors.Components
   import Web.Clients.Components
   alias Domain.{Clients, ComponentVersions}
 
@@ -63,7 +62,6 @@ defmodule Web.Clients.Index do
         <.docs_action path="/deploy/clients" />
       </:action>
       <:content>
-        <.flash_group flash={@flash} />
         <.live_table
           id="clients"
           rows={@clients}

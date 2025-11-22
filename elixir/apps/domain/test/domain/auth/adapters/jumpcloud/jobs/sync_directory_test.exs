@@ -129,16 +129,16 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         assert group.inserted_at
         assert group.updated_at
 
-        assert group.created_by == :provider
+        assert group.created_by == :system
         assert group.provider_id == provider.id
       end
 
-      identities = Auth.Identity |> Repo.all() |> Repo.preload(:actor)
+      identities = ExternalIdentity |> Repo.all() |> Repo.preload(:actor)
       assert length(identities) == 2
 
       for identity <- identities do
         assert identity.inserted_at
-        assert identity.created_by == :provider
+        assert identity.created_by == :system
         assert identity.provider_id == provider.id
         assert identity.provider_identifier in ["USER_JDOE_ID", "USER_JSMITH_ID"]
 
@@ -148,7 +148,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
                ]
 
         assert identity.actor.name in ["John Doe", "Jane Smith"]
-        assert identity.actor.last_synced_at
       end
 
       memberships = Actors.Membership |> Repo.all()
@@ -211,7 +210,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
         )
 
       assert original_identity =
-               Repo.get(Domain.Auth.Identity, identity.id)
+               Repo.get(Domain.ExternalIdentity, identity.id)
                |> Repo.preload(:actor)
 
       refute original_identity.actor.name == "John Doe"
@@ -229,7 +228,7 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
       assert execute(%{task_supervisor: pid}) == :ok
 
       assert updated_identity =
-               Repo.get(Domain.Auth.Identity, identity.id)
+               Repo.get(Domain.ExternalIdentity, identity.id)
                |> Repo.preload(:actor)
 
       assert updated_identity.provider_state == %{
@@ -237,7 +236,6 @@ defmodule Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectoryTest do
              }
 
       assert updated_identity.actor.name == "John Doe"
-      assert updated_identity.actor.last_synced_at
     end
 
     test "updates existing groups and memberships", %{account: account, provider: provider} do

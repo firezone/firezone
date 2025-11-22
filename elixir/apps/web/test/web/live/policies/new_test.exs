@@ -136,9 +136,9 @@ defmodule Web.Live.Policies.NewTest do
              "policy[conditions][current_utc_datetime][values][T]",
              "policy[conditions][current_utc_datetime][values][U]",
              "policy[conditions][current_utc_datetime][values][W]",
-             "policy[conditions][provider_id][operator]",
-             "policy[conditions][provider_id][property]",
-             "policy[conditions][provider_id][values][]",
+             "policy[conditions][auth_provider_id][operator]",
+             "policy[conditions][auth_provider_id][property]",
+             "policy[conditions][auth_provider_id][values][]",
              "policy[conditions][remote_ip][operator]",
              "policy[conditions][remote_ip][property]",
              "policy[conditions][remote_ip][values][]",
@@ -192,9 +192,9 @@ defmodule Web.Live.Policies.NewTest do
              "policy[conditions][client_verified][operator]",
              "policy[conditions][client_verified][property]",
              "policy[conditions][client_verified][values][]",
-             "policy[conditions][provider_id][operator]",
-             "policy[conditions][provider_id][property]",
-             "policy[conditions][provider_id][values][]",
+             "policy[conditions][auth_provider_id][operator]",
+             "policy[conditions][auth_provider_id][property]",
+             "policy[conditions][auth_provider_id][values][]",
              "policy[conditions][remote_ip][operator]",
              "policy[conditions][remote_ip][property]",
              "policy[conditions][remote_ip][values][]",
@@ -326,10 +326,10 @@ defmodule Web.Live.Policies.NewTest do
             U: "23:00:00-23:59:59"
           }
         },
-        provider_id: %{
-          property: "provider_id",
+        auth_provider_id: %{
+          property: "auth_provider_id",
           operator: "is_in",
-          values: [identity.provider_id]
+          values: [identity.auth_provider_id]
         },
         remote_ip: %{
           property: "remote_ip",
@@ -371,9 +371,9 @@ defmodule Web.Live.Policies.NewTest do
                ]
              },
              %Domain.Policies.Condition{
-               property: :provider_id,
+               property: :auth_provider_id,
                operator: :is_in,
-               values: [identity.provider_id]
+               values: [identity.auth_provider_id]
              },
              %Domain.Policies.Condition{
                property: :remote_ip,
@@ -435,7 +435,7 @@ defmodule Web.Live.Policies.NewTest do
       actor_group_id: group.id,
       conditions: %{
         current_utc_datetime: %{},
-        provider_id: %{},
+        auth_provider_id: %{},
         remote_ip: %{},
         remote_ip_location_region: %{}
       }

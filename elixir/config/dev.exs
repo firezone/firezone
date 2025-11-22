@@ -41,12 +41,27 @@ config :domain, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        # Delete expired flows every minute
-       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+       {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
+
+       # Schedule Entra directory sync every minute for development
+       {"* * * * *", Domain.Entra.Scheduler},
+
+       # Schedule Google directory sync every minute for development
+       {"* * * * *", Domain.Google.Scheduler}
      ]}
   ],
-  queues: [default: 10],
+  queues: [
+    default: 10,
+    entra_scheduler: 1,
+    entra_sync: 5,
+    google_scheduler: 1,
+    google_sync: 5
+  ],
   engine: Oban.Engines.Basic,
   repo: Domain.Repo
+
+config :domain, Domain.Okta.AuthProvider,
+  redirect_uri: "https://localhost:13443/auth/oidc/callback"
 
 ###############################
 ##### Web #####################
@@ -55,7 +70,16 @@ config :domain, Oban,
 config :web, dev_routes: true
 
 config :web, Web.Endpoint,
-  http: [port: 13_000],
+  url: [scheme: "https", host: "localhost", port: 13443],
+  # TODO: IDP REFACTOR
+  # This can / should be removed since all built URLs will use https due to the `url` config above.
+  # http: [port: 13_000],
+  https: [
+    port: 13_443,
+    cipher_suite: :strong,
+    certfile: "priv/cert/selfsigned.pem",
+    keyfile: "priv/cert/selfsigned_key.pem"
+  ],
   code_reloader: true,
   debug_errors: true,
   check_origin: [
@@ -126,8 +150,11 @@ config :api, API.Endpoint,
 ##### Third-party configs #####
 ###############################
 
-# Do not include metadata nor timestamps in development logs
-config :logger, :default_formatter, format: "[$level] $message\n"
+# Include only message and custom metadata in development logs
+# This filters out Phoenix's automatic metadata like pid, request_id, etc.
+config :logger, :default_formatter,
+  format: {Web.LogFormatter, :format},
+  metadata: :all
 
 # Disable caching for OpenAPI spec to ensure it is refreshed
 config :open_api_spex, :cache_adapter, OpenApiSpex.Plug.NoneCache
@@ -140,9 +167,6 @@ config :phoenix, :stacktrace_depth, 20
 config :phoenix, :plug_init_mode, :runtime
 
 config :domain, Domain.Mailer, adapter: Swoosh.Adapters.Local
-
-# Enable the mock adapter for development
-config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory, enabled: true
 
 config :workos, WorkOS.Client,
   api_key: System.get_env("WORKOS_API_KEY"),

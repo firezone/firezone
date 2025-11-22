@@ -3,6 +3,7 @@ defmodule API.ClientController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Clients
+  alias __MODULE__.Query
 
   action_fallback(API.FallbackController)
 
@@ -31,7 +32,7 @@ defmodule API.ClientController do
       |> Pagination.params_to_list_opts()
       |> Keyword.put(:preload, :online?)
 
-    with {:ok, clients, metadata} <- Clients.list_clients(conn.assigns.subject, list_opts) do
+    with {:ok, clients, metadata} <- Query.list_clients(conn.assigns.subject, list_opts) do
       render(conn, :index, clients: clients, metadata: metadata)
     end
   end
@@ -162,6 +163,24 @@ defmodule API.ClientController do
     with {:ok, client} <- Clients.fetch_client_by_id(id, subject, preload: :online?),
          {:ok, client} <- Clients.delete_client(client, subject) do
       render(conn, :show, client: client)
+    end
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Clients, Safe}
+
+    def list_clients(subject, opts \\ []) do
+      from(c in Clients.Client, as: :clients)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:clients, :asc, :inserted_at},
+        {:clients, :asc, :id}
+      ]
     end
   end
 end

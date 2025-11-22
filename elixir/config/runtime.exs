@@ -79,8 +79,24 @@ if config_env() == :prod do
     key_base: env_var_to_config!(:tokens_key_base),
     salt: env_var_to_config!(:tokens_salt)
 
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.APIClient,
-    finch_transport_opts: env_var_to_config!(:http_client_ssl_opts)
+  config :domain, Domain.Google.APIClient,
+    service_account_key: env_var_to_config!(:google_service_account_key),
+    token_endpoint: "https://oauth2.googleapis.com/token",
+    endpoint: "https://www.googleapis.com"
+
+  config :domain, Domain.Google.AuthProvider,
+    client_id: env_var_to_config!(:google_oidc_client_id),
+    client_secret: env_var_to_config!(:google_oidc_client_secret)
+
+  config :domain, Domain.Entra.AuthProvider,
+    client_id: env_var_to_config!(:entra_oidc_client_id),
+    client_secret: env_var_to_config!(:entra_oidc_client_secret)
+
+  config :domain, Domain.Entra.APIClient,
+    client_id: env_var_to_config!(:entra_sync_client_id),
+    client_secret: env_var_to_config!(:entra__client_secret),
+    token_base_url: "https://login.microsoftonline.com",
+    endpoint: "https://graph.microsoft.com"
 
   config :domain, Domain.Billing.Stripe.APIClient,
     endpoint: "https://api.stripe.com",
@@ -135,33 +151,6 @@ if config_env() == :prod do
   config :domain, Domain.Billing.Jobs.CheckAccountLimits,
     enabled: env_var_to_config!(:background_jobs_enabled)
 
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.GoogleWorkspace.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.MicrosoftEntra.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.RefreshAccessTokens,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.Okta.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  config :domain, Domain.Auth.Adapters.JumpCloud.Jobs.SyncDirectory,
-    enabled: env_var_to_config!(:background_jobs_enabled)
-
-  # Enable the mock sync directory job in staging
-  config :domain, Domain.Auth.Adapters.Mock.Jobs.SyncDirectory,
-    enabled:
-      env_var_to_config!(:background_jobs_enabled) and
-        Enum.member?(env_var_to_config!(:auth_provider_adapters), :mock)
-
   # Oban has its own config validation that prevents overriding config in runtime.exs,
   # so we explicitly set the config in dev.exs, test.exs, and runtime.exs (for prod) only.
   config :domain, Oban,
@@ -180,10 +169,26 @@ if config_env() == :prod do
       {Oban.Plugins.Cron,
        crontab: [
          # Delete expired flows every minute
-         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows}
+         {"* * * * *", Domain.Flows.Jobs.DeleteExpiredFlows},
+
+         # Schedule Entra directory sync every 2 hours
+         {"0 */2 * * *", Domain.Entra.Scheduler},
+
+         # Schedule Google directory sync every 2 hours
+         {"0 */2 * * *", Domain.Google.Scheduler}
        ]}
     ],
-    queues: if(env_var_to_config!(:background_jobs_enabled), do: [default: 10], else: []),
+    queues:
+      if(env_var_to_config!(:background_jobs_enabled),
+        do: [
+          default: 10,
+          entra_scheduler: 1,
+          entra_sync: 5,
+          google_scheduler: 1,
+          google_sync: 5
+        ],
+        else: []
+      ),
     engine: Oban.Engines.Basic,
     repo: Domain.Repo
 

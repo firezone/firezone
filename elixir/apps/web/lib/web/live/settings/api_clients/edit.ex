@@ -1,12 +1,13 @@
 defmodule Web.Settings.ApiClients.Edit do
   use Web, :live_view
   import Web.Settings.ApiClients.Components
-  alias Domain.Actors
+  alias Domain.{Actors, Safe}
+  import Ecto.Changeset
 
   def mount(%{"id" => id}, _session, socket) do
     if Domain.Accounts.rest_api_enabled?(socket.assigns.account) do
       with {:ok, actor} <- Actors.fetch_actor_by_id(id, socket.assigns.subject, preload: []) do
-        changeset = Actors.change_actor(actor)
+        changeset = actor_changeset(actor, %{})
 
         socket =
           assign(socket,
@@ -62,7 +63,7 @@ defmodule Web.Settings.ApiClients.Edit do
       |> Map.put("type", :api_client)
 
     changeset =
-      Actors.change_actor(socket.assigns.actor, attrs)
+      actor_changeset(socket.assigns.actor, attrs)
       |> Map.put(:action, :insert)
 
     {:noreply, assign(socket, form: to_form(changeset))}
@@ -73,7 +74,9 @@ defmodule Web.Settings.ApiClients.Edit do
       attrs
       |> Map.put("type", :api_client)
 
-    with {:ok, actor} <- Actors.update_actor(socket.assigns.actor, attrs, socket.assigns.subject) do
+    changeset = actor_changeset(socket.assigns.actor, attrs)
+
+    with {:ok, actor} <- update_actor(changeset, socket.assigns.subject) do
       socket =
         push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/api_clients/#{actor}")
 
@@ -90,5 +93,17 @@ defmodule Web.Settings.ApiClients.Edit do
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
+  end
+
+  defp actor_changeset(actor, attrs) do
+    actor
+    |> cast(attrs, [:name, :type])
+    |> validate_required([:name, :type])
+  end
+
+  defp update_actor(changeset, subject) do
+    changeset
+    |> Safe.scoped(subject)
+    |> Safe.update()
   end
 end

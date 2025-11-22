@@ -249,7 +249,7 @@ defmodule Web.Resources.New do
 
     case Resources.create_resource(attrs, socket.assigns.subject) do
       {:ok, resource} ->
-        socket = put_flash(socket, :info, "Resource #{resource.name} created successfully.")
+        socket = put_flash(socket, :success, "Resource #{resource.name} created successfully")
 
         if site_id = socket.assigns.params["site_id"] do
           {:noreply,

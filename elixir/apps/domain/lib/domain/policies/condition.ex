@@ -5,7 +5,7 @@ defmodule Domain.Policies.Condition do
           property:
             :remote_ip_location_region
             | :remote_ip
-            | :provider_id
+            | :auth_provider_id
             | :current_utc_datetime
             | :client_verified,
           operator:
@@ -25,7 +25,7 @@ defmodule Domain.Policies.Condition do
     field :property, Ecto.Enum, values: ~w[
         remote_ip_location_region
         remote_ip
-        provider_id
+        auth_provider_id
         current_utc_datetime
         client_verified
       ]a

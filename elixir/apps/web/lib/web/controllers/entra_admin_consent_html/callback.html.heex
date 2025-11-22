@@ -1,0 +1,50 @@
+<div class="flex flex-col items-center justify-center min-h-screen bg-neutral-50">
+  <div class="bg-white shadow-lg rounded-lg p-8 max-w-md">
+    <%= if @success do %>
+      <div class="flex items-center justify-center mb-4">
+        <svg
+          class="w-16 h-16 text-green-600"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-center text-neutral-900 mb-2">
+        Admin Consent Granted
+      </h1>
+      <p class="text-center text-neutral-600 mb-6">
+        You have successfully granted permissions for directory sync. You can close this window and return to the settings page.
+      </p>
+    <% else %>
+      <div class="flex items-center justify-center mb-4">
+        <svg class="w-16 h-16 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+      </div>
+      <h1 class="text-2xl font-bold text-center text-neutral-900 mb-2">
+        Consent Failed
+      </h1>
+      <p class="text-center text-neutral-600 mb-6">
+        {Map.get(@flash, "error", "Something went wrong during the admin consent process.")}
+      </p>
+    <% end %>
+    <button
+      onclick="window.close()"
+      class="w-full bg-accent-600 hover:bg-accent-700 text-white font-medium py-2 px-4 rounded"
+    >
+      Close Window
+    </button>
+  </div>
+</div>

@@ -14,8 +14,9 @@ defmodule Domain.Tokens.Token do
 
     field :name, :string
 
-    # set for browser and client tokens, empty for service account tokens
-    belongs_to :identity, Domain.Auth.Identity
+    # track which auth provider was used to authenticate
+    belongs_to :auth_provider, Domain.AuthProvider
+
     # set for browser and client tokens
     belongs_to :actor, Domain.Actors.Actor
     # set for relay tokens
@@ -43,13 +44,15 @@ defmodule Domain.Tokens.Token do
     field :last_seen_at, :utc_datetime_usec
 
     # Maybe this is not needed and they should be in the join tables (eg. relay_group_tokens)
-    field :created_by, Ecto.Enum, values: ~w[actor identity system]a
-    field :created_by_subject, :map
     field :created_by_user_agent, :string
     field :created_by_remote_ip, Domain.Types.IP
 
     field :expires_at, :utc_datetime_usec
 
+    field :auth_provider_name, :string, virtual: true
+    field :auth_provider_type, :string, virtual: true
+
+    subject_trail(~w[actor system]a)
     timestamps()
   end
 end

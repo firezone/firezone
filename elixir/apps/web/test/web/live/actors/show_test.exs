@@ -307,7 +307,7 @@ defmodule Web.Live.Actors.ShowTest do
 
       synced_identity =
         Fixtures.Auth.create_identity(account: account, actor: actor)
-        |> Ecto.Changeset.change(created_by: :provider)
+        |> Ecto.Changeset.change(created_by: :system)
         |> Repo.update!()
 
       admin_identity = Repo.preload(admin_identity, :provider)

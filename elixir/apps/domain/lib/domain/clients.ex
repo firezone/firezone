@@ -48,12 +48,6 @@ defmodule Domain.Clients do
     |> Repo.aggregate(:count)
   end
 
-  def fetch_client_by_id(id, preload: :identity) do
-    Client.Query.all()
-    |> Client.Query.by_id(id)
-    |> Repo.fetch(Client.Query, preload: :identity)
-  end
-
   def fetch_client_by_id(id, %Auth.Subject{} = subject, opts \\ []) do
     required_permissions =
       {:one_of,
@@ -158,8 +152,7 @@ defmodule Domain.Clients do
 
   def upsert_client(attrs \\ %{}, %Auth.Subject{} = subject) do
     with :ok <- Auth.ensure_has_permissions(subject, Authorizer.manage_own_clients_permission()) do
-      assoc = subject.identity || subject.actor
-      changeset = Client.Changeset.upsert(assoc, subject, attrs)
+      changeset = Client.Changeset.upsert(subject.actor, subject, attrs)
 
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:client, changeset,
@@ -173,12 +166,9 @@ defmodule Domain.Clients do
         %{client: %Client{} = client, ipv4: ipv4, ipv6: ipv6} ->
           Client.Changeset.finalize_upsert(client, ipv4, ipv6)
       end)
-      |> Ecto.Multi.run(:client_with_identity, fn _repo, %{client_with_address: client} ->
-        {:ok, Repo.preload(client, :identity)}
-      end)
       |> Repo.transaction()
       |> case do
-        {:ok, %{client_with_identity: client}} -> {:ok, client}
+        {:ok, %{client_with_address: client}} -> {:ok, client}
         {:error, :client, changeset, _effects_so_far} -> {:error, changeset}
       end
     end

@@ -16,7 +16,7 @@ defmodule Web.Policies.Components do
   @all_conditions [
     :remote_ip_location_region,
     :remote_ip,
-    :provider_id,
+    :auth_provider_id,
     :client_verified,
     :current_utc_datetime
   ]
@@ -170,7 +170,7 @@ defmodule Web.Policies.Components do
     """
   end
 
-  defp condition(%{property: :provider_id} = assigns) do
+  defp condition(%{property: :auth_provider_id} = assigns) do
     assigns =
       assign(
         assigns,
@@ -312,7 +312,7 @@ defmodule Web.Policies.Components do
           disabled={@policy_conditions_enabled? == false}
         />
         <.provider_id_condition_form
-          :if={:provider_id in @enabled_conditions}
+          :if={:auth_provider_id in @enabled_conditions}
           form={@form}
           providers={@providers}
           disabled={@policy_conditions_enabled? == false}
@@ -506,28 +506,28 @@ defmodule Web.Policies.Components do
   defp provider_id_condition_form(assigns) do
     ~H"""
     <fieldset class="mb-4">
-      <% condition_form = find_condition_form(@form[:conditions], :provider_id) %>
+      <% condition_form = find_condition_form(@form[:conditions], :auth_provider_id) %>
 
       <.input
         type="hidden"
         field={condition_form[:property]}
-        name="policy[conditions][provider_id][property]"
-        id="policy_conditions_provider_id_property"
-        value="provider_id"
+        name="policy[conditions][auth_provider_id][property]"
+        id="policy_conditions_auth_provider_id_property"
+        value="auth_provider_id"
       />
 
       <div
         class="hover:bg-neutral-100 cursor-pointer border border-neutral-200 shadow-b rounded-t px-4 py-2"
         phx-click={
           JS.toggle_class("hidden",
-            to: "#policy_conditions_provider_id_condition"
+            to: "#policy_conditions_auth_provider_id_condition"
           )
           |> JS.toggle_class("bg-neutral-50")
           |> JS.toggle_class("hero-chevron-down",
-            to: "#policy_conditions_provider_id_chevron"
+            to: "#policy_conditions_auth_provider_id_chevron"
           )
           |> JS.toggle_class("hero-chevron-up",
-            to: "#policy_conditions_provider_id_chevron"
+            to: "#policy_conditions_auth_provider_id_chevron"
           )
         }
       >
@@ -537,7 +537,7 @@ defmodule Web.Policies.Components do
           </span>
           <span class="shadow bg-white w-6 h-6 flex items-center justify-center rounded-full">
             <.icon
-              id="policy_conditions_provider_id_chevron"
+              id="policy_conditions_auth_provider_id_chevron"
               name="hero-chevron-down"
               class="w-5 h-5"
             />
@@ -546,7 +546,7 @@ defmodule Web.Policies.Components do
       </div>
 
       <div
-        id="policy_conditions_provider_id_condition"
+        id="policy_conditions_auth_provider_id_condition"
         class={[
           "p-4 border-neutral-200 border-l border-r border-b rounded-b",
           condition_values_empty?(condition_form) && "hidden"
@@ -558,11 +558,11 @@ defmodule Web.Policies.Components do
         <div class="grid gap-2 sm:grid-cols-5 sm:gap-4">
           <.input
             type="select"
-            name="policy[conditions][provider_id][operator]"
-            id="policy_conditions_provider_id_operator"
+            name="policy[conditions][auth_provider_id][operator]"
+            id="policy_conditions_auth_provider_id_operator"
             field={condition_form[:operator]}
             disabled={@disabled}
-            options={condition_operator_options(:provider_id)}
+            options={condition_operator_options(:auth_provider_id)}
             value={get_in(condition_form, [:operator, Access.key!(:value)])}
           />
 
@@ -575,8 +575,8 @@ defmodule Web.Policies.Components do
               <.input
                 type="select"
                 field={condition_form[:values]}
-                name="policy[conditions][provider_id][values][]"
-                id={"policy_conditions_provider_id_values_#{index}"}
+                name="policy[conditions][auth_provider_id][values][]"
+                id={"policy_conditions_auth_provider_id_values_#{index}"}
                 options={[{"Select Provider", nil}] ++ Enum.map(@providers, &{&1.name, &1.id})}
                 disabled={@disabled}
                 value_index={index}
@@ -816,5 +816,175 @@ defmodule Web.Policies.Components do
       <span>{gateway_group.name}</span>
     </.intersperse>
     """
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta, Actors}
+
+    def all_active_providers_for_account(account, subject) do
+      # Query all auth provider types that are not disabled
+      userpass_query =
+        from(p in Userpass.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      email_otp_query =
+        from(p in EmailOTP.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      oidc_query =
+        from(p in OIDC.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      google_query =
+        from(p in Google.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      entra_query =
+        from(p in Entra.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      okta_query =
+        from(p in Okta.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      # Combine all providers from different tables using Safe
+      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject) |> Safe.all())
+    end
+
+    # Inlined from Web.Groups.Components
+    def fetch_group_option(id, subject) do
+      group =
+        from(g in Actors.Group, as: :groups)
+        |> where([groups: g], g.id == ^id)
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              )
+          }
+        )
+        |> Safe.scoped(subject)
+        |> Safe.one!()
+
+      {:ok, group_option(group)}
+    end
+
+    def list_group_options(search_query_or_nil, subject) do
+      query =
+        from(g in Actors.Group, as: :groups)
+        |> join(:left, [groups: g], d in assoc(g, :directory), as: :directory)
+        |> join(:left, [directory: d], gd in Domain.Google.Directory,
+          on: gd.id == d.id and d.type == :google,
+          as: :google_directory
+        )
+        |> join(:left, [directory: d], ed in Domain.Entra.Directory,
+          on: ed.id == d.id and d.type == :entra,
+          as: :entra_directory
+        )
+        |> join(:left, [directory: d], od in Domain.Okta.Directory,
+          on: od.id == d.id and d.type == :okta,
+          as: :okta_directory
+        )
+        |> select_merge(
+          [directory: d, google_directory: gd, entra_directory: ed, okta_directory: od],
+          %{
+            directory_name:
+              fragment(
+                "COALESCE(?, ?, ?, 'Firezone')",
+                gd.name,
+                ed.name,
+                od.name
+              )
+          }
+        )
+        |> order_by([groups: g], asc: g.name)
+        |> limit(25)
+
+      query =
+        if search_query_or_nil != "" and search_query_or_nil != nil do
+          from(g in query, where: ilike(g.name, ^"%#{search_query_or_nil}%"))
+        else
+          query
+        end
+
+      groups = query |> Safe.scoped(subject) |> Safe.all()
+
+      # For metadata, we'll return a simple count
+      metadata = %{limit: 25, count: length(groups)}
+
+      {:ok, grouped_select_options(groups), metadata}
+    end
+
+    defp grouped_select_options(groups) do
+      groups
+      |> Enum.group_by(&option_groups_index_and_label/1)
+      |> Enum.sort_by(fn {{options_group_index, options_group_label}, _groups} ->
+        {options_group_index, options_group_label}
+      end)
+      |> Enum.map(fn {{_options_group_index, options_group_label}, groups} ->
+        {options_group_label, groups |> Enum.sort_by(& &1.name) |> Enum.map(&group_option/1)}
+      end)
+    end
+
+    defp option_groups_index_and_label(group) do
+      index =
+        cond do
+          group_synced?(group) -> 9
+          group_managed?(group) -> 1
+          true -> 2
+        end
+
+      label =
+        cond do
+          group_synced?(group) ->
+            "Synced from #{group.directory_name}"
+
+          group_managed?(group) ->
+            "Managed by Firezone"
+
+          true ->
+            "Manually managed"
+        end
+
+      {index, label}
+    end
+
+    defp group_option(group) do
+      {group.id, group.name, group}
+    end
+
+    # Inlined from Domain.Actors helpers
+    defp group_synced?(group), do: not is_nil(group.directory_id)
+    defp group_managed?(group), do: group.type == :managed
   end
 end

@@ -1,14 +1,16 @@
 defmodule Web.Policies.Edit do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policies, Auth}
+  alias Domain.Policies
+  alias Web.Policies.Components.Query
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [:actor_group, :resource]
            ) do
-      providers = Auth.all_active_providers_for_account!(socket.assigns.account)
+      providers =
+        Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
       form =
         policy
@@ -60,8 +62,8 @@ defmodule Web.Policies.Edit do
                   label="Group"
                   placeholder="Select Actor Group"
                   field={@form[:actor_group_id]}
-                  fetch_option_callback={&Web.Groups.Components.fetch_group_option(&1, @subject)}
-                  list_options_callback={&Web.Groups.Components.list_group_options(&1, @subject)}
+                  fetch_option_callback={&Query.fetch_group_option(&1, @subject)}
+                  list_options_callback={&Query.list_group_options(&1, @subject)}
                   value={@form[:actor_group_id].value}
                   required
                 >
@@ -70,7 +72,10 @@ defmodule Web.Policies.Edit do
                   </:options_group>
 
                   <:option :let={group}>
-                    {group.name}
+                    <div class="flex items-center gap-3">
+                      <.directory_icon idp_id={group.idp_id} class="w-5 h-5 flex-shrink-0" />
+                      <span>{group.name}</span>
+                    </div>
                   </:option>
 
                   <:no_options :let={name}>
@@ -219,10 +224,61 @@ defmodule Web.Policies.Edit do
 
     case Policies.update_policy(socket.assigns.policy, params, socket.assigns.subject) do
       {:ok, policy} ->
-        {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/policies/#{policy}")}
+        socket =
+          socket
+          |> put_flash(:success, "Policy updated successfully")
+          |> push_navigate(to: ~p"/#{socket.assigns.account}/policies/#{policy}")
+
+        {:noreply, socket}
 
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
+    end
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Safe, Userpass, EmailOTP, OIDC, Google, Entra, Okta}
+
+    def all_active_providers_for_account(account, subject) do
+      # Query all auth provider types that are not disabled
+      userpass_query =
+        from(p in Userpass.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      email_otp_query =
+        from(p in EmailOTP.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      oidc_query =
+        from(p in OIDC.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      google_query =
+        from(p in Google.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      entra_query =
+        from(p in Entra.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      okta_query =
+        from(p in Okta.AuthProvider,
+          where: p.account_id == ^account.id and not p.is_disabled
+        )
+
+      # Combine all providers from different tables using Safe
+      (userpass_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (email_otp_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (oidc_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (google_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (entra_query |> Safe.scoped(subject) |> Safe.all()) ++
+        (okta_query |> Safe.scoped(subject) |> Safe.all())
     end
   end
 end

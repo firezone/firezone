@@ -3,6 +3,7 @@ defmodule API.PolicyController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Policies
+  alias __MODULE__.Query
 
   action_fallback API.FallbackController
 
@@ -22,7 +23,7 @@ defmodule API.PolicyController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, policies, metadata} <- Policies.list_policies(conn.assigns.subject, list_opts) do
+    with {:ok, policies, metadata} <- Query.list_policies(conn.assigns.subject, list_opts) do
       render(conn, :index, policies: policies, metadata: metadata)
     end
   end
@@ -43,9 +44,8 @@ defmodule API.PolicyController do
 
   # Show a specific Policy
   def show(conn, %{"id" => id}) do
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, conn.assigns.subject) do
-      render(conn, :show, policy: policy)
-    end
+    policy = Query.fetch_policy(conn.assigns.subject, id)
+    render(conn, :show, policy: policy)
   end
 
   operation :create,
@@ -90,15 +90,10 @@ defmodule API.PolicyController do
   # Update a Policy
   def update(conn, %{"id" => id, "policy" => params}) do
     subject = conn.assigns.subject
+    policy = Query.fetch_policy(subject, id)
 
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, subject) do
-      case Policies.update_policy(policy, params, subject) do
-        {:ok, policy} ->
-          render(conn, :show, policy: policy)
-
-        {:error, reason} ->
-          {:error, reason}
-      end
+    with {:ok, policy} <- Query.update_policy(policy, params, subject) do
+      render(conn, :show, policy: policy)
     end
   end
 
@@ -123,10 +118,51 @@ defmodule API.PolicyController do
   # Delete a Policy
   def delete(conn, %{"id" => id}) do
     subject = conn.assigns.subject
+    policy = Query.fetch_policy(subject, id)
 
-    with {:ok, policy} <- Policies.fetch_policy_by_id(id, subject),
-         {:ok, policy} <- Policies.delete_policy(policy, subject) do
+    with {:ok, policy} <- Query.delete_policy(policy, subject) do
       render(conn, :show, policy: policy)
+    end
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Policies, Safe}
+
+    def list_policies(subject, opts \\ []) do
+      from(p in Policies.Policy, as: :policies)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def fetch_policy(subject, id) do
+      from(p in Policies.Policy, where: p.id == ^id)
+      |> Safe.scoped(subject)
+      |> Safe.one!()
+    end
+
+    def update_policy(policy, attrs, subject) do
+      policy
+      |> changeset(attrs)
+      |> Safe.scoped(subject)
+      |> Safe.update()
+    end
+
+    def delete_policy(policy, subject) do
+      policy
+      |> Safe.scoped(subject)
+      |> Safe.delete()
+    end
+
+    defp changeset(policy, attrs) do
+      Policies.Policy.Changeset.update(policy, attrs)
+    end
+
+    def cursor_fields do
+      [
+        {:policies, :asc, :inserted_at},
+        {:policies, :asc, :id}
+      ]
     end
   end
 end

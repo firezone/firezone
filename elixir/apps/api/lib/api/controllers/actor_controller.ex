@@ -2,7 +2,9 @@ defmodule API.ActorController do
   use API, :controller
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
-  alias Domain.Actors
+  alias Domain.{Actors, Safe}
+  alias __MODULE__.Query
+  import Ecto.Changeset
 
   action_fallback API.FallbackController
 
@@ -22,7 +24,7 @@ defmodule API.ActorController do
   def index(conn, params) do
     list_opts = Pagination.params_to_list_opts(params)
 
-    with {:ok, actors, metadata} <- Actors.list_actors(conn.assigns.subject, list_opts) do
+    with {:ok, actors, metadata} <- Query.list_actors(conn.assigns.subject, list_opts) do
       render(conn, :index, actors: actors, metadata: metadata)
     end
   end
@@ -93,7 +95,8 @@ defmodule API.ActorController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Actors.fetch_actor_by_id(id, subject),
-         {:ok, actor} <- Actors.update_actor(actor, params, subject) do
+         changeset <- actor_changeset(actor, params),
+         {:ok, actor} <- update_actor(changeset, subject) do
       render(conn, :show, actor: actor)
     end
   end
@@ -121,8 +124,44 @@ defmodule API.ActorController do
     subject = conn.assigns.subject
 
     with {:ok, actor} <- Actors.fetch_actor_by_id(id, subject),
-         {:ok, actor} <- Actors.delete_actor(actor, subject) do
+         {:ok, actor} <- delete_actor(actor, subject) do
       render(conn, :show, actor: actor)
+    end
+  end
+
+  defp delete_actor(actor, subject) do
+    actor
+    |> Safe.scoped(subject)
+    |> Safe.delete()
+  end
+
+  defp actor_changeset(actor, attrs) do
+    actor
+    |> cast(attrs, [:name, :email, :type])
+    |> validate_required([:name, :type])
+  end
+
+  defp update_actor(changeset, subject) do
+    changeset
+    |> Safe.scoped(subject)
+    |> Safe.update()
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Actors, Safe}
+
+    def list_actors(subject, opts \\ []) do
+      from(a in Actors.Actor, as: :actors)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:actors, :asc, :inserted_at},
+        {:actors, :asc, :id}
+      ]
     end
   end
 end

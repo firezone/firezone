@@ -55,9 +55,14 @@ defmodule Web.Settings.Account.Edit do
   end
 
   def handle_event("submit", %{"account" => attrs}, socket) do
-    with {:ok, _account} <-
+    with {:ok, account} <-
            Accounts.update_account(socket.assigns.account, attrs, socket.assigns.subject) do
-      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/settings/account")}
+      socket =
+        socket
+        |> put_flash(:success, "Account #{account.name} updated successfully")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/settings/account")
+
+      {:noreply, socket}
     else
       {:error, changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

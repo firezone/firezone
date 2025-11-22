@@ -9,7 +9,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
       account = Fixtures.Accounts.create_account()
       provider = Fixtures.Auth.create_email_provider(account: account)
-      changeset = %Auth.Identity{} |> Ecto.Changeset.change()
+      changeset = %ExternalIdentity{} |> Ecto.Changeset.change()
 
       %{
         account: account,
@@ -35,7 +35,7 @@ defmodule Domain.Auth.Adapters.EmailTest do
 
     test "validates email confirmation", %{provider: provider} do
       changeset =
-        %Auth.Identity{}
+        %ExternalIdentity{}
         |> Ecto.Changeset.cast(
           %{
             provider_identifier: Fixtures.Auth.email(),

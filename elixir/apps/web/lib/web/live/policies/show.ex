@@ -1,17 +1,19 @@
 defmodule Web.Policies.Show do
   use Web, :live_view
   import Web.Policies.Components
-  alias Domain.{Policies, PubSub, Flows, Auth}
+  alias Domain.{Policies, PubSub, Flows}
+  alias Web.Policies.Components.Query
 
   def mount(%{"id" => id}, _session, socket) do
     with {:ok, policy} <-
            Policies.fetch_policy_by_id(id, socket.assigns.subject,
              preload: [
-               actor_group: [:provider],
+               actor_group: [],
                resource: []
              ]
            ) do
-      providers = Auth.all_active_providers_for_account!(socket.assigns.account)
+      providers =
+        Query.all_active_providers_for_account(socket.assigns.account, socket.assigns.subject)
 
       if connected?(socket) do
         :ok = PubSub.Account.subscribe(policy.account_id)
@@ -257,7 +259,7 @@ defmodule Web.Policies.Show do
         socket.assigns.policy.id,
         socket.assigns.subject,
         preload: [
-          actor_group: [:provider],
+          actor_group: [],
           resource: []
         ]
       )

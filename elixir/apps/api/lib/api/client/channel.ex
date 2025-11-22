@@ -50,7 +50,11 @@ defmodule API.Client.Channel do
 
     # Get initial list of authorized resources, hydrating the cache
     {:ok, resources, [], cache} =
-      Cache.Client.recompute_connectable_resources(nil, socket.assigns.client)
+      Cache.Client.recompute_connectable_resources(
+        nil,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
 
     # Initialize relays
     {:ok, relays} = select_relays(socket)
@@ -130,7 +134,11 @@ defmodule API.Client.Channel do
     )
 
     {:ok, added_resources, removed_ids, cache} =
-      Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
+      Cache.Client.recompute_connectable_resources(
+        socket.assigns.cache,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
 
     for resource_id <- removed_ids do
       push(socket, "resource_deleted", resource_id)
@@ -740,7 +748,11 @@ defmodule API.Client.Channel do
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    Cache.Client.add_membership(socket.assigns.cache, socket.assigns.client)
+    Cache.Client.add_membership(
+      socket.assigns.cache,
+      socket.assigns.client,
+      socket.assigns.subject
+    )
     |> push_resource_updates(socket)
   end
 
@@ -752,7 +764,12 @@ defmodule API.Client.Channel do
          %{assigns: %{client: %{actor_id: id}}} = socket
        )
        when id == actor_id do
-    Cache.Client.delete_membership(socket.assigns.cache, membership, socket.assigns.client)
+    Cache.Client.delete_membership(
+      socket.assigns.cache,
+      membership,
+      socket.assigns.client,
+      socket.assigns.subject
+    )
     |> push_resource_updates(socket)
   end
 
@@ -767,13 +784,13 @@ defmodule API.Client.Channel do
          %{assigns: %{client: %{id: id}}} = socket
        )
        when id == client_id do
-    # Maintain our preloaded identity
-    client = %{client | identity: socket.assigns.client.identity}
-    socket = assign(socket, client: client)
-
     # Changes in client verification can affect the list of allowed resources
     if old_client.verified_at != client.verified_at do
-      Cache.Client.recompute_connectable_resources(socket.assigns.cache, socket.assigns.client)
+      Cache.Client.recompute_connectable_resources(
+        socket.assigns.cache,
+        socket.assigns.client,
+        socket.assigns.subject
+      )
       |> push_resource_updates(socket)
     else
       {:noreply, socket}
@@ -804,7 +821,8 @@ defmodule API.Client.Channel do
     Cache.Client.update_resources_with_group_name(
       socket.assigns.cache,
       group,
-      socket.assigns.client
+      socket.assigns.client,
+      socket.assigns.subject
     )
     |> push_resource_updates(socket)
   end
@@ -875,7 +893,12 @@ defmodule API.Client.Channel do
          %Change{op: :delete, old_struct: %Policies.Policy{} = policy},
          socket
        ) do
-    Cache.Client.delete_policy(socket.assigns.cache, policy, socket.assigns.client)
+    Cache.Client.delete_policy(
+      socket.assigns.cache,
+      policy,
+      socket.assigns.client,
+      socket.assigns.subject
+    )
     |> push_resource_updates(socket)
   end
 
@@ -891,8 +914,8 @@ defmodule API.Client.Channel do
     Cache.Client.add_resource_connection(
       socket.assigns.cache,
       connection,
-      socket.assigns.subject,
-      socket.assigns.client
+      socket.assigns.client,
+      socket.assigns.subject
     )
     |> push_resource_updates(socket)
   end
@@ -907,7 +930,8 @@ defmodule API.Client.Channel do
     Cache.Client.delete_resource_connection(
       socket.assigns.cache,
       connection,
-      socket.assigns.client
+      socket.assigns.client,
+      socket.assigns.subject
     )
     |> push_resource_updates(socket)
   end
@@ -925,7 +949,8 @@ defmodule API.Client.Channel do
     Cache.Client.update_resource(
       socket.assigns.cache,
       resource,
-      socket.assigns.client
+      socket.assigns.client,
+      socket.assigns.subject
     )
     |> push_resource_updates(socket)
   end

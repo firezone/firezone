@@ -52,8 +52,6 @@ defmodule Web.Settings.DNS do
       <:content>
         <div class="max-w-2xl px-4 py-8 mx-auto">
           <.form for={@form} phx-submit={:submit} phx-change={:change}>
-            <.flash kind={:success} flash={@flash} phx-click="lv:clear-flash" />
-
             <h2 class="mb-4 text-xl text-neutral-900">Search Domain</h2>
 
             <p class="mb-4 text-neutral-500">

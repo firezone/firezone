@@ -1,7 +1,8 @@
 defmodule Web.SignUp do
   use Web, {:live_view, layout: {Web.Layouts, :public}}
-  alias Domain.{Auth, Accounts, Actors, Config}
+  alias Domain.{Accounts, Actors, Config}
   alias Web.Registration
+  alias __MODULE__.DB
 
   defmodule Registration do
     use Domain, :schema
@@ -77,9 +78,7 @@ defmodule Web.SignUp do
         provider: nil,
         user_agent: user_agent,
         real_ip: real_ip,
-        sign_up_enabled?: sign_up_enabled?,
-        account_name_changed?: false,
-        actor_name_changed?: false
+        sign_up_enabled?: sign_up_enabled?
       )
 
     {:ok, socket, temporary_assigns: [form: %Phoenix.HTML.Form{}]}
@@ -176,13 +175,13 @@ defmodule Web.SignUp do
           id="resend-email"
           as={:email}
           class="inline"
-          action={~p"/#{@account}/sign_in/providers/#{@provider}/request_email_otp"}
+          action={~p"/#{@account}/sign_in/email_otp/#{@provider}"}
           method="post"
         >
           <.input
             type="hidden"
-            name="email[provider_identifier]"
-            value={@identity.provider_identifier}
+            name="email"
+            value={@identity.actor.email}
           />
 
           <.button type="submit" class="w-full">
@@ -280,15 +279,7 @@ defmodule Web.SignUp do
     """
   end
 
-  def handle_event("validate", %{"registration" => attrs} = payload, socket) do
-    account_name_changed? =
-      socket.assigns.account_name_changed? ||
-        payload["_target"] == ["registration", "account", "name"]
-
-    actor_name_changed? =
-      socket.assigns.actor_name_changed? ||
-        payload["_target"] == ["registration", "actor", "name"]
-
+  def handle_event("validate", %{"registration" => attrs}, socket) do
     attrs = Map.put(attrs, "email_confirmation", attrs["email"])
 
     changeset =
@@ -296,12 +287,7 @@ defmodule Web.SignUp do
       |> Registration.changeset()
       |> Map.put(:action, :validate)
 
-    {:noreply,
-     assign(socket,
-       form: to_form(changeset),
-       account_name_changed?: account_name_changed?,
-       actor_name_changed?: actor_name_changed?
-     )}
+    {:noreply, assign(socket, form: to_form(changeset))}
   end
 
   def handle_event("submit", %{"registration" => orig_attrs}, socket) do
@@ -397,29 +383,13 @@ defmodule Web.SignUp do
     |> Ecto.Multi.run(
       :provider,
       fn _repo, %{account: account} ->
-        Auth.create_provider(account, %{
-          name: "Email",
-          adapter: :email,
-          adapter_config: %{}
-        })
+        DB.create_email_provider(account)
       end
     )
     |> Ecto.Multi.run(
       :actor,
       fn _repo, %{account: account} ->
-        Actors.create_actor(account, %{
-          type: :account_admin_user,
-          name: registration.actor.name
-        })
-      end
-    )
-    |> Ecto.Multi.run(
-      :identity,
-      fn _repo, %{actor: actor, provider: provider} ->
-        Auth.create_identity(actor, provider, %{
-          provider_identifier: registration.email,
-          provider_identifier_confirmation: registration.email
-        })
+        DB.create_admin(account, registration.email, registration.actor.name)
       end
     )
     |> Ecto.Multi.run(
@@ -457,5 +427,41 @@ defmodule Web.SignUp do
       end
     )
     |> Domain.Repo.transaction()
+  end
+
+  defmodule DB do
+    import Ecto.Changeset
+
+    alias Domain.{
+      Actors.Actor,
+      AuthProvider,
+      EmailOTP,
+      Safe
+    }
+
+    def create_email_provider(account) do
+      id = Ecto.UUID.generate()
+      attrs = %{account_id: account.id, id: id}
+      parent_changeset = cast(%AuthProvider{}, attrs, ~w[id account_id]a)
+      attrs = %{id: id, name: "Email (OTP)"}
+
+      changeset =
+        cast(%EmailOTP.AuthProvider{}, attrs, ~w[id name]a)
+        |> EmailOTP.AuthProvider.changeset()
+
+      with {:ok, _auth_provider} <- Safe.unscoped(parent_changeset) |> Safe.insert(),
+           {:ok, email_provider} <- Safe.unscoped(changeset) |> Safe.insert() do
+        {:ok, email_provider}
+      end
+    end
+
+    def create_admin(account, email, name) do
+      attrs = %{account_id: account.id, email: email, name: name, type: :account_admin_user}
+
+      cast(%Actor{}, attrs, ~w[account_id email name type]a)
+      |> Actor.changeset()
+      |> Safe.unscoped()
+      |> Safe.insert()
+    end
   end
 end

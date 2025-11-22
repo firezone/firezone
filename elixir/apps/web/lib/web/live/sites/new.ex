@@ -53,7 +53,12 @@ defmodule Web.Sites.New do
     attrs = Map.put(attrs, "tokens", [%{}])
 
     with {:ok, group} <- Gateways.create_group(attrs, socket.assigns.subject) do
-      {:noreply, push_navigate(socket, to: ~p"/#{socket.assigns.account}/sites/#{group}")}
+      socket =
+        socket
+        |> put_flash(:success, "Site #{group.name} created successfully")
+        |> push_navigate(to: ~p"/#{socket.assigns.account}/sites/#{group}")
+
+      {:noreply, socket}
     else
       {:error, :gateway_groups_limit_reached} ->
         changeset =

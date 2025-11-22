@@ -160,7 +160,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       }
 
       client = %Domain.Clients.Client{
-        identity: %Domain.Auth.Identity{
+        identity: %Domain.ExternalIdentity{
           provider_id: "00000000-0000-0000-0000-000000000000"
         }
       }
@@ -169,7 +169,7 @@ defmodule Domain.Policies.Condition.EvaluatorTest do
       assert fetch_conformation_expiration(%{condition | operator: :is_not_in}, client) == :error
 
       client = %Domain.Clients.Client{
-        identity: %Domain.Auth.Identity{
+        identity: %Domain.ExternalIdentity{
           provider_id: "11111111-1111-1111-1111-111111111111"
         }
       }

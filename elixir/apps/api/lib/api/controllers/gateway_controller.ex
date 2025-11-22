@@ -3,6 +3,7 @@ defmodule API.GatewayController do
   use OpenApiSpex.ControllerSpecs
   alias API.Pagination
   alias Domain.Gateways
+  alias __MODULE__.Query
 
   action_fallback API.FallbackController
 
@@ -38,7 +39,7 @@ defmodule API.GatewayController do
         list_opts
       end
 
-    with {:ok, gateways, metadata} <- Gateways.list_gateways(conn.assigns.subject, list_opts) do
+    with {:ok, gateways, metadata} <- Query.list_gateways(conn.assigns.subject, list_opts) do
       render(conn, :index, gateways: gateways, metadata: metadata)
     end
   end
@@ -98,6 +99,24 @@ defmodule API.GatewayController do
     with {:ok, gateway} <- Gateways.fetch_gateway_by_id(id, subject, preload: :online?),
          {:ok, gateway} <- Gateways.delete_gateway(gateway, subject) do
       render(conn, :show, gateway: gateway)
+    end
+  end
+
+  defmodule Query do
+    import Ecto.Query
+    alias Domain.{Gateways, Safe}
+
+    def list_gateways(subject, opts \\ []) do
+      from(g in Gateways.Gateway, as: :gateways)
+      |> Safe.scoped(subject)
+      |> Safe.list(__MODULE__, opts)
+    end
+
+    def cursor_fields do
+      [
+        {:gateways, :asc, :inserted_at},
+        {:gateways, :asc, :id}
+      ]
     end
   end
 end

@@ -58,7 +58,7 @@ defmodule Web.Live.Groups.EditTest do
 
     group
     |> Ecto.Changeset.change(
-      created_by: :provider,
+      created_by: :system,
       provider_id: provider.id,
       provider_identifier: Ecto.UUID.generate()
     )
